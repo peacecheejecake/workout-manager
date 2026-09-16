@@ -9,6 +9,7 @@ import {
   eraseAccountResultSchema,
 } from '@workout/contracts/operations';
 import styles from './operations-panel.module.css';
+import { garminStateLabels } from './garmin-panel';
 
 export interface OperationsPanelProps {
   session: { athleteId: string; sessionId: string; csrfToken: string };
@@ -206,7 +207,9 @@ function OperationsLifetime({ session, onSignedOut, onSessionChanged }: Operatio
           ) : null}
           {status.data && !status.isError && !status.isFetching ? (
             <div>
-              <p>Garmin: 연결되지 않음 · HealthKit: 연결되지 않음</p>
+              <p>
+                Garmin: {garminStateLabels[status.data.providers.garmin]} · HealthKit: 연결되지 않음
+              </p>
               <p>
                 앱 내부 처리: 대기 {status.data.outbox.pending}건 · 처리 중{' '}
                 {status.data.outbox.leased}건 · 재시도 {status.data.outbox.retrying}건 · 완료{' '}
@@ -259,7 +262,11 @@ function OperationsLifetime({ session, onSignedOut, onSessionChanged }: Operatio
           </p>
           <p>
             오래된 작업이 삭제한 계정을 되살리지 못하도록, 이전 계정을 구분하는 불투명한 식별자와
-            삭제 시각만 별도로 남깁니다.
+            삭제 시각을 별도로 남깁니다.
+          </p>
+          <p>
+            Garmin 연결 해제를 마칠 때까지 필요한 연결 정보가 암호화되어 임시 보관될 수 있습니다.
+            Garmin 응답이 지연되거나 실패하면 연결 해제도 지연될 수 있습니다.
           </p>
           <p>
             백업 사본은 별도로 보관됩니다. 보관 기간이 만료되거나 삭제 정보를 반영한 안전한 복구

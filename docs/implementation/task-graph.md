@@ -71,7 +71,8 @@ flowchart TD
 
 2026-09-16 사용자 결정으로 [Garmin OAuth 연결 기반](garmin-oauth.md)을 분리했다. 기존 OIDC 앱 로그인은
 유지하고 설정에 별도 연결을 추가한다. M1-06c는 로컬 OAuth fixture로 구현·검증하며 EXT-G를 요구하지
-않는다. 실제 공식 연결·자동 수집은 M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
+않는다. [M1-06c 구현·로컬 검증](progress/M1-06c.md)은 완료했다. 실제 공식 연결·자동 수집은
+M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
 
 ## M1b~M2: 기능 확장과 Web 출시
 

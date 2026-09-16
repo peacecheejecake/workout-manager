@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { garminConnectionStateSchema } from './garmin.js';
 
 const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
@@ -24,7 +25,7 @@ export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),
   outbox: z.strictObject({ pending: count, leased: count, retrying: count, completed: count }),
   providers: z.strictObject({
-    garmin: z.literal('not_connected'),
+    garmin: garminConnectionStateSchema,
     healthkit: z.literal('not_connected'),
   }),
   audit: z

@@ -72,6 +72,24 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('account operations controls', () => {
+  it('shows the actual Garmin connection state from the operations response', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response({ ...status, providers: { garmin: 'connected', healthkit: 'not_connected' } }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <OperationsPanel session={session} onSignedOut={() => {}} onSessionChanged={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Garmin: 연결됨 · HealthKit: 연결되지 않음')).toBeVisible();
+    expect(
+      screen.queryByText('Garmin: 연결되지 않음 · HealthKit: 연결되지 않음'),
+    ).not.toBeInTheDocument();
+  });
   it('does not export or delete on render and requires exact deletion confirmation', async () => {
     const user = userEvent.setup();
     const { fetcher, onSignedOut, client } = setup();

@@ -344,6 +344,9 @@ importers:
 
   packages/server/identity:
     dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
       openid-client:
         specifier: 6.8.8
         version: 6.8.8

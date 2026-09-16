@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,7 +11,12 @@ import {
   TenantErasedError,
   type Database,
 } from '../packages/server/persistence/src/database.js';
-import { migrate, grantOperations } from '../packages/server/persistence/src/migrate.js';
+import {
+  migrate,
+  grantOperations,
+  grantGarmin,
+} from '../packages/server/persistence/src/migrate.js';
+import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
@@ -28,6 +33,28 @@ function run(bin: string, name: string, args: string[]): string {
   return result.stdout.trim();
 }
 async function execute() {
+  const reportUrl = new URL(
+    '../docs/implementation/research/backup-restore-result.json',
+    import.meta.url,
+  );
+  let previousRuns: unknown[] = [];
+  try {
+    const previous: unknown = JSON.parse(await readFile(reportUrl, 'utf8'));
+    assert.ok(
+      typeof previous === 'object' &&
+        previous !== null &&
+        'executedAt' in previous &&
+        typeof previous.executedAt === 'string',
+    );
+    const history = 'previousRuns' in previous ? previous.previousRuns : [];
+    assert.ok(Array.isArray(history));
+    previousRuns = [
+      ...history,
+      Object.fromEntries(Object.entries(previous).filter(([key]) => key !== 'previousRuns')),
+    ];
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
   const candidates = [
     process.env.PG_BIN,
     '/opt/homebrew/opt/postgresql@15/bin',
@@ -44,6 +71,7 @@ async function execute() {
   const data = join(directory, 'data');
   const archive = join(directory, 'synthetic.dump');
   const ledgerFile = join(directory, 'post-backup-erasure-ledger.json');
+  const cleanupLedgerFile = join(directory, 'post-backup-encrypted-cleanup-ledger.json');
   const pools: Pool[] = [];
   const databases: Database[] = [];
   let started = false;
@@ -106,6 +134,7 @@ async function execute() {
       'GRANT SELECT,INSERT,UPDATE,DELETE ON consent,command_receipt,outbox,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO drill_runtime',
     );
     await grantOperations(url('drill_source'), 'drill_runtime');
+    await grantGarmin(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -138,9 +167,41 @@ async function execute() {
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
       );
-      await source.query(
-        "INSERT INTO identity_private.session(token_hash,athlete_id,csrf_token,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '1 hour')",
+      const session = await source.query(
+        "INSERT INTO identity_private.session(token_hash,athlete_id,csrf_token,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '1 hour') RETURNING session_id",
         [String(index + 1).repeat(64), athleteId, 'x'.repeat(32)],
+      );
+      const iv = randomBytes(12),
+        cipher = createCipheriv('aes-256-gcm', randomBytes(32), iv);
+      const encrypted = {
+        keyId: 'synthetic',
+        iv: iv.toString('base64'),
+        ciphertext: Buffer.concat([cipher.update('synthetic-credential'), cipher.final()]).toString(
+          'base64',
+        ),
+        tag: cipher.getAuthTag().toString('base64'),
+      };
+      const now = new Date(),
+        scope = { athleteId, sessionId: String(session.rows[0].session_id), now };
+      const garmin = createGarminStore(sourceDb),
+        stateHash = String(index + 1).repeat(64);
+      const attempt = await garmin.createAttempt({
+        ...scope,
+        stateHash,
+        encryptedVerifier: encrypted,
+        expiresAt: new Date(now.getTime() + 600000),
+      });
+      assert.ok(await garmin.consumeAttempt({ ...scope, stateHash }));
+      assert.ok(
+        await garmin.commitConnection({
+          ...scope,
+          ...attempt,
+          userId: `synthetic-${index}`,
+          permissions: [],
+          encryptedTokens: encrypted,
+          accessExpiresAt: new Date(now.getTime() + 3600000),
+          refreshExpiresAt: new Date(now.getTime() + 86400000),
+        }),
       );
     }
     await source.query(
@@ -170,6 +231,11 @@ async function execute() {
       )
     ).rows;
     await writeFile(ledgerFile, JSON.stringify(ledger), { mode: 0o600, flag: 'wx' });
+    const cleanupLedger = (
+      await source.query('SELECT * FROM garmin_private.revocation ORDER BY id')
+    ).rows;
+    assert.equal(cleanupLedger.length, 1);
+    await writeFile(cleanupLedgerFile, JSON.stringify(cleanupLedger), { mode: 0o600, flag: 'wx' });
     assert.deepEqual(
       ledger.map((row) => row.athlete_id),
       [deletedAthlete],
@@ -215,6 +281,22 @@ async function execute() {
       }
       await restored.query('DELETE FROM identity_private.session');
       await restored.query('DELETE FROM identity_private.login_attempt');
+      // Old backup grants can have been rotated/disconnected since the snapshot.
+      // Retain domain data, but require fresh OAuth and replay only the latest cleanup ledger.
+      await restored.query('DELETE FROM garmin_attempt');
+      await restored.query(
+        "UPDATE garmin_connection SET generation=generation+1,state='reconnect_required',encrypted_tokens=NULL,user_id=NULL,permissions='[]',connected_at=NULL,access_expires_at=NULL,refresh_expires_at=NULL,lease_id=NULL,lease_until=NULL,attempt_expires_at=NULL,attempt_session_id=NULL",
+      );
+      await restored.query('DELETE FROM garmin_private.revocation');
+      await restored.query('DELETE FROM garmin_private.ownership');
+      const cleanupJson = await readFile(cleanupLedgerFile, 'utf8');
+      await restored.query(
+        'INSERT INTO garmin_private.revocation SELECT * FROM jsonb_populate_recordset(NULL::garmin_private.revocation,$1::jsonb)',
+        [cleanupJson],
+      );
+      await restored.query(
+        'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
+      );
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
@@ -267,7 +349,37 @@ async function execute() {
       0,
     );
     checks.push('restored_sessions_and_login_attempts_invalidated');
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT count(*)::int AS count FROM garmin_connection WHERE encrypted_tokens IS NOT NULL',
+        )
+      ).rows[0].count,
+      0,
+    );
+    assert.equal(
+      (await restored.query('SELECT count(*)::int AS count FROM garmin_attempt')).rows[0].count,
+      0,
+    );
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT count(*)::int AS count FROM garmin_connection WHERE athlete_id=$1',
+          [deletedAthlete],
+        )
+      ).rows[0].count,
+      0,
+    );
+    const replayedCleanup = (
+      await restored.query('SELECT * FROM garmin_private.revocation ORDER BY id')
+    ).rows;
+    assert.deepEqual(replayedCleanup, cleanupLedger);
+    checks.push('all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved');
     const restoreDb = database('drill_restore');
+    assert.equal(
+      (await createGarminStore(restoreDb).status(retainedAthlete)).state,
+      'reconnect_required',
+    );
     assert.equal(
       (await createConsentRepository(restoreDb).getConsent(retainedAthlete, 'app')).granted,
       true,
@@ -318,23 +430,23 @@ async function execute() {
     restoreBeforeRuntimeAccess: [
       'replay_latest_external_erasure_ledger',
       'invalidate_all_restored_sessions_and_login_attempts',
+      'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
     ],
     checks,
     checkCount: checks.length,
     cleanup: { clusterStopped: true, temporaryClusterArchiveLedgerRemoved: !existsSync(directory) },
     limitations: [
       'Requires an independently retained, complete and current erasure ledger before production traffic resumes.',
+      'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
       'External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised.',
     ],
     sources: [
       'https://www.postgresql.org/docs/15/app-pgdump.html',
       'https://www.postgresql.org/docs/15/app-pgrestore.html',
     ],
+    previousRuns,
   };
-  await writeFile(
-    new URL('../docs/implementation/research/backup-restore-result.json', import.meta.url),
-    `${JSON.stringify(report, null, 2)}\n`,
-  );
+  await writeFile(reportUrl, `${JSON.stringify(report, null, 2)}\n`);
   console.log(
     JSON.stringify({
       outcome: report.outcome,

@@ -20,7 +20,8 @@
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
     "./activities": "./src/activities.ts",
-    "./operations": "./src/operations.ts"
+    "./operations": "./src/operations.ts",
+    "./garmin": "./src/garmin.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

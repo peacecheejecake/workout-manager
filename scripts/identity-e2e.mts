@@ -14,11 +14,24 @@ import { createIdentityRepository } from '../packages/server/persistence/src/ide
 import {
   grantIdentityFunctions,
   grantOperations,
+  grantGarmin,
+  grantGarminWorker,
   migrate,
 } from '../packages/server/persistence/src/migrate.ts';
 import { createIdentityService } from '../packages/server/identity/src/service.ts';
 import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
+import { fixtureGarmin, startFixtureGarmin } from './fixtures/garmin-provider.ts';
+import {
+  createGarminStore,
+  createGarminRevocationStore,
+} from '../packages/server/persistence/src/garmin.ts';
+import {
+  createGarminService,
+  processGarminRevocations,
+} from '../packages/server/identity/src/garmin-service.ts';
+import { createGarminCipher } from '../packages/server/identity/src/garmin-crypto.ts';
+import { createGarminProvider } from '../packages/server/identity/src/garmin-provider.ts';
 
 // Never read inherited database URLs: this harness creates and destroys its own cluster.
 const detectedBin = [
@@ -100,6 +113,11 @@ try {
     await migrate(adminUrl);
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantOperations(adminUrl, 'workout_runtime');
+    await grantGarmin(adminUrl, 'workout_runtime');
+    await admin.query(
+      'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
+    await grantGarminWorker(adminUrl, 'workout_garmin_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
     await admin.query(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
@@ -109,6 +127,8 @@ try {
   }
   const providerServer = await startFixtureOidc();
   closers.push(() => providerServer.close());
+  const garminServer = await startFixtureGarmin();
+  closers.push(() => garminServer.close());
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
@@ -120,9 +140,48 @@ try {
     publicOrigin: 'http://127.0.0.1:3100',
     allowInsecureLocalhost: true,
   });
+  const garminProvider = createGarminProvider({
+    clientId: fixtureGarmin.clientId,
+    clientSecret: fixtureGarmin.clientSecret,
+    redirectUri: fixtureGarmin.redirectUri,
+    fixtureOrigin: fixtureGarmin.origin,
+    allowInsecureLocalhost: true,
+  });
+  const garminCipher = createGarminCipher({
+    activeKeyId: 'fixture',
+    keys: { fixture: Buffer.alloc(32, 7).toString('base64') },
+  });
+  const revocations = createGarminRevocationStore({
+    connectionString: `postgresql://workout_garmin_worker@${endpoint}`,
+  });
+  closers.push(() => revocations.close());
+  let workerRun: Promise<unknown> | undefined;
+  const timer = setInterval(() => {
+    if (workerRun !== undefined) return;
+    workerRun = processGarminRevocations({
+      store: revocations,
+      provider: garminProvider,
+      cipher: garminCipher,
+    })
+      .catch(() => {
+        console.error('Synthetic Garmin cleanup retry pending.');
+      })
+      .finally(() => {
+        workerRun = undefined;
+      });
+  }, 250);
+  closers.push(async () => {
+    clearInterval(timer);
+    await workerRun;
+  });
   const api = createApi({
     auth: identity,
     identity,
+    garmin: createGarminService({
+      store: createGarminStore(database),
+      provider: garminProvider,
+      cipher: garminCipher,
+    }),
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     activities: createActivityRepository(database),
@@ -131,7 +190,9 @@ try {
   });
   closers.push(() => api.close());
   await api.listen({ host: '127.0.0.1', port: 4300 });
-  console.log('Identity E2E ready: API 4300, fixture provider 4400, private PostgreSQL.');
+  console.log(
+    'Identity E2E ready: API 4300, OIDC fixture 4400, Garmin fixture 4500, private PostgreSQL.',
+  );
 } catch (error) {
   await close();
   throw error;

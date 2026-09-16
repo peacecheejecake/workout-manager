@@ -5,7 +5,9 @@
 로컬 fixture로 프로토콜을 검증했으며 외부 공급자의 등록·실제 로그인은 별도 운영 검증이다.
 
 Garmin 연결은 앱 로그인과 분리한다. 기존 OIDC issuer/client와 `/bff/v1/auth/*`는 유지하며,
-설정에 추가할 provider OAuth와 별도 credential을 사용한다. [Garmin 연결 설계](garmin-oauth.md) 참고.
+설정의 provider OAuth와 별도 credential을 사용한다. [Garmin 연결 설계](garmin-oauth.md)와
+[서버·DB·worker 설정](garmin-setup.md)을 참고한다. Migration 006 적용 후에는 Garmin 설정 유무와
+관계없이 runtime에 `grantGarmin`을 적용한다.
 
 ## 공급자와 앱
 
@@ -40,13 +42,14 @@ runtime role을 운영 배포 도구로 생성한다. 앱에는 migration owner 
 
 ```bash
 node --import tsx --input-type=module <<'JS'
-import { migrate, grantIdentityFunctions, grantOperations } from './packages/server/persistence/src/migrate.ts';
+import { migrate, grantIdentityFunctions, grantOperations, grantGarmin } from './packages/server/persistence/src/migrate.ts';
 const admin = process.env.DEPLOY_DATABASE_URL;
 const role = process.env.RUNTIME_DB_ROLE;
 if (!admin || !role) throw new Error('Deployment DB configuration required');
 await migrate(admin);
 await grantIdentityFunctions(admin, role);
 await grantOperations(admin, role);
+await grantGarmin(admin, role);
 JS
 ```
 
@@ -65,7 +68,8 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
 검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. `grantOperations`는 삭제 차단 원장 조회,
-민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. migration 001–005는 checksum으로 보호한다.
+민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. `grantGarmin`은 현재 tenant의
+연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. migration 001–006은 checksum으로 보호한다.
 
 ## 요청 경계
 

@@ -1,0 +1,24 @@
+.panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-6, 24px);
+  color: var(--ink, #182131);
+}
+.panel button {
+  min-height: 44px;
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-control, 12px);
+  background: var(--surface-strong, #fff);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.panel button:focus-visible {
+  outline: 2px solid var(--accent, #6256b8);
+  outline-offset: 3px;
+}

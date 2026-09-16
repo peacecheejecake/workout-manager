@@ -110,6 +110,9 @@ pnpm check:generated
 ## 표준 OIDC 로그인·AI 동의
 
 `/account`에서 표준 OIDC 로그인과 AI 동의 허용/철회, 로그아웃을 제공합니다.
+같은 설정 화면에서 별도의 **Garmin 연결** OAuth 흐름을 제공합니다. 앱 로그인은 OIDC로 유지하며,
+Garmin 앱 자격 증명이 없으면 연결 시작은 비활성화됩니다. [Garmin 설정·철회 worker](docs/implementation/garmin-setup.md)를
+참고하세요. 로컬 OAuth fixture 검증과 실제 Garmin 연동은 구분하며 자동 활동 수집은 아직 연결하지 않았습니다.
 실제 공급자 설정·DB grants는 [OIDC 설정](docs/implementation/oidc-setup.md),
 검증 결과와 범위는 [M1-01](docs/implementation/progress/M1-01.md)을 참고하세요.
 홈 화면의 개발 활동은 아직 인증된 실제 기록과 연결되지 않았습니다.

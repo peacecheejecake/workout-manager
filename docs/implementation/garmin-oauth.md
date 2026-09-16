@@ -1,14 +1,15 @@
 # Garmin 계정 연결 · 구현 결정
 
 결정일: 2026-09-16. 사용자 결정: **기존 표준 OIDC 앱 로그인을 유지하고, 설정에 별도의 Garmin 연결 OAuth 흐름을 추가한다.**
-상태: 설계·작업 분리 완료, **구현 진행 중**. 공식 앱 자격 증명과 실연동 검증은 미확인이다.
+상태: **연결 기반 구현·로컬 검증 완료**. 공식 앱 자격 증명과 실연동 검증은 미확인이다.
+[검증 기록](progress/M1-06c.md)과 [운영 설정](garmin-setup.md)을 함께 따른다.
 관련: FUT-04, V2-F25–F28/F30–F31, M1-06c, EXT-G, M1-06b.
 
 ## 앱 로그인과 데이터 연결
 
 OIDC는 Workout Manager의 계정·세션을 식별한다. Garmin 연결은 이미 로그인한 앱 계정에 외부 데이터
 접근 권한을 연결한다. Garmin 연결·실패·해제가 앱 로그인 공급자나 앱 계정 ID를 교체하지 않는다.
-현재 계정 설정 진입점 `/account`에 독립적인 Garmin 연결 영역을 추가할 계획이다.
+계정 설정 진입점 `/account`에 독립적인 Garmin 연결 영역을 추가했다.
 
 공식 [OAuth 2.0 PKCE 명세](https://developerportal.garmin.com/sites/default/files/OAuth2PKCE.pdf)는
 Garmin Connect 로그인·공유 동의 후 authorization code를 앱으로 돌려주는 흐름을 설명한다.
@@ -56,7 +57,8 @@ sequenceDiagram
 
 ## 구현 범위 · M1-06c
 
-아래는 **앞으로 구현할 앱 설계**이며, 현재 사용 가능한 endpoint나 환경 설정을 뜻하지 않는다.
+아래 범위를 구현하고 로컬 합성 공급자로 검증했다. 실제 배포에는 [운영 설정](garmin-setup.md)이 필요하다.
+API는 `GET /status`, `POST /connect`, `GET /callback`, `DELETE /connection`을 아래 공통 경로에 제공한다.
 
 - 상태 조회, 연결 시작, callback, 연결 해제용 별도 `/bff/v1/integrations/garmin/*` 경로를 둔다.
   기존 `/bff/v1/auth/*` OIDC 경로와 세션 생성·회전 처리는 유지한다.

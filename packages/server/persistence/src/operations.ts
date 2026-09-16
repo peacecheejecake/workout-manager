@@ -87,6 +87,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
       return database.tenant(athleteId, async (tx) => {
         const result = await tx.query(
           `SELECT clock_timestamp() AS checked_at,
+        CASE WHEN public.garmin_pending(clock_timestamp()) THEN 'disconnecting' ELSE coalesce((SELECT CASE WHEN state='disconnected' OR (state='connecting' AND (attempt_expires_at<=clock_timestamp() OR NOT public.garmin_session_active($1,attempt_session_id,clock_timestamp()))) THEN 'not_connected' WHEN state='connected' AND refresh_expires_at<=clock_timestamp() THEN 'reconnect_required' ELSE state END FROM garmin_connection WHERE athlete_id=$1),'not_connected') END AS garmin_state,
         (SELECT jsonb_build_object('pending',count(*) FILTER(WHERE completed_at IS NULL AND (lease_until IS NULL OR lease_until<=clock_timestamp())),'leased',count(*) FILTER(WHERE completed_at IS NULL AND lease_until>clock_timestamp()),'retrying',count(*) FILTER(WHERE completed_at IS NULL AND attempts>0 AND (lease_until IS NULL OR lease_until<=clock_timestamp())),'completed',count(*) FILTER(WHERE completed_at IS NOT NULL)) FROM outbox WHERE athlete_id=$1) AS outbox,
         (SELECT coalesce(jsonb_agg(a ORDER BY created_at DESC,id),'[]'::jsonb) FROM(SELECT id,action,created_at FROM operations_audit WHERE athlete_id=$1 ORDER BY created_at DESC,id LIMIT 10) a) AS audit`,
           [athleteId],
@@ -94,6 +95,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         const row = z
           .object({
             checked_at: z.date(),
+            garmin_state: z.string(),
             outbox: z.unknown(),
             audit: z.array(
               z.object({
@@ -107,7 +109,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         return operationsStatusSchema.parse({
           checkedAt: row.checked_at.toISOString(),
           outbox: row.outbox,
-          providers: { garmin: 'not_connected', healthkit: 'not_connected' },
+          providers: { garmin: row.garmin_state, healthkit: 'not_connected' },
           audit: row.audit.map((item) => ({
             id: item.id,
             action: item.action,

@@ -7,6 +7,12 @@ import { createConsentRepository } from '@workout/server-persistence/repositorie
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createIdentityService } from '@workout/server-identity/service';
 import { createOidcProvider } from '@workout/server-identity/oidc';
+import { configuredGarmin } from '@workout/server-identity/garmin-config';
+import {
+  createGarminService,
+  createUnconfiguredGarminService,
+} from '@workout/server-identity/garmin-service';
+import { createGarminStore } from '@workout/server-persistence/garmin';
 import { createApi } from './app.js';
 
 const environmentSchema = z.object({
@@ -28,6 +34,11 @@ export async function createConfiguredApi(environment: unknown) {
   if (env.NODE_ENV === 'production' && env.ALLOW_INSECURE_LOCALHOST === 'true')
     throw new Error('Insecure production configuration');
   const allowInsecureLocalhost = env.ALLOW_INSECURE_LOCALHOST === 'true';
+  const garminConfiguration = configuredGarmin(
+    environment,
+    env.PUBLIC_ORIGIN,
+    allowInsecureLocalhost,
+  );
   const provider = await createOidcProvider({
     issuer: env.OIDC_ISSUER,
     clientId: env.OIDC_CLIENT_ID,
@@ -47,6 +58,10 @@ export async function createConfiguredApi(environment: unknown) {
     return createApi({
       auth: identity,
       identity,
+      garmin:
+        garminConfiguration === null
+          ? createUnconfiguredGarminService(createGarminStore(database))
+          : createGarminService({ store: createGarminStore(database), ...garminConfiguration }),
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
       activities: createActivityRepository(database),

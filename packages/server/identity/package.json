@@ -8,10 +8,15 @@
   },
   "dependencies": {
     "openid-client": "6.8.8",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@workout/contracts": "workspace:*"
   },
   "exports": {
     "./service": "./src/service.ts",
-    "./oidc": "./src/oidc.ts"
+    "./oidc": "./src/oidc.ts",
+    "./garmin-service": "./src/garmin-service.ts",
+    "./garmin-provider": "./src/garmin-provider.ts",
+    "./garmin-crypto": "./src/garmin-crypto.ts",
+    "./garmin-config": "./src/garmin-config.ts"
   }
 }

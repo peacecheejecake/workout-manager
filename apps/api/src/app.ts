@@ -1,3 +1,5 @@
+import { registerGarminRoutes, registerGarminCallback } from './garmin-routes.js';
+import { GarminError, type GarminService } from '@workout/server-identity/garmin-service';
 import {
   registerProductRoutes,
   ProductRequestError,
@@ -23,6 +25,7 @@ import {
 export interface ApiOptions extends ProductRepositories {
   auth: AuthenticationPort;
   identity?: IdentityService;
+  garmin?: GarminService;
   consent: ConsentPort;
   allowedOrigins: readonly string[];
   logStream?: Writable;
@@ -82,6 +85,16 @@ function requireCsrf(request: FastifyRequest, principal: Principal, origins: Rea
 }
 
 function classifyError(error: unknown): { statusCode: number; code: string } {
+  if (error instanceof GarminError)
+    return {
+      statusCode:
+        error.code === 'GARMIN_CALLBACK_REJECTED'
+          ? 400
+          : ['SESSION_CHANGED', 'GARMIN_CONNECTION_BUSY'].includes(error.code)
+            ? 409
+            : 503,
+      code: error.code,
+    };
   if (error instanceof TenantErasedError) return { statusCode: 401, code: 'UNAUTHENTICATED' };
   if (error instanceof IdentityError)
     return { statusCode: error.code === 'LOGIN_REJECTED' ? 401 : 503, code: error.code };
@@ -151,6 +164,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
     return reply.code(statusCode).send({ error: { code }, requestId: request.id });
   });
   app.get('/health', async () => ({ status: 'ok' }));
+  registerGarminCallback(app, options.garmin, options.auth);
   if (options.identity !== undefined) {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {
@@ -194,6 +208,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
         return value;
       }
       registerProductRoutes(routes, options, principal);
+      registerGarminRoutes(routes, options.garmin, principal);
       routes.get('/session', async (request) => {
         const value = principal(request);
         return value.method === 'cookie'

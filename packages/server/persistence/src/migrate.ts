@@ -18,6 +18,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '003_plan.sql',
       '004_activities.sql',
       '005_operations.sql',
+      '006_garmin.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -46,6 +47,49 @@ export async function migrate(connectionString: string): Promise<void> {
   }
 }
 
+/** Tenant API access excludes global credential cleanup reads. */
+export async function grantGarmin(connectionString: string, runtimeRole: string): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE,DELETE ON garmin_connection,garmin_attempt TO "${runtimeRole}"`,
+    );
+    for (const signature of [
+      'garmin_session_active(text,text,timestamptz)',
+      'garmin_pending(timestamptz)',
+      'garmin_claim_user(text,timestamptz)',
+      'garmin_queue_revoke(jsonb,text,timestamptz,timestamptz,timestamptz)',
+      'garmin_disconnect(timestamptz)',
+    ]) {
+      await pool.query(`GRANT EXECUTE ON FUNCTION public.${signature} TO "${runtimeRole}"`);
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Dedicated cleanup role receives function-only, bounded queue access. */
+export async function grantGarminWorker(
+  connectionString: string,
+  workerRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(workerRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    for (const signature of [
+      'garmin_lease_revocation(uuid,timestamptz,timestamptz)',
+      'garmin_prepare_revocation(uuid,uuid,text,timestamptz)',
+      'garmin_update_revocation(uuid,uuid,jsonb,timestamptz,timestamptz,timestamptz)',
+      'garmin_finish_revocation(uuid,uuid,boolean,timestamptz)',
+    ]) {
+      await pool.query(`GRANT EXECUTE ON FUNCTION public.${signature} TO "${workerRole}"`);
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
 /** Narrow runtime grants for the lifecycle gate and audited account operations. */
 export async function grantOperations(
   connectionString: string,
@@ -56,6 +100,13 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON garmin_connection TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.garmin_pending(timestamptz) TO "${runtimeRole}"`,
+    );
     await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
   } finally {
     await pool.end();

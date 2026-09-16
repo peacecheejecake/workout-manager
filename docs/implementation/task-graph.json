@@ -156,9 +156,9 @@
       "title": "Garmin OAuth 연결 기반",
       "dependsOn": ["M1-01", "M1-06a"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "별도 설정 연결·PKCE·credential 수명주기·로컬 OAuth 검증; 공식 실연동 완료 아님",
-      "evidence": "docs/implementation/garmin-oauth.md"
+      "evidence": "docs/implementation/progress/M1-06c.md"
     },
     {
       "id": "M1-06b",

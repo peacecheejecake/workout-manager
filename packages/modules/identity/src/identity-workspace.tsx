@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 import { z } from 'zod';
 import { OperationsPanel } from './operations-panel';
+import { GarminPanel } from './garmin-panel';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),
@@ -265,6 +266,11 @@ function Account({ session, onSignedOut, onSessionChanged }: AccountProps) {
           ) : null}
         </div>
       ) : null}
+      <GarminPanel
+        session={session}
+        onSignedOut={onSignedOut}
+        onSessionChanged={onSessionChanged}
+      />
       <OperationsPanel
         session={session}
         onSignedOut={onSignedOut}

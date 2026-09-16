@@ -5,7 +5,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createIdentityRepository } from '../src/identity.js';
-import { migrate, grantIdentityFunctions } from '../src/migrate.js';
+import { migrate, grantIdentityFunctions, grantOperations } from '../src/migrate.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run isolated real PostgreSQL integration harness');
@@ -16,6 +16,7 @@ const hash = () => createHash('sha256').update(randomUUID()).digest('hex');
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantIdentityFunctions(adminUrl, 'workout_runtime');
+  await grantOperations(adminUrl, 'workout_runtime');
   await admin.query('GRANT SELECT ON tenant_erasure TO workout_runtime');
   await admin.query('GRANT SELECT,INSERT ON operations_audit TO workout_runtime');
   await admin.query('GRANT EXECUTE ON FUNCTION public.erase_account(text) TO workout_runtime');
