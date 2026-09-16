@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { identityApiPort } from './scripts/fixtures/identity-api-port';
 export default defineConfig({
   testDir: './tests/identity',
   workers: 1,
@@ -12,7 +13,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm exec tsx scripts/identity-e2e.mts',
-      url: 'http://127.0.0.1:4300/health',
+      url: `http://127.0.0.1:${identityApiPort}/health`,
       timeout: 60000,
       reuseExistingServer: false,
     },

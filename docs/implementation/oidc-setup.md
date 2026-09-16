@@ -42,7 +42,7 @@ runtime role을 운영 배포 도구로 생성한다. 앱에는 migration owner 
 
 ```bash
 node --import tsx --input-type=module <<'JS'
-import { migrate, grantIdentityFunctions, grantOperations, grantGarmin } from './packages/server/persistence/src/migrate.ts';
+import { migrate, grantIdentityFunctions, grantOperations, grantGarmin, grantCheckIns } from './packages/server/persistence/src/migrate.ts';
 const admin = process.env.DEPLOY_DATABASE_URL;
 const role = process.env.RUNTIME_DB_ROLE;
 if (!admin || !role) throw new Error('Deployment DB configuration required');
@@ -50,6 +50,7 @@ await migrate(admin);
 await grantIdentityFunctions(admin, role);
 await grantOperations(admin, role);
 await grantGarmin(admin, role);
+await grantCheckIns(admin, role);
 JS
 ```
 
@@ -69,7 +70,8 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
 검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. `grantOperations`는 삭제 차단 원장 조회,
 민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. `grantGarmin`은 현재 tenant의
-연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. migration 001–006은 checksum으로 보호한다.
+연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. `grantCheckIns`는 자기보고 원장·정정·
+명령 receipt의 제한된 DML을 허용한다. migration 001–007은 checksum으로 보호한다.
 
 ## 요청 경계
 
@@ -81,3 +83,17 @@ Cookie 세션의 consent GET/PUT 및 logout POST는 `x-workout-session-id`가 �
 만료는 DB에서도 검사한다. 브라우저 cookie 삭제만으로 로그아웃을 처리하지 않는다.
 이 앱 로그아웃은 공급자 SSO logout을 의미하지 않는다. 실제 배포 전 공급자/TLS 설정과
 로그인·만료·세션 교체·철회 경로를 배포 환경에서 검증해야 한다.
+
+## 로컬 E2E API 포트 충돌
+
+기본 API 포트 4300을 다른 프로세스가 사용하면 해당 프로세스를 종료하거나 재사용하지 않는다.
+검증용 포트를 명시하고 Next의 build-time rewrite도 같은 origin으로 준비한다.
+
+```bash
+API_ORIGIN=http://127.0.0.1:4301 pnpm --filter @workout/web build
+WORKOUT_IDENTITY_API_PORT=4301 API_ORIGIN=http://127.0.0.1:4301 pnpm test:identity
+```
+
+`WORKOUT_IDENTITY_API_PORT`는 1024–65535 범위의 테스트 API listen/readiness 포트만 바꾼다.
+앱 3100, OIDC fixture 4400, Garmin fixture 4500은 그대로다. 임시 DB는 항상 별도로 생성한다.
+기본 포트로 돌아갈 때는 기본 `API_ORIGIN`으로 Next를 다시 build한다.

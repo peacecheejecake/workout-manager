@@ -82,7 +82,7 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 1. **M1-01 Identity/Consent**: 로그인·만료·로그아웃·소유권·AI 전송 동의. 다른 사용자 API/캐시/파일 접근 차단.
 2. **M1-02 Plan/Planner**: Season/Wave/Phase/Block/Session, versioned plan, 달력·rolling projection, URL 상태와 Zustand draft. 10일 Block과 calendar week 계산을 분리.
 3. **M1-03 Import/Activity**: fixture/FIT → raw/source revision → canonical/overlay → 활동 조회. 중복·삭제 suppression·outbox 재실행과 집계 일치 검증.
-4. **M1-04 오늘/계획/활동/체크인**: S03~S12 중 해당 업무를 실제 API/DB까지 연결. chart/table·empty/partial/error·반응형 완결.
+4. **M1-04 오늘/계획/활동/체크인**: M1-04a의 자기보고 계약·API·저장을 먼저 구현하고, 지도와 독립적인 제품 화면을 연결한다. S03~S12 중 해당 업무를 실제 API/DB까지 연결. chart/table·empty/partial/error·반응형 완결.
 5. **M1-05 Evidence/Coach/Approval**: snapshot → 후보 → diff → 명시 승인 → PlanVersion. stale/중복/동시 승인과 transaction 실패 시험. LLM 실패는 실패 상태로 남김.
 6. **M1-06 운영·연결**: sync/settings/audit·내보내기/삭제, 승인된 공식 Garmin adapter 교체·회귀. mock 성공과 실제 provider 성공을 구분.
 
@@ -90,6 +90,9 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 PKCE 흐름을 추가했다. [M1-06c 검증 기록](progress/M1-06c.md)과 [운영 설정](garmin-setup.md)에
 구현·로컬 fixture 검증 결과를 기록했다. M1-06b는 EXT-G와 M1-06c 이후 공식 연결·실제 수집을 검증한다. 로그인·동의 화면은 Garmin이
 소유하며 앱은 Garmin 비밀번호를 받지 않는다. 공식 권한·실연동·출시 gate는 유지한다.
+
+2026-09-16 사용자 승인으로 M0-06b의 지도 coverage·OS IME 검증을 M1-04의 착수 의존성에서
+분리했다. 지도 기능 M2-01과 전체 통합 M2-06에서 해당 gate를 계속 요구하며 완료 조건은 유지한다.
 
 첫 수직 slice는 `가상 활동 수신 → 오늘/활동 조회 → 상담 후보 → diff → 승인 → 새 계획 재조회`다. 승인 검증·재전송 결과·원자성은 실제 DB로 시험한다. 외부 모델은 CI에서 결정론적 adapter로 대체하되 실제 LLM/provider 연결 증거는 별도 확보한다. 연관: FUT-01/02/04/08/10.
 

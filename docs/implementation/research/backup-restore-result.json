@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "executedAt": "2026-09-16T07:51:11.280Z",
+  "executedAt": "2026-09-16T08:41:50.013Z",
   "outcome": "passed",
   "postgresToolVersion": "pg_dump (PostgreSQL) 15.13 (Homebrew)",
   "scope": "Synthetic ephemeral logical backup/restore drill only; not a production backup service or RPO/RTO evidence.",
@@ -21,9 +21,10 @@
     "restored_sessions_and_login_attempts_invalidated",
     "all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved",
     "retained_tenant_consent_and_activity_readable_through_runtime_rls",
+    "check_in_erasure_replayed_across_all_four_tables_retained_self_report_readable",
     "erasure_gate_rejects_stale_runtime_write"
   ],
-  "checkCount": 9,
+  "checkCount": 10,
   "cleanup": {
     "clusterStopped": true,
     "temporaryClusterArchiveLedgerRemoved": true
@@ -68,6 +69,46 @@
       },
       "limitations": [
         "Requires an independently retained, complete and current erasure ledger before production traffic resumes.",
+        "External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised."
+      ],
+      "sources": [
+        "https://www.postgresql.org/docs/15/app-pgdump.html",
+        "https://www.postgresql.org/docs/15/app-pgrestore.html"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-16T07:51:11.280Z",
+      "outcome": "passed",
+      "postgresToolVersion": "pg_dump (PostgreSQL) 15.13 (Homebrew)",
+      "scope": "Synthetic ephemeral logical backup/restore drill only; not a production backup service or RPO/RTO evidence.",
+      "isolation": "New private Unix-socket cluster; no TCP listener or inherited database URL; separate generated source and restore databases.",
+      "archiveFormat": "custom",
+      "trustedArchive": true,
+      "restoreBeforeRuntimeAccess": [
+        "replay_latest_external_erasure_ledger",
+        "invalidate_all_restored_sessions_and_login_attempts",
+        "invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger"
+      ],
+      "checks": [
+        "two_synthetic_tenants_seeded",
+        "post_backup_erasure_ledger_captured_separately",
+        "trusted_custom_archive_restored_pre_deletion_rows",
+        "latest_erasure_replayed_before_runtime_access",
+        "deleted_tenant_absent_from_all_13_health_and_command_tables_and_identity",
+        "restored_sessions_and_login_attempts_invalidated",
+        "all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved",
+        "retained_tenant_consent_and_activity_readable_through_runtime_rls",
+        "erasure_gate_rejects_stale_runtime_write"
+      ],
+      "checkCount": 9,
+      "cleanup": {
+        "clusterStopped": true,
+        "temporaryClusterArchiveLedgerRemoved": true
+      },
+      "limitations": [
+        "Requires an independently retained, complete and current erasure ledger before production traffic resumes.",
+        "Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.",
         "External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised."
       ],
       "sources": [

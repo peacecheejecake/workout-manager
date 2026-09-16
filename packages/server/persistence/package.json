@@ -21,7 +21,8 @@
     "./planning": "./src/planning.ts",
     "./activities": "./src/activities.ts",
     "./operations": "./src/operations.ts",
-    "./garmin": "./src/garmin.ts"
+    "./garmin": "./src/garmin.ts",
+    "./check-ins": "./src/check-ins.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

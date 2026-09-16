@@ -44,6 +44,18 @@ const collections = [
     'activity_id,revision',
   ],
   ['suppressions', 'activity_suppression', 'kind,source_id', 'kind,source_id'],
+  [
+    'checkIns',
+    'check_in',
+    'id,revision,values_json,local_date,recorded_at,updated_at,deleted',
+    'id',
+  ],
+  [
+    'checkInRevisions',
+    'check_in_revision',
+    'check_in_id,revision,values_json,reason,created_at',
+    'check_in_id,revision',
+  ],
 ] as const;
 const maxBytes = 8 * 1024 * 1024;
 // Identifiers are a static allowlist; no caller-controlled SQL or authentication tables.
@@ -63,7 +75,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 1,
+          schemaVersion: 2,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

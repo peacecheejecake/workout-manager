@@ -5,7 +5,7 @@ const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
 /** Versioned download artifact, deliberately excludes authentication and command internals. */
 export const accountExportSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   athleteId: z.string().min(1).max(200),
   exportedAt: z.iso.datetime({ offset: true }),
   data: z.strictObject({
@@ -19,6 +19,8 @@ export const accountExportSchema = z.strictObject({
     overlays: rows,
     overlayRevisions: rows,
     suppressions: rows,
+    checkIns: rows,
+    checkInRevisions: rows,
   }),
 });
 export const operationsStatusSchema = z.strictObject({

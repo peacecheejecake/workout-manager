@@ -1,3 +1,5 @@
+import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
+import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
@@ -14,6 +16,7 @@ import { createIdentityRepository } from '../packages/server/persistence/src/ide
 import {
   grantIdentityFunctions,
   grantOperations,
+  grantCheckIns,
   grantGarmin,
   grantGarminWorker,
   migrate,
@@ -113,6 +116,7 @@ try {
     await migrate(adminUrl);
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantOperations(adminUrl, 'workout_runtime');
+    await grantCheckIns(adminUrl, 'workout_runtime');
     await grantGarmin(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
@@ -186,12 +190,13 @@ try {
     planning: createPlanningRepository(database),
     activities: createActivityRepository(database),
     operations: createOperationsRepository(database),
+    checkIns: createCheckInRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100'],
   });
   closers.push(() => api.close());
-  await api.listen({ host: '127.0.0.1', port: 4300 });
+  await api.listen({ host: '127.0.0.1', port: identityApiPort });
   console.log(
-    'Identity E2E ready: API 4300, OIDC fixture 4400, Garmin fixture 4500, private PostgreSQL.',
+    `Identity E2E ready: API ${identityApiPort}, OIDC fixture 4400, Garmin fixture 4500, private PostgreSQL.`,
   );
 } catch (error) {
   await close();

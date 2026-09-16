@@ -21,10 +21,12 @@ const empty = {
   overlays: [],
   overlayRevisions: [],
   suppressions: [],
+  checkIns: [],
+  checkInRevisions: [],
 };
 const repository = (): OperationsRepository => ({
   exportAccount: vi.fn(async (athleteId) => ({
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     athleteId,
     exportedAt: '2026-09-16T00:00:00Z',
     data: empty,

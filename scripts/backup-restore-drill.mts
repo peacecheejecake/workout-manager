@@ -15,10 +15,12 @@ import {
   migrate,
   grantOperations,
   grantGarmin,
+  grantCheckIns,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.js';
+import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
 
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
@@ -135,9 +137,25 @@ async function execute() {
     );
     await grantOperations(url('drill_source'), 'drill_runtime');
     await grantGarmin(url('drill_source'), 'drill_runtime');
+    await grantCheckIns(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
+    const checkInIds = new Map<string, string>();
+    const checkInTables = [
+      'check_in',
+      'check_in_revision',
+      'check_in_receipt',
+      'check_in_collection_head',
+    ];
+    const checkInValues = {
+      observedAt: '2026-09-16T08:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      fatigue: 0,
+      discomfort: null,
+      bodyLocation: null,
+      note: 'Synthetic self-report for restore verification',
+    };
     for (const [index, athleteId] of [deletedAthlete, retainedAthlete].entries()) {
       await createConsentRepository(sourceDb).setConsent(athleteId, {
         kind: 'app',
@@ -163,6 +181,11 @@ async function execute() {
           distanceMeters: 0,
         },
       });
+      const checkIn = await createCheckInRepository(sourceDb).createCheckIn(athleteId, {
+        idempotencyKey: randomUUID(),
+        values: checkInValues,
+      });
+      checkInIds.set(athleteId, checkIn.id);
       await source.query(
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
@@ -265,6 +288,16 @@ async function execute() {
       1,
     );
     checks.push('trusted_custom_archive_restored_pre_deletion_rows');
+    for (const table of checkInTables) {
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            deletedAthlete,
+          ])
+        ).rows[0].count,
+        1,
+      );
+    }
     const replayLedger: unknown = JSON.parse(await readFile(ledgerFile, 'utf8'));
     assert.ok(Array.isArray(replayLedger));
     await restored.query('BEGIN');
@@ -338,6 +371,16 @@ async function execute() {
       0,
     );
     checks.push('deleted_tenant_absent_from_all_13_health_and_command_tables_and_identity');
+    for (const table of checkInTables) {
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            deletedAthlete,
+          ])
+        ).rows[0].count,
+        0,
+      );
+    }
     assert.equal(
       (await restored.query('SELECT count(*)::int AS count FROM identity_private.session')).rows[0]
         .count,
@@ -389,6 +432,31 @@ async function execute() {
       1,
     );
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
+    const retainedCheckInId = checkInIds.get(retainedAthlete);
+    assert.ok(retainedCheckInId);
+    const retainedCheckIn = await createCheckInRepository(restoreDb).getCheckIn(
+      retainedAthlete,
+      retainedCheckInId,
+    );
+    assert.ok(retainedCheckIn);
+    assert.deepEqual(retainedCheckIn.values, {
+      ...checkInValues,
+      observedAt: new Date(checkInValues.observedAt).toISOString(),
+    });
+    assert.equal(retainedCheckIn.localDate, '2026-09-16');
+    assert.equal(retainedCheckIn.source, 'user');
+    assert.equal(retainedCheckIn.method, 'self_report');
+    assert.equal(retainedCheckIn.definitionVersion, 'checkin-v1');
+    assert.equal(retainedCheckIn.revision, 1);
+    await assert.rejects(
+      () =>
+        createCheckInRepository(restoreDb).createCheckIn(deletedAthlete, {
+          idempotencyKey: randomUUID(),
+          values: checkInValues,
+        }),
+      TenantErasedError,
+    );
+    checks.push('check_in_erasure_replayed_across_all_four_tables_retained_self_report_readable');
     await assert.rejects(
       () =>
         createConsentRepository(restoreDb).setConsent(deletedAthlete, {

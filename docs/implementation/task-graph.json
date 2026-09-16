@@ -127,12 +127,21 @@
       "evidence": "docs/implementation/progress/M1-03.md"
     },
     {
+      "id": "M1-04a",
+      "title": "체크인 계약·API·저장",
+      "dependsOn": ["M1-01", "M1-02", "M1-03"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "자기보고 체크인 null/0·시각·정정 revision·RLS·멱등성·삭제/export; UI는 M1-04",
+      "evidence": "docs/implementation/progress/M1-04a.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M0-06b"],
+      "dependsOn": ["M1-02", "M1-03", "M1-04a"],
       "kind": "task",
       "status": "not_started",
-      "scope": "dashboard/wellbeing/workbench; 실제 API·반응형"
+      "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"
     },
     {
       "id": "M1-05",
@@ -275,7 +284,7 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": ["M2-02", "M2-05"],
+      "dependsOn": ["M2-02", "M2-05", "M0-06b"],
       "kind": "task",
       "status": "not_started",
       "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정"

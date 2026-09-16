@@ -1,5 +1,6 @@
 import { createPlanningRepository } from '@workout/server-persistence/planning';
 import { createActivityRepository } from '@workout/server-persistence/activities';
+import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
@@ -65,6 +66,7 @@ export async function createConfiguredApi(environment: unknown) {
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
       activities: createActivityRepository(database),
+      checkIns: createCheckInRepository(database),
       operations: createOperationsRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {

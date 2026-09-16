@@ -13,7 +13,7 @@ const status = {
   audit: [],
 };
 const exported = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   athleteId: session.athleteId,
   exportedAt: '2026-09-16T00:00:00Z',
   data: {
@@ -27,6 +27,8 @@ const exported = {
     overlays: [],
     overlayRevisions: [],
     suppressions: [],
+    checkIns: [],
+    checkInRevisions: [],
   },
 };
 const createObjectURL = vi.fn(() => 'blob:private-export');

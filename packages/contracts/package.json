@@ -40,6 +40,10 @@
     "./garmin": {
       "types": "./src/garmin.ts",
       "default": "./dist/garmin.js"
+    },
+    "./check-ins": {
+      "types": "./src/check-ins.ts",
+      "default": "./dist/check-ins.js"
     }
   },
   "scripts": {

@@ -57,7 +57,11 @@ flowchart TD
     task9 --> task13
     task12 --> task14
     task13 --> task14
-    task7 --> task14
+    checkins["M1-04a 체크인 계약·API·저장"]
+    task11 --> checkins
+    task12 --> checkins
+    task13 --> checkins
+    checkins --> task14
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -73,6 +77,10 @@ flowchart TD
 유지하고 설정에 별도 연결을 추가한다. M1-06c는 로컬 OAuth fixture로 구현·검증하며 EXT-G를 요구하지
 않는다. [M1-06c 구현·로컬 검증](progress/M1-06c.md)은 완료했다. 실제 공식 연결·자동 수집은
 M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
+
+2026-09-16 사용자 승인으로 지도와 독립적인 M1 제품 구현 의존성을 분리했다. M1-04a 체크인
+서버 작업 후 M1-04 UI를 진행한다. M0-06b는 진행 중으로 유지하며 지도 기능 M2-01과
+전체 통합 M2-06에서 합류한다. OS IME·지도 coverage·실기기·공식 Garmin의 완료 조건은 유지한다.
 
 ## M1b~M2: 기능 확장과 Web 출시
 
@@ -113,6 +121,7 @@ flowchart TD
     task25 --> task29
     task29 --> task30
     task28 --> task30
+    task7 --> task31
     task27 --> task31
     task30 --> task31
     task31 --> task32
@@ -162,7 +171,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-01 Identity·Consent | M0-03, M0-05 | identity/auth/consent; tenant·session·cache 격리 |
 | M1-02 Plan·Planner | M1-01, M0-04 | planning/planner-kit; version·projection·draft |
 | M1-03 Import·Activity | M1-01, M0-07a | activities/worker; fixture/FIT·dedup·suppression |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M0-06b | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04a 체크인 계약·API·저장 | M1-01, M1-02, M1-03 | 자기보고 정본·정정·revision·RLS·삭제/export |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
@@ -180,7 +190,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | resources; version/ACL/삭제·reader. 공용 객체 저장 port는 M0-05 계약 사용 |
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
-| M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05 | S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정 |
+| M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b | S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정 |
 | M2-07 공식 연동 출시 검증 | M2-06, M1-06b | 실제 Garmin 수집을 전체 앱과 통합 검증; 동의·실패 복구·공급자 회귀 |
 | G2 Web MVP 출시 gate | M2-06, M2-07 | 공식 Garmin 포함; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단 |
 | M3-01 Native shell·secure bridge | M1c-04, M0-06c | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |

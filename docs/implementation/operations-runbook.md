@@ -51,3 +51,15 @@ Garmin OAuth 추가 후에는 백업 안의 모든 Garmin credential·미완료 
 
 검증 근거: [PostgreSQL pg_dump](https://www.postgresql.org/docs/15/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/15/app-pgrestore.html).
+
+## 체크인 저장 이후의 내보내기·복구
+
+M1-04a부터 새 export artifact는 `schemaVersion: 2`다. 기존 v1 다운로드 파일은 변경하지 않으며
+이번 앱은 과거 export를 다시 import하는 기능을 제공하지 않는다. v2는 기존 collection에
+`checkIns`와 `checkInRevisions`를 추가한다. 원래 관측 시각·시간대·0/null·정정 이유와 이력을
+내보내며 인증 정보·명령 receipt는 제외한다. 레코드 삭제는 건강 payload와 해당 정정 이력을 제거한다.
+남는 tombstone의 opaque ID·revision·입력/삭제 시각은 재전송 억제용 메타데이터다.
+
+Migration 007과 `grantCheckIns`를 API runtime에 적용한다. 계정 삭제와 백업 복구의 최신 삭제 원장
+재적용 시 `check_in`, `check_in_revision`, `check_in_receipt`, `check_in_collection_head`도 함께
+삭제해야 한다. 신규 보고서의 체크인 복구 검사는 실제 임시 DB 검증이며 운영 복구 서비스 배포 증거는 아니다.
