@@ -47,6 +47,56 @@ function activity(
     },
   };
 }
+it('counts manual actuals once and projects corrected or cleared start times without changing the original', async () => {
+  const athlete = randomUUID();
+  const activities = createActivityRepository(database);
+  const dashboard = createDashboardRepository(database);
+  const created = await activities.createManualActivity(athlete, {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    activity: {
+      ...activity('2024-03-10T12:00:00Z').activity,
+      title: 'Manual synthetic activity',
+      startedAt: '2024-03-10T12:00:00Z',
+      timezone: 'UTC',
+      distanceMeters: 0,
+    },
+    report: { sessionRpe: 0, note: null, planLink: null },
+  });
+  const initial = await dashboard.read(athlete, query);
+  expect(initial.current.actual.sources).toEqual({ fit: 0, fixture: 0, manual: 1 });
+  expect(initial.current.actual.distanceMeters).toEqual({
+    value: 0,
+    knownCount: 1,
+    missingCount: 0,
+  });
+  expect(initial.current.actual.overlayCount).toBe(0);
+  await activities.updateOverlay(athlete, created.activityId, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    reason: 'Correct synthetic start date',
+    startedAt: '2024-03-07T12:00:00Z',
+    timezone: 'UTC',
+  });
+  const corrected = await dashboard.read(athlete, query);
+  expect(corrected.current.actual.count).toBe(0);
+  expect(corrected.previous.actual.sources.manual).toBe(1);
+  expect(corrected.previous.actual.overlayCount).toBe(1);
+  expect((await activities.getActivity(athlete, created.activityId))?.original.startedAt).toBe(
+    '2024-03-10T12:00:00Z',
+  );
+  await activities.updateOverlay(athlete, created.activityId, {
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+    reason: 'Start time is unknown',
+    startedAt: null,
+    timezone: null,
+  });
+  const unplaced = await dashboard.read(athlete, query);
+  expect(unplaced.current.actual.count + unplaced.previous.actual.count).toBe(0);
+  expect(unplaced.unplacedActivityCount).toBe(1);
+  expect(unplaced.availability.actualLoad).toBe('unavailable');
+});
 function draft(): PlanDraft {
   const levels = ['season', 'wave', 'phase', 'block'] as const;
   return {
@@ -170,7 +220,7 @@ it('groups DST by local calendar date and preserves zero/null and separate durat
     knownCount: 1,
     missingCount: 0,
   });
-  expect(model.current.actual.sources).toEqual({ fit: 1, fixture: 2 });
+  expect(model.current.actual.sources).toEqual({ fit: 1, fixture: 2, manual: 0 });
   expect(model.previous.actual.distanceMeters.value).toBe(50);
   expect(model.unplacedActivityCount).toBe(1);
   expect(model.dataRevision.activities).toEqual({ count: 6, revisionSum: '6' });

@@ -33,8 +33,8 @@ function WindowMetrics({ label, value }: { label: string; value: DashboardWindow
         ))}
       </dl>
       <p>
-        출처: FIT {value.actual.sources.fit}개 · 테스트 자료 {value.actual.sources.fixture}개 ·
-        사용자 정정 {value.actual.overlayCount}개
+        출처: FIT {value.actual.sources.fit}개 · 테스트 자료 {value.actual.sources.fixture}개 · 수동
+        기록 {value.actual.sources.manual}개 · 사용자 정정 {value.actual.overlayCount}개
       </p>
       <h4>계획 · {value.planned.count}개</h4>
       <p>거리: {metricText(value.planned.distanceMeters, 'm')}</p>

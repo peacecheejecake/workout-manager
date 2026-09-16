@@ -217,7 +217,7 @@ test('dashboard separates planned and actual data across DST and tracks correcti
       moving: { value: 30, knownCount: 1, missingCount: 0 },
       unknown: { value: null, knownCount: 0, missingCount: 1 },
     },
-    sources: { fit: 0, fixture: 4 },
+    sources: { fit: 0, fixture: 4, manual: 0 },
     overlayCount: 0,
   });
   expect(dashboard.current.planned).toEqual({

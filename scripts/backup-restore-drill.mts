@@ -135,12 +135,15 @@ async function execute() {
     await source.query(
       'GRANT SELECT,INSERT,UPDATE,DELETE ON consent,command_receipt,outbox,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO drill_runtime',
     );
+    await source.query('GRANT SELECT ON plan_snapshot,plan_head,plan_history TO drill_runtime');
     await grantOperations(url('drill_source'), 'drill_runtime');
     await grantGarmin(url('drill_source'), 'drill_runtime');
     await grantCheckIns(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
+    const manualIds = new Map<string, string>();
+    const manualHistories = new Map<string, unknown>();
     const checkInIds = new Map<string, string>();
     const checkInTables = [
       'check_in',
@@ -180,6 +183,40 @@ async function execute() {
           durationKind: 'unknown',
           distanceMeters: 0,
         },
+      });
+      const activities = createActivityRepository(sourceDb);
+      const manual = await activities.createManualActivity(athleteId, {
+        confirmed: true,
+        idempotencyKey: randomUUID(),
+        activity: {
+          title: 'Synthetic manual restore fixture',
+          kind: 'running',
+          startedAt: '2026-09-16T08:00:00+09:00',
+          timezone: 'Asia/Seoul',
+          durationSeconds: 0,
+          durationKind: 'timer',
+          distanceMeters: null,
+        },
+        report: { sessionRpe: 0, note: 'Synthetic manual self-report', planLink: null },
+      });
+      manualIds.set(athleteId, manual.activityId);
+      const initialManual = await activities.getActivity(athleteId, manual.activityId);
+      assert.ok(initialManual);
+      assert.equal(initialManual.userReport?.sessionRpe, 0);
+      assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
+      const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
+      assert.equal(before.schemaVersion, 2);
+      const originalHistory = before.data.overlayRevisions.filter(
+        (row) => row.activity_id === manual.activityId,
+      );
+      assert.equal(originalHistory.length, 1);
+      assert.deepEqual(originalHistory[0]?.values_json, initialManual.overlay);
+      manualHistories.set(athleteId, originalHistory[0]);
+      await activities.updateOverlay(athleteId, manual.activityId, {
+        expectedRevision: manual.revision,
+        idempotencyKey: randomUUID(),
+        reason: 'Synthetic report correction',
+        report: { sessionRpe: null, note: null, planLink: null },
       });
       const checkIn = await createCheckInRepository(sourceDb).createCheckIn(athleteId, {
         idempotencyKey: randomUUID(),
@@ -233,7 +270,7 @@ async function execute() {
     );
     assert.equal(
       (await source.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0].count,
-      2,
+      4,
     );
     checks.push('two_synthetic_tenants_seeded');
     run(bin, 'pg_dump', [
@@ -285,7 +322,7 @@ async function execute() {
           [deletedAthlete],
         )
       ).rows[0].count,
-      1,
+      2,
     );
     checks.push('trusted_custom_archive_restored_pre_deletion_rows');
     for (const table of checkInTables) {
@@ -429,9 +466,42 @@ async function execute() {
     );
     assert.equal(
       (await createActivityRepository(restoreDb).listActivities(retainedAthlete)).total,
-      1,
+      2,
     );
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
+    const manualId = manualIds.get(retainedAthlete);
+    assert.ok(manualId);
+    const retainedManual = await createActivityRepository(restoreDb).getActivity(
+      retainedAthlete,
+      manualId,
+    );
+    assert.ok(retainedManual);
+    assert.equal(retainedManual.source.kind, 'manual');
+    assert.equal(retainedManual.revision, 2);
+    assert.equal(retainedManual.userReport?.sessionRpe, null);
+    assert.equal(retainedManual.userReport?.rpeReportedAt, null);
+    assert.equal(retainedManual.userReport?.note, null);
+    const retainedExport =
+      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
+    assert.equal(retainedExport.schemaVersion, 2);
+    const manualHistory = retainedExport.data.overlayRevisions.filter(
+      (row) => row.activity_id === manualId,
+    );
+    assert.equal(manualHistory.length, 2);
+    assert.deepEqual(manualHistory[0], manualHistories.get(retainedAthlete));
+    assert.deepEqual(
+      await restored
+        .query('SELECT values_json FROM activity_overlay WHERE athlete_id=$1', [deletedAthlete])
+        .then((result) => result.rows),
+      [],
+    );
+    await assert.rejects(
+      () => createOperationsRepository(restoreDb).exportAccount(deletedAthlete),
+      TenantErasedError,
+    );
+    checks.push(
+      'manual_source_and_null_report_restored_with_original_zero_report_history_erased_tenant_absent',
+    );
     const retainedCheckInId = checkInIds.get(retainedAthlete);
     assert.ok(retainedCheckInId);
     const retainedCheckIn = await createCheckInRepository(restoreDb).getCheckIn(

@@ -57,7 +57,7 @@ export const dashboardActualSchema = z
     count,
     distanceMeters: dashboardMetricSchema,
     durationSeconds: durationKinds,
-    sources: z.strictObject({ fit: count, fixture: count }),
+    sources: z.strictObject({ fit: count, fixture: count, manual: count.default(0) }),
     overlayCount: count,
   })
   .refine(
@@ -67,7 +67,7 @@ export const dashboardActualSchema = z
         (total, metric) => total + metric.knownCount + metric.missingCount,
         0,
       ) === actual.count &&
-      actual.sources.fit + actual.sources.fixture === actual.count &&
+      actual.sources.fit + actual.sources.fixture + actual.sources.manual === actual.count &&
       actual.overlayCount <= actual.count,
     'Activity aggregate counts must agree',
   );

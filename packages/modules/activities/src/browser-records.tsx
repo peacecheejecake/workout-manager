@@ -11,7 +11,7 @@ export const kindLabels = {
   other: '기타',
   unknown: '종목 미확인',
 };
-export const sourceLabels = { fit: 'FIT', fixture: '테스트 자료' };
+export const sourceLabels = { fit: 'FIT', fixture: '테스트 자료', manual: '수동 기록' };
 const durationLabels = {
   timer: '타이머 시간',
   elapsed: '경과 시간',
@@ -163,6 +163,26 @@ export function BrowserDetail({ activity }: { activity: Activity }) {
         <Values label="정정 반영 기록" values={activity.effective} />
       </div>
       <p>정정 사유: {activity.overlay.reason ?? '기록된 정정 사유 없음'}</p>
+      <section aria-label="활동 자기보고">
+        <h3>활동 자기보고</h3>
+        {activity.userReport ? (
+          <>
+            <p>
+              활동 전체의 체감 강도 (RPE): {activity.userReport.sessionRpe ?? '보고하지 않음'} / 10
+            </p>
+            <p>RPE 보고 시각: {activity.userReport.rpeReportedAt ?? '보고하지 않음'}</p>
+            <p>메모: {activity.userReport.note ?? '보고하지 않음'}</p>
+            <p>
+              {activity.userReport.planLink
+                ? `계획 연결: 버전 ${activity.userReport.planLink.planVersionId} · 세션 ${activity.userReport.planLink.sessionId}`
+                : '연결한 계획 세션 없음'}
+            </p>
+            <p>사용자 자기보고 · {activity.userReport.definitionVersion}</p>
+          </>
+        ) : (
+          <p>저장된 자기보고가 없습니다. 미보고를 RPE 0으로 해석하지 않습니다.</p>
+        )}
+      </section>
       <p>정정은 원본을 덮어쓰지 않습니다. 이 화면은 조회 전용입니다.</p>
     </>
   );

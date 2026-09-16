@@ -3,6 +3,9 @@ import {
   importActivitySchema,
   activityOverlayWriteSchema,
   activityListQuerySchema,
+  activitySchema,
+  activityReportSchema,
+  manualActivityCreateSchema,
 } from '../src/activity.js';
 const input = {
   idempotencyKey: 'import-fixture-0001',
@@ -131,5 +134,106 @@ describe('M1-04e bounded activity search', () => {
         toExclusive: '2024-03-01',
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('M1-04g manual provenance and self reports', () => {
+  const manual = {
+    confirmed: true,
+    idempotencyKey: 'manual-fixture-0001',
+    activity: {
+      ...input.activity,
+      title: '직접 기록',
+      startedAt: '2024-03-10T12:00:00Z',
+      timezone: 'Asia/Seoul',
+    },
+    report: { sessionRpe: 0, note: null, planLink: null },
+  };
+  it('requires explicit confirmation and known manual title/start/timezone while keeping unknown metrics', () => {
+    const parsed = manualActivityCreateSchema.parse(manual);
+    expect(parsed.report.sessionRpe).toBe(0);
+    expect(parsed.activity.durationSeconds).toBeNull();
+    for (const replacement of [
+      { confirmed: false },
+      { source: input.source },
+      { athleteId: 'foreign' },
+      { activity: { ...manual.activity, title: null } },
+      { activity: { ...manual.activity, startedAt: null } },
+      { activity: { ...manual.activity, startedAt: '0000-01-01T00:00:00Z' } },
+      { activity: { ...manual.activity, timezone: null } },
+      { report: { ...manual.report, sessionRpe: -1 } },
+      { report: { ...manual.report, sessionRpe: 11 } },
+      { report: { ...manual.report, rpeReportedAt: '2024-01-01T00:00:00Z' } },
+      { report: { ...manual.report, note: 'x'.repeat(4001) } },
+    ])
+      expect(manualActivityCreateSchema.safeParse({ ...manual, ...replacement }).success).toBe(
+        false,
+      );
+  });
+  it('cannot forge manual provenance through the FIT/fixture import command', () => {
+    expect(
+      importActivitySchema.safeParse({ ...input, source: { ...input.source, kind: 'manual' } })
+        .success,
+    ).toBe(false);
+  });
+  it('reads legacy activities without inventing a self report or RPE zero', () => {
+    const legacy = activitySchema.parse({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      revision: 1,
+      source: input.source,
+      original: input.activity,
+      effective: input.activity,
+      overlay: {},
+    });
+    expect(legacy.userReport).toBeUndefined();
+    expect(legacy.overlay.userReport).toBeUndefined();
+  });
+  it('requires report timestamp only for known RPE and forbids provenance in correction commands', () => {
+    const report = {
+      ...manual.report,
+      definitionVersion: 'activity-report-v1',
+      source: 'user',
+      method: 'self_report',
+      rpeReportedAt: '2024-03-10T13:00:00Z',
+    };
+    expect(activityReportSchema.parse(report).sessionRpe).toBe(0);
+    expect(activityReportSchema.safeParse({ ...report, rpeReportedAt: null }).success).toBe(false);
+    expect(activityReportSchema.safeParse({ ...report, sessionRpe: null }).success).toBe(false);
+    expect(
+      activityReportSchema.parse({ ...report, sessionRpe: null, rpeReportedAt: null }).sessionRpe,
+    ).toBeNull();
+    const correction = {
+      expectedRevision: 1,
+      idempotencyKey: 'report-correction-1',
+      reason: '보고 정정',
+    };
+    expect(
+      activityOverlayWriteSchema.parse({ ...correction, report: manual.report }).report?.sessionRpe,
+    ).toBe(0);
+    expect(
+      activityOverlayWriteSchema.safeParse({ ...correction, userReport: report }).success,
+    ).toBe(false);
+    expect(activityOverlayWriteSchema.safeParse({ ...correction, report }).success).toBe(false);
+  });
+  it('requires start instant and timezone to be corrected together, preserving explicit null', () => {
+    const correction = {
+      expectedRevision: 1,
+      idempotencyKey: 'time-correction-1',
+      reason: '시각 정정',
+    };
+    expect(activityOverlayWriteSchema.safeParse({ ...correction, startedAt: null }).success).toBe(
+      false,
+    );
+    expect(activityOverlayWriteSchema.safeParse({ ...correction, timezone: null }).success).toBe(
+      false,
+    );
+    expect(
+      activityOverlayWriteSchema.parse({
+        ...correction,
+        startedAt: null,
+        timezone: null,
+        kind: 'walking',
+      }),
+    ).toMatchObject({ startedAt: null, timezone: null, kind: 'walking' });
   });
 });

@@ -2,6 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   activitySchema,
+  manualActivityCreateSchema,
+  manualActivityResultSchema,
+  activityReportSchema,
+  type ManualActivityCreate,
+  type ManualActivityResult,
+  type ActivityReportValues,
+  type ActivityReport,
   activityValuesSchema,
   activityOverlaySchema,
   activityOverlayWriteSchema,
@@ -25,6 +32,11 @@ export class ActivityNotFound extends Error {
     super('ACTIVITY_NOT_FOUND');
   }
 }
+export class ActivityValidationError extends Error {
+  constructor(readonly code: 'STARTED_AT_IN_FUTURE' | 'PLAN_LINK_INVALID') {
+    super(code);
+  }
+}
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const lock = (tx: Transaction) =>
   tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tx.athleteId]);
@@ -43,8 +55,13 @@ function decode(row: Record<string, unknown>): Activity {
     },
     original,
     overlay,
+    userReport: overlay.userReport ?? null,
     effective: {
       ...original,
+      ...(overlay.kind === undefined ? {} : { kind: overlay.kind }),
+      ...(overlay.startedAt === undefined
+        ? {}
+        : { startedAt: overlay.startedAt, timezone: overlay.timezone }),
       ...(overlay.title === undefined ? {} : { title: overlay.title }),
       ...(overlay.distanceMeters === undefined ? {} : { distanceMeters: overlay.distanceMeters }),
       ...(overlay.durationSeconds === undefined
@@ -66,6 +83,10 @@ async function event(tx: Transaction, id: string, revision: number, action: stri
   });
 }
 export interface ActivityRepository {
+  createManualActivity(
+    athleteId: string,
+    input: ManualActivityCreate,
+  ): Promise<ManualActivityResult>;
   importActivity(athleteId: string, input: ActivityImport): Promise<ActivityImportResult>;
   listActivities(athleteId: string, input?: Partial<ActivityListQuery>): Promise<ActivityList>;
   getActivity(athleteId: string, id: string): Promise<Activity | null>;
@@ -73,8 +94,94 @@ export interface ActivityRepository {
   deleteActivity(athleteId: string, id: string, input: { expectedRevision: number }): Promise<void>;
   summary(athleteId: string): Promise<ActivitySummary>;
 }
-export function createActivityRepository(database: Database): ActivityRepository {
+async function validatePlanLink(tx: Transaction, report: ActivityReportValues) {
+  if (!report.planLink) return;
+  const result = await tx.query(
+    "SELECT 1 FROM plan_snapshot WHERE athlete_id=$1 AND id=$2 AND EXISTS(SELECT 1 FROM jsonb_array_elements(draft->'sessions') s WHERE s->>'id'=$3)",
+    [tx.athleteId, report.planLink.planVersionId, report.planLink.sessionId],
+  );
+  if (!result.rowCount) throw new ActivityValidationError('PLAN_LINK_INVALID');
+}
+function reportValue(
+  values: ActivityReportValues,
+  previous: ActivityReport | null | undefined,
+  now: Date,
+): ActivityReport {
+  return activityReportSchema.parse({
+    ...values,
+    definitionVersion: 'activity-report-v1',
+    source: 'user',
+    method: 'self_report',
+    rpeReportedAt:
+      values.sessionRpe === null
+        ? null
+        : previous?.sessionRpe === values.sessionRpe
+          ? previous.rpeReportedAt
+          : now.toISOString(),
+  });
+}
+export function createActivityRepository(
+  database: Database,
+  { now = () => new Date() }: { now?: () => Date } = {},
+): ActivityRepository {
+  const validateStartedAt = (value: string | null) => {
+    if (value !== null && Date.parse(value) > now().getTime() + 300000)
+      throw new ActivityValidationError('STARTED_AT_IN_FUTURE');
+  };
   return {
+    async createManualActivity(athleteId, input) {
+      const command = manualActivityCreateSchema.parse(input),
+        requestHash = digest(command),
+        receiptKey = `activity-manual:${command.idempotencyKey}`;
+      return database.tenant(athleteId, async (tx) => {
+        await lock(tx);
+        const receipt = await tx.query(
+          'SELECT request,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+          [athleteId, receiptKey],
+        );
+        if (receipt.rows[0]) {
+          if (z.object({ hash: z.string() }).parse(receipt.rows[0]['request']).hash !== requestHash)
+            throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+          return manualActivityResultSchema.parse(receipt.rows[0]['result']);
+        }
+        validateStartedAt(command.activity.startedAt);
+        await validatePlanLink(tx, command.report);
+        const id = randomUUID(),
+          sourceId = randomUUID(),
+          original = JSON.stringify(command.activity),
+          contentHash = digest(command.activity);
+        const overlay = activityOverlaySchema.parse({
+          userReport: reportValue(command.report, null, now()),
+        });
+        await tx.query(
+          'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+          [athleteId, id, original],
+        );
+        await tx.query(
+          "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'manual',$2,1,$3,$4)",
+          [athleteId, sourceId, contentHash, id],
+        );
+        await tx.query(
+          "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'manual',$2,1,$3,$4::jsonb)",
+          [athleteId, sourceId, contentHash, original],
+        );
+        await tx.query(
+          'INSERT INTO activity_overlay(athlete_id,activity_id,values_json) VALUES($1,$2,$3::jsonb)',
+          [athleteId, id, JSON.stringify(overlay)],
+        );
+        await tx.query(
+          'INSERT INTO activity_overlay_revision(athlete_id,activity_id,revision,values_json) VALUES($1,$2,1,$3::jsonb)',
+          [athleteId, id, JSON.stringify(overlay)],
+        );
+        await event(tx, id, 1, 'manual');
+        const result = { activityId: id, revision: 1 };
+        await tx.query(
+          'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
+          [athleteId, receiptKey, JSON.stringify({ hash: requestHash }), JSON.stringify(result)],
+        );
+        return result;
+      });
+    },
     importActivity(athleteId, input) {
       const command = importActivitySchema.parse(input);
       const hash = digest(command);
@@ -176,14 +283,15 @@ export function createActivityRepository(database: Database): ActivityRepository
         // strpos is literal substring matching: percent, underscore and backslash are not wildcards.
         const result = await tx.query(
           `WITH effective AS (
-            SELECT base.*,(original->>'startedAt')::timestamptz AS started_at,
+            SELECT base.*,((CASE WHEN overlay ? 'startedAt' THEN overlay ELSE original END)->>'startedAt')::timestamptz AS started_at,
+              (CASE WHEN overlay ? 'kind' THEN overlay ELSE original END)->>'kind' AS effective_kind,
               (CASE WHEN overlay ? 'title' THEN overlay ELSE original END)->>'title' AS effective_title,
               ((CASE WHEN overlay ? 'distanceMeters' THEN overlay ELSE original END)->>'distanceMeters')::numeric AS effective_distance
             FROM (${selectActivity}) base
           ), filtered AS MATERIALIZED (
             SELECT * FROM effective WHERE
               ($4::date IS NULL OR ((started_at AT TIME ZONE $6::text)::date >= $4::date AND (started_at AT TIME ZONE $6::text)::date < $5::date))
-              AND ($7::text IS NULL OR original->>'kind'=$7)
+              AND ($7::text IS NULL OR effective_kind=$7)
               AND ($8::text IS NULL OR kind=$8)
               AND ($9::text IS NULL OR strpos(lower(effective_title),lower($9::text))>0)
           ), page AS (
@@ -232,7 +340,16 @@ export function createActivityRepository(database: Database): ActivityRepository
         if (!current) throw new ActivityNotFound();
         if (current.revision !== command.expectedRevision)
           throw new PersistenceConflict('REVISION_CONFLICT');
+        if (command.startedAt !== undefined) validateStartedAt(command.startedAt);
+        if (command.report !== undefined) await validatePlanLink(tx, command.report);
         const values = activityOverlaySchema.parse({
+          ...(command.kind === undefined ? {} : { kind: command.kind }),
+          ...(command.startedAt === undefined
+            ? {}
+            : { startedAt: command.startedAt, timezone: command.timezone }),
+          ...(command.report === undefined
+            ? {}
+            : { userReport: reportValue(command.report, current.userReport, now()) }),
           reason: command.reason,
           ...(command.title === undefined ? {} : { title: command.title }),
           ...(command.distanceMeters === undefined

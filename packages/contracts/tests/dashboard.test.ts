@@ -12,7 +12,7 @@ const actual = {
   count: 0,
   distanceMeters: missing,
   durationSeconds: { timer: missing, elapsed: missing, moving: missing, unknown: missing },
-  sources: { fit: 0, fixture: 0 },
+  sources: { fit: 0, fixture: 0, manual: 0 },
   overlayCount: 0,
 };
 const planned = { count: 0, distanceMeters: missing, durationSeconds: missing };
@@ -89,6 +89,13 @@ describe('dashboard calendar and measurement contracts', () => {
       dashboardMetricSchema.safeParse({ value: null, knownCount: 1, missingCount: 0 }).success,
     ).toBe(false);
     expect(dashboardActualSchema.safeParse({ ...actual, count: 1 }).success).toBe(false);
+    expect(
+      dashboardActualSchema.parse({ ...actual, sources: { fit: 0, fixture: 0 } }).sources.manual,
+    ).toBe(0);
+    expect(
+      dashboardActualSchema.safeParse({ ...actual, sources: { fit: 0, fixture: 0, manual: 1 } })
+        .success,
+    ).toBe(false);
   });
   it('returns N consecutive calendar dates across DST and refuses coverage or sync claims', () => {
     const model = emptyModel();

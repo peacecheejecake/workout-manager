@@ -181,9 +181,28 @@
       "evidence": "docs/implementation/progress/M1-04f.md"
     },
     {
+      "id": "M1-04g",
+      "title": "수동 활동·보고 계약/API",
+      "dependsOn": ["M1-02", "M1-03", "M1-04e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "명시 확인 수동 actual·RPE/메모/계획 연결·정정 provenance·멱등성/RLS/삭제/export/backup; importmanual위조차단",
+      "evidence": "docs/implementation/progress/M1-04g.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c", "M1-04d", "M1-04e", "M1-04f"],
+      "dependsOn": [
+        "M1-02",
+        "M1-03",
+        "M1-04a",
+        "M1-04b",
+        "M1-04c",
+        "M1-04d",
+        "M1-04e",
+        "M1-04f",
+        "M1-04g"
+      ],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"

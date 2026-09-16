@@ -105,6 +105,82 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
     expect(status.audit[0]?.action).toBe('export_requested');
     expect((await operations.status(second)).audit).toEqual([]);
   });
+  it('exports manual reports and immutable correction history in v2, distinguishing local hiding from account erasure', async () => {
+    const athlete = randomUUID();
+    const activities = createActivityRepository(database);
+    const created = await activities.createManualActivity(athlete, {
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+      activity: {
+        title: 'Synthetic manual report',
+        kind: 'running',
+        startedAt: '2026-09-16T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: 0,
+        durationKind: 'timer',
+        distanceMeters: null,
+      },
+      report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
+    });
+    const before = await operations.exportAccount(athlete);
+    expect(before.schemaVersion).toBe(2);
+    expect(before.data.activitySources).toEqual([
+      expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
+    ]);
+    expect(before.data.overlays[0]).toMatchObject({
+      values_json: {
+        userReport: {
+          sessionRpe: 0,
+          note: 'Synthetic original report',
+          source: 'user',
+          method: 'self_report',
+        },
+      },
+    });
+    const originalHistory = before.data.overlayRevisions;
+    expect(originalHistory).toHaveLength(1);
+    await activities.updateOverlay(athlete, created.activityId, {
+      expectedRevision: created.revision,
+      idempotencyKey: randomUUID(),
+      reason: 'Withdraw report',
+      report: { sessionRpe: null, note: null, planLink: null },
+    });
+    const corrected = await operations.exportAccount(athlete);
+    expect(corrected.data.overlays[0]).toMatchObject({
+      values_json: { userReport: { sessionRpe: null, rpeReportedAt: null, note: null } },
+    });
+    expect(corrected.data.overlayRevisions).toHaveLength(2);
+    expect(corrected.data.overlayRevisions[0]).toEqual(originalHistory[0]);
+    await activities.deleteActivity(athlete, created.activityId, {
+      expectedRevision: created.revision + 1,
+    });
+    expect(await activities.getActivity(athlete, created.activityId)).toBeNull();
+    expect((await activities.listActivities(athlete)).total).toBe(0);
+    const hidden = await operations.exportAccount(athlete);
+    expect(hidden.data.activities[0]).toMatchObject({ deleted: true });
+    expect(hidden.data.suppressions).toEqual([expect.objectContaining({ kind: 'manual' })]);
+    expect(hidden.data.overlayRevisions).toEqual(corrected.data.overlayRevisions);
+    await operations.eraseAccount(athlete);
+    for (const table of [
+      'activity_canonical',
+      'activity_source_head',
+      'activity_source_revision',
+      'activity_overlay',
+      'activity_overlay_revision',
+      'activity_suppression',
+      'command_receipt',
+      'outbox',
+    ]) {
+      expect(
+        (
+          await admin.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            athlete,
+          ])
+        ).rows[0].count,
+      ).toBe(0);
+    }
+    await expect(operations.exportAccount(athlete)).rejects.toThrow('ACCOUNT_ERASED');
+  });
   it('rejects more than1000 rows or oversized exports rather than returning a truncated success', async () => {
     const athlete = randomUUID();
     await database.tenant(athlete, (tx) =>

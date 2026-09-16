@@ -18,18 +18,18 @@ export interface DashboardRepository {
 function metricSql(column: string, condition = 'true') {
   return `jsonb_build_object('value',sum(${column}) FILTER(WHERE ${condition}),'knownCount',count(${column}) FILTER(WHERE ${condition}),'missingCount',count(*) FILTER(WHERE ${condition} AND ${column} IS NULL))`;
 }
-const actualSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metricSql('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
+const actualSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metricSql('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
 const plannedSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',${metricSql('duration')})`;
 const sql = `WITH plan AS MATERIALIZED (
  SELECT s.id,s.version,s.draft FROM plan_head h JOIN plan_snapshot s ON s.athlete_id=h.athlete_id AND s.id=h.version_id WHERE h.athlete_id=$1
 ), settings AS (SELECT coalesce((SELECT draft->>'timezone' FROM plan),$2::text) AS timezone),
  canonical AS MATERIALIZED (SELECT id,revision,original,deleted FROM activity_canonical WHERE athlete_id=$1),
  effective AS MATERIALIZED (
- SELECT ((c.original->>'startedAt')::timestamptz AT TIME ZONE settings.timezone)::date AS date,
+ SELECT (((CASE WHEN o.values_json ? 'startedAt' THEN o.values_json ELSE c.original END)->>'startedAt')::timestamptz AT TIME ZONE settings.timezone)::date AS date,
  ((CASE WHEN o.values_json ? 'distanceMeters' THEN o.values_json ELSE c.original END)->>'distanceMeters')::numeric AS distance,
  ((CASE WHEN o.values_json ? 'durationSeconds' THEN o.values_json ELSE c.original END)->>'durationSeconds')::numeric AS duration,
  (CASE WHEN o.values_json ? 'durationSeconds' THEN o.values_json ELSE c.original END)->>'durationKind' AS duration_kind,
- s.kind,o.activity_id IS NOT NULL AS overlaid FROM canonical c JOIN activity_source_head s ON s.athlete_id=$1 AND s.activity_id=c.id
+ s.kind,(o.activity_id IS NOT NULL AND c.revision > 1) AS overlaid FROM canonical c JOIN activity_source_head s ON s.athlete_id=$1 AND s.activity_id=c.id
  LEFT JOIN activity_overlay o ON o.athlete_id=$1 AND o.activity_id=c.id CROSS JOIN settings WHERE NOT c.deleted
 ), actual_daily AS (SELECT date,${actualSql} AS actual FROM effective WHERE date >= $3::date AND date < $4::date GROUP BY date),
  sessions AS MATERIALIZED (SELECT (item->>'date')::date AS date,(item->>'distanceMeters')::numeric AS distance,(item->>'durationSeconds')::numeric AS duration FROM plan CROSS JOIN LATERAL jsonb_array_elements(draft->'sessions') item),

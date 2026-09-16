@@ -16,7 +16,7 @@ export const emptyActual = (): DashboardActual => ({
     moving: emptyMetric(),
     unknown: emptyMetric(),
   },
-  sources: { fit: 0, fixture: 0 },
+  sources: { fit: 0, fixture: 0, manual: 0 },
   overlayCount: 0,
 });
 export const emptyPlanned = (): DashboardPlanned => ({
@@ -44,6 +44,7 @@ export function summarizeDays(days: DashboardDay[]): DashboardWindow {
       addMetric(result.actual.durationSeconds[kind], day.actual.durationSeconds[kind]);
     result.actual.sources.fit += day.actual.sources.fit;
     result.actual.sources.fixture += day.actual.sources.fixture;
+    result.actual.sources.manual += day.actual.sources.manual;
     result.actual.overlayCount += day.actual.overlayCount;
     result.planned.count += day.planned.count;
     addMetric(result.planned.distanceMeters, day.planned.distanceMeters);

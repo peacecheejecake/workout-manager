@@ -17,7 +17,7 @@ const actual = {
   count: 0,
   distanceMeters: missing,
   durationSeconds: { timer: missing, elapsed: missing, moving: missing, unknown: missing },
-  sources: { fit: 0, fixture: 0 },
+  sources: { fit: 0, fixture: 0, manual: 0 },
   overlayCount: 0,
 };
 const planned = { count: 0, distanceMeters: missing, durationSeconds: missing };
@@ -116,7 +116,7 @@ describe('dashboard actual read model', () => {
         ...actual.durationSeconds,
         unknown: { value: null, knownCount: 0, missingCount: 1 },
       },
-      sources: { fit: 1, fixture: 0 },
+      sources: { fit: 1, fixture: 0, manual: 0 },
     };
     const distance = { ...zero, distanceMeters: { value: 1500, knownCount: 1, missingCount: 0 } };
     value.days = value.days.map((day, index) => ({

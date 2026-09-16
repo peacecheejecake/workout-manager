@@ -23,14 +23,14 @@ function fixture(days = 10): DashboardReadModel {
       moving: missing,
       unknown: missing,
     },
-    sources: { fit: 1, fixture: 0 },
+    sources: { fit: 1, fixture: 0, manual: 0 },
     overlayCount: 1,
   };
   const emptyActual = {
     count: 0,
     distanceMeters: missing,
     durationSeconds: { timer: missing, elapsed: missing, moving: missing, unknown: missing },
-    sources: { fit: 0, fixture: 0 },
+    sources: { fit: 0, fixture: 0, manual: 0 },
     overlayCount: 0,
   };
   const planned = { count: 0, distanceMeters: missing, durationSeconds: missing };

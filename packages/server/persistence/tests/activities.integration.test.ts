@@ -4,7 +4,8 @@ import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { createDatabase, type Database } from '../src/database.js';
 import { createActivityRepository, type ActivityRepository } from '../src/activities.js';
 import { migrate, grantOperations } from '../src/migrate.js';
-import type { ActivityImport } from '@workout/contracts/activity';
+import { createPlanningRepository } from '../src/planning.js';
+import type { ActivityImport, ManualActivityCreate } from '@workout/contracts/activity';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -16,7 +17,7 @@ beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
   await admin.query(
-    'GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt,outbox,command_receipt TO workout_runtime',
+    'GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt,outbox,command_receipt,plan_snapshot,plan_head,plan_history TO workout_runtime',
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 6 });
   repository = createActivityRepository(database);
@@ -439,4 +440,262 @@ it('keeps stable ID ties across pages and places unknown start times last withou
   expect((await repository.listActivities(athlete)).items.map((item) => item.id)).toEqual(
     [...ids, unknown.activityId].sort(),
   );
+});
+
+function manualInput(): ManualActivityCreate {
+  return {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    activity: {
+      ...input().activity,
+      title: 'User actual',
+      startedAt: '2026-01-01T10:00:00Z',
+      timezone: 'UTC',
+    },
+    report: { sessionRpe: null, note: null, planLink: null },
+  };
+}
+it('creates manual actuals atomically once with server provenance and metadata-only replay after deletion', async () => {
+  const athlete = randomUUID(),
+    command = manualInput();
+  command.report = { sessionRpe: 0, note: '건강메모'.repeat(1000), planLink: null };
+  const fixed = createActivityRepository(database, { now: () => new Date('2026-01-02T00:00:00Z') });
+  const [a, b] = await Promise.all([
+    fixed.createManualActivity(athlete, command),
+    fixed.createManualActivity(athlete, command),
+  ]);
+  expect(a).toEqual(b);
+  const activity = await repository.getActivity(athlete, a.activityId);
+  expect(activity?.source.kind).toBe('manual');
+  expect(activity?.userReport).toMatchObject({
+    sessionRpe: 0,
+    rpeReportedAt: '2026-01-02T00:00:00.000Z',
+    source: 'user',
+    method: 'self_report',
+    definitionVersion: 'activity-report-v1',
+  });
+  const facts = await database.tenant(athlete, (tx) =>
+    tx.query(
+      'SELECT (SELECT count(*)::int FROM outbox) AS events,(SELECT count(*)::int FROM activity_overlay_revision) AS history,(SELECT result FROM command_receipt LIMIT 1) AS receipt',
+    ),
+  );
+  expect(facts.rows[0]).toEqual({ events: 1, history: 1, receipt: a });
+  await expect(
+    repository.createManualActivity(athlete, {
+      ...command,
+      report: { ...command.report, sessionRpe: 1 },
+    }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  await repository.deleteActivity(athlete, a.activityId, { expectedRevision: 1 });
+  expect(await fixed.createManualActivity(athlete, command)).toEqual(a);
+  expect(await repository.getActivity(athlete, a.activityId)).toBeNull();
+});
+it('preserves RPE timestamp on note correction, stamps changed RPE and clears null without default zero', async () => {
+  const athlete = randomUUID();
+  let time = new Date('2026-01-02T00:00:00Z');
+  const fixed = createActivityRepository(database, { now: () => time });
+  const created = await fixed.createManualActivity(athlete, manualInput());
+  expect(
+    (await fixed.getActivity(athlete, created.activityId))?.userReport?.rpeReportedAt,
+  ).toBeNull();
+  const correct = (expectedRevision: number, sessionRpe: number | null, note: string | null) =>
+    fixed.updateOverlay(athlete, created.activityId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision,
+      reason: 'Self-report correction',
+      report: { sessionRpe, note, planLink: null },
+    });
+  const zero = await correct(1, 0, null);
+  time = new Date('2026-01-03T00:00:00Z');
+  const note = await correct(2, 0, 'new note');
+  expect(note.userReport?.rpeReportedAt).toBe(zero.userReport?.rpeReportedAt);
+  const changed = await correct(3, 5, null);
+  expect(changed.userReport?.rpeReportedAt).toBe(time.toISOString());
+  const cleared = await correct(4, null, null);
+  expect(cleared.userReport).toMatchObject({
+    sessionRpe: null,
+    note: null,
+    planLink: null,
+    rpeReportedAt: null,
+  });
+});
+it('validates future corrected times and uses effective kind/start in list filters', async () => {
+  const athlete = randomUUID(),
+    fixed = createActivityRepository(database, { now: () => new Date('2026-01-02T00:00:00Z') });
+  const command = manualInput();
+  await expect(
+    fixed.createManualActivity(athlete, {
+      ...command,
+      activity: { ...command.activity, startedAt: '2026-01-02T00:05:01Z' },
+    }),
+  ).rejects.toMatchObject({ code: 'STARTED_AT_IN_FUTURE' });
+  const created = await fixed.createManualActivity(athlete, command);
+  await expect(
+    fixed.updateOverlay(athlete, created.activityId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      reason: 'future',
+      startedAt: '2026-01-02T00:05:01Z',
+      timezone: 'UTC',
+    }),
+  ).rejects.toMatchObject({ code: 'STARTED_AT_IN_FUTURE' });
+  await fixed.updateOverlay(athlete, created.activityId, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+    reason: 'Correct recorded activity',
+    kind: 'cycling',
+    startedAt: '2026-01-02T00:00:00Z',
+    timezone: 'Asia/Seoul',
+  });
+  expect(
+    (
+      await fixed.listActivities(athlete, {
+        source: 'manual',
+        kind: 'cycling',
+        from: '2026-01-02',
+        toExclusive: '2026-01-03',
+        timezone: 'Asia/Seoul',
+      })
+    ).total,
+  ).toBe(1);
+  expect((await fixed.listActivities(athlete, { kind: 'running' })).total).toBe(0);
+  await fixed.updateOverlay(athlete, created.activityId, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 2,
+    reason: 'Unknown observation time',
+    startedAt: null,
+    timezone: null,
+  });
+  expect(
+    (
+      await fixed.listActivities(athlete, {
+        from: '2026-01-02',
+        toExclusive: '2026-01-03',
+        timezone: 'UTC',
+      })
+    ).total,
+  ).toBe(0);
+});
+it('validates immutable owned plan session links without advancing the plan or duplicating actuals', async () => {
+  const athlete = randomUUID(),
+    plans = createPlanningRepository(database);
+  const levels = ['season', 'wave', 'phase', 'block'] as const;
+  const draft = {
+    title: 'Linked plan',
+    timezone: 'UTC',
+    periods: levels.map((level, i) => ({
+      id: level,
+      parentId: i === 0 ? null : (levels[i - 1] ?? null),
+      level,
+      title: level,
+      startDate: '2026-01-01',
+      endDateExclusive: '2026-02-01',
+      timezone: 'UTC',
+      intent: '',
+      isPartial: false,
+    })),
+    sessions: [
+      {
+        id: 'planned-session',
+        blockId: 'block',
+        date: '2026-01-01',
+        localStartTime: null,
+        title: 'Planned',
+        sport: 'running' as const,
+        durationSeconds: null,
+        distanceMeters: null,
+        targetRpe: null,
+        purpose: '',
+        notes: '',
+        priority: 'normal' as const,
+        locks: { date: false, time: false, intensity: false },
+        steps: [],
+      },
+    ],
+  };
+  const first = await plans.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    draft,
+  });
+  const latest = await plans.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: first.id,
+    idempotencyKey: randomUUID(),
+    draft: { ...draft, title: 'New head' },
+  });
+  const command = manualInput();
+  command.report.planLink = { planVersionId: first.id, sessionId: 'planned-session' };
+  const actual = await repository.createManualActivity(athlete, command);
+  expect((await repository.getActivity(athlete, actual.activityId))?.userReport?.planLink).toEqual(
+    command.report.planLink,
+  );
+  expect((await plans.read(athlete)).head?.id).toBe(latest.id);
+  await expect(
+    repository.createManualActivity(randomUUID(), { ...command, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'PLAN_LINK_INVALID' });
+  await expect(
+    repository.createManualActivity(athlete, {
+      ...command,
+      idempotencyKey: randomUUID(),
+      report: { ...command.report, planLink: { planVersionId: first.id, sessionId: 'missing' } },
+    }),
+  ).rejects.toMatchObject({ code: 'PLAN_LINK_INVALID' });
+  expect((await repository.listActivities(athlete)).total).toBe(1);
+});
+it('keeps imported user reports and kind/time corrections through newer source revisions and old overlay receipts', async () => {
+  const athlete = randomUUID(),
+    command = input();
+  const created = await repository.importActivity(athlete, command);
+  const correction = {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+    reason: 'User report',
+    kind: 'walking' as const,
+    startedAt: '2026-01-01T00:00:00Z',
+    timezone: 'UTC',
+    report: { sessionRpe: 0, note: 'confirmed user note', planLink: null },
+  };
+  const corrected = await repository.updateOverlay(athlete, created.activityId, correction);
+  await repository.importActivity(athlete, {
+    ...command,
+    idempotencyKey: randomUUID(),
+    source: { ...command.source, revision: 2, contentHash: 'b'.repeat(64) },
+    activity: { ...command.activity, kind: 'cycling' },
+  });
+  const current = await repository.getActivity(athlete, created.activityId);
+  expect(current?.userReport).toEqual(corrected.userReport);
+  expect(current?.effective.kind).toBe('walking');
+  expect(current?.effective.startedAt).toBe('2026-01-01T00:00:00Z');
+  expect(await repository.updateOverlay(athlete, created.activityId, correction)).toEqual(
+    corrected,
+  );
+});
+it('rolls back all manual rows and receipt when outbox fails', async () => {
+  const athlete = randomUUID();
+  const broken: Database = {
+    ...database,
+    tenant: (id, operation) =>
+      database.tenant(id, (tx) =>
+        operation({
+          ...tx,
+          query: (sql, args) => {
+            if (sql.includes('INSERT INTO outbox')) throw new Error('manual injected failure');
+            return tx.query(sql, args);
+          },
+        }),
+      ),
+  };
+  await expect(
+    createActivityRepository(broken).createManualActivity(athlete, manualInput()),
+  ).rejects.toThrow('manual injected failure');
+  const counts = await database.tenant(athlete, (tx) =>
+    tx.query(
+      'SELECT (SELECT count(*)::int FROM activity_canonical) AS actual,(SELECT count(*)::int FROM activity_overlay_revision) AS history,(SELECT count(*)::int FROM command_receipt) AS receipts',
+    ),
+  );
+  expect(counts.rows[0]).toEqual({ actual: 0, history: 0, receipts: 0 });
 });
