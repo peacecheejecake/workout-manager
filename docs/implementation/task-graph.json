@@ -52,8 +52,9 @@
       "title": "공급자 조건 조사",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "Garmin tracker·routing 조건·native 준비; 조사만으로 권한 확보 아님"
+      "status": "completed",
+      "scope": "Garmin tracker·routing 조건·native 준비; 조사만으로 권한 확보 아님",
+      "evidence": "docs/implementation/progress/M0-06a.md"
     },
     {
       "id": "EXT-G",
