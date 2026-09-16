@@ -20,6 +20,8 @@ function Activities() {
       search={search}
       initialTimezone={timezone}
       importHref="/activities/import"
+      createHref="/activities/new"
+      editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
       onSearchChange={(query) => {
         const normalized = query ? `?${query.replace(/^\?/, '')}` : '';
         window.history.pushState(null, '', `${window.location.pathname}${normalized}`);

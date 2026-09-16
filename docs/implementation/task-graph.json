@@ -190,6 +190,15 @@
       "evidence": "docs/implementation/progress/M1-04g.md"
     },
     {
+      "id": "M1-04h",
+      "title": "수동 활동 입력·정정 UI",
+      "dependsOn": ["M1-04f", "M1-04g"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "Zustand 초안·명시 확인·RPE/계획 연결·revision 충돌/멱등 재시도·실제 API/반응형",
+      "evidence": "docs/implementation/progress/M1-04h.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -201,7 +210,8 @@
         "M1-04d",
         "M1-04e",
         "M1-04f",
-        "M1-04g"
+        "M1-04g",
+        "M1-04h"
       ],
       "kind": "task",
       "status": "not_started",

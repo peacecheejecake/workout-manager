@@ -17,6 +17,8 @@ export interface ActivityBrowserProps {
   onSearchChange(query: string): void;
   initialTimezone: string;
   importHref: string;
+  createHref?: string;
+  editHref?: (id: string) => string;
 }
 export function ActivityBrowser(props: ActivityBrowserProps) {
   return <Lifetime key={JSON.stringify([props.athleteId, props.sessionId])} {...props} />;
@@ -48,6 +50,8 @@ function Workspace({
   onSearchChange,
   initialTimezone,
   importHref,
+  createHref,
+  editHref,
 }: ActivityBrowserProps) {
   const headingId = useId();
   const composing = useRef(false);
@@ -102,8 +106,13 @@ function Workspace({
     <section className={styles.workspace} aria-labelledby={headingId}>
       <h2 id={headingId}>활동 검색과 조회</h2>
       <p>
-        가져온 활동의 원본과 정정 반영 내용을 조회합니다. <a href={importHref}>FIT 가져오기·정정</a>
+        활동의 원본과 정정 반영 내용을 조회합니다. <a href={importHref}>FIT 가져오기·정정</a>
       </p>
+      {createHref ? (
+        <p>
+          <a href={createHref}>수동 활동 입력</a>
+        </p>
+      ) : null}
       <form
         key={filterKey}
         className={styles.filters}
@@ -339,7 +348,14 @@ function Workspace({
                 </p>
               ) : null}
               {detail.isSuccess && !detail.isFetching ? (
-                <BrowserDetail activity={detail.data} />
+                <>
+                  {editHref ? (
+                    <p>
+                      <a href={editHref(detail.data.id)}>이 활동 정정</a>
+                    </p>
+                  ) : null}
+                  <BrowserDetail activity={detail.data} />
+                </>
               ) : null}
             </section>
           ) : null}

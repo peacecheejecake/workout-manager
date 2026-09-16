@@ -13,12 +13,14 @@
     "@workout/api-client": "workspace:*",
     "@workout/contracts": "workspace:*",
     "@workout/ui-foundation": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "zustand": "5.0.15"
   },
   "exports": {
     "./activity-list": "./src/activity-list.tsx",
     "./demo-workspace": "./src/demo-workspace.tsx",
     "./import-workspace": "./src/import-workspace.tsx",
-    "./activity-browser": "./src/activity-browser.tsx"
+    "./activity-browser": "./src/activity-browser.tsx",
+    "./activity-editor": "./src/activity-editor.tsx"
   }
 }

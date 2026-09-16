@@ -1,0 +1,59 @@
+.workspace {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.workspace fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  min-width: 0;
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+}
+.workspace label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.workspace input,
+.workspace select,
+.workspace textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  background: var(--surface-strong);
+  color: var(--ink);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  min-height: var(--target-primary);
+  padding: var(--space-2);
+}
+.workspace textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.workspace input:focus-visible,
+.workspace select:focus-visible,
+.workspace textarea:focus-visible,
+.workspace a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace a {
+  color: var(--accent);
+}
+.workspace dd {
+  margin-inline-start: 0;
+  margin-block-end: var(--space-3);
+  white-space: pre-wrap;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
