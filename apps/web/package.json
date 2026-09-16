@@ -19,6 +19,7 @@
     "@workout/ui-foundation": "workspace:*",
     "@workout/modules-identity": "workspace:*",
     "@workout/modules-planning": "workspace:*",
-    "@workout/ui-spike": "workspace:*"
+    "@workout/ui-spike": "workspace:*",
+    "@workout/modules-wellbeing": "workspace:*"
   }
 }

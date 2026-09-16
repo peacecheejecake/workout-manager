@@ -46,7 +46,7 @@ export function createSessionTransport(
         throw new Error('SESSION_EXPIRED');
       }
       const path = apiPathSchema.parse(input.path);
-      if (!/^\/bff\/v1\/(?:plans|activities|activity-imports)(?:\/|\?|$)/.test(path))
+      if (!/^\/bff\/v1\/(?:plans|activities|activity-imports|check-ins)(?:\/|\?|$)/.test(path))
         throw new Error('ROUTE_NOT_ALLOWED');
       const headers: Record<string, string> = { 'x-workout-session-id': session.sessionId };
       if (!['GET', 'HEAD'].includes(input.method)) headers['x-csrf-token'] = session.csrfToken;

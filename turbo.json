@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "public/dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", "public/dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["API_ORIGIN"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],

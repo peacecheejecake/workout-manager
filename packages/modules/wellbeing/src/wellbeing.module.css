@@ -1,0 +1,88 @@
+.workspace {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
+  gap: var(--space-6);
+}
+.layout > section {
+  min-width: 0;
+}
+.workspace fieldset,
+.filters {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+}
+.workspace label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.workspace input,
+.workspace textarea,
+.workspace select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--target-primary);
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+  font: inherit;
+}
+.workspace textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.workspace input:focus-visible,
+.workspace textarea:focus-visible,
+.workspace select:focus-visible,
+.workspace summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace .confirm {
+  display: flex;
+  align-items: center;
+}
+.confirm input {
+  width: 1.5rem;
+  flex-shrink: 0;
+}
+.workspace summary {
+  cursor: pointer;
+  padding-block: var(--space-3);
+}
+.values {
+  display: grid;
+  gap: var(--space-2);
+}
+.values dt {
+  font-weight: 600;
+}
+.values dd {
+  margin: 0 0 var(--space-2);
+  white-space: pre-wrap;
+}
+.records {
+  padding-inline-start: var(--space-4);
+}
+.records li {
+  margin-block: var(--space-4);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

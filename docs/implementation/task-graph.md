@@ -62,6 +62,9 @@ flowchart TD
     task12 --> checkins
     task13 --> checkins
     checkins --> task14
+    wellbeing["M1-04b 체크인 제품 UI"]
+    checkins --> wellbeing
+    wellbeing --> task14
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -79,7 +82,7 @@ flowchart TD
 M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
 
 2026-09-16 사용자 승인으로 지도와 독립적인 M1 제품 구현 의존성을 분리했다. M1-04a 체크인
-서버 작업 후 M1-04 UI를 진행한다. M0-06b는 진행 중으로 유지하며 지도 기능 M2-01과
+서버 작업 후 M1-04b 체크인 UI를 진행하고 M1-04의 대시보드·활동 화면에 합류한다. M0-06b는 진행 중으로 유지하며 지도 기능 M2-01과
 전체 통합 M2-06에서 합류한다. OS IME·지도 coverage·실기기·공식 Garmin의 완료 조건은 유지한다.
 
 ## M1b~M2: 기능 확장과 Web 출시
@@ -172,7 +175,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-02 Plan·Planner | M1-01, M0-04 | planning/planner-kit; version·projection·draft |
 | M1-03 Import·Activity | M1-01, M0-07a | activities/worker; fixture/FIT·dedup·suppression |
 | M1-04a 체크인 계약·API·저장 | M1-01, M1-02, M1-03 | 자기보고 정본·정정·revision·RLS·삭제/export |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04b 체크인 제품 UI | M1-04a | wellbeing/Host; 작성·정정·삭제·충돌 복구·반응형 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

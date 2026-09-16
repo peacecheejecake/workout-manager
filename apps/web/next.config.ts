@@ -11,6 +11,8 @@ if (
 )
   throw new Error('Invalid API_ORIGIN');
 const config: NextConfig = {
+  // Repository instructions change only through an explicit user request.
+  agentRules: false,
   async headers() {
     return [
       {
@@ -35,6 +37,7 @@ const config: NextConfig = {
     '@workout/ui-foundation',
     '@workout/modules-identity',
     '@workout/modules-planning',
+    '@workout/modules-wellbeing',
     '@workout/ui-spike',
   ],
 };

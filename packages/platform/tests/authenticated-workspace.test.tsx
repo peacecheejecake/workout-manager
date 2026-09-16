@@ -97,8 +97,31 @@ describe('session-bound authenticated transport', () => {
     );
     expect(expired).not.toHaveBeenCalled();
   });
+  it('sends check-in writes through the session-bound transport', async () => {
+    fetchMock.mockResolvedValue(json({ id: 'receipt' }));
+    const transport = createSessionTransport(session, vi.fn());
+    await transport.request({
+      path: '/bff/v1/check-ins',
+      method: 'POST',
+      body: { values: { fatigue: 0, discomfort: null } },
+      idempotencyKey: 'checkin-0001',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/bff/v1/check-ins',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-csrf-token': session.csrfToken,
+          'x-workout-session-id': session.sessionId,
+          'idempotency-key': 'checkin-0001',
+        }),
+        body: '{"values":{"fatigue":0,"discomfort":null}}',
+      }),
+    );
+  });
   it.each([
     '/bff/v1/consents/ai',
+    '/bff/v1/check-ins-admin',
+    '/bff/v1/check-ins/../consents/ai',
     'https://evil.example/bff/v1/activities',
     '/bff/v1/activities/../consents/ai',
   ])('refuses routes outside the product transport boundary: %s', async (path) => {

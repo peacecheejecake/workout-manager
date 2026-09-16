@@ -136,9 +136,18 @@
       "evidence": "docs/implementation/progress/M1-04a.md"
     },
     {
+      "id": "M1-04b",
+      "title": "체크인 제품 UI",
+      "dependsOn": ["M1-04a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "wellbeing/Host; 자기보고 작성·조회·정정·삭제·충돌 복구·반응형; 대시보드는 M1-04",
+      "evidence": "docs/implementation/progress/M1-04b.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M1-04a"],
+      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b"],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"

@@ -1,0 +1,20 @@
+{
+  "name": "@workout/modules-wellbeing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "zustand": "5.0.15",
+    "@tanstack/react-query": "5.102.8",
+    "@workout/contracts": "workspace:*",
+    "@workout/ui-foundation": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "exports": {
+    "./wellbeing-workspace": "./src/wellbeing-workspace.tsx"
+  }
+}
