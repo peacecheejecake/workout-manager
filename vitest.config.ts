@@ -7,7 +7,11 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['packages/tooling/tests/**/*.test.{ts,mjs}', 'apps/api/tests/**/*.test.ts'],
+          include: [
+            'packages/tooling/tests/**/*.test.{ts,mjs}',
+            'packages/api-client/tests/**/*.test.ts',
+            'apps/api/tests/**/*.test.ts',
+          ],
           exclude: ['**/*.integration.test.ts'],
         },
       },
@@ -24,7 +28,11 @@ export default defineConfig({
           name: 'components',
           environment: 'jsdom',
           environmentOptions: { jsdom: { url: 'http://localhost/' } },
-          include: ['packages/tooling/fixtures/**/*.test.tsx'],
+          include: [
+            'packages/tooling/fixtures/**/*.test.tsx',
+            'packages/platform/tests/**/*.test.tsx',
+            'packages/modules/*/tests/**/*.test.tsx',
+          ],
           setupFiles: ['packages/tooling/test-setup.ts'],
         },
       },

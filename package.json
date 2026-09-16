@@ -12,14 +12,17 @@
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "turbo run typecheck && tsc --project tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test": "pnpm --filter @workout/contracts build && vitest run",
+    "test:watch": "pnpm --filter @workout/contracts build && vitest",
+    "test:coverage": "pnpm --filter @workout/contracts build && vitest run --coverage",
     "test:integration": "node scripts/test-postgres.mjs",
     "test:e2e": "playwright test",
     "build": "turbo run build",
     "dev:fixture": "vite --config packages/tooling/fixtures/ui/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "test:shells": "playwright test --config playwright.shells.config.ts",
+    "dev:web": "pnpm --filter @workout/contracts build && pnpm --filter @workout/web dev",
+    "dev:mobile-web": "pnpm --filter @workout/contracts build && pnpm --filter @workout/mobile-web dev"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

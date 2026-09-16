@@ -1,0 +1,20 @@
+{
+  "name": "@workout/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "next build",
+    "dev": "next dev --hostname 127.0.0.1 --port 3100",
+    "start": "next start --hostname 127.0.0.1 --port 3100"
+  },
+  "dependencies": {
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@workout/platform": "workspace:*",
+    "@workout/modules-activities": "workspace:*",
+    "@workout/contracts": "workspace:*"
+  }
+}

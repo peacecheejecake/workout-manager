@@ -81,3 +81,18 @@ pnpm test:integration
 ```
 
 [검증·설계 범위](docs/implementation/progress/M0-05.md)를 참고하세요.
+
+## 두 shell 실행
+
+같은 ActivityList와 scoped Zustand/Query provider를 Next와 Vite에 조합했습니다.
+현재 화면의 활동·계정은 개발 fixture이며 실제 로그인이나 API 적재 결과가 아닙니다.
+
+```bash
+pnpm dev:web         # http://127.0.0.1:3100
+pnpm dev:mobile-web  # http://127.0.0.1:4200
+pnpm build
+pnpm test:shells     # 위 production build 후, 두 포트가 비어 있을 때 실행
+```
+
+[검증 기록](docs/implementation/progress/M0-03.md): 계정/세션 초기화, SSR, 재시도와 메모 보존,
+Playwright 및 Aside 실 브라우저 확인. 정식 UI kit는 다음 M0-04 작업입니다.

@@ -19,3 +19,4 @@ __pycache__/
 *.FIT
 *.parquet
 downloads/
+apps/web/next-env.d.ts

@@ -98,6 +98,22 @@ jobs:
         run: psql "$TEST_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE workout_runtime LOGIN PASSWORD 'test-only-password' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
       - run: pnpm test:integration
 
+  shells:
+    name: Next and Vite shell smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:shells
+
   planned-gates:
     name: Not yet implemented gates
     runs-on: ubuntu-latest
@@ -106,7 +122,6 @@ jobs:
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           ## Not executed: future implementation gates
-          - M0-03: Next/Vite shell builds and smoke tests
           - M1 first slice: product web/API/DB E2E
           - M3: native device/HealthKit validation
           Checks above cover tooling, contracts and local FIT, not product acceptance.

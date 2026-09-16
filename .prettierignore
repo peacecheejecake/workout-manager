@@ -28,3 +28,4 @@ CLAUDE.md
 # Preserve existing planning/rule prose from bulk formatting.
 docs/implementation/README.md
 docs/implementation/task-graph.md
+apps/web/next-env.d.ts

@@ -1,0 +1,19 @@
+{
+  "name": "@workout/mobile-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 4200 --strictPort",
+    "preview": "vite preview --host 127.0.0.1 --port 4200 --strictPort"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@workout/platform": "workspace:*",
+    "@workout/modules-activities": "workspace:*",
+    "@workout/contracts": "workspace:*"
+  }
+}

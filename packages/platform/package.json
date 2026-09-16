@@ -1,0 +1,23 @@
+{
+  "name": "@workout/platform",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "zustand": "5.0.15",
+    "@tanstack/react-query": "5.102.8",
+    "@workout/contracts": "workspace:*"
+  },
+  "exports": {
+    "./provider": "./src/provider.tsx",
+    "./workspace-store": "./src/workspace-store.ts",
+    "./fixture-host": "./src/fixture-host.ts"
+  },
+  "devDependencies": {
+    "react-dom": "19.3.0"
+  }
+}

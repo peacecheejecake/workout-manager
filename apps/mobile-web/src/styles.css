@@ -1,0 +1,37 @@
+html {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 60rem;
+  margin: auto;
+  padding: 1.25rem;
+}
+button,
+select,
+textarea {
+  font: inherit;
+  max-width: 100%;
+}
+button,
+select {
+  min-height: 2.75rem;
+  margin-block: 0.25rem;
+}
+textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 6rem;
+}
+li {
+  margin-block: 1rem;
+  overflow-wrap: anywhere;
+}
+:focus-visible {
+  outline: 3px solid Highlight;
+  outline-offset: 3px;
+}
