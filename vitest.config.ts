@@ -11,6 +11,13 @@ export default defineConfig({
         },
       },
       {
+        test: {
+          name: 'contracts',
+          environment: 'node',
+          include: ['packages/contracts/tests/**/*.test.ts'],
+        },
+      },
+      {
         esbuild: { jsx: 'automatic' },
         test: {
           name: 'components',

@@ -1,0 +1,36 @@
+{
+  "name": "@workout/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./primitives": {
+      "types": "./src/primitives.ts",
+      "default": "./dist/primitives.js"
+    },
+    "./core": {
+      "types": "./src/core.ts",
+      "default": "./dist/core.js"
+    },
+    "./nutrition": {
+      "types": "./src/nutrition.ts",
+      "default": "./dist/nutrition.js"
+    },
+    "./routines": {
+      "types": "./src/routines.ts",
+      "default": "./dist/routines.js"
+    },
+    "./approval": {
+      "types": "./src/approval.ts",
+      "default": "./dist/approval.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

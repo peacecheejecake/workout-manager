@@ -16,8 +16,9 @@
       "title": "공유 도메인 계약",
       "dependsOn": ["M0-01"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "contracts; schema·fixture·version 정책"
+      "status": "completed",
+      "scope": "contracts; schema·fixture·version 정책",
+      "evidence": "docs/implementation/progress/M0-02.md"
     },
     {
       "id": "M0-03",
