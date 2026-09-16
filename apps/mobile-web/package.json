@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "vite build",
-    "dev": "vite --host 127.0.0.1 --port 4200 --strictPort",
+    "build": "node ../../scripts/copy-map-worker.mjs && vite build",
+    "dev": "node ../../scripts/copy-map-worker.mjs && vite --host 127.0.0.1 --port 4200 --strictPort",
     "preview": "vite preview --host 127.0.0.1 --port 4200 --strictPort"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "@workout/platform": "workspace:*",
     "@workout/modules-activities": "workspace:*",
     "@workout/contracts": "workspace:*",
-    "@workout/ui-foundation": "workspace:*"
+    "@workout/ui-foundation": "workspace:*",
+    "@workout/ui-spike": "workspace:*"
   }
 }

@@ -69,8 +69,9 @@
       "title": "UI·지도 spike",
       "dependsOn": ["M0-04", "M0-06a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "adapter 호환성·라이선스·지도 coverage; 브라우저 증거"
+      "status": "in_progress",
+      "scope": "adapter 호환성·라이선스·지도 coverage; 브라우저 증거",
+      "evidence": "docs/implementation/progress/M0-06b.md"
     },
     {
       "id": "M0-06c",

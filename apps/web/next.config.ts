@@ -11,6 +11,19 @@ if (
 )
   throw new Error('Invalid API_ORIGIN');
 const config: NextConfig = {
+  async headers() {
+    return [
+      {
+        source: '/ui-spike',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "worker-src 'self'; connect-src 'self'; img-src 'self' data: blob:",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [{ source: '/bff/v1/:path*', destination: `${apiOrigin.origin}/bff/v1/:path*` }];
   },
@@ -22,6 +35,7 @@ const config: NextConfig = {
     '@workout/ui-foundation',
     '@workout/modules-identity',
     '@workout/modules-planning',
+    '@workout/ui-spike',
   ],
 };
 export default config;

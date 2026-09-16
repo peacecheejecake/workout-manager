@@ -103,6 +103,10 @@ pnpm dev:storybook
 pnpm check:generated
 ```
 
+두 shell의 `/ui-spike`와 Storybook에서 지도·차트·표·편집기·정렬·분할 패널의 합성 데이터
+검증 화면을 실행할 수 있습니다. [M0-06b 기록](docs/implementation/progress/M0-06b.md)에
+실행 범위와 남은 routing coverage·실기기 검증을 구분했습니다.
+
 ## 표준 OIDC 로그인·AI 동의
 
 `/account`에서 표준 OIDC 로그인과 AI 동의 허용/철회, 로그아웃을 제공합니다.

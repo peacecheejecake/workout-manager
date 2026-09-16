@@ -1,0 +1,94 @@
+.section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.group {
+  --interaction-panel-height: 32rem;
+
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface);
+}
+.panel {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
+}
+.list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-inline-start: var(--space-6);
+}
+.item {
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-strong);
+}
+.item[data-dragging] {
+  outline: 2px solid currentColor;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+.button,
+.dragHandle {
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--space-2);
+  color: inherit;
+  background: var(--surface-strong);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 8px);
+  font: inherit;
+}
+.button:disabled {
+  opacity: 0.5;
+}
+.dragHandle {
+  touch-action: none;
+  cursor: grab;
+}
+.dragHandle:active {
+  cursor: grabbing;
+}
+.button:focus-visible,
+.dragHandle:focus-visible,
+.separator:focus-visible,
+.draft:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+}
+.separator {
+  height: 16px;
+  background: var(--surface-strong);
+  border-block: 1px solid currentColor;
+  touch-action: none;
+}
+.draftLabel {
+  display: block;
+  margin-block-end: var(--space-2);
+}
+.draft {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 5rem;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-strong);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 8px);
+}

@@ -1,0 +1,230 @@
+{
+  "checkedAt": "2026-09-16",
+  "scope": "Installed direct dependencies only; not a complete transitive-license or paid-extension audit",
+  "minimumReleaseAgeMinutes": 1440,
+  "packages": [
+    {
+      "name": "react",
+      "version": "19.3.0",
+      "license": "MIT",
+      "peerDependencies": {},
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/react/react.git",
+        "directory": "packages/react"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "name": "react-dom",
+      "version": "19.3.0",
+      "license": "MIT",
+      "peerDependencies": {
+        "react": "^19.3.0"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/react/react.git",
+        "directory": "packages/react-dom"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "name": "zustand",
+      "version": "5.0.15",
+      "license": "MIT",
+      "peerDependencies": {
+        "@types/react": ">=18.0.0",
+        "immer": ">=9.0.6",
+        "react": ">=18.0.0",
+        "use-sync-external-store": ">=1.2.0"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/pmndrs/zustand.git"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417"
+        }
+      ]
+    },
+    {
+      "name": "maplibre-gl",
+      "version": "6.9.1",
+      "license": "BSD-3-Clause",
+      "peerDependencies": {},
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/maplibre/maplibre-gl-js"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE.txt",
+          "sha256": "ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2"
+        }
+      ]
+    },
+    {
+      "name": "echarts",
+      "version": "6.1.0",
+      "license": "Apache-2.0",
+      "peerDependencies": {},
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/apache/echarts.git"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a"
+        }
+      ]
+    },
+    {
+      "name": "@tanstack/react-table",
+      "version": "9.2.4",
+      "license": "MIT",
+      "peerDependencies": {
+        "react": ">=18"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/TanStack/table.git",
+        "directory": "packages/react-table"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "9db3f8ddd7031ab264b99bec49c221155d0c8649b53dd4aa007f2041d36cdf5f"
+        }
+      ]
+    },
+    {
+      "name": "@tiptap/react",
+      "version": "3.31.3",
+      "license": "MIT",
+      "peerDependencies": {
+        "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0",
+        "@types/react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0",
+        "@tiptap/core": "3.31.3",
+        "@tiptap/pm": "3.31.3"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ueberdosis/tiptap",
+        "directory": "packages/react"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ]
+    },
+    {
+      "name": "@tiptap/core",
+      "version": "3.31.3",
+      "license": "MIT",
+      "peerDependencies": {
+        "@tiptap/pm": "3.31.3"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ueberdosis/tiptap",
+        "directory": "packages/core"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ]
+    },
+    {
+      "name": "@tiptap/pm",
+      "version": "3.31.3",
+      "license": "MIT",
+      "peerDependencies": {},
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ueberdosis/tiptap",
+        "directory": "packages/pm"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ]
+    },
+    {
+      "name": "@tiptap/starter-kit",
+      "version": "3.31.3",
+      "license": "MIT",
+      "peerDependencies": {},
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ueberdosis/tiptap",
+        "directory": "packages/starter-kit"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ]
+    },
+    {
+      "name": "@dnd-kit/react",
+      "version": "0.5.0",
+      "license": "MIT",
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/clauderic/dnd-kit"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "name": "react-resizable-panels",
+      "version": "4.12.4",
+      "license": "MIT",
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/bvaughn/react-resizable-panels.git"
+      },
+      "licenseFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "a8f1e0280bf14adcf5d017547db85eb5c3bac0feb1690ca98650874002eaa8ea"
+        }
+      ]
+    }
+  ]
+}

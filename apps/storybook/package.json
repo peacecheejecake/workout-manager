@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "storybook build --output-dir dist",
-    "dev": "storybook dev --port 6006 --no-open"
+    "build": "node ../../scripts/copy-map-worker.mjs && storybook build --output-dir dist",
+    "dev": "node ../../scripts/copy-map-worker.mjs && storybook dev --port 6006 --no-open"
   },
   "dependencies": {
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@workout/ui-foundation": "workspace:*"
+    "@workout/ui-foundation": "workspace:*",
+    "@workout/ui-spike": "workspace:*"
   },
   "exports": {},
   "devDependencies": {
