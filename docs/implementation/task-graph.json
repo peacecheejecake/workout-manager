@@ -41,8 +41,9 @@
       "title": "API·DB 기반",
       "dependsOn": ["M0-02"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "api/persistence; migration·RLS·outbox·실DB 시험"
+      "status": "completed",
+      "scope": "api/persistence; migration·RLS·outbox·실DB 시험",
+      "evidence": "docs/implementation/progress/M0-05.md"
     },
     {
       "id": "M0-06a",

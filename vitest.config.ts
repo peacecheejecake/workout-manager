@@ -7,7 +7,8 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['packages/tooling/tests/**/*.test.{ts,mjs}'],
+          include: ['packages/tooling/tests/**/*.test.{ts,mjs}', 'apps/api/tests/**/*.test.ts'],
+          exclude: ['**/*.integration.test.ts'],
         },
       },
       {

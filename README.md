@@ -34,9 +34,10 @@ corepack pnpm test:e2e       # desktop/mobile fixture, 실제 로컬 HTTP
 `pnpm format`은 관리 대상 파일을 포맷합니다. 제공 설계 원본 `docs/.pre`, vendored skill,
 생성물·개인 데이터는 일괄 포맷에서 제외합니다.
 
-`pnpm test:integration`은 M0-05 API/DB 기반 구현 전까지 **실패 종료**하여 미구현 검증을 통과로 오인하지
-않게 합니다. CI는 이 검증과 제품 E2E·native gate가 아직 미실행임을 요약에 표시합니다.
-각 기능의 구현 단계부터 해당 실제 검증을 필수 CI job으로 추가해야 합니다.
+`pnpm test:integration`은 실제 PostgreSQL migration/RLS/동의/outbox/API 통합 테스트를 실행합니다.
+로컬 PostgreSQL 바이너리를 사용해 폐기 가능한 임시 클러스터를 생성하며, 관리자/runtime URL을 직접
+지정할 때는 별도 테스트 DB만 사용합니다. [실행·범위](docs/implementation/progress/M0-05.md)를 확인하세요.
+제품 web/API/DB 전체 E2E와 native gate는 아직 미구현입니다.
 
 ## 구조와 작업 규칙
 
@@ -69,3 +70,14 @@ manifest를 만들며 원본 FIT를 변경하지 않습니다. 기본값은 기�
 호환 entry point `uv run python scripts/fitparse.py /path/to/activity.fit`도 실제 Parquet를 생성합니다.
 
 이 명령은 로컬 변환만 수행합니다. Garmin 다운로드·인증·제품 DB 적재는 아직 구현하지 않았습니다.
+
+## API·DB 기반
+
+`apps/api`는 인증·동의 port를 주입받는 Fastify factory, `packages/server/persistence`는
+PostgreSQL migration/RLS·동의 revision·outbox 기반입니다. API bootstrap·실제 로그인은 후속 작업입니다.
+
+```bash
+pnpm test:integration
+```
+
+[검증·설계 범위](docs/implementation/progress/M0-05.md)를 참고하세요.

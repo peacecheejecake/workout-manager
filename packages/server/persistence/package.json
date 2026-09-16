@@ -1,0 +1,23 @@
+{
+  "name": "@workout/server-persistence",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "exports": {
+    "./database": "./src/database.ts",
+    "./repositories": "./src/repositories.ts",
+    "./outbox": "./src/outbox.ts",
+    "./migrate": "./src/migrate.ts"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

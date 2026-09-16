@@ -68,6 +68,36 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest
 
+  integration:
+    name: PostgreSQL API integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: workout_admin
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: workout_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U workout_admin -d workout_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_ADMIN_URL: postgresql://workout_admin:test-only-password@localhost:5432/workout_test
+      TEST_DATABASE_URL: postgresql://workout_runtime:test-only-password@localhost:5432/workout_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create restricted disposable runtime role
+        run: psql "$TEST_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE workout_runtime LOGIN PASSWORD 'test-only-password' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"
+      - run: pnpm test:integration
+
   planned-gates:
     name: Not yet implemented gates
     runs-on: ubuntu-latest
@@ -76,8 +106,7 @@ jobs:
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           ## Not executed: future implementation gates
-          - M0-03: Next/Vite product shell builds and smoke tests
-          - M0-05: real PostgreSQL/API integration tests
+          - M0-03: Next/Vite shell builds and smoke tests
           - M1 first slice: product web/API/DB E2E
           - M3: native device/HealthKit validation
           Checks above cover tooling, contracts and local FIT, not product acceptance.
