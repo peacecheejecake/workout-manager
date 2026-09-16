@@ -1,3 +1,4 @@
+import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
@@ -10,7 +11,11 @@ import { createApi } from '../apps/api/src/app.ts';
 import { createDatabase } from '../packages/server/persistence/src/database.ts';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.ts';
 import { createIdentityRepository } from '../packages/server/persistence/src/identity.ts';
-import { grantIdentityFunctions, migrate } from '../packages/server/persistence/src/migrate.ts';
+import {
+  grantIdentityFunctions,
+  grantOperations,
+  migrate,
+} from '../packages/server/persistence/src/migrate.ts';
 import { createIdentityService } from '../packages/server/identity/src/service.ts';
 import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
@@ -94,6 +99,7 @@ try {
     );
     await migrate(adminUrl);
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
+    await grantOperations(adminUrl, 'workout_runtime');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
     await admin.query(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
@@ -120,6 +126,7 @@ try {
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     activities: createActivityRepository(database),
+    operations: createOperationsRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100'],
   });
   closers.push(() => api.close());

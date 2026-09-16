@@ -133,4 +133,14 @@ uv run workout-manager export-activity /path/to/activity.fit --output /path/to/a
 
 `/activities`에서 JSON을 선택하고 확인하면 활동을 가져옵니다. 같은 파일의 재수입, 원본과 정정 분리,
 로컬 삭제 후 재수입 억제를 지원합니다. timezone 생략은 미확인, 기존 출력 파일은 덮어쓰지 않습니다.
-공식 Garmin sync나 계정 전체 삭제 기능은 후속 작업입니다. [M1-03 검증 기록](docs/implementation/progress/M1-03.md).
+공식 Garmin sync는 후속 작업입니다. [M1-03 검증 기록](docs/implementation/progress/M1-03.md).
+
+## 내 데이터·운영 상태
+
+`/account`에서 내부 처리 상태, 최근 작업 이력, 현재 계정의 JSON 내보내기와 앱 계정 삭제를 제공합니다.
+삭제는 확인 문구 입력과 명시적 버튼을 요구하며 외부 로그인 공급자의 계정을 삭제하지 않습니다.
+[M1-06a 구현·검증](docs/implementation/progress/M1-06a.md)과 [복구 실행 기록](docs/implementation/operations-runbook.md)을 참고하세요.
+
+```bash
+pnpm exec tsx scripts/backup-restore-drill.mts --execute # 합성 자료로 만든 새 임시 PostgreSQL만 사용
+```

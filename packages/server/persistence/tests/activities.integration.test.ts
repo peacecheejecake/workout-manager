@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { createDatabase, type Database } from '../src/database.js';
 import { createActivityRepository, type ActivityRepository } from '../src/activities.js';
-import { migrate } from '../src/migrate.js';
+import { migrate, grantOperations } from '../src/migrate.js';
 import type { ActivityImport } from '@workout/contracts/activity';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
@@ -14,6 +14,7 @@ let database: Database;
 let repository: ActivityRepository;
 beforeAll(async () => {
   await migrate(adminUrl);
+  await grantOperations(adminUrl, 'workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt,outbox,command_receipt TO workout_runtime',
   );
@@ -189,6 +190,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     const command = input();
     const failing = createActivityRepository({
       close: async () => undefined,
+      exclusiveTenant: database.exclusiveTenant,
       tenant: (id, operation) =>
         database.tenant(id, (tx) =>
           operation({

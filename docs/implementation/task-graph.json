@@ -146,8 +146,9 @@
       "title": "운영·삭제·내보내기",
       "dependsOn": ["M1-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "settings/sync/audit; 관측·삭제·backup restore 기반"
+      "status": "completed",
+      "scope": "settings/sync/audit; 관측·삭제·backup restore 기반",
+      "evidence": "docs/implementation/progress/M1-06a.md"
     },
     {
       "id": "M1-06b",

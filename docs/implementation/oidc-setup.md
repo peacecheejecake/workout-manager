@@ -37,12 +37,13 @@ runtime role을 운영 배포 도구로 생성한다. 앱에는 migration owner 
 
 ```bash
 node --import tsx --input-type=module <<'JS'
-import { migrate, grantIdentityFunctions } from './packages/server/persistence/src/migrate.ts';
+import { migrate, grantIdentityFunctions, grantOperations } from './packages/server/persistence/src/migrate.ts';
 const admin = process.env.DEPLOY_DATABASE_URL;
 const role = process.env.RUNTIME_DB_ROLE;
 if (!admin || !role) throw new Error('Deployment DB configuration required');
 await migrate(admin);
 await grantIdentityFunctions(admin, role);
+await grantOperations(admin, role);
 JS
 ```
 
@@ -60,7 +61,8 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 ```
 
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
-검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. migration 001–004는 checksum으로 보호한다.
+검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. `grantOperations`는 삭제 차단 원장 조회,
+민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. migration 001–005는 checksum으로 보호한다.
 
 ## 요청 경계
 

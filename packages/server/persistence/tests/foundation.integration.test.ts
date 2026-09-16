@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { createDatabase, type Database, type Transaction } from '../src/database.js';
-import { migrate } from '../src/migrate.js';
+import { migrate, grantOperations } from '../src/migrate.js';
 import { createConsentRepository } from '../src/repositories.js';
 import { claim, complete, enqueue, retry } from '../src/outbox.js';
 
@@ -16,6 +16,7 @@ const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
+  await grantOperations(adminUrl, 'workout_runtime');
   await migrate(adminUrl);
   // Harness runtime role is deliberately neither table owner nor privileged.
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
@@ -42,6 +43,7 @@ describe('real PostgreSQL foundation', () => {
       { version: 2, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       { version: 3, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       { version: 4, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { version: 5, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

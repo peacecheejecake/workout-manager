@@ -17,6 +17,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '002_identity.sql',
       '003_plan.sql',
       '004_activities.sql',
+      '005_operations.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -41,6 +42,22 @@ export async function migrate(connectionString: string): Promise<void> {
     throw error;
   } finally {
     client.release();
+    await pool.end();
+  }
+}
+
+/** Narrow runtime grants for the lifecycle gate and audited account operations. */
+export async function grantOperations(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
+    await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
+  } finally {
     await pool.end();
   }
 }

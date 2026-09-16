@@ -19,7 +19,8 @@
     "./migrate": "./src/migrate.ts",
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
-    "./activities": "./src/activities.ts"
+    "./activities": "./src/activities.ts",
+    "./operations": "./src/operations.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

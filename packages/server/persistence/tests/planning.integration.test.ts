@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import type { ManualPlanCommand } from '@workout/contracts/planning';
 import { createDatabase, type Database } from '../src/database.js';
-import { migrate } from '../src/migrate.js';
+import { migrate, grantOperations } from '../src/migrate.js';
 import { createPlanningRepository } from '../src/planning.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -12,6 +12,7 @@ const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
+  await grantOperations(adminUrl, 'workout_runtime');
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON plan_snapshot,plan_head,plan_history,command_receipt,outbox TO workout_runtime',

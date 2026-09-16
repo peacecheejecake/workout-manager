@@ -13,6 +13,14 @@ const session = {
 };
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+function operationsResponse() {
+  return response({
+    checkedAt: '2026-09-16T00:00:00Z',
+    outbox: { pending: 0, leased: 0, retrying: 0, completed: 0 },
+    providers: { garmin: 'not_connected', healthkit: 'not_connected' },
+    audit: [],
+  });
+}
 afterEach(() => vi.unstubAllGlobals());
 
 it('shows provider login on401 without exposing private controls', async () => {
@@ -31,11 +39,13 @@ it('clears private consent and account UI only after logout confirmation', async
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string) =>
-      path === '/bff/v1/session'
-        ? response(session)
-        : path.endsWith('/logout')
-          ? new Response(null, { status: 204 })
-          : response({ kind: 'ai', granted: true, revision: 2 }),
+      path === '/bff/v1/operations/status'
+        ? operationsResponse()
+        : path === '/bff/v1/session'
+          ? response(session)
+          : path.endsWith('/logout')
+            ? new Response(null, { status: 204 })
+            : response({ kind: 'ai', granted: true, revision: 2 }),
     ),
   );
   render(<IdentityWorkspace />);
@@ -49,11 +59,13 @@ it('does not claim consent success when its revision conflicts', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) =>
-      path === '/bff/v1/session'
-        ? response(session)
-        : init?.method === 'PUT'
-          ? response({ error: { code: 'CONSENT_CONFLICT' } }, 409)
-          : response({ kind: 'ai', granted: false, revision: 1 }),
+      path === '/bff/v1/operations/status'
+        ? operationsResponse()
+        : path === '/bff/v1/session'
+          ? response(session)
+          : init?.method === 'PUT'
+            ? response({ error: { code: 'CONSENT_CONFLICT' } }, 409)
+            : response({ kind: 'ai', granted: false, revision: 1 }),
     ),
   );
   render(<IdentityWorkspace />);
@@ -67,6 +79,7 @@ it('retries uncertain mutations with the original idempotency key and server rev
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         commands.push(init);
@@ -105,6 +118,7 @@ it('never relabels a historical successful receipt as the current consent after 
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         commands += 1;
@@ -128,6 +142,7 @@ it('hides previous consent when the authoritative read fails after a successful 
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         wrote = true;
@@ -152,6 +167,7 @@ it('clears account A before refetching B when a shared cookie changes ahead of s
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/session') {
         if (switched) {
           await delayed;
@@ -190,6 +206,7 @@ it('clears an expired server session and its private consent controls', async ()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string) => {
+      if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/session') return response(session);
       reads += 1;
       return reads === 1

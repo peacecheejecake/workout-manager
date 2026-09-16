@@ -3,7 +3,7 @@ import { Writable } from 'node:stream';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { createDatabase, type Database } from '@workout/server-persistence/database';
-import { migrate } from '@workout/server-persistence/migrate';
+import { migrate, grantOperations } from '@workout/server-persistence/migrate';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createApi } from '../src/app.js';
 
@@ -15,6 +15,7 @@ const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
+  await grantOperations(adminUrl, 'workout_runtime');
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await admin.query(
     'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt TO workout_runtime',

@@ -9,6 +9,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { z } from 'zod';
+import { OperationsPanel } from './operations-panel';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),
@@ -264,6 +265,11 @@ function Account({ session, onSignedOut, onSessionChanged }: AccountProps) {
           ) : null}
         </div>
       ) : null}
+      <OperationsPanel
+        session={session}
+        onSignedOut={onSignedOut}
+        onSessionChanged={onSessionChanged}
+      />
     </section>
   );
 }

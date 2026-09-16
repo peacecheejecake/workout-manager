@@ -9,6 +9,7 @@ import type { Writable } from 'node:stream';
 import Fastify, { LogController, type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
+import { TenantErasedError } from '@workout/server-persistence/database';
 import {
   consentKindSchema,
   consentSchema,
@@ -81,6 +82,7 @@ function requireCsrf(request: FastifyRequest, principal: Principal, origins: Rea
 }
 
 function classifyError(error: unknown): { statusCode: number; code: string } {
+  if (error instanceof TenantErasedError) return { statusCode: 401, code: 'UNAUTHENTICATED' };
   if (error instanceof IdentityError)
     return { statusCode: error.code === 'LOGIN_REJECTED' ? 401 : 503, code: error.code };
   if (error instanceof BoundaryError || error instanceof ProductRequestError) return error;

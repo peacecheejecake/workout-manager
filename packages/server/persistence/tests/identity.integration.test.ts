@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { createIdentityRepository, type IdentityRepository } from '../src/identity.js';
-import { migrate, grantIdentityFunctions } from '../src/migrate.js';
+import { migrate, grantIdentityFunctions, grantOperations } from '../src/migrate.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -28,6 +28,7 @@ const session = () => ({
 });
 beforeAll(async () => {
   await migrate(adminUrl);
+  await grantOperations(adminUrl, 'workout_runtime');
   await grantIdentityFunctions(adminUrl, 'workout_runtime');
   repository = createIdentityRepository({ connectionString: runtimeUrl, max: 4 });
 });
