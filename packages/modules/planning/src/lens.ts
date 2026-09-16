@@ -1,0 +1,50 @@
+import { planningLensSchema, type PlanningLens } from '@workout/contracts/core';
+import { localDateSchema } from '@workout/contracts/primitives';
+
+export interface PlannerUrlState {
+  lens: PlanningLens;
+  view: 'stack' | 'split';
+  error: boolean;
+}
+
+export function readPlannerSearch(search: string, today: string): PlannerUrlState {
+  const params = new URLSearchParams(search);
+  const anchor = params.get('date') ?? today;
+  const days = Number(params.get('days') ?? '10');
+  const kind = params.get('lens') ?? 'rolling';
+  const candidate =
+    kind === 'calendar'
+      ? {
+          kind,
+          from: params.get('from') ?? anchor,
+          toExclusive: params.get('to') ?? addDays(anchor, 7),
+        }
+      : kind === 'period'
+        ? { kind, periodId: params.get('period') ?? '' }
+        : { kind, anchorDate: anchor, days };
+  const parsed = planningLensSchema.safeParse(candidate);
+  const valid =
+    parsed.success &&
+    (parsed.data.kind !== 'rolling' || parsed.data.days <= 366) &&
+    (parsed.data.kind !== 'calendar' ||
+      Date.parse(parsed.data.toExclusive) - Date.parse(parsed.data.from) <= 366 * 86400000);
+  return {
+    lens: valid
+      ? parsed.data
+      : { kind: 'rolling', anchorDate: localDateSchema.parse(today), days: 10 },
+    view: params.get('view') === 'split' ? 'split' : 'stack',
+    error: !valid,
+  };
+}
+
+export function updatePlannerSearch(search: string, changes: Record<string, string>) {
+  const params = new URLSearchParams(search);
+  for (const [key, value] of Object.entries(changes)) params.set(key, value);
+  return params.toString();
+}
+
+export function addDays(date: string, days: number): string {
+  const parsed = localDateSchema.safeParse(date);
+  if (!parsed.success) return date;
+  return new Date(Date.parse(parsed.data) + days * 86400000).toISOString().slice(0, 10);
+}

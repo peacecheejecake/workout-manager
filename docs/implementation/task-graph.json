@@ -110,8 +110,9 @@
       "title": "Plan·Planner",
       "dependsOn": ["M1-01", "M0-04"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "planning/planner-kit; version·projection·draft"
+      "status": "completed",
+      "scope": "planning/planner-kit; version·projection·draft",
+      "evidence": "docs/implementation/progress/M1-02.md"
     },
     {
       "id": "M1-03",

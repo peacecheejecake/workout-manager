@@ -9,14 +9,16 @@
   },
   "dependencies": {
     "pg": "8.23.0",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@workout/contracts": "workspace:*"
   },
   "exports": {
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",
     "./outbox": "./src/outbox.ts",
     "./migrate": "./src/migrate.ts",
-    "./identity": "./src/identity.ts"
+    "./identity": "./src/identity.ts",
+    "./planning": "./src/planning.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

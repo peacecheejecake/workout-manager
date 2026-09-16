@@ -1,0 +1,55 @@
+import type { PlanDraft } from '@workout/contracts/planning';
+
+/** Human-readable full before/after review; identities remain internal to the command. */
+export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
+  if (!draft) return <p>저장된 계획 없음</p>;
+  return (
+    <div>
+      <p>
+        {draft.title} · {draft.timezone}
+      </p>
+      <h5>기간</h5>
+      <ul>
+        {draft.periods.map((period) => (
+          <li key={period.id}>
+            {period.level} · {period.title} · 상위{' '}
+            {draft.periods.find((parent) => parent.id === period.parentId)?.title ?? '없음'} ·{' '}
+            {period.startDate}–{period.endDateExclusive} (종료일 미포함) · {period.timezone} · 목적{' '}
+            {period.intent || '미정'} · {period.isPartial ? '부분 기간' : '일반 기간'}
+          </li>
+        ))}
+      </ul>
+      <h5>계획 세션</h5>
+      <ul>
+        {draft.sessions.map((session) => (
+          <li key={session.id}>
+            <strong>{session.title}</strong> · {session.sport} · {session.date}{' '}
+            {session.localStartTime ?? '시각 미정'} · Block{' '}
+            {draft.periods.find((period) => period.id === session.blockId)?.title ?? '미배정'}
+            <p>
+              목적: {session.purpose || '미정'} · 중요도: {session.priority} · 시간:{' '}
+              {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`} · 거리:{' '}
+              {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · RPE:{' '}
+              {session.targetRpe ?? '미정'}
+            </p>
+            <p>
+              잠금: 날짜 {session.locks.date ? '켜짐' : '꺼짐'}, 시각{' '}
+              {session.locks.time ? '켜짐' : '꺼짐'}, 강도{' '}
+              {session.locks.intensity ? '켜짐' : '꺼짐'}
+            </p>
+            <p>메모: {session.notes || '없음'}</p>
+            <ol>
+              {session.steps.map((step) => (
+                <li key={step.id}>
+                  {step.kind} · {step.repetitions}회 ·{' '}
+                  {step.durationSeconds === null ? '시간 미정' : `${step.durationSeconds}초`} ·{' '}
+                  {step.distanceMeters === null ? '거리 미정' : `${step.distanceMeters}m`}
+                </li>
+              ))}
+            </ol>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

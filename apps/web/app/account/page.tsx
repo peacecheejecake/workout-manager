@@ -4,6 +4,9 @@ export default function AccountPage() {
     <main className="wm-page">
       <h1>계정과 개인정보</h1>
       <IdentityWorkspace />
+      <nav aria-label="훈련 작업">
+        <a href="/planner">훈련 계획</a>
+      </nav>
     </main>
   );
 }

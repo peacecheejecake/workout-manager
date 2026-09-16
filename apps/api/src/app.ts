@@ -1,3 +1,8 @@
+import {
+  registerProductRoutes,
+  ProductRequestError,
+  type ProductRepositories,
+} from './product-routes.js';
 import { IdentityError, type IdentityService } from '@workout/server-identity/service';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Writable } from 'node:stream';
@@ -14,7 +19,7 @@ import {
   type Principal,
 } from './ports.js';
 
-export interface ApiOptions {
+export interface ApiOptions extends ProductRepositories {
   auth: AuthenticationPort;
   identity?: IdentityService;
   consent: ConsentPort;
@@ -78,7 +83,7 @@ function requireCsrf(request: FastifyRequest, principal: Principal, origins: Rea
 function classifyError(error: unknown): { statusCode: number; code: string } {
   if (error instanceof IdentityError)
     return { statusCode: error.code === 'LOGIN_REJECTED' ? 401 : 503, code: error.code };
-  if (error instanceof BoundaryError) return error;
+  if (error instanceof BoundaryError || error instanceof ProductRequestError) return error;
   if (error instanceof PersistenceConflict) return { statusCode: 409, code: 'CONSENT_CONFLICT' };
   if (error instanceof Error && 'code' in error) {
     switch (error.code) {
@@ -161,7 +166,12 @@ export function createApi(options: ApiOptions): FastifyInstance {
     async (routes) => {
       const authenticated = new WeakMap<FastifyRequest, Principal>();
       routes.addHook('preValidation', async (request) => {
-        parseInput(emptyQuerySchema, request.query);
+        if (
+          ['/bff/v1/session', '/bff/v1/auth/logout', '/bff/v1/consents/:kind'].includes(
+            request.routeOptions.url ?? '',
+          )
+        )
+          parseInput(emptyQuerySchema, request.query);
         const result = principalSchema.safeParse(
           await options.auth.authenticate(credentials(request)),
         );
@@ -181,6 +191,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
         if (value === undefined) throw new BoundaryError(401, 'UNAUTHENTICATED');
         return value;
       }
+      registerProductRoutes(routes, options, principal);
       routes.get('/session', async (request) => {
         const value = principal(request);
         return value.method === 'cookie'

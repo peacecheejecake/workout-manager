@@ -12,7 +12,11 @@ export async function migrate(connectionString: string): Promise<void> {
     await client.query(
       'CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY, checksum text NOT NULL)',
     );
-    for (const [index, file] of ['001_foundation.sql', '002_identity.sql'].entries()) {
+    for (const [index, file] of [
+      '001_foundation.sql',
+      '002_identity.sql',
+      '003_plan.sql',
+    ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
       const checksum = createHash('sha256').update(sql).digest('hex');

@@ -29,7 +29,7 @@ export function createDatabase(options: { connectionString: string; max?: number
       try {
         await client.query('BEGIN');
         const role = await client.query(
-          "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
+          "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt', 'plan_snapshot', 'plan_head', 'plan_history') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
         );
         const privileges = z.object({
           rolsuper: z.literal(false),

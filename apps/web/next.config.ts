@@ -21,6 +21,7 @@ const config: NextConfig = {
     '@workout/contracts',
     '@workout/ui-foundation',
     '@workout/modules-identity',
+    '@workout/modules-planning',
   ],
 };
 export default config;

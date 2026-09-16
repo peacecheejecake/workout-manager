@@ -24,6 +24,10 @@
     "./approval": {
       "types": "./src/approval.ts",
       "default": "./dist/approval.js"
+    },
+    "./planning": {
+      "types": "./src/planning.ts",
+      "default": "./dist/planning.js"
     }
   },
   "scripts": {

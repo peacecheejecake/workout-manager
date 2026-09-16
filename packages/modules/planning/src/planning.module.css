@@ -1,0 +1,68 @@
+.workspace {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace fieldset {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-block: var(--space-4);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+}
+.workspace legend {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.workspace label {
+  display: grid;
+  gap: var(--space-2);
+}
+.workspace select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--target-primary);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font: inherit;
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+}
+.workspace select:focus-visible,
+.workspace input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace input[type='checkbox'] {
+  min-width: 24px;
+  min-height: 24px;
+  margin: var(--space-2);
+}
+.workspace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+}
+.step {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--ink-muted);
+}
+.agenda {
+  padding-inline-start: var(--space-6);
+}
+.agenda > li {
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}

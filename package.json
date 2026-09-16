@@ -15,7 +15,7 @@
     "test": "pnpm --filter @workout/contracts build && vitest run",
     "test:watch": "pnpm --filter @workout/contracts build && vitest",
     "test:coverage": "pnpm --filter @workout/contracts build && vitest run --coverage",
-    "test:integration": "node scripts/test-postgres.mjs",
+    "test:integration": "pnpm --filter @workout/contracts build && node scripts/test-postgres.mjs",
     "test:e2e": "playwright test",
     "build": "turbo run build",
     "dev:fixture": "vite --config packages/tooling/fixtures/ui/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort",

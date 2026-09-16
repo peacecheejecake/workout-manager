@@ -8,6 +8,9 @@ export default function Page() {
       <p>
         <a href="/account">계정과 AI 동의</a>
       </p>
+      <p>
+        <a href="/planner">훈련 계획</a>
+      </p>
       <DemoWorkspace />
     </main>
   );

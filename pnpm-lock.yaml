@@ -166,6 +166,9 @@ importers:
       '@workout/modules-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
+      '@workout/modules-planning':
+        specifier: workspace:*
+        version: link:../../packages/modules/planning
       '@workout/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -236,6 +239,24 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  packages/modules/planning:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@workout/ui-foundation':
+        specifier: workspace:*
+        version: link:../../ui/foundation
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      zustand:
+        specifier: 5.0.15
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
+
   packages/platform:
     dependencies:
       '@tanstack/react-query':
@@ -247,6 +268,9 @@ importers:
       react:
         specifier: 19.3.0
         version: 19.3.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
       zustand:
         specifier: 5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
@@ -266,6 +290,9 @@ importers:
 
   packages/server/persistence:
     dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
       pg:
         specifier: 8.23.0
         version: 8.23.0

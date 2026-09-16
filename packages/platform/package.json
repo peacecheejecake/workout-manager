@@ -10,12 +10,14 @@
     "react": "19.3.0",
     "zustand": "5.0.15",
     "@tanstack/react-query": "5.102.8",
-    "@workout/contracts": "workspace:*"
+    "@workout/contracts": "workspace:*",
+    "zod": "4.6.5"
   },
   "exports": {
     "./provider": "./src/provider.tsx",
     "./workspace-store": "./src/workspace-store.ts",
-    "./fixture-host": "./src/fixture-host.ts"
+    "./fixture-host": "./src/fixture-host.ts",
+    "./authenticated-workspace": "./src/authenticated-workspace.tsx"
   },
   "devDependencies": {
     "react-dom": "19.3.0"
