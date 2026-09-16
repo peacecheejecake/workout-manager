@@ -1,0 +1,246 @@
+{
+  "results": [
+    {
+      "test": "dashboard renders",
+      "passed": true
+    },
+    {
+      "test": "rolling N recomputes",
+      "passed": true
+    },
+    {
+      "test": "orbit w1",
+      "passed": true
+    },
+    {
+      "test": "orbit w1p0",
+      "passed": true
+    },
+    {
+      "test": "orbit w1p0b0",
+      "passed": true
+    },
+    {
+      "test": "orbit w1p0b0d0",
+      "passed": true
+    },
+    {
+      "test": "orbit back",
+      "passed": true
+    },
+    {
+      "test": "stale proposal prevents approval",
+      "passed": true
+    },
+    {
+      "test": "explicit approval increments local version",
+      "passed": true
+    },
+    {
+      "test": "activity create",
+      "passed": true
+    },
+    {
+      "test": "activity edit",
+      "passed": true
+    },
+    {
+      "test": "activity delete",
+      "passed": true
+    },
+    {
+      "test": "move creates draft only",
+      "passed": true
+    },
+    {
+      "test": "draft explicit commit",
+      "passed": true
+    },
+    {
+      "test": "route alternative add",
+      "passed": true
+    },
+    {
+      "test": "route undo",
+      "passed": true
+    },
+    {
+      "test": "RAG inclusion local toggle",
+      "passed": true
+    },
+    {
+      "test": "resource local note",
+      "passed": true
+    },
+    {
+      "test": "local image preview",
+      "passed": true
+    },
+    {
+      "test": "local preview clear",
+      "passed": true
+    },
+    {
+      "test": "theme change",
+      "passed": true
+    },
+    {
+      "test": "reduced transparency",
+      "passed": true
+    },
+    {
+      "test": "reduced motion",
+      "passed": true
+    },
+    {
+      "test": "conversation demo",
+      "passed": true
+    },
+    {
+      "test": "keyboard resize",
+      "passed": true
+    },
+    {
+      "test": "no page overflow dashboard 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow planner 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow activities 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow courses 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow races 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow gallery 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow resources 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow settings 1440",
+      "passed": true
+    },
+    {
+      "test": "no page overflow dashboard 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow planner 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow activities 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow courses 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow races 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow gallery 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow resources 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow settings 768",
+      "passed": true
+    },
+    {
+      "test": "no page overflow dashboard 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow planner 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow activities 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow courses 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow races 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow gallery 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow resources 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow settings 390",
+      "passed": true
+    },
+    {
+      "test": "no page overflow dashboard 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow planner 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow activities 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow courses 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow races 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow gallery 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow resources 360",
+      "passed": true
+    },
+    {
+      "test": "no page overflow settings 360",
+      "passed": true
+    },
+    {
+      "test": "mobile navigation",
+      "passed": true
+    },
+    {
+      "test": "no JavaScript runtime errors",
+      "passed": true
+    },
+    {
+      "test": "no external network requests",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "httpRequests": []
+}

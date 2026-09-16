@@ -1,0 +1,438 @@
+{
+  "version": "0.2.3",
+  "date": "2026-09-16",
+  "status": "not_executed",
+  "scope": "future product acceptance tests, not document/type checks",
+  "requirements": [
+    {
+      "id": "V023-F01",
+      "title": "루틴 CRUD·분류",
+      "acceptance": "blueprint 검색·필터·복제·version·보관/삭제와 별도 일정 적용을 구현한다."
+    },
+    {
+      "id": "V023-F02",
+      "title": "템플릿·배치·실제 분리",
+      "acceptance": "범용 blueprint와 기존 운동 template을 구분하고 승인 세션/실행 중 version을 보존한다."
+    },
+    {
+      "id": "V023-F03",
+      "title": "유한 일정 전개",
+      "acceptance": "요일/N일/주기/session link는 유효 범위·개수 제한·충돌 preview·멱등성을 갖는다."
+    },
+    {
+      "id": "V023-F04",
+      "title": "루틴 pause·누락 처리",
+      "acceptance": "미래 계획 영향 확인과 알림 mute를 구분하고 미수행을 자동 누적하지 않는다."
+    },
+    {
+      "id": "V023-F05",
+      "title": "상대 시각·이벤트",
+      "acceptance": "unresolved anchor·훈련 이동·삭제·늦은 backfill을 처리하고 무승인 계획을 만들지 않는다."
+    },
+    {
+      "id": "V023-F06",
+      "title": "실행·원장 위임",
+      "acceptance": "run 단계별 사용자 확인을 각 canonical actual에 저장·연결하며 wrapper는 운동이 아니다."
+    },
+    {
+      "id": "V023-F07",
+      "title": "선택·실행률",
+      "acceptance": "대안/선택 단계를 분리하고 분모·변경 이력·미확인·중단을 명시한다."
+    },
+    {
+      "id": "V023-F08",
+      "title": "스트레칭 catalog",
+      "acceptance": "같은 exercise catalog에 method/context/side/review를 추가하고 기존 mobility와 구분한다."
+    },
+    {
+      "id": "V023-F09",
+      "title": "스트레칭 계획·실제",
+      "acceptance": "유지/반복/좌우·휴식·출처를 구분하며 timer만으로 실제를 확정하지 않는다."
+    },
+    {
+      "id": "V023-F10",
+      "title": "단독·부분 운동 통합",
+      "acceptance": "계획 없는 실제와 workout 내부 block을 지원하고 provider/parent/bout 중복을 막는다."
+    },
+    {
+      "id": "V023-F11",
+      "title": "회복 전략·휴식안",
+      "acceptance": "목적·기간·선택지·관찰·재평가를 연결하며 쉬는 안도 정식 후보다."
+    },
+    {
+      "id": "V023-F12",
+      "title": "회복 방법·검토",
+      "acceptance": "방법별 원문/조건/검토/한계를 표시하며 미검토 방법의 자동 처방·기기 제어를 하지 않는다."
+    },
+    {
+      "id": "V023-F13",
+      "title": "비운동 회복 actual",
+      "acceptance": "행동·수면/섭취/운동 관측을 구분하고 정정·삭제·출처를 지원한다."
+    },
+    {
+      "id": "V023-F14",
+      "title": "분야별 지표·해석",
+      "acceptance": "실행률과 상태/효과를 구분하고 회복 행동으로 부하를 상쇄하거나 안전 판정을 하지 않는다."
+    },
+    {
+      "id": "V023-F15",
+      "title": "네 도메인 통합 승인",
+      "acceptance": "training/nutrition/recovery/routine_schedule의 version·read dependency·원자 적용을 검증한다."
+    },
+    {
+      "id": "V023-F16",
+      "title": "코치·RAG·필수 제약",
+      "acceptance": "기록/계산/문헌/가설을 분리하고 질문·근거·수정/유지·전문가 검토 결과를 지원한다."
+    },
+    {
+      "id": "V023-F17",
+      "title": "실행 UI·타이머·복구",
+      "acceptance": "반응형·좌우/단계·background·두 기기 충돌과 실제 미전송 상태를 검증한다."
+    },
+    {
+      "id": "V023-F18",
+      "title": "권한·삭제·호환",
+      "acceptance": "계정·자료 철회·민감 인용·cache를 통제하고 구형 schema를 묵시 변환하지 않는다."
+    }
+  ],
+  "tests": [
+    {
+      "id": "V023-A01",
+      "scenario": "루틴 만들기/검색/복제/즐겨찾기",
+      "expected": "blueprint version만 저장하고 일정·섭취·Activity를 자동 생성하지 않는다.",
+      "requirement_ids": [
+        "V023-F01"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A02",
+      "scenario": "사용 중인 루틴 보관/삭제",
+      "expected": "미래 일정 처리와 기록 삭제를 별도로 확인하고 actual cascade-delete가 없다.",
+      "requirement_ids": [
+        "V023-F01",
+        "V023-F02",
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A03",
+      "scenario": "활성 루틴 template에 새 version",
+      "expected": "이미 승인된 occurrence/세션/진행 중 run은 원래 version으로 유지된다.",
+      "requirement_ids": [
+        "V023-F02"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A04",
+      "scenario": "같은 보강 template을 단독·혼합 routine에서 사용",
+      "expected": "pinned workout reference를 재사용하며 별도 동작 정본/세트 template을 복제하지 않는다.",
+      "requirement_ids": [
+        "V023-F02"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A05",
+      "scenario": "무한 recurrence·과다 발생분 요청·기간 끝 넘어감",
+      "expected": "유한 기간/개수 제한을 요구하고 preview에서 범위·충돌을 검증한다.",
+      "requirement_ids": [
+        "V023-F03"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A06",
+      "scenario": "같은 일정 승인/전개를 재전송",
+      "expected": "동일 결과/occurrence를 반환하고 자식 계획이 중복 생성되지 않는다.",
+      "requirement_ids": [
+        "V023-F03",
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A07",
+      "scenario": "활성 schedule pause/resume 또는 알림만 mute",
+      "expected": "미래 계획 변경은 preview/확인; mute는 계획을 취소하지 않고 실제 기록은 유지된다.",
+      "requirement_ids": [
+        "V023-F04"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A08",
+      "scenario": "하루 루틴 미기록·다음 날 진입",
+      "expected": "미실시로 단정하거나 밀린 루틴·강도를 자동 누적하지 않는다.",
+      "requirement_ids": [
+        "V023-F04"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A09",
+      "scenario": "session 종료 시각 미정/삭제/날짜 이동",
+      "expected": "unresolved·영향 목록·재연결을 제공하며 actual 시각은 불변이다.",
+      "requirement_ids": [
+        "V023-F05",
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A10",
+      "scenario": "늦은 FIT/HealthKit 업로드·과거 backfill",
+      "expected": "발생 시각/유효창으로 처리; 과거 알림·새 계획·승인·자동 완료를 생성하지 않는다.",
+      "requirement_ids": [
+        "V023-F05"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A11",
+      "scenario": "routine에서 섭취·운동·체크인 완료 입력",
+      "expected": "각 도메인의 확인된 actual과 step link만 저장하고 Run 자체는 Activity가 아니다.",
+      "requirement_ids": [
+        "V023-F06"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A12",
+      "scenario": "기록 실패 후 재전송 또는 이미 있는 actual 연결",
+      "expected": "canonical ID/검증된 배정/멱등성으로 1회 집계하며 타인 기록 연결을 거부한다.",
+      "requirement_ids": [
+        "V023-F06",
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A13",
+      "scenario": "회복 러닝과 휴식 중 한 가지 선택",
+      "expected": "선택한 대안만 실행 대상이며 둘 다 해야 완료되는 강요가 없다.",
+      "requirement_ids": [
+        "V023-F07",
+        "V023-F11"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A14",
+      "scenario": "선택적 단계 건너뜀·진행 후 branch 변경",
+      "expected": "분모·선택 이력 보존; 미확인/중단은 완료로 둔갑하지 않고 actual을 삭제하지 않는다.",
+      "requirement_ids": [
+        "V023-F07"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A15",
+      "scenario": "mobility와 stretching/정적·동적 동작 검색",
+      "expected": "원래 family/definition을 보존하고 같은 catalog의 전문 필터로 표시한다.",
+      "requirement_ids": [
+        "V023-F08"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A16",
+      "scenario": "사용 중인 설명 자료/동작 version 철회",
+      "expected": "역사 version은 재작성하지 않지만 새로운 실행/추천은 유효성 확인 후 제한한다.",
+      "requirement_ids": [
+        "V023-F08",
+        "V023-F12",
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A17",
+      "scenario": "좌우 유지시간 미입력·전체 timer·휴식 포함",
+      "expected": "전체시간 자동÷2/계획값 복사 없이 side·hold·rest·unknown을 분리한다.",
+      "requirement_ids": [
+        "V023-F09"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A18",
+      "scenario": "timer 종료·일부 반복 후 중단",
+      "expected": "actual 완료는 사용자 확인/측정 출처 필요, 미완료·중단·이유를 보존한다.",
+      "requirement_ids": [
+        "V023-F09",
+        "V023-F17"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A19",
+      "scenario": "계획 없는 단독 stretching 실행",
+      "expected": "가짜 PlanVersion 없이 Activity와 실제 상세 저장 가능; run wrapper 중복 없음.",
+      "requirement_ids": [
+        "V023-F10"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A20",
+      "scenario": "Garmin 혼합/yoga 요약+러닝 warmup block+수동 stretch log",
+      "expected": "없는 세부값 생성 금지, source/배정 범위를 확인하고 parent/child 시간을 중복 집계하지 않는다.",
+      "requirement_ids": [
+        "V023-F10"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A21",
+      "scenario": "새 회복 전략 생성·휴식 선택",
+      "expected": "목적/기간/선택/다음 관찰을 가지며 별도 운동 추가나 실제 휴식 확정을 강제하지 않는다.",
+      "requirement_ids": [
+        "V023-F11"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A22",
+      "scenario": "재평가 조건에 해당하는 체크인/계획 변화",
+      "expected": "알림/새 검토까지; 사용자 동의 없는 계획 변경·기기 동작·자동 승인 없음.",
+      "requirement_ids": [
+        "V023-F11",
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A23",
+      "scenario": "미검토 EMS/냉·온 등 method의 수동 기록과 추천 요청",
+      "expected": "사실 기록은 가능하나 자동 용량/효과 보장/치료·기기 제어를 하지 않는다.",
+      "requirement_ids": [
+        "V023-F12"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A24",
+      "scenario": "방법 카드에 단기 체감 근거만 있음",
+      "expected": "그 근거로 장기 적응·다음 수행의 효과까지 확정하거나 종합 효능 순위를 만들지 않는다.",
+      "requirement_ids": [
+        "V023-F12",
+        "V023-F16"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A25",
+      "scenario": "취침 준비/휴식 시간표 완료",
+      "expected": "행동 확인과 실제 수면/회복 상태는 분리되고 기록 없음을 충분한 휴식으로 채우지 않는다.",
+      "requirement_ids": [
+        "V023-F13"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A26",
+      "scenario": "회복 strategy에서 기존 Intake/Activity/CheckIn 연결·정정",
+      "expected": "원장을 재사용하고 정정 revision으로 근거 무효화; 별도 복제 합계 없음.",
+      "requirement_ids": [
+        "V023-F13",
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A27",
+      "scenario": "routine 100% 또는 여러 회복 행동 수행",
+      "expected": "실행률은 행동 지표; readiness 가산·훈련 부하 차감·부상 안전 허가 없음.",
+      "requirement_ids": [
+        "V023-F14"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A28",
+      "scenario": "회복 후 체감 개선과 높은 기기 점수, 새 불편감",
+      "expected": "개선은 보고로 유지; 원인/효능을 확정하지 않고 새 보고/불확실성을 검토한다.",
+      "requirement_ids": [
+        "V023-F14",
+        "V023-F16"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A29",
+      "scenario": "통합 승인 직전 run·체크인·회복 계획 또는 없던 head 생성",
+      "expected": "모든 관련 read/write dependency 검사로 stale 거부; 변경한 후보는 재승인.",
+      "requirement_ids": [
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A30",
+      "scenario": "훈련/영양/회복/schedule 저장 중 하나 실패·성공 응답 유실",
+      "expected": "전체 rollback 또는 동일 이전 성공 반환; 부분 적용·중복 생성 없음.",
+      "requirement_ids": [
+        "V023-F15"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A31",
+      "scenario": "루틴 단축·스트레칭·회복 상담에 일부 기록만 있음",
+      "expected": "필수 제약과 unknown을 유지하고 원인 추측을 사실로 저장하지 않는다.",
+      "requirement_ids": [
+        "V023-F16"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A32",
+      "scenario": "RAG 상충·자료 없음·문서 안 악성 지시",
+      "expected": "해당 원문/불확실성·답변 범위 표시; 인용 생성·권한/정책 해제 없음.",
+      "requirement_ids": [
+        "V023-F16",
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A33",
+      "scenario": "767/768·1279/1280 전환·420px pane·IME·touch",
+      "expected": "단계/좌우/선택/초안 유지; non-drag/텍스트 대안/중단 액션 접근 가능.",
+      "requirement_ids": [
+        "V023-F17"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A34",
+      "scenario": "타이머 background/시각 변경·offline 재전송·다중 기기 수정",
+      "expected": "실제와 timer 분리, outbox/revision 충돌 표시·해결; 자동 완료/최종 offline 승인 없음.",
+      "requirement_ids": [
+        "V023-F17"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A35",
+      "scenario": "계정 전환·회복 기록/루틴/자료 삭제·coach 사용 철회",
+      "expected": "cache/미전송 로그/민감 발췌/파생 기억 정책 적용·타인 노출 차단.",
+      "requirement_ids": [
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    },
+    {
+      "id": "V023-A36",
+      "scenario": "구형 앱에 schemaVersion 4 또는 새 방법/단계",
+      "expected": "unsupported와 적절한 안내; 러닝/영양 payload로 silent 변환하지 않는다.",
+      "requirement_ids": [
+        "V023-F18"
+      ],
+      "status": "not_executed"
+    }
+  ]
+}

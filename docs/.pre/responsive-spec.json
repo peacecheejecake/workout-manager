@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "documentVersion": "0.2.2",
+  "status": "specification_not_applied",
+  "widthBasis": "layout_viewport_css_px",
+  "modes": [
+    {
+      "id": "mobile",
+      "minInclusive": 0,
+      "maxExclusive": 768,
+      "columns": 4,
+      "pagePaddingPx": 16,
+      "gapPx": 12
+    },
+    {
+      "id": "tablet",
+      "minInclusive": 768,
+      "maxExclusive": 1280,
+      "columns": 8,
+      "pagePaddingPx": 24,
+      "gapPx": 16
+    },
+    {
+      "id": "desktop",
+      "minInclusive": 1280,
+      "maxExclusive": null,
+      "columns": 12,
+      "pagePaddingPx": 32,
+      "gapPx": 24
+    }
+  ],
+  "componentContainers": {
+    "standardMinPx": 560,
+    "workspaceMinPx": 960
+  },
+  "workspaceMaxWidthPx": 1600,
+  "reflowTestMinWidthPx": 320,
+  "testWidthsCssPx": [
+    320,
+    360,
+    390,
+    600,
+    767,
+    768,
+    820,
+    1024,
+    1180,
+    1279,
+    1280,
+    1440,
+    1536,
+    1920
+  ],
+  "interaction": {
+    "primaryTargetProductGoalPx": 44,
+    "quickLogTargetHeightGoalPx": 48,
+    "detectPointerIndependently": true
+  },
+  "constraints": [
+    "preserve_module_state_on_layout_change",
+    "no_UA_based_mode",
+    "no_offline_plan_approval",
+    "no_hidden_critical_information"
+  ]
+}

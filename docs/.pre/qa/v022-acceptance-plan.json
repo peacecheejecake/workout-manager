@@ -1,0 +1,399 @@
+{
+  "documentVersion": "0.2.2",
+  "status": "requirements_not_executed",
+  "requirements": [
+    {
+      "id": "V022-F01",
+      "title": "반응형 3-mode 계약",
+      "criterion": "viewport CSS px 기준 <768 / 768~<1280 / ≥1280, JSON 원본과 생성 fixture를 일치시킨다."
+    },
+    {
+      "id": "V022-F02",
+      "title": "컨테이너 적응",
+      "criterion": "module 폭 560/960 기준으로 밀도·split을 조정하며 viewport의 기기명을 강제하지 않는다."
+    },
+    {
+      "id": "V022-F03",
+      "title": "상태 연속성",
+      "criterion": "resize/회전/레이아웃 전환에 draft·selection·focus·set/timer를 유지한다."
+    },
+    {
+      "id": "V022-F04",
+      "title": "기기별 조작·접근성",
+      "criterion": "reflow·IME·safe area·touch target·키보드·non-drag 대안을 시험한다."
+    },
+    {
+      "id": "V022-F05",
+      "title": "영양 계획",
+      "criterion": "별도 version과 daily/세션/대회 상대 anchor를 지원하고 actual과 분리한다."
+    },
+    {
+      "id": "V022-F06",
+      "title": "섭취 actual CRUD",
+      "criterion": "시간·양·단위·출처·부분 값·coverage·정정·삭제를 지원하며 미기록은 0이 아니다."
+    },
+    {
+      "id": "V022-F07",
+      "title": "식품·성분 기준",
+      "criterion": "FoodDefinitionVersion·portion 기준·영양 단위를 보존해 계산·정정한다."
+    },
+    {
+      "id": "V022-F08",
+      "title": "영양 팁·질문",
+      "criterion": "일반 팁/개인 제안/의료 검토 필요를 구분하고 근거·제약·누락을 연결한다."
+    },
+    {
+      "id": "V022-F09",
+      "title": "보강 분류·library",
+      "criterion": "계열과 장비/저항, 목적·좌우·metric·설명·미디어·review를 구분한다."
+    },
+    {
+      "id": "V022-F10",
+      "title": "보강 루틴·처방 구조",
+      "criterion": "versioned routine, reps/time/contacts/load/rest/tempo/RIR를 구조화하고 날짜 세션에 배치한다."
+    },
+    {
+      "id": "V022-F11",
+      "title": "보강 actual 실행",
+      "criterion": "set별 실제 확인·부분/중단·timer·정정·오프라인 동기화 대기를 지원한다."
+    },
+    {
+      "id": "V022-F12",
+      "title": "canonical 활동 연계",
+      "criterion": "보강 상세와 provider 활동을 한 Activity에 연결하고 parent/bout 이중집계를 막는다."
+    },
+    {
+      "id": "V022-F13",
+      "title": "통합 주기·Planner",
+      "criterion": "훈련·보강·영양 레이어와 별도 metrics를 제공하며 완료 분모를 혼합하지 않는다."
+    },
+    {
+      "id": "V022-F14",
+      "title": "joint approval",
+      "criterion": "훈련/영양 scope·기준 version·data/preference revision을 묶어 원자적으로 적용한다."
+    },
+    {
+      "id": "V022-F15",
+      "title": "RAG·도구 확장",
+      "criterion": "영양/동작 자료는 ACL/원문 version으로 검색하고 실제 값은 계산 도구를 사용한다."
+    },
+    {
+      "id": "V022-F16",
+      "title": "지표 해석",
+      "criterion": "km·kg×reps·contacts·섭취량을 혼합하지 않으며 null/0·동일 정의를 검증한다."
+    },
+    {
+      "id": "V022-F17",
+      "title": "민감정보·삭제",
+      "criterion": "식이·불편감·섭취/set·파생 근거의 접근·동의·삭제·계정 전환을 시험한다."
+    },
+    {
+      "id": "V022-F18",
+      "title": "버전·공개 조건",
+      "criterion": "legacy endurance 호환, 신규 spec 미지원과 mock/실연동 상태를 구분한다."
+    }
+  ],
+  "tests": [
+    {
+      "id": "V022-A01",
+      "scenario": "767/768 CSS px로 같은 화면 전환",
+      "expected": "정확히 Mobile/Tablet, fractional 767.9도 Mobile. DOM/초안 값 유지.",
+      "requirements": [
+        "V022-F01",
+        "V022-F03"
+      ]
+    },
+    {
+      "id": "V022-A02",
+      "scenario": "1279/1280 CSS px 경계와 1920",
+      "expected": "Tablet/Desktop 계약; 1920은 같은 Desktop의 확장, 허가 기능 차이 없음.",
+      "requirements": [
+        "V022-F01"
+      ]
+    },
+    {
+      "id": "V022-A03",
+      "scenario": "1280px tablet에 touch/trackpad 교체",
+      "expected": "layout mode와 pointer capability 독립, hover 필수 정보 누락 없음.",
+      "requirements": [
+        "V022-F01",
+        "V022-F04"
+      ]
+    },
+    {
+      "id": "V022-A04",
+      "scenario": "1440px viewport 안에 420px module pane",
+      "expected": "compact 렌더와 full data 접근; 잘린 editor/3열 강제 없음.",
+      "requirements": [
+        "V022-F02"
+      ]
+    },
+    {
+      "id": "V022-A05",
+      "scenario": "입력 중 회전·split-screen·resize",
+      "expected": "draft/기록 초안/선택/정렬·focus가 유지되고 자동 저장/승인 없음.",
+      "requirements": [
+        "V022-F03"
+      ]
+    },
+    {
+      "id": "V022-A06",
+      "scenario": "requested split 상태에서 폭 축소 후 확대",
+      "expected": "effective tabs로 전환 후 원래 split 의도·가능한 비율 복구.",
+      "requirements": [
+        "V022-F03"
+      ]
+    },
+    {
+      "id": "V022-A07",
+      "scenario": "DnD 중 breakpoint 통과·pointercancel",
+      "expected": "drag 취소·capture 정리, 정본 변경/유령 drop/승인 발생 없음.",
+      "requirements": [
+        "V022-F03"
+      ]
+    },
+    {
+      "id": "V022-A08",
+      "scenario": "320 CSS px·200% text·400% zoom",
+      "expected": "일반 콘텐츠 reflow; 표/지도 예외는 자체 영역, 정보/기능 손실 없음.",
+      "requirements": [
+        "V022-F04"
+      ]
+    },
+    {
+      "id": "V022-A09",
+      "scenario": "IME composition+가상 keyboard+safe area",
+      "expected": "Enter 오저장/전송 없음; 입력·오류·저장/coach CTA 접근 가능.",
+      "requirements": [
+        "V022-F04"
+      ]
+    },
+    {
+      "id": "V022-A10",
+      "scenario": "원형/세트 버튼·메뉴·range/drag pointer 없이 또는 tap만 사용",
+      "expected": "같은 업무를 키보드·non-drag single pointer로 수행, 클릭 영역/초점 검사.",
+      "requirements": [
+        "V022-F04"
+      ]
+    },
+    {
+      "id": "V022-A11",
+      "scenario": "영양 계획 생성·복제 후 actual 조회",
+      "expected": "섭취 기록 자동 생성 안 됨; 먹음 액션은 확인 가능한 actual 초안.",
+      "requirements": [
+        "V022-F05"
+      ]
+    },
+    {
+      "id": "V022-A12",
+      "scenario": "섭취 로그 없음 또는 음식 이름만 입력",
+      "expected": "0kcal/굶음으로 단정 안 함; unknown/partial과 알려진 합계 표시.",
+      "requirements": [
+        "V022-F06"
+      ]
+    },
+    {
+      "id": "V022-A13",
+      "scenario": "동일 섭취를 날짜와 두 활동에 연결",
+      "expected": "원장 ID 기준 합계 1회; 링크 수로 수량이 늘지 않음.",
+      "requirements": [
+        "V022-F06"
+      ]
+    },
+    {
+      "id": "V022-A14",
+      "scenario": "실제 섭취 정정·삭제",
+      "expected": "revision·source 보존/보존정책 적용, 관련 집계·evidence·제안 최신성 갱신.",
+      "requirements": [
+        "V022-F06",
+        "V022-F17"
+      ]
+    },
+    {
+      "id": "V022-A15",
+      "scenario": "장거리 세션 이동과 relative nutrition",
+      "expected": "미래 영양 영향 포함한 combined preview·동의; actual 섭취 시각 불변.",
+      "requirements": [
+        "V022-F05",
+        "V022-F13",
+        "V022-F14"
+      ]
+    },
+    {
+      "id": "V022-A16",
+      "scenario": "연결 세션 삭제 또는 종료 시각 불명",
+      "expected": "actual cascade-delete 안 함; 미래 상대 항목 unresolved/재연결 요청.",
+      "requirements": [
+        "V022-F05"
+      ]
+    },
+    {
+      "id": "V022-A17",
+      "scenario": "per-serving와 per-100g를 같은 quantity에 적용",
+      "expected": "기준·수량에 맞춰 한 번만 계산, 원자료 버전과 변환 근거 표시.",
+      "requirements": [
+        "V022-F07"
+      ]
+    },
+    {
+      "id": "V022-A18",
+      "scenario": "kcal/g/mL/mg, sodium/salt, 섭취/소비 에너지 입력",
+      "expected": "단위와 개념 검증; 불명 변환·혼합합계 없음.",
+      "requirements": [
+        "V022-F07",
+        "V022-F16"
+      ]
+    },
+    {
+      "id": "V022-A19",
+      "scenario": "불완전 섭취와 감량/질병 관련 질문",
+      "expected": "누락으로 결핍/REDs 진단 안 함; 무근거 제한 식단·개인 용량 생성 안 함.",
+      "requirements": [
+        "V022-F08"
+      ]
+    },
+    {
+      "id": "V022-A20",
+      "scenario": "사용자 식이 제약이 있고 자료 검색 실패",
+      "expected": "필수 제약 유지; 가짜 인용/무단 대체 처방 없이 답변 범위·질문 제시.",
+      "requirements": [
+        "V022-F08",
+        "V022-F15"
+      ]
+    },
+    {
+      "id": "V022-A21",
+      "scenario": "맨몸 점프 또는 weighted-bodyweight 동작",
+      "expected": "계열·장비 축 모두 표현; 단일 enum 때문에 잘못 분류/누락되지 않음.",
+      "requirements": [
+        "V022-F09"
+      ]
+    },
+    {
+      "id": "V022-A22",
+      "scenario": "동작 library·루틴 template 개정",
+      "expected": "이전 승인 세션/actual은 당시 version으로 표시, 자동 대체 없음.",
+      "requirements": [
+        "V022-F09",
+        "V022-F10"
+      ]
+    },
+    {
+      "id": "V022-A23",
+      "scenario": "좌우 10회, total 10회, side 미기록 비교",
+      "expected": "count 기준을 유지; 불명 값 자동×2 하지 않음.",
+      "requirements": [
+        "V022-F10",
+        "V022-F16"
+      ]
+    },
+    {
+      "id": "V022-A24",
+      "scenario": "외부저항 없음/보조저항/RIR=0/미응답/contacts 정의 다름",
+      "expected": "0과 null 구분, 체중 임의 환산 및 정의가 다른 contacts 직접 합산 없음.",
+      "requirements": [
+        "V022-F10",
+        "V022-F16"
+      ]
+    },
+    {
+      "id": "V022-A25",
+      "scenario": "세트 계획만 있거나 일부 반복 후 중단",
+      "expected": "actual은 확인된 값만; 계획 전체 완료·실패로 임의 확정 안 함.",
+      "requirements": [
+        "V022-F11"
+      ]
+    },
+    {
+      "id": "V022-A26",
+      "scenario": "휴식 timer 중 background·네트워크 실패·foreground",
+      "expected": "기준 시각/일시정지로 재계산, timer와 미전송 set log 유지.",
+      "requirements": [
+        "V022-F11",
+        "V022-F03"
+      ]
+    },
+    {
+      "id": "V022-A27",
+      "scenario": "offline actual log 재전송 및 offline 계획 승인",
+      "expected": "안정 ID로 actual 중복 없음/동기화 대기 표시; 최종 계획 승인 차단.",
+      "requirements": [
+        "V022-F11"
+      ]
+    },
+    {
+      "id": "V022-A28",
+      "scenario": "provider 보강 활동과 수동 set log가 동일 운동",
+      "expected": "canonical Activity 1회 집계, source/set 상세만 연결; 없는 필드 생성 안 함.",
+      "requirements": [
+        "V022-F12"
+      ]
+    },
+    {
+      "id": "V022-A29",
+      "scenario": "러닝+보강 parent와 부분 bout 및 영양 이벤트",
+      "expected": "운동 시간/횟수 이중집계·음식의 운동 분모 포함 없음; 불명 구간은 미배정.",
+      "requirements": [
+        "V022-F12",
+        "V022-F13"
+      ]
+    },
+    {
+      "id": "V022-A30",
+      "scenario": "combined 승인 직전에 섭취/set/식이 제약 수정",
+      "expected": "관련 dependency freshness 실패, 최신 근거로 다시 검토.",
+      "requirements": [
+        "V022-F14"
+      ]
+    },
+    {
+      "id": "V022-A31",
+      "scenario": "combined 적용 중 영양 저장 실패·동일 요청 재시도",
+      "expected": "전체 rollback 또는 기존 성공 결과 반환; 반쪽 성공·중복 버전 없음.",
+      "requirements": [
+        "V022-F14"
+      ]
+    },
+    {
+      "id": "V022-A32",
+      "scenario": "후보 중 훈련 부분만 선택 승인",
+      "expected": "나머지 영향과 scope를 재계산한 새 후보로 재승인; silent 부분 적용 금지.",
+      "requirements": [
+        "V022-F14"
+      ]
+    },
+    {
+      "id": "V022-A33",
+      "scenario": "타 사용자/철회/삭제된 영양·운동 자료가 검색 상위",
+      "expected": "LLM 입력·인용·cache 이전 ACL 적용; 자료가 권한·정책 변경하지 않음.",
+      "requirements": [
+        "V022-F15",
+        "V022-F17"
+      ]
+    },
+    {
+      "id": "V022-A34",
+      "scenario": "보강 tonnage·contacts·러닝 km·영양 g와 낮은 HR",
+      "expected": "각 metric 정의/한계 유지; 단일 위험/피로 점수·부담 없음으로 단정 안 함.",
+      "requirements": [
+        "V022-F16"
+      ]
+    },
+    {
+      "id": "V022-A35",
+      "scenario": "계정 전환·민감 기록 삭제/AI 동의 철회",
+      "expected": "초안·실행 로그·파생 집계/기억·검색의 정책 처리, 사용자 간 잔여 데이터 없음.",
+      "requirements": [
+        "V022-F17"
+      ]
+    },
+    {
+      "id": "V022-A36",
+      "scenario": "구형 앱에 새 supplementary spec 또는 unknown provider field",
+      "expected": "schema version 기반 unsupported/업그레이드; 러닝 변환·실연동 성공 위장 없음.",
+      "requirements": [
+        "V022-F18"
+      ]
+    }
+  ]
+}

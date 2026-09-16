@@ -1,0 +1,23 @@
+{
+  "scope": "document-only checks; no application tests or external calls",
+  "date": "2026-09-15",
+  "backlog_cards": 9,
+  "preserved_original_files": [
+    "sources.md",
+    "04_integrations_metrics_rag.md",
+    "02_frontend_architecture.md",
+    "03_design_system.md",
+    "shared-domain.ts",
+    "design-tokens.css",
+    "contracts.ts",
+    "01_product_screen_spec.md",
+    "prototype/index.html",
+    "qa/prototype-results.json",
+    "qa/dashboard-mobile-viewport.png",
+    "qa/dashboard-desktop.png"
+  ],
+  "requirements_rows_preserved": 36,
+  "acceptance_rows_preserved": 50,
+  "updated_document_file_links_resolve": true,
+  "original_v0_2_unchanged": true
+}

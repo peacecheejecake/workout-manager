@@ -1,0 +1,265 @@
+{
+  "version": "0.2.3",
+  "date": "2026-09-16",
+  "scope": "documentation, artifact preservation and static TypeScript checks only",
+  "status": "passed",
+  "checks": [
+    {
+      "name": "preserve_V2-F",
+      "passed": true,
+      "detail": {
+        "expected_count": 36,
+        "actual_count": 36
+      }
+    },
+    {
+      "name": "preserve_V2-A",
+      "passed": true,
+      "detail": {
+        "expected_count": 50,
+        "actual_count": 50
+      }
+    },
+    {
+      "name": "preserve_V022-F",
+      "passed": true,
+      "detail": {
+        "expected_count": 18,
+        "actual_count": 18
+      }
+    },
+    {
+      "name": "preserve_V022-A",
+      "passed": true,
+      "detail": {
+        "expected_count": 36,
+        "actual_count": 36
+      }
+    },
+    {
+      "name": "unique_V023-F",
+      "passed": true,
+      "detail": {
+        "count": 18
+      }
+    },
+    {
+      "name": "unique_V023-A",
+      "passed": true,
+      "detail": {
+        "count": 36
+      }
+    },
+    {
+      "name": "screen_ids",
+      "passed": true,
+      "detail": {
+        "count": 35
+      }
+    },
+    {
+      "name": "future_cards",
+      "passed": true,
+      "detail": {
+        "count": 15
+      }
+    },
+    {
+      "name": "future_anchors",
+      "passed": true,
+      "detail": {
+        "count": 15
+      }
+    },
+    {
+      "name": "acceptance_plan_unexecuted",
+      "passed": true,
+      "detail": {
+        "scope": "future tests only"
+      }
+    },
+    {
+      "name": "acceptance_traceability",
+      "passed": true,
+      "detail": {
+        "requirements": 18
+      }
+    },
+    {
+      "name": "acceptance_json_matches_markdown",
+      "passed": true,
+      "detail": {
+        "tests": 36
+      }
+    },
+    {
+      "name": "preserved_prototype/index.html",
+      "passed": true,
+      "detail": {
+        "sha256": "dffa1e8ac064be430a6ea578507298318702a39a8f41afc7151f5a9cfe4d5c00"
+      }
+    },
+    {
+      "name": "preserved_qa/dashboard-desktop.png",
+      "passed": true,
+      "detail": {
+        "sha256": "648fd35506cafbbd3f840f9ce16dee5058d9530f8972d695d7b5e0d15e818b0b"
+      }
+    },
+    {
+      "name": "preserved_qa/dashboard-mobile-viewport.png",
+      "passed": true,
+      "detail": {
+        "sha256": "c538712ad488f047ce5dd2ce7cf15b767f444f85a5120cd02fe400a76374452f"
+      }
+    },
+    {
+      "name": "preserved_qa/prototype-results.json",
+      "passed": true,
+      "detail": {
+        "sha256": "4014968fabd1aa93944e2033f33e121ec2f931b763ffa86c94cea272bb53b213"
+      }
+    },
+    {
+      "name": "preserved_qa/document-revision-checks.json",
+      "passed": true,
+      "detail": {
+        "sha256": "0772bca4c1ad3b0756fc7a5bf04b8ef8255be1d276278a2f2ceff79414912dd7"
+      }
+    },
+    {
+      "name": "preserved_qa/document-v022-checks.json",
+      "passed": true,
+      "detail": {
+        "sha256": "1bae2d24585355b32fea56c9e859dac1d6dff6cfc889e8eb3af31b97c6c0eedd"
+      }
+    },
+    {
+      "name": "preserved_qa/v022-acceptance-plan.json",
+      "passed": true,
+      "detail": {
+        "sha256": "b4060bf21ad3ce404f01d7e749936e406f34f098ec88cb8f87f05df4f57f8124"
+      }
+    },
+    {
+      "name": "preserved_design-tokens.css",
+      "passed": true,
+      "detail": {
+        "sha256": "c366895d8345ebee5a5eb8545b7b440f760c8774ebab8298fe216447f9868b72"
+      }
+    },
+    {
+      "name": "preserved_shared-domain.ts",
+      "passed": true,
+      "detail": {
+        "sha256": "b3138468493738297851676cf7d9654a8797111fcb5381dc4bbd27eb4b31ce68"
+      }
+    },
+    {
+      "name": "preserved_responsive-spec.json",
+      "passed": true,
+      "detail": {
+        "sha256": "6dbe966bbbc6c040ab6f221fe9913f747fb8c1a73e4dae7ab10da0c5b9302d02"
+      }
+    },
+    {
+      "name": "preserved_extensions-v022.contracts.ts",
+      "passed": true,
+      "detail": {
+        "sha256": "b301ec8504926c8aa447ecc3c8d760f6939933f7d2def95c294da51e2846cbd8"
+      }
+    },
+    {
+      "name": "preserved_sources.md",
+      "passed": true,
+      "detail": {
+        "sha256": "dc1eb4d0e66023422d4354786075199f18a1b973727489b881e561fa75ad4060"
+      }
+    },
+    {
+      "name": "preserved_sources-v022.md",
+      "passed": true,
+      "detail": {
+        "sha256": "9adf301d9dac1bc5e54d0932b27de3742bf6c38508cd7faec8f6cf372cd7faad"
+      }
+    },
+    {
+      "name": "baseline_archive_matches_attachment_05_implementation_requirements.md",
+      "passed": true,
+      "detail": {
+        "verified": true
+      }
+    },
+    {
+      "name": "baseline_archive_matches_attachment_06_follow_up_backlog.md",
+      "passed": true,
+      "detail": {
+        "verified": true
+      }
+    },
+    {
+      "name": "baseline_archive_matches_attachment_07_responsive_layout.md",
+      "passed": true,
+      "detail": {
+        "verified": true
+      }
+    },
+    {
+      "name": "baseline_archive_matches_attachment_08_nutrition_supplementary_training.md",
+      "passed": true,
+      "detail": {
+        "verified": true
+      }
+    },
+    {
+      "name": "local_file_links",
+      "passed": true,
+      "detail": {
+        "checked": 173,
+        "broken": [],
+        "scope": "file paths; not external URL accessibility"
+      }
+    },
+    {
+      "name": "new_explicit_anchor",
+      "passed": true,
+      "detail": {
+        "anchor": "v023-requirements"
+      }
+    },
+    {
+      "name": "json_parse",
+      "passed": true,
+      "detail": {
+        "errors": []
+      }
+    },
+    {
+      "name": "typescript_compile",
+      "passed": true,
+      "detail": {
+        "command": "tsc --noEmit --strict --target ES2022 --module commonjs --lib ES2022,DOM contracts.ts extensions-v022.contracts.ts extensions-v023.contracts.ts shared-domain.ts",
+        "version": "Version 5.8.3",
+        "exit_code": 0,
+        "output": "",
+        "scope": "static type check only"
+      }
+    }
+  ],
+  "checks_passed": 33,
+  "checks_total": 33,
+  "not_executed": [
+    "production React/UI implementation",
+    "new browser or native acceptance tests",
+    "API/DB/auth/provider integrations",
+    "routine scheduler/timer runtime tests",
+    "RAG indexing/retrieval",
+    "new clinical literature review or efficacy validation"
+  ],
+  "counts": {
+    "screen_groups": 35,
+    "backlog_cards": 15,
+    "new_functional_requirements": 18,
+    "new_acceptance_test_specifications": 36
+  }
+}

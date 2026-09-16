@@ -1,0 +1,151 @@
+{
+  "documentVersion": "0.2.2",
+  "checkedOn": "2026-09-15",
+  "scope": "documentation_integrity_JSON_boundary_definitions_and_TypeScript_only",
+  "applicationTestsExecuted": false,
+  "prototypeTestsRerun": false,
+  "healthOrExerciseEfficacyValidated": false,
+  "checks": [
+    {
+      "name": "preserve_36_original_V2_requirements",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "preserve_50_original_V2_acceptance_cases",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "original_prototype_code_assets_QA_preserved",
+      "passed": true,
+      "details": {
+        "prototype/index.html": {
+          "same": true,
+          "sha256": "dffa1e8ac064be430a6ea578507298318702a39a8f41afc7151f5a9cfe4d5c00"
+        },
+        "qa/dashboard-desktop.png": {
+          "same": true,
+          "sha256": "648fd35506cafbbd3f840f9ce16dee5058d9530f8972d695d7b5e0d15e818b0b"
+        },
+        "qa/dashboard-mobile-viewport.png": {
+          "same": true,
+          "sha256": "c538712ad488f047ce5dd2ce7cf15b767f444f85a5120cd02fe400a76374452f"
+        },
+        "qa/prototype-results.json": {
+          "same": true,
+          "sha256": "4014968fabd1aa93944e2033f33e121ec2f931b763ffa86c94cea272bb53b213"
+        },
+        "qa/document-revision-checks.json": {
+          "same": true,
+          "sha256": "0772bca4c1ad3b0756fc7a5bf04b8ef8255be1d276278a2f2ceff79414912dd7"
+        },
+        "design-tokens.css": {
+          "same": true,
+          "sha256": "c366895d8345ebee5a5eb8545b7b440f760c8774ebab8298fe216447f9868b72"
+        },
+        "shared-domain.ts": {
+          "same": true,
+          "sha256": "b3138468493738297851676cf7d9654a8797111fcb5381dc4bbd27eb4b31ce68"
+        },
+        "sources.md": {
+          "same": true,
+          "sha256": "dc1eb4d0e66023422d4354786075199f18a1b973727489b881e561fa75ad4060"
+        }
+      }
+    },
+    {
+      "name": "30_unique_screen_rows",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "18_added_requirements",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "36_added_acceptance_cases",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "12_unique_followup_cards",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "acceptance_plan_remains_unexecuted",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "FR_AT_references_exist",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "acceptance_JSON_matches_document_ids",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "breakpoints_mobile_tablet_desktop",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "spec_boundary_has_no_gap_or_overlap",
+      "passed": true,
+      "details": {
+        "320": [
+          "mobile"
+        ],
+        "767": [
+          "mobile"
+        ],
+        "767.9": [
+          "mobile"
+        ],
+        "768": [
+          "tablet"
+        ],
+        "1279": [
+          "tablet"
+        ],
+        "1279.9": [
+          "tablet"
+        ],
+        "1280": [
+          "desktop"
+        ],
+        "1920": [
+          "desktop"
+        ]
+      }
+    },
+    {
+      "name": "relative_file_links_resolve",
+      "passed": true,
+      "details": {
+        "checkedLinks": 144,
+        "missing": []
+      }
+    },
+    {
+      "name": "markdown_anchor_links_resolve",
+      "passed": true,
+      "details": []
+    },
+    {
+      "name": "typescript_draft_compile",
+      "passed": true,
+      "details": {
+        "command": "tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution bundler contracts.ts extensions-v022.contracts.ts shared-domain.ts",
+        "exitCode": 0,
+        "output": ""
+      }
+    }
+  ],
+  "allPassed": true
+}
