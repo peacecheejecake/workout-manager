@@ -1,0 +1,25 @@
+.workspace {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.workspace section {
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-card);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace input {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.records {
+  list-style: none;
+  padding: 0;
+}
+.records li {
+  border-bottom: 1px solid var(--ink-muted);
+  padding-block: var(--space-3);
+}

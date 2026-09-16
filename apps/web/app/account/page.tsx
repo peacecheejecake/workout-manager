@@ -5,7 +5,7 @@ export default function AccountPage() {
       <h1>계정과 개인정보</h1>
       <IdentityWorkspace />
       <nav aria-label="훈련 작업">
-        <a href="/planner">훈련 계획</a>
+        <a href="/planner">훈련 계획</a> · <a href="/activities">가져온 활동</a>
       </nav>
     </main>
   );

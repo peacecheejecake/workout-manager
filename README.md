@@ -3,8 +3,9 @@
 Adaptive Training Coach 구현 저장소입니다. 제품 명세는 [docs/.pre](docs/.pre/README.md),
 실행 순서는 [구현 계획](docs/implementation/README.md)과 [작업 DAG](docs/implementation/task-graph.md)를 따릅니다.
 
-M0-01 개발 도구 기반을 구현하고 로컬 검증을 마쳤습니다. [검증 기록](docs/implementation/progress/M0-01.md)을 참고하세요. React tooling fixture는 테스트·빌드 구성을 검증하는 화면이며
-훈련 기록·승인·인증·DB가 연결된 제품 앱이 아닙니다. 공유 runtime 계약과 로컬 FIT batch CLI도 구현했습니다. Python은 별도 uv 환경을 사용합니다.
+개발 기반과 표준 OIDC 인증, 수동 계획 버전 편집, FIT JSON 활동 가져오기를 구현했습니다.
+task별 범위와 검증 기록은 [작업 DAG](docs/implementation/task-graph.json)를 참고하세요.
+홈의 개발 활동과 별도 React tooling fixture는 실제 기록과 구분됩니다. Python은 별도 uv 환경을 사용합니다.
 
 ## 개발 환경
 
@@ -37,7 +38,7 @@ corepack pnpm test:e2e       # desktop/mobile fixture, 실제 로컬 HTTP
 `pnpm test:integration`은 실제 PostgreSQL migration/RLS/동의/outbox/API 통합 테스트를 실행합니다.
 로컬 PostgreSQL 바이너리를 사용해 폐기 가능한 임시 클러스터를 생성하며, 관리자/runtime URL을 직접
 지정할 때는 별도 테스트 DB만 사용합니다. [실행·범위](docs/implementation/progress/M0-05.md)를 확인하세요.
-OIDC 인증·동의 web/API/DB E2E는 `pnpm test:identity`로 실행합니다. 전체 훈련 제품 E2E와 native gate는 후속 작업입니다.
+OIDC 인증·동의·계획·활동 web/API/DB E2E는 `pnpm test:identity`로 실행합니다. 전체 훈련 제품 E2E와 native gate는 후속 작업입니다.
 
 ## 구조와 작업 규칙
 
@@ -69,7 +70,7 @@ manifest를 만들며 원본 FIT를 변경하지 않습니다. 기본값은 기�
 재생성하려면 `--resume --overwrite`를 명시합니다. 하나라도 실패하면 종료 코드 1, 설정 오류는 2입니다.
 호환 entry point `uv run python scripts/fitparse.py /path/to/activity.fit`도 실제 Parquet를 생성합니다.
 
-이 명령은 로컬 변환만 수행합니다. Garmin 다운로드·인증·제품 DB 적재는 아직 구현하지 않았습니다.
+이 명령은 로컬 변환만 수행합니다. 아래 활동 JSON 가져오기는 별도 명령이며 Garmin 자동 다운로드는 아직 없습니다.
 
 ## API·DB 기반
 
@@ -117,9 +118,15 @@ pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
 
 외부 AI 전송은 연결되지 않았습니다. 동의 저장 성공을 AI 코칭 기능의 구현 완료로 간주하지 않습니다.
 
-## 수동 계획 편집
+## 수동 계획·활동 가져오기
 
 로그인 후 `/planner`에서 기간과 세션을 편집하고 미리보기를 확인하면 새 계획 버전이 저장됩니다.
 미저장 초안은 메모리에만 유지됩니다. [M1-02 검증 기록](docs/implementation/progress/M1-02.md).
 
-`pnpm test:identity`는 OIDC 인증·동의와 계획 저장을 실제 로컬 API/DB로 검증합니다.
+```bash
+uv run workout-manager export-activity /path/to/activity.fit --output /path/to/activity.json --timezone Asia/Seoul
+```
+
+`/activities`에서 JSON을 선택하고 확인하면 활동을 가져옵니다. 같은 파일의 재수입, 원본과 정정 분리,
+로컬 삭제 후 재수입 억제를 지원합니다. timezone 생략은 미확인, 기존 출력 파일은 덮어쓰지 않습니다.
+공식 Garmin sync나 계정 전체 삭제 기능은 후속 작업입니다. [M1-03 검증 기록](docs/implementation/progress/M1-03.md).

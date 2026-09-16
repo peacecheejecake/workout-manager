@@ -28,6 +28,10 @@
     "./planning": {
       "types": "./src/planning.ts",
       "default": "./dist/planning.js"
+    },
+    "./activity": {
+      "types": "./src/activity.ts",
+      "default": "./dist/activity.js"
     }
   },
   "scripts": {

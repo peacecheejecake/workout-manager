@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "imports": [
+    {
+      "idempotencyKey": "fit-38bcab18eb41c43197afb66595554d7af41536a415cfd93e3d267b6311e5ee12-0",
+      "source": {
+        "kind": "fit",
+        "sourceId": "sha256:38bcab18eb41c43197afb66595554d7af41536a415cfd93e3d267b6311e5ee12:session:0",
+        "revision": 1,
+        "contentHash": "38bcab18eb41c43197afb66595554d7af41536a415cfd93e3d267b6311e5ee12"
+      },
+      "activity": {
+        "title": null,
+        "kind": "unknown",
+        "startedAt": null,
+        "timezone": null,
+        "durationSeconds": null,
+        "durationKind": "unknown",
+        "distanceMeters": null
+      }
+    }
+  ]
+}

@@ -119,8 +119,9 @@
       "title": "Import·Activity",
       "dependsOn": ["M1-01", "M0-07a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "activities/worker; fixture/FIT·dedup·suppression"
+      "status": "completed",
+      "scope": "activities/worker; fixture/FIT·dedup·suppression",
+      "evidence": "docs/implementation/progress/M1-03.md"
     },
     {
       "id": "M1-04",

@@ -18,7 +18,8 @@
     "./outbox": "./src/outbox.ts",
     "./migrate": "./src/migrate.ts",
     "./identity": "./src/identity.ts",
-    "./planning": "./src/planning.ts"
+    "./planning": "./src/planning.ts",
+    "./activities": "./src/activities.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

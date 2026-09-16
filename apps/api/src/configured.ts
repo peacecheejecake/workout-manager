@@ -1,4 +1,5 @@
 import { createPlanningRepository } from '@workout/server-persistence/planning';
+import { createActivityRepository } from '@workout/server-persistence/activities';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
@@ -47,6 +48,7 @@ export async function createConfiguredApi(environment: unknown) {
       identity,
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
+      activities: createActivityRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
         await Promise.all([store.close(), database.close()]);

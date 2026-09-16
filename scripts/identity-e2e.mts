@@ -1,4 +1,5 @@
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
+import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -95,7 +96,7 @@ try {
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
     await admin.query(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history TO workout_runtime',
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
     );
   } finally {
     await admin.end();
@@ -118,6 +119,7 @@ try {
     identity,
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
+    activities: createActivityRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100'],
   });
   closers.push(() => api.close());

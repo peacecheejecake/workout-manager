@@ -12,10 +12,12 @@
     "@workout/platform": "workspace:*",
     "@workout/api-client": "workspace:*",
     "@workout/contracts": "workspace:*",
-    "@workout/ui-foundation": "workspace:*"
+    "@workout/ui-foundation": "workspace:*",
+    "zod": "4.6.5"
   },
   "exports": {
     "./activity-list": "./src/activity-list.tsx",
-    "./demo-workspace": "./src/demo-workspace.tsx"
+    "./demo-workspace": "./src/demo-workspace.tsx",
+    "./import-workspace": "./src/import-workspace.tsx"
   }
 }

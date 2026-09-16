@@ -53,16 +53,20 @@ GRANT USAGE ON SCHEMA public TO workout_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt TO workout_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON plan_head TO workout_runtime;
 GRANT SELECT, INSERT ON plan_snapshot, plan_history TO workout_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON activity_canonical, activity_source_head,
+  activity_overlay TO workout_runtime;
+GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
+  activity_suppression, activity_import_receipt TO workout_runtime;
 ```
 
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
-검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. migration 001–003는 checksum으로 보호한다.
+검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. migration 001–004는 checksum으로 보호한다.
 
 ## 요청 경계
 
 `GET /bff/v1/session`은 session ID·CSRF token·expiry를 반환하며 캐시하지 않는다.
 Cookie 세션의 consent GET/PUT 및 logout POST는 `x-workout-session-id`가 현재 세션과 일치해야 한다.
-계획의 보호 경로도 같은 세션 검사를 적용한다. PUT/POST/PATCH/DELETE에는 정확한 Origin과 `x-csrf-token`도 필요하다. 동의 PUT은 expectedRevision과
+계획·활동의 보호 경로도 같은 세션 검사를 적용한다. PUT/POST/PATCH/DELETE에는 정확한 Origin과 `x-csrf-token`도 필요하다. 동의 PUT은 expectedRevision과
 `idempotency-key`를 사용한다. 과거 성공의 재시도 영수증은 최신 상태가 아니므로 GET으로 확인한다.
 
 만료는 DB에서도 검사한다. 브라우저 cookie 삭제만으로 로그아웃을 처리하지 않는다.
