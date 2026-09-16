@@ -152,9 +152,18 @@
       "evidence": "docs/implementation/progress/M1-06a.md"
     },
     {
+      "id": "M1-06c",
+      "title": "Garmin OAuth 연결 기반",
+      "dependsOn": ["M1-01", "M1-06a"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "별도 설정 연결·PKCE·credential 수명주기·로컬 OAuth 검증; 공식 실연동 완료 아님",
+      "evidence": "docs/implementation/garmin-oauth.md"
+    },
+    {
       "id": "M1-06b",
       "title": "공식 Garmin adapter",
-      "dependsOn": ["M1-03", "EXT-G"],
+      "dependsOn": ["M1-03", "EXT-G", "M1-06c"],
       "kind": "task",
       "status": "not_started",
       "scope": "integrations/garmin; 허가된 실제 응답·자동 수집 검증"

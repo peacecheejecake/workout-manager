@@ -10,7 +10,7 @@
 - `EXT-G`: 엔지니어링 완료와 별개인 외부 권한 조건. 점선도 필수 의존성이며 선택 조건이 아니다.
 - `G1/G2/G3`: 통합/출시 gate. mock 기반 개발 gate와 공식 연동 출시 gate를 구분한다.
 - 기계 판독 원본은 [task-graph.json](task-graph.json)이다. 그래프/표와 JSON을 같은 변경에서 갱신한다.
-- M0-06은 `a 조사 / b UI·지도 spike / c native feasibility`, M0-07은 `a 로컬 / b 공식 다운로드`, M1-06은 `a 운영 / b 공식 연동`으로 분할했다. 부모 작업의 완료는 해당 자식 모두를 요구한다.
+- M0-06은 `a 조사 / b UI·지도 spike / c native feasibility`, M0-07은 `a 로컬 / b 공식 다운로드`, M1-06은 `a 운영 / b 공식 연동 / c OAuth 연결 기반`으로 분할했다. 부모 작업의 완료는 해당 자식 모두를 요구한다.
 - M1b/M1c/M2/M3의 하위 ID는 이번 실행 계획에서 추가했다. 기존 FUT/S/F/A 요구 ID를 대체하지 않는다.
 
 ## M0~M1: 기반과 러닝 core
@@ -35,6 +35,7 @@ flowchart TD
     task15["M1-05 Evidence·Coach·승인"]
     task16["M1-06a 운영·삭제·내보내기"]
     task17["M1-06b 공식 Garmin adapter"]
+    garminOAuth["M1-06c Garmin OAuth 연결 기반"]
     task18{{"G1 러닝 core 통합"}}
     task0 --> task1
     task1 --> task2
@@ -61,9 +62,16 @@ flowchart TD
     task13 --> task16
     task13 --> task17
     task6 -.-> task17
+    task11 --> garminOAuth
+    task16 --> garminOAuth
+    garminOAuth --> task17
     task15 --> task18
     task16 --> task18
 ```
+
+2026-09-16 사용자 결정으로 [Garmin OAuth 연결 기반](garmin-oauth.md)을 분리했다. 기존 OIDC 앱 로그인은
+유지하고 설정에 별도 연결을 추가한다. M1-06c는 로컬 OAuth fixture로 구현·검증하며 EXT-G를 요구하지
+않는다. 실제 공식 연결·자동 수집은 M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
 
 ## M1b~M2: 기능 확장과 Web 출시
 
@@ -156,7 +164,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M0-06b | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
-| M1-06b 공식 Garmin adapter | M1-03, EXT-G | integrations/garmin; 허가된 실제 응답·자동 수집 검증 |
+| M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
+| M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |
 | G1 러닝 core 통합 | M1-05, M1-06a | mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님 |
 | M1b-01 영양 수동 core | G1 | nutrition; plan/intake/food·부분 기록 |
 | M1b-02 보강 수동 core | G1 | supplementary; exercise/set actual·timer |
@@ -187,6 +196,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M0-02 이후 | M0-03 Host·상태 / M0-05 API·DB / 남은 FIT | version·오류·인증 transport 계약 공유 |
 | Identity와 UI 기반 이후 | M1-02 계획 / M1-03 활동 수집 | M1-04에서 두 read model 연결 |
 | 활동 수집 이후 | M1-04~05 core / M1-06a 운영 / 권한 있는 M1-06b 공식 연동 | 운영 기반은 G1, 공식 연동은 G2에 필수 |
+| M1-01·M1-06a 이후 | M1-06c OAuth 연결 기반 / M0-06b·c 남은 검증 | OAuth 기반은 공식 자격 증명 검증·자동 수집과 별도 완료 |
 | G1 이후 | M1b-01 영양 / M1b-02 보강 | M1b-03 joint 승인·집계 회귀 |
 | M1b-03 이후 | M1c-01 루틴 / M1c-02 스트레칭 / M1c-03 회복 | M1c-04 다영역 승인; 상대 도메인은 확정 port/fixture 사용 |
 | M1c-04 이후 | M2 코스·대회 / media / 자료 / M3 native | RAG는 자료·media 이후; 최종 native는 G2 이후 |

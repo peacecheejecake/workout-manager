@@ -4,6 +4,9 @@
 [openid-client](https://github.com/panva/openid-client)를 사용한다.
 로컬 fixture로 프로토콜을 검증했으며 외부 공급자의 등록·실제 로그인은 별도 운영 검증이다.
 
+Garmin 연결은 앱 로그인과 분리한다. 기존 OIDC issuer/client와 `/bff/v1/auth/*`는 유지하며,
+설정에 추가할 provider OAuth와 별도 credential을 사용한다. [Garmin 연결 설계](garmin-oauth.md) 참고.
+
 ## 공급자와 앱
 
 Confidential client를 등록하고 `client_secret_basic`, authorization code,

@@ -16,8 +16,10 @@
 이는 이 앱이 모든 기기·지표에 접근할 수 있다는 증거가 아니다. Training Readiness/Recovery Time 등은
 실제 entitlement와 파트너 payload를 받기 전까지 미확인으로 남긴다.
 
-앱 로그인은 구현된 표준 OIDC를 유지한다. Garmin OAuth는 별도 provider 연결이며,
-공개 OAuth 2.0 안내만으로 OIDC 지원이나 특정 callback/token/webhook 규격을 추론하지 않는다.
+앱 로그인은 구현된 표준 OIDC를 유지한다. Garmin OAuth는 설정의 별도 provider 연결로 추가한다.
+추가로 확인한 [공식 OAuth PKCE 명세](https://developerportal.garmin.com/sites/default/files/OAuth2PKCE.pdf)의
+authorize/token·사용자 식별·권한·철회 규격을 [연결 설계](../garmin-oauth.md)에 기록했다.
+공개 규격 확인은 프로젝트의 client 발급이나 실연동 검증을 뜻하지 않으며 OIDC·webhook 규격을 추론하지 않는다.
 
 ## 권한 추적표
 
@@ -31,7 +33,8 @@
 | Activity / Health entitlement | 각각 미확인 | 파트너 portal 권한과 허용된 데이터 범위                | EXT-G     |
 | 평가 / production 접근        | 각각 미확인 | 환경별 권한과 테스트 계정 동의                         | EXT-G     |
 | 지표별 상업 조건              | 미확인      | 적용 계약/견적·표시 의무 확인                          | EXT-G     |
-| API 명세·변경 정책            | 미확인      | 승인된 문서의 버전/확인일                              | M1-06b    |
+| OAuth 공개 명세               | 확인        | 공개 PKCE 문서 확인일 2026-09-16; 앱별 설정은 미확인   | M1-06c    |
+| 파트너 데이터 API·변경 정책   | 미확인      | 승인된 문서의 버전/확인일                              | M1-06b    |
 | 실제 FIT/JSON fixture         | 없음        | 동의받은 비식별 샘플과 provenance                      | M1-06b    |
 | 자동 수집 회귀                | 미실행      | 연결→수신→정본→UI 및 철회·만료·중복·역순·backfill 결과 | M1-06b    |
 
@@ -42,7 +45,7 @@
 
 다음은 공개 소개의 사실이 아니라 저장소 설계를 구현하기 위해 **필요한 확인 항목**이다.
 
-- 환경별 authorize/token/revoke URL, redirect·scope·PKCE 지원, subject 식별과 refresh/철회 동작.
+- 공개 OAuth 규격과 환경별 실제 설정의 일치, callback 등록·entitlement·응답 형태·refresh/철회 동작.
 - 이벤트 인증 방법, 재전송·정렬·중복 식별, backfill 기간과 quota, 오류·retry-after 의미.
 - 허용된 파일 URL origin/redirect/유효기간, 다운로드 크기와 content hash, 파일·JSON revision 관계.
 - source ID·측정 시각·timezone·누락 필드 의미, Activity/Health별 capability와 데이터 사용 범위.

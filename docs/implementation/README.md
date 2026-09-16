@@ -86,6 +86,11 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 5. **M1-05 Evidence/Coach/Approval**: snapshot → 후보 → diff → 명시 승인 → PlanVersion. stale/중복/동시 승인과 transaction 실패 시험. LLM 실패는 실패 상태로 남김.
 6. **M1-06 운영·연결**: sync/settings/audit·내보내기/삭제, 승인된 공식 Garmin adapter 교체·회귀. mock 성공과 실제 provider 성공을 구분.
 
+2026-09-16 결정: 기존 OIDC 앱 로그인은 유지하고 `/account` 설정에 별도의 **Garmin 연결** OAuth 2.0
+PKCE 흐름을 추가한다. [연결 설계](garmin-oauth.md)의 M1-06c는 인증·운영 기반 위에서 로컬 fixture로
+개발하며, M1-06b는 EXT-G와 M1-06c 이후 공식 연결·실제 수집을 검증한다. 로그인·동의 화면은 Garmin이
+소유하며 앱은 Garmin 비밀번호를 받지 않는다. 공식 권한·실연동·출시 gate는 유지한다.
+
 첫 수직 slice는 `가상 활동 수신 → 오늘/활동 조회 → 상담 후보 → diff → 승인 → 새 계획 재조회`다. 승인 검증·재전송 결과·원자성은 실제 DB로 시험한다. 외부 모델은 CI에서 결정론적 adapter로 대체하되 실제 LLM/provider 연결 증거는 별도 확보한다. 연관: FUT-01/02/04/08/10.
 
 ### M1b · 영양·보강 수동 core
