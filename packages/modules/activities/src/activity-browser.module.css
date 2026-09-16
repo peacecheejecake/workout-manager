@@ -1,0 +1,88 @@
+.workspace {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.filters,
+.values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+}
+.filters label {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.filters input,
+.filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+  min-height: var(--target-primary);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-4);
+}
+.workspace a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.workspace input:focus-visible,
+.workspace select:focus-visible,
+.workspace a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  list-style: none;
+  padding: 0;
+}
+.cards li,
+.values section {
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.workspace dd {
+  margin-inline-start: 0;
+  margin-block-end: var(--space-3);
+}
+.table {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+.table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th,
+.table td {
+  min-width: 7rem;
+  padding: var(--space-2);
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.table caption {
+  text-align: start;
+  font-weight: 600;
+  margin-block-end: var(--space-3);
+}

@@ -172,9 +172,18 @@
       "evidence": "docs/implementation/progress/M1-04e.md"
     },
     {
+      "id": "M1-04f",
+      "title": "활동 목록 제품 UI",
+      "dependsOn": ["M1-04e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "URL 검색·기간/종목/출처·정렬·표/카드·선택 상세 조회·오류/반응형; 기존 FIT입력 경로 보존",
+      "evidence": "docs/implementation/progress/M1-04f.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c", "M1-04d", "M1-04e"],
+      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c", "M1-04d", "M1-04e", "M1-04f"],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"

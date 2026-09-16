@@ -18,6 +18,7 @@
   "exports": {
     "./activity-list": "./src/activity-list.tsx",
     "./demo-workspace": "./src/demo-workspace.tsx",
-    "./import-workspace": "./src/import-workspace.tsx"
+    "./import-workspace": "./src/import-workspace.tsx",
+    "./activity-browser": "./src/activity-browser.tsx"
   }
 }
