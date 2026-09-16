@@ -1,7 +1,19 @@
 {
   "schemaVersion": 1,
-  "executedAt": "2026-09-16T05:40:41.698Z",
+  "executedAt": "2026-09-16T06:48:31.643Z",
   "scope": "M0-06b manual low-rate public synthetic feasibility sample only",
+  "executionContext": {
+    "nodeVersion": "v24.12.0",
+    "systemCaRequested": false,
+    "additionalCaConfigured": true,
+    "proxyConfigured": false,
+    "diagnosticLimitation": "Only bounded Error.name and Error.cause.code are retained. A pre-HTTP failure does not establish provider rejection or routing coverage.",
+    "tool": "exec_command",
+    "sandboxPermissions": "require_escalated",
+    "additionalLiveRetries": 0,
+    "failureAttribution": "All three fetch calls failed before HTTP with TypeError and Error.cause.code ETIMEDOUT. The responsible network layer is unconfirmed; this is not evidence of an HTTP provider rejection or absent Korean routing coverage.",
+    "diagnosticObservation": "Observed latencies 253–290 ms are below the configured 15000 ms AbortSignal timeout. No TLS certificate error code was returned. Prior run cause remains unknown."
+  },
   "provenance": {
     "operator": "FOSSGIS e.V.",
     "profile": "foot",
@@ -37,7 +49,7 @@
         [126.982, 37.566]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-16T05:40:35.649Z",
+      "requestedAt": "2026-09-16T06:48:28.639Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": null,
@@ -49,9 +61,9 @@
       "outcome": "request_failed",
       "coverageReview": "not_reviewed",
       "error": "REQUEST_OR_PARSE_FAILED",
-      "latencyMs": 3333,
-      "errorName": null,
-      "networkErrorCode": null
+      "errorName": "TypeError",
+      "networkErrorCode": "ETIMEDOUT",
+      "latencyMs": 290
     },
     {
       "caseId": "KR-SYN-02",
@@ -62,7 +74,7 @@
         [126.932, 37.537]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-16T05:40:40.090Z",
+      "requestedAt": "2026-09-16T06:48:30.034Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": null,
@@ -74,9 +86,9 @@
       "outcome": "request_failed",
       "coverageReview": "not_reviewed",
       "error": "REQUEST_OR_PARSE_FAILED",
-      "latencyMs": 255,
-      "errorName": null,
-      "networkErrorCode": null
+      "errorName": "TypeError",
+      "networkErrorCode": "ETIMEDOUT",
+      "latencyMs": 254
     },
     {
       "caseId": "NEG-SYN-01",
@@ -87,7 +99,7 @@
         [0.001, 0.001]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-16T05:40:41.445Z",
+      "requestedAt": "2026-09-16T06:48:31.390Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": null,
@@ -99,16 +111,125 @@
       "outcome": "request_failed",
       "coverageReview": "not_reviewed",
       "error": "REQUEST_OR_PARSE_FAILED",
-      "latencyMs": 254,
-      "errorName": null,
-      "networkErrorCode": null
+      "errorName": "TypeError",
+      "networkErrorCode": "ETIMEDOUT",
+      "latencyMs": 253
     }
   ],
-  "executionContext": {
-    "tool": "exec_command",
-    "sandboxPermissions": "require_escalated",
-    "additionalLiveRetries": 0,
-    "failureAttribution": "unknown: no HTTP response obtained; provider rejection, local network, DNS and TLS causes were not distinguished",
-    "diagnosticLimitation": "Initial execution did not retain Error.name or Error.cause.code; no additional provider request was made to recover them. Script now retains bounded diagnostic codes for future explicitly authorized runs."
-  }
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-16T05:40:41.698Z",
+      "scope": "M0-06b manual low-rate public synthetic feasibility sample only",
+      "provenance": {
+        "operator": "FOSSGIS e.V.",
+        "profile": "foot",
+        "engine": "OSRM",
+        "engineVersion": null,
+        "graphDate": null,
+        "endpointConfiguration": "https://raw.githubusercontent.com/fossgis-routing-server/osrm-frontend/master/src/leaflet_options.js",
+        "operatorPolicySummary": "https://routing.openstreetmap.de/about.html",
+        "fullPolicy": "https://fossgis.de/arbeitsgruppen/osm-server/nutzungsbedingungen/",
+        "policyAccess": "Operator summary read directly; full policy indexed text read, direct page blocked by Anubis during M0-06a research.",
+        "attribution": "Data © OpenStreetMap contributors (ODbL). Routing service operated by FOSSGIS e.V.",
+        "dataLicense": "https://www.openstreetmap.org/copyright",
+        "reportMapError": "https://www.openstreetmap.org/fixthemap"
+      },
+      "limits": {
+        "maximumRequests": 3,
+        "requestCount": 3,
+        "parallelRequests": 1,
+        "minimumPauseBetweenRequestsMs": 1100,
+        "timeoutMs": 15000,
+        "maximumResponseBytes": 524288,
+        "retries": 0
+      },
+      "interpretation": "HTTP success and computed geometry are not Korea walking coverage or real access/safety approval. No production provider selected; full routes are not retained.",
+      "notExecutedCaseIds": [],
+      "results": [
+        {
+          "caseId": "KR-SYN-01",
+          "caseRevision": 1,
+          "context": "Synthetic Seoul city probe; exact walkway not independently reviewed",
+          "requestedCoordinates": [
+            [126.978, 37.566],
+            [126.982, 37.566]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-16T05:40:35.649Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "REQUEST_OR_PARSE_FAILED",
+          "latencyMs": 3333,
+          "errorName": null,
+          "networkErrorCode": null
+        },
+        {
+          "caseId": "KR-SYN-02",
+          "caseRevision": 1,
+          "context": "Synthetic Han River crossing probe; bridge/access suitability not independently reviewed",
+          "requestedCoordinates": [
+            [126.93, 37.525],
+            [126.932, 37.537]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-16T05:40:40.090Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "REQUEST_OR_PARSE_FAILED",
+          "latencyMs": 255,
+          "errorName": null,
+          "networkErrorCode": null
+        },
+        {
+          "caseId": "NEG-SYN-01",
+          "caseRevision": 1,
+          "context": "Synthetic ocean coordinates; no long-distance snap allowed",
+          "requestedCoordinates": [
+            [0, 0],
+            [0.001, 0.001]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-16T05:40:41.445Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "REQUEST_OR_PARSE_FAILED",
+          "latencyMs": 254,
+          "errorName": null,
+          "networkErrorCode": null
+        }
+      ],
+      "executionContext": {
+        "tool": "exec_command",
+        "sandboxPermissions": "require_escalated",
+        "additionalLiveRetries": 0,
+        "failureAttribution": "unknown: no HTTP response obtained; provider rejection, local network, DNS and TLS causes were not distinguished",
+        "diagnosticLimitation": "Initial execution did not retain Error.name or Error.cause.code; no additional provider request was made to recover them. Script now retains bounded diagnostic codes for future explicitly authorized runs."
+      }
+    }
+  ]
 }

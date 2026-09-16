@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -198,6 +198,19 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
   );
 } else {
   if (process.env.CI) throw new Error('Public routing probes are disabled in CI');
+  const output = fileURLToPath(
+    new URL('../docs/implementation/research/routing-sample-results.json', import.meta.url),
+  );
+  const previousRuns = [];
+  try {
+    const previous = JSON.parse(await readFile(output, 'utf8'));
+    const { previousRuns: history = [], ...lastRun } = previous;
+    if (!Array.isArray(history) || typeof lastRun.executedAt !== 'string')
+      throw new Error('INVALID_PREVIOUS_REPORT');
+    previousRuns.push(...history, lastRun);
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
   const results = [];
   for (const [index, testCase] of cases.entries()) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -209,6 +222,14 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
     schemaVersion: 1,
     executedAt: new Date().toISOString(),
     scope: 'M0-06b manual low-rate public synthetic feasibility sample only',
+    executionContext: {
+      nodeVersion: process.version,
+      systemCaRequested: process.execArgv.includes('--use-system-ca'),
+      additionalCaConfigured: Boolean(process.env.NODE_EXTRA_CA_CERTS),
+      proxyConfigured: Boolean(process.env.HTTPS_PROXY || process.env.HTTP_PROXY),
+      diagnosticLimitation:
+        'Only bounded Error.name and Error.cause.code are retained. A pre-HTTP failure does not establish provider rejection or routing coverage.',
+    },
     provenance,
     limits: {
       maximumRequests: 3,
@@ -223,10 +244,8 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
       'HTTP success and computed geometry are not Korea walking coverage or real access/safety approval. No production provider selected; full routes are not retained.',
     notExecutedCaseIds: cases.slice(results.length).map((testCase) => testCase.id),
     results,
+    previousRuns,
   };
-  const output = fileURLToPath(
-    new URL('../docs/implementation/research/routing-sample-results.json', import.meta.url),
-  );
   await mkdir(dirname(output), { recursive: true });
   const temporary = `${output}.${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
