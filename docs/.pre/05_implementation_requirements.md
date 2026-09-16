@@ -15,6 +15,8 @@ MVP 전체 범위는 01 문서의 S01~S35 화면군이다. v0.2.3 루틴·스트
 
 ## 2. 우선 결정할 ADR
 
+2026-09-16: [구현 실행 계획](../implementation/README.md)에서 M0 도구 설정·테스트·CI·FIT 도구 재사용 순서를 구체화했다. 공유 클라이언트 상태는 Zustand, 서버 조회 캐시는 TanStack Query로 결정한다. Vitest(unit/component), 실DB integration, Playwright E2E, Prettier/ESLint 및 Herdr peer review·Aside 우선 브라우저 검증을 M0 품질 기반에 포함한다. 이 추가는 설정·제품 구현 또는 수용 시험 완료를 뜻하지 않는다.
+
 | ADR | 제안 결정 | 대안 / 검증 |
 |---|---|---|
 | 01 모듈 배포 | build-time modular frontend, MFE-ready | 팀별 독립 배포 필요 시 path-zone/federation 검토 |
@@ -35,6 +37,8 @@ MVP 전체 범위는 01 문서의 S01~S35 화면군이다. v0.2.3 루틴·스트
 | 16 routine composition | versioned blueprint + finite schedule + actual references | workout template/원장 복제 금지; 09 |
 | 17 stretching/recovery | 공통 exercise의 전문 보기 + 비운동 recovery 원장 | S12 관측·S35 전략 분리; 09 |
 | 18 integrated approval | training/nutrition/recovery/routine_schedule write와 read dependencies | schemaVersion 4, 원자 적용·stale 차단 |
+| 19 client state | Zustand draft/UI/preference + TanStack Query server cache | SSR scope·hydration·logout reset·URL 소유권; 02 §6 |
+| 20 quality tooling | Vitest + RTL/MSW, 실DB integration, Playwright, Prettier/ESLint | M0 설정·CI; Aside 실브라우저 확인과 자동 E2E 구분 |
 
 ## 3. Epic별 구현 계획
 

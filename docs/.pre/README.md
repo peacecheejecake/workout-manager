@@ -4,6 +4,8 @@
 
 ## 이번 변경부터 읽기
 
+2026-09-16 실행 계획 보완: [구현 계획](../implementation/README.md) · [저장소 작업 지침](../../AGENTS.md). Zustand/TanStack Query 상태 소유권, unit/integration/E2E·Prettier 설정 계획, Herdr peer review·Aside 브라우저 검증, Python FIT 도구 재사용을 구체화했다. 제품·도구 구현 및 기존 수용 시험 상태는 그대로 미완료다.
+
 | 문서 | 내용 |
 |---|---|
 | [09 루틴·스트레칭·회복 전략](09_routines_stretching_recovery.md) | 5개 화면군·루틴 CRUD/유한 배치/실행·스트레칭·회복·통합 승인·개발 경계 |

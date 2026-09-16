@@ -118,17 +118,21 @@ write는 commands와 expectedVersion/idempotencyKey를 사용한다. 전체 화�
 
 ## 6. 상태 관리
 
+2026-09-16 구현 결정: 공유 클라이언트 상태는 **Zustand**, 서버 조회 캐시는 **TanStack Query**를 사용한다. 설치·구현은 아직 미수행이며 [실행 계획](../implementation/README.md)에 도구 설정과 검증 순서를 정의한다.
+
 | 상태 | 소유·보존 |
 |---|---|
 | 정본 계획·활동·제안·권한 | Server repository |
-| 서버 조회 캐시 | Query client, user+scope+revision 기반 키 |
+| 서버 조회 캐시 | TanStack Query, user+scope+revision 기반 키 |
 | URL 상태 | 기간, view, filter, sort, selected ID |
-| 편집 초안 | module draft store, local persistence는 동의/민감도 고려 |
+| 편집 초안 | Zustand module/workspace draft store, local persistence는 동의/민감도 고려 |
 | 차트 cursor·hover·selection | workbench local context |
-| theme·density·panel 크기 | preference store (health data와 분리) |
+| theme·density·panel 크기 | Zustand preference store (health data와 분리) |
 | native token·HealthKit anchor | Native secure/local storage, JS 노출 금지 |
 
 서버 state를 Zustand와 query cache 양쪽 정본으로 두지 않는다. optimistic 업데이트는 draft UI/저위험 metadata에 제한하고 **계획 승인 성공은 실제 서버 결과 후에만** 표시한다. 계획 canonical value를 드래그 도중 optimistic하게 바꾸지 않는다. 오래된 화면의 저장은 conflict UI와 재검토를 요구한다.
+
+Zustand는 store factory와 module/workspace provider로 수명을 관리하고 좁은 selector·명시 action을 사용한다. Next SSR 요청 사이에 mutable singleton을 공유하지 않으며 초기 상태·persist hydration 정책을 명시한다. 단일 control의 열림/hover는 React local state/ref로 유지한다. URL 상태를 store에 별도 정본으로 복제하지 않는다. Draft·selection·runner timer provider는 반응형 renderer 밖에 둔다. 로그아웃/사용자 전환 시 private store와 query cache를 정리하고, 기본 persist는 비민감 preference allowlist에 한정한다.
 
 ## 7. WebView 전략과 native bridge
 

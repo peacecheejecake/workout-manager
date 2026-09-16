@@ -1,5 +1,17 @@
 # 변경 이력
 
+## 2026-09-16 · 병렬 작업 관계 구체화
+
+- `docs/implementation/task-graph.md`와 `task-graph.json`: task별 의존성·병렬 흐름·통합/출시 gate, 외부 Garmin 조건과 native 병행 경로.
+- 공용 계약·lockfile·migration의 직렬 통합과 task별 변경 범위 규칙을 추가. 구현 agent 실행·작업 완료를 의미하지 않음.
+
+## 2026-09-16 · 구현 계획 및 저장소 지침
+
+- `docs/implementation/README.md`: M0~M3 의존 작업·완료 조건, Zustand/TanStack Query, Vitest·실DB integration·Playwright, Prettier·CI, FIT batch 도구 계획.
+- 루트 `AGENTS.md`: 파트별 code style·경계, 커밋 전 Herdr pane peer review, Aside → Chrome → Playwright 실브라우저 확인 규칙.
+- 02 §6과 05: 상태 관리·품질 도구 결정을 반영. README에서 실행 계획 연결.
+- 제품 코드·실행 가능한 도구 설정·외부 연동·브라우저/수용 시험은 미수행. 기존 prototype·타입 계약·QA 결과 보존.
+
 ## v0.2.3 · 2026-09-16 · 루틴·스트레칭·회복 전략
 
 ### 추가
