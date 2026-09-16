@@ -70,6 +70,10 @@ flowchart TD
     task13 --> dashboardApi
     checkins --> dashboardApi
     dashboardApi --> task14
+    dashboardUi["M1-04d 대시보드 제품 UI"]
+    dashboardApi --> dashboardUi
+    wellbeing --> dashboardUi
+    dashboardUi --> task14
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -182,7 +186,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04a 체크인 계약·API·저장 | M1-01, M1-02, M1-03 | 자기보고 정본·정정·revision·RLS·삭제/export |
 | M1-04b 체크인 제품 UI | M1-04a | wellbeing/Host; 작성·정정·삭제·충돌 복구·반응형 |
 | M1-04c 대시보드 조회 계약·API | M1-02, M1-03, M1-04a | 같은 snapshot의 rolling 집계·revision·불완전성 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04d 대시보드 제품 UI | M1-04b, M1-04c | 실제 API·계획/실제·rolling 그래프/표·반응형 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

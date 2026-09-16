@@ -154,9 +154,18 @@
       "evidence": "docs/implementation/progress/M1-04c.md"
     },
     {
+      "id": "M1-04d",
+      "title": "대시보드 제품 UI",
+      "dependsOn": ["M1-04b", "M1-04c"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "dashboard/Host; 실제 API·계획/실제 분리·rolling 그래프/표·미확인/오류·반응형",
+      "evidence": "docs/implementation/progress/M1-04d.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c"],
+      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c", "M1-04d"],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"

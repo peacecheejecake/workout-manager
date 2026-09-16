@@ -1,0 +1,108 @@
+.workspace {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.filters,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+}
+.filters label {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.filters input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+  min-height: var(--target-primary);
+}
+.card {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.workspace dd {
+  margin-inline-start: 0;
+  margin-block-end: var(--space-3);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.workspace a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.workspace li {
+  margin-block: var(--space-3);
+}
+.workspace ul {
+  padding-inline-start: var(--space-6);
+}
+.workspace input:focus-visible,
+.workspace a:focus-visible,
+.workspace summary:focus-visible,
+.graph:focus-visible,
+.table:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace summary {
+  cursor: pointer;
+  padding-block: var(--space-3);
+}
+.graph,
+.table {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  margin-block: var(--space-4);
+}
+.graph svg {
+  display: block;
+}
+.axis {
+  stroke: var(--ink-muted);
+}
+.axisText {
+  fill: var(--ink);
+  font-size: 10px;
+}
+.planned {
+  fill: var(--ink);
+}
+.actual {
+  fill: var(--teal);
+}
+.table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th,
+.table td {
+  min-width: 8rem;
+  padding: var(--space-2);
+  text-align: start;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.table caption {
+  text-align: start;
+  font-weight: 600;
+  margin-block-end: var(--space-3);
+}

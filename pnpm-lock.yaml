@@ -178,6 +178,9 @@ importers:
       '@workout/modules-activities':
         specifier: workspace:*
         version: link:../../packages/modules/activities
+      '@workout/modules-dashboard':
+        specifier: workspace:*
+        version: link:../../packages/modules/dashboard
       '@workout/modules-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
@@ -289,6 +292,21 @@ importers:
       zod:
         specifier: 4.6.5
         version: 4.6.5
+
+  packages/modules/dashboard:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@workout/ui-foundation':
+        specifier: workspace:*
+        version: link:../../ui/foundation
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
 
   packages/modules/identity:
     dependencies:

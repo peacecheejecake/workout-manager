@@ -9,8 +9,8 @@ export default function Page() {
         <a href="/account">계정과 AI 동의</a>
       </p>
       <p>
-        <a href="/planner">훈련 계획</a> · <a href="/activities">가져온 활동</a> ·{' '}
-        <a href="/wellbeing">체크인</a>
+        <a href="/dashboard">대시보드</a> · <a href="/planner">훈련 계획</a> ·{' '}
+        <a href="/activities">가져온 활동</a> · <a href="/wellbeing">체크인</a>
       </p>
       <DemoWorkspace />
     </main>

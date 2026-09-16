@@ -1,6 +1,6 @@
 # 구현 계획 · Adaptive Training Coach
 
-작성: 2026-09-16. 기준: `docs/.pre` v0.2.3. 상태: **계획 수립, 제품 구현 미착수**.
+작성: 2026-09-16. 기준: `docs/.pre` v0.2.3. 상태: **단계별 제품 구현 중**. 아래 초기 저장소 설명은 계획 수립 당시 기준이며, 현재 완료 상태와 검증은 [작업 그래프](task-graph.md) 및 task별 progress 문서를 따른다.
 
 이 문서는 기존 요구사항을 실행 가능한 작업 순서로 구체화한다. 제품 범위는 [01](../.pre/01_product_screen_spec.md)의 S01~S35, 기능·수용 기준은 [05](../.pre/05_implementation_requirements.md), 미완료 상태는 [06](../.pre/06_follow_up_backlog.md)를 따른다. 과거 QA 결과를 새 구현의 통과 증거로 재사용하지 않는다.
 
@@ -82,7 +82,7 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 1. **M1-01 Identity/Consent**: 로그인·만료·로그아웃·소유권·AI 전송 동의. 다른 사용자 API/캐시/파일 접근 차단.
 2. **M1-02 Plan/Planner**: Season/Wave/Phase/Block/Session, versioned plan, 달력·rolling projection, URL 상태와 Zustand draft. 10일 Block과 calendar week 계산을 분리.
 3. **M1-03 Import/Activity**: fixture/FIT → raw/source revision → canonical/overlay → 활동 조회. 중복·삭제 suppression·outbox 재실행과 집계 일치 검증.
-4. **M1-04 오늘/계획/활동/체크인**: M1-04a의 자기보고 계약·API·저장 이후 M1-04b 체크인 제품 UI와 M1-04c 대시보드 조회 계약·API를 연결하고, 대시보드·활동 workbench에 합류한다. S03~S12 중 해당 업무를 실제 API/DB까지 연결. chart/table·empty/partial/error·반응형 완결.
+4. **M1-04 오늘/계획/활동/체크인**: M1-04a의 자기보고 계약·API·저장 이후 M1-04b 체크인 제품 UI와 M1-04c 대시보드 조회 계약·API와 M1-04d 대시보드 제품 UI를 연결하고, 활동 workbench에 합류한다. S03~S12 중 해당 업무를 실제 API/DB까지 연결. chart/table·empty/partial/error·반응형 완결.
 5. **M1-05 Evidence/Coach/Approval**: snapshot → 후보 → diff → 명시 승인 → PlanVersion. stale/중복/동시 승인과 transaction 실패 시험. LLM 실패는 실패 상태로 남김.
 6. **M1-06 운영·연결**: sync/settings/audit·내보내기/삭제, 승인된 공식 Garmin adapter 교체·회귀. mock 성공과 실제 provider 성공을 구분.
 

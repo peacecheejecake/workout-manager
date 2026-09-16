@@ -38,6 +38,7 @@ const config: NextConfig = {
     '@workout/modules-identity',
     '@workout/modules-planning',
     '@workout/modules-wellbeing',
+    '@workout/modules-dashboard',
     '@workout/ui-spike',
   ],
 };

@@ -118,9 +118,29 @@ describe('session-bound authenticated transport', () => {
       }),
     );
   });
+  it('keeps dashboard reads bound to the current session without write credentials', async () => {
+    fetchMock.mockResolvedValue(json({ definitionVersion: 'dashboard-v1' }));
+    const transport = createSessionTransport(session, vi.fn());
+    await transport.request({
+      path: '/bff/v1/dashboard?anchor=2026-09-16&timezone=UTC',
+      method: 'GET',
+      body: null,
+      idempotencyKey: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/bff/v1/dashboard?anchor=2026-09-16&timezone=UTC',
+      expect.objectContaining({
+        headers: { 'x-workout-session-id': session.sessionId },
+        credentials: 'same-origin',
+        cache: 'no-store',
+      }),
+    );
+  });
   it.each([
     '/bff/v1/consents/ai',
     '/bff/v1/check-ins-admin',
+    '/bff/v1/dashboard-admin',
+    '/bff/v1/dashboard/../consents/ai',
     '/bff/v1/check-ins/../consents/ai',
     'https://evil.example/bff/v1/activities',
     '/bff/v1/activities/../consents/ai',
