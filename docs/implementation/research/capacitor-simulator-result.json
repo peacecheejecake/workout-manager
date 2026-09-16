@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-16T07:18:03.072Z",
+  "capacitorVersions": {
+    "core": "8.5.2",
+    "cli": "8.5.2",
+    "ios": "8.5.2"
+  },
+  "xcode": "Xcode 26.2\nBuild version 17C52",
+  "runtimeVersion": "26.2",
+  "instrumentationSha256": "d9bca6e7ffc6fd28f1d57823caf81951ba9bad2e37e5ae79f07cf2d1974be732",
+  "webIndexSha256": "7d7c3a8e30d7802ef26fd90b06b7a9a254b256b7c44e6d901b4f445d159daf37",
+  "result": {
+    "capacitorPlatform": "ios",
+    "demoDisclaimerVisible": true,
+    "headingRendered": true,
+    "localOriginVerified": true,
+    "nativePlatform": true,
+    "outcome": "passed",
+    "sharedWorkspaceButtonCount": 5
+  },
+  "screenshot": {
+    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dtMbJL/mobile-web-simulator.png",
+    "sha256": "58ef483d9c8cd18f56a91c1016b000a730f43e56cb5c2b73ecc58f8f13b6f28a",
+    "visualReview": "reviewed_with_layout_issue",
+    "observations": [
+      "Existing Mobile Web title, development-only disclaimer, account/scenario controls and synthetic activity list are visible.",
+      "Title overlaps the iOS status bar and Dynamic Island; safe-area layout is not accepted.",
+      "Screenshot confirms initial rendering only; no keyboard, touch or lifecycle acceptance was performed."
+    ]
+  },
+  "cleanupCompleted": true,
+  "cleanupErrors": [],
+  "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+  "unverified": [
+    "Physical devices",
+    "HealthKit authorization or queries",
+    "Production native authentication and secure transport",
+    "Minimum supported OS runtime",
+    "App Store signing/provisioning",
+    "Full IME, safe area, back and lifecycle acceptance"
+  ],
+  "sources": [
+    "https://capacitorjs.com/docs/ios",
+    "https://capacitorjs.com/docs/ios/spm",
+    "https://github.com/ionic-team/capacitor/releases/tag/8.5.2"
+  ],
+  "nodeVersion": "v24.12.0",
+  "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance."
+}
