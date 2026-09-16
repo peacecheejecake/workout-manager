@@ -3,6 +3,13 @@
 Applies to the entire repository. Nested `AGENTS.md` files supplement these rules for their subtree.
 Follow user instructions first, then the nearest applicable repository guidance.
 
+## Rule change protection
+
+- Do not modify repository rules, agent instructions, or skill rules unless the user explicitly instructs a rule
+  change. Implementation, cleanup, formatting, and verification tasks do not implicitly authorize rule changes.
+- Limit an authorized rule edit to the requested change. Do not weaken, bypass, or rewrite unrelated rules to make
+  implementation or checks pass. Report a conflict and seek explicit direction when a rule change is necessary.
+
 ## Communication and source of truth
 
 - Respond in Korean by default. Write repository agent instructions in English; preserve canonical code/schema names.
@@ -69,6 +76,11 @@ Follow user instructions first, then the nearest applicable repository guidance.
   https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
   Read its `SKILL.md` and relevant rules before React implementation/review. Record the upstream revision when
   registering/installing it in M0; do not substitute an unrelated skill with the same short name.
+- Also use Vercel Composition Patterns as a default React component design/review rule source:
+  https://github.com/vercel-labs/agent-skills/tree/main/skills/composition-patterns
+  Read `.agents/skills/vercel-composition-patterns/SKILL.md` and relevant rules. Prefer composition and explicit
+  variants over proliferating boolean mode props; expose clear state/actions/meta interfaces and keep state
+  implementation inside its owning provider. Preserve the existing Zustand, server-cache, and Host boundaries.
 - Prioritize independent fetch concurrency, bundle boundaries, and measured rendering costs. Apply rules within
   this architecture: TanStack Query handles server cache; Next-specific APIs stay in the shell.
 - Use Server Components for suitable shell composition and small client boundaries. Keep reusable modules usable
@@ -149,6 +161,22 @@ Follow user instructions first, then the nearest applicable repository guidance.
 - Check mobile/tablet/desktop, breakpoint boundaries, 320px reflow, narrow containers, keyboard/focus, touch alternatives,
   IME, and error recovery as relevant. Native HealthKit/WKWebView lifecycle requires separate real-device evidence.
 - Documentation-only changes need link/consistency/diff checks, not fabricated app browser results.
+
+## Codex native task orchestration
+
+- Use **Codex native orchestration** for implementation task decomposition, delegation, coordination, and result
+  integration. Use the native `spawn_agent`, `send_message`, `followup_task`, and wait tools exposed in this session.
+  Do not route implementation orchestration through Orca, Herdr agents, or bare agent CLI subprocesses.
+- The root agent owns the dependency graph in `docs/implementation/task-graph.json`, assigns only ready bounded
+  tasks, and defines each agent's write scope, input contracts, acceptance checks, and expected result.
+- Parallelize independent work with non-overlapping file ownership. Agents share a workspace unless explicitly
+  isolated; do not revert another agent's edits. Serialize shared manifests, lockfiles, contracts, and migrations
+  through the root integrator. Native agents may prepare independent parts of one ready task in parallel.
+- Report actual files changed, checks run, failures, and remaining dependencies to the root. The root reviews and
+  verifies the combined result before advancing task status; an agent's completion message alone is not a pass.
+- Keep the Herdr split-pane workflow below specifically for independent pre-commit peer review. It does not replace
+  Codex native implementation orchestration. This explicit project choice takes precedence over skill defaults
+  that would otherwise select Orca orchestration.
 
 ## Peer review before every commit
 
