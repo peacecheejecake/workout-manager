@@ -81,8 +81,9 @@
       "title": "로컬 FIT batch 도구",
       "dependsOn": ["M0-01"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "Python CLI·CSV/Parquet·pytest; synthetic fixture"
+      "status": "completed",
+      "scope": "Python CLI·CSV/Parquet·pytest; synthetic fixture",
+      "evidence": "docs/implementation/progress/M0-07a.md"
     },
     {
       "id": "M0-07b",

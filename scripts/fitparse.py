@@ -1,35 +1,24 @@
-import argparse
+"""Compatibility entry point: uv run python scripts/fitparse.py FILE.fit.
+
+Outputs now live in FILE's sibling ``fit-converted`` directory; the default
+format is real Parquet. Pass the same options as ``workout-manager convert``.
+"""
+
+import sys
 from pathlib import Path
 
-import pandas as pd
-from fitparse import FitFile
+
+def main() -> int:
+    # This historical filename otherwise shadows the third-party fitparse package.
+    script_directory = Path(__file__).resolve().parent
+    sys.path[:] = [entry for entry in sys.path if Path(entry).resolve() != script_directory]
+    from workout_manager.cli import main as run_cli
+
+    arguments = sys.argv[1:]
+    if arguments and not any(arg.split("=", 1)[0] == "--output-dir" for arg in arguments):
+        arguments += ["--output-dir", str(Path(arguments[0]).parent / "fit-converted")]
+    return run_cli(["convert", *arguments])
 
 
-def messages_to_df(fitfile, message_type):
-    rows = []
-
-    for message in fitfile.get_messages(message_type):
-        rows.append({
-            field.name: field.value
-            for field in message
-        })
-
-    return pd.DataFrame(rows)
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument("filename", type=Path)
-args = parser.parse_args()
-
-fitfile = FitFile(args.filename)
-
-for message_type in ["record", "lap", "session"]:
-    df = messages_to_df(fitfile, message_type)
-
-    output = args.filename.with_name(
-        f"{args.filename.stem}_{message_type}.parquet"
-    )
-
-    df.to_csv(output, index=False)
-
-    print(f"{message_type}: {len(df)} rows -> {output}")
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -53,6 +53,21 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  python:
+    name: Local FIT batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.8'
+          python-version: '3.13'
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+
   planned-gates:
     name: Not yet implemented gates
     runs-on: ubuntu-latest
@@ -64,7 +79,6 @@ jobs:
           - M0-03: Next/Vite product shell builds and smoke tests
           - M0-05: real PostgreSQL/API integration tests
           - M1 first slice: product web/API/DB E2E
-          - M0-07: Python FIT Ruff/pytest suite
           - M3: native device/HealthKit validation
-          Checks above cover tooling fixtures only, not product acceptance.
+          Checks above cover tooling, contracts and local FIT, not product acceptance.
           SUMMARY
