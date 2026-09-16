@@ -244,6 +244,15 @@
       "evidence": "docs/implementation/progress/M1-04m.md"
     },
     {
+      "id": "M1-04n",
+      "title": "계획 multi-view 공유 선택·초안 편집",
+      "dependsOn": ["M1-04j"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "달력/표/agenda 동일 plannedSession 선택·선택 상세·draft 날짜 편집/undo/명시 저장·실제 레이어 분리",
+      "evidence": "docs/implementation/progress/M1-04n.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -261,7 +270,8 @@
         "M1-04j",
         "M1-04k",
         "M1-04l",
-        "M1-04m"
+        "M1-04m",
+        "M1-04n"
       ],
       "kind": "task",
       "status": "not_started",

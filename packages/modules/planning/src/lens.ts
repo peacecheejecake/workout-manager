@@ -1,9 +1,12 @@
 import { planningLensSchema, type PlanningLens } from '@workout/contracts/core';
-import { localDateSchema } from '@workout/contracts/primitives';
+import { idSchema, localDateSchema } from '@workout/contracts/primitives';
 
 export interface PlannerUrlState {
   lens: PlanningLens;
   view: 'stack' | 'split';
+  plannedView: 'agenda' | 'calendar' | 'table';
+  plannedSession: string | null;
+  selectionError: boolean;
   error: boolean;
 }
 
@@ -28,7 +31,13 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
     (parsed.data.kind !== 'rolling' || parsed.data.days <= 366) &&
     (parsed.data.kind !== 'calendar' ||
       Date.parse(parsed.data.toExclusive) - Date.parse(parsed.data.from) <= 366 * 86400000);
+  const selected = params.get('plannedSession');
+  const validSelection = selected === null || idSchema.safeParse(selected).success;
+  const plannedView = params.get('plannedView') ?? 'agenda';
   return {
+    plannedView: plannedView === 'calendar' || plannedView === 'table' ? plannedView : 'agenda',
+    plannedSession: validSelection ? selected : null,
+    selectionError: !validSelection || !['calendar', 'table', 'agenda'].includes(plannedView),
     lens: valid
       ? parsed.data
       : { kind: 'rolling', anchorDate: localDateSchema.parse(today), days: 10 },
@@ -37,9 +46,12 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
   };
 }
 
-export function updatePlannerSearch(search: string, changes: Record<string, string>) {
+export function updatePlannerSearch(search: string, changes: Record<string, string | null>) {
   const params = new URLSearchParams(search);
-  for (const [key, value] of Object.entries(changes)) params.set(key, value);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+  }
   if (
     Object.keys(changes).some(
       (key) =>

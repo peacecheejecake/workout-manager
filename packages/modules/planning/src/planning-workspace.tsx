@@ -31,6 +31,8 @@ import { validationGuidance } from './validation-guidance';
 import { PeriodEditor, SessionEditor } from './plan-fields';
 import { readPlannerSearch, updatePlannerSearch } from './lens';
 import styles from './planning.module.css';
+import { PlannedSessionViews } from './planned-session-views';
+import { PlannedSessionDetail } from './planned-session-detail';
 import { ActualActivities } from './actual-activities';
 
 export interface PlanningWorkspaceProps {
@@ -147,7 +149,11 @@ function Planner({
   const validated = planDraftSchema.safeParse(draft);
   const lockValid =
     !(draft && state.baseline) || preservesSessionLocks(state.baseline.draft, draft);
-  const projectionSource = validated.success ? validated.data : currentPlan?.head?.draft;
+  const projectionSource = draft
+    ? validated.success
+      ? validated.data
+      : undefined
+    : currentPlan?.head?.draft;
   const selectedPeriodId = url.lens.kind === 'period' ? url.lens.periodId : null;
   const selectedPeriod = projectionSource?.periods.find((period) => period.id === selectedPeriodId);
   const missingPeriod = selectedPeriodId !== null && !selectedPeriod;
@@ -158,7 +164,7 @@ function Planner({
     actions.edit(update);
     save.reset();
   }
-  function changeSearch(changes: Record<string, string>) {
+  function changeSearch(changes: Record<string, string | null>) {
     onSearchChange(updatePlannerSearch(search, changes));
   }
   return (
@@ -370,6 +376,7 @@ function Planner({
                 />
                 <PeriodEditor draft={draft} edit={edit} today={today} createId={createId} />
                 <SessionEditor
+                  selectedId={url.plannedSession}
                   draft={draft}
                   baseline={state.baseline?.draft ?? null}
                   edit={edit}
@@ -460,35 +467,60 @@ function Planner({
           ) : null}
         </div>
         <section aria-label="일별 계획">
-          <h2>{validated.success ? '초안' : '현재 저장된 계획'} 일별 조회</h2>
-          {projection.length === 0 ? (
-            <p>조회할 계획이 없습니다.</p>
+          <h2>{draft ? '초안' : '현재 저장된 계획'} 일별 조회</h2>
+          <div className={styles.toolbar}>
+            {(['agenda', 'calendar', 'table'] as const).map((view) => (
+              <Button
+                key={view}
+                variant="secondary"
+                aria-pressed={url.plannedView === view}
+                onClick={() => changeSearch({ plannedView: view })}
+              >
+                {view === 'agenda'
+                  ? '계획 agenda 보기'
+                  : view === 'calendar'
+                    ? '계획 달력 보기'
+                    : '계획 표 보기'}
+              </Button>
+            ))}
+          </div>
+          {new URLSearchParams(search).has('plannedSession') ? (
+            <Button variant="secondary" onClick={() => changeSearch({ plannedSession: null })}>
+              계획 세션 선택 해제
+            </Button>
+          ) : null}
+          {url.selectionError ? (
+            <p role="alert">
+              계획 보기 또는 선택 주소가 올바르지 않습니다. 잘못된 보기는 agenda로 표시하고 잘못된
+              선택은 적용하지 않습니다.
+            </p>
+          ) : null}
+          {draft && !validated.success ? (
+            <p role="alert">
+              초안이 유효하지 않아 날짜별 보기를 표시할 수 없습니다. 작성 내용은 편집기에
+              유지됩니다.
+            </p>
+          ) : projectionSource && projection.length ? (
+            <PlannedSessionViews
+              source={projectionSource}
+              days={projection}
+              view={url.plannedView}
+              selected={url.plannedSession}
+              onSelect={(plannedSession) => changeSearch({ plannedSession })}
+            />
           ) : (
-            <ol className={styles.agenda}>
-              {projection.map((day) => (
-                <li key={day.date}>
-                  <time dateTime={day.date}>{day.date}</time> ·{' '}
-                  {day.blockId ? 'Block 배정' : 'Block 미배정'}
-                  <ul>
-                    {day.plannedSessionIds.map((id) => {
-                      const session = projectionSource?.sessions.find((item) => item.id === id);
-                      return (
-                        <li key={id}>
-                          계획: {session?.title} · {session?.localStartTime ?? '시각 미정'} ·{' '}
-                          {session?.durationSeconds === null
-                            ? '시간 미정'
-                            : `${session?.durationSeconds}초`}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {day.plannedSessionIds.length === 0 ? (
-                    <span>계획 세션 없음 · 실제 휴식 여부 미확인</span>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
+            <p>조회할 계획이 없습니다.</p>
           )}
+          <PlannedSessionDetail
+            source={draft ?? currentPlan?.head?.draft}
+            selected={url.plannedSession}
+            visibleIds={
+              projectionSource && !missingPeriod
+                ? projection.flatMap((day) => day.plannedSessionIds)
+                : null
+            }
+            draft={draft !== null}
+          />
         </section>
       </AdaptiveWorkspace>
       <ActualActivities

@@ -595,3 +595,82 @@ describe('saved-plan actual activity range', () => {
     expect(request.mock.calls).toHaveLength(1);
   });
 });
+
+describe('shared planned-session views', () => {
+  it('keeps literal selection and layout URLs independent of the requested renderer', () => {
+    const state = readPlannerSearch(
+      'view=split&plannedView=table&plannedSession=session-1',
+      '2026-09-10',
+    );
+    expect(state.plannedSession).toBe('session-1');
+    expect(state.plannedView).toBe('table');
+    expect(state.view).toBe('split');
+    expect(
+      readPlannerSearch('plannedSession=%20bad&plannedView=unknown', '2026-09-10').selectionError,
+    ).toBe(true);
+  });
+  it('shares calendar/table selection and shows date edits immediately without writing; undo restores the date', async () => {
+    const transport = host();
+    render(<StatefulHost {...base} transport={transport} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: '계획: 쉬운 달리기' }));
+    expect(screen.getByRole('region', { name: '선택한 계획 세션' })).toHaveTextContent(
+      '저장된 계획',
+    );
+    await user.click(screen.getByRole('button', { name: '계획 달력 보기' }));
+    expect(screen.getByRole('button', { name: '계획: 쉬운 달리기' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
+    const date = screen.getByLabelText('세션 날짜');
+    fireEvent.change(date, { target: { value: '2026-09-10' } });
+    await user.click(screen.getByRole('button', { name: '계획 표 보기' }));
+    expect(screen.getByLabelText('세션 날짜')).toBe(date);
+    const table = screen.getByRole('table', { name: '계획 세션 표' });
+    const selected = within(table)
+      .getAllByRole('row')
+      .find((row) => row.getAttribute('aria-selected') === 'true');
+    expect(selected).toHaveTextContent('2026-09-10');
+    expect(screen.getByRole('region', { name: '선택한 계획 세션' })).toHaveTextContent(
+      '미저장 초안',
+    );
+    expect(transport.spy.mock.calls.some(([input]) => input.method === 'PUT')).toBe(false);
+    await user.click(screen.getByRole('button', { name: '실행 취소' }));
+    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2026-09-09');
+    expect(selected).toHaveTextContent('2026-09-09');
+  });
+  it('keeps out-of-range selection and never substitutes saved views for an invalid draft', async () => {
+    render(<StatefulHost {...base} transport={host()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: '계획: 쉬운 달리기' }));
+    fireEvent.change(screen.getByLabelText('Rolling 기준일'), { target: { value: '2026-09-25' } });
+    expect(screen.getByRole('region', { name: '선택한 계획 세션' })).toHaveTextContent(
+      '현재 조회 범위 밖',
+    );
+    await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
+    fireEvent.change(screen.getByLabelText('세션 날짜'), { target: { value: '2026-12-25' } });
+    expect(screen.getByText(/초안이 유효하지 않아 날짜별 보기를 표시할 수 없습니다/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: '계획: 쉬운 달리기' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '선택한 계획 세션' })).toHaveTextContent(
+      '2026-12-25',
+    );
+    expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled();
+  });
+});
+
+it('clears selected session while preserving lens, view, and actual page URL state', async () => {
+  const search =
+    'lens=period&period=block&view=split&plannedView=table&plannedSession=session-1&actualPage=2';
+  const changed = vi.fn();
+  render(
+    <PlanningWorkspace {...base} transport={host()} search={search} onSearchChange={changed} />,
+  );
+  await userEvent.click(await screen.findByRole('button', { name: '계획 세션 선택 해제' }));
+  const next = new URLSearchParams(String(changed.mock.lastCall?.[0]));
+  expect(next.has('plannedSession')).toBe(false);
+  expect(next.get('view')).toBe('split');
+  expect(next.get('plannedView')).toBe('table');
+  expect(next.get('actualPage')).toBe('2');
+  expect(next.get('period')).toBe('block');
+});

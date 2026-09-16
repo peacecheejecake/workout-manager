@@ -87,3 +87,42 @@
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+
+.plannedScroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+.plannedCalendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(9rem, 1fr));
+  list-style: none;
+  padding: 0;
+  gap: var(--space-2);
+}
+.plannedCalendar > li {
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+}
+.plannedCalendar ul {
+  list-style: none;
+  padding: 0;
+}
+.plannedTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+.plannedTable th,
+.plannedTable td {
+  min-width: 8rem;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+  vertical-align: top;
+}
+.plannedTable tr[aria-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
