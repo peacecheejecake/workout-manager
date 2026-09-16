@@ -44,6 +44,10 @@
     "./check-ins": {
       "types": "./src/check-ins.ts",
       "default": "./dist/check-ins.js"
+    },
+    "./dashboard": {
+      "types": "./src/dashboard.ts",
+      "default": "./dist/dashboard.js"
     }
   },
   "scripts": {

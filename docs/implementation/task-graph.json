@@ -145,9 +145,18 @@
       "evidence": "docs/implementation/progress/M1-04b.md"
     },
     {
+      "id": "M1-04c",
+      "title": "대시보드 조회 계약·API",
+      "dependsOn": ["M1-02", "M1-03", "M1-04a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "동일 DB snapshot의 계획·활동·체크인 rolling 현지 날짜 집계; 불완전성·측정 정의·revision",
+      "evidence": "docs/implementation/progress/M1-04c.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b"],
+      "dependsOn": ["M1-02", "M1-03", "M1-04a", "M1-04b", "M1-04c"],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증"

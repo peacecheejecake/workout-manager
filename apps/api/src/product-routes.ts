@@ -3,6 +3,8 @@ import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { CheckInRepository } from '@workout/server-persistence/check-ins';
 import { registerCheckInRoutes } from './check-in-routes.js';
+import type { DashboardRepository } from '@workout/server-persistence/dashboard';
+import { registerDashboardRoutes } from './dashboard-routes.js';
 import type { Principal } from './ports.js';
 import { registerPlanningRoutes } from './planning-routes.js';
 import { registerActivityRoutes } from './activity-routes.js';
@@ -14,6 +16,7 @@ export interface ProductRepositories {
   planning?: PlanningRepository;
   activities?: ActivityRepository;
   checkIns?: CheckInRepository;
+  dashboard?: DashboardRepository;
   operations?: OperationsRepository;
 }
 export function registerProductRoutes(
@@ -24,5 +27,6 @@ export function registerProductRoutes(
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);
+  if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);
 }

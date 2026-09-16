@@ -1,3 +1,4 @@
+import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
 import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
@@ -191,6 +192,7 @@ try {
     activities: createActivityRepository(database),
     operations: createOperationsRepository(database),
     checkIns: createCheckInRepository(database),
+    dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100'],
   });
   closers.push(() => api.close());
