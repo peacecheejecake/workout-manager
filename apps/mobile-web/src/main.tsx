@@ -10,7 +10,7 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
-    <main className="wm-page">
+    <main className="wm-page mobile-shell">
       {location.pathname === '/ui-spike' ? (
         <Suspense fallback={<p>검증 화면 준비 중</p>}>
           <SpikeWorkspace workerUrl="/dist/maplibre/maplibre-gl-worker.mjs" />

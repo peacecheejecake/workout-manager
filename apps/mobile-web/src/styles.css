@@ -13,6 +13,13 @@ body {
   min-height: 100dvh;
   background: linear-gradient(135deg, var(--canvas), var(--canvas-warm));
 }
+/* The mobile Host owns device insets; shared modules keep their normal layout. */
+.mobile-shell {
+  padding-top: max(var(--page-padding), env(safe-area-inset-top, 0px));
+  padding-right: max(var(--page-padding), env(safe-area-inset-right, 0px));
+  padding-bottom: max(var(--page-padding), env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--page-padding), env(safe-area-inset-left, 0px));
+}
 h1 {
   font-size: clamp(1.5rem, 4vw, 2.25rem);
 }

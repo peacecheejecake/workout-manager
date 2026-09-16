@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
-  "executedAt": "2026-09-16T07:18:03.072Z",
+  "executedAt": "2026-09-16T07:23:41.820Z",
+  "nodeVersion": "v24.12.0",
   "capacitorVersions": {
     "core": "8.5.2",
     "cli": "8.5.2",
@@ -9,7 +10,7 @@
   "xcode": "Xcode 26.2\nBuild version 17C52",
   "runtimeVersion": "26.2",
   "instrumentationSha256": "d9bca6e7ffc6fd28f1d57823caf81951ba9bad2e37e5ae79f07cf2d1974be732",
-  "webIndexSha256": "7d7c3a8e30d7802ef26fd90b06b7a9a254b256b7c44e6d901b4f445d159daf37",
+  "webIndexSha256": "000ad469242f1156375b64a11b3b548dbbc966f88ac9850f18f9fdc4b88d28dc",
   "result": {
     "capacitorPlatform": "ios",
     "demoDisclaimerVisible": true,
@@ -19,14 +20,15 @@
     "outcome": "passed",
     "sharedWorkspaceButtonCount": 5
   },
+  "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
   "screenshot": {
-    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dtMbJL/mobile-web-simulator.png",
-    "sha256": "58ef483d9c8cd18f56a91c1016b000a730f43e56cb5c2b73ecc58f8f13b6f28a",
-    "visualReview": "reviewed_with_layout_issue",
+    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-gp8V4b/mobile-web-simulator.png",
+    "sha256": "80eb04714364300b8425e7010c7495e5a279e02bfb9c7b8533012dc1e23d96be",
+    "visualReview": "reviewed_top_overlap_resolved",
     "observations": [
-      "Existing Mobile Web title, development-only disclaimer, account/scenario controls and synthetic activity list are visible.",
-      "Title overlaps the iOS status bar and Dynamic Island; safe-area layout is not accepted.",
-      "Screenshot confirms initial rendering only; no keyboard, touch or lifecycle acceptance was performed."
+      "The Mobile Web title is fully below the status bar and Dynamic Island in this portrait Simulator screenshot; the previously observed top overlap is resolved.",
+      "Development-only disclaimer, synthetic account/scenario controls and shared activity list remain visible.",
+      "This verifies the captured initial portrait layout only; landscape, keyboard, touch, other native insets and physical devices remain unverified."
     ]
   },
   "cleanupCompleted": true,
@@ -45,6 +47,56 @@
     "https://capacitorjs.com/docs/ios/spm",
     "https://github.com/ionic-team/capacitor/releases/tag/8.5.2"
   ],
-  "nodeVersion": "v24.12.0",
-  "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance."
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-16T07:18:03.072Z",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 26.2\nBuild version 17C52",
+      "runtimeVersion": "26.2",
+      "instrumentationSha256": "d9bca6e7ffc6fd28f1d57823caf81951ba9bad2e37e5ae79f07cf2d1974be732",
+      "webIndexSha256": "7d7c3a8e30d7802ef26fd90b06b7a9a254b256b7c44e6d901b4f445d159daf37",
+      "result": {
+        "capacitorPlatform": "ios",
+        "demoDisclaimerVisible": true,
+        "headingRendered": true,
+        "localOriginVerified": true,
+        "nativePlatform": true,
+        "outcome": "passed",
+        "sharedWorkspaceButtonCount": 5
+      },
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dtMbJL/mobile-web-simulator.png",
+        "sha256": "58ef483d9c8cd18f56a91c1016b000a730f43e56cb5c2b73ecc58f8f13b6f28a",
+        "visualReview": "reviewed_with_layout_issue",
+        "observations": [
+          "Existing Mobile Web title, development-only disclaimer, account/scenario controls and synthetic activity list are visible.",
+          "Title overlaps the iOS status bar and Dynamic Island; safe-area layout is not accepted.",
+          "Screenshot confirms initial rendering only; no keyboard, touch or lifecycle acceptance was performed."
+        ]
+      },
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2"
+      ],
+      "nodeVersion": "v24.12.0",
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance."
+    }
+  ]
 }
