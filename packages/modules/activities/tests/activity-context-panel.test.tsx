@@ -180,3 +180,19 @@ for (const membership of ['outside', 'unknown_time'] as const)
     expect(screen.getByText(/거리 차이를 계산할 수 없습니다/)).toBeVisible();
     expect(screen.queryByText('거리 차이 (실제 − 계획): 0m')).not.toBeInTheDocument();
   });
+
+it('links the exact immutable Block even when its version is historical', () => {
+  const value = linked();
+  value.planContext.currentPlanVersionId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  render(
+    <ActivityContextPanel
+      context={activityContextSchema.parse(value)}
+      linkedBlockHref={(version, block) =>
+        `/activities?linkedPlanVersionId=${version}&linkedBlockId=${block}`
+      }
+    />,
+  );
+  expect(
+    screen.getByRole('link', { name: '이 Block에 명시적으로 연결된 활동 보기' }),
+  ).toHaveAttribute('href', `/activities?linkedPlanVersionId=${version}&linkedBlockId=block`);
+});

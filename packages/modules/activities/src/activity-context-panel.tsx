@@ -15,8 +15,10 @@ function measurement(value: number | null, unit: string) {
 export function ActivityContextPanel({
   context,
   planDayHref,
+  linkedBlockHref,
 }: {
   context: ActivityContext;
+  linkedBlockHref?: (versionId: string, blockId: string) => string;
   planDayHref?: (date: string) => string;
 }) {
   const plan = context.planContext;
@@ -71,6 +73,13 @@ export function ActivityContextPanel({
               {' · '}
               {durationLabels[context.activity.effective.durationKind]}. 미확인 값은 합산하지
               않습니다.
+            </p>
+          ) : null}
+          {linkedBlockHref ? (
+            <p>
+              <a href={linkedBlockHref(plan.planVersion.id, plan.block.id)}>
+                이 Block에 명시적으로 연결된 활동 보기
+              </a>
             </p>
           ) : null}
           {plan.currentPlanVersionId === plan.planVersion.id && planDayHref ? (

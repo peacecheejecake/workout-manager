@@ -56,7 +56,11 @@ function setup(
     input.path.includes('?') ? list() : reply(context(activity)),
   search = '',
 ) {
-  const request = vi.fn(handler);
+  const request = vi.fn((input: TransportRequest) =>
+    input.path === '/bff/v1/plans/current'
+      ? Promise.resolve(reply({ head: null, history: [] }))
+      : handler(input),
+  );
   const changed = vi.fn();
   const props: ActivityBrowserProps = {
     athleteId: 'alice',
@@ -92,7 +96,9 @@ describe('read-only activity browser', () => {
   it('rejects invalid supported URL values without fetching', () => {
     const { request } = setup(undefined, 'from=2026-03-01&view=invalid');
     expect(screen.getByRole('alert')).toHaveTextContent('조회 주소');
-    expect(request).not.toHaveBeenCalled();
+    expect(request.mock.calls.every(([input]) => input.path === '/bff/v1/plans/current')).toBe(
+      true,
+    );
     for (const search of [
       'sort=bad',
       'selected=bad',
@@ -266,4 +272,30 @@ describe('read-only activity browser', () => {
     });
     expect(screen.queryByRole('button', { name: '관측된 영' })).not.toBeInTheDocument();
   });
+});
+
+it('keeps linked-filter activity reads independent of a failed current-plan lookup', async () => {
+  const request = vi.fn(async (input: TransportRequest) =>
+    input.path === '/bff/v1/plans/current' ? reply(null, 503) : list(),
+  );
+  render(
+    <ActivityBrowser
+      athleteId="alice"
+      sessionId="session-a"
+      transport={{ request }}
+      search="linkedPlanVersionId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&linkedBlockId=old-block"
+      onSearchChange={() => {}}
+      initialTimezone="UTC"
+      importHref="/activities/import"
+    />,
+  );
+  await screen.findByText(/현재 계획 선택 목록을 불러오지 못했습니다/);
+  expect(await screen.findByRole('button', { name: '관측된 영' })).toBeVisible();
+  expect(
+    request.mock.calls.some(
+      ([input]) =>
+        input.path.includes('linkedPlanVersionId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') &&
+        input.path.includes('linkedBlockId=old-block'),
+    ),
+  ).toBe(true);
 });

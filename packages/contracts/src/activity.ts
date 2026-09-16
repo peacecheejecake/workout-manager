@@ -129,10 +129,17 @@ export const activityListQuerySchema = z
     kind: activityValuesSchema.shape.kind.optional(),
     source: activitySourceSchema.shape.kind.optional(),
     search: z.string().trim().min(1).max(200).optional(),
+    linkedPlanVersionId: z.uuid().optional(),
+    linkedBlockId: idSchema.optional(),
     sort: z
       .enum(['id_asc', 'started_desc', 'started_asc', 'distance_desc', 'distance_asc', 'title_asc'])
       .optional(),
   })
+  .refine(
+    ({ linkedPlanVersionId, linkedBlockId }) =>
+      (linkedPlanVersionId === undefined) === (linkedBlockId === undefined),
+    { message: 'Linked Block filtering requires both a plan version and a Block ID' },
+  )
   .refine(
     ({ from, toExclusive, timezone }) => {
       if (from === undefined && toExclusive === undefined && timezone === undefined) return true;

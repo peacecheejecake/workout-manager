@@ -9,6 +9,7 @@ import { readActivitySearch, updateActivitySearch } from './browser-search';
 import { BrowserRecords, BrowserDetail, kindLabels, sourceLabels } from './browser-records';
 import styles from './activity-browser.module.css';
 import { activityContextSchema } from '@workout/contracts/activity-context';
+import { BrowserBlockFilter } from './browser-block-filter';
 import { ActivityDelete } from './activity-delete';
 import { ActivityContextPanel } from './activity-context-panel';
 
@@ -21,6 +22,7 @@ export interface ActivityBrowserProps {
   initialTimezone: string;
   importHref: string;
   createHref?: string;
+  linkedBlockHref?: (versionId: string, blockId: string) => string;
   planDayHref?: (date: string) => string;
   editHref?: (id: string) => string;
 }
@@ -57,6 +59,7 @@ function Workspace({
   createHref,
   editHref,
   planDayHref,
+  linkedBlockHref,
 }: ActivityBrowserProps) {
   const headingId = useId();
   const composing = useRef(false);
@@ -118,6 +121,12 @@ function Workspace({
           <a href={createHref}>수동 활동 입력</a>
         </p>
       ) : null}
+      <BrowserBlockFilter
+        transport={transport}
+        scope={prefix}
+        search={search}
+        onSearchChange={onSearchChange}
+      />
       <form
         key={filterKey}
         className={styles.filters}
@@ -237,7 +246,8 @@ function Workspace({
         <div role="alert">
           <p>
             조회 주소를 확인하세요. 날짜는 시작일·종료일·시간대를 함께 지정하고 1~3660일 범위를
-            사용하세요. 종목·출처·정렬·보기·선택한 기록도 유효해야 합니다.
+            사용하세요. 종목·출처·정렬·보기·선택한 기록도 유효해야 합니다. 계획 연결은 버전과
+            Block을 함께 지정하세요.
           </p>
           <Button
             variant="secondary"
@@ -253,6 +263,8 @@ function Workspace({
                 offset: null,
                 view: null,
                 selected: null,
+                linkedPlanVersionId: null,
+                linkedBlockId: null,
               })
             }
           >
@@ -363,6 +375,7 @@ function Workspace({
                   <ActivityContextPanel
                     context={detail.data}
                     {...(planDayHref ? { planDayHref } : {})}
+                    {...(linkedBlockHref ? { linkedBlockHref } : {})}
                   />
                 </>
               ) : null}

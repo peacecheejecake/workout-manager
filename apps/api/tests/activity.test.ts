@@ -409,3 +409,33 @@ describe('manual activity command and self-report boundary', () => {
     expect(activities.createManualActivity).not.toHaveBeenCalled();
   });
 });
+
+describe('explicit immutable linked Block query boundary', () => {
+  const version = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  it('delegates the validated link pair with authenticated ownership', async () => {
+    const { app, activities } = setup();
+    const query = new URLSearchParams({ linkedPlanVersionId: version, linkedBlockId: 'block-old' });
+    expect((await app.inject({ url: `/bff/v1/activities?${query}`, headers })).statusCode).toBe(
+      200,
+    );
+    expect(activities.listActivities).toHaveBeenCalledWith(athleteId, {
+      limit: 50,
+      offset: 0,
+      linkedPlanVersionId: version,
+      linkedBlockId: 'block-old',
+    });
+  });
+  it.each([
+    `linkedPlanVersionId=${version}`,
+    'linkedBlockId=block',
+    'linkedPlanVersionId=bad&linkedBlockId=block',
+    `linkedPlanVersionId=${version}&linkedBlockId=`,
+    `linkedPlanVersionId=${version}&linkedBlockId=block&athleteId=foreign`,
+  ])('rejects malformed or spoofed explicit link query %s', async (query) => {
+    const { app, activities } = setup();
+    expect((await app.inject({ url: `/bff/v1/activities?${query}`, headers })).statusCode).toBe(
+      400,
+    );
+    expect(activities.listActivities).not.toHaveBeenCalled();
+  });
+});

@@ -265,6 +265,14 @@ export function createActivityRepository(
               AND ($7::text IS NULL OR effective_kind=$7)
               AND ($8::text IS NULL OR kind=$8)
               AND ($9::text IS NULL OR strpos(lower(effective_title),lower($9::text))>0)
+              AND ($10::text IS NULL OR (
+                lower(overlay#>>'{userReport,planLink,planVersionId}')=lower($10::text)
+                AND EXISTS (
+                  SELECT 1 FROM plan_snapshot p WHERE p.athlete_id=$1 AND p.id::text=lower($10::text)
+                    AND EXISTS (SELECT 1 FROM jsonb_array_elements(p.draft->'periods') block WHERE block->>'id'=$11::text AND block->>'level'='block')
+                    AND EXISTS (SELECT 1 FROM jsonb_array_elements(p.draft->'sessions') session WHERE session->>'id'=effective.overlay#>>'{userReport,planLink,sessionId}' AND session->>'blockId'=$11::text)
+                )
+              ))
           ), page AS (
             SELECT *,row_number() OVER (ORDER BY ${order}) AS ordinal FROM filtered ORDER BY ${order} LIMIT $2 OFFSET $3
           ) SELECT (SELECT count(*)::int FROM filtered) AS total,
@@ -279,6 +287,8 @@ export function createActivityRepository(
             query.kind ?? null,
             query.source ?? null,
             query.search ?? null,
+            query.linkedPlanVersionId ?? null,
+            query.linkedBlockId ?? null,
           ],
         );
         const row = z

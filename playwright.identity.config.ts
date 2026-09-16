@@ -16,6 +16,8 @@ export default defineConfig({
       url: `http://127.0.0.1:${identityApiPort}/health`,
       timeout: 60000,
       reuseExistingServer: false,
+      // Let the fixture stop its private PostgreSQL cluster before the runner exits.
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 10000 },
     },
     {
       command: 'pnpm --filter @workout/web start',

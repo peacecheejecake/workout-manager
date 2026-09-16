@@ -23,6 +23,9 @@ function Activities() {
       importHref="/activities/import"
       createHref="/activities/new"
       editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
+      linkedBlockHref={(linkedPlanVersionId, linkedBlockId) =>
+        `/activities?${new URLSearchParams({ linkedPlanVersionId, linkedBlockId })}`
+      }
       planDayHref={(date) =>
         `/planner?${new URLSearchParams({ lens: 'calendar', from: date, to: shiftDashboardDate(date, 1) })}`
       }

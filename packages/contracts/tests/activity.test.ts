@@ -237,3 +237,36 @@ describe('M1-04g manual provenance and self reports', () => {
     ).toMatchObject({ startedAt: null, timezone: null, kind: 'walking' });
   });
 });
+
+describe('explicit linked Block list filters', () => {
+  const linked = {
+    linkedPlanVersionId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+    linkedBlockId: 'block/한글 %_',
+  };
+  it('preserves an exact version and Block pair independently from actual date filters', () => {
+    expect(activityListQuerySchema.parse(linked)).toMatchObject(linked);
+    expect(
+      activityListQuerySchema.parse({
+        ...linked,
+        from: '2024-03-10',
+        toExclusive: '2024-03-11',
+        timezone: 'America/New_York',
+        offset: 20,
+        limit: 20,
+      }),
+    ).toMatchObject({ ...linked, from: '2024-03-10', offset: 20 });
+    expect(activityListQuerySchema.parse({})).not.toHaveProperty('linkedPlanVersionId');
+  });
+  it('rejects incomplete and invalid linked filters instead of silently widening a query', () => {
+    for (const query of [
+      { linkedPlanVersionId: linked.linkedPlanVersionId },
+      { linkedBlockId: linked.linkedBlockId },
+      { ...linked, linkedPlanVersionId: 'not-a-version' },
+      { ...linked, linkedBlockId: '' },
+      { ...linked, linkedBlockId: ' block ' },
+      { ...linked, linkedBlockId: null },
+      { ...linked, linkedPlanVersionId: null },
+    ])
+      expect(activityListQuerySchema.safeParse(query).success).toBe(false);
+  });
+});

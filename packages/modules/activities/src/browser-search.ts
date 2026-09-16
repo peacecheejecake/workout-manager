@@ -8,7 +8,16 @@ export function readActivitySearch(search: string) {
     offset: params.get('offset') ?? 0,
     sort: params.get('sort') ?? 'started_desc',
   };
-  for (const key of ['search', 'from', 'toExclusive', 'timezone', 'kind', 'source']) {
+  for (const key of [
+    'search',
+    'from',
+    'toExclusive',
+    'timezone',
+    'kind',
+    'source',
+    'linkedPlanVersionId',
+    'linkedBlockId',
+  ]) {
     const value = params.get(key);
     if (value !== null) input[key] = value;
   }
