@@ -12,21 +12,23 @@ export async function migrate(connectionString: string): Promise<void> {
     await client.query(
       'CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY, checksum text NOT NULL)',
     );
-    const sql = await readFile(
-      new URL('../migrations/001_foundation.sql', import.meta.url),
-      'utf8',
-    );
-    const checksum = createHash('sha256').update(sql).digest('hex');
-    const existing = await client.query<{ checksum: string }>(
-      'SELECT checksum FROM schema_migrations WHERE version = 1',
-    );
-    if (existing.rows.length === 0) {
-      await client.query(sql);
-      await client.query('INSERT INTO schema_migrations(version, checksum) VALUES (1, $1)', [
-        checksum,
-      ]);
-    } else if (existing.rows[0]?.checksum !== checksum) {
-      throw new Error('MIGRATION_CHECKSUM_MISMATCH');
+    for (const [index, file] of ['001_foundation.sql', '002_identity.sql'].entries()) {
+      const version = index + 1;
+      const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
+      const checksum = createHash('sha256').update(sql).digest('hex');
+      const existing = await client.query<{ checksum: string }>(
+        'SELECT checksum FROM schema_migrations WHERE version = $1',
+        [version],
+      );
+      if (existing.rows.length === 0) {
+        await client.query(sql);
+        await client.query('INSERT INTO schema_migrations(version, checksum) VALUES ($1, $2)', [
+          version,
+          checksum,
+        ]);
+      } else if (existing.rows[0]?.checksum !== checksum) {
+        throw new Error('MIGRATION_CHECKSUM_MISMATCH');
+      }
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -34,6 +36,28 @@ export async function migrate(connectionString: string): Promise<void> {
     throw error;
   } finally {
     client.release();
+    await pool.end();
+  }
+}
+
+/** Grant only the pre-tenant authentication function surface, using deployment credentials. */
+export async function grantIdentityFunctions(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    for (const signature of [
+      'auth_create_attempt(text, text, text, text, timestamptz)',
+      'auth_consume_attempt(text, text, timestamptz)',
+      'auth_create_session(text, text, text, text, timestamptz, timestamptz, text)',
+      'auth_find_session(text, timestamptz)',
+      'auth_revoke_session(text)',
+    ]) {
+      await pool.query(`GRANT EXECUTE ON FUNCTION public.${signature} TO "${runtimeRole}"`);
+    }
+  } finally {
     await pool.end();
   }
 }

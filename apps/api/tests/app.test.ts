@@ -46,6 +46,7 @@ const headers = {
   cookie: 'session=private-cookie',
   origin: 'https://workout.example',
   'x-csrf-token': token,
+  'x-workout-session-id': 'session-a',
   'idempotency-key': 'request-0001',
 };
 const payload = { granted: true, expectedRevision: 0 };
@@ -60,12 +61,16 @@ describe('M0-05 API boundary (FUT-01; V2-F31)', () => {
     expect(auth.authenticate).not.toHaveBeenCalled();
     expect((await app.inject('/bff/v1/session')).statusCode).toBe(401);
   });
-  it('uses authenticated athlete scope and excludes private session data', async () => {
+  it('uses authenticated athlete scope and returns session-bound CSRF metadata', async () => {
     const { app, consent } = fixture();
     const session = await app.inject('/bff/v1/session');
-    expect(session.json()).toEqual({ athleteId });
+    expect(session.json()).toEqual({
+      athleteId,
+      sessionId: cookiePrincipal.sessionId,
+      csrfToken: token,
+    });
     expect(session.headers['cache-control']).toBe('no-store');
-    expect((await app.inject('/bff/v1/consents/ai')).statusCode).toBe(200);
+    expect((await app.inject({ url: '/bff/v1/consents/ai', headers })).statusCode).toBe(200);
     expect(consent.getConsent).toHaveBeenCalledWith(athleteId, 'ai');
     expect((await app.inject('/bff/v1/consents/ai?athleteId=other')).statusCode).toBe(400);
   });
@@ -89,7 +94,11 @@ describe('M0-05 API boundary (FUT-01; V2-F31)', () => {
     { ...headers, origin: 'null' },
     { ...headers, origin: 'https://workout.example.evil' },
     { ...headers, 'x-csrf-token': 'wrong' },
-    { cookie: headers.cookie, 'idempotency-key': headers['idempotency-key'] },
+    {
+      cookie: headers.cookie,
+      'idempotency-key': headers['idempotency-key'],
+      'x-workout-session-id': 'session-a',
+    },
   ])('rejects cookie writes lacking exact origin and session CSRF token', async (inputHeaders) => {
     const { app, consent } = fixture();
     expect(
@@ -130,7 +139,7 @@ describe('M0-05 API boundary (FUT-01; V2-F31)', () => {
   });
   it('rejects invalid resource kinds and missing idempotency keys', async () => {
     const { app } = fixture();
-    expect((await app.inject('/bff/v1/consents/unknown')).statusCode).toBe(400);
+    expect((await app.inject({ url: '/bff/v1/consents/unknown', headers })).statusCode).toBe(400);
     expect(
       (
         await app.inject({
@@ -165,6 +174,7 @@ describe('M0-05 API boundary (FUT-01; V2-F31)', () => {
         authorization: 'Bearer secret-token',
         cookie: 'session=private',
         'x-request-id': 'attacker-value',
+        'x-workout-session-id': 'session-a',
       },
     });
     expect(response.statusCode).toBe(500);

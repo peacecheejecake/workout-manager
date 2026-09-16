@@ -1,0 +1,25 @@
+import { defineConfig, devices } from '@playwright/test';
+export default defineConfig({
+  testDir: './tests/identity',
+  workers: 1,
+  forbidOnly: Boolean(process.env.CI),
+  use: {
+    ...devices['Desktop Chrome'],
+    baseURL: 'http://127.0.0.1:3100',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  webServer: [
+    {
+      command: 'pnpm exec tsx scripts/identity-e2e.mts',
+      url: 'http://127.0.0.1:4300/health',
+      timeout: 60000,
+      reuseExistingServer: false,
+    },
+    {
+      command: 'pnpm --filter @workout/web start',
+      url: 'http://127.0.0.1:3100',
+      reuseExistingServer: false,
+    },
+  ],
+});

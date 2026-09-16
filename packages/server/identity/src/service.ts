@@ -1,0 +1,154 @@
+import { createHash, randomBytes } from 'node:crypto';
+
+export interface IdentityStore {
+  createAttempt(input: {
+    stateHash: string;
+    browserHash: string;
+    nonce: string;
+    verifier: string;
+    expiresAt: Date;
+  }): Promise<void>;
+  consumeAttempt(
+    stateHash: string,
+    browserHash: string,
+    now: Date,
+  ): Promise<{ nonce: string; verifier: string } | null>;
+  createSession(input: {
+    tokenHash: string;
+    csrfToken: string;
+    issuer: string;
+    subject: string;
+    expiresAt: Date;
+    now: Date;
+    previousTokenHash?: string;
+  }): Promise<{ athleteId: string; sessionId: string }>;
+  findSession(
+    tokenHash: string,
+    now: Date,
+  ): Promise<{ athleteId: string; sessionId: string; csrfToken: string; expiresAt: Date } | null>;
+  revokeSession(tokenHash: string): Promise<void>;
+}
+
+export interface OidcProvider {
+  authorizationUrl(input: { state: string; nonce: string; verifier: string }): Promise<string>;
+  exchange(
+    url: URL,
+    checks: { state: string; nonce: string; verifier: string },
+  ): Promise<{ issuer: string; subject: string }>;
+}
+
+export class IdentityError extends Error {
+  constructor(readonly code: 'LOGIN_REJECTED' | 'IDENTITY_UNAVAILABLE') {
+    super(code);
+  }
+}
+
+const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+const token = () => randomBytes(32).toString('base64url');
+const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
+
+/** Reject ambiguous duplicate cookies rather than selecting a proxy/parser-dependent value. */
+function readCookie(header: string | undefined, name: string): string | null {
+  if (header === undefined || header.length > 8192) return null;
+  const values = header
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(`${name}=`));
+  const value = values.length === 1 ? values[0]?.slice(name.length + 1) : undefined;
+  return value !== undefined && tokenPattern.test(value) ? value : null;
+}
+
+export interface IdentityOptions {
+  store: IdentityStore;
+  provider: OidcProvider;
+  publicOrigin: string;
+  /** Explicit local development only; both this origin and the OIDC adapter enforce loopback. */
+  allowInsecureLocalhost?: boolean;
+  now?: () => Date;
+}
+
+export function createIdentityService(options: IdentityOptions) {
+  const origin = new URL(options.publicOrigin);
+  const insecure =
+    origin.protocol === 'http:' &&
+    options.allowInsecureLocalhost === true &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname);
+  if (origin.origin !== options.publicOrigin || (origin.protocol !== 'https:' && !insecure))
+    throw new Error('Invalid identity public origin');
+  const secure = !insecure;
+  const sessionName = secure ? '__Host-workout_session' : 'workout_session';
+  const attemptName = secure ? '__Host-workout_login' : 'workout_login';
+  const now = options.now ?? (() => new Date());
+  const cookie = (name: string, value: string, seconds: number) =>
+    `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure ? '; Secure' : ''}`;
+
+  return {
+    async beginLogin() {
+      const state = token();
+      const browser = token();
+      const nonce = token();
+      const verifier = token();
+      const location = await options.provider.authorizationUrl({ state, nonce, verifier });
+      await options.store.createAttempt({
+        stateHash: hash(state),
+        browserHash: hash(browser),
+        nonce,
+        verifier,
+        expiresAt: new Date(now().getTime() + 600_000),
+      });
+      return { location, cookie: cookie(attemptName, browser, 600) };
+    },
+    async completeLogin(requestUrl: string, header?: string) {
+      const url = new URL(requestUrl, origin);
+      const state = url.searchParams.get('state');
+      const browser = readCookie(header, attemptName);
+      if (
+        url.origin !== origin.origin ||
+        url.pathname !== '/bff/v1/auth/callback' ||
+        state === null ||
+        !tokenPattern.test(state) ||
+        browser === null ||
+        [...url.searchParams.keys()].some((key) => url.searchParams.getAll(key).length !== 1)
+      )
+        throw new IdentityError('LOGIN_REJECTED');
+      const attempt = await options.store.consumeAttempt(hash(state), hash(browser), now());
+      if (attempt === null) throw new IdentityError('LOGIN_REJECTED');
+      let identity: { issuer: string; subject: string };
+      try {
+        identity = await options.provider.exchange(url, { state, ...attempt });
+      } catch {
+        throw new IdentityError('LOGIN_REJECTED');
+      }
+      const sessionToken = token();
+      const previous = readCookie(header, sessionName);
+      await options.store.createSession({
+        ...(previous === null ? {} : { previousTokenHash: hash(previous) }),
+        tokenHash: hash(sessionToken),
+        csrfToken: token(),
+        ...identity,
+        now: now(),
+        expiresAt: new Date(now().getTime() + 28_800_000),
+      });
+      return {
+        location: '/account',
+        cookies: [cookie(sessionName, sessionToken, 28_800), cookie(attemptName, '', 0)],
+      };
+    },
+    async authenticate(credentials: { cookie?: string; authorization?: string }) {
+      if (credentials.authorization !== undefined) return null;
+      const value = readCookie(credentials.cookie, sessionName);
+      if (value === null) return null;
+      const session = await options.store.findSession(hash(value), now());
+      return session === null
+        ? null
+        : { ...session, expiresAt: session.expiresAt.toISOString(), method: 'cookie' as const };
+    },
+    async logout(header?: string) {
+      const value = readCookie(header, sessionName);
+      if (value !== null) await options.store.revokeSession(hash(value));
+      return [cookie(sessionName, '', 0), cookie(attemptName, '', 0)];
+    },
+  };
+}
+
+export type IdentityService = ReturnType<typeof createIdentityService>;

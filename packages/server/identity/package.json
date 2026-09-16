@@ -1,0 +1,17 @@
+{
+  "name": "@workout/server-identity",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "openid-client": "6.8.8",
+    "zod": "4.6.5"
+  },
+  "exports": {
+    "./service": "./src/service.ts",
+    "./oidc": "./src/oidc.ts"
+  }
+}

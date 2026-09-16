@@ -12,6 +12,7 @@ export const principalSchema = z.discriminatedUnion('method', [
     sessionId: z.string().min(1).max(256),
     method: z.literal('cookie'),
     csrfToken: z.string().min(32).max(256),
+    expiresAt: z.iso.datetime().optional(),
   }),
   z.strictObject({
     athleteId: athleteIdSchema,

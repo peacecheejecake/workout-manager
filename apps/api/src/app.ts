@@ -1,3 +1,4 @@
+import { IdentityError, type IdentityService } from '@workout/server-identity/service';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Writable } from 'node:stream';
 import Fastify, { LogController, type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -15,6 +16,7 @@ import {
 
 export interface ApiOptions {
   auth: AuthenticationPort;
+  identity?: IdentityService;
   consent: ConsentPort;
   allowedOrigins: readonly string[];
   logStream?: Writable;
@@ -74,6 +76,8 @@ function requireCsrf(request: FastifyRequest, principal: Principal, origins: Rea
 }
 
 function classifyError(error: unknown): { statusCode: number; code: string } {
+  if (error instanceof IdentityError)
+    return { statusCode: error.code === 'LOGIN_REJECTED' ? 401 : 503, code: error.code };
   if (error instanceof BoundaryError) return error;
   if (error instanceof PersistenceConflict) return { statusCode: 409, code: 'CONSENT_CONFLICT' };
   if (error instanceof Error && 'code' in error) {
@@ -140,6 +144,18 @@ export function createApi(options: ApiOptions): FastifyInstance {
     return reply.code(statusCode).send({ error: { code }, requestId: request.id });
   });
   app.get('/health', async () => ({ status: 'ok' }));
+  if (options.identity !== undefined) {
+    const identity = options.identity;
+    app.get('/bff/v1/auth/login', async (request, reply) => {
+      parseInput(emptyQuerySchema, request.query);
+      const result = await identity.beginLogin();
+      return reply.header('set-cookie', result.cookie).redirect(result.location);
+    });
+    app.get('/bff/v1/auth/callback', async (request, reply) => {
+      const result = await identity.completeLogin(request.url, request.headers.cookie);
+      return reply.header('set-cookie', result.cookies).redirect(result.location);
+    });
+  }
 
   app.register(
     async (routes) => {
@@ -151,6 +167,12 @@ export function createApi(options: ApiOptions): FastifyInstance {
         );
         if (!result.success) throw new BoundaryError(401, 'UNAUTHENTICATED');
         authenticated.set(request, result.data);
+        if (
+          result.data.method === 'cookie' &&
+          request.routeOptions.url !== '/bff/v1/session' &&
+          request.headers['x-workout-session-id'] !== result.data.sessionId
+        )
+          throw new BoundaryError(409, 'SESSION_CHANGED');
         if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
           requireCsrf(request, result.data, origins);
       });
@@ -160,9 +182,24 @@ export function createApi(options: ApiOptions): FastifyInstance {
         return value;
       }
       routes.get('/session', async (request) => {
-        const { athleteId } = principal(request);
-        return { athleteId };
+        const value = principal(request);
+        return value.method === 'cookie'
+          ? {
+              athleteId: value.athleteId,
+              sessionId: value.sessionId,
+              csrfToken: value.csrfToken,
+              ...(value.expiresAt === undefined ? {} : { expiresAt: value.expiresAt }),
+            }
+          : { athleteId: value.athleteId };
       });
+      if (options.identity !== undefined) {
+        const identity = options.identity;
+        routes.post('/auth/logout', async (request, reply) => {
+          if (request.body !== undefined) throw new BoundaryError(400, 'INVALID_REQUEST');
+          const cookies = await identity.logout(request.headers.cookie);
+          return reply.header('set-cookie', cookies).code(204).send();
+        });
+      }
       routes.get('/consents/:kind', async (request) => {
         const { kind } = parseInput(kindParamsSchema, request.params);
         const result = await options.consent.getConsent(principal(request).athleteId, kind);

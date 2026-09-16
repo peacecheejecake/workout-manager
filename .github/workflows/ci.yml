@@ -114,6 +114,40 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:shells
 
+  identity:
+    name: Identity browser API PostgreSQL E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare local PostgreSQL binaries
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/initdb ]; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends --yes postgresql-16
+          fi
+          echo "PG_BIN=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify login, tenant consent isolation and logout
+        # The harness owns a new private UNIX-socket database; it ignores inherited DB URLs.
+        run: pnpm test:identity
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: identity-e2e-failures
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   planned-gates:
     name: Not yet implemented gates
     runs-on: ubuntu-latest
@@ -122,7 +156,7 @@ jobs:
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           ## Not executed: future implementation gates
-          - M1 first slice: product web/API/DB E2E
+          - M1 first slice: import/coaching/approval web/API/DB E2E
           - M3: native device/HealthKit validation
-          Checks above cover tooling, contracts and local FIT, not product acceptance.
+          Checks above cover tooling, contracts, local FIT, shells, API persistence and identity; full product acceptance remains open.
           SUMMARY

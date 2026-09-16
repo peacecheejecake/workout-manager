@@ -11,6 +11,7 @@ export default defineConfig({
             'packages/tooling/tests/**/*.test.{ts,mjs}',
             'packages/api-client/tests/**/*.test.ts',
             'apps/api/tests/**/*.test.ts',
+            'packages/server/identity/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],
         },

@@ -34,9 +34,12 @@ function event(key = randomUUID()) {
 }
 describe('real PostgreSQL foundation', () => {
   it('uses checksum-tracked repeatable migrations', async () => {
-    const result = await admin.query('SELECT version, checksum FROM schema_migrations');
+    const result = await admin.query(
+      'SELECT version, checksum FROM schema_migrations ORDER BY version',
+    );
     expect(result.rows).toEqual([
       { version: 1, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { version: 2, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

@@ -101,8 +101,9 @@
       "title": "Identity·Consent",
       "dependsOn": ["M0-03", "M0-05"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "identity/auth/consent; tenant·session·cache 격리"
+      "status": "completed",
+      "scope": "identity/auth/consent; tenant·session·cache 격리",
+      "evidence": "docs/implementation/progress/M1-01.md"
     },
     {
       "id": "M1-02",

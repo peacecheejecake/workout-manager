@@ -15,7 +15,8 @@
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",
     "./outbox": "./src/outbox.ts",
-    "./migrate": "./src/migrate.ts"
+    "./migrate": "./src/migrate.ts",
+    "./identity": "./src/identity.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

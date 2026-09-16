@@ -26,7 +26,7 @@ Node 설치 디렉터리에 쓰기 권한이 없다면 사용자 writable 디렉
 ```bash
 corepack pnpm check          # Prettier + ESLint + TypeScript + Vitest
 corepack pnpm test:coverage
-corepack pnpm build          # contracts + tooling fixture production build
+corepack pnpm build          # contracts + fixture + Next/Vite + Storybook build
 corepack pnpm exec playwright install chromium
 corepack pnpm test:e2e       # desktop/mobile fixture, 실제 로컬 HTTP
 ```
@@ -37,7 +37,7 @@ corepack pnpm test:e2e       # desktop/mobile fixture, 실제 로컬 HTTP
 `pnpm test:integration`은 실제 PostgreSQL migration/RLS/동의/outbox/API 통합 테스트를 실행합니다.
 로컬 PostgreSQL 바이너리를 사용해 폐기 가능한 임시 클러스터를 생성하며, 관리자/runtime URL을 직접
 지정할 때는 별도 테스트 DB만 사용합니다. [실행·범위](docs/implementation/progress/M0-05.md)를 확인하세요.
-제품 web/API/DB 전체 E2E와 native gate는 아직 미구현입니다.
+OIDC 인증·동의 web/API/DB E2E는 `pnpm test:identity`로 실행합니다. 전체 훈련 제품 E2E와 native gate는 후속 작업입니다.
 
 ## 구조와 작업 규칙
 
@@ -74,7 +74,7 @@ manifest를 만들며 원본 FIT를 변경하지 않습니다. 기본값은 기�
 ## API·DB 기반
 
 `apps/api`는 인증·동의 port를 주입받는 Fastify factory, `packages/server/persistence`는
-PostgreSQL migration/RLS·동의 revision·outbox 기반입니다. API bootstrap·실제 로그인은 후속 작업입니다.
+PostgreSQL migration/RLS·동의 revision·outbox 기반입니다. 표준 OIDC bootstrap과 계정/동의 화면도 구현했습니다.
 
 ```bash
 pnpm test:integration
@@ -101,3 +101,18 @@ Playwright 및 Aside 실 브라우저 확인. UI controls·semantic tokens·Stor
 pnpm dev:storybook
 pnpm check:generated
 ```
+
+## 표준 OIDC 로그인·AI 동의
+
+`/account`에서 표준 OIDC 로그인과 AI 동의 허용/철회, 로그아웃을 제공합니다.
+실제 공급자 설정·DB grants는 [OIDC 설정](docs/implementation/oidc-setup.md),
+검증 결과와 범위는 [M1-01](docs/implementation/progress/M1-01.md)을 참고하세요.
+홈 화면의 개발 활동은 아직 인증된 실제 기록과 연결되지 않았습니다.
+
+```bash
+pnpm build
+pnpm test:identity  # 독립 임시 PostgreSQL + 로컬 OIDC + Fastify + production Next
+pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
+```
+
+외부 AI 전송은 연결되지 않았습니다. 동의 저장 성공을 AI 코칭 기능의 구현 완료로 간주하지 않습니다.
