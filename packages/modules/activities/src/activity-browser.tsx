@@ -9,6 +9,7 @@ import { readActivitySearch, updateActivitySearch } from './browser-search';
 import { BrowserRecords, BrowserDetail, kindLabels, sourceLabels } from './browser-records';
 import styles from './activity-browser.module.css';
 import { activityContextSchema } from '@workout/contracts/activity-context';
+import { ActivityDelete } from './activity-delete';
 import { ActivityContextPanel } from './activity-context-panel';
 
 export interface ActivityBrowserProps {
@@ -369,6 +370,19 @@ function Workspace({
           ) : null}
         </>
       )}
+      <ActivityDelete
+        current={
+          !parsed.invalid && parsed.selected && detail.isSuccess && !detail.isFetching
+            ? detail.data.activity
+            : null
+        }
+        selected={parsed.selected}
+        transport={transport}
+        scope={prefix}
+        onDeleted={(id) => {
+          if (parsed.selected === id) change({ selected: null });
+        }}
+      />
     </section>
   );
 }

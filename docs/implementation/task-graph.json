@@ -217,6 +217,15 @@
       "evidence": "docs/implementation/progress/M1-04j.md"
     },
     {
+      "id": "M1-04k",
+      "title": "활동 상세 로컬 삭제 UI",
+      "dependsOn": ["M1-04f", "M1-04i"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "최신 revision 명시확인·충돌/불명확 결과 복구·목록 갱신·suppression",
+      "evidence": "docs/implementation/progress/M1-04k.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -231,7 +240,8 @@
         "M1-04g",
         "M1-04h",
         "M1-04i",
-        "M1-04j"
+        "M1-04j",
+        "M1-04k"
       ],
       "kind": "task",
       "status": "not_started",

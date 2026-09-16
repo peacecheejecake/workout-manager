@@ -183,7 +183,7 @@ export function BrowserDetail({ activity }: { activity: Activity }) {
           <p>저장된 자기보고가 없습니다. 미보고를 RPE 0으로 해석하지 않습니다.</p>
         )}
       </section>
-      <p>정정은 원본을 덮어쓰지 않습니다. 이 화면은 조회 전용입니다.</p>
+      <p>정정은 원본을 덮어쓰지 않습니다. 원본과 정정 반영 값을 구분하여 표시합니다.</p>
     </>
   );
 }
