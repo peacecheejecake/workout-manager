@@ -7,15 +7,14 @@
       "title": "도구·품질 기반",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "workspace/tooling/CI/lockfile; 독립 runner smoke"
+      "status": "completed",
+      "scope": "workspace/tooling/CI/lockfile; 독립 runner smoke",
+      "evidence": "docs/implementation/progress/M0-01.md"
     },
     {
       "id": "M0-02",
       "title": "공유 도메인 계약",
-      "dependsOn": [
-        "M0-01"
-      ],
+      "dependsOn": ["M0-01"],
       "kind": "task",
       "status": "not_started",
       "scope": "contracts; schema·fixture·version 정책"
@@ -23,9 +22,7 @@
     {
       "id": "M0-03",
       "title": "Host·상태·두 shell",
-      "dependsOn": [
-        "M0-02"
-      ],
+      "dependsOn": ["M0-02"],
       "kind": "task",
       "status": "not_started",
       "scope": "platform/api-client/web/mobile-web; 상태 격리·build"
@@ -33,9 +30,7 @@
     {
       "id": "M0-04",
       "title": "UI·반응형",
-      "dependsOn": [
-        "M0-03"
-      ],
+      "dependsOn": ["M0-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "ui/Storybook; tokens·breakpoint 생성·draft 유지"
@@ -43,9 +38,7 @@
     {
       "id": "M0-05",
       "title": "API·DB 기반",
-      "dependsOn": [
-        "M0-02"
-      ],
+      "dependsOn": ["M0-02"],
       "kind": "task",
       "status": "not_started",
       "scope": "api/persistence; migration·RLS·outbox·실DB 시험"
@@ -61,9 +54,7 @@
     {
       "id": "EXT-G",
       "title": "Garmin 권한 확보",
-      "dependsOn": [
-        "M0-06a"
-      ],
+      "dependsOn": ["M0-06a"],
       "kind": "external",
       "status": "not_started",
       "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정"
@@ -71,10 +62,7 @@
     {
       "id": "M0-06b",
       "title": "UI·지도 spike",
-      "dependsOn": [
-        "M0-04",
-        "M0-06a"
-      ],
+      "dependsOn": ["M0-04", "M0-06a"],
       "kind": "task",
       "status": "not_started",
       "scope": "adapter 호환성·라이선스·지도 coverage; 브라우저 증거"
@@ -82,10 +70,7 @@
     {
       "id": "M0-06c",
       "title": "Native feasibility",
-      "dependsOn": [
-        "M0-03",
-        "M0-06a"
-      ],
+      "dependsOn": ["M0-03", "M0-06a"],
       "kind": "task",
       "status": "not_started",
       "scope": "HealthKit feasibility; 서명·권한·실기기 증거"
@@ -93,9 +78,7 @@
     {
       "id": "M0-07a",
       "title": "로컬 FIT batch 도구",
-      "dependsOn": [
-        "M0-01"
-      ],
+      "dependsOn": ["M0-01"],
       "kind": "task",
       "status": "not_started",
       "scope": "Python CLI·CSV/Parquet·pytest; synthetic fixture"
@@ -103,10 +86,7 @@
     {
       "id": "M0-07b",
       "title": "허가된 FIT 다운로드",
-      "dependsOn": [
-        "M0-07a",
-        "EXT-G"
-      ],
+      "dependsOn": ["M0-07a", "EXT-G"],
       "kind": "task",
       "status": "not_started",
       "scope": "공식 provider 경로·resume/manifest; 로컬 import와 별도 완료"
@@ -114,10 +94,7 @@
     {
       "id": "M1-01",
       "title": "Identity·Consent",
-      "dependsOn": [
-        "M0-03",
-        "M0-05"
-      ],
+      "dependsOn": ["M0-03", "M0-05"],
       "kind": "task",
       "status": "not_started",
       "scope": "identity/auth/consent; tenant·session·cache 격리"
@@ -125,10 +102,7 @@
     {
       "id": "M1-02",
       "title": "Plan·Planner",
-      "dependsOn": [
-        "M1-01",
-        "M0-04"
-      ],
+      "dependsOn": ["M1-01", "M0-04"],
       "kind": "task",
       "status": "not_started",
       "scope": "planning/planner-kit; version·projection·draft"
@@ -136,10 +110,7 @@
     {
       "id": "M1-03",
       "title": "Import·Activity",
-      "dependsOn": [
-        "M1-01",
-        "M0-07a"
-      ],
+      "dependsOn": ["M1-01", "M0-07a"],
       "kind": "task",
       "status": "not_started",
       "scope": "activities/worker; fixture/FIT·dedup·suppression"
@@ -147,11 +118,7 @@
     {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
-      "dependsOn": [
-        "M1-02",
-        "M1-03",
-        "M0-06b"
-      ],
+      "dependsOn": ["M1-02", "M1-03", "M0-06b"],
       "kind": "task",
       "status": "not_started",
       "scope": "dashboard/wellbeing/workbench; 실제 API·반응형"
@@ -159,9 +126,7 @@
     {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": [
-        "M1-04"
-      ],
+      "dependsOn": ["M1-04"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"
@@ -169,9 +134,7 @@
     {
       "id": "M1-06a",
       "title": "운영·삭제·내보내기",
-      "dependsOn": [
-        "M1-03"
-      ],
+      "dependsOn": ["M1-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "settings/sync/audit; 관측·삭제·backup restore 기반"
@@ -179,10 +142,7 @@
     {
       "id": "M1-06b",
       "title": "공식 Garmin adapter",
-      "dependsOn": [
-        "M1-03",
-        "EXT-G"
-      ],
+      "dependsOn": ["M1-03", "EXT-G"],
       "kind": "task",
       "status": "not_started",
       "scope": "integrations/garmin; 허가된 실제 응답·자동 수집 검증"
@@ -190,10 +150,7 @@
     {
       "id": "G1",
       "title": "러닝 core 통합",
-      "dependsOn": [
-        "M1-05",
-        "M1-06a"
-      ],
+      "dependsOn": ["M1-05", "M1-06a"],
       "kind": "gate",
       "status": "not_started",
       "scope": "mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님"
@@ -201,9 +158,7 @@
     {
       "id": "M1b-01",
       "title": "영양 수동 core",
-      "dependsOn": [
-        "G1"
-      ],
+      "dependsOn": ["G1"],
       "kind": "task",
       "status": "not_started",
       "scope": "nutrition; plan/intake/food·부분 기록"
@@ -211,9 +166,7 @@
     {
       "id": "M1b-02",
       "title": "보강 수동 core",
-      "dependsOn": [
-        "G1"
-      ],
+      "dependsOn": ["G1"],
       "kind": "task",
       "status": "not_started",
       "scope": "supplementary; exercise/set actual·timer"
@@ -221,10 +174,7 @@
     {
       "id": "M1b-03",
       "title": "영양·보강 통합",
-      "dependsOn": [
-        "M1b-01",
-        "M1b-02"
-      ],
+      "dependsOn": ["M1b-01", "M1b-02"],
       "kind": "task",
       "status": "not_started",
       "scope": "joint approval/Planner; V022 회귀·단일 Activity"
@@ -232,9 +182,7 @@
     {
       "id": "M1c-01",
       "title": "범용 루틴",
-      "dependsOn": [
-        "M1b-03"
-      ],
+      "dependsOn": ["M1b-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "routines/routine-kit; finite occurrence/run·actual link"
@@ -242,9 +190,7 @@
     {
       "id": "M1c-02",
       "title": "스트레칭",
-      "dependsOn": [
-        "M1b-03"
-      ],
+      "dependsOn": ["M1b-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "supplementary stretching; 기존 catalog·좌우/시간"
@@ -252,9 +198,7 @@
     {
       "id": "M1c-03",
       "title": "회복 전략",
-      "dependsOn": [
-        "M1b-03"
-      ],
+      "dependsOn": ["M1b-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "recovery; 비운동 원장·계획·재평가"
@@ -262,11 +206,7 @@
     {
       "id": "M1c-04",
       "title": "다영역 통합 승인",
-      "dependsOn": [
-        "M1c-01",
-        "M1c-02",
-        "M1c-03"
-      ],
+      "dependsOn": ["M1c-01", "M1c-02", "M1c-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "approval/Planner; schema v4·V023 회귀·중단·실제 링크"
@@ -274,10 +214,7 @@
     {
       "id": "M2-01",
       "title": "코스·도로 routing",
-      "dependsOn": [
-        "M1c-04",
-        "M0-06b"
-      ],
+      "dependsOn": ["M1c-04", "M0-06b"],
       "kind": "task",
       "status": "not_started",
       "scope": "courses/geo-kit; provider coverage·실제 route"
@@ -285,9 +222,7 @@
     {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": [
-        "M2-01"
-      ],
+      "dependsOn": ["M2-01"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
@@ -295,9 +230,7 @@
     {
       "id": "M2-03",
       "title": "갤러리·media",
-      "dependsOn": [
-        "M1c-04"
-      ],
+      "dependsOn": ["M1c-04"],
       "kind": "task",
       "status": "not_started",
       "scope": "gallery/media; 객체 권한·upload·video·삭제"
@@ -305,9 +238,7 @@
     {
       "id": "M2-04",
       "title": "자료 생명주기",
-      "dependsOn": [
-        "M1c-04"
-      ],
+      "dependsOn": ["M1c-04"],
       "kind": "task",
       "status": "not_started",
       "scope": "resources; version/ACL/삭제·reader. 공용 객체 저장 port는 M0-05 계약 사용"
@@ -315,10 +246,7 @@
     {
       "id": "M2-05",
       "title": "RAG·검토 자료·코치",
-      "dependsOn": [
-        "M2-04",
-        "M2-03"
-      ],
+      "dependsOn": ["M2-04", "M2-03"],
       "kind": "task",
       "status": "not_started",
       "scope": "retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠"
@@ -326,10 +254,7 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": [
-        "M2-02",
-        "M2-05"
-      ],
+      "dependsOn": ["M2-02", "M2-05"],
       "kind": "task",
       "status": "not_started",
       "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정"
@@ -337,10 +262,7 @@
     {
       "id": "M2-07",
       "title": "공식 연동 출시 검증",
-      "dependsOn": [
-        "M2-06",
-        "M1-06b"
-      ],
+      "dependsOn": ["M2-06", "M1-06b"],
       "kind": "task",
       "status": "not_started",
       "scope": "실제 Garmin 수집을 전체 앱과 통합 검증; 동의·실패 복구·공급자 회귀"
@@ -348,10 +270,7 @@
     {
       "id": "G2",
       "title": "Web MVP 출시 gate",
-      "dependsOn": [
-        "M2-06",
-        "M2-07"
-      ],
+      "dependsOn": ["M2-06", "M2-07"],
       "kind": "gate",
       "status": "not_started",
       "scope": "공식 Garmin 포함; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단"
@@ -359,10 +278,7 @@
     {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": [
-        "M1c-04",
-        "M0-06c"
-      ],
+      "dependsOn": ["M1c-04", "M0-06c"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"
@@ -370,9 +286,7 @@
     {
       "id": "M3-02",
       "title": "HealthKit collector",
-      "dependsOn": [
-        "M3-01"
-      ],
+      "dependsOn": ["M3-01"],
       "kind": "task",
       "status": "not_started",
       "scope": "native collector; anchor/tombstone/outbox/ack·실기기"
@@ -380,10 +294,7 @@
     {
       "id": "M3-03",
       "title": "최종 Native 통합",
-      "dependsOn": [
-        "M3-02",
-        "G2"
-      ],
+      "dependsOn": ["M3-02", "G2"],
       "kind": "task",
       "status": "not_started",
       "scope": "M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건"
@@ -391,9 +302,7 @@
     {
       "id": "G3",
       "title": "Native-inclusive 출시 gate",
-      "dependsOn": [
-        "M3-03"
-      ],
+      "dependsOn": ["M3-03"],
       "kind": "gate",
       "status": "not_started",
       "scope": "Web 전체 범위 + 실제 HealthKit·native 검증"

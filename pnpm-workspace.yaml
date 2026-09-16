@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/modules/*
+  - packages/experience/*
+  - packages/ui/*
+  - packages/server/*
+minimumReleaseAge: 1440
+onlyBuiltDependencies:
+  - esbuild

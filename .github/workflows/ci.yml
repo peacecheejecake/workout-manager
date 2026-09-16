@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: M0-01 tooling checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:coverage
+      - run: pnpm build
+
+  e2e:
+    name: M0-01 fixture E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fixture-e2e-failures
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  planned-gates:
+    name: Not yet implemented gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report future gates without claiming verification
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Not executed: future implementation gates
+          - M0-03: Next/Vite product shell builds and smoke tests
+          - M0-05: real PostgreSQL/API integration tests
+          - M1 first slice: product web/API/DB E2E
+          - M0-07: Python FIT Ruff/pytest suite
+          - M3: native device/HealthKit validation
+          Checks above cover tooling fixtures only, not product acceptance.
+          SUMMARY
