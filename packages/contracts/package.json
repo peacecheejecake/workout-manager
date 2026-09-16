@@ -48,6 +48,10 @@
     "./dashboard": {
       "types": "./src/dashboard.ts",
       "default": "./dist/dashboard.js"
+    },
+    "./activity-context": {
+      "types": "./src/activity-context.ts",
+      "default": "./dist/activity-context.js"
     }
   },
   "scripts": {

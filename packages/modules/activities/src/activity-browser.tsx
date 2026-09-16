@@ -3,11 +3,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
-import { activityListSchema, activitySchema } from '@workout/contracts/activity';
+import { activityListSchema } from '@workout/contracts/activity';
 import { Button } from '@workout/ui-foundation/button';
 import { readActivitySearch, updateActivitySearch } from './browser-search';
 import { BrowserRecords, BrowserDetail, kindLabels, sourceLabels } from './browser-records';
 import styles from './activity-browser.module.css';
+import { activityContextSchema } from '@workout/contracts/activity-context';
+import { ActivityContextPanel } from './activity-context-panel';
 
 export interface ActivityBrowserProps {
   athleteId: string;
@@ -18,6 +20,7 @@ export interface ActivityBrowserProps {
   initialTimezone: string;
   importHref: string;
   createHref?: string;
+  planDayHref?: (date: string) => string;
   editHref?: (id: string) => string;
 }
 export function ActivityBrowser(props: ActivityBrowserProps) {
@@ -52,6 +55,7 @@ function Workspace({
   importHref,
   createHref,
   editHref,
+  planDayHref,
 }: ActivityBrowserProps) {
   const headingId = useId();
   const composing = useRef(false);
@@ -82,7 +86,7 @@ function Workspace({
     enabled: !parsed.invalid && parsed.selected !== null,
     queryFn: async ({ signal }) => {
       const response = await transport.request({
-        path: `/bff/v1/activities/${parsed.selected}`,
+        path: `/bff/v1/activities/${parsed.selected}/context`,
         method: 'GET',
         body: null,
         idempotencyKey: null,
@@ -91,9 +95,9 @@ function Workspace({
       if (signal.aborted) throw new Error('CANCELLED');
       if (response.status !== 200)
         throw new Error(response.status === 404 ? 'NOT_FOUND' : 'DETAIL_UNAVAILABLE');
-      const activity = activitySchema.parse(response.body);
-      if (activity.id !== parsed.selected) throw new Error('DETAIL_MISMATCH');
-      return activity;
+      const context = activityContextSchema.parse(response.body);
+      if (context.activity.id !== parsed.selected) throw new Error('DETAIL_MISMATCH');
+      return context;
     },
   });
   function change(changes: Record<string, string | null>) {
@@ -351,10 +355,14 @@ function Workspace({
                 <>
                   {editHref ? (
                     <p>
-                      <a href={editHref(detail.data.id)}>이 활동 정정</a>
+                      <a href={editHref(detail.data.activity.id)}>이 활동 정정</a>
                     </p>
                   ) : null}
-                  <BrowserDetail activity={detail.data} />
+                  <BrowserDetail activity={detail.data.activity} />
+                  <ActivityContextPanel
+                    context={detail.data}
+                    {...(planDayHref ? { planDayHref } : {})}
+                  />
                 </>
               ) : null}
             </section>

@@ -1,3 +1,5 @@
+import type { ActivityContextRepository } from '@workout/server-persistence/activity-context';
+import { registerActivityContextRoutes } from './activity-context-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
@@ -15,6 +17,7 @@ export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
   activities?: ActivityRepository;
+  activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
   dashboard?: DashboardRepository;
   operations?: OperationsRepository;
@@ -24,6 +27,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.activityContext)
+    registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);

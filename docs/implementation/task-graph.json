@@ -199,6 +199,15 @@
       "evidence": "docs/implementation/progress/M1-04h.md"
     },
     {
+      "id": "M1-04i",
+      "title": "활동 계획 연결·관측 영향 상세",
+      "dependsOn": ["M1-04g", "M1-04h"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "명시 계획 링크의 과거 snapshot·거리 차이·Block 부분합계와 포함 여부·동일 관측 조회·제품 상세",
+      "evidence": "docs/implementation/progress/M1-04i.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -211,7 +220,8 @@
         "M1-04e",
         "M1-04f",
         "M1-04g",
-        "M1-04h"
+        "M1-04h",
+        "M1-04i"
       ],
       "kind": "task",
       "status": "not_started",

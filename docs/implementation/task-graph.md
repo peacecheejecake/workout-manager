@@ -89,6 +89,10 @@ flowchart TD
     activityBrowser --> activityEditor
     manualActivity --> activityEditor
     activityEditor --> task14
+    activityContext["M1-04i 활동 계획 연결·관측 영향 상세"]
+    manualActivity --> activityContext
+    activityEditor --> activityContext
+    activityContext --> task14
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -206,7 +210,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04f 활동 목록 제품 UI | M1-04e | URL필터·정렬·표/카드·선택 조회·반응형 |
 | M1-04g 수동 활동·보고 계약/API | M1-02, M1-03, M1-04e | 명시확인 actual·RPE/메모/계획연결·정정·export/backup |
 | M1-04h 수동 활동 입력·정정 UI | M1-04f, M1-04g | Zustand 초안·명시확인·수정충돌·재시도·반응형 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04i 활동 계획 연결·관측 영향 상세 | M1-04g, M1-04h | 과거 계획 snapshot·거리 차이·Block 부분합계·명시적 포함 여부 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

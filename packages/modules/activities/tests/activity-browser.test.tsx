@@ -43,10 +43,17 @@ const reply = (body: unknown, status = 200): Reply => ({
   body: z.json().parse(body),
   traceId: null,
 });
+const context = (activity: Activity) => ({
+  definitionVersion: 'activity-context-v1',
+  observedAt: '2026-09-16T00:00:00Z',
+  activity,
+  activityDataRevision: { count: 1, revisionSum: '1' },
+  planContext: { status: 'unlinked' },
+});
 const list = () => reply({ items: [activity, missing], total: 2 });
 function setup(
   handler: (input: TransportRequest) => Promise<Reply> = async (input) =>
-    input.path.includes('?') ? list() : reply(activity),
+    input.path.includes('?') ? list() : reply(context(activity)),
   search = '',
 ) {
   const request = vi.fn(handler);
@@ -134,7 +141,9 @@ describe('read-only activity browser', () => {
   it('loads selection independently of pages and preserves it through filters, paging and view changes', async () => {
     const { changed, request } = setup(
       async (input) =>
-        input.path.includes('?') ? reply({ items: [missing], total: 21 }) : reply(activity),
+        input.path.includes('?')
+          ? reply({ items: [missing], total: 21 })
+          : reply(context(activity)),
       `selected=${activity.id}`,
     );
     const detail = await screen.findByRole('region', { name: '선택한 활동 상세' });
@@ -155,7 +164,9 @@ describe('read-only activity browser', () => {
       '관측된 영',
     );
     expect(
-      request.mock.calls.some(([input]) => input.path === `/bff/v1/activities/${activity.id}`),
+      request.mock.calls.some(
+        ([input]) => input.path === `/bff/v1/activities/${activity.id}/context`,
+      ),
     ).toBe(true);
   });
   it('preserves same-query results with stale notice but hides details after a 404 reread', async () => {
@@ -168,7 +179,7 @@ describe('read-only activity browser', () => {
             : list()
           : fail
             ? reply(null, 404)
-            : reply(activity),
+            : reply(context(activity)),
       `selected=${activity.id}`,
     );
     await screen.findByRole('region', { name: '정정 반영 기록' });

@@ -5,6 +5,7 @@ import {
   useAuthenticatedSession,
 } from '@workout/platform/authenticated-workspace';
 import { ActivityBrowser } from '@workout/modules-activities/activity-browser';
+import { shiftDashboardDate } from '@workout/contracts/dashboard';
 function Activities() {
   const session = useAuthenticatedSession();
   const [search, setSearch] = useState(() => window.location.search);
@@ -22,6 +23,9 @@ function Activities() {
       importHref="/activities/import"
       createHref="/activities/new"
       editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
+      planDayHref={(date) =>
+        `/planner?${new URLSearchParams({ lens: 'calendar', from: date, to: shiftDashboardDate(date, 1) })}`
+      }
       onSearchChange={(query) => {
         const normalized = query ? `?${query.replace(/^\?/, '')}` : '';
         window.history.pushState(null, '', `${window.location.pathname}${normalized}`);

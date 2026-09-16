@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   activitySchema,
+  activityValuesSchema,
   manualActivityCreateSchema,
   manualActivityResultSchema,
   activityReportSchema,
@@ -9,7 +10,6 @@ import {
   type ManualActivityResult,
   type ActivityReportValues,
   type ActivityReport,
-  activityValuesSchema,
   activityOverlaySchema,
   activityOverlayWriteSchema,
   activityDeleteSchema,
@@ -24,6 +24,7 @@ import {
   type ActivitySummary,
   type ActivityOverlayWrite,
 } from '@workout/contracts/activity';
+import { selectActivity, decodeActivity } from './activity-record.js';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
 
@@ -40,39 +41,9 @@ export class ActivityValidationError extends Error {
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const lock = (tx: Transaction) =>
   tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tx.athleteId]);
-const selectActivity = `SELECT c.id,c.revision,c.original,s.kind,s.source_id,s.source_revision,s.content_hash,coalesce(o.values_json,'{}'::jsonb) AS overlay FROM activity_canonical c JOIN activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id LEFT JOIN activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND NOT c.deleted`;
-function decode(row: Record<string, unknown>): Activity {
-  const original = activityValuesSchema.parse(row['original']);
-  const overlay = activityOverlaySchema.parse(row['overlay']);
-  return activitySchema.parse({
-    id: row['id'],
-    revision: row['revision'],
-    source: {
-      kind: row['kind'],
-      sourceId: row['source_id'],
-      revision: row['source_revision'],
-      contentHash: row['content_hash'],
-    },
-    original,
-    overlay,
-    userReport: overlay.userReport ?? null,
-    effective: {
-      ...original,
-      ...(overlay.kind === undefined ? {} : { kind: overlay.kind }),
-      ...(overlay.startedAt === undefined
-        ? {}
-        : { startedAt: overlay.startedAt, timezone: overlay.timezone }),
-      ...(overlay.title === undefined ? {} : { title: overlay.title }),
-      ...(overlay.distanceMeters === undefined ? {} : { distanceMeters: overlay.distanceMeters }),
-      ...(overlay.durationSeconds === undefined
-        ? {}
-        : { durationSeconds: overlay.durationSeconds, durationKind: overlay.durationKind }),
-    },
-  });
-}
 async function detail(tx: Transaction, id: string) {
   const rows = await tx.query(`${selectActivity} AND c.id=$2`, [tx.athleteId, id]);
-  return rows.rows[0] ? decode(rows.rows[0]) : null;
+  return rows.rows[0] ? decodeActivity(rows.rows[0]) : null;
 }
 async function event(tx: Transaction, id: string, revision: number, action: string) {
   await enqueue(tx, {
@@ -313,7 +284,7 @@ export function createActivityRepository(
         const row = z
           .object({ total: z.number().int(), items: z.array(z.record(z.string(), z.unknown())) })
           .parse(result.rows[0]);
-        return { total: row.total, items: row.items.map(decode) };
+        return { total: row.total, items: row.items.map(decodeActivity) };
       });
     },
     getActivity(athleteId, id) {

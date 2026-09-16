@@ -1,3 +1,4 @@
+import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
 import { createActivityRepository } from '@workout/server-persistence/activities';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
@@ -67,6 +68,7 @@ export async function createConfiguredApi(environment: unknown) {
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
       activities: createActivityRepository(database),
+      activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
       dashboard: createDashboardRepository(database),
       operations: createOperationsRepository(database),

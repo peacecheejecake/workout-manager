@@ -139,7 +139,8 @@ test('activity browser keeps independent selected details through paging, filter
     await expect(effective.getByText(`${records.prefix} zero`, { exact: true })).toBeVisible();
     const detailResponse = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === `/bff/v1/activities/${records.zero.activityId}` &&
+        new URL(response.url()).pathname ===
+          `/bff/v1/activities/${records.zero.activityId}/context` &&
         response.request().method() === 'GET',
     );
     await page.reload();

@@ -1,3 +1,4 @@
+import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
 import { identityApiPort } from './fixtures/identity-api-port.ts';
@@ -190,6 +191,7 @@ try {
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     activities: createActivityRepository(database),
+    activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
