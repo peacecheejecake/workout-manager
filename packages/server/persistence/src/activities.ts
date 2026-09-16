@@ -1,3 +1,4 @@
+import { activityInstantSql } from './activity-calendar.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -254,7 +255,7 @@ export function createActivityRepository(
         // strpos is literal substring matching: percent, underscore and backslash are not wildcards.
         const result = await tx.query(
           `WITH effective AS (
-            SELECT base.*,((CASE WHEN overlay ? 'startedAt' THEN overlay ELSE original END)->>'startedAt')::timestamptz AS started_at,
+            SELECT base.*,${activityInstantSql("(CASE WHEN overlay ? 'startedAt' THEN overlay ELSE original END)->>'startedAt'")} AS started_at,
               (CASE WHEN overlay ? 'kind' THEN overlay ELSE original END)->>'kind' AS effective_kind,
               (CASE WHEN overlay ? 'title' THEN overlay ELSE original END)->>'title' AS effective_title,
               ((CASE WHEN overlay ? 'distanceMeters' THEN overlay ELSE original END)->>'distanceMeters')::numeric AS effective_distance

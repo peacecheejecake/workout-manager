@@ -235,6 +235,15 @@
       "evidence": "docs/implementation/progress/M1-04l.md"
     },
     {
+      "id": "M1-04m",
+      "title": "활동 조회 달력 경계 보완",
+      "dependsOn": ["M1-04l"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "legacy ISO year0000 instant 보존·목록 정렬/날짜 필터·dashboard 조회·실제 DB 회귀",
+      "evidence": "docs/implementation/progress/M1-04m.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -251,7 +260,8 @@
         "M1-04i",
         "M1-04j",
         "M1-04k",
-        "M1-04l"
+        "M1-04l",
+        "M1-04m"
       ],
       "kind": "task",
       "status": "not_started",

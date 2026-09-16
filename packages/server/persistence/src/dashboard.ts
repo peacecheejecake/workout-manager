@@ -1,3 +1,4 @@
+import { activityInstantSql } from './activity-calendar.js';
 import { z } from 'zod';
 import {
   dashboardQuerySchema,
@@ -25,7 +26,7 @@ const sql = `WITH plan AS MATERIALIZED (
 ), settings AS (SELECT coalesce((SELECT draft->>'timezone' FROM plan),$2::text) AS timezone),
  canonical AS MATERIALIZED (SELECT id,revision,original,deleted FROM activity_canonical WHERE athlete_id=$1),
  effective AS MATERIALIZED (
- SELECT (((CASE WHEN o.values_json ? 'startedAt' THEN o.values_json ELSE c.original END)->>'startedAt')::timestamptz AT TIME ZONE settings.timezone)::date AS date,
+ SELECT (${activityInstantSql("(CASE WHEN o.values_json ? 'startedAt' THEN o.values_json ELSE c.original END)->>'startedAt'")} AT TIME ZONE settings.timezone)::date AS date,
  ((CASE WHEN o.values_json ? 'distanceMeters' THEN o.values_json ELSE c.original END)->>'distanceMeters')::numeric AS distance,
  ((CASE WHEN o.values_json ? 'durationSeconds' THEN o.values_json ELSE c.original END)->>'durationSeconds')::numeric AS duration,
  (CASE WHEN o.values_json ? 'durationSeconds' THEN o.values_json ELSE c.original END)->>'durationKind' AS duration_kind,
