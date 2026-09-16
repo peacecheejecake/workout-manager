@@ -1,14 +1,23 @@
+@import '@workout/ui-foundation/tokens.css';
+@import '@workout/ui-foundation/responsive.css';
 html {
-  font-family: system-ui, sans-serif;
-  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
 }
 body {
   margin: 0;
+  min-height: 100dvh;
+  background: linear-gradient(135deg, var(--canvas), var(--canvas-warm));
 }
-main {
-  max-width: 60rem;
-  margin: auto;
-  padding: 1.25rem;
+h1 {
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+}
+p {
+  line-height: 1.6;
 }
 button,
 select,
@@ -18,20 +27,13 @@ textarea {
 }
 button,
 select {
-  min-height: 2.75rem;
-  margin-block: 0.25rem;
+  min-height: var(--target-primary);
+  margin-block: var(--space-1);
 }
-textarea {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 6rem;
-}
-li {
-  margin-block: 1rem;
-  overflow-wrap: anywhere;
+a {
+  color: var(--accent);
 }
 :focus-visible {
-  outline: 3px solid Highlight;
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
 }

@@ -1,0 +1,7 @@
+{
+  "extends": "../../packages/tooling/tsconfig/bundler.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src", "tests", ".storybook", "stories"]
+}

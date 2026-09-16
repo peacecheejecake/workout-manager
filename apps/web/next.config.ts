@@ -6,6 +6,7 @@ const config: NextConfig = {
     '@workout/api-client',
     '@workout/modules-activities',
     '@workout/contracts',
+    '@workout/ui-foundation',
   ],
 };
 export default config;

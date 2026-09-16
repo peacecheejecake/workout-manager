@@ -1,0 +1,5 @@
+.canvas {
+  background: var(--canvas);
+  color: var(--ink);
+  min-height: 100%;
+}

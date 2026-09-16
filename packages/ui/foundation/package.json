@@ -1,0 +1,21 @@
+{
+  "name": "@workout/ui-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0"
+  },
+  "exports": {
+    "./button": "./src/button.tsx",
+    "./text-field": "./src/text-field.tsx",
+    "./status-notice": "./src/status-notice.tsx",
+    "./adaptive-workspace": "./src/adaptive-workspace.tsx",
+    "./responsive": "./src/responsive.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./responsive.css": "./src/responsive.css"
+  }
+}

@@ -34,8 +34,9 @@
       "title": "UI·반응형",
       "dependsOn": ["M0-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "ui/Storybook; tokens·breakpoint 생성·draft 유지"
+      "status": "completed",
+      "scope": "ui/Storybook; tokens·breakpoint 생성·draft 유지",
+      "evidence": "docs/implementation/progress/M0-04.md"
     },
     {
       "id": "M0-05",

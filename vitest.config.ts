@@ -32,6 +32,7 @@ export default defineConfig({
             'packages/tooling/fixtures/**/*.test.tsx',
             'packages/platform/tests/**/*.test.tsx',
             'packages/modules/*/tests/**/*.test.tsx',
+            'packages/ui/*/tests/**/*.test.tsx',
           ],
           setupFiles: ['packages/tooling/test-setup.ts'],
         },

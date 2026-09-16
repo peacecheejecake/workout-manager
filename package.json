@@ -19,10 +19,13 @@
     "test:e2e": "playwright test",
     "build": "turbo run build",
     "dev:fixture": "vite --config packages/tooling/fixtures/ui/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm check:generated && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "test:shells": "playwright test --config playwright.shells.config.ts",
     "dev:web": "pnpm --filter @workout/contracts build && pnpm --filter @workout/web dev",
-    "dev:mobile-web": "pnpm --filter @workout/contracts build && pnpm --filter @workout/mobile-web dev"
+    "dev:mobile-web": "pnpm --filter @workout/contracts build && pnpm --filter @workout/mobile-web dev",
+    "generate:responsive": "node scripts/generate-responsive.mjs",
+    "check:generated": "node scripts/generate-responsive.mjs --check",
+    "dev:storybook": "pnpm --filter @workout/storybook dev"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

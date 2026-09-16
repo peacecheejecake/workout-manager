@@ -95,4 +95,9 @@ pnpm test:shells     # 위 production build 후, 두 포트가 비어 있을 때
 ```
 
 [검증 기록](docs/implementation/progress/M0-03.md): 계정/세션 초기화, SSR, 재시도와 메모 보존,
-Playwright 및 Aside 실 브라우저 확인. 정식 UI kit는 다음 M0-04 작업입니다.
+Playwright 및 Aside 실 브라우저 확인. UI controls·semantic tokens·Storybook·반응형 생성기는 [M0-04](docs/implementation/progress/M0-04.md)에 구현했습니다.
+
+```bash
+pnpm dev:storybook
+pnpm check:generated
+```

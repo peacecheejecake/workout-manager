@@ -14,6 +14,7 @@
     "react-dom": "19.3.0",
     "@workout/platform": "workspace:*",
     "@workout/modules-activities": "workspace:*",
-    "@workout/contracts": "workspace:*"
+    "@workout/contracts": "workspace:*",
+    "@workout/ui-foundation": "workspace:*"
   }
 }

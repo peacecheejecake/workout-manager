@@ -11,7 +11,8 @@
     "@tanstack/react-query": "5.102.8",
     "@workout/platform": "workspace:*",
     "@workout/api-client": "workspace:*",
-    "@workout/contracts": "workspace:*"
+    "@workout/contracts": "workspace:*",
+    "@workout/ui-foundation": "workspace:*"
   },
   "exports": {
     "./activity-list": "./src/activity-list.tsx",
