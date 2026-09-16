@@ -17,6 +17,7 @@ function Planner() {
   return (
     <PlanningWorkspace
       {...session}
+      activityHref={(id) => `/activities?${new URLSearchParams({ selected: id })}`}
       search={search}
       onSearchChange={(query) => {
         const normalized = query ? `?${query.replace(/^\?/, '')}` : '';

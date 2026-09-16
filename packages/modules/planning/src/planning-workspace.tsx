@@ -31,8 +31,10 @@ import { validationGuidance } from './validation-guidance';
 import { PeriodEditor, SessionEditor } from './plan-fields';
 import { readPlannerSearch, updatePlannerSearch } from './lens';
 import styles from './planning.module.css';
+import { ActualActivities } from './actual-activities';
 
 export interface PlanningWorkspaceProps {
+  activityHref?: (id: string) => string;
   athleteId: string;
   sessionId: string;
   transport: AuthenticatedTransport;
@@ -86,6 +88,7 @@ function Planner({
   onSearchChange,
   today,
   createId = randomId,
+  activityHref,
 }: PlanningWorkspaceProps & { today: string }) {
   const store = use(DraftContext);
   if (!store) throw new Error('PlanningLifetime required');
@@ -488,6 +491,17 @@ function Planner({
           )}
         </section>
       </AdaptiveWorkspace>
+      <ActualActivities
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        head={currentPlan?.head}
+        lens={url.lens}
+        invalidLens={url.error}
+        search={search}
+        onSearchChange={onSearchChange}
+        {...(activityHref ? { activityHref } : {})}
+      />
       <section aria-label="계획 버전 이력">
         <h2>버전 이력 (최근 100개)</h2>
         <ol>

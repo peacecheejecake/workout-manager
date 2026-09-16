@@ -11,7 +11,8 @@ import {
 import type { PlanDraft, PlanSnapshot } from '@workout/contracts/planning';
 import { PlanningWorkspace, type PlanningWorkspaceProps } from '../src/planning-workspace';
 import { createPlanningDraftStore } from '../src/draft-store';
-import { readPlannerSearch } from '../src/lens';
+import { readPlannerSearch, updatePlannerSearch } from '../src/lens';
+import { actualRange } from '../src/actual-activities';
 import { validationGuidance } from '../src/validation-guidance';
 
 const draft: PlanDraft = {
@@ -96,14 +97,16 @@ function host(
     reply({ ...snapshot, id: 'version-2', version: 2 }),
 ) {
   const request = vi.fn(async (input: TransportRequest) =>
-    input.method === 'GET'
-      ? reply({
-          head: snapshot,
-          history: [
-            { id: snapshot.id, version: 1, createdAt: snapshot.createdAt, title: draft.title },
-          ],
-        })
-      : put(input),
+    input.path.startsWith('/bff/v1/activities?')
+      ? reply({ items: [], total: 0 })
+      : input.method === 'GET'
+        ? reply({
+            head: snapshot,
+            history: [
+              { id: snapshot.id, version: 1, createdAt: snapshot.createdAt, title: draft.title },
+            ],
+          })
+        : put(input),
   );
   return {
     request: async (input: TransportRequest) => transportReplySchema.parse(await request(input)),
@@ -245,6 +248,8 @@ describe('idempotent receipt versus authoritative head', () => {
     let finishRead: ((value: ReturnType<typeof transportReplySchema.parse>) => void) | undefined;
     const transport: AuthenticatedTransport = {
       request: async (input) => {
+        if (input.path.startsWith('/bff/v1/activities?'))
+          return transportReplySchema.parse(reply({ items: [], total: 0 }));
         if (input.method === 'PUT')
           return transportReplySchema.parse(reply({ ...snapshot, id: 'version-2', version: 2 }));
         reads++;
@@ -278,6 +283,8 @@ describe('idempotent receipt versus authoritative head', () => {
     let reads = 0;
     const transport: AuthenticatedTransport = {
       request: async (input) => {
+        if (input.path.startsWith('/bff/v1/activities?'))
+          return transportReplySchema.parse(reply({ items: [], total: 0 }));
         if (input.method === 'PUT')
           return transportReplySchema.parse(reply({ ...snapshot, id: 'version-2', version: 2 }));
         reads++;
@@ -340,9 +347,11 @@ describe('plan editor constraints', () => {
       })),
     };
     const transport: AuthenticatedTransport = {
-      request: async () =>
+      request: async (input) =>
         transportReplySchema.parse(
-          reply({ head: { ...snapshot, draft: lockedDraft }, history: [] }),
+          input.path.startsWith('/bff/v1/activities?')
+            ? reply({ items: [], total: 0 })
+            : reply({ head: { ...snapshot, draft: lockedDraft }, history: [] }),
         ),
     };
     render(<StatefulHost {...base} transport={transport} />);
@@ -440,5 +449,149 @@ describe('editing guidance', () => {
     });
     expect(guidance).toContain('세션 1 · 메모');
     expect(guidance).not.toContain('INTERNAL_SCHEMA_DETAIL');
+  });
+});
+
+describe('saved-plan actual activity range', () => {
+  it('bounds SQL dates and rejects absent or draft-only periods; view changes retain pages', () => {
+    expect(actualRange(snapshot, { kind: 'period', periodId: 'draft-only' }, false)).toBeNull();
+    expect(
+      actualRange(null, { kind: 'rolling', anchorDate: '2026-09-10', days: 10 }, false),
+    ).toBeNull();
+    expect(
+      actualRange(
+        snapshot,
+        { kind: 'calendar', from: '0000-01-01', toExclusive: '0000-01-02' },
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      actualRange(snapshot, { kind: 'rolling', anchorDate: '9999-12-31', days: 10 }, false),
+    ).toBeNull();
+    expect(actualRange(snapshot, { kind: 'period', periodId: 'block' }, false)?.timezone).toBe(
+      'Asia/Seoul',
+    );
+    expect(
+      new URLSearchParams(updatePlannerSearch('actualPage=3', { view: 'split' })).get('actualPage'),
+    ).toBe('3');
+    expect(
+      new URLSearchParams(updatePlannerSearch('actualPage=3', { days: '7' })).has('actualPage'),
+    ).toBe(false);
+  });
+  it('keeps the saved timezone and draft through actual refresh, pagination and errors', async () => {
+    let failed = false;
+    const activity = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      revision: 1,
+      source: { kind: 'manual', sourceId: 'manual', revision: 1, contentHash: 'a'.repeat(64) },
+      original: {
+        title: '실제 기록',
+        kind: 'running',
+        startedAt: '2026-09-09T23:00:00Z',
+        timezone: 'UTC',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+      overlay: {},
+    };
+    const request = vi.fn(async (input: TransportRequest) => {
+      if (input.path.startsWith('/bff/v1/activities?'))
+        return transportReplySchema.parse(
+          failed
+            ? reply(null, 503)
+            : reply({ items: [{ ...activity, effective: activity.original }], total: 51 }),
+        );
+      return transportReplySchema.parse(reply({ head: snapshot, history: [] }));
+    });
+    const { rerender } = render(
+      <StatefulHost
+        {...base}
+        transport={{ request }}
+        activityHref={(id) => `/activities?selected=${id}`}
+      />,
+    );
+    const region = await screen.findByRole('region', { name: '실제 활동 레이어' });
+    await within(region).findByText('실제 기록');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
+    fireEvent.change(screen.getByLabelText('계획 제목'), { target: { value: '보존 초안' } });
+    fireEvent.change(screen.getByLabelText('계획 시간대'), {
+      target: { value: 'America/New_York' },
+    });
+    await user.click(within(region).getByRole('button', { name: '다음 실제 활동' }));
+    await within(region).findByText(/2페이지/);
+    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    const actualRequests = request.mock.calls.filter(([input]) =>
+      input.path.startsWith('/bff/v1/activities?'),
+    );
+    expect(
+      actualRequests.every(
+        ([input]) =>
+          new URL(input.path, 'http://local').searchParams.get('timezone') === 'Asia/Seoul',
+      ),
+    ).toBe(true);
+    expect(actualRequests.at(-1)?.[0].path).toContain('offset=50');
+    expect(
+      within(region).getByRole('link', { name: '실제 활동 상세 보기 (새 탭)' }),
+    ).toHaveAttribute('target', '_blank');
+    failed = true;
+    await user.click(within(region).getByRole('button', { name: '실제 활동 다시 확인' }));
+    await within(region).findByText(/아래는 마지막 조회 결과/);
+    expect(within(region).getByText('실제 기록')).toBeVisible();
+    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    fireEvent.change(screen.getByLabelText('Rolling 기준일'), { target: { value: '2026-09-11' } });
+    await within(region).findByText(/실제 활동 최신 확인 실패/);
+    expect(within(region).queryByText('실제 기록')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    failed = false;
+    await user.click(within(region).getByRole('button', { name: '실제 활동 다시 확인' }));
+    await within(region).findByText('실제 기록');
+    rerender(
+      <StatefulHost
+        {...base}
+        athleteId="other-athlete"
+        sessionId="other-session"
+        transport={{ request: async () => new Promise(() => {}) }}
+      />,
+    );
+    expect(screen.queryByText('실제 기록')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('계획 제목')).not.toBeInTheDocument();
+  });
+  it('uses a visible page-one fallback for invalid page and performs no fetch without saved head', async () => {
+    const transport = host();
+    const { rerender } = render(
+      <PlanningWorkspace
+        {...base}
+        transport={transport}
+        search="actualPage=999"
+        onSearchChange={() => {}}
+      />,
+    );
+    await screen.findByText(/실제 활동 페이지가 올바르지 않아/);
+    await waitFor(() =>
+      expect(
+        transport.spy.mock.calls.some(([input]) => input.path.startsWith('/bff/v1/activities?')),
+      ).toBe(true),
+    );
+    expect(
+      transport.spy.mock.calls
+        .filter(([input]) => input.path.startsWith('/bff/v1/activities?'))
+        .every(([input]) => input.path.includes('offset=0')),
+    ).toBe(true);
+    const request = vi.fn(async () =>
+      transportReplySchema.parse(reply({ head: null, history: [] })),
+    );
+    rerender(
+      <PlanningWorkspace
+        {...base}
+        sessionId="new-session"
+        transport={{ request }}
+        search="actualPage=1"
+        onSearchChange={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByText(/현재 버전:/)).not.toBeInTheDocument());
+    expect(request.mock.calls).toHaveLength(1);
   });
 });

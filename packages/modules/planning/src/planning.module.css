@@ -66,3 +66,24 @@
   padding-block: var(--space-3);
   border-bottom: 1px solid var(--line);
 }
+
+.actualRecords {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  list-style: none;
+  padding: 0;
+  gap: var(--space-4);
+}
+.actualRecords li {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+}
+.actualRecords a {
+  color: var(--accent);
+}
+.actualRecords a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

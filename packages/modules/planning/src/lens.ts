@@ -40,6 +40,14 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
 export function updatePlannerSearch(search: string, changes: Record<string, string>) {
   const params = new URLSearchParams(search);
   for (const [key, value] of Object.entries(changes)) params.set(key, value);
+  if (
+    Object.keys(changes).some(
+      (key) =>
+        ['lens', 'date', 'days', 'from', 'to', 'period'].includes(key) &&
+        new URLSearchParams(search).get(key) !== changes[key],
+    )
+  )
+    params.delete('actualPage');
   return params.toString();
 }
 

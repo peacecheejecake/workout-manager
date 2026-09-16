@@ -208,6 +208,15 @@
       "evidence": "docs/implementation/progress/M1-04i.md"
     },
     {
+      "id": "M1-04j",
+      "title": "Planner 실제 활동 레이어",
+      "dependsOn": ["M1-02", "M1-04i"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "저장된 기간·시간대의 actual 조회·페이지·명시 연결·초안 유지",
+      "evidence": "docs/implementation/progress/M1-04j.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -221,7 +230,8 @@
         "M1-04f",
         "M1-04g",
         "M1-04h",
-        "M1-04i"
+        "M1-04i",
+        "M1-04j"
       ],
       "kind": "task",
       "status": "not_started",
