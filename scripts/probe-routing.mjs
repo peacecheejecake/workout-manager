@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const origin = 'https://routing.openstreetmap.de';
@@ -49,6 +51,102 @@ const provenance = {
   reportMapError: 'https://www.openstreetmap.org/fixthemap',
 };
 const maxBytes = 512 * 1024;
+const userAgent =
+  'WorkoutManager-RoutingResearch/0.1 (manual fixed-public-coordinate feasibility probe; no personal GPS)';
+const execFileAsync = promisify(execFile);
+
+export function parseArguments(args) {
+  if (args.length === 1 && args[0] === '--execute') return 'node';
+  if (args.length === 2 && args[0] === '--execute' && args[1] === '--transport=curl') return 'curl';
+  return null;
+}
+
+// execFile never invokes a shell. --disable is first so local curlrc cannot add
+// redirects, retries, credentials, or extra requests to this fixed probe.
+export async function curlRequest(url, execute = execFileAsync) {
+  if (
+    url.origin !== origin ||
+    !url.pathname.startsWith('/routed-foot/route/v1/foot/') ||
+    url.username ||
+    url.password ||
+    url.hash
+  )
+    throw new Error('INVALID_ENDPOINT');
+  let output;
+  try {
+    output = await execute(
+      'curl',
+      [
+        '--disable',
+        '--silent',
+        '--show-error',
+        '--proto',
+        '=https',
+        '--max-redirs',
+        '0',
+        '--max-time',
+        '15',
+        '--max-filesize',
+        String(maxBytes),
+        '--user-agent',
+        userAgent,
+        '--header',
+        'Accept: application/json',
+        '--write-out',
+        '\n%{http_code}',
+        '--url',
+        url.href,
+      ],
+      { timeout: 15_000, killSignal: 'SIGKILL', maxBuffer: maxBytes + 4, encoding: 'utf8' },
+    );
+  } catch (error) {
+    // Never retain stderr or the command-bearing error.message.
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+    const failure =
+      code === 63 || code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+        ? 'RESPONSE_TOO_LARGE'
+        : code === 28 || (error && typeof error === 'object' && 'killed' in error && error.killed)
+          ? 'TIMEOUT'
+          : 'CURL_REQUEST_FAILED';
+    const safeCode = Number.isInteger(code)
+      ? `CURL_EXIT_${code}`
+      : typeof code === 'string' && /^[A-Z0-9_]{1,64}$/.test(code)
+        ? code
+        : undefined;
+    throw new Error(failure, { cause: { code: safeCode } });
+  }
+  const match = /\n([1-5][0-9]{2})$/.exec(output.stdout);
+  if (!match) throw new Error('INVALID_HTTP_STATUS');
+  const body = output.stdout.slice(0, -4);
+  const status = Number(match[1]);
+  return withHttpStatus(status, async () => {
+    if (Buffer.byteLength(body) > maxBytes) throw new Error('RESPONSE_TOO_LARGE');
+    if (status >= 300 && status < 400) throw new Error('REDIRECT_REJECTED');
+    return JSON.parse(body);
+  });
+}
+
+async function nodeRequest(url) {
+  const response = await fetch(url, {
+    headers: { 'user-agent': userAgent, accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+    redirect: 'error',
+  });
+  return withHttpStatus(response.status, () => readBoundedJson(response));
+}
+
+// Keep observed HTTP status on parse/body failures so 403/429 stop the run even
+// when a provider returns HTML instead of JSON.
+async function withHttpStatus(status, readPayload) {
+  try {
+    return { status, payload: await readPayload() };
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'INVALID_RESPONSE', {
+      cause: { httpStatus: status },
+    });
+  }
+}
+
 function validPosition(value) {
   return (
     Array.isArray(value) &&
@@ -69,7 +167,7 @@ async function readBoundedJson(response) {
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
-async function probe(testCase) {
+export async function probe(testCase, request = nodeRequest) {
   const url = new URL(
     `${endpoint}${testCase.coordinates.map((coordinate) => coordinate.join(',')).join(';')}`,
   );
@@ -104,24 +202,15 @@ async function probe(testCase) {
   };
   const started = performance.now();
   try {
-    const response = await fetch(url, {
-      headers: {
-        'user-agent':
-          'WorkoutManager-RoutingResearch/0.1 (manual fixed-public-coordinate feasibility probe; no personal GPS)',
-        accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(15_000),
-      redirect: 'error',
-    });
-    result.httpStatus = response.status;
-    const payload = await readBoundedJson(response);
+    const { status, payload } = await request(url);
+    result.httpStatus = status;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       throw new Error('INVALID_RESPONSE');
     result.providerCode =
       typeof payload.code === 'string' && /^[A-Za-z_]{1,64}$/.test(payload.code)
         ? payload.code
         : null;
-    if (!response.ok || payload.code !== 'Ok') {
+    if (status < 200 || status >= 300 || payload.code !== 'Ok') {
       result.outcome =
         payload.code === 'NoRoute' || payload.code === 'NoSegment'
           ? 'unreachable'
@@ -145,7 +234,7 @@ async function probe(testCase) {
       payload.waypoints.length !== 2 ||
       !payload.waypoints.every(
         (point) =>
-          validPosition(point.location) &&
+          validPosition(point?.location) &&
           Number.isFinite(point.distance) &&
           point.distance >= 0 &&
           point.distance <= 100,
@@ -165,6 +254,15 @@ async function probe(testCase) {
     result.errorName =
       error instanceof Error && /^[A-Za-z_]{1,64}$/.test(error.name) ? error.name : null;
     const cause = error instanceof Error ? error.cause : undefined;
+    if (
+      cause &&
+      typeof cause === 'object' &&
+      'httpStatus' in cause &&
+      Number.isInteger(cause.httpStatus) &&
+      cause.httpStatus >= 100 &&
+      cause.httpStatus <= 599
+    )
+      result.httpStatus = cause.httpStatus;
     result.networkErrorCode =
       cause &&
       typeof cause === 'object' &&
@@ -179,6 +277,11 @@ async function probe(testCase) {
       'INVALID_RESPONSE',
       'INVALID_ROUTE',
       'INVALID_SNAP',
+      'INVALID_ENDPOINT',
+      'INVALID_HTTP_STATUS',
+      'REDIRECT_REJECTED',
+      'CURL_REQUEST_FAILED',
+      'TIMEOUT',
     ]);
     result.error =
       error instanceof Error && safeErrors.has(error.message)
@@ -192,11 +295,14 @@ async function probe(testCase) {
   }
 }
 
-if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
-  console.log(
-    'Opt-in only: node scripts/probe-routing.mjs --execute. Runs up to three sequential public synthetic probes; never use as CI.',
-  );
-} else {
+async function main() {
+  const transport = parseArguments(process.argv.slice(2));
+  if (!transport) {
+    console.log(
+      'Opt-in only: node scripts/probe-routing.mjs --execute [--transport=curl]. Runs up to three sequential public synthetic probes; never use as CI. Default transport is Node fetch; no automatic fallback or retries.',
+    );
+    return;
+  }
   if (process.env.CI) throw new Error('Public routing probes are disabled in CI');
   const output = fileURLToPath(
     new URL('../docs/implementation/research/routing-sample-results.json', import.meta.url),
@@ -211,10 +317,20 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
   } catch (error) {
     if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
   }
+  let curlVersion = null;
+  if (transport === 'curl') {
+    const { stdout } = await execFileAsync('curl', ['--disable', '--version'], {
+      timeout: 2000,
+      maxBuffer: 8192,
+      encoding: 'utf8',
+    });
+    curlVersion = /^curl ([0-9]+\.[0-9]+\.[0-9]+)\b/.exec(stdout)?.[1] ?? null;
+    if (!curlVersion) throw new Error('INVALID_CURL_VERSION');
+  }
   const results = [];
   for (const [index, testCase] of cases.entries()) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1100));
-    const result = await probe(testCase);
+    const result = await probe(testCase, transport === 'curl' ? curlRequest : nodeRequest);
     results.push(result);
     if ([403, 429].includes(result.httpStatus)) break;
   }
@@ -223,6 +339,8 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
     executedAt: new Date().toISOString(),
     scope: 'M0-06b manual low-rate public synthetic feasibility sample only',
     executionContext: {
+      transport,
+      curlVersion,
       nodeVersion: process.version,
       systemCaRequested: process.execArgv.includes('--use-system-ca'),
       additionalCaConfigured: Boolean(process.env.NODE_EXTRA_CA_CERTS),
@@ -263,3 +381,5 @@ if (process.argv.length !== 3 || process.argv[2] !== '--execute') {
     }),
   );
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

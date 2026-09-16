@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-16T08:33:27.351Z",
+  "scope": "M0-06b synthetic UI compatibility spike; local production Next server",
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "cpuModel": "Apple M3 Pro",
+    "logicalCpuCount": 12,
+    "memoryGiB": 36,
+    "nodeVersion": "v24.12.0",
+    "browserVersion": "153.0.8010.12",
+    "headless": true,
+    "requestedCpuThrottleRate": 4
+  },
+  "method": {
+    "repetitionsPerProfile": 3,
+    "cache": "New browser context for each sample; request routing disables browser HTTP cache. Server/OS cache is not reset.",
+    "timer": "Browser performance.now immediately before the Playwright action and after correctness assertions; includes browser-driver transport, actionability, scrolling and assertion polling. Not isolated rendering time, INP, LCP or paint completion.",
+    "panelLoad": "Click opens lazy data/editor/interaction/map panels; endpoint is four table rows, an SVG chart and a visible editor. Navigation excluded; map startup may overlap. Map readiness is not measured.",
+    "subsequentOperations": "Map is unmounted before 1000-row expansion, descending title sort and exact one-row filter. No user records or external API are used.",
+    "limits": "Six contexts, 1000 synthetic rows per context, 180-second total deadline, 15-second action timeout. No retries or automatic server start."
+  },
+  "network": {
+    "allowedOrigin": "http://127.0.0.1:3100",
+    "blockedRequests": 0,
+    "serviceWorkers": "blocked",
+    "webSockets": "blocked"
+  },
+  "interpretation": "Observed samples only; no product latency budget or representative low-end hardware qualification. Narrow viewport and 4x CPU throttling do not reproduce a physical mobile device. Concurrent host work and shared browser/server caches can affect timings.",
+  "results": [
+    {
+      "profile": "desktop-viewport",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sample": 1,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 921.3,
+        "thousandRowsMs": 380.7,
+        "descendingSortMs": 650.1,
+        "singleRowFilterMs": 126
+      }
+    },
+    {
+      "profile": "desktop-viewport",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sample": 2,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 807.7,
+        "thousandRowsMs": 378.9,
+        "descendingSortMs": 657.7,
+        "singleRowFilterMs": 107.8
+      }
+    },
+    {
+      "profile": "desktop-viewport",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sample": 3,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 791.5,
+        "thousandRowsMs": 378.7,
+        "descendingSortMs": 622.8,
+        "singleRowFilterMs": 96.8
+      }
+    },
+    {
+      "profile": "narrow-viewport",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sample": 1,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 803.4,
+        "thousandRowsMs": 377,
+        "descendingSortMs": 669.1,
+        "singleRowFilterMs": 98.3
+      }
+    },
+    {
+      "profile": "narrow-viewport",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sample": 2,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 784,
+        "thousandRowsMs": 398.3,
+        "descendingSortMs": 737.1,
+        "singleRowFilterMs": 99.4
+      }
+    },
+    {
+      "profile": "narrow-viewport",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sample": 3,
+      "appliedCpuThrottleRate": 4,
+      "assertions": "passed",
+      "durations": {
+        "panelLoadMs": 804.6,
+        "thousandRowsMs": 445,
+        "descendingSortMs": 696.7,
+        "singleRowFilterMs": 113
+      }
+    }
+  ],
+  "previousRuns": []
+}
