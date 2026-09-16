@@ -134,3 +134,151 @@ test('missing WebGL retains the accessible coordinate alternative', async ({ pag
   ).toBeVisible();
   await expect(page.getByRole('list', { name: '합성 좌표 목록' })).toContainText('126.978, 37.566');
 });
+
+test('actual pointer drag reorders and Escape cancels without replacing the draft', async ({
+  page,
+}) => {
+  await page.goto('/ui-spike');
+  await page.getByRole('button', { name: '검증 도구 열기' }).click();
+  const order = page.getByRole('status', { name: '현재 합성 순서' });
+  const draft = page.getByLabel('크기 조절 중 유지할 초안');
+  await draft.fill('포인터 정렬 중 유지할 초안');
+  const source = page.getByRole('button', { name: '준비 운동 예시 이동 손잡이' });
+  const target = page.getByRole('button', { name: '본 운동 예시 이동 손잡이' });
+  await source.scrollIntoViewIfNeeded();
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error('Expected visible drag handles');
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2 + 12, sourceBox.y + sourceBox.height / 2);
+  await expect(
+    page
+      .getByRole('list', { name: '합성 운동 순서' })
+      .locator('[data-dragging="true"]:not([aria-hidden="true"])'),
+  ).toHaveCount(1);
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await expect(order).toHaveText('현재 순서: 본 운동 예시 → 준비 운동 예시 → 정리 운동 예시');
+  await expect(draft).toHaveValue('포인터 정렬 중 유지할 초안');
+
+  const movedBox = await source.boundingBox();
+  const previousBox = await target.boundingBox();
+  if (!movedBox || !previousBox) throw new Error('Expected reordered drag handles');
+  await page.mouse.move(movedBox.x + movedBox.width / 2, movedBox.y + movedBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(movedBox.x + movedBox.width / 2 + 12, movedBox.y + movedBox.height / 2);
+  await expect(
+    page
+      .getByRole('list', { name: '합성 운동 순서' })
+      .locator('[data-dragging="true"]:not([aria-hidden="true"])'),
+  ).toHaveCount(1);
+  await page.mouse.move(
+    previousBox.x + previousBox.width / 2,
+    previousBox.y + previousBox.height / 2,
+    { steps: 12 },
+  );
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.locator('[data-dragging="true"]:not([aria-hidden="true"])')).toHaveCount(0);
+  await expect(order).toHaveText('현재 순서: 본 운동 예시 → 준비 운동 예시 → 정리 운동 예시');
+  await expect(draft).toHaveValue('포인터 정렬 중 유지할 초안');
+  await draft.focus();
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(draft).toBeFocused();
+    await expect(draft).toHaveValue('포인터 정렬 중 유지할 초안');
+  }
+});
+
+test('emulated touch buttons reorder without dragging and preserve the mobile draft', async ({
+  browser,
+}, testInfo) => {
+  const baseURL = testInfo.project.use.baseURL;
+  if (!baseURL) throw new Error('Shell baseURL is required');
+  // Trusted touch events in browser emulation, not physical-device evidence.
+  const context = await browser.newContext({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      document.addEventListener('pointerdown', (event) => {
+        document.documentElement.dataset.lastPointerType = event.pointerType;
+      });
+    });
+    await page.goto(new URL('/ui-spike', baseURL).href);
+    await page.getByRole('button', { name: '검증 도구 열기' }).tap();
+    const draft = page.getByLabel('크기 조절 중 유지할 초안');
+    await draft.fill('터치 대안 초안');
+    await page.getByRole('button', { name: '준비 운동 예시 아래로' }).tap();
+    await expect(page.getByRole('status', { name: '현재 합성 순서' })).toHaveText(
+      '현재 순서: 본 운동 예시 → 준비 운동 예시 → 정리 운동 예시',
+    );
+    await expect(page.locator('html')).toHaveAttribute('data-last-pointer-type', 'touch');
+    await expect(page.locator('[data-dragging="true"]:not([aria-hidden="true"])')).toHaveCount(0);
+    await page.getByRole('button', { name: '준비 운동 예시 위로' }).tap();
+    await expect(page.getByRole('status', { name: '현재 합성 순서' })).toHaveText(
+      '현재 순서: 준비 운동 예시 → 본 운동 예시 → 정리 운동 예시',
+    );
+    await draft.focus();
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect(draft).toHaveValue('터치 대안 초안');
+    await expect(draft).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
+for (const resizeSource of ['viewport', 'container'] as const) {
+  test(`${resizeSource} resize cancels an active pointer drag without applying its draft order`, async ({
+    page,
+  }) => {
+    await page.goto('/ui-spike');
+    await page.getByRole('button', { name: '검증 도구 열기' }).click();
+    const draft = page.getByLabel('크기 조절 중 유지할 초안');
+    await draft.fill('크기 전환으로 저장하지 않기');
+    const handle = page.getByRole('button', { name: '준비 운동 예시 이동 손잡이' });
+    await handle.scrollIntoViewIfNeeded();
+    const box = await handle.boundingBox();
+    if (!box) throw new Error('Expected visible drag handle');
+    const targetBox = await page
+      .getByRole('button', { name: '본 운동 예시 이동 손잡이' })
+      .boundingBox();
+    if (!targetBox) throw new Error('Expected target handle');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2);
+    await expect(
+      page
+        .getByRole('list', { name: '합성 운동 순서' })
+        .locator('[data-dragging="true"]:not([aria-hidden="true"])'),
+    ).toHaveCount(1);
+    await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+      steps: 12,
+    });
+    if (resizeSource === 'viewport') {
+      await page.setViewportSize({ width: 600, height: 900 });
+    } else {
+      // Emulate the host assigning a narrower module pane without a viewport change.
+      const bounds = await page.getByRole('list', { name: '합성 운동 순서' }).evaluate((list) => {
+        const panel = list.parentElement;
+        if (!panel) throw new Error('Expected owning panel');
+        const before = panel.getBoundingClientRect().width;
+        panel.style.maxWidth = `${before * 0.8}px`;
+        return { before, after: panel.getBoundingClientRect().width };
+      });
+      expect(bounds.after).toBeLessThan(bounds.before);
+    }
+    await expect(page.locator('[data-dragging="true"]:not([aria-hidden="true"])')).toHaveCount(0);
+    await page.mouse.up();
+    await expect(page.getByRole('status', { name: '현재 합성 순서' })).toHaveText(
+      '현재 순서: 준비 운동 예시 → 본 운동 예시 → 정리 운동 예시',
+    );
+    await expect(draft).toHaveValue('크기 전환으로 저장하지 않기');
+  });
+}

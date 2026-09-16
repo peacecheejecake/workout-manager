@@ -1,7 +1,7 @@
 'use client';
 
-import { useId, useState } from 'react';
-import { DragDropProvider } from '@dnd-kit/react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { DragDropProvider, useDragDropManager } from '@dnd-kit/react';
 import { isSortable, useSortable } from '@dnd-kit/react/sortable';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import styles from './interaction-panel.module.css';
@@ -54,7 +54,7 @@ export function InteractionPanel() {
               setItems((current) => reordered(current, initialIndex, index));
             }}
           >
-            <ol className={styles.list} aria-label="합성 운동 순서">
+            <ResizeSafeSortableList>
               {items.map((item, index) => (
                 <SortableRow
                   key={item.id}
@@ -68,7 +68,7 @@ export function InteractionPanel() {
                   }
                 />
               ))}
-            </ol>
+            </ResizeSafeSortableList>
           </DragDropProvider>
         </Panel>
         <Separator className={styles.separator} aria-label="정렬과 메모 패널 크기 조절" />
@@ -90,6 +90,48 @@ export function InteractionPanel() {
       </p>
       <p>패널 경계에 포커스한 뒤 위·아래 방향키로 크기를 조절할 수 있습니다.</p>
     </section>
+  );
+}
+
+/** Layout changes invalidate the current pointer geometry, never the stored draft. */
+function ResizeSafeSortableList({ children }: { children: ReactNode }) {
+  const list = useRef<HTMLOListElement>(null);
+  const manager = useDragDropManager();
+  useEffect(() => {
+    const panel = list.current?.parentElement;
+    if (!panel || !manager) return;
+    const cancel = () => {
+      if (manager.dragOperation.status.dragging) manager.actions.stop({ canceled: true });
+    };
+    let previousSize: { width: number; height: number } | null = null;
+    const observer = new ResizeObserver((entries) => {
+      const bounds = entries.find((entry) => entry.target === panel)?.contentRect;
+      if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)) return;
+      const changed =
+        previousSize !== null &&
+        (previousSize.width !== bounds.width || previousSize.height !== bounds.height);
+      previousSize = { width: bounds.width, height: bounds.height };
+      if (changed) cancel();
+    });
+    observer.observe(panel);
+    let viewport = { width: window.innerWidth, height: window.innerHeight };
+    const onViewportResize = () => {
+      const current = { width: window.innerWidth, height: window.innerHeight };
+      if (current.width !== viewport.width || current.height !== viewport.height) {
+        viewport = current;
+        cancel();
+      }
+    };
+    window.addEventListener('resize', onViewportResize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', onViewportResize);
+    };
+  }, [manager]);
+  return (
+    <ol ref={list} className={styles.list} aria-label="합성 운동 순서">
+      {children}
+    </ol>
   );
 }
 
