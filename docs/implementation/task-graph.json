@@ -78,8 +78,9 @@
       "title": "Native feasibility",
       "dependsOn": ["M0-03", "M0-06a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "HealthKit feasibility; 서명·권한·실기기 증거"
+      "status": "in_progress",
+      "scope": "HealthKit feasibility; 서명·권한·실기기 증거",
+      "evidence": "docs/implementation/progress/M0-06c.md"
     },
     {
       "id": "M0-07a",

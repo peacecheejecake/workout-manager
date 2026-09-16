@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-16T07:03:05.461Z",
+  "xcode": "Xcode 26.2\nBuild version 17C52",
+  "runtimeVersion": "26.2",
+  "deploymentTarget": "15.0",
+  "sourceSha256": "0d9a51538ad24eeb16456f39d0abbbf534be28488ed7ae3bf4d937ee8da57792",
+  "result": {
+    "checks": [
+      "allowlisted_status_roundtrip_acknowledged",
+      "boolean_version_rejected",
+      "external_navigation_cancelled",
+      "foreign_frame_rejected",
+      "foreign_main_origin_rejected",
+      "invalid_message_rejected",
+      "valid_local_message_received"
+    ],
+    "healthAuthorizationRequested": false,
+    "healthKitAvailable": true,
+    "healthQueriesExecuted": false,
+    "operatingSystem": "Version 26.2 (Build 23C54)",
+    "outcome": "passed"
+  },
+  "signing": "Simulator-only ad-hoc; no personal signing identity or provisioning used",
+  "isolation": "New device in a private temporary simulator device set; only owned device deleted",
+  "cleanupCompleted": true,
+  "cleanupErrors": [],
+  "unverified": [
+    "Physical device signing and entitlements",
+    "HealthKit authorization, sample queries, anchors, deletion and background delivery",
+    "Capacitor integration",
+    "Minimum supported OS runtime",
+    "Real-device safe area, IME, back navigation and lifecycle"
+  ],
+  "sources": [
+    "https://developer.apple.com/documentation/healthkit/hkhealthstore/ishealthdataavailable()",
+    "https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices"
+  ]
+}
