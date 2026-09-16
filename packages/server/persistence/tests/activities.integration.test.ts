@@ -330,3 +330,113 @@ it('pins a corrected duration definition across newer source revisions and prese
     byKind: { timer: { value: 80, knownCount: 1 }, elapsed: { value: 50, knownCount: 1 } },
   });
 });
+
+it('combines timezone DST date, kind, source and literal title filters with one filtered total', async () => {
+  const athlete = randomUUID();
+  async function add(
+    startedAt: string | null,
+    title: string,
+    kind: ActivityImport['activity']['kind'] = 'running',
+    source: 'fit' | 'fixture' = 'fit',
+  ) {
+    const command = input();
+    command.activity = { ...command.activity, startedAt, title, kind };
+    command.source.kind = source;
+    return repository.importActivity(athlete, command);
+  }
+  const start = await add('2024-03-10T05:00:00Z', 'MiXeD 100%_ effort');
+  const end = await add('2024-03-11T03:59:59Z', 'mixed 100%_ effort');
+  await add('2024-03-10T04:59:59Z', 'mixed 100%_ effort');
+  await add('2024-03-11T04:00:00Z', 'mixed 100%_ effort');
+  await add(null, 'mixed 100%_ effort');
+  await add('2024-03-10T12:00:00Z', 'mixed 100XX effort');
+  await add('2024-03-10T12:00:00Z', 'mixed 100%_ effort', 'cycling');
+  await add('2024-03-10T12:00:00Z', 'mixed 100%_ effort', 'running', 'fixture');
+  const filter = {
+    from: '2024-03-10',
+    toExclusive: '2024-03-11',
+    timezone: 'America/New_York',
+    kind: 'running' as const,
+    source: 'fit' as const,
+    search: 'MIXED 100%_',
+    sort: 'started_asc' as const,
+  };
+  const result = await repository.listActivities(athlete, filter);
+  expect(result.total).toBe(2);
+  expect(result.items.map((item) => item.id)).toEqual([start.activityId, end.activityId]);
+  expect(await repository.listActivities(athlete, { ...filter, offset: 50 })).toEqual({
+    total: 2,
+    items: [],
+  });
+  expect((await repository.listActivities(athlete)).total).toBe(8);
+  expect((await repository.listActivities(athlete, { search: "%' OR 1=1 --" })).total).toBe(0);
+  expect((await repository.listActivities(randomUUID(), filter)).total).toBe(0);
+});
+
+it('sorts effective zero and null distances with nulls last in both directions and finds corrected titles', async () => {
+  const athlete = randomUUID();
+  const imported = [];
+  for (const distanceMeters of [0, 10, 20]) {
+    const command = input();
+    command.activity.distanceMeters = distanceMeters;
+    imported.push(await repository.importActivity(athlete, command));
+  }
+  const [zero, ten, cleared] = imported;
+  if (!zero || !ten || !cleared) throw new Error('Missing fixture');
+  await repository.updateOverlay(athlete, cleared.activityId, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+    reason: 'Clear unknown distance',
+    distanceMeters: null,
+    title: 'Corrected 100%_ \\ title',
+  });
+  const asc = await repository.listActivities(athlete, { sort: 'distance_asc' });
+  const desc = await repository.listActivities(athlete, { sort: 'distance_desc' });
+  expect(asc.items.map((item) => item.id)).toEqual([
+    zero.activityId,
+    ten.activityId,
+    cleared.activityId,
+  ]);
+  expect(desc.items.map((item) => item.id)).toEqual([
+    ten.activityId,
+    zero.activityId,
+    cleared.activityId,
+  ]);
+  expect(asc.items.at(-1)?.effective.distanceMeters).toBeNull();
+  expect(
+    (await repository.listActivities(athlete, { search: '100%_ \\' })).items.map((item) => item.id),
+  ).toEqual([cleared.activityId]);
+  expect((await repository.listActivities(athlete, { search: 'Fixture run' })).total).toBe(2);
+  await repository.deleteActivity(athlete, cleared.activityId, { expectedRevision: 2 });
+  expect((await repository.listActivities(athlete, { search: 'Corrected' })).total).toBe(0);
+});
+
+it('keeps stable ID ties across pages and places unknown start times last without date filters', async () => {
+  const athlete = randomUUID();
+  const ids: string[] = [];
+  for (let index = 0; index < 3; index++) {
+    const command = input();
+    command.activity.startedAt = '2024-01-01T00:00:00Z';
+    ids.push((await repository.importActivity(athlete, command)).activityId);
+  }
+  const unknownInput = input();
+  unknownInput.activity.startedAt = null;
+  const unknown = await repository.importActivity(athlete, unknownInput);
+  ids.sort();
+  for (const sort of ['started_asc', 'started_desc'] as const) {
+    const first = await repository.listActivities(athlete, { sort, limit: 2 });
+    const second = await repository.listActivities(athlete, { sort, limit: 2, offset: 2 });
+    expect(first.total).toBe(4);
+    expect(second.total).toBe(4);
+    expect([...first.items, ...second.items].map((item) => item.id)).toEqual([
+      ...ids,
+      unknown.activityId,
+    ]);
+  }
+  expect(
+    (await repository.listActivities(athlete, { sort: 'title_asc' })).items.map((item) => item.id),
+  ).toEqual([...ids, unknown.activityId].sort());
+  expect((await repository.listActivities(athlete)).items.map((item) => item.id)).toEqual(
+    [...ids, unknown.activityId].sort(),
+  );
+});

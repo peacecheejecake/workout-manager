@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { timeZoneSchema } from './primitives.js';
+import { localDateSchema, timeZoneSchema } from './primitives.js';
 
 const boundedMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
 export const activityValuesSchema = z.strictObject({
@@ -64,10 +64,31 @@ export const activitySchema = z.strictObject({
   overlay: activityOverlaySchema,
   effective: activityValuesSchema,
 });
-export const activityListQuerySchema = z.strictObject({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).max(10_000).default(0),
-});
+const activityFilterDateSchema = localDateSchema.refine((value) => value >= '0001-01-01');
+export const activityListQuerySchema = z
+  .strictObject({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).max(10_000).default(0),
+    from: activityFilterDateSchema.optional(),
+    toExclusive: activityFilterDateSchema.optional(),
+    timezone: timeZoneSchema.optional(),
+    kind: activityValuesSchema.shape.kind.optional(),
+    source: activitySourceSchema.shape.kind.optional(),
+    search: z.string().trim().min(1).max(200).optional(),
+    sort: z
+      .enum(['id_asc', 'started_desc', 'started_asc', 'distance_desc', 'distance_asc', 'title_asc'])
+      .optional(),
+  })
+  .refine(
+    ({ from, toExclusive, timezone }) => {
+      if (from === undefined && toExclusive === undefined && timezone === undefined) return true;
+      if (from === undefined || toExclusive === undefined || timezone === undefined) return false;
+      const days =
+        (Date.parse(`${toExclusive}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+      return days >= 1 && days <= 3660;
+    },
+    { message: 'Date filtering requires a timezone and a 1–3660 calendar-day range' },
+  );
 export const activityListSchema = z.strictObject({
   items: z.array(activitySchema).max(100),
   total: z.number().int().nonnegative(),
@@ -97,5 +118,6 @@ export type Activity = z.infer<typeof activitySchema>;
 export type ActivityImport = z.infer<typeof importActivitySchema>;
 export type ActivityImportResult = z.infer<typeof activityImportResultSchema>;
 export type ActivityList = z.infer<typeof activityListSchema>;
+export type ActivityListQuery = z.infer<typeof activityListQuerySchema>;
 export type ActivitySummary = z.infer<typeof activitySummarySchema>;
 export type ActivityOverlayWrite = z.infer<typeof activityOverlayWriteSchema>;

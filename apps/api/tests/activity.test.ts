@@ -89,4 +89,86 @@ describe('activity route authorization and wire boundaries', () => {
     expect(response.statusCode).toBe(404);
     expect(activities.getActivity).toHaveBeenCalledWith(athleteId, id);
   });
+  it('forwards only normalized filters, paging and authenticated ownership', async () => {
+    const { app, activities } = setup();
+    const defaults = await app.inject({ url: '/bff/v1/activities', headers });
+    expect(defaults.statusCode).toBe(200);
+    expect(defaults.headers['cache-control']).toBe('no-store');
+    expect(activities.listActivities).toHaveBeenLastCalledWith(athleteId, { limit: 50, offset: 0 });
+    const query = new URLSearchParams({
+      from: '2024-03-10',
+      toExclusive: '2024-03-11',
+      timezone: 'America/New_York',
+      kind: 'running',
+      source: 'fixture',
+      search: '  literal %_\\ report  ',
+      sort: 'distance_desc',
+      limit: '2',
+      offset: '1',
+    });
+    const response = await app.inject({ url: `/bff/v1/activities?${query}`, headers });
+    expect(response.statusCode).toBe(200);
+    expect(activities.listActivities).toHaveBeenLastCalledWith(athleteId, {
+      from: '2024-03-10',
+      toExclusive: '2024-03-11',
+      timezone: 'America/New_York',
+      kind: 'running',
+      source: 'fixture',
+      search: 'literal %_\\ report',
+      sort: 'distance_desc',
+      limit: 2,
+      offset: 1,
+    });
+  });
+  it.each([
+    'from=2024-03-10',
+    'toExclusive=2024-03-11',
+    'timezone=UTC',
+    'from=2024-03-10&toExclusive=2024-03-11',
+    'from=2024-03-10&toExclusive=2024-03-10&timezone=UTC',
+    'from=2024-03-11&toExclusive=2024-03-10&timezone=UTC',
+    'from=2024-03-10&toExclusive=2024-03-11&timezone=Not_A_Timezone',
+    'from=2024-02-30&toExclusive=2024-03-11&timezone=UTC',
+    'from=2000-01-01&toExclusive=2024-03-11&timezone=UTC',
+    'sort=provider_expression',
+    'source=garmin',
+    'kind=unrecognized',
+    'search=%20%20',
+    'sort=started_asc&sort=distance_desc',
+    'owner=foreign',
+    'athleteId=foreign',
+    'limit=101',
+    'offset=10001',
+  ])('rejects an invalid activity query before repository access: %s', async (query) => {
+    const { app, activities } = setup();
+    const response = await app.inject({ url: `/bff/v1/activities?${query}`, headers });
+    expect(response.statusCode).toBe(400);
+    expect(activities.listActivities).not.toHaveBeenCalled();
+  });
+  it.each(['id_asc', 'started_desc', 'started_asc', 'distance_desc', 'distance_asc', 'title_asc'])(
+    'accepts and forwards the finite sort option %s',
+    async (sort) => {
+      const { app, activities } = setup();
+      expect(
+        (await app.inject({ url: `/bff/v1/activities?sort=${sort}`, headers })).statusCode,
+      ).toBe(200);
+      expect(activities.listActivities).toHaveBeenCalledWith(athleteId, {
+        limit: 50,
+        offset: 0,
+        sort,
+      });
+    },
+  );
+  it('keeps session binding ahead of filter access', async () => {
+    const { app, activities } = setup();
+    for (const sessionId of ['', 'old-session']) {
+      const response = await app.inject({
+        url: '/bff/v1/activities?search=synthetic&sort=started_desc',
+        headers: { ...headers, 'x-workout-session-id': sessionId },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe('SESSION_CHANGED');
+    }
+    expect(activities.listActivities).not.toHaveBeenCalled();
+  });
 });

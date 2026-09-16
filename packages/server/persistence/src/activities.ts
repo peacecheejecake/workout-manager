@@ -13,6 +13,7 @@ import {
   type ActivityImport,
   type ActivityImportResult,
   type ActivityList,
+  type ActivityListQuery,
   type ActivitySummary,
   type ActivityOverlayWrite,
 } from '@workout/contracts/activity';
@@ -66,10 +67,7 @@ async function event(tx: Transaction, id: string, revision: number, action: stri
 }
 export interface ActivityRepository {
   importActivity(athleteId: string, input: ActivityImport): Promise<ActivityImportResult>;
-  listActivities(
-    athleteId: string,
-    input?: { limit?: number; offset?: number },
-  ): Promise<ActivityList>;
+  listActivities(athleteId: string, input?: Partial<ActivityListQuery>): Promise<ActivityList>;
   getActivity(athleteId: string, id: string): Promise<Activity | null>;
   updateOverlay(athleteId: string, id: string, input: ActivityOverlayWrite): Promise<Activity>;
   deleteActivity(athleteId: string, id: string, input: { expectedRevision: number }): Promise<void>;
@@ -164,10 +162,45 @@ export function createActivityRepository(database: Database): ActivityRepository
     listActivities(athleteId, input = {}) {
       const query = activityListQuerySchema.parse(input);
       return database.tenant(athleteId, async (tx) => {
-        // A single snapshot supplies both the bounded rows and total.
+        // Sort expressions are a fixed allowlist; request values remain SQL parameters.
+        const orders = {
+          id_asc: 'id ASC',
+          started_desc: 'started_at DESC NULLS LAST,id ASC',
+          started_asc: 'started_at ASC NULLS LAST,id ASC',
+          distance_desc: 'effective_distance DESC NULLS LAST,id ASC',
+          distance_asc: 'effective_distance ASC NULLS LAST,id ASC',
+          title_asc: 'lower(effective_title) COLLATE "C" ASC NULLS LAST,id ASC',
+        } as const;
+        const order = orders[query.sort ?? 'id_asc'];
+        // A single snapshot supplies the filtered total and bounded page, even past the last row.
+        // strpos is literal substring matching: percent, underscore and backslash are not wildcards.
         const result = await tx.query(
-          `SELECT (SELECT count(*)::int FROM activity_canonical WHERE athlete_id=$1 AND NOT deleted) AS total, coalesce(jsonb_agg(page),'[]'::jsonb) AS items FROM (${selectActivity} ORDER BY c.id LIMIT $2 OFFSET $3) page`,
-          [athleteId, query.limit, query.offset],
+          `WITH effective AS (
+            SELECT base.*,(original->>'startedAt')::timestamptz AS started_at,
+              (CASE WHEN overlay ? 'title' THEN overlay ELSE original END)->>'title' AS effective_title,
+              ((CASE WHEN overlay ? 'distanceMeters' THEN overlay ELSE original END)->>'distanceMeters')::numeric AS effective_distance
+            FROM (${selectActivity}) base
+          ), filtered AS MATERIALIZED (
+            SELECT * FROM effective WHERE
+              ($4::date IS NULL OR ((started_at AT TIME ZONE $6::text)::date >= $4::date AND (started_at AT TIME ZONE $6::text)::date < $5::date))
+              AND ($7::text IS NULL OR original->>'kind'=$7)
+              AND ($8::text IS NULL OR kind=$8)
+              AND ($9::text IS NULL OR strpos(lower(effective_title),lower($9::text))>0)
+          ), page AS (
+            SELECT *,row_number() OVER (ORDER BY ${order}) AS ordinal FROM filtered ORDER BY ${order} LIMIT $2 OFFSET $3
+          ) SELECT (SELECT count(*)::int FROM filtered) AS total,
+            coalesce((SELECT jsonb_agg(page ORDER BY ordinal) FROM page),'[]'::jsonb) AS items`,
+          [
+            athleteId,
+            query.limit,
+            query.offset,
+            query.from ?? null,
+            query.toExclusive ?? null,
+            query.timezone ?? null,
+            query.kind ?? null,
+            query.source ?? null,
+            query.search ?? null,
+          ],
         );
         const row = z
           .object({ total: z.number().int(), items: z.array(z.record(z.string(), z.unknown())) })

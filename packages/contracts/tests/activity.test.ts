@@ -80,3 +80,56 @@ it('requires a duration correction to specify its pinned measurement definition'
     activityOverlayWriteSchema.parse({ ...base, durationSeconds: null, durationKind: 'timer' }),
   ).toMatchObject({ durationSeconds: null, durationKind: 'timer' });
 });
+
+describe('M1-04e bounded activity search', () => {
+  const period = { from: '2024-03-10', toExclusive: '2024-03-11', timezone: 'America/New_York' };
+  it('keeps literal search text, source/kind and finite sort while coercing paging', () => {
+    expect(
+      activityListQuerySchema.parse({
+        ...period,
+        limit: '10',
+        offset: '20',
+        search: '  run_%  ',
+        source: 'fit',
+        kind: 'running',
+        sort: 'distance_desc',
+      }),
+    ).toEqual({
+      ...period,
+      limit: 10,
+      offset: 20,
+      search: 'run_%',
+      source: 'fit',
+      kind: 'running',
+      sort: 'distance_desc',
+    });
+  });
+  it.each([
+    { from: period.from },
+    { from: period.from, toExclusive: period.toExclusive },
+    { timezone: period.timezone },
+    { ...period, toExclusive: period.from },
+    { ...period, toExclusive: '2024-03-09' },
+    { ...period, from: '2024-02-30' },
+    { ...period, from: '0000-12-31' },
+    { ...period, from: '2000-01-01' },
+    { ...period, timezone: 'Invalid/Timezone' },
+    { search: ' ' },
+    { search: 'x'.repeat(201) },
+    { sort: 'distance; DROP TABLE activity_canonical' },
+    { source: 'garmin' },
+    { kind: 'flying' },
+  ])('rejects incomplete or invalid filters: %j', (query) => {
+    expect(activityListQuerySchema.safeParse(query).success).toBe(false);
+  });
+  it('validates calendar days independently of DST and accepts leap days', () => {
+    expect(activityListQuerySchema.parse(period)).toMatchObject(period);
+    expect(
+      activityListQuerySchema.safeParse({
+        ...period,
+        from: '2024-02-29',
+        toExclusive: '2024-03-01',
+      }).success,
+    ).toBe(true);
+  });
+});
