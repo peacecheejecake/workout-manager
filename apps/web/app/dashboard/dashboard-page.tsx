@@ -4,13 +4,17 @@ import {
   AuthenticatedWorkspace,
   useAuthenticatedSession,
 } from '@workout/platform/authenticated-workspace';
-import { DashboardWorkspace } from '@workout/modules-dashboard/dashboard-workspace';
+import {
+  DashboardWorkspace,
+  type DashboardLinks,
+} from '@workout/modules-dashboard/dashboard-workspace';
 import { PlanningPeriodNavigator } from '@workout/modules-planning/planning-period-navigator';
 import { shiftDashboardDate } from '@workout/contracts/dashboard';
 
-const links = {
+const links: DashboardLinks = {
   planning: '/planner',
   activities: '/activities',
+  activityRange: (range) => `/activities?${new URLSearchParams(range)}`,
   wellbeing: '/wellbeing',
   planDay: (date: string) =>
     `/planner?${new URLSearchParams({ lens: 'calendar', from: date, to: shiftDashboardDate(date, 1) })}`,

@@ -1,6 +1,6 @@
 import { useId, useRef } from 'react';
 import { Button } from '@workout/ui-foundation/button';
-import type { DashboardDay } from '@workout/contracts/dashboard';
+import { shiftDashboardDate, type DashboardDay } from '@workout/contracts/dashboard';
 import type { DashboardLinks } from './dashboard-workspace';
 import styles from './dashboard.module.css';
 import { metricText, plannedMetricText } from './format';
@@ -12,7 +12,15 @@ function plannedBounds(day: DashboardDay) {
     : { min: target.min, max: target.max };
 }
 
-export function DistanceView({ days, links }: { days: DashboardDay[]; links: DashboardLinks }) {
+export function DistanceView({
+  days,
+  links,
+  timezone,
+}: {
+  days: DashboardDay[];
+  links: DashboardLinks;
+  timezone: string;
+}) {
   const titleId = useId();
   const graphId = useId();
   const tableId = useId();
@@ -180,6 +188,7 @@ export function DistanceView({ days, links }: { days: DashboardDay[]; links: Das
               <th scope="col">실제 거리</th>
               <th scope="col">계획 / 실제 개수</th>
               <th scope="col">체크인 개수</th>
+              <th scope="col">활동 조회</th>
             </tr>
           </thead>
           <tbody>
@@ -200,11 +209,25 @@ export function DistanceView({ days, links }: { days: DashboardDay[]; links: Das
                   {day.planned.count} / {day.actual.count}
                 </td>
                 <td>{day.checkInCount}</td>
+                <td>
+                  <a
+                    href={links.activityRange({
+                      from: day.date,
+                      toExclusive: shiftDashboardDate(day.date, 1),
+                      timezone,
+                    })}
+                  >
+                    {day.date} 실제 활동 보기
+                  </a>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p>
+        활동 조회는 {timezone}의 현지 날짜 기준입니다. 시작 시각을 보고하지 않은 활동은 제외합니다.
+      </p>
       <p>
         체크인 개수는 대시보드 시간대로 묶었습니다. 개별 체크인의 저장된 현지 날짜와 다를 수
         있습니다. <a href={links.wellbeing}>체크인 기록 보기</a>

@@ -84,6 +84,7 @@ function setup(
     links: {
       planning: '/planner',
       activities: '/activities',
+      activityRange: (input) => `/activities?${new URLSearchParams(input)}`,
       wellbeing: '/wellbeing',
       planDay: (date) => `/planner?day=${date}`,
       planBlock: (id) => `/planner?block=${id}`,
@@ -102,6 +103,45 @@ function setup(
   };
 }
 describe('dashboard actual read model', () => {
+  it('links both windows and DST calendar days using the response timezone even when the request differs', async () => {
+    const response = model();
+    response.period.timezoneSource = 'plan';
+    response.planVersion = { id: 'saved-plan', version: 1 };
+    const { request } = setup(async () => reply(response), 'window=3&timezone=Asia%2FSeoul');
+    const current = await screen.findByRole('link', { name: '현재 기간 실제 활동 보기' });
+    expect(request.mock.calls[0]?.[0].path).toContain('timezone=Asia%2FSeoul');
+    const query = (element: HTMLElement) =>
+      new URL(element.getAttribute('href') ?? '', 'https://example.test').searchParams;
+    expect(Object.fromEntries(query(current))).toEqual({
+      from: '2026-03-07',
+      toExclusive: '2026-03-10',
+      timezone: 'America/New_York',
+    });
+    expect(
+      Object.fromEntries(query(screen.getByRole('link', { name: '직전 기간 실제 활동 보기' }))),
+    ).toEqual({ from: '2026-03-04', toExclusive: '2026-03-07', timezone: 'America/New_York' });
+    const day = await screen.findByRole('link', { name: '2026-03-08 실제 활동 보기' });
+    expect(Object.fromEntries(query(day))).toEqual({
+      from: '2026-03-08',
+      toExclusive: '2026-03-09',
+      timezone: 'America/New_York',
+    });
+    expect(
+      within(screen.getByRole('region', { name: '현재 기간' })).getByText('실제 수행 · 0개'),
+    ).toBeVisible();
+    expect(current).toBeVisible();
+    expect(screen.getByRole('link', { name: '2026-03-08 계획' })).toHaveAttribute(
+      'href',
+      '/planner?day=2026-03-08',
+    );
+    expect(screen.getByRole('link', { name: '활동 목록 보기' })).toHaveAttribute(
+      'href',
+      '/activities',
+    );
+    expect(
+      screen.getByText(/기간·날짜별 활동 링크에서도 시작 시각 미보고 활동은 제외합니다/),
+    ).toBeVisible();
+  });
   it('rejects an invalid URL window without requesting data and defaults to ten local dates', async () => {
     const { request } = setup(undefined, 'window=91');
     expect(screen.getByRole('alert')).toHaveTextContent('3~90일');

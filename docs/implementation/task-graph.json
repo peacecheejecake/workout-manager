@@ -577,6 +577,15 @@
       "evidence": "docs/implementation/progress/M1-04ax.md"
     },
     {
+      "id": "M1-04ay",
+      "title": "대시보드 실제 요약에서 기간별 활동 탐색",
+      "dependsOn": ["M1-04d", "M1-04f", "M1-04am"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "현재·직전·일별 실제 요약; 적용 시간대·날짜 경계 유지·활동 필터 navigation",
+      "evidence": "docs/implementation/progress/M1-04ay.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -631,7 +640,8 @@
         "M1-04au",
         "M1-04av",
         "M1-04aw",
-        "M1-04ax"
+        "M1-04ax",
+        "M1-04ay"
       ],
       "kind": "task",
       "status": "not_started",

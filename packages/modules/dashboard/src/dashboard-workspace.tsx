@@ -12,6 +12,7 @@ import styles from './dashboard.module.css';
 export interface DashboardLinks {
   planning: string;
   activities: string;
+  activityRange(input: { from: string; toExclusive: string; timezone: string }): string;
   wellbeing: string;
   planDay(date: string): string;
   planBlock(id: string): string;

@@ -24,7 +24,15 @@ const durationLabels = {
 };
 import styles from './dashboard.module.css';
 
-function WindowMetrics({ label, value }: { label: string; value: DashboardWindow }) {
+function WindowMetrics({
+  label,
+  value,
+  actualHref,
+}: {
+  label: string;
+  value: DashboardWindow;
+  actualHref: string;
+}) {
   return (
     <section className={styles.card} aria-label={label}>
       <h3>{label}</h3>
@@ -41,6 +49,9 @@ function WindowMetrics({ label, value }: { label: string; value: DashboardWindow
       <p>
         출처: FIT {value.actual.sources.fit}개 · 테스트 자료 {value.actual.sources.fixture}개 · 수동
         기록 {value.actual.sources.manual}개 · 사용자 정정 {value.actual.overlayCount}개
+      </p>
+      <p>
+        <a href={actualHref}>{label} 실제 활동 보기</a>
       </p>
       <h4>계획 · {value.planned.count}개</h4>
       <p>
@@ -193,19 +204,35 @@ export function DashboardOverview({
                 직전 기간: {model.period.previousFrom} ~ {model.period.from} (종료일 제외)
               </p>
               <div className={styles.grid}>
-                <WindowMetrics label="현재 기간" value={model.current} />
-                <WindowMetrics label="직전 기간" value={model.previous} />
+                <WindowMetrics
+                  label="현재 기간"
+                  value={model.current}
+                  actualHref={links.activityRange({
+                    from: model.period.from,
+                    toExclusive: model.period.toExclusive,
+                    timezone: model.period.timezone,
+                  })}
+                />
+                <WindowMetrics
+                  label="직전 기간"
+                  value={model.previous}
+                  actualHref={links.activityRange({
+                    from: model.period.previousFrom,
+                    toExclusive: model.period.from,
+                    timezone: model.period.timezone,
+                  })}
+                />
               </div>
               <p>
                 날짜를 배정하지 못한 활동 {model.unplacedActivityCount}개. 날짜별 값에 임의 배정하지
-                않습니다.
+                않습니다. 기간·날짜별 활동 링크에서도 시작 시각 미보고 활동은 제외합니다.
               </p>
               <a href={links.activities}>활동 목록 보기</a>
             </section>
           ),
           'daily-distance': (
             <Suspense fallback={<p role="status">날짜별 그래프와 표를 불러오고 있습니다.</p>}>
-              <DistanceView days={model.days} links={links} />
+              <DistanceView days={model.days} links={links} timezone={model.period.timezone} />
             </Suspense>
           ),
         }}
