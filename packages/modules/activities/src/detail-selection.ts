@@ -2,6 +2,12 @@ import { createStore } from 'zustand/vanilla';
 import type { TimeRange } from './detail-projection';
 
 export interface DetailSelectionState {
+  rangeStart: string;
+  rangeEnd: string;
+  rangeError: boolean;
+  setRangeStart(value: string): void;
+  setRangeEnd(value: string): void;
+  setRangeError(value: boolean): void;
   recordIndex: number | null;
   lapIndex: number | null;
   range: TimeRange | null;
@@ -15,6 +21,12 @@ const copiedRange = (range: TimeRange | null): TimeRange | null =>
 /** Memory-only selection. The owner scopes this factory to activity and source revision. */
 export function createDetailSelectionStore() {
   return createStore<DetailSelectionState>()((set) => ({
+    rangeStart: '',
+    rangeEnd: '',
+    rangeError: false,
+    setRangeStart: (rangeStart) => set({ rangeStart }),
+    setRangeEnd: (rangeEnd) => set({ rangeEnd }),
+    setRangeError: (rangeError) => set({ rangeError }),
     recordIndex: null,
     lapIndex: null,
     range: null,

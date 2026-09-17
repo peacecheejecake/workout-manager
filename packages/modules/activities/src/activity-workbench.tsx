@@ -35,14 +35,20 @@ const time = (value: string | null) =>
 export function ActivityWorkbench({
   activity,
   read,
+  panel,
 }: {
   activity: Activity;
   read: ActivityDetailsRead;
+  panel?: 'intervals' | 'source' | 'inactive';
 }) {
   if (!detailsMatchActivity(activity, read))
-    return <p role="alert">활동과 원본 상세의 버전이 다릅니다. 최신 상세를 다시 조회하세요.</p>;
+    return panel === 'inactive' ? null : (
+      <p role="alert">활동과 원본 상세의 버전이 다릅니다. 최신 상세를 다시 조회하세요.</p>
+    );
   if (!read.details)
-    return <p>저장된 원본 관측 상세가 없습니다. 요약 기록은 위에서 확인할 수 있습니다.</p>;
+    return panel === 'inactive' ? null : (
+      <p>저장된 원본 관측 상세가 없습니다. 요약 기록은 위에서 확인할 수 있습니다.</p>
+    );
   const identity = JSON.stringify([
     activity.id,
     activity.revision,
@@ -51,12 +57,23 @@ export function ActivityWorkbench({
     read.source.revision,
     read.source.contentHash,
   ]);
-  return <Workbench key={identity} details={read.details} read={read} />;
+  return (
+    <Workbench key={identity} details={read.details} read={read} {...(panel ? { panel } : {})} />
+  );
 }
 
-function Workbench({ details, read }: { details: ActivityDetails; read: ActivityDetailsRead }) {
+function Workbench({
+  details,
+  read,
+  panel,
+}: {
+  details: ActivityDetails;
+  read: ActivityDetailsRead;
+  panel?: 'intervals' | 'source' | 'inactive';
+}) {
   const [store] = useState(createDetailSelectionStore);
   const [view, setView] = useState<'overview' | 'laps' | 'source'>('overview');
+  const visibleView = panel === 'intervals' && view === 'source' ? 'overview' : view;
   const [chartPage, setChartPage] = useState(0);
   const [recordPage, setRecordPage] = useState(0);
   const [lapPage, setLapPage] = useState(0);
@@ -78,6 +95,8 @@ function Workbench({ details, read }: { details: ActivityDetails; read: Activity
     setRecordPage(Math.floor(position / 20));
     setChartPage(Math.floor(position / 500));
   }
+  if (panel === 'inactive') return null;
+  if (panel === 'source') return <SourceDetails details={details} read={read} />;
   return (
     <section className={styles.workspace} aria-label="원본 관측 워크벤치">
       <h3>원본 관측 워크벤치</h3>
@@ -92,16 +111,18 @@ function Workbench({ details, read }: { details: ActivityDetails; read: Activity
             ['laps', '랩'],
             ['source', '상세 출처'],
           ] as const
-        ).map(([id, label]) => (
-          <Button
-            key={id}
-            variant="secondary"
-            aria-pressed={view === id}
-            onClick={() => setView(id)}
-          >
-            {label}
-          </Button>
-        ))}
+        )
+          .filter(([id]) => panel === undefined || id !== 'source')
+          .map(([id, label]) => (
+            <Button
+              key={id}
+              variant="secondary"
+              aria-pressed={visibleView === id}
+              onClick={() => setView(id)}
+            >
+              {label}
+            </Button>
+          ))}
       </nav>
       <section id={selectionId} className={styles.summary} aria-label="관측 선택 요약">
         <h4>관측 선택 요약</h4>
@@ -159,7 +180,7 @@ function Workbench({ details, read }: { details: ActivityDetails; read: Activity
         </div>
       </section>
       <RangeControls store={store} />
-      {view === 'overview' ? (
+      {visibleView === 'overview' ? (
         <section aria-label="관측 개요">
           <h4>거리·심박 관측</h4>
           <p>
@@ -230,7 +251,7 @@ function Workbench({ details, read }: { details: ActivityDetails; read: Activity
           </Scrollable>
           {!details.records.length ? <p>저장된 개별 관측이 없습니다.</p> : null}
         </section>
-      ) : view === 'laps' ? (
+      ) : visibleView === 'laps' ? (
         <section aria-label="원본 랩">
           <h4>원본 랩</h4>
           <p>
@@ -290,36 +311,42 @@ function Workbench({ details, read }: { details: ActivityDetails; read: Activity
           {!details.laps.length ? <p>저장된 랩이 없습니다.</p> : null}
         </section>
       ) : (
-        <section aria-label="상세 출처">
-          <h4>상세 출처</h4>
-          <dl>
-            <dt>원본 종류</dt>
-            <dd>{read.source.kind}</dd>
-            <dt>원본 식별자</dt>
-            <dd>{read.source.sourceId}</dd>
-            <dt>원본 수정 번호</dt>
-            <dd>{read.source.revision}</dd>
-            <dt>원본 해시</dt>
-            <dd>{read.source.contentHash}</dd>
-            <dt>상세 스키마</dt>
-            <dd>{details.schemaVersion}</dd>
-            <dt>스트림 순번 / 세션 전체 순번 (0부터)</dt>
-            <dd>
-              {details.streamIndex} / {details.sessionIndex}
-            </dd>
-            <dt>세션 시작 UTC</dt>
-            <dd>{time(details.startedAt)}</dd>
-            <dt>세션 작성 UTC</dt>
-            <dd>{time(details.recordedAt)}</dd>
-            <dt>세션 경과 시간</dt>
-            <dd>{metric(details.elapsedSeconds, '초')}</dd>
-          </dl>
-          <p>
-            개별 관측·랩의 순번은 각 원본 스트림 안의 순서입니다. 작성 시각으로 운동 구간을 추정하지
-            않습니다.
-          </p>
-        </section>
+        <SourceDetails details={details} read={read} />
       )}
+    </section>
+  );
+}
+
+function SourceDetails({ details, read }: { details: ActivityDetails; read: ActivityDetailsRead }) {
+  return (
+    <section aria-label="상세 출처">
+      <h4>상세 출처</h4>
+      <dl>
+        <dt>원본 종류</dt>
+        <dd>{read.source.kind}</dd>
+        <dt>원본 식별자</dt>
+        <dd>{read.source.sourceId}</dd>
+        <dt>원본 수정 번호</dt>
+        <dd>{read.source.revision}</dd>
+        <dt>원본 해시</dt>
+        <dd>{read.source.contentHash}</dd>
+        <dt>상세 스키마</dt>
+        <dd>{details.schemaVersion}</dd>
+        <dt>스트림 순번 / 세션 전체 순번 (0부터)</dt>
+        <dd>
+          {details.streamIndex} / {details.sessionIndex}
+        </dd>
+        <dt>세션 시작 UTC</dt>
+        <dd>{time(details.startedAt)}</dd>
+        <dt>세션 작성 UTC</dt>
+        <dd>{time(details.recordedAt)}</dd>
+        <dt>세션 경과 시간</dt>
+        <dd>{metric(details.elapsedSeconds, '초')}</dd>
+      </dl>
+      <p>
+        개별 관측·랩의 순번은 각 원본 스트림 안의 순서입니다. 작성 시각으로 운동 구간을 추정하지
+        않습니다.
+      </p>
     </section>
   );
 }
@@ -386,9 +413,12 @@ function Scrollable({ label, children }: { label: string; children: ReactNode })
   );
 }
 function RangeControls({ store }: { store: DetailSelectionStore }) {
-  const [start, setStart] = useState(''),
-    [end, setEnd] = useState(''),
-    [error, setError] = useState(false);
+  const start = useStore(store, (state) => state.rangeStart);
+  const end = useStore(store, (state) => state.rangeEnd);
+  const error = useStore(store, (state) => state.rangeError);
+  const setStart = useStore(store, (state) => state.setRangeStart);
+  const setEnd = useStore(store, (state) => state.setRangeEnd);
+  const setError = useStore(store, (state) => state.setRangeError);
   const selectRange = useStore(store, (state) => state.selectRange),
     clear = useStore(store, (state) => state.clear);
   function apply() {

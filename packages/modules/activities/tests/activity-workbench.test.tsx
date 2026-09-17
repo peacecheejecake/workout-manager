@@ -66,6 +66,88 @@ function read(count = 3): ActivityDetailsRead {
   };
 }
 describe('activity detail workbench', () => {
+  it('unmounts controlled panel content while retaining selection, pages and unapplied range validation', async () => {
+    const user = userEvent.setup();
+    const data = read(1001);
+    const lap = data.details?.laps[0];
+    if (!data.details || !lap) throw new Error('Fixture details missing');
+    data.details.laps = Array.from({ length: 21 }, (_, index) => ({ ...lap, index }));
+    const view = render(<ActivityWorkbench activity={activity} read={data} panel="intervals" />);
+    expect(screen.queryByRole('button', { name: '상세 출처' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '관측 0 선택' }));
+    await user.click(screen.getByRole('button', { name: '관측 표 다음 페이지' }));
+    await user.click(screen.getByRole('button', { name: '차트 다음 페이지' }));
+    fireEvent.change(screen.getByLabelText('구간 시작 (UTC)'), {
+      target: { value: '2026-09-17T00:00:04' },
+    });
+    await user.click(screen.getByRole('button', { name: '구간 적용' }));
+    expect(screen.getByRole('alert')).toBeVisible();
+    view.rerender(<ActivityWorkbench activity={activity} read={data} panel="inactive" />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('구간 시작 (UTC)')).not.toBeInTheDocument();
+    view.rerender(<ActivityWorkbench activity={activity} read={data} panel="source" />);
+    expect(screen.getByRole('region', { name: '상세 출처' })).toHaveTextContent('synthetic');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    view.rerender(<ActivityWorkbench activity={activity} read={data} panel="intervals" />);
+    expect(screen.getByLabelText('구간 시작 (UTC)')).toHaveValue('2026-09-17T00:00:04.000');
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(screen.getByText(/차트 원본 순번 범위: 500–999/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '관측 20 선택' })).toBeVisible();
+    expect(
+      within(screen.getByRole('region', { name: '관측 선택 요약' })).getByText(/선택한 관측 0/),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '랩' }));
+    await user.click(screen.getByRole('button', { name: '랩 0 선택' }));
+    await user.click(screen.getByRole('button', { name: '랩 표 다음 페이지' }));
+    view.rerender(<ActivityWorkbench activity={activity} read={data} panel="inactive" />);
+    view.rerender(<ActivityWorkbench activity={activity} read={data} panel="intervals" />);
+    expect(screen.getByRole('button', { name: '랩' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '랩 20 선택' })).toBeVisible();
+    expect(
+      within(screen.getByRole('region', { name: '관측 선택 요약' })).getByText(/선택한 랩 0/),
+    ).toBeVisible();
+    const revised = { ...activity, revision: 2 };
+    view.rerender(
+      <ActivityWorkbench
+        activity={revised}
+        read={{ ...data, activityRevision: 2 }}
+        panel="intervals"
+      />,
+    );
+    expect(screen.getByLabelText('구간 시작 (UTC)')).toHaveValue('');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '관측 개요' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByText(/차트 원본 순번 범위: 0–499/)).toBeVisible();
+    expect(screen.getByText('선택 구간 없음')).toBeVisible();
+  });
+  it('suppresses inactive missing or mismatched details but rechecks when activated', () => {
+    const mismatch = { ...read(), activityRevision: 99 };
+    const view = render(<ActivityWorkbench activity={activity} read={mismatch} panel="inactive" />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    view.rerender(<ActivityWorkbench activity={activity} read={mismatch} panel="source" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('버전이 다릅니다');
+    view.rerender(
+      <ActivityWorkbench
+        activity={activity}
+        read={{ ...read(), details: null }}
+        panel="inactive"
+      />,
+    );
+    expect(screen.queryByText(/저장된 원본 관측 상세가 없습니다/)).not.toBeInTheDocument();
+    view.rerender(
+      <ActivityWorkbench
+        activity={activity}
+        read={{ ...read(), details: null }}
+        panel="intervals"
+      />,
+    );
+    expect(screen.getByText(/저장된 원본 관측 상세가 없습니다/)).toBeVisible();
+  });
   it('bounds 20k records to 500 chart observations and 20 table rows while retaining cross-page selection', async () => {
     const user = userEvent.setup();
     render(<ActivityWorkbench activity={activity} read={read(20_000)} />);

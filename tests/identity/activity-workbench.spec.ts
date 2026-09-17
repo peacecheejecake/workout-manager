@@ -115,7 +115,7 @@ test('source chart and laps share bounded selection across responsive layouts wi
       )
         writes++;
     });
-    await page.goto(`/activities?selected=${imported.activityId}`);
+    await page.goto(`/activities?selected=${imported.activityId}&detailTab=intervals`);
     const workbench = page.getByRole('region', { name: '원본 관측 워크벤치', exact: true });
     const selection = workbench.getByRole('region', { name: '관측 선택 요약', exact: true });
     await expect(workbench).toBeVisible();
@@ -181,8 +181,11 @@ test('source chart and laps share bounded selection across responsive layouts wi
     await expect(selection).toContainText(
       '시작 시각 또는 경과 시간이 없어 랩 구간을 표시할 수 없습니다.',
     );
-    await workbench.getByRole('button', { name: '상세 출처', exact: true }).click();
-    await expect(workbench.getByRole('region', { name: '상세 출처', exact: true })).toContainText(
+    await page
+      .getByRole('tablist', { name: '활동 상세 보기', exact: true })
+      .getByRole('tab', { name: '출처', exact: true })
+      .click();
+    await expect(page.getByRole('region', { name: '상세 출처', exact: true })).toContainText(
       command.source.sourceId,
     );
     expect(
@@ -196,6 +199,10 @@ test('source chart and laps share bounded selection across responsive layouts wi
         );
       }, command.source.sourceId),
     ).toBe(false);
+    await page
+      .getByRole('tablist', { name: '활동 상세 보기', exact: true })
+      .getByRole('tab', { name: '구간', exact: true })
+      .click();
     await page.reload();
     await expect(workbench).toBeVisible();
     await expect(selection).toContainText('선택 구간 없음');

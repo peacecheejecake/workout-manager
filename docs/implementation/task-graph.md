@@ -230,6 +230,11 @@ flowchart TD
     activityEditor --> activityMetrics
     activityWorkbench --> activityMetrics
     activityMetrics --> task14
+    activityDetailTabs["M1-04au 활동 상세 URL 탭·관측 상태 보존"]
+    activityWorkbench --> activityDetailTabs
+    activityMetrics --> activityDetailTabs
+    activityContext --> activityDetailTabs
+    activityDetailTabs --> task14
     planScenarios["M1-04ar 계획 시나리오 A/B/C 저장·비교·적용"]
     planHistoryComparison --> planScenarios
     sessionCompletionUi --> planScenarios
@@ -396,7 +401,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04ar 계획 시나리오 A/B/C 저장·비교·적용 | M1-04ad, M1-04aj, M1-04ap | 기준 계획별 독립 대안·불변 수정 비교·명시 적용·완료/잠금 보호 |
 | M1-04as 활동 페이스·심박 요약 | M1-04h, M1-04y | 원본/정정 페이스·시간 정의·FIT session 심박·상세 버전 호환 |
 | M1-04at 체크인 자기보고 관측 추세 | M1-04b | 원본 관측점·독립 페이지·부분 조회·null/0·상세 이동 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao, M1-04ap, M1-04aq, M1-04ar, M1-04as, M1-04at | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04au 활동 상세 URL 탭·관측 상태 보존 | M1-04y, M1-04as, M1-04i | URL·공통 요약·선택/입력/페이지 보존·지원 불가 복구 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao, M1-04ap, M1-04aq, M1-04ar, M1-04as, M1-04at, M1-04au | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

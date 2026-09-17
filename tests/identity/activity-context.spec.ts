@@ -160,13 +160,13 @@ test('activity context preserves linked historical plan and separates block obse
       blockMembership: 'outside',
       blockActual: { count: 2 },
     });
-    await page.goto(`/activities?selected=${zero.activityId}`);
+    await page.goto(`/activities?selected=${zero.activityId}&detailTab=impact`);
     const panel = page.getByRole('region', { name: '계획 연결과 관측 영향', exact: true });
     await expect(panel).toContainText(
       '과거 계획 버전에 연결되어 있습니다. 현재 계획으로 대체하지 않습니다.',
     );
     await expect(panel).toContainText('계획 시간의 측정 정의가 없어 시간을 비교할 수 없습니다.');
-    await page.goto(`/activities?selected=${outside.activityId}`);
+    await page.goto(`/activities?selected=${outside.activityId}&detailTab=impact`);
     await expect(panel).toContainText('이 활동은 연결 Block의 날짜 범위 밖에 있어');
     const otherContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
     try {

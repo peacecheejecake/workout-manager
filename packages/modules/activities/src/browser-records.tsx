@@ -187,12 +187,6 @@ function Values({ label, values }: { label: string; values: Activity['effective'
 export function BrowserDetail({ activity }: { activity: Activity }) {
   return (
     <>
-      <p>
-        출처 {sourceLabels[activity.source.kind]} · 원본 수정 {activity.source.revision} · 기록 수정{' '}
-        {activity.revision}
-      </p>
-      <p>출처 식별자: {activity.source.sourceId}</p>
-      <p>원본 내용 해시: {activity.source.contentHash}</p>
       <div className={styles.values}>
         <Values label="원본 기록" values={activity.original} />
         <Values label="정정 반영 기록" values={activity.effective} />

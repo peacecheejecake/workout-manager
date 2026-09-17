@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { activityListQuerySchema } from '@workout/contracts/activity';
 
+const detailTabSchema = z.enum(['overview', 'intervals', 'route', 'impact', 'media', 'source']);
+export type ActivityDetailTab = z.infer<typeof detailTabSchema>;
+
 export function readActivitySearch(search: string) {
   const params = new URLSearchParams(search);
   const input: Record<string, string | number> = {
@@ -26,10 +29,12 @@ export function readActivitySearch(search: string) {
   const query = activityListQuerySchema.safeParse(input);
   const view = z.enum(['table', 'cards']).safeParse(params.get('view') ?? 'cards');
   const selected = z.uuid().nullable().safeParse(params.get('selected'));
+  const detailTab = detailTabSchema.safeParse(params.get('detailTab') ?? 'overview');
   return {
     query: query.success ? query.data : null,
     view: view.success ? view.data : null,
     selected: selected.success ? selected.data : null,
+    detailTab: detailTab.success ? detailTab.data : null,
     invalid: !query.success || !view.success || !selected.success,
   };
 }

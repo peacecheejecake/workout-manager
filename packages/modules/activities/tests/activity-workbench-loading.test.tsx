@@ -70,7 +70,7 @@ function setup(handler: (input: TransportRequest) => Promise<Reply>) {
     athleteId: 'alice',
     sessionId: 'session-a',
     transport: { request },
-    search: `selected=${activity.id}`,
+    search: `selected=${activity.id}&detailTab=intervals`,
     onSearchChange: vi.fn(),
     initialTimezone: 'Asia/Seoul',
     importHref: '/activities/import',
@@ -94,7 +94,7 @@ describe('activity summary and source detail boundary', () => {
     await act(async () => {
       summary.resolve(context());
     });
-    expect(await screen.findByRole('region', { name: '정정 반영 기록' })).toHaveTextContent(
+    expect(await screen.findByRole('region', { name: '활동 요약 출처' })).toHaveTextContent(
       values.title,
     );
     expect(within(detailSection()).getByRole('status')).toHaveTextContent(
@@ -130,7 +130,7 @@ describe('activity summary and source detail boundary', () => {
       expect(await within(detailSection()).findByRole('alert')).toHaveTextContent(
         '버전이 다릅니다',
       );
-      expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent(
+      expect(screen.getByRole('region', { name: '활동 요약 출처' })).toHaveTextContent(
         values.title,
       );
       expect(screen.queryByText(emptyDetail)).not.toBeInTheDocument();
@@ -155,7 +155,7 @@ describe('activity summary and source detail boundary', () => {
         input.path.endsWith('/context') ? context() : reply(body, status),
       );
       expect(await within(detailSection()).findByRole('alert')).toHaveTextContent(message);
-      expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent(
+      expect(screen.getByRole('region', { name: '활동 요약 출처' })).toHaveTextContent(
         values.title,
       );
       expect(screen.queryByText(emptyDetail)).not.toBeInTheDocument();
@@ -383,18 +383,18 @@ describe('activity summary and source detail boundary', () => {
           ? Promise.resolve(reply(read(other)))
           : pending.promise;
       });
-      await screen.findByRole('region', { name: '정정 반영 기록' });
+      await screen.findByRole('region', { name: '활동 요약 출처' });
       const first = callsFor(request, '/details')[0]?.[0];
       expect(first?.signal?.aborted).toBe(false);
       rerender(
         <ActivityBrowser
           {...props}
-          search={`selected=${other.id}`}
+          search={`selected=${other.id}&detailTab=intervals`}
           {...(boundary === 'account' ? { athleteId: 'bob', sessionId: 'session-b' } : {})}
         />,
       );
       await waitFor(() =>
-        expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent(
+        expect(screen.getByRole('region', { name: '활동 요약 출처' })).toHaveTextContent(
           '다음 활동',
         ),
       );
@@ -403,7 +403,7 @@ describe('activity summary and source detail boundary', () => {
       await act(async () => {
         pending.resolve(reply({ ...read(), activityRevision: 99 }));
       });
-      expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent('다음 활동');
+      expect(screen.getByRole('region', { name: '활동 요약 출처' })).toHaveTextContent('다음 활동');
       expect(within(detailSection()).queryByRole('alert')).not.toBeInTheDocument();
       expect(screen.getByText(emptyDetail)).toBeVisible();
       expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);

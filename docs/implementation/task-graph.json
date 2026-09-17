@@ -541,6 +541,15 @@
       "evidence": "docs/implementation/progress/M1-04at.md"
     },
     {
+      "id": "M1-04au",
+      "title": "활동 상세 URL 탭·관측 상태 보존",
+      "dependsOn": ["M1-04y", "M1-04as", "M1-04i"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "상세 탭 URL·공통 출처/요약·관측 선택/페이지/입력 보존·비활성 차트 해제·지원 불가 복구",
+      "evidence": "docs/implementation/progress/M1-04au.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -591,7 +600,8 @@
         "M1-04aq",
         "M1-04ar",
         "M1-04as",
-        "M1-04at"
+        "M1-04at",
+        "M1-04au"
       ],
       "kind": "task",
       "status": "not_started",

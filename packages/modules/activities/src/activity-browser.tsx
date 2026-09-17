@@ -21,6 +21,7 @@ import { ActivityBatchTags } from './activity-batch-tags';
 import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from './batch-selection';
 import { ActivityContextPanel } from './activity-context-panel';
 import { ActivityWorkbench } from './activity-workbench';
+import { ActivityDetailTabs } from './activity-detail-tabs';
 import { detailsMatchActivity } from './detail-projection';
 
 export interface ActivityBrowserProps {
@@ -515,6 +516,21 @@ function Workspace({
                       <a href={editHref(detail.data.activity.id)}>이 활동 정정</a>
                     </p>
                   ) : null}
+                  <section aria-label="활동 요약 출처">
+                    <h3>{detail.data.activity.effective.title ?? '제목 미확인'}</h3>
+                    <p>
+                      출처 {sourceLabels[detail.data.activity.source.kind]} · 원본 수정{' '}
+                      {detail.data.activity.source.revision} · 기록 수정{' '}
+                      {detail.data.activity.revision} · 사용자 정정{' '}
+                      {Object.keys(detail.data.activity.overlay).length ? '있음' : '없음'}
+                    </p>
+                    <p>출처 식별자: {detail.data.activity.source.sourceId}</p>
+                    <p>원본 내용 해시: {detail.data.activity.source.contentHash}</p>
+                    <p>
+                      요약 관측 시각:{' '}
+                      <time dateTime={detail.data.observedAt}>{detail.data.observedAt}</time>
+                    </p>
+                  </section>
                   <ActivityMetricSummary
                     activity={detail.data.activity}
                     sourceDetails={
@@ -527,45 +543,65 @@ function Workspace({
                             : { state: 'unavailable' }
                     }
                   />
+                </>
+              ) : null}
+              <ActivityDetailTabs
+                value={parsed.detailTab}
+                onChange={(detailTab) => change({ detailTab })}
+              >
+                {parsed.detailTab === 'overview' && detail.isSuccess && !detail.isFetching ? (
                   <BrowserDetail activity={detail.data.activity} />
+                ) : null}
+                {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
                   <ActivityContextPanel
                     context={detail.data}
                     {...(planDayHref ? { planDayHref } : {})}
                     {...(linkedBlockHref ? { linkedBlockHref } : {})}
                   />
-                </>
-              ) : null}
-              <section aria-label="활동 세부 기록 조회">
-                {sourceDetails.isFetching ? (
-                  <p role="status">레코드·랩을 확인하고 있습니다.</p>
                 ) : null}
-                {sourceDetails.isError ? (
-                  <p role="alert">
-                    {sourceDetails.error.message === 'NOT_FOUND'
-                      ? '세부 기록을 확인할 수 없습니다. 기록이 삭제되었거나 접근할 수 없습니다.'
-                      : '세부 기록 최신 확인 실패. 요약과 세부 기록을 다시 확인하세요.'}
-                  </p>
-                ) : null}
-                {pairReady && !pairMatches ? (
-                  <p role="alert">
-                    활동 요약과 세부 기록의 버전이 다릅니다. 두 기록을 다시 확인하세요.
-                  </p>
-                ) : null}
-                {sourceDetails.isError || (pairReady && !pairMatches) ? (
-                  <Button
-                    variant="secondary"
-                    disabled={detail.isFetching || sourceDetails.isFetching}
-                    onClick={() => void refreshDetails()}
-                  >
-                    요약과 세부 기록 다시 확인
-                  </Button>
-                ) : null}
-                {pairMatches && !pairNotFound ? (
-                  <div hidden={!pairReady}>
-                    <ActivityWorkbench activity={detail.data.activity} read={sourceDetails.data} />
-                  </div>
-                ) : null}
-              </section>
+                <section
+                  aria-label="활동 세부 기록 조회"
+                  hidden={parsed.detailTab !== 'intervals' && parsed.detailTab !== 'source'}
+                >
+                  {sourceDetails.isFetching ? (
+                    <p role="status">레코드·랩을 확인하고 있습니다.</p>
+                  ) : null}
+                  {sourceDetails.isError ? (
+                    <p role="alert">
+                      {sourceDetails.error.message === 'NOT_FOUND'
+                        ? '세부 기록을 확인할 수 없습니다. 기록이 삭제되었거나 접근할 수 없습니다.'
+                        : '세부 기록 최신 확인 실패. 요약과 세부 기록을 다시 확인하세요.'}
+                    </p>
+                  ) : null}
+                  {pairReady && !pairMatches ? (
+                    <p role="alert">
+                      활동 요약과 세부 기록의 버전이 다릅니다. 두 기록을 다시 확인하세요.
+                    </p>
+                  ) : null}
+                  {sourceDetails.isError || (pairReady && !pairMatches) ? (
+                    <Button
+                      variant="secondary"
+                      disabled={detail.isFetching || sourceDetails.isFetching}
+                      onClick={() => void refreshDetails()}
+                    >
+                      요약과 세부 기록 다시 확인
+                    </Button>
+                  ) : null}
+                  {pairMatches && !pairNotFound ? (
+                    <div hidden={!pairReady}>
+                      <ActivityWorkbench
+                        activity={detail.data.activity}
+                        read={sourceDetails.data}
+                        panel={
+                          parsed.detailTab === 'intervals' || parsed.detailTab === 'source'
+                            ? parsed.detailTab
+                            : 'inactive'
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              </ActivityDetailTabs>
             </section>
           ) : null}
         </>
