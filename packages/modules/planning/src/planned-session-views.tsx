@@ -1,28 +1,37 @@
-import { useId, useRef } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { getLayoutMode, getContainerMode } from '@workout/ui-foundation/responsive';
 import type { DayProjection } from '@workout/contracts/core';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import styles from './planning.module.css';
-export function PlannedSessionViews({
+function SessionView({
   source,
   days,
   view,
   selected,
   onSelect,
+  readScroll,
+  saveScroll,
 }: {
   source: PlanDraft;
   days: DayProjection[];
   view: 'agenda' | 'calendar' | 'table';
   selected: string | null;
   onSelect(id: string): void;
+  readScroll(view: SingleView): number;
+  saveScroll(view: SingleView, left: number): void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollLeft = readScroll(view);
+  }, [readScroll, view]);
   const button = (sessionId: string) => {
     const session = source.sessions.find((value) => value.id === sessionId);
     return session ? (
       <Button
         variant="secondary"
+        data-planned-session={sessionId}
         aria-pressed={selected === sessionId}
         onClick={() => onSelect(sessionId)}
       >
@@ -52,7 +61,14 @@ export function PlannedSessionViews({
           </>
         ) : null}
       </div>
-      <div id={id} ref={scroll} className={styles.plannedScroll}>
+      <div
+        id={id}
+        ref={scroll}
+        className={styles.plannedScroll}
+        onScroll={(event) => {
+          saveScroll(view, event.currentTarget.scrollLeft);
+        }}
+      >
         {view === 'table' ? (
           <table className={styles.plannedTable}>
             <caption>계획 세션 표</caption>
@@ -132,5 +148,145 @@ export function PlannedSessionViews({
         <p>조회 범위에 계획 세션이 없습니다. 실제 휴식 여부는 미확인입니다.</p>
       ) : null}
     </>
+  );
+}
+
+type SingleView = 'agenda' | 'calendar' | 'table';
+type RequestedView = SingleView | 'auto' | 'split';
+interface PlannedSessionViewsProps {
+  source: PlanDraft;
+  days: DayProjection[];
+  view: RequestedView;
+  selected: string | null;
+  onSelect(id: string): void;
+}
+
+export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps) {
+  const scrollPositions = useRef<Record<SingleView, number>>({ agenda: 0, calendar: 0, table: 0 });
+  const readScroll = useCallback((view: SingleView) => scrollPositions.current[view], []);
+  const saveScroll = useCallback((view: SingleView, left: number) => {
+    scrollPositions.current[view] = left;
+  }, []);
+  const container = useRef<HTMLDivElement>(null);
+  const fallbackLauncher = useRef<HTMLButtonElement>(null);
+  const pendingFocus = useRef<string | null>(null);
+  const [size, setSize] = useState({ viewport: 0, container: 0 });
+  const [fallback, setFallback] = useState<SingleView | null>(null);
+  useEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    const update = (width: number) => {
+      if (!Number.isFinite(width) || width < 0) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && element.contains(active)) {
+        pendingFocus.current = active.dataset.plannedSession ?? '';
+      } else {
+        pendingFocus.current = null;
+      }
+      setSize({ viewport: window.innerWidth, container: width });
+    };
+    const resize = () => update(element.getBoundingClientRect().width);
+    resize();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (entry) update(entry.contentRect.width);
+          });
+    observer?.observe(element);
+    window.addEventListener('resize', resize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+  const mode = getLayoutMode(size.viewport);
+  const containerMode = getContainerMode(size.container);
+  const canSplit = containerMode === 'workspace';
+  const compactDefault = mode === 'mobile' || containerMode === 'compact' ? 'agenda' : 'calendar';
+  const resolved: SingleView | 'split' =
+    view === 'auto'
+      ? canSplit && mode === 'desktop'
+        ? 'split'
+        : compactDefault
+      : view === 'split'
+        ? canSplit
+          ? 'split'
+          : (fallback ?? compactDefault)
+        : view;
+  useLayoutEffect(() => {
+    const previous = pendingFocus.current;
+    pendingFocus.current = null;
+    if (previous === null || document.activeElement !== document.body) return;
+    const equivalent = [
+      ...(container.current?.querySelectorAll<HTMLButtonElement>('[data-planned-session]') ?? []),
+    ].find((button) => button.dataset.plannedSession === previous);
+    (equivalent ?? fallbackLauncher.current)?.focus();
+  }, [resolved]);
+  const views: SingleView[] = resolved === 'split' ? ['calendar', 'table'] : [resolved];
+  return (
+    <div ref={container} className={styles.plannedViews}>
+      <p>
+        현재 표시:{' '}
+        {resolved === 'split'
+          ? '달력·표 함께'
+          : resolved === 'calendar'
+            ? '달력'
+            : resolved === 'table'
+              ? '표'
+              : 'agenda'}
+      </p>
+      <div className={styles.toolbar}>
+        <Button
+          ref={fallbackLauncher}
+          variant="secondary"
+          onClick={() => {
+            const button =
+              container.current?.querySelector<HTMLButtonElement>(
+                '[data-planned-session][aria-pressed="true"]',
+              ) ?? container.current?.querySelector<HTMLButtonElement>('[data-planned-session]');
+            button?.focus();
+          }}
+        >
+          계획 세션으로 이동
+        </Button>
+        {view === 'split' && !canSplit ? (
+          <>
+            <p>
+              함께 보기 요청을 유지합니다. 현재 계획 영역이 좁아 한 가지 보기로 표시합니다. 한 열
+              보기를 선택하면 계획 영역을 넓힐 수 있습니다.
+            </p>
+            {(['agenda', 'calendar', 'table'] as const).map((single) => (
+              <Button
+                key={single}
+                variant="secondary"
+                aria-pressed={resolved === single}
+                onClick={() => setFallback(single)}
+              >
+                좁은 화면 {single === 'agenda' ? 'agenda' : single === 'calendar' ? '달력' : '표'}{' '}
+                보기
+              </Button>
+            ))}
+          </>
+        ) : null}
+      </div>
+      <div className={styles.plannedPanes} data-split={resolved === 'split'}>
+        {views.map((single) => (
+          <section
+            key={single}
+            aria-label={
+              single === 'calendar'
+                ? '계획 달력 패널'
+                : single === 'table'
+                  ? '계획 표 패널'
+                  : '계획 agenda 패널'
+            }
+          >
+            <SessionView {...props} view={single} readScroll={readScroll} saveScroll={saveScroll} />
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }

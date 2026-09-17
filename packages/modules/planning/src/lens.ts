@@ -4,7 +4,7 @@ import { idSchema, localDateSchema } from '@workout/contracts/primitives';
 export interface PlannerUrlState {
   lens: PlanningLens;
   view: 'stack' | 'split';
-  plannedView: 'agenda' | 'calendar' | 'table';
+  plannedView: 'auto' | 'agenda' | 'calendar' | 'table' | 'split';
   plannedSession: string | null;
   selectionError: boolean;
   error: boolean;
@@ -33,11 +33,18 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
       Date.parse(parsed.data.toExclusive) - Date.parse(parsed.data.from) <= 366 * 86400000);
   const selected = params.get('plannedSession');
   const validSelection = selected === null || idSchema.safeParse(selected).success;
-  const plannedView = params.get('plannedView') ?? 'agenda';
+  const plannedView = params.get('plannedView') ?? 'auto';
   return {
-    plannedView: plannedView === 'calendar' || plannedView === 'table' ? plannedView : 'agenda',
+    plannedView:
+      plannedView === 'calendar' ||
+      plannedView === 'table' ||
+      plannedView === 'split' ||
+      plannedView === 'auto'
+        ? plannedView
+        : 'agenda',
     plannedSession: validSelection ? selected : null,
-    selectionError: !validSelection || !['calendar', 'table', 'agenda'].includes(plannedView),
+    selectionError:
+      !validSelection || !['auto', 'calendar', 'table', 'agenda', 'split'].includes(plannedView),
     lens: valid
       ? parsed.data
       : { kind: 'rolling', anchorDate: localDateSchema.parse(today), days: 10 },

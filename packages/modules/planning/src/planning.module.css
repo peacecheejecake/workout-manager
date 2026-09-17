@@ -126,3 +126,17 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+.plannedViews,
+.plannedPanes > section {
+  min-width: 0;
+  max-width: 100%;
+}
+.plannedPanes {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.plannedPanes[data-split='true'] {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}

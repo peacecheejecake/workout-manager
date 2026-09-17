@@ -253,6 +253,15 @@
       "evidence": "docs/implementation/progress/M1-04n.md"
     },
     {
+      "id": "M1-04o",
+      "title": "Planner 달력·표 동시 보기와 반응형 전환",
+      "dependsOn": ["M1-04n"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "공유 선택 calendar/table 40:60 split·실제 container 적응·요청 보기 복원·focus/draft 보존",
+      "evidence": "docs/implementation/progress/M1-04o.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -271,7 +280,8 @@
         "M1-04k",
         "M1-04l",
         "M1-04m",
-        "M1-04n"
+        "M1-04n",
+        "M1-04o"
       ],
       "kind": "task",
       "status": "not_started",

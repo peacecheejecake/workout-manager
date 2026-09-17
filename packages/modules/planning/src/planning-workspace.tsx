@@ -21,9 +21,9 @@ import {
   type ManualPlanCommand,
 } from '@workout/contracts/planning';
 import { idSchema, localDateSchema } from '@workout/contracts/primitives';
+import { AdaptiveWorkspace } from '@workout/ui-foundation/adaptive-workspace';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
-import { AdaptiveWorkspace } from '@workout/ui-foundation/adaptive-workspace';
 import { StatusNotice } from '@workout/ui-foundation/status-notice';
 import { createPlanningDraftStore } from './draft-store';
 import { PlanSummary } from './plan-summary';
@@ -469,18 +469,22 @@ function Planner({
         <section aria-label="일별 계획">
           <h2>{draft ? '초안' : '현재 저장된 계획'} 일별 조회</h2>
           <div className={styles.toolbar}>
-            {(['agenda', 'calendar', 'table'] as const).map((view) => (
+            {(['auto', 'agenda', 'calendar', 'table', 'split'] as const).map((view) => (
               <Button
                 key={view}
                 variant="secondary"
                 aria-pressed={url.plannedView === view}
                 onClick={() => changeSearch({ plannedView: view })}
               >
-                {view === 'agenda'
-                  ? '계획 agenda 보기'
-                  : view === 'calendar'
-                    ? '계획 달력 보기'
-                    : '계획 표 보기'}
+                {view === 'auto'
+                  ? '계획 자동 보기'
+                  : view === 'split'
+                    ? '계획 달력·표 함께 보기'
+                    : view === 'agenda'
+                      ? '계획 agenda 보기'
+                      : view === 'calendar'
+                        ? '계획 달력 보기'
+                        : '계획 표 보기'}
               </Button>
             ))}
           </div>
