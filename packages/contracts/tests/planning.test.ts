@@ -185,5 +185,16 @@ describe('M1-02 planned snapshots V2-A07..11', () => {
     expect(preservesSessionLocks(next, moved)).toBe(true);
     expect(preservesSessionLocks(previous, { ...next, sessions: [] })).toBe(false);
     expect(preservesSessionLocks(previous, { ...next, timezone: 'UTC' })).toBe(false);
+    const reassigned = structuredClone(next);
+    reassigned.periods = reassigned.periods.map((period) =>
+      period.id === 'block' ? { ...period, id: 'replacement-block' } : period,
+    );
+    reassigned.sessions = reassigned.sessions.map((item) => ({
+      ...item,
+      blockId: 'replacement-block',
+    }));
+    expect(planDraftSchema.safeParse(reassigned).success).toBe(true);
+    expect(preservesSessionLocks(previous, reassigned)).toBe(false);
+    expect(preservesSessionLocks(next, reassigned)).toBe(true);
   });
 });

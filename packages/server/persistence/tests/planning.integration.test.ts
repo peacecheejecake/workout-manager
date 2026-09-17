@@ -190,6 +190,25 @@ describe('M1-02 manual plans real transaction invariants', () => {
       },
     };
     await expect(repository.save(athlete, moved)).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+    const reassigned = {
+      ...moved,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...moved.draft,
+        periods: moved.draft.periods.map((period) =>
+          period.id === 'block' ? { ...period, id: 'replacement-block' } : period,
+        ),
+        sessions: moved.draft.sessions.map((session) => ({
+          ...session,
+          date: '2026-01-02',
+          blockId: 'replacement-block',
+        })),
+      },
+    };
+    await expect(repository.save(athlete, reassigned)).rejects.toMatchObject({
+      code: 'PLAN_LOCKED',
+    });
+    expect((await repository.read(athlete)).head).toEqual(first);
     expect((await repository.read(athlete)).history).toHaveLength(1);
     const unlocked = await repository.save(athlete, {
       ...moved,

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, use, useEffect, useState } from 'react';
+import { createContext, use, useEffect, useId, useState } from 'react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -20,7 +20,7 @@ import {
   type PlanDraft,
   type ManualPlanCommand,
 } from '@workout/contracts/planning';
-import { idSchema, localDateSchema } from '@workout/contracts/primitives';
+import { idSchema, localDateSchema, timeZoneSchema } from '@workout/contracts/primitives';
 import { AdaptiveWorkspace } from '@workout/ui-foundation/adaptive-workspace';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
@@ -34,6 +34,13 @@ import styles from './planning.module.css';
 import { PlannedSessionViews } from './planned-session-views';
 import { PlannedSessionDetail } from './planned-session-detail';
 import { ActualActivities } from './actual-activities';
+import { SessionOperations } from './session-operations';
+import { applyPlannedSessionOperation, type PlannedSessionOperation } from './session-operation';
+import {
+  SessionOperationFeedback,
+  type SessionOperationFeedbackValue,
+} from './session-operation-feedback';
+import { sessionOperationDate } from './session-operation-clock';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -61,7 +68,8 @@ function PlanningLifetime(props: PlanningWorkspaceProps) {
         defaultOptions: { queries: { retry: false, staleTime: 0 }, mutations: { retry: false } },
       }),
   );
-  const [defaultToday] = useState(() => new Date().toISOString().slice(0, 10));
+  const [referenceInstant] = useState(() => Date.now());
+  const defaultToday = new Date(referenceInstant).toISOString().slice(0, 10);
   useEffect(
     () => () => {
       client.clear();
@@ -72,7 +80,12 @@ function PlanningLifetime(props: PlanningWorkspaceProps) {
   return (
     <QueryClientProvider client={client}>
       <DraftContext value={store}>
-        <Planner {...props} today={localDateSchema.parse(props.today ?? defaultToday)} />
+        <Planner
+          {...props}
+          today={localDateSchema.parse(props.today ?? defaultToday)}
+          explicitToday={props.today}
+          referenceInstant={referenceInstant}
+        />
       </DraftContext>
     </QueryClientProvider>
   );
@@ -91,11 +104,22 @@ function Planner({
   today,
   createId = randomId,
   activityHref,
-}: PlanningWorkspaceProps & { today: string }) {
+  referenceInstant,
+  explicitToday,
+}: PlanningWorkspaceProps & {
+  today: string;
+  referenceInstant: number;
+  explicitToday: string | undefined;
+}) {
   const store = use(DraftContext);
   if (!store) throw new Error('PlanningLifetime required');
+  const readDraftState = store.getState;
   const state = useStore(store, (value) => value.state);
   const actions = useStore(store, (value) => value.actions);
+  const [operationFeedback, setOperationFeedback] = useState<SessionOperationFeedbackValue | null>(
+    null,
+  );
+  const actualRecordsId = useId();
   const client = useQueryClient();
   const key = ['planning', athleteId, sessionId] as const;
   const plan = useQuery({
@@ -134,6 +158,7 @@ function Planner({
       // Drop cached reads before the authoritative GET, including a read started before PUT.
       await client.cancelQueries({ queryKey: key, exact: true });
       actions.reset();
+      setOperationFeedback(null);
       await client.resetQueries({ queryKey: key, exact: true });
     },
     onError: async () => {
@@ -159,13 +184,36 @@ function Planner({
   const missingPeriod = selectedPeriodId !== null && !selectedPeriod;
   const projection =
     projectionSource && !missingPeriod ? projectPlan(projectionSource, url.lens) : [];
+  const operationToday =
+    explicitToday ?? sessionOperationDate(referenceInstant, projectionSource?.timezone ?? 'UTC');
   const isConflict = save.error instanceof PlanRequestError && save.error.status === 409;
   function edit(update: (value: PlanDraft) => PlanDraft) {
+    setOperationFeedback(null);
     actions.edit(update);
     save.reset();
   }
   function changeSearch(changes: Record<string, string | null>) {
     onSearchChange(updatePlannerSearch(search, changes));
+  }
+  function operateSession(sessionId: string, operation: PlannedSessionOperation) {
+    const current = readDraftState().state;
+    if (!current.draft || current.preview || save.isPending) return;
+    const timezone = timeZoneSchema.safeParse(current.draft.timezone);
+    const actionToday =
+      explicitToday ??
+      (timezone.success ? sessionOperationDate(Date.now(), timezone.data) : operationToday);
+    const result = applyPlannedSessionOperation({
+      draft: current.draft,
+      baseline: current.baseline?.draft ?? null,
+      sessionId,
+      today: actionToday,
+      operation,
+    });
+    if (result.status === 'changed') {
+      edit(() => result.draft);
+      changeSearch({ plannedSession: sessionId });
+      setOperationFeedback({ status: 'changed', summary: result.summary });
+    } else setOperationFeedback(result);
   }
   return (
     <section className={styles.workspace} aria-labelledby="planning-title">
@@ -224,6 +272,7 @@ function Planner({
       {!draft && currentPlan ? (
         <Button
           onClick={() => {
+            setOperationFeedback(null);
             actions.start(currentPlan.head, {
               title: '새 훈련 계획',
               timezone: 'UTC',
@@ -384,6 +433,13 @@ function Planner({
                   today={today}
                   createId={createId}
                 />
+                <SessionOperations
+                  draft={draft}
+                  baseline={state.baseline?.draft ?? null}
+                  selected={url.plannedSession}
+                  today={operationToday}
+                  onOperation={operateSession}
+                />
               </fieldset>
               {state.preview ? (
                 <section aria-label="변경 미리보기">
@@ -439,6 +495,7 @@ function Planner({
                     onClick={() => {
                       const previous = state.undo.at(-1);
                       actions.undo();
+                      setOperationFeedback(null);
                       if (
                         previous &&
                         url.plannedSession &&
@@ -453,6 +510,7 @@ function Planner({
                     variant="secondary"
                     onClick={() => {
                       actions.reset();
+                      setOperationFeedback(null);
                       save.reset();
                     }}
                   >
@@ -515,6 +573,13 @@ function Planner({
               표시합니다.
             </p>
           ) : null}
+          {draft && operationFeedback ? (
+            <SessionOperationFeedback
+              result={operationFeedback}
+              draft={draft}
+              actualRecordsId={actualRecordsId}
+            />
+          ) : null}
           {draft && !validated.success ? (
             <p role="alert">
               초안이 유효하지 않아 날짜별 보기를 표시할 수 없습니다. 작성 내용은 편집기에
@@ -533,6 +598,17 @@ function Planner({
               onTableColumns={(columns) => changeSearch({ plannedColumns: columns.join(',') })}
               onTablePinned={(pins) => changeSearch({ plannedPinned: pins.join(',') })}
               onSelect={(plannedSession) => changeSearch({ plannedSession })}
+              onMove={
+                draft && !state.preview && !save.isPending
+                  ? (sessionId, date, blockId) =>
+                      operateSession(sessionId, { kind: 'move', date, blockId })
+                  : undefined
+              }
+              dateLockedIds={
+                state.baseline?.draft.sessions
+                  .filter((session) => session.locks.date)
+                  .map((session) => session.id) ?? []
+              }
             />
           ) : (
             <p>조회할 계획이 없습니다.</p>
@@ -549,17 +625,19 @@ function Planner({
           />
         </section>
       </AdaptiveWorkspace>
-      <ActualActivities
-        athleteId={athleteId}
-        sessionId={sessionId}
-        transport={transport}
-        head={currentPlan?.head}
-        lens={url.lens}
-        invalidLens={url.error}
-        search={search}
-        onSearchChange={onSearchChange}
-        {...(activityHref ? { activityHref } : {})}
-      />
+      <div id={actualRecordsId}>
+        <ActualActivities
+          athleteId={athleteId}
+          sessionId={sessionId}
+          transport={transport}
+          head={currentPlan?.head}
+          lens={url.lens}
+          invalidLens={url.error}
+          search={search}
+          onSearchChange={onSearchChange}
+          {...(activityHref ? { activityHref } : {})}
+        />
+      </div>
       <section aria-label="계획 버전 이력">
         <h2>버전 이력 (최근 100개)</h2>
         <ol>

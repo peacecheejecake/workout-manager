@@ -1,0 +1,61 @@
+.operations {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.controls {
+  display: grid;
+  gap: var(--space-3);
+}
+.controls input,
+.controls select,
+.sliderLabel input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--target-primary);
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+.sliderLabel {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.sliderLabel input {
+  width: 100%;
+  touch-action: pan-y;
+}
+.dragHandle {
+  min-width: var(--target-primary);
+  min-height: var(--target-primary);
+  touch-action: none;
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+.dragHandle:focus-visible,
+.controls input:focus-visible,
+.controls select:focus-visible,
+.sliderLabel input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.draggable {
+  min-width: 0;
+}
+.draggable[data-dragging='true'] {
+  outline: 2px dashed var(--accent);
+}
+.dropTarget {
+  min-width: 0;
+  height: 100%;
+}
+.dropTarget[data-over='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

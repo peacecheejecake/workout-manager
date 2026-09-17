@@ -298,6 +298,15 @@
       "evidence": "docs/implementation/progress/M1-04s.md"
     },
     {
+      "id": "M1-04t",
+      "title": "Planner 날짜 이동·시간 길이 조절 초안 상호작용",
+      "dependsOn": ["M1-04r", "M1-04s"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "날짜 drag/drop·move-to-date·길이 조절/숫자 입력; 잠금·Block 재검증·요약·undo·취소·오프라인/충돌 초안 보존",
+      "evidence": "docs/implementation/progress/M1-04t.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -321,7 +330,8 @@
         "M1-04p",
         "M1-04q",
         "M1-04r",
-        "M1-04s"
+        "M1-04s",
+        "M1-04t"
       ],
       "kind": "task",
       "status": "not_started",

@@ -198,7 +198,11 @@ export function preservesSessionLocks(previous: PlanDraft, next: PlanDraft): boo
     const locks = session.locks;
     if ((locks.date || locks.time) && previous.timezone !== next.timezone) return false;
     if (!replacement) return !locks.date && !locks.time && !locks.intensity;
-    if (locks.date && replacement.date !== session.date) return false;
+    if (
+      locks.date &&
+      (replacement.date !== session.date || replacement.blockId !== session.blockId)
+    )
+      return false;
     if (locks.time && replacement.localStartTime !== session.localStartTime) return false;
     const intensity = (value: PlannedSession) =>
       JSON.stringify([

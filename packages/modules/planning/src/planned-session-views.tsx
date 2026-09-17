@@ -9,6 +9,11 @@ import {
   createPlannedTableInteractionStore,
   type PlannedTableInteractionStore,
 } from './planned-table-interaction';
+import { SessionDragProvider, DraggableSession, DayDropTarget } from './session-drag';
+interface SessionMoveSettings {
+  onMove?: ((id: string, date: string, blockId: string) => void) | undefined;
+  dateLockedIds?: readonly string[];
+}
 function SessionView({
   source,
   days,
@@ -18,17 +23,20 @@ function SessionView({
   readScroll,
   saveScroll,
   interactionStore,
+  onMove,
+  dateLockedIds = [],
   ...tableSettings
-}: PlannedTableSettings & {
-  source: PlanDraft;
-  days: DayProjection[];
-  view: 'agenda' | 'calendar' | 'table';
-  selected: string | null;
-  onSelect(id: string): void;
-  readScroll(view: SingleView): number;
-  saveScroll(view: SingleView, left: number): void;
-  interactionStore: PlannedTableInteractionStore;
-}) {
+}: PlannedTableSettings &
+  SessionMoveSettings & {
+    source: PlanDraft;
+    days: DayProjection[];
+    view: 'agenda' | 'calendar' | 'table';
+    selected: string | null;
+    onSelect(id: string): void;
+    readScroll(view: SingleView): number;
+    saveScroll(view: SingleView, left: number): void;
+    interactionStore: PlannedTableInteractionStore;
+  }) {
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
   useLayoutEffect(() => {
@@ -37,14 +45,20 @@ function SessionView({
   const button = (sessionId: string) => {
     const session = source.sessions.find((value) => value.id === sessionId);
     return session ? (
-      <Button
-        variant="secondary"
-        data-planned-session={sessionId}
-        aria-pressed={selected === sessionId}
-        onClick={() => onSelect(sessionId)}
+      <DraggableSession
+        sessionId={session.id}
+        title={session.title}
+        disabled={!onMove || session.locks.date || dateLockedIds.includes(session.id)}
       >
-        계획: {session.title}
-      </Button>
+        <Button
+          variant="secondary"
+          data-planned-session={sessionId}
+          aria-pressed={selected === sessionId}
+          onClick={() => onSelect(sessionId)}
+        >
+          계획: {session.title}
+        </Button>
+      </DraggableSession>
     ) : null;
   };
   if (view === 'table') {
@@ -110,16 +124,18 @@ function SessionView({
                   : undefined
               }
             >
-              <time dateTime={day.date}>{day.date}</time> ·{' '}
-              {day.blockId ? 'Block 배정' : 'Block 미배정'}
-              <ul>
-                {day.plannedSessionIds.map((sessionId) => (
-                  <li key={sessionId}>{button(sessionId)}</li>
-                ))}
-              </ul>
-              {day.plannedSessionIds.length === 0 ? (
-                <span>계획 세션 없음 · 실제 휴식 여부 미확인</span>
-              ) : null}
+              <DayDropTarget date={day.date} blockId={day.blockId}>
+                <time dateTime={day.date}>{day.date}</time> ·{' '}
+                {day.blockId ? 'Block 배정' : 'Block 미배정'}
+                <ul>
+                  {day.plannedSessionIds.map((sessionId) => (
+                    <li key={sessionId}>{button(sessionId)}</li>
+                  ))}
+                </ul>
+                {day.plannedSessionIds.length === 0 ? (
+                  <span>계획 세션 없음 · 실제 휴식 여부 미확인</span>
+                ) : null}
+              </DayDropTarget>
             </li>
           ))}
         </ol>
@@ -130,7 +146,7 @@ function SessionView({
 
 type SingleView = 'agenda' | 'calendar' | 'table';
 type RequestedView = SingleView | 'auto' | 'split';
-interface PlannedSessionViewsProps extends PlannedTableSettings {
+interface PlannedSessionViewsProps extends PlannedTableSettings, SessionMoveSettings {
   source: PlanDraft;
   days: DayProjection[];
   view: RequestedView;
@@ -256,28 +272,30 @@ export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps
           </>
         ) : null}
       </div>
-      <div className={styles.plannedPanes} data-split={resolved === 'split'}>
-        {views.map((single) => (
-          <section
-            key={single}
-            aria-label={
-              single === 'calendar'
-                ? '계획 달력 패널'
-                : single === 'table'
-                  ? '계획 표 패널'
-                  : '계획 agenda 패널'
-            }
-          >
-            <SessionView
-              {...props}
-              view={single}
-              readScroll={readScroll}
-              saveScroll={saveScroll}
-              interactionStore={interactionStore}
-            />
-          </section>
-        ))}
-      </div>
+      <SessionDragProvider onMove={props.onMove}>
+        <div className={styles.plannedPanes} data-split={resolved === 'split'}>
+          {views.map((single) => (
+            <section
+              key={single}
+              aria-label={
+                single === 'calendar'
+                  ? '계획 달력 패널'
+                  : single === 'table'
+                    ? '계획 표 패널'
+                    : '계획 agenda 패널'
+              }
+            >
+              <SessionView
+                {...props}
+                view={single}
+                readScroll={readScroll}
+                saveScroll={saveScroll}
+                interactionStore={interactionStore}
+              />
+            </section>
+          ))}
+        </div>
+      </SessionDragProvider>
     </div>
   );
 }
