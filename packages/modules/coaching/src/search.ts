@@ -2,6 +2,12 @@ import { z } from 'zod';
 const uuid = z.uuid().transform((v) => v.toLowerCase());
 const schema = z.strictObject({
   thread: uuid.nullable(),
+  snapshot: uuid.nullable(),
+  snapshotOffset: z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/)
+    .transform(Number)
+    .pipe(z.number().max(10000)),
   offset: z
     .string()
     .regex(/^(0|[1-9][0-9]*)$/)
@@ -22,15 +28,29 @@ export function readCoachingSearch(search: string): {
   error: string | null;
 } {
   const p = new URLSearchParams(search);
-  const keys = ['thread', 'offset', 'planVersion', 'scopeKind', 'targetId'];
+  const keys = [
+    'thread',
+    'snapshot',
+    'snapshotOffset',
+    'offset',
+    'planVersion',
+    'scopeKind',
+    'targetId',
+  ];
   const result = schema.safeParse({
     thread: p.get('thread'),
+    snapshot: p.get('snapshot'),
+    snapshotOffset: p.get('snapshotOffset') ?? '0',
     offset: p.get('offset') ?? '0',
     planVersion: p.get('planVersion'),
     scopeKind: p.get('scopeKind') ?? 'session',
     targetId: p.get('targetId'),
   });
-  if (keys.some((key) => p.getAll(key).length > 1) || !result.success)
+  if (
+    keys.some((key) => p.getAll(key).length > 1) ||
+    !result.success ||
+    (result.data.snapshot !== null && result.data.thread === null)
+  )
     return { query: null, error: '상담 조회 주소를 확인하세요.' };
   return { query: result.data, error: null };
 }
@@ -39,6 +59,10 @@ export function changeCoachingSearch(
   changes: Record<string, string | null>,
 ): string {
   const p = new URLSearchParams(search);
+  if ('thread' in changes && changes['thread'] !== p.get('thread')) {
+    p.delete('snapshot');
+    p.delete('snapshotOffset');
+  }
   for (const [key, value] of Object.entries(changes)) {
     if (value === null) p.delete(key);
     else p.set(key, value);

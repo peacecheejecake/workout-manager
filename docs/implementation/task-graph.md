@@ -296,6 +296,10 @@ flowchart TD
     evidenceDependencies --> coreEvidence
     coachingThreads --> coreEvidence
     coreEvidence --> task15
+    evidenceUi["M1-05e 상담 근거 저장·선택·검토 UI"]
+    coreEvidence --> evidenceUi
+    coachingUi --> evidenceUi
+    evidenceUi --> task15
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -461,7 +465,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05b 상담 스레드·사용자 메시지·검토 범위 저장 | M1-01, M1-02, M1-06a | 불변 계획 scope·대화 revision·멱등 재전송·export/erase/복원; 모델 실행과 분리 |
 | M1-05c 상담 기록 UI·검토 범위·메시지 복구 | M1-05b, M0-03, M0-04 | 두 shell 공통 UI·고정 scope/제약·사용자 초안·동시 수정/응답 유실 복구 |
 | M1-05d 구조화 근거 본문·의존성 snapshot 저장 | M1-05a, M1-05b | 본문·revision 동일 시점·멱등성·원본 삭제/동의 철회·export/복원 |
-| M1-05 Evidence·Coach·승인 | M1-04, M1-05a, M1-05b, M1-05c, M1-05d | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
+| M1-05e 상담 근거 저장·선택·검토 UI | M1-05c, M1-05d | 명시 저장·고정 본문·회수 상태·동일 키 복구·두 shell |
+| M1-05 Evidence·Coach·승인 | M1-04, M1-05a, M1-05b, M1-05c, M1-05d, M1-05e | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
 | M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |

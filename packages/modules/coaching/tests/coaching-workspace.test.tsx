@@ -345,6 +345,7 @@ describe('coaching workspace user records', () => {
         </StrictMode>,
       );
     await user.type(await ready(), 'Private draft');
+    await user.type(screen.getByLabelText('근거 시간대'), 'Asia/Seoul');
     mounted.rerender(
       <StrictMode>
         <Harness transport={transport} sessionId="session-b" />
@@ -353,6 +354,7 @@ describe('coaching workspace user records', () => {
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: '사용자 메시지' })).toHaveValue(''),
     );
+    expect(screen.getByLabelText('근거 시간대')).toHaveValue('');
     await user.type(screen.getByRole('textbox', { name: '사용자 메시지' }), 'Pending private');
     await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
     mounted.unmount();

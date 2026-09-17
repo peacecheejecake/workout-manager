@@ -24,6 +24,8 @@ import {
 import { ThreadList } from './thread-list';
 import { ScopeView } from './scope-view';
 import { coachingScopeLabels } from './scope-context';
+import { EvidencePanel } from './evidence-panel';
+import { createEvidenceDraftStore, type EvidenceDraftStore } from './evidence-store';
 import styles from './coaching.module.css';
 export interface CoachingWorkspaceProps {
   athleteId: string;
@@ -51,17 +53,19 @@ function Lifetime(props: CoachingWorkspaceProps) {
       }),
   );
   const [store] = useState(createCoachingDraftStore);
+  const [evidenceStore] = useState(createEvidenceDraftStore);
   useEffect(
     () => () => {
       void client.cancelQueries();
       client.clear();
       store.getState().actions.reset();
+      evidenceStore.getState().actions.reset();
     },
-    [client, store],
+    [client, store, evidenceStore],
   );
   return (
     <QueryClientProvider client={client}>
-      <Workspace {...props} store={store} />
+      <Workspace {...props} store={store} evidenceStore={evidenceStore} />
     </QueryClientProvider>
   );
 }
@@ -73,7 +77,8 @@ function Workspace({
   onSearchChange,
   createId = () => crypto.randomUUID(),
   store,
-}: CoachingWorkspaceProps & { store: CoachingDraftStore }) {
+  evidenceStore,
+}: CoachingWorkspaceProps & { store: CoachingDraftStore; evidenceStore: EvidenceDraftStore }) {
   const client = useQueryClient(),
     api = createCoachingApi(transport),
     parsed = readCoachingSearch(search),
@@ -93,6 +98,15 @@ function Workspace({
     conflict = useStore(store, (s) => s.conflictThreadId),
     actions = useStore(store, (s) => s.actions);
   const compose = useStore(store, (s) => (query?.thread ? s.messages[query.thread] : undefined));
+  const evidencePending = useStore(evidenceStore, (state) => state.pending);
+  const evidenceHasDraft = useStore(evidenceStore, (state) =>
+    Boolean(
+      state.pending ||
+      Object.values(state.drafts).some(
+        (draft) => draft.from || draft.toExclusive || draft.timezone,
+      ),
+    ),
+  );
   const list = useQuery({
     queryKey: [...prefix, 'list', query?.offset],
     enabled: query !== null,
@@ -133,17 +147,18 @@ function Workspace({
     ),
   );
   useEffect(() => {
-    if (!hasDraft) return;
+    if (!hasDraft && !evidenceHasDraft) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [hasDraft]);
-  const locked = pending !== null;
+  }, [hasDraft, evidenceHasDraft]);
+  const locked = pending !== null || evidencePending !== null;
   const change = (patch: Record<string, string | null>) => {
-    if (!store.getState().pending) onSearchChange(changeCoachingSearch(search, patch));
+    if (!store.getState().pending && !evidenceStore.getState().pending)
+      onSearchChange(changeCoachingSearch(search, patch));
   };
   async function send(command: CoachingPending) {
     const controller = life.current;
@@ -178,7 +193,7 @@ function Workspace({
     }
   }
   const begin = (command: CoachingPending) => {
-    if (actions.begin(command)) void send(command);
+    if (!evidenceStore.getState().pending && actions.begin(command)) void send(command);
   };
   const visibleThread = useRef(query?.thread);
   useEffect(() => {
@@ -241,6 +256,27 @@ function Workspace({
   const targetId = query?.targetId ?? null;
   const scope: CoachingReviewScope | null =
     query && targetId ? { kind: query.scopeKind, targetId } : null;
+  const completeRevision = (threadRevision: number | undefined, pages: typeof messages.data) => {
+    if (!threadRevision || !pages) return null;
+    const revision = Math.max(threadRevision, ...pages.pages.map((page) => page.thread.revision));
+    const loaded = pages.pages.flatMap((page) => page.messages);
+    return revision <= 100 &&
+      loaded.length === revision &&
+      loaded.every((message, index) => message.revision === index + 1)
+      ? revision
+      : null;
+  };
+  const evidenceRevision =
+    selected.isError || selected.isFetching || messages.isError || messages.isFetching
+      ? null
+      : completeRevision(selected.data?.revision, messages.data);
+  async function reviewEvidenceConversation() {
+    const [thread, history] = await Promise.all([
+      selected.refetch({ throwOnError: true }),
+      messages.refetch({ throwOnError: true }),
+    ]);
+    return completeRevision(thread.data?.revision, history.data) !== null;
+  }
   return (
     <section className={styles.workspace} aria-label="상담 기록">
       <h1>상담 기록</h1>
@@ -503,6 +539,21 @@ function Workspace({
           )}
         </div>
       )}
+      <EvidencePanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        threadId={query?.thread ?? null}
+        observedRevision={evidenceRevision}
+        snapshotId={query?.snapshot ?? null}
+        offset={query?.snapshotOffset ?? 0}
+        search={search}
+        onSearchChange={onSearchChange}
+        onReviewConversation={reviewEvidenceConversation}
+        createId={createId}
+        store={evidenceStore}
+        externalPending={pending !== null}
+      />
     </section>
   );
 }

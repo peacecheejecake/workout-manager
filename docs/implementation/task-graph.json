@@ -685,9 +685,18 @@
       "evidence": "docs/implementation/progress/M1-05d.md"
     },
     {
+      "id": "M1-05e",
+      "title": "상담 근거 저장·선택·검토 UI",
+      "dependsOn": ["M1-05c", "M1-05d"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "두 shell의 명시 근거 저장·기간/시간대·고정 본문 검토·회수 상태·동일 키 복구; 전체 AI/승인은 부모 통합",
+      "evidence": "docs/implementation/progress/M1-05e.md"
+    },
+    {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c", "M1-05d"],
+      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c", "M1-05d", "M1-05e"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"
