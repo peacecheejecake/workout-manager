@@ -19,6 +19,11 @@ import {
   type PlannedTableSort,
 } from './planned-table-state';
 import styles from './planning.module.css';
+import { plannedCompletionLabel, type PlannedCompletionState } from './planned-completion-state';
+
+export interface PlannedTableReports {
+  completionState?: PlannedCompletionState;
+}
 
 export interface PlannedTableSettings {
   tableSort: PlannedTableSort;
@@ -35,6 +40,7 @@ const labels = {
   duration: '시간',
   rpe: '목표 RPE',
   intensity: '강도 라벨',
+  completion: '완료 보고',
   notes: '메모',
 };
 const sortLabels: Record<PlannedTableSort, string> = {
@@ -95,13 +101,15 @@ export function PlannedTable({
   onTableColumns,
   onTablePinned,
   interactionStore,
-}: PlannedTableSettings & {
-  source: PlanDraft;
-  days: DayProjection[];
-  selected: string | null;
-  onSelect(id: string): void;
-  interactionStore: PlannedTableInteractionStore;
-}) {
+  completionState = { state: 'loading' },
+}: PlannedTableSettings &
+  PlannedTableReports & {
+    source: PlanDraft;
+    days: DayProjection[];
+    selected: string | null;
+    onSelect(id: string): void;
+    interactionStore: PlannedTableInteractionStore;
+  }) {
   const rows = useMemo(
     () => sortedPlannedSessions(source, days, tableSort),
     [source, days, tableSort],
@@ -139,6 +147,7 @@ export function PlannedTable({
     duration: 160,
     rpe: 160,
     intensity: 160,
+    completion: 200,
     notes: 240,
   };
   const visiblePins = columns.filter((column) => tablePinned.includes(column));
@@ -227,6 +236,8 @@ export function PlannedTable({
         return session.targetRpe === null ? '미정' : `${session.targetRpe}`;
       case 'intensity':
         return session.intensityLabel ?? '미지정';
+      case 'completion':
+        return plannedCompletionLabel(completionState, session.id);
       case 'notes':
         return session.notes || '메모 없음';
     }
@@ -346,6 +357,16 @@ export function PlannedTable({
         </p>
       ) : null}
       <p>현재 정렬: {sortLabels[tableSort]}. 미정 값은 정렬 방향과 관계없이 마지막에 표시합니다.</p>
+      {tableColumns.includes('completion') ? (
+        <p>
+          완료 보고는 저장된 세션에 대한 사용자의 확인이며 실제 활동·측정값과 별개입니다. 확인
+          기록이 없거나 철회되었다고 미수행을 뜻하지 않습니다. 초안 undo는 완료 보고를 되돌리지
+          않습니다.
+          {completionState.state === 'ready'
+            ? ` 조회 기준 계획: ${completionState.planVersionId}.`
+            : ''}
+        </p>
+      ) : null}
       <p role="status">
         현재 조회 범위에서 {shownRange.length}개 행 선택. 범위 선택은 계획을 변경하지 않습니다.
       </p>

@@ -90,6 +90,53 @@ function setup(
 }
 
 describe('completion scheduling guards in planning workspace', () => {
+  it('shows authoritative table report states without dropping the draft or treating failed reads as missing reports', async () => {
+    const user = userEvent.setup();
+    let resolve: (value: unknown) => void = () => {};
+    let read = () =>
+      new Promise<unknown>((done) => {
+        resolve = done;
+      });
+    const request = setup(
+      () => read(),
+      head,
+      'lens=calendar&from=2080-01-01&to=2080-02-01&plannedView=table&plannedColumns=completion&plannedSession=run',
+    );
+    const table = within(await screen.findByRole('table', { name: '계획 세션 표' }));
+    expect(table.getByText('완료 보고 조회 중')).toBeVisible();
+    await act(async () => resolve(list));
+    await table.findByText('사용자 완료 확인');
+    await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
+    await user.type(screen.getByLabelText('세션 메모'), '유지할 초안');
+    read = async () => {
+      throw new Error('offline');
+    };
+    await user.click(screen.getByRole('button', { name: '완료 상태 다시 확인' }));
+    await table.findByText('완료 보고 조회 실패');
+    expect(table.queryByText('사용자 완료 확인')).not.toBeInTheDocument();
+    expect(table.queryByText('완료 확인 기록 없음')).not.toBeInTheDocument();
+    read = async () => ({ ...list, currentPlanVersionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' });
+    await user.click(screen.getByRole('button', { name: '완료 상태 다시 확인' }));
+    await table.findByText('완료 보고 버전 불일치');
+    read = async () => ({
+      ...list,
+      collectionRevision: 2,
+      items: list.items.map((item) => ({
+        ...item,
+        status: 'retracted',
+        revision: 2,
+        reason: '명시 철회',
+      })),
+    });
+    await user.click(screen.getByRole('button', { name: '완료 상태 다시 확인' }));
+    await table.findByText('완료 확인 철회');
+    expect(screen.getByLabelText('세션 메모')).toHaveValue('유지할 초안');
+    expect(table.getByRole('button', { name: '계획: Reported run' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+  });
   it('applies a reviewed period move as one undo step while completed sessions stay fixed', async () => {
     const user = userEvent.setup();
     const saved = structuredClone(head);

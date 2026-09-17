@@ -48,6 +48,7 @@ import { PeriodSummaryPanel } from './period-summary-panel';
 import { PlanHistoryPanel } from './plan-history-panel';
 import { SessionCompletionPanel } from './session-completion-panel';
 import { useSessionCompletions } from './use-session-completions';
+import type { PlannedCompletionState } from './planned-completion-state';
 import { PeriodMovePanel } from './period-move-panel';
 import { PlanScenarioPanel } from './scenario-panel';
 import { createScenarioDraftStore, type ScenarioDraftStore } from './scenario-draft-store';
@@ -215,6 +216,23 @@ function Planner({
   const currentPlan = plan.isSuccess && !plan.isFetching && !save.isPending ? plan.data : undefined;
   const url = readPlannerSearch(search, today);
   const draft = state.draft;
+  function readTableCompletionState(): PlannedCompletionState {
+    if (plan.isFetching || save.isPending) return { state: 'loading' };
+    if (plan.isError) return { state: 'error' };
+    if (!currentPlan) return { state: 'loading' };
+    if (!currentPlan.head) return { state: 'unsaved' };
+    if (draft && state.baseline?.id !== currentPlan.head.id) return { state: 'stale' };
+    if (completions.isFetching) return { state: 'loading' };
+    if (completions.isError) return { state: 'error' };
+    if (!completions.data) return { state: 'loading' };
+    if (completions.data.currentPlanVersionId !== currentPlan.head.id) return { state: 'stale' };
+    return {
+      state: 'ready',
+      planVersionId: currentPlan.head.id,
+      savedSessionIds: new Set(currentPlan.head.draft.sessions.map((session) => session.id)),
+      reports: new Map(completions.data.items.map((report) => [report.sessionId, report])),
+    };
+  }
   const validated = planDraftSchema.safeParse(draft);
   const lockValid =
     !(draft && state.baseline) || preservesSessionLocks(state.baseline.draft, draft);
@@ -717,6 +735,7 @@ function Planner({
               view={url.plannedView}
               selected={url.plannedSession}
               tableSort={url.tableSort}
+              completionState={readTableCompletionState()}
               tableColumns={url.tableColumns}
               tablePinned={url.tablePinned}
               onTableSort={(plannedSort) => changeSearch({ plannedSort })}

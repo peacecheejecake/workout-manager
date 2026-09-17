@@ -59,6 +59,50 @@ const days: DayProjection[] = [
   },
 ];
 describe('planned table settings', () => {
+  it('keeps completion report visibility and pinning independent from selection and unsaved rows', async () => {
+    const user = userEvent.setup();
+    function Host() {
+      const [store] = useState(createPlannedTableInteractionStore);
+      const [columns, setColumns] = useState<PlannedTableColumn[]>(['completion']);
+      const [pins, setPins] = useState<PlannedTablePin[]>([]);
+      return (
+        <PlannedTable
+          source={source}
+          days={days}
+          selected="a"
+          onSelect={() => {}}
+          interactionStore={store}
+          tableSort="date_asc"
+          onTableSort={() => {}}
+          tableColumns={columns}
+          onTableColumns={setColumns}
+          tablePinned={pins}
+          onTablePinned={setPins}
+          completionState={{
+            state: 'ready',
+            planVersionId: 'saved-plan',
+            savedSessionIds: new Set(['a']),
+            reports: new Map(),
+          }}
+        />
+      );
+    }
+    render(<Host />);
+    const table = within(screen.getByRole('table', { name: '계획 세션 표' }));
+    expect(table.getByText('완료 확인 기록 없음')).toBeVisible();
+    expect(table.getAllByText('저장 전 세션')).toHaveLength(3);
+    await user.click(screen.getByRole('checkbox', { name: '완료 보고 열 고정' }));
+    expect(screen.getByRole('checkbox', { name: '완료 보고 열 고정' })).toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: '완료 보고 열 표시' }));
+    expect(table.queryByRole('columnheader', { name: '완료 보고' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: '완료 보고 열 표시' }));
+    expect(table.getByRole('columnheader', { name: '완료 보고' })).toBeVisible();
+    expect(
+      table
+        .getAllByRole('button', { name: '계획: 동일 제목' })
+        .some((button) => button.getAttribute('aria-pressed') === 'true'),
+    ).toBe(true);
+  });
   it('sorts projected records with zero known, null last both directions and stable lexical IDs without mutating drafts', () => {
     const before = structuredClone(source);
     const ids = (sort: PlannedTableSort) =>

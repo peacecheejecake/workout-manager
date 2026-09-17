@@ -4,7 +4,7 @@ import type { DayProjection } from '@workout/contracts/core';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import styles from './planning.module.css';
-import { PlannedTable, type PlannedTableSettings } from './planned-table';
+import { PlannedTable, type PlannedTableSettings, type PlannedTableReports } from './planned-table';
 import {
   createPlannedTableInteractionStore,
   type PlannedTableInteractionStore,
@@ -27,6 +27,7 @@ function SessionView({
   dateLockedIds = [],
   ...tableSettings
 }: PlannedTableSettings &
+  PlannedTableReports &
   SessionMoveSettings & {
     source: PlanDraft;
     days: DayProjection[];
@@ -146,7 +147,8 @@ function SessionView({
 
 type SingleView = 'agenda' | 'calendar' | 'table';
 type RequestedView = SingleView | 'auto' | 'split';
-interface PlannedSessionViewsProps extends PlannedTableSettings, SessionMoveSettings {
+interface PlannedSessionViewsProps
+  extends PlannedTableSettings, PlannedTableReports, SessionMoveSettings {
   source: PlanDraft;
   days: DayProjection[];
   view: RequestedView;

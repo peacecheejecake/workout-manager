@@ -550,6 +550,15 @@
       "evidence": "docs/implementation/progress/M1-04au.md"
     },
     {
+      "id": "M1-04av",
+      "title": "계획 표 사용자 완료 보고 상태",
+      "dependsOn": ["M1-04aj", "M1-04s"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "완료/철회/보고 없음·저장 전 구분·조회 오류/버전 불일치·열 표시/고정·초안 보존",
+      "evidence": "docs/implementation/progress/M1-04av.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -601,7 +610,8 @@
         "M1-04ar",
         "M1-04as",
         "M1-04at",
-        "M1-04au"
+        "M1-04au",
+        "M1-04av"
       ],
       "kind": "task",
       "status": "not_started",

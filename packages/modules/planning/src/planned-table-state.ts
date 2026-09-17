@@ -16,6 +16,7 @@ export const plannedTableColumns = [
   'duration',
   'rpe',
   'intensity',
+  'completion',
   'notes',
 ] as const;
 export type PlannedTableColumn = (typeof plannedTableColumns)[number];
