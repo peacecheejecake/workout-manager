@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { validOrientationObservation } from './fixtures/capacitor-spike/evidence.mjs';
 
 const exec = promisify(execFile);
 const repository = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -20,6 +21,19 @@ async function run(command, args, cwd, timeout = 60000) {
 }
 async function execute() {
   if (process.platform !== 'darwin') throw new Error('MACOS_REQUIRED');
+  const reportPath = join(
+    repository,
+    'docs/implementation/research/capacitor-simulator-result.json',
+  );
+  let previousRuns = [];
+  try {
+    const previous = JSON.parse(await readFile(reportPath, 'utf8'));
+    const { previousRuns: history = [], ...lastRun } = previous;
+    if (!Array.isArray(history)) throw new Error('INVALID_PREVIOUS_RUN_HISTORY');
+    previousRuns = [...history, lastRun];
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const directory = await mkdtemp(join(tmpdir(), 'workout-capacitor-spike-'));
   const deviceSet = join(directory, 'devices');
   const project = join(directory, 'project');
@@ -30,9 +44,11 @@ async function execute() {
   let bootAttempted = false;
   let stage = 'prepare';
   let result;
+  let nativeFailure;
   let xcode;
   let runtimeVersion;
   let screenshot;
+  const orientationObservations = [];
   const versions = {};
   const cleanupErrors = [];
   let sourceHash;
@@ -170,19 +186,54 @@ async function execute() {
     stage = 'observe';
     console.log('Capacitor spike: waiting for shared Vite UI and native bridge evidence');
     const container = await sim(['get_app_container', deviceId, bundleId, 'data']);
-    const deadline = Date.now() + 35000;
-    while (Date.now() < deadline) {
-      try {
-        result = JSON.parse(
-          await readFile(join(container, 'Documents/capacitor-probe.json'), 'utf8'),
-        );
-        break;
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+    const documents = join(container, 'Documents');
+    const readResult = async (filename) => {
+      const deadline = Date.now() + 35000;
+      while (Date.now() < deadline) {
+        try {
+          return JSON.parse(await readFile(join(documents, filename), 'utf8'));
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        if (filename !== 'capacitor-probe.json') {
+          try {
+            const final = JSON.parse(
+              await readFile(join(documents, 'capacitor-probe.json'), 'utf8'),
+            );
+            if (final.outcome !== 'passed') {
+              nativeFailure = final;
+              throw new Error('NATIVE_ORIENTATION_PROBE_FAILED');
+            }
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      throw new Error('NATIVE_OBSERVATION_TIMEOUT');
+    };
+    const artifactDirectory = await mkdtemp(join(tmpdir(), 'workout-capacitor-evidence-'));
+    for (const expectedStage of ['portrait', 'landscape', 'restored']) {
+      stage = `observe_${expectedStage}`;
+      const observation = await readResult(`capacitor-probe-${expectedStage}.json`);
+      if (!validOrientationObservation(observation, expectedStage)) {
+        nativeFailure = observation;
+        throw new Error('INVALID_ORIENTATION_EVIDENCE');
+      }
+      const screenshotPath = join(artifactDirectory, `mobile-web-${expectedStage}.png`);
+      await sim(['io', deviceId, 'screenshot', screenshotPath]);
+      const capture = {
+        path: screenshotPath,
+        sha256: hash(await readFile(screenshotPath)),
+        visualReview: 'pending',
+      };
+      orientationObservations.push({ ...observation, screenshot: capture });
+      if (expectedStage === 'portrait') screenshot = capture;
+      if (expectedStage !== 'restored')
+        await writeFile(join(documents, `capacitor-probe-continue-${expectedStage}`), '');
+      console.log(`Capacitor spike: ${expectedStage} measured and captured`);
     }
-    if (!result) throw new Error('RENDER_RESULT_TIMEOUT');
+    result = await readResult('capacitor-probe.json');
     if (
       result.outcome === 'passed' &&
       (result.headingRendered !== true ||
@@ -191,22 +242,17 @@ async function execute() {
         result.demoDisclaimerVisible !== true ||
         result.localOriginVerified !== true ||
         !Number.isSafeInteger(result.sharedWorkspaceButtonCount) ||
-        result.sharedWorkspaceButtonCount < 1)
+        result.sharedWorkspaceButtonCount < 1 ||
+        JSON.stringify(result.orientationStages) !==
+          JSON.stringify(['portrait', 'landscape', 'restored']))
     )
       throw new Error('INVALID_RENDER_RESULT');
-    const artifactDirectory = await mkdtemp(join(tmpdir(), 'workout-capacitor-evidence-'));
-    const screenshotPath = join(artifactDirectory, 'mobile-web-simulator.png');
-    await sim(['io', deviceId, 'screenshot', screenshotPath]);
-    screenshot = {
-      path: screenshotPath,
-      sha256: hash(await readFile(screenshotPath)),
-      visualReview: 'pending',
-    };
     stage = 'completed';
   } catch (error) {
     result = {
       outcome: 'failed',
       failedStage: stage,
+      nativeFailure: nativeFailure ?? null,
       errorCode:
         typeof error.code === 'string' && /^[A-Z_0-9]+$/.test(error.code)
           ? error.code
@@ -220,7 +266,7 @@ async function execute() {
     await cleanup();
   }
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     executedAt: new Date().toISOString(),
     nodeVersion: process.version,
     capacitorVersions: versions,
@@ -232,6 +278,7 @@ async function execute() {
     buttonCountScope:
       'All document buttons; this is render evidence, not module interaction acceptance.',
     screenshot: screenshot ?? null,
+    orientationObservations,
     cleanupCompleted: cleanupErrors.length === 0,
     cleanupErrors,
     scope:
@@ -248,12 +295,11 @@ async function execute() {
       'https://capacitorjs.com/docs/ios',
       'https://capacitorjs.com/docs/ios/spm',
       'https://github.com/ionic-team/capacitor/releases/tag/8.5.2',
+      'https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)',
     ],
+    previousRuns,
   };
-  await writeFile(
-    join(repository, 'docs/implementation/research/capacitor-simulator-result.json'),
-    JSON.stringify(report, null, 2) + '\n',
-  );
+  await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
   console.log(
     JSON.stringify({
       stage,
