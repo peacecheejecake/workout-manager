@@ -137,7 +137,12 @@ describe('user-reported completion schedule protection', () => {
     expect(screen.getByRole('button', { name: '세션 삭제' })).toBeEnabled();
     expect(edited.mock.lastCall?.[0].sessions).toEqual([
       original.sessions[0],
-      { ...original.sessions[0], id: 'copy', title: '쉬운 달리기 복사' },
+      {
+        ...original.sessions[0],
+        id: 'copy',
+        title: '쉬운 달리기 복사',
+        locks: { ...original.sessions[0]?.locks, attendance: false },
+      },
     ]);
     expect(draft).toEqual(original);
   });

@@ -59,7 +59,13 @@ export const plannedSessionSchema = z
     purpose: z.string().max(2000),
     notes: z.string().max(4000),
     priority: z.enum(['low', 'normal', 'high']),
-    locks: z.strictObject({ date: z.boolean(), time: z.boolean(), intensity: z.boolean() }),
+    locks: z.strictObject({
+      date: z.boolean(),
+      time: z.boolean(),
+      intensity: z.boolean(),
+      // Presence lock protects deletion only. Omission in historical versions stays omitted.
+      attendance: z.boolean().optional(),
+    }),
     steps: z
       .array(
         z.strictObject({
@@ -239,7 +245,7 @@ export function preservesSessionLocks(previous: PlanDraft, next: PlanDraft): boo
     const replacement = sessions.get(session.id);
     const locks = session.locks;
     if ((locks.date || locks.time) && previous.timezone !== next.timezone) return false;
-    if (!replacement) return !locks.date && !locks.time && !locks.intensity;
+    if (!replacement) return !locks.date && !locks.time && !locks.intensity && !locks.attendance;
     if (
       locks.date &&
       (replacement.date !== session.date || replacement.blockId !== session.blockId)

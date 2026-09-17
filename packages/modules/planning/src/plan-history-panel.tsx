@@ -14,6 +14,7 @@ import { updatePlannerSearch } from './lens';
 import { PeriodConstraintsSummary } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
 import { heartRateTargetLabel, paceTargetLabel } from './session-target-labels';
+import { attendanceLockLabel } from './attendance-lock-label';
 import { comparePlanHistory } from './plan-history-comparison';
 import styles from './plan-history-panel.module.css';
 
@@ -326,6 +327,7 @@ function SessionValues({ session, label }: { session: PlannedSession | null; lab
             잠금: 날짜 {session.locks.date ? '켜짐' : '꺼짐'}, 시각{' '}
             {session.locks.time ? '켜짐' : '꺼짐'}, 강도 {session.locks.intensity ? '켜짐' : '꺼짐'}
           </p>
+          <p>참석 잠금: {attendanceLockLabel(session.locks.attendance)}</p>
           <p>목표 페이스: {paceTargetLabel(session.paceTarget)}</p>
           <p>목표 심박: {heartRateTargetLabel(session.heartRateTarget)}</p>
           <ol>

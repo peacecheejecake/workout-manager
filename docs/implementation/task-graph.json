@@ -487,6 +487,15 @@
       "evidence": "docs/implementation/progress/M1-04an.md"
     },
     {
+      "id": "M1-04ao",
+      "title": "세션 참석 잠금·삭제 보호",
+      "dependsOn": ["M1-04aj", "M1-04an"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "명시 참석 잠금·별도 해제 저장·삭제 보호·기존 일정/강도 잠금 독립·legacy/receipt/export 보존",
+      "evidence": "docs/implementation/progress/M1-04ao.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -531,7 +540,8 @@
         "M1-04ak",
         "M1-04al",
         "M1-04am",
-        "M1-04an"
+        "M1-04an",
+        "M1-04ao"
       ],
       "kind": "task",
       "status": "not_started",

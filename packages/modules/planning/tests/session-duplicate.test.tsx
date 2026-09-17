@@ -114,7 +114,12 @@ describe('session duplication control', () => {
     expect(screen.getByLabelText('세션 날짜')).toBeEnabled();
     const next: PlanDraft | undefined = edited.mock.lastCall?.[0];
     expect(next?.sessions[0]).toEqual(original.sessions[0]);
-    expect(next?.sessions[1]?.locks).toEqual({ date: false, time: false, intensity: false });
+    expect(next?.sessions[1]?.locks).toEqual({
+      date: false,
+      time: false,
+      intensity: false,
+      attendance: false,
+    });
     expect(next?.sessions).toHaveLength(2);
     expect(screen.getByText(/원본 계획과 실제 기록은 그대로/)).toBeVisible();
   });

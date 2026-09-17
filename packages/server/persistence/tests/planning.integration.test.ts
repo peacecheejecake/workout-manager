@@ -716,3 +716,138 @@ describe('S06 pace and heart-rate target persistence', () => {
     expect(await repository.save(athlete, input)).toEqual(absent);
   });
 });
+
+describe('attendance deletion lock persistence', () => {
+  it('preserves legacy absence, original receipt and exported versions without synthesizing defaults', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const legacy = intensityCommand();
+    const first = await repository.save(athlete, legacy);
+    const locked = await repository.save(athlete, {
+      ...legacy,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...first.draft,
+        sessions: first.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, attendance: true },
+        })),
+      },
+    });
+    expect(await repository.save(athlete, legacy)).toEqual(first);
+    expect(await repository.readVersion(athlete, first.id)).toEqual(first);
+    expect(first.draft.sessions[0]?.locks).not.toHaveProperty('attendance');
+    expect((await repository.read(athlete)).head).toEqual(locked);
+    const exported = await createOperationsRepository(database).exportAccount(athlete);
+    expect(exported.data.planSnapshots.find((row) => row['id'] === first.id)?.['draft']).toEqual(
+      first.draft,
+    );
+    expect(exported.data.planSnapshots.find((row) => row['id'] === locked.id)?.['draft']).toEqual(
+      locked.draft,
+    );
+  });
+  it('rejects removing an attendance-locked session atomically and permits deletion only after a separately saved unlock', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      locks: { ...session.locks, attendance: true },
+    }));
+    const first = await repository.save(athlete, input);
+    // A deleted session has no replacement lock field: removal cannot also communicate an unlock.
+    const removal = {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: { ...first.draft, sessions: [] },
+    };
+    await expect(repository.save(athlete, removal)).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+    expect((await repository.read(athlete)).head).toEqual(first);
+    await database.tenant(athlete, async (tx) => {
+      for (const table of ['plan_snapshot', 'plan_history', 'outbox', 'command_receipt'])
+        expect((await tx.query(`SELECT * FROM ${table}`)).rowCount).toBe(1);
+    });
+    const unlocked = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...first.draft,
+        sessions: first.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, attendance: false },
+        })),
+      },
+    });
+    const deletionCommand = { ...removal, expectedVersionId: unlocked.id };
+    const deleted = await repository.save(athlete, deletionCommand);
+    expect(deleted.draft.sessions).toEqual([]);
+    expect(await repository.save(athlete, deletionCommand)).toEqual(deleted);
+    expect((await repository.read(athlete)).history).toHaveLength(3);
+    await database.tenant(athlete, async (tx) => {
+      expect((await tx.query('SELECT * FROM activity_canonical')).rowCount).toBe(0);
+    });
+  });
+  it('allows scheduling and content changes with attendance alone while preserving other lock protections', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      locks: { ...session.locks, attendance: true },
+    }));
+    const first = await repository.save(athlete, input);
+    const draft = structuredClone(first.draft);
+    draft.timezone = 'Asia/Seoul';
+    draft.periods.forEach((period) => {
+      period.timezone = draft.timezone;
+    });
+    const block = draft.periods.find((period) => period.id === 'block');
+    if (!block) throw new Error('Missing fixture block');
+    block.endDateExclusive = '2026-01-15';
+    draft.periods.push({
+      ...block,
+      id: 'other-block',
+      startDate: '2026-01-15',
+      endDateExclusive: '2026-02-01',
+    });
+    draft.sessions = draft.sessions.map((session) => ({
+      ...session,
+      date: '2026-01-16',
+      blockId: 'other-block',
+      localStartTime: '09:30',
+      title: 'Revised attendance session',
+      durationSeconds: 123.5,
+      distanceMeters: 500,
+    }));
+    const changed = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft,
+    });
+    expect(changed.draft).toEqual(draft);
+    const additionallyLocked = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: changed.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...changed.draft,
+        sessions: changed.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, date: true, attendance: false },
+        })),
+      },
+    });
+    await expect(
+      repository.save(athlete, {
+        ...input,
+        expectedVersionId: additionallyLocked.id,
+        idempotencyKey: randomUUID(),
+        draft: { ...additionallyLocked.draft, sessions: [] },
+      }),
+    ).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+  });
+});

@@ -211,6 +211,10 @@ flowchart TD
     planHistoryComparison --> sessionTargets
     stepUnitConversion --> sessionTargets
     sessionTargets --> task14
+    attendanceLock["M1-04ao 세션 참석 잠금·삭제 보호"]
+    sessionCompletionUi --> attendanceLock
+    sessionTargets --> attendanceLock
+    attendanceLock --> task14
     dashboardUi --> dashboardLayout
     plannerOperations --> dashboardLayout
     dashboardLayout --> task14
@@ -366,7 +370,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04al 세션 단계 단위 전환 확인 | M1-04ac | 초/분·m/km 명시 확인·0/null/정밀도 보존·잠금/별도 저장 |
 | M1-04am 대시보드 기간 탐색 연결 | M1-04d, M1-04u, M1-04ah | Orbit/타임라인 재사용·URL 선택·Planner 이동·조회 격리 |
 | M1-04an 세션 페이스·심박 목표 입력 | M1-04w, M1-04ad, M1-04al | 사용자 목표 범위·강도 잠금·legacy/receipt/export 보존 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04ao 세션 참석 잠금·삭제 보호 | M1-04aj, M1-04an | 삭제 보호·별도 해제 저장·기존 잠금 독립·버전 보존 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

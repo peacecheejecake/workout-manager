@@ -81,7 +81,7 @@ describe('duplicate planned session', () => {
       ...source,
       id: 'copy-1',
       title: 'Original 복사',
-      locks: { date: false, time: false, intensity: false },
+      locks: { date: false, time: false, intensity: false, attendance: false },
       steps: source.steps.map((step, i) => ({ ...step, id: `copy-${i + 2}` })),
     });
     expect(source.locks).toEqual({ date: true, time: true, intensity: true });

@@ -55,7 +55,7 @@ export function duplicatePlannedSession(
         ...source,
         id: sessionId.id,
         title: copiedTitle.length <= 200 ? copiedTitle : source.title,
-        locks: { date: false, time: false, intensity: false },
+        locks: { date: false, time: false, intensity: false, attendance: false },
         steps,
       },
     ],

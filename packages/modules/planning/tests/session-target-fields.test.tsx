@@ -206,7 +206,12 @@ describe('session target fields integrated with the draft', () => {
     const cloned = duplicate.draft.sessions.find((session) => session.id === duplicate.sessionId);
     expect(cloned?.paceTarget).toEqual(current()?.paceTarget);
     expect(cloned?.heartRateTarget).toEqual(current()?.heartRateTarget);
-    expect(cloned?.locks).toEqual({ date: false, time: false, intensity: false });
+    expect(cloned?.locks).toEqual({
+      date: false,
+      time: false,
+      intensity: false,
+      attendance: false,
+    });
     const moved = applyPeriodMove({
       draft: duplicate.draft,
       baseline: draft,

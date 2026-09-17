@@ -2,6 +2,7 @@ import type { PlanDraft } from '@workout/contracts/planning';
 import { PeriodConstraintsSummary } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
 import { heartRateTargetLabel, paceTargetLabel } from './session-target-labels';
+import { attendanceLockLabel } from './attendance-lock-label';
 
 /** Human-readable full before/after review; identities remain internal to the command. */
 export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
@@ -46,6 +47,7 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
               {session.locks.time ? '켜짐' : '꺼짐'}, 강도{' '}
               {session.locks.intensity ? '켜짐' : '꺼짐'}
             </p>
+            <p>참석 잠금: {attendanceLockLabel(session.locks.attendance)}</p>
             <p>메모: {session.notes || '없음'}</p>
             <ol>
               {session.steps.map((step) => (

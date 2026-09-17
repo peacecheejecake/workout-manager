@@ -212,7 +212,7 @@ export function createSession(draft: PlanDraft, today: string, id: string): Plan
     purpose: '',
     notes: '',
     priority: 'normal',
-    locks: { date: false, time: false, intensity: false },
+    locks: { date: false, time: false, intensity: false, attendance: false },
     steps: [],
     targetRpe: null,
     intensityLabel: null,
@@ -494,8 +494,26 @@ export function SessionEditor({
                     {lock} 잠금
                   </label>
                 ))}
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={session.locks.attendance ?? false}
+                    onChange={(event) =>
+                      update(session.id, {
+                        locks: { ...session.locks, attendance: event.target.checked },
+                      })
+                    }
+                  />
+                  참석 잠금 (세션 삭제 보호)
+                </label>
               </div>
-              {locked && Object.values(locked).some(Boolean) ? (
+              {locked?.attendance ? (
+                <p>
+                  참석 잠금은 세션 삭제를 보호합니다. 삭제하려면 참석 잠금을 해제해 먼저 저장하세요.
+                  날짜·시각·강도는 각각의 잠금을 따릅니다.
+                </p>
+              ) : null}
+              {locked && (locked.date || locked.time || locked.intensity) ? (
                 <p>잠금을 해제해 버전으로 저장한 후 해당 필드를 수정할 수 있습니다.</p>
               ) : null}
               <fieldset disabled={locked?.intensity}>
