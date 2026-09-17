@@ -5,6 +5,10 @@ import type { PlanDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import styles from './planning.module.css';
 import { PlannedTable, type PlannedTableSettings } from './planned-table';
+import {
+  createPlannedTableInteractionStore,
+  type PlannedTableInteractionStore,
+} from './planned-table-interaction';
 function SessionView({
   source,
   days,
@@ -13,6 +17,7 @@ function SessionView({
   onSelect,
   readScroll,
   saveScroll,
+  interactionStore,
   ...tableSettings
 }: PlannedTableSettings & {
   source: PlanDraft;
@@ -22,6 +27,7 @@ function SessionView({
   onSelect(id: string): void;
   readScroll(view: SingleView): number;
   saveScroll(view: SingleView, left: number): void;
+  interactionStore: PlannedTableInteractionStore;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -41,6 +47,23 @@ function SessionView({
       </Button>
     ) : null;
   };
+  if (view === 'table') {
+    return (
+      <>
+        <PlannedTable
+          source={source}
+          days={days}
+          selected={selected}
+          onSelect={onSelect}
+          interactionStore={interactionStore}
+          {...tableSettings}
+        />
+        {days.every((day) => day.plannedSessionIds.length === 0) ? (
+          <p>조회 범위에 계획 세션이 없습니다. 실제 휴식 여부는 미확인입니다.</p>
+        ) : null}
+      </>
+    );
+  }
   return (
     <>
       <div className={styles.toolbar}>
@@ -71,49 +94,36 @@ function SessionView({
           saveScroll(view, event.currentTarget.scrollLeft);
         }}
       >
-        {view === 'table' ? (
-          <PlannedTable
-            source={source}
-            days={days}
-            selected={selected}
-            onSelect={onSelect}
-            {...tableSettings}
-          />
-        ) : (
-          <ol
-            className={view === 'calendar' ? styles.plannedCalendar : styles.agenda}
-            aria-label={view === 'calendar' ? '계획 날짜 달력' : '계획 날짜 agenda'}
-          >
-            {days.map((day, index) => (
-              <li
-                key={day.date}
-                style={
-                  view === 'calendar' && index === 0
-                    ? {
-                        gridColumnStart:
-                          ((new Date(`${day.date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1,
-                      }
-                    : undefined
-                }
-              >
-                <time dateTime={day.date}>{day.date}</time> ·{' '}
-                {day.blockId ? 'Block 배정' : 'Block 미배정'}
-                <ul>
-                  {day.plannedSessionIds.map((sessionId) => (
-                    <li key={sessionId}>{button(sessionId)}</li>
-                  ))}
-                </ul>
-                {day.plannedSessionIds.length === 0 ? (
-                  <span>계획 세션 없음 · 실제 휴식 여부 미확인</span>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        )}
+        <ol
+          className={view === 'calendar' ? styles.plannedCalendar : styles.agenda}
+          aria-label={view === 'calendar' ? '계획 날짜 달력' : '계획 날짜 agenda'}
+        >
+          {days.map((day, index) => (
+            <li
+              key={day.date}
+              style={
+                view === 'calendar' && index === 0
+                  ? {
+                      gridColumnStart:
+                        ((new Date(`${day.date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1,
+                    }
+                  : undefined
+              }
+            >
+              <time dateTime={day.date}>{day.date}</time> ·{' '}
+              {day.blockId ? 'Block 배정' : 'Block 미배정'}
+              <ul>
+                {day.plannedSessionIds.map((sessionId) => (
+                  <li key={sessionId}>{button(sessionId)}</li>
+                ))}
+              </ul>
+              {day.plannedSessionIds.length === 0 ? (
+                <span>계획 세션 없음 · 실제 휴식 여부 미확인</span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
       </div>
-      {days.every((day) => day.plannedSessionIds.length === 0) && view === 'table' ? (
-        <p>조회 범위에 계획 세션이 없습니다. 실제 휴식 여부는 미확인입니다.</p>
-      ) : null}
     </>
   );
 }
@@ -129,6 +139,7 @@ interface PlannedSessionViewsProps extends PlannedTableSettings {
 }
 
 export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps) {
+  const [interactionStore] = useState(createPlannedTableInteractionStore);
   const scrollPositions = useRef<Record<SingleView, number>>({ agenda: 0, calendar: 0, table: 0 });
   const readScroll = useCallback((view: SingleView) => scrollPositions.current[view], []);
   const saveScroll = useCallback((view: SingleView, left: number) => {
@@ -209,11 +220,18 @@ export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps
           ref={fallbackLauncher}
           variant="secondary"
           onClick={() => {
-            const button =
-              container.current?.querySelector<HTMLButtonElement>(
-                '[data-planned-session][aria-pressed="true"]',
-              ) ?? container.current?.querySelector<HTMLButtonElement>('[data-planned-session]');
-            button?.focus();
+            const selected = container.current?.querySelector<HTMLButtonElement>(
+              '[data-planned-session][aria-pressed="true"]',
+            );
+            const tableJump = container.current?.querySelector<HTMLButtonElement>(
+              '[data-planned-table-jump]:not(:disabled)',
+            );
+            if (selected) selected.focus();
+            else if (tableJump) tableJump.click();
+            else
+              container.current
+                ?.querySelector<HTMLButtonElement>('[data-planned-session]')
+                ?.focus();
           }}
         >
           계획 세션으로 이동
@@ -250,7 +268,13 @@ export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps
                   : '계획 agenda 패널'
             }
           >
-            <SessionView {...props} view={single} readScroll={readScroll} saveScroll={saveScroll} />
+            <SessionView
+              {...props}
+              view={single}
+              readScroll={readScroll}
+              saveScroll={saveScroll}
+              interactionStore={interactionStore}
+            />
           </section>
         ))}
       </div>

@@ -126,6 +126,10 @@ flowchart TD
     plannerDuplicate["M1-04r 세션 복제 초안 선택·경계 보완"]
     plannerViews --> plannerDuplicate
     plannerDuplicate --> task14
+    plannerTableWorkbench["M1-04s 계획 표 고정 열·범위 선택·가상 스크롤"]
+    plannerTable --> plannerTableWorkbench
+    plannerDuplicate --> plannerTableWorkbench
+    plannerTableWorkbench --> task14
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -253,7 +257,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04p 활동 기록 상태 필터 | M1-04l, M1-04m | effective 누락값·명시 정정·URL·실제 DB/E2E |
 | M1-04q 계획 표 정렬·열 표시 | M1-04n, M1-04o | URL 정렬·열 표시·null-last·선택/초안 유지 |
 | M1-04r 세션 복제 초안 선택·경계 보완 | M1-04n | 새 ID 선택·제목/개수/충돌·잠금·undo·명시 저장 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04s 계획 표 고정 열·범위 선택·가상 스크롤 | M1-04q, M1-04r | URL 고정 열·범위 선택·동적 행 가상화·전체 행 접근·상태 보존 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

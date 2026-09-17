@@ -289,6 +289,15 @@
       "evidence": "docs/implementation/progress/M1-04r.md"
     },
     {
+      "id": "M1-04s",
+      "title": "계획 표 고정 열·범위 선택·가상 스크롤",
+      "dependsOn": ["M1-04q", "M1-04r"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "URL 고정 열·독립 범위 선택·동적 행 가상화·전체 행 접근·반응형 상태 보존; 계획/실제 쓰기 없음",
+      "evidence": "docs/implementation/progress/M1-04s.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -311,7 +320,8 @@
         "M1-04o",
         "M1-04p",
         "M1-04q",
-        "M1-04r"
+        "M1-04r",
+        "M1-04s"
       ],
       "kind": "task",
       "status": "not_started",

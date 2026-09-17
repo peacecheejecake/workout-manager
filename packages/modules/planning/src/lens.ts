@@ -4,6 +4,7 @@ import {
   readPlannedTableState,
   type PlannedTableSort,
   type PlannedTableColumn,
+  type PlannedTablePin,
 } from './planned-table-state';
 
 export interface PlannerUrlState {
@@ -13,6 +14,7 @@ export interface PlannerUrlState {
   plannedSession: string | null;
   tableSort: PlannedTableSort;
   tableColumns: PlannedTableColumn[];
+  tablePinned: PlannedTablePin[];
   tableError: boolean;
   selectionError: boolean;
   error: boolean;
@@ -46,6 +48,7 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
   return {
     tableSort: table.sort,
     tableColumns: table.columns,
+    tablePinned: table.pinned,
     tableError: table.error,
     plannedView:
       plannedView === 'calendar' ||

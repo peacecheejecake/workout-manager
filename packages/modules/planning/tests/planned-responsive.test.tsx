@@ -47,8 +47,10 @@ const props = {
   onSelect: vi.fn(),
   tableSort: 'date_asc' as const,
   tableColumns: [...plannedTableColumns],
+  tablePinned: [],
   onTableSort: vi.fn(),
   onTableColumns: vi.fn(),
+  onTablePinned: vi.fn(),
 };
 function geometry(viewport: number, width: number) {
   vi.stubGlobal('innerWidth', viewport);

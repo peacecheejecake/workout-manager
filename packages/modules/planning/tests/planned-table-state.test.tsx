@@ -3,6 +3,37 @@ import { readPlannerSearch, updatePlannerSearch } from '../src/lens';
 import { plannedTableColumns, plannedTableSorts } from '../src/planned-table-state';
 
 describe('planned table URL settings', () => {
+  it('validates pins independently and retains hidden column requests in canonical order', () => {
+    expect(
+      readPlannerSearch('plannedPinned=notes,date,title&plannedColumns=', '2026-09-17'),
+    ).toMatchObject({
+      tablePinned: ['date', 'title', 'notes'],
+      tableColumns: [],
+      tableError: false,
+    });
+    expect(readPlannerSearch('', '2026-09-17').tablePinned).toEqual([]);
+    for (const pins of ['date,date', 'unknown', ',title', 'title,', ' title']) {
+      expect(
+        readPlannerSearch(
+          `plannedPinned=${pins}&plannedSort=title_desc&plannedColumns=notes`,
+          '2026-09-17',
+        ),
+      ).toMatchObject({
+        tablePinned: [],
+        tableSort: 'title_desc',
+        tableColumns: ['notes'],
+        tableError: true,
+      });
+    }
+    const params = new URLSearchParams(
+      updatePlannerSearch('plannedSession=chosen&actualPage=2', { plannedPinned: 'title' }),
+    );
+    expect(Object.fromEntries(params)).toEqual({
+      plannedSession: 'chosen',
+      actualPage: '2',
+      plannedPinned: 'title',
+    });
+  });
   it('defaults omitted settings and preserves explicitly empty optional columns', () => {
     expect(readPlannerSearch('', '2026-09-17')).toMatchObject({
       tableSort: 'date_asc',

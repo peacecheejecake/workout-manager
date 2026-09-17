@@ -150,3 +150,25 @@
   display: flex;
   align-items: center;
 }
+
+.plannedTableViewport {
+  position: relative;
+  max-width: 100%;
+  min-width: 0;
+  max-height: 32rem;
+  overflow: auto;
+  overflow-anchor: none;
+}
+.plannedTableViewport table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.plannedTableViewport td,
+.plannedTableViewport th {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.plannedTableViewport tr[data-range-selected='true'] td,
+.plannedTableViewport tr[data-range-selected='true'] th {
+  border-bottom: 2px solid var(--accent);
+}

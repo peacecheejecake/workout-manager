@@ -528,8 +528,10 @@ function Planner({
               selected={url.plannedSession}
               tableSort={url.tableSort}
               tableColumns={url.tableColumns}
+              tablePinned={url.tablePinned}
               onTableSort={(plannedSort) => changeSearch({ plannedSort })}
               onTableColumns={(columns) => changeSearch({ plannedColumns: columns.join(',') })}
+              onTablePinned={(pins) => changeSearch({ plannedPinned: pins.join(',') })}
               onSelect={(plannedSession) => changeSearch({ plannedSession })}
             />
           ) : (

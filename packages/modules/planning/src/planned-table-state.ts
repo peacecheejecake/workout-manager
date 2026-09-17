@@ -18,6 +18,8 @@ export const plannedTableColumns = [
   'notes',
 ] as const;
 export type PlannedTableColumn = (typeof plannedTableColumns)[number];
+export const plannedTablePins = ['date', 'title', ...plannedTableColumns] as const;
+export type PlannedTablePin = (typeof plannedTablePins)[number];
 
 export function readPlannedTableState(params: URLSearchParams) {
   const rawSort = params.get('plannedSort') ?? 'date_asc';
@@ -28,11 +30,17 @@ export function readPlannedTableState(params: URLSearchParams) {
   const validColumns =
     requested.every((value) => plannedTableColumns.some((column) => column === value)) &&
     new Set(requested).size === requested.length;
+  const rawPins = params.get('plannedPinned') ?? '';
+  const pins = rawPins === '' ? [] : rawPins.split(',');
+  const validPins =
+    pins.every((value) => plannedTablePins.some((column) => column === value)) &&
+    new Set(pins).size === pins.length;
   return {
     sort: sort ?? 'date_asc',
     columns: validColumns
       ? plannedTableColumns.filter((column) => requested.includes(column))
       : [...plannedTableColumns],
-    error: sort === undefined || !validColumns,
+    pinned: validPins ? plannedTablePins.filter((column) => pins.includes(column)) : [],
+    error: sort === undefined || !validColumns || !validPins,
   };
 }

@@ -7,11 +7,12 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "react": "19.3.0",
-    "zustand": "5.0.15",
     "@tanstack/react-query": "5.102.8",
+    "@tanstack/virtual-core": "3.17.11",
     "@workout/contracts": "workspace:*",
-    "@workout/ui-foundation": "workspace:*"
+    "@workout/ui-foundation": "workspace:*",
+    "react": "19.3.0",
+    "zustand": "5.0.15"
   },
   "exports": {
     "./planning-workspace": "./src/planning-workspace.tsx",
