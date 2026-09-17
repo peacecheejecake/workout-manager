@@ -23,11 +23,18 @@ const fieldNames: Readonly<Record<string, string>> = {
   purpose: '목적',
   notes: '메모',
   priority: '중요도',
+  availableSeconds: '운동 가능 시간 (초)',
+  unavailableDates: '운동 불가 날짜',
+  dailyTimeLimits: '가용 시간 날짜',
   steps: '운동 단계',
   repetitions: '반복 횟수',
   kind: '단계 종류',
 };
 const customGuidance: Readonly<Record<string, string>> = {
+  'Duplicate unavailable dates': '같은 운동 불가 날짜를 중복해서 지정하지 마세요.',
+  'Duplicate daily time limit dates': '같은 날짜의 가용 시간은 한 항목에서 수정하세요.',
+  'Constraint date exceeds period range':
+    '제약 날짜를 기간의 시작일부터 종료일 전날 사이로 지정하세요. 기간 축소 시 조건을 자동 삭제하지 않습니다.',
   'Duplicate period IDs': '중복된 기간이 있습니다. 중복 항목을 삭제하고 다시 추가하세요.',
   'Duplicate session IDs': '중복된 세션이 있습니다. 중복 항목을 삭제하고 다시 추가하세요.',
   'Duplicate step IDs': '중복된 운동 단계가 있습니다. 중복 항목을 삭제하고 다시 추가하세요.',
@@ -60,6 +67,8 @@ export function validationGuidance(issue: ValidationIssue): string {
     return '기간: Season을 추가한 뒤 필요한 Wave·Phase·Block을 구성하세요.';
   }
   if (leaf === 'intensityLabel') return prefix + '미지정 또는 A·B·C 중 하나를 선택하세요.';
+  if (leaf === 'availableSeconds')
+    return prefix + '0–86,400 사이의 정수 초를 입력하세요. 빈칸은 0이 아닙니다.';
   if (leaf === 'timezone') return prefix + 'Asia/Seoul, UTC 등 유효한 시간대를 입력하세요.';
   if (leaf === 'startDate' || leaf === 'endDateExclusive' || leaf === 'date') {
     return prefix + '달력에서 유효한 날짜를 선택하세요.';

@@ -210,6 +210,6 @@ describe('explicit independent period priority', () => {
       next = screen.getByRole('region', { name: '이후 기간' });
     expect(old).toHaveTextContent('기간 우선순위 미지정 (이전 형식에 값 없음)');
     expect(next).toHaveTextContent('기간 우선순위 미지정');
-    expect(next).not.toHaveTextContent('이전 형식에 값 없음');
+    expect(within(next).getByText('기간 우선순위 미지정', { exact: true })).toBeVisible();
   });
 });

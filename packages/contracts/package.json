@@ -29,6 +29,10 @@
       "types": "./src/planning.ts",
       "default": "./dist/planning.js"
     },
+    "./planning-constraints": {
+      "types": "./src/planning-constraints.ts",
+      "default": "./dist/planning-constraints.js"
+    },
     "./operations": {
       "types": "./src/operations.ts",
       "default": "./dist/operations.js"

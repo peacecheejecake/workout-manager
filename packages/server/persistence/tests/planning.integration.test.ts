@@ -500,3 +500,78 @@ it('preserves legacy period priority absence and explicit values through immutab
     expect((await tx.query('SELECT * FROM plan_history')).rowCount).toBe(3);
   });
 });
+
+it('stores explicit scheduling conflicts and unknown duration constraints without changing locked sessions or old versions', async () => {
+  const athlete = randomUUID();
+  const repository = createPlanningRepository(database);
+  const input = intensityCommand();
+  input.draft.sessions = input.draft.sessions.flatMap((session) => [
+    { ...session, durationSeconds: 60, locks: { date: true, time: true, intensity: true } },
+    {
+      ...session,
+      id: 'unknown-duration',
+      date: '2026-01-03',
+      durationSeconds: null,
+      locks: { date: true, time: true, intensity: true },
+    },
+  ]);
+  const first = await repository.save(athlete, input);
+  for (const period of first.draft.periods) expect(period).not.toHaveProperty('constraints');
+  const constraints = {
+    unavailableDates: ['2026-01-02'],
+    dailyTimeLimits: [
+      { date: '2026-01-02', availableSeconds: 0 },
+      { date: '2026-01-03', availableSeconds: 86400 },
+    ],
+  };
+  const second = await repository.save(athlete, {
+    ...input,
+    expectedVersionId: first.id,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...input.draft,
+      periods: input.draft.periods.map((period) =>
+        period.level === 'season' ? { ...period, constraints } : period,
+      ),
+    },
+  });
+  expect(second.draft.sessions).toEqual(first.draft.sessions);
+  expect(second.draft.periods[0]?.constraints).toEqual(constraints);
+  expect((await repository.read(athlete)).head).toEqual(second);
+  expect(await repository.readVersion(athlete, first.id)).toEqual(first);
+  expect(await repository.save(athlete, input)).toEqual(first);
+  expect((await repository.read(athlete)).head).toEqual(second);
+  const exported = await createOperationsRepository(database).exportAccount(athlete);
+  expect(exported.data.planSnapshots.find((row) => row['id'] === first.id)?.['draft']).toEqual(
+    first.draft,
+  );
+  expect(exported.data.planSnapshots.find((row) => row['id'] === second.id)?.['draft']).toEqual(
+    second.draft,
+  );
+  const cleared = await repository.save(athlete, {
+    ...input,
+    expectedVersionId: second.id,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...second.draft,
+      periods: second.draft.periods.map((period) =>
+        period.level === 'season'
+          ? { ...period, constraints: { unavailableDates: [], dailyTimeLimits: [] } }
+          : period,
+      ),
+    },
+  });
+  expect(cleared.draft.periods[0]?.constraints).toEqual({
+    unavailableDates: [],
+    dailyTimeLimits: [],
+  });
+  expect(cleared.draft.sessions).toEqual(first.draft.sessions);
+  expect(await repository.readVersion(athlete, second.id)).toEqual(second);
+  expect(
+    (await admin.query('SELECT * FROM activity_canonical WHERE athlete_id=$1', [athlete])).rowCount,
+  ).toBe(0);
+  await database.tenant(athlete, async (tx) => {
+    expect((await tx.query('SELECT * FROM command_receipt')).rowCount).toBe(3);
+    expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(3);
+  });
+});

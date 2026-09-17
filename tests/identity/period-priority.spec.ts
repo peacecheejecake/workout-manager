@@ -237,7 +237,7 @@ test('period priority survives review, responsive editing and history while lock
   const finalComparison = await openComparison(page, f.saved.version);
   const later = finalComparison.row.getByRole('region', { name: '이후 기간', exact: true });
   await expect(later).toContainText('기간 우선순위 미지정');
-  await expect(later).not.toContainText('이전 형식에 값 없음');
+  await expect(later.getByText('기간 우선순위 미지정', { exact: true })).toBeVisible();
   const old = await page.request.get(`/bff/v1/plans/versions/${f.saved.id}`, {
     headers: f.headers,
   });

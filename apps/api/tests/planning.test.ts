@@ -224,3 +224,42 @@ it('rejects unsupported period priorities before persistence', async () => {
   expect(response.json()).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
   expect(planning.save).not.toHaveBeenCalled();
 });
+
+describe('period constraint structural API boundaries', () => {
+  const empty = { unavailableDates: [], dailyTimeLimits: [] };
+  it.each([
+    null,
+    'invalid',
+    {},
+    { ...empty, unavailableDates: ['2026-01-02', '2026-01-02'] },
+    { ...empty, unavailableDates: ['2026-02-01'] },
+    { ...empty, unavailableDates: ['2025-12-31'] },
+    { ...empty, dailyTimeLimits: [{ date: '2026-01-02', availableSeconds: -1 }] },
+    { ...empty, dailyTimeLimits: [{ date: '2026-01-02', availableSeconds: 0.5 }] },
+    { ...empty, dailyTimeLimits: [{ date: '2026-01-02', availableSeconds: 86401 }] },
+    { ...empty, dailyTimeLimits: [{ date: '2026-01-02', availableSeconds: '60' }] },
+    { ...empty, dailyTimeLimits: [{ date: '2026-02-01', availableSeconds: 0 }] },
+    {
+      ...empty,
+      dailyTimeLimits: [
+        { date: '2026-01-02', availableSeconds: 0 },
+        { date: '2026-01-02', availableSeconds: 60 },
+      ],
+    },
+    { ...empty, unavailableDates: Array.from({ length: 3661 }, () => '2026-01-02') },
+    { ...empty, unexpected: true },
+  ])('rejects invalid constraints %# before saving', async (constraints) => {
+    const { app, planning } = setup();
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/bff/v1/plans/current',
+      headers,
+      payload: {
+        ...body,
+        draft: { ...draft, periods: draft.periods.map((period) => ({ ...period, constraints })) },
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(planning.save).not.toHaveBeenCalled();
+  });
+});

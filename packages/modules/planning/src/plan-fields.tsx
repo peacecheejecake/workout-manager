@@ -11,6 +11,8 @@ import {
 } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
+import { PeriodConstraintsEditor } from './period-constraints-editor';
+import { PlanConstraintsReport } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
 import { addDays } from './lens';
 import styles from './planning.module.css';
@@ -40,6 +42,7 @@ export function createPeriod(
     intent: '',
     isPartial: false,
     priority: null,
+    constraints: { unavailableDates: [], dailyTimeLimits: [] },
   };
 }
 export function PeriodEditor({
@@ -163,6 +166,10 @@ export function PeriodEditor({
             />
             부분 기간
           </label>
+          <PeriodConstraintsEditor
+            period={period}
+            onChange={(constraints) => update(period.id, { constraints })}
+          />
           <Button
             variant="danger"
             disabled={
@@ -184,6 +191,7 @@ export function PeriodEditor({
           ) : null}
         </fieldset>
       ))}
+      <PlanConstraintsReport plan={draft} />
     </section>
   );
 }

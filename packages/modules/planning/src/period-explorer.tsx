@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { planDraftSchema, type PlanDraft, type PeriodDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
+import { PeriodConstraintsSummary, PlanConstraintsReport } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
 import { buildPeriodNavigation } from './period-navigation';
 import type { PeriodOrbitProps } from './period-orbit';
@@ -67,6 +68,7 @@ function Summary({ period }: { period: PeriodDraft }) {
         {period.isPartial ? ' · 부분 기간' : ''} · 기간 우선순위{' '}
         {periodPriorityLabel(period.priority)}
       </p>
+      <PeriodConstraintsSummary constraints={period.constraints} />
     </>
   );
 }
@@ -184,6 +186,7 @@ export function PeriodExplorer({
           </>
         ) : null}
       </div>
+      <PlanConstraintsReport plan={plan} periodId={selectedId} />
       <p>
         원형 각도는 날짜 길이에 비례하며 훈련량·수행률이 아닙니다. 번호는 아래 목록과 연결됩니다.
       </p>

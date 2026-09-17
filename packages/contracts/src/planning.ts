@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { planningLensSchema, type DayProjection, type PlanningLens } from './core.js';
+import { periodConstraintsSchema } from './period-constraints.js';
 import {
   idSchema,
   instantSchema,
@@ -23,6 +24,7 @@ export const periodDraftSchema = z.strictObject({
   isPartial: z.boolean(),
   // Missing remains missing in immutable legacy snapshots and command receipts.
   priority: z.enum(['low', 'normal', 'high']).nullable().optional(),
+  constraints: periodConstraintsSchema.optional(),
 });
 export const plannedSessionSchema = z
   .strictObject({
@@ -82,6 +84,25 @@ export const planDraftSchema = z
         issue('Expected non-empty period', [...path, 'endDateExclusive']);
       if (period.timezone !== draft.timezone)
         issue('Period timezone must match plan timezone', [...path, 'timezone']);
+      period.constraints?.unavailableDates.forEach((date, dateIndex) => {
+        if (date < period.startDate || date >= period.endDateExclusive)
+          issue('Constraint date exceeds period range', [
+            ...path,
+            'constraints',
+            'unavailableDates',
+            dateIndex,
+          ]);
+      });
+      period.constraints?.dailyTimeLimits.forEach((limit, limitIndex) => {
+        if (limit.date < period.startDate || limit.date >= period.endDateExclusive)
+          issue('Constraint date exceeds period range', [
+            ...path,
+            'constraints',
+            'dailyTimeLimits',
+            limitIndex,
+            'date',
+          ]);
+      });
       if (period.level === 'season') {
         if (period.parentId !== null) issue('Season must be a root', [...path, 'parentId']);
       } else {

@@ -26,6 +26,7 @@ import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { StatusNotice } from '@workout/ui-foundation/status-notice';
 import { createPlanningDraftStore } from './draft-store';
+import { PlanConstraintsReport } from './period-constraints-summary';
 import { PlanSummary } from './plan-summary';
 import { validationGuidance } from './validation-guidance';
 import { PeriodEditor, SessionEditor } from './plan-fields';
@@ -451,6 +452,7 @@ function Planner({
                     아래 변경 내용 전체가 새 계획 버전으로 저장됩니다. 실제 활동은 생성되지
                     않습니다.
                   </p>
+                  <PlanConstraintsReport plan={state.preview.draft} />
                   <details>
                     <summary>변경 전후 전체 내용 비교</summary>
                     <h4>변경 전</h4>

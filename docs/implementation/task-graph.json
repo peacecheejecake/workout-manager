@@ -406,6 +406,15 @@
       "evidence": "docs/implementation/progress/M1-04ae.md"
     },
     {
+      "id": "M1-04af",
+      "title": "기간 운동 불가 날짜·가용 시간 제약",
+      "dependsOn": ["M1-02", "M1-04ae"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S04 날짜별 직접/조상 제약·계획 시간 합계/미정 충돌 표시·명시 저장·legacy 보존·자동 이동 없음",
+      "evidence": "docs/implementation/progress/M1-04af.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -441,7 +450,8 @@
         "M1-04ab",
         "M1-04ac",
         "M1-04ad",
-        "M1-04ae"
+        "M1-04ae",
+        "M1-04af"
       ],
       "kind": "task",
       "status": "not_started",
