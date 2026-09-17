@@ -379,6 +379,15 @@
       "evidence": "docs/implementation/progress/M1-04ab.md"
     },
     {
+      "id": "M1-04ac",
+      "title": "세션 단계 순서 편집",
+      "dependsOn": ["M1-02", "M1-04w"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S06 stable 단계 ID·위/아래 이동·키보드/포커스·초안/명시 저장·기존 강도 잠금 및 값 보존",
+      "evidence": "docs/implementation/progress/M1-04ac.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -411,7 +420,8 @@
         "M1-04y",
         "M1-04z",
         "M1-04aa",
-        "M1-04ab"
+        "M1-04ab",
+        "M1-04ac"
       ],
       "kind": "task",
       "status": "not_started",

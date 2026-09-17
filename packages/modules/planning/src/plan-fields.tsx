@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { duplicatePlannedSession } from './duplicate-session';
 
 import {
@@ -204,6 +204,18 @@ export function SessionEditor({
   onDuplicate(id: string): void;
 }) {
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [stepOrderMessage, setStepOrderMessage] = useState('');
+  const movedStepControl = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    const button = movedStepControl.current;
+    movedStepControl.current = null;
+    if (!button?.isConnected) return;
+    const row = button.closest('[data-step-id]');
+    const focused = document.activeElement;
+    if (focused !== document.body && focused !== button && !row?.contains(focused)) return;
+    if (button.matches(':disabled')) row?.querySelector('select')?.focus();
+    else button.focus();
+  }, [draft.sessions]);
   const pendingDuplicateFocus = useRef<string | null>(null);
   function duplicate(sourceId: string) {
     const result = duplicatePlannedSession(draft, sourceId, createId);
@@ -231,6 +243,26 @@ export function SessionEditor({
       ),
     }));
   }
+  function moveStep(
+    session: PlannedSession,
+    stepId: string,
+    direction: -1 | 1,
+    button: HTMLButtonElement,
+  ) {
+    if (baseline?.sessions.find((item) => item.id === session.id)?.locks.intensity) return;
+    const index = session.steps.findIndex((step) => step.id === stepId);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= session.steps.length) return;
+    const steps = [...session.steps];
+    const [step] = steps.splice(index, 1);
+    if (!step) return;
+    steps.splice(destination, 0, step);
+    movedStepControl.current = button;
+    update(session.id, { steps });
+    setStepOrderMessage(
+      `${session.title}: 단계 ${index + 1}을 ${destination + 1}번째로 이동했습니다. 미저장 초안입니다.`,
+    );
+  }
   return (
     <section aria-labelledby="session-editor-title">
       <h3 id="session-editor-title">계획 세션 초안</h3>
@@ -239,6 +271,7 @@ export function SessionEditor({
         저장하려면 미리보기 후 확인하세요.
       </p>
       {duplicateError ? <p role="alert">{duplicateError}</p> : null}
+      <p role="status">{stepOrderMessage}</p>
       {draft.sessions.length >= 1000 ? <p>계획 세션이 1,000개여서 더 복제할 수 없습니다.</p> : null}
       <Button
         variant="secondary"
@@ -418,8 +451,36 @@ export function SessionEditor({
               ) : null}
               <fieldset disabled={locked?.intensity}>
                 <legend>워밍업·반복·회복·쿨다운</legend>
-                {session.steps.map((step) => (
-                  <div key={step.id} className={styles.step}>
+                {session.steps.length === 0 ? (
+                  <p>등록된 단계가 없습니다. 필요한 단계를 추가하세요.</p>
+                ) : null}
+                {session.steps.map((step, stepIndex) => (
+                  <div
+                    key={step.id}
+                    className={styles.step}
+                    data-step-id={step.id}
+                    role="group"
+                    aria-label={`계획 단계 ${stepIndex + 1}`}
+                  >
+                    <p>
+                      {stepIndex + 1} / {session.steps.length} 단계
+                    </p>
+                    <div className={styles.toolbar}>
+                      <Button
+                        variant="secondary"
+                        disabled={stepIndex === 0}
+                        onClick={(event) => moveStep(session, step.id, -1, event.currentTarget)}
+                      >
+                        단계 위로
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={stepIndex === session.steps.length - 1}
+                        onClick={(event) => moveStep(session, step.id, 1, event.currentTarget)}
+                      >
+                        단계 아래로
+                      </Button>
+                    </div>
                     <label>
                       단계 종류
                       <select
