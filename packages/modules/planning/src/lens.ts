@@ -1,11 +1,19 @@
 import { planningLensSchema, type PlanningLens } from '@workout/contracts/core';
 import { idSchema, localDateSchema } from '@workout/contracts/primitives';
+import {
+  readPlannedTableState,
+  type PlannedTableSort,
+  type PlannedTableColumn,
+} from './planned-table-state';
 
 export interface PlannerUrlState {
   lens: PlanningLens;
   view: 'stack' | 'split';
   plannedView: 'auto' | 'agenda' | 'calendar' | 'table' | 'split';
   plannedSession: string | null;
+  tableSort: PlannedTableSort;
+  tableColumns: PlannedTableColumn[];
+  tableError: boolean;
   selectionError: boolean;
   error: boolean;
 }
@@ -34,7 +42,11 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
   const selected = params.get('plannedSession');
   const validSelection = selected === null || idSchema.safeParse(selected).success;
   const plannedView = params.get('plannedView') ?? 'auto';
+  const table = readPlannedTableState(params);
   return {
+    tableSort: table.sort,
+    tableColumns: table.columns,
+    tableError: table.error,
     plannedView:
       plannedView === 'calendar' ||
       plannedView === 'table' ||

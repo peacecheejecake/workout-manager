@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
 import type { DayProjection } from '@workout/contracts/core';
 import { PlannedSessionViews } from '../src/planned-session-views';
+import { plannedTableColumns } from '../src/planned-table-state';
 import { readPlannerSearch } from '../src/lens';
 
 const source: PlanDraft = {
@@ -39,7 +40,16 @@ const days: DayProjection[] = [
     knownRest: false,
   },
 ];
-const props = { source, days, selected: 'session', onSelect: vi.fn() };
+const props = {
+  source,
+  days,
+  selected: 'session',
+  onSelect: vi.fn(),
+  tableSort: 'date_asc' as const,
+  tableColumns: [...plannedTableColumns],
+  onTableSort: vi.fn(),
+  onTableColumns: vi.fn(),
+};
 function geometry(viewport: number, width: number) {
   vi.stubGlobal('innerWidth', viewport);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(

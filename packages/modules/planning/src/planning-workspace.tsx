@@ -499,6 +499,12 @@ function Planner({
               선택은 적용하지 않습니다.
             </p>
           ) : null}
+          {url.tableError ? (
+            <p role="alert">
+              계획 표 설정 주소가 올바르지 않습니다. 잘못된 정렬이나 열 설정은 기본값으로
+              표시합니다.
+            </p>
+          ) : null}
           {draft && !validated.success ? (
             <p role="alert">
               초안이 유효하지 않아 날짜별 보기를 표시할 수 없습니다. 작성 내용은 편집기에
@@ -510,6 +516,10 @@ function Planner({
               days={projection}
               view={url.plannedView}
               selected={url.plannedSession}
+              tableSort={url.tableSort}
+              tableColumns={url.tableColumns}
+              onTableSort={(plannedSort) => changeSearch({ plannedSort })}
+              onTableColumns={(columns) => changeSearch({ plannedColumns: columns.join(',') })}
               onSelect={(plannedSession) => changeSearch({ plannedSession })}
             />
           ) : (

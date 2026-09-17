@@ -140,3 +140,13 @@
 .plannedPanes[data-split='true'] {
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 }
+
+.workspace .tableColumns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.workspace .tableColumns label {
+  display: flex;
+  align-items: center;
+}

@@ -4,6 +4,7 @@ import type { DayProjection } from '@workout/contracts/core';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import styles from './planning.module.css';
+import { PlannedTable, type PlannedTableSettings } from './planned-table';
 function SessionView({
   source,
   days,
@@ -12,7 +13,8 @@ function SessionView({
   onSelect,
   readScroll,
   saveScroll,
-}: {
+  ...tableSettings
+}: PlannedTableSettings & {
   source: PlanDraft;
   days: DayProjection[];
   view: 'agenda' | 'calendar' | 'table';
@@ -70,48 +72,13 @@ function SessionView({
         }}
       >
         {view === 'table' ? (
-          <table className={styles.plannedTable}>
-            <caption>계획 세션 표</caption>
-            <thead>
-              <tr>
-                {['날짜', '선택·제목', 'Block', '목적', '거리·시간', '강도·메모'].map((label) => (
-                  <th key={label} scope="col">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {days.flatMap((day) =>
-                day.plannedSessionIds.map((sessionId) => {
-                  const session = source.sessions.find((value) => value.id === sessionId);
-                  return session ? (
-                    <tr key={session.id} aria-selected={selected === session.id}>
-                      <th scope="row">{session.date}</th>
-                      <td>{button(session.id)}</td>
-                      <td>
-                        {source.periods.find((period) => period.id === session.blockId)?.title ??
-                          'Block 미확인'}
-                      </td>
-                      <td>{session.purpose || '목적 미입력'}</td>
-                      <td>
-                        {session.distanceMeters === null
-                          ? '거리 미정'
-                          : `${session.distanceMeters}m`}{' '}
-                        ·{' '}
-                        {session.durationSeconds === null
-                          ? '시간 미정'
-                          : `${session.durationSeconds}초`}
-                      </td>
-                      <td>
-                        목표 RPE {session.targetRpe ?? '미정'} · {session.notes || '메모 없음'}
-                      </td>
-                    </tr>
-                  ) : null;
-                }),
-              )}
-            </tbody>
-          </table>
+          <PlannedTable
+            source={source}
+            days={days}
+            selected={selected}
+            onSelect={onSelect}
+            {...tableSettings}
+          />
         ) : (
           <ol
             className={view === 'calendar' ? styles.plannedCalendar : styles.agenda}
@@ -153,7 +120,7 @@ function SessionView({
 
 type SingleView = 'agenda' | 'calendar' | 'table';
 type RequestedView = SingleView | 'auto' | 'split';
-interface PlannedSessionViewsProps {
+interface PlannedSessionViewsProps extends PlannedTableSettings {
   source: PlanDraft;
   days: DayProjection[];
   view: RequestedView;
