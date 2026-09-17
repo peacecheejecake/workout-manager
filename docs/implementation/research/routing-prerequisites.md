@@ -88,3 +88,11 @@ M0-06b에서는 조건을 충족하는 제한적 수동 조사로 공개 합성 
 3. 공개 지역 검토 fixture 및 검토 담당 확보. 공원·야간·계단 접근의 미확인 항목을 기록할 판정 절차 확정.
 4. `server/integrations/routing` adapter와 `experience/geo-kit` production spike, 두 shell의 CSP/WebGL/반응형/접근성 검증 실행.
 5. V2-A34의 실패 복구와 Course/RouteRevision 저장·GPX 내보내기를 실제 응답으로 시험. 이 문서 작성만으로 FUT-07 또는 M2 routing 완료 상태를 변경하지 않음.
+
+## NEG-SYN-02 로컬 오류 복구 fixture
+
+M0-06b 후속에서 **NEG-SYN-02 revision 2**를 `/ui-spike`에 추가했다. 위 초기 matrix의
+한국 WGS84 입력은 실행했다고 표시하지 않는다. 새 revision은 좌표를 가상 평면으로 분리하고
+429·timeout·NoRoute·성공 응답을 주입해 초안 보존과 최신 요청 격리를 검증한다.
+외부 HTTP/공급자 호출이나 한국 coverage 시험이 아니며, 실제 adapter·Course/RouteRevision
+저장 통합은 별도다. 구체적인 실행·한계는 [M0-06b 진행 기록](../progress/M0-06b.md)을 따른다.

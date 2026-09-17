@@ -1,0 +1,43 @@
+.panel {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.panel label {
+  display: grid;
+  gap: var(--space-2);
+}
+.panel select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-primary);
+  color: var(--ink);
+  background: var(--surface-strong);
+  font: inherit;
+}
+.panel select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.panel figure {
+  margin: 0;
+}
+.panel svg {
+  width: 100%;
+  max-width: 18rem;
+  display: block;
+}
+.panel polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}

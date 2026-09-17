@@ -10,6 +10,9 @@ const DataPanels = lazy(() =>
 const InteractionPanel = lazy(() =>
   import('./interaction-panel').then((module) => ({ default: module.InteractionPanel })),
 );
+const RoutingRecoveryPanel = lazy(() =>
+  import('./routing-recovery-panel').then((module) => ({ default: module.RoutingRecoveryPanel })),
+);
 
 class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
@@ -28,6 +31,7 @@ class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
   const [started, setStarted] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [showRoutingRecovery, setShowRoutingRecovery] = useState(false);
   return (
     <div className={styles.workspace}>
       <h1>UI 호환성 검증</h1>
@@ -35,6 +39,16 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
         개발용 가상 데이터입니다. 계정·건강 기록·외부 공급자와 연결되지 않습니다. 입력은 이 페이지
         메모리에만 남습니다.
       </p>
+      <button type="button" onClick={() => setShowRoutingRecovery((value) => !value)}>
+        {showRoutingRecovery ? '라우팅 오류 검증 닫기' : '라우팅 오류 검증 열기'}
+      </button>
+      {showRoutingRecovery ? (
+        <PanelBoundary>
+          <Suspense fallback={<p role="status">라우팅 오류 검증 준비 중</p>}>
+            <RoutingRecoveryPanel />
+          </Suspense>
+        </PanelBoundary>
+      ) : null}
       {started ? (
         <div className={styles.panels}>
           <PanelBoundary>
