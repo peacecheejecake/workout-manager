@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { useStore } from 'zustand';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { activityDetailsReadSchema, activityListSchema } from '@workout/contracts/activity';
 import { Button } from '@workout/ui-foundation/button';
@@ -11,6 +12,8 @@ import styles from './activity-browser.module.css';
 import { activityContextSchema } from '@workout/contracts/activity-context';
 import { BrowserBlockFilter } from './browser-block-filter';
 import { ActivityDelete } from './activity-delete';
+import { ActivityBatchDelete } from './activity-batch-delete';
+import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from './batch-selection';
 import { ActivityContextPanel } from './activity-context-panel';
 import { ActivityWorkbench } from './activity-workbench';
 import { detailsMatchActivity } from './detail-projection';
@@ -69,6 +72,9 @@ function Workspace({
   planDayHref,
   linkedBlockHref,
 }: ActivityBrowserProps) {
+  const [batchStore] = useState(createBatchSelectionStore);
+  const batchTargets = useStore(batchStore, (state) => state.targets);
+  const batchLocked = useStore(batchStore, (state) => state.locked);
   const headingId = useId();
   const composing = useRef(false);
   const parsed = readActivitySearch(search);
@@ -310,6 +316,47 @@ function Workspace({
           활동 목록 다시 확인
         </Button>
       </div>
+      <section aria-label="활동 일괄 선택">
+        <p>
+          일괄 선택 {batchTargets.length}개 / 최대 {batchSelectionLimit}개
+        </p>
+        <p>
+          현재 페이지 선택은 지금 보이는 기록만 추가합니다. 필터나 페이지를 바꿔도 이전 선택은
+          유지됩니다.
+        </p>
+        <div className={styles.actions}>
+          <Button
+            variant="secondary"
+            disabled={
+              batchLocked ||
+              parsed.invalid ||
+              !list.isSuccess ||
+              list.isFetching ||
+              !list.data?.items.length
+            }
+            onClick={() => {
+              if (list.data) batchStore.getState().selectPage(list.data.items.map(toBatchTarget));
+            }}
+          >
+            현재 페이지 선택
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={batchLocked || batchTargets.length === 0}
+            onClick={() => batchStore.getState().clear()}
+          >
+            일괄 선택 해제
+          </Button>
+        </div>
+      </section>
+      <ActivityBatchDelete
+        store={batchStore}
+        transport={transport}
+        scope={prefix}
+        onDeleted={(ids) => {
+          if (parsed.selected && ids.includes(parsed.selected)) change({ selected: null });
+        }}
+      />
       {parsed.invalid ? (
         <div role="alert">
           <p>
@@ -388,6 +435,11 @@ function Workspace({
                   view={parsed.view ?? 'cards'}
                   selected={parsed.selected}
                   onSelect={(selected) => change({ selected })}
+                  batch={{
+                    targets: batchTargets,
+                    locked: batchLocked,
+                    onToggle: (activity) => batchStore.getState().toggle(toBatchTarget(activity)),
+                  }}
                 />
               )}
               <div className={styles.actions}>
@@ -494,6 +546,7 @@ function Workspace({
         transport={transport}
         scope={prefix}
         onDeleted={(id) => {
+          batchStore.getState().remove([id]);
           if (parsed.selected === id) change({ selected: null });
         }}
       />

@@ -1,5 +1,6 @@
 import { useId, useRef } from 'react';
 import type { Activity } from '@workout/contracts/activity';
+import type { BatchTarget } from './batch-selection';
 import { Button } from '@workout/ui-foundation/button';
 import styles from './activity-browser.module.css';
 
@@ -29,11 +30,13 @@ export function BrowserRecords({
   view,
   selected,
   onSelect,
+  batch,
 }: {
   items: Activity[];
   view: 'cards' | 'table';
   selected: string | null;
   onSelect(id: string): void;
+  batch?: { targets: BatchTarget[]; locked: boolean; onToggle(activity: Activity): void };
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -46,12 +49,26 @@ export function BrowserRecords({
       {item.effective.title ?? '제목 미확인'}
     </Button>
   );
+  const batchSelect = (item: Activity) =>
+    batch ? (
+      <label className={styles.batchChoice}>
+        <input
+          type="checkbox"
+          aria-label={`일괄 선택: ${item.effective.title ?? '제목 미확인'}`}
+          checked={batch.targets.some((target) => target.id === item.id)}
+          disabled={batch.locked}
+          onChange={() => batch.onToggle(item)}
+        />
+        <span>일괄 선택</span>
+      </label>
+    ) : null;
   if (view === 'cards')
     return (
       <ul className={styles.cards}>
         {items.map((item) => (
           <li key={item.id}>
             <article>
+              {batchSelect(item)}
               {select(item)}
               <p>
                 {kindLabels[item.effective.kind]} · {item.effective.startedAt ?? '시작 시각 미확인'}{' '}
@@ -97,6 +114,7 @@ export function BrowserRecords({
           <caption>조회 조건에 맞는 활동</caption>
           <thead>
             <tr>
+              {batch ? <th scope="col">일괄 선택</th> : null}
               {['활동', '종목', '시작 시각·시간대', '거리', '시간·정의', '출처·수정'].map(
                 (label) => (
                   <th key={label} scope="col">
@@ -109,6 +127,7 @@ export function BrowserRecords({
           <tbody>
             {items.map((item) => (
               <tr key={item.id}>
+                {batch ? <td>{batchSelect(item)}</td> : null}
                 <th scope="row">{select(item)}</th>
                 <td>{kindLabels[item.effective.kind]}</td>
                 <td>

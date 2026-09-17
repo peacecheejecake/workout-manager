@@ -352,6 +352,15 @@
       "evidence": "docs/implementation/progress/M1-04y.md"
     },
     {
+      "id": "M1-04z",
+      "title": "활동 다중 선택·일괄 로컬 삭제",
+      "dependsOn": ["M1-04f", "M1-04k"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S07 명시적 페이지/개별 선택·고정 revision 확인·bounded 삭제·부분 성공/불확실/충돌 복구·계정 격리",
+      "evidence": "docs/implementation/progress/M1-04z.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -381,7 +390,8 @@
         "M1-04v",
         "M1-04w",
         "M1-04x",
-        "M1-04y"
+        "M1-04y",
+        "M1-04z"
       ],
       "kind": "task",
       "status": "not_started",

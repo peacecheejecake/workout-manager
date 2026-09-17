@@ -1,0 +1,23 @@
+.panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.preview {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.targets {
+  padding-inline-start: var(--space-4);
+}
+.targets li {
+  margin-block: var(--space-2);
+}

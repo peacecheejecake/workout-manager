@@ -86,3 +86,20 @@
   font-weight: 600;
   margin-block-end: var(--space-3);
 }
+
+.batchChoice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-primary, 44px);
+  min-width: var(--target-primary, 44px);
+  cursor: pointer;
+}
+.batchChoice input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--accent);
+}
+.batchChoice:has(input:disabled) {
+  cursor: default;
+}

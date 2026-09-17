@@ -224,12 +224,17 @@ test('activity cards and table preserve unknowns and zero, reflow and recover fr
     const missingRow = table.getByRole('row').filter({
       has: page.getByRole('button', { name: `${records.prefix} missing`, exact: true }),
     });
-    await expect(zeroRow.getByRole('cell').nth(2)).toHaveText('0m');
-    await expect(zeroRow.getByRole('cell').nth(3)).toHaveText('0초 · 타이머 시간 (timer)');
-    await expect(missingRow.getByRole('cell').nth(2)).toHaveText('거리 미확인');
-    await expect(missingRow.getByRole('cell').nth(3)).toHaveText(
-      '시간 미확인 · 정의 미확인 시간 (unknown)',
-    );
+    await expect(zeroRow.getByRole('cell', { name: '0m', exact: true })).toBeVisible();
+    await expect(
+      zeroRow.getByRole('cell', { name: '0초 · 타이머 시간 (timer)', exact: true }),
+    ).toBeVisible();
+    await expect(missingRow.getByRole('cell', { name: '거리 미확인', exact: true })).toBeVisible();
+    await expect(
+      missingRow.getByRole('cell', {
+        name: '시간 미확인 · 정의 미확인 시간 (unknown)',
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.getByRole('button', { name: '카드 보기', exact: true }).click();
     await expect(page).toHaveURL((url) => url.searchParams.get('view') === 'cards');
     await expect(table).toBeHidden();
