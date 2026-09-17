@@ -649,9 +649,18 @@
       "evidence": "docs/implementation/progress/M1-04.md"
     },
     {
+      "id": "M1-05a",
+      "title": "기존 원장 근거 의존성 캡처·비교",
+      "dependsOn": ["M1-01", "M1-02", "M1-03", "M1-04a", "M1-04ai"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "core-ledgers-v1; 단일 SQL snapshot·부재 head·원장 revision·AI 동의 비교; 완전한 EvidenceSnapshot/승인 freshness는 부모에서 통합",
+      "evidence": "docs/implementation/progress/M1-05a.md"
+    },
+    {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04"],
+      "dependsOn": ["M1-04", "M1-05a"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"

@@ -84,6 +84,10 @@
     "./plan-scenarios": {
       "types": "./src/plan-scenarios.ts",
       "default": "./dist/plan-scenarios.js"
+    },
+    "./evidence-dependencies": {
+      "types": "./src/evidence-dependencies.ts",
+      "default": "./dist/evidence-dependencies.js"
     }
   },
   "scripts": {

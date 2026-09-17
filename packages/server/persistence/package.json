@@ -28,7 +28,8 @@
     "./check-ins": "./src/check-ins.ts",
     "./dashboard": "./src/dashboard.ts",
     "./activity-context": "./src/activity-context.ts",
-    "./plan-scenarios": "./src/plan-scenarios.ts"
+    "./plan-scenarios": "./src/plan-scenarios.ts",
+    "./evidence-dependencies": "./src/evidence-dependencies.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

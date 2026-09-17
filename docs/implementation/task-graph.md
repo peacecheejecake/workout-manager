@@ -5,6 +5,10 @@
 M1-04는 [화면별 수용 대조](progress/M1-04.md)를 진행 중이다. S05 계획 종류의 의미 결정이 남아 있으며,
 지도·코치·제공자·Native 등 기존 후속 task의 미완료 범위는 별도로 유지한다.
 
+M1-05a는 이미 구현된 원장의 변경 여부를 캡처·비교하는 기반으로 분리했다. S05 계획 종류를
+해석하지 않으므로 기존 원장 계약만 선행 조건으로 삼는다. M1-05 전체는 계속 M1-04 완료 후
+근거 저장·정책/대화/자료 의존성·후보·명시 승인·원자적 쓰기를 통합한다.
+
 **병렬 진행은 가능하다.** 계약이 확정된 뒤 Host/UI, API/DB, FIT 도구를 분리하고 각 통합 지점에서 실제 데이터를 연결한다. 아래 그래프는 작업 우선순위 제안이며 일정·인력·완료 예상일을 의미하지 않는다.
 
 ## 읽는 방법
@@ -268,6 +272,13 @@ flowchart TD
     plannerDuplicate --> plannerOperations
     plannerTableWorkbench --> plannerOperations
     plannerOperations --> task14
+    evidenceDependencies["M1-05a 기존 원장 근거 의존성 캡처·비교"]
+    task11 --> evidenceDependencies
+    task12 --> evidenceDependencies
+    task13 --> evidenceDependencies
+    checkins --> evidenceDependencies
+    sessionCompletionApi --> evidenceDependencies
+    evidenceDependencies --> task15
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -429,7 +440,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04ax 세션별 저장본·초안 변경 표시 | M1-04n, M1-04s, M1-04ad | 표·달력·agenda의 세션 값·시간대 비교·새 ID·undo·저장 상태 |
 | M1-04ay 대시보드 실제 요약에서 기간별 활동 탐색 | M1-04d, M1-04f, M1-04am | 현재·직전·일별 적용 시간대·날짜 경계와 활동 필터 navigation |
 | M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao, M1-04ap, M1-04aq, M1-04ar, M1-04as, M1-04at, M1-04au, M1-04av, M1-04aw, M1-04ax, M1-04ay | dashboard/wellbeing/workbench; 실제 API·반응형 |
-| M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
+| M1-05a 기존 원장 근거 의존성 캡처·비교 | M1-01, M1-02, M1-03, M1-04a, M1-04ai | 단일 snapshot·부재/현재 head·원장/동의 revision 비교; 승인 권한·전체 freshness와 구분 |
+| M1-05 Evidence·Coach·승인 | M1-04, M1-05a | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
 | M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |
