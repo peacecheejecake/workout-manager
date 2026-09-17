@@ -41,6 +41,7 @@ import {
   type SessionOperationFeedbackValue,
 } from './session-operation-feedback';
 import { sessionOperationDate } from './session-operation-clock';
+import { PeriodExplorer } from './period-explorer';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -285,40 +286,33 @@ function Planner({
           계획 초안 편집
         </Button>
       ) : null}
-      <section aria-label="기간 탐색">
-        <h2>Season · Wave · Phase · Block</h2>
-        <ul>
-          {projectionSource?.periods.map((period) => (
-            <li key={period.id}>
-              <Button
-                variant="secondary"
-                aria-pressed={selectedPeriodId === period.id}
-                onClick={() => changeSearch({ lens: 'period', period: period.id })}
-              >
-                {period.level} · {period.title}
-              </Button>
-              <span>
-                {' '}
-                {period.startDate}–{period.endDateExclusive} (종료일 미포함) ·{' '}
-                {period.intent || '목적 미정'}
-                {period.isPartial ? ' · 부분 기간' : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {selectedPeriod ? (
-          <p>
-            선택: {selectedPeriod.title} · 상위:{' '}
-            {projectionSource?.periods.find((period) => period.id === selectedPeriod.parentId)
-              ?.title ?? '최상위'}
-          </p>
-        ) : null}
-        {missingPeriod ? (
-          <p role="alert">
-            URL이 가리키는 기간을 찾을 수 없습니다. 목록에서 다른 기간을 선택하세요.
-          </p>
-        ) : null}
-      </section>
+      <PeriodExplorer
+        plan={projectionSource}
+        selectedId={selectedPeriodId}
+        unavailableReason={
+          draft && !validated.success
+            ? '초안의 기간 구조가 유효하지 않습니다. 입력 내용을 수정하면 기간 탐색을 다시 사용할 수 있습니다.'
+            : plan.isFetching
+              ? '계획을 확인하는 중입니다.'
+              : plan.isError
+                ? '계획을 불러오지 못했습니다.'
+                : '등록된 계획이 없습니다.'
+        }
+        onSelect={(id) =>
+          changeSearch(
+            id === null ? { lens: 'rolling', period: null } : { lens: 'period', period: id },
+          )
+        }
+        onCalendar={(period) =>
+          changeSearch({
+            lens: 'calendar',
+            period: null,
+            from: period.startDate,
+            to: period.endDateExclusive,
+            plannedView: 'calendar',
+          })
+        }
+      />
       <section aria-label="조회 범위">
         <h2>달력·rolling 조회</h2>
         <p>조회 범위는 기간 트리를 변경하지 않습니다. Rolling은 기준일까지의 최근 N일입니다.</p>

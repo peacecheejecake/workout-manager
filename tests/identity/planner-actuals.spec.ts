@@ -204,7 +204,10 @@ test('planner actual pages use saved local dates and preserve drafts across lens
     await expect(title).toHaveValue(`${marker} unsaved draft`);
     await actuals.getByRole('button', { name: '이전 실제 활동', exact: true }).click();
     await page.getByRole('button', { name: '한 열 보기', exact: true }).click();
-    await page.getByRole('button', { name: `block · ${marker} block`, exact: true }).click();
+    for (const level of ['season', 'wave', 'phase', 'block'])
+      await page
+        .getByRole('button', { name: `${level} · ${marker} ${level}`, exact: true })
+        .click();
     await expect(actuals).toContainText(`${marker} linked zero`);
     await expect(title).toHaveValue(`${marker} unsaved draft`);
     await page.getByRole('button', { name: 'Rolling', exact: true }).click();

@@ -1,0 +1,92 @@
+.explorer {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.navigation,
+.children {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.children {
+  display: grid;
+  gap: var(--space-3);
+}
+.children li {
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  padding-block: var(--space-2);
+}
+.children p,
+.summary p,
+.preview p {
+  margin-block: var(--space-2);
+}
+.layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+.orbit {
+  width: 100%;
+  max-width: 24rem;
+  display: block;
+  margin-inline: auto;
+  overflow: visible;
+}
+.track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 54;
+}
+.sector {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 54;
+}
+.sectorButton {
+  cursor: pointer;
+  outline: none;
+}
+.sectorButton:hover .sector,
+.sectorButton:focus-visible .sector {
+  stroke: var(--ink);
+  stroke-width: 60;
+}
+.sectorButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.number {
+  fill: var(--canvas);
+  font: 600 14px sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+.center {
+  fill: var(--ink);
+  font: 600 15px sans-serif;
+  text-anchor: middle;
+}
+.summary,
+.preview {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+}
+.preview {
+  margin-block: var(--space-3);
+}
+
+.tinyNumber {
+  fill: var(--ink);
+  font: 600 12px sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}

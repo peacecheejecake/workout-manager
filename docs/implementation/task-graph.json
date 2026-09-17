@@ -307,6 +307,15 @@
       "evidence": "docs/implementation/progress/M1-04t.md"
     },
     {
+      "id": "M1-04u",
+      "title": "Period Explorer·Orbit 계층 탐색",
+      "dependsOn": ["M1-04t"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "날짜 비율·미배정 구간·원형/목록 동일 선택·breadcrumb·URL 이력·반응형 초안 유지; 전체 기간 상세 집계는 별도",
+      "evidence": "docs/implementation/progress/M1-04u.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -331,7 +340,8 @@
         "M1-04q",
         "M1-04r",
         "M1-04s",
-        "M1-04t"
+        "M1-04t",
+        "M1-04u"
       ],
       "kind": "task",
       "status": "not_started",
