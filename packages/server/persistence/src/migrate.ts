@@ -24,6 +24,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '009_activity_details.sql',
       '010_session_completion.sql',
       '011_plan_scenarios.sql',
+      '012_coaching_threads.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -105,7 +106,7 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application TO "${runtimeRole}"`,
+      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
@@ -191,6 +192,21 @@ export async function grantSessionCompletions(
     await pool.query(
       `GRANT SELECT,INSERT ON session_completion_revision,session_completion_receipt TO "${runtimeRole}"`,
     );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** User conversations: immutable scope/messages, only the conversation head advances. */
+export async function grantCoachingThreads(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT,INSERT ON coaching_thread,coaching_message TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(revision,updated_at) ON coaching_thread TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

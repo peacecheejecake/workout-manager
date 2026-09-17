@@ -29,7 +29,8 @@
     "./dashboard": "./src/dashboard.ts",
     "./activity-context": "./src/activity-context.ts",
     "./plan-scenarios": "./src/plan-scenarios.ts",
-    "./evidence-dependencies": "./src/evidence-dependencies.ts"
+    "./evidence-dependencies": "./src/evidence-dependencies.ts",
+    "./coaching-threads": "./src/coaching-threads.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

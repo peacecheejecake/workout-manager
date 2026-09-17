@@ -78,3 +78,38 @@ describe('account export completion-ledger compatibility', () => {
     ).toBe(false);
   });
 });
+
+it('requires conversation collections in v5 without changing v4 artifacts', () => {
+  const previous = {
+    ...legacy,
+    schemaVersion: 4,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+    },
+  };
+  const artifact = {
+    ...previous,
+    schemaVersion: 5,
+    data: {
+      ...previous.data,
+      coachingThreads: [{ id: 'synthetic-thread', revision: 2 }],
+      coachingMessages: [{ thread_id: 'synthetic-thread', revision: 1, content: 'User report' }],
+    },
+  };
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.parse(previous).data).not.toHaveProperty('coachingThreads');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 5 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 4 }).success).toBe(false);
+  for (const key of ['coachingThreads', 'coachingMessages']) {
+    expect(
+      accountExportSchema.safeParse({ ...artifact, data: { ...artifact.data, [key]: undefined } })
+        .success,
+    ).toBe(false);
+  }
+});

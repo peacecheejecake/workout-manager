@@ -20,6 +20,18 @@ export interface OperationsRepository {
 }
 const collections = [
   [
+    'coachingThreads',
+    'coaching_thread',
+    'id,plan_version_id,title,scope,revision,created_at,updated_at',
+    'id',
+  ],
+  [
+    'coachingMessages',
+    'coaching_message',
+    'id,thread_id,revision,content,created_at',
+    'thread_id,revision',
+  ],
+  [
     'planScenarios',
     'plan_scenario',
     'id,base_plan_version_id,label,revision,created_at,updated_at,draft',
@@ -100,7 +112,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 4,
+          schemaVersion: 5,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

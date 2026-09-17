@@ -88,6 +88,10 @@
     "./evidence-dependencies": {
       "types": "./src/evidence-dependencies.ts",
       "default": "./dist/evidence-dependencies.js"
+    },
+    "./coaching-threads": {
+      "types": "./src/coaching-threads.ts",
+      "default": "./dist/coaching-threads.js"
     }
   },
   "scripts": {

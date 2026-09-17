@@ -658,9 +658,18 @@
       "evidence": "docs/implementation/progress/M1-05a.md"
     },
     {
+      "id": "M1-05b",
+      "title": "상담 스레드·사용자 메시지·검토 범위 저장",
+      "dependsOn": ["M1-01", "M1-02", "M1-06a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "계획 버전에 고정된 session/Block/Phase 검토 범위와 사용자 대화 원장; revision·멱등성·계정 수명주기",
+      "evidence": "docs/implementation/progress/M1-05b.md"
+    },
+    {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04", "M1-05a"],
+      "dependsOn": ["M1-04", "M1-05a", "M1-05b"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"

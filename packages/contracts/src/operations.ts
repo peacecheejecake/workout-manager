@@ -30,16 +30,24 @@ const accountExportV3Schema = accountExportV2Schema.extend({
     sessionCompletionRevisions: rows,
   }),
 });
-// Existing v2/v3 artifacts remain readable without manufacturing absent collections.
+const accountExportV4Schema = accountExportV3Schema.extend({
+  schemaVersion: z.literal(4),
+  data: accountExportV3Schema.shape.data.extend({
+    planScenarios: rows,
+    planScenarioRevisions: rows,
+    planScenarioApplications: rows,
+  }),
+});
+// Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
   accountExportV3Schema,
-  accountExportV3Schema.extend({
-    schemaVersion: z.literal(4),
-    data: accountExportV3Schema.shape.data.extend({
-      planScenarios: rows,
-      planScenarioRevisions: rows,
-      planScenarioApplications: rows,
+  accountExportV4Schema,
+  accountExportV4Schema.extend({
+    schemaVersion: z.literal(5),
+    data: accountExportV4Schema.shape.data.extend({
+      coachingThreads: rows,
+      coachingMessages: rows,
     }),
   }),
 ]);

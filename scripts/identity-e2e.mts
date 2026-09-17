@@ -1,3 +1,4 @@
+import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
 import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
 import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
@@ -25,6 +26,7 @@ import {
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
+  grantCoachingThreads,
   grantGarmin,
   grantGarminWorker,
   migrate,
@@ -127,6 +129,7 @@ try {
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
+    await grantCoachingThreads(adminUrl, 'workout_runtime');
     await grantGarmin(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
@@ -199,6 +202,7 @@ try {
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     planScenarios: createPlanScenarioRepository(database),
+    coachingThreads: createCoachingThreadRepository(database),
     sessionCompletions: createSessionCompletionRepository(database),
     sessionActuals: createSessionActualsRepository(database),
     periodSummary: createPeriodSummaryRepository(database),

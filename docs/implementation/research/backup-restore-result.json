@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "executedAt": "2026-09-17T12:07:52.857Z",
+  "executedAt": "2026-09-17T15:40:30.499Z",
   "outcome": "passed",
   "postgresToolVersion": "pg_dump (PostgreSQL) 15.13 (Homebrew)",
   "scope": "Synthetic ephemeral logical backup/restore drill only; not a production backup service or RPO/RTO evidence.",
@@ -24,11 +24,13 @@
     "manual_source_and_null_report_restored_with_original_zero_report_history_erased_tenant_absent",
     "check_in_erasure_replayed_across_all_four_tables_retained_self_report_readable",
     "scenario_revisions_application_and_receipts_restored_without_duplicate_promotion_erased_tenant_absent",
+    "coaching_scope_revision_and_immutable_user_messages_export_v5_restored_receipts_replayed_without_duplicates",
+    "coaching_threads_messages_and_command_outbox_erasure_replayed_before_runtime_access",
     "session_completion_four_table_erasure_replayed_retained_history_export_v3_and_receipt_preserved",
     "restored_completion_blocks_schedule_change_without_new_plan_or_actual_activity",
     "erasure_gate_rejects_stale_runtime_write"
   ],
-  "checkCount": 14,
+  "checkCount": 16,
   "cleanup": {
     "clusterStopped": true,
     "temporaryClusterArchiveLedgerRemoved": true
@@ -233,6 +235,51 @@
         "erasure_gate_rejects_stale_runtime_write"
       ],
       "checkCount": 13,
+      "cleanup": {
+        "clusterStopped": true,
+        "temporaryClusterArchiveLedgerRemoved": true
+      },
+      "limitations": [
+        "Requires an independently retained, complete and current erasure ledger before production traffic resumes.",
+        "Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.",
+        "External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised."
+      ],
+      "sources": [
+        "https://www.postgresql.org/docs/15/app-pgdump.html",
+        "https://www.postgresql.org/docs/15/app-pgrestore.html"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-17T12:07:52.857Z",
+      "outcome": "passed",
+      "postgresToolVersion": "pg_dump (PostgreSQL) 15.13 (Homebrew)",
+      "scope": "Synthetic ephemeral logical backup/restore drill only; not a production backup service or RPO/RTO evidence.",
+      "isolation": "New private Unix-socket cluster; no TCP listener or inherited database URL; separate generated source and restore databases.",
+      "archiveFormat": "custom",
+      "trustedArchive": true,
+      "restoreBeforeRuntimeAccess": [
+        "replay_latest_external_erasure_ledger",
+        "invalidate_all_restored_sessions_and_login_attempts",
+        "invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger"
+      ],
+      "checks": [
+        "two_synthetic_tenants_seeded",
+        "post_backup_erasure_ledger_captured_separately",
+        "trusted_custom_archive_restored_pre_deletion_rows",
+        "latest_erasure_replayed_before_runtime_access",
+        "deleted_tenant_absent_from_all_13_health_and_command_tables_and_identity",
+        "restored_sessions_and_login_attempts_invalidated",
+        "all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved",
+        "retained_tenant_consent_and_activity_readable_through_runtime_rls",
+        "manual_source_and_null_report_restored_with_original_zero_report_history_erased_tenant_absent",
+        "check_in_erasure_replayed_across_all_four_tables_retained_self_report_readable",
+        "scenario_revisions_application_and_receipts_restored_without_duplicate_promotion_erased_tenant_absent",
+        "session_completion_four_table_erasure_replayed_retained_history_export_v3_and_receipt_preserved",
+        "restored_completion_blocks_schedule_change_without_new_plan_or_actual_activity",
+        "erasure_gate_rejects_stale_runtime_write"
+      ],
+      "checkCount": 14,
       "cleanup": {
         "clusterStopped": true,
         "temporaryClusterArchiveLedgerRemoved": true

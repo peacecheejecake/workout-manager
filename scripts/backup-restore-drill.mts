@@ -1,7 +1,8 @@
+import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -19,6 +20,7 @@ import {
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
+  grantCoachingThreads,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -126,6 +128,29 @@ async function seedCompletion(database: Database, athleteId: string) {
     saveScenario,
     applyScenario,
   };
+}
+
+async function seedCoachingThread(database: Database, athleteId: string, planVersionId: string) {
+  const repository = createCoachingThreadRepository(database);
+  const createCommand = {
+    planVersionId,
+    title: 'Synthetic restored coaching discussion',
+    scope: { kind: 'session' as const, targetId: 'restore-session' },
+    message: 'Synthetic first user message for backup verification',
+    idempotencyKey: randomUUID(),
+  };
+  const created = await repository.create(athleteId, createCommand);
+  const appendCommand = {
+    expectedRevision: created.thread.revision,
+    message: 'Synthetic second user message for backup verification',
+    idempotencyKey: randomUUID(),
+  };
+  const appended = await repository.append(athleteId, created.thread.id, appendCommand);
+  assert.equal(created.thread.revision, 1);
+  assert.equal(appended.thread.revision, 2);
+  assert.deepEqual(appended.thread.scope, createCommand.scope);
+  assert.equal(appended.thread.planVersionId, planVersionId);
+  return { createCommand, appendCommand, created, appended };
 }
 
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
@@ -248,6 +273,7 @@ async function execute() {
     await grantCheckIns(url('drill_source'), 'drill_runtime');
     await grantSessionCompletions(url('drill_source'), 'drill_runtime');
     await grantPlanScenarios(url('drill_source'), 'drill_runtime');
+    await grantCoachingThreads(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -255,15 +281,19 @@ async function execute() {
     const manualHistories = new Map<string, unknown>();
     const checkInIds = new Map<string, string>();
     const completions = new Map<string, Awaited<ReturnType<typeof seedCompletion>>>();
+    const coachingThreads = new Map<string, Awaited<ReturnType<typeof seedCoachingThread>>>();
+    const coachingExports = new Map<string, { threads: unknown[]; messages: unknown[] }>();
     const completionTables = [
       'session_completion',
       'session_completion_revision',
       'session_completion_receipt',
       'session_completion_collection_head',
     ];
+    const coachingTables = ['coaching_thread', 'coaching_message'];
     const scenarioTables = ['plan_scenario', 'plan_scenario_revision', 'plan_scenario_application'];
     const selfReportTables = [
       ...scenarioTables,
+      ...coachingTables,
       'check_in',
       'check_in_revision',
       'check_in_receipt',
@@ -324,7 +354,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 4);
+      assert.equal(before.schemaVersion, 5);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -342,7 +372,20 @@ async function execute() {
         values: checkInValues,
       });
       checkInIds.set(athleteId, checkIn.id);
-      completions.set(athleteId, await seedCompletion(sourceDb, athleteId));
+      const completion = await seedCompletion(sourceDb, athleteId);
+      completions.set(athleteId, completion);
+      coachingThreads.set(
+        athleteId,
+        await seedCoachingThread(sourceDb, athleteId, completion.plan.id),
+      );
+      const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
+      if (coachingExport.schemaVersion !== 5) throw new Error('Expected coaching export v5');
+      assert.equal(coachingExport.data.coachingThreads.length, 1);
+      assert.equal(coachingExport.data.coachingMessages.length, 2);
+      coachingExports.set(athleteId, {
+        threads: coachingExport.data.coachingThreads,
+        messages: coachingExport.data.coachingMessages,
+      });
       await source.query(
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
@@ -452,7 +495,7 @@ async function execute() {
             deletedAthlete,
           ])
         ).rows[0].count,
-        table === 'plan_scenario_revision' ? 2 : 1,
+        table === 'plan_scenario_revision' || table === 'coaching_message' ? 2 : 1,
       );
     }
     const replayLedger: unknown = JSON.parse(await readFile(ledgerFile, 'utf8'));
@@ -603,7 +646,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 4);
+    assert.equal(retainedExport.schemaVersion, 5);
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
     );
@@ -683,7 +726,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 4) throw new Error('Expected scenario export v4');
+    if (retainedExport.schemaVersion !== 5) throw new Error('Expected coaching export v5');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -712,6 +755,130 @@ async function execute() {
     }
     checks.push(
       'scenario_revisions_application_and_receipts_restored_without_duplicate_promotion_erased_tenant_absent',
+    );
+    const coaching = coachingThreads.get(retainedAthlete);
+    const deletedCoaching = coachingThreads.get(deletedAthlete);
+    const originalCoachingExport = coachingExports.get(retainedAthlete);
+    assert.ok(coaching && deletedCoaching && originalCoachingExport);
+    const coachingRepository = createCoachingThreadRepository(restoreDb);
+    assert.deepEqual(
+      await coachingRepository.read(retainedAthlete, coaching.created.thread.id),
+      coaching.appended.thread,
+    );
+    assert.deepEqual(await coachingRepository.list(retainedAthlete, { limit: 100, offset: 0 }), {
+      items: [coaching.appended.thread],
+      total: 1,
+    });
+    assert.deepEqual(
+      await coachingRepository.messages(retainedAthlete, coaching.created.thread.id, {
+        afterRevision: 0,
+        limit: 100,
+      }),
+      {
+        thread: coaching.appended.thread,
+        messages: [coaching.created.message, coaching.appended.message],
+        hasMore: false,
+      },
+    );
+    assert.deepEqual(
+      await coachingRepository.messages(retainedAthlete, coaching.created.thread.id, {
+        afterRevision: 1,
+        limit: 1,
+      }),
+      { thread: coaching.appended.thread, messages: [coaching.appended.message], hasMore: false },
+    );
+    assert.deepEqual(retainedExport.data.coachingThreads, originalCoachingExport.threads);
+    assert.deepEqual(retainedExport.data.coachingMessages, originalCoachingExport.messages);
+    // Original receipts must survive the restore without moving the thread head backward or
+    // appending duplicate immutable messages/outbox events when a client retries an old command.
+    assert.deepEqual(
+      await coachingRepository.create(retainedAthlete, coaching.createCommand),
+      coaching.created,
+    );
+    assert.deepEqual(
+      await coachingRepository.append(
+        retainedAthlete,
+        coaching.created.thread.id,
+        coaching.appendCommand,
+      ),
+      coaching.appended,
+    );
+    assert.deepEqual(
+      await coachingRepository.read(retainedAthlete, coaching.created.thread.id),
+      coaching.appended.thread,
+    );
+    assert.deepEqual(
+      (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
+      completion.plan,
+    );
+    for (const [table, count] of [
+      ['coaching_thread', 1],
+      ['coaching_message', 2],
+    ] as const) {
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            retainedAthlete,
+          ])
+        ).rows[0].count,
+        count,
+      );
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            deletedAthlete,
+          ])
+        ).rows[0].count,
+        0,
+      );
+    }
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT count(*)::int AS count FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=ANY($2::text[])',
+          [
+            retainedAthlete,
+            [
+              `coaching:create:${createHash('sha256').update(coaching.createCommand.idempotencyKey).digest('hex')}`,
+              `coaching:append:${createHash('sha256').update(coaching.appendCommand.idempotencyKey).digest('hex')}`,
+            ],
+          ],
+        )
+      ).rows[0].count,
+      2,
+    );
+    assert.equal(
+      (
+        await restored.query(
+          "SELECT count(*)::int AS count FROM outbox WHERE athlete_id=$1 AND topic IN ('coaching.thread_created','coaching.message_appended')",
+          [retainedAthlete],
+        )
+      ).rows[0].count,
+      2,
+    );
+    const coachingAfterReplay =
+      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
+    if (coachingAfterReplay.schemaVersion !== 5) throw new Error('Expected coaching export v5');
+    assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
+    assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
+    checks.push(
+      'coaching_scope_revision_and_immutable_user_messages_export_v5_restored_receipts_replayed_without_duplicates',
+    );
+    await assert.rejects(
+      () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
+      TenantErasedError,
+    );
+    await assert.rejects(
+      () =>
+        coachingRepository.append(
+          deletedAthlete,
+          deletedCoaching.created.thread.id,
+          deletedCoaching.appendCommand,
+        ),
+      TenantErasedError,
+    );
+    checks.push(
+      'coaching_threads_messages_and_command_outbox_erasure_replayed_before_runtime_access',
     );
     const completionRepository = createSessionCompletionRepository(restoreDb);
     const retainedCompletion = await completionRepository.read(retainedAthlete, 'restore-session');

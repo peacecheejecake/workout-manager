@@ -1,3 +1,5 @@
+import type { CoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
+import { registerCoachingThreadRoutes } from './coaching-thread-routes.js';
 import type { SessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { registerSessionActualsRoutes } from './session-actuals-routes.js';
 import type { PlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
@@ -24,6 +26,7 @@ export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
+  coachingThreads?: CoachingThreadRepository;
   sessionActuals?: SessionActualsRepository;
   planScenarios?: PlanScenarioRepository;
   sessionCompletions?: SessionCompletionRepository;
@@ -39,6 +42,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.coachingThreads)
+    registerCoachingThreadRoutes(routes, repositories.coachingThreads, principal);
   if (repositories.sessionActuals)
     registerSessionActualsRoutes(routes, repositories.sessionActuals, principal);
   if (repositories.planScenarios)
