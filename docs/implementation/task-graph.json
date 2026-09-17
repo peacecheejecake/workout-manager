@@ -415,6 +415,15 @@
       "evidence": "docs/implementation/progress/M1-04af.md"
     },
     {
+      "id": "M1-04ag",
+      "title": "선택 기간 계획·실제 요약과 주요 세션",
+      "dependsOn": ["M1-04ad", "M1-04af", "M1-04c"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S04 불변 version/period별 전체기간 집계·현재 actual 관측/revision·명시 high 세션·owner/DB snapshot 일관성·읽기 전용 UI",
+      "evidence": "docs/implementation/progress/M1-04ag.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -451,7 +460,8 @@
         "M1-04ac",
         "M1-04ad",
         "M1-04ae",
-        "M1-04af"
+        "M1-04af",
+        "M1-04ag"
       ],
       "kind": "task",
       "status": "not_started",

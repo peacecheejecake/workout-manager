@@ -33,6 +33,10 @@
       "types": "./src/planning-constraints.ts",
       "default": "./dist/planning-constraints.js"
     },
+    "./period-summary": {
+      "types": "./src/period-summary.ts",
+      "default": "./dist/period-summary.js"
+    },
     "./operations": {
       "types": "./src/operations.ts",
       "default": "./dist/operations.js"

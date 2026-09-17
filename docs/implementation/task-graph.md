@@ -178,6 +178,11 @@ flowchart TD
     task12 --> periodConstraints
     periodPriority --> periodConstraints
     periodConstraints --> task14
+    periodSummary["M1-04ag 선택 기간 계획·실제 요약과 주요 세션"]
+    planHistoryComparison --> periodSummary
+    periodConstraints --> periodSummary
+    dashboardApi --> periodSummary
+    periodSummary --> task14
     dashboardUi --> dashboardLayout
     plannerOperations --> dashboardLayout
     dashboardLayout --> task14
@@ -325,7 +330,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04ad 저장된 계획 버전 조회·기간 비교 | M1-02, M1-04u, M1-04ac | tenant snapshot 조회·고정 version pair·기간/세션 ID diff·초안 보존 |
 | M1-04ae 기간 우선순위 편집·버전 호환성 | M1-02, M1-04u, M1-04ad | optional priority·명시 저장·상세/이력 표시·legacy/receipt 호환 |
 | M1-04af 기간 운동 불가 날짜·가용 시간 제약 | M1-02, M1-04ae | 날짜별 가용량·조상 적용·계획 충돌/미정 표시·명시 저장·legacy 보존 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04ag 선택 기간 계획·실제 요약과 주요 세션 | M1-04ad, M1-04af, M1-04c | 불변 계획 기준·전체기간 actual 집계·현재 관측/revision·high 세션·읽기 전용 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

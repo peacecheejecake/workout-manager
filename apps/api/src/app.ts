@@ -126,6 +126,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
     }),
   );
   const app = Fastify({
+    routerOptions: { maxParamLength: 200 },
     bodyLimit: 16 * 1024,
     requestTimeout: 15_000,
     connectionTimeout: 15_000,

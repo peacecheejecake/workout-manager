@@ -43,6 +43,7 @@ import {
 } from './session-operation-feedback';
 import { sessionOperationDate } from './session-operation-clock';
 import { PeriodExplorer } from './period-explorer';
+import { PeriodSummaryPanel } from './period-summary-panel';
 import { PlanHistoryPanel } from './plan-history-panel';
 
 export interface PlanningWorkspaceProps {
@@ -315,6 +316,14 @@ function Planner({
             plannedView: 'calendar',
           })
         }
+      />
+      <PeriodSummaryPanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        head={currentPlan?.head}
+        periodId={selectedPeriodId}
+        onSelectSession={(id) => changeSearch({ plannedSession: id })}
       />
       <section aria-label="조회 범위">
         <h2>달력·rolling 조회</h2>

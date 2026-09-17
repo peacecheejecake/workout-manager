@@ -19,6 +19,7 @@
     "./migrate": "./src/migrate.ts",
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
+    "./period-summary": "./src/period-summary.ts",
     "./activities": "./src/activities.ts",
     "./operations": "./src/operations.ts",
     "./garmin": "./src/garmin.ts",

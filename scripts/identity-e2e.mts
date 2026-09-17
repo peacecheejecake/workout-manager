@@ -1,3 +1,4 @@
+import { createPeriodSummaryRepository } from '../packages/server/persistence/src/period-summary.ts';
 import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
@@ -190,6 +191,7 @@ try {
     }),
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
+    periodSummary: createPeriodSummaryRepository(database),
     activities: createActivityRepository(database),
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),

@@ -1,3 +1,5 @@
+import type { PeriodSummaryRepository } from '@workout/server-persistence/period-summary';
+import { registerPeriodSummaryRoutes } from './period-summary-routes.js';
 import type { ActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { registerActivityContextRoutes } from './activity-context-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -16,6 +18,7 @@ export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
+  periodSummary?: PeriodSummaryRepository;
   activities?: ActivityRepository;
   activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
@@ -27,6 +30,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.periodSummary)
+    registerPeriodSummaryRoutes(routes, repositories.periodSummary, principal);
   if (repositories.activityContext)
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
