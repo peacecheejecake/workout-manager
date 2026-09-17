@@ -1,4 +1,5 @@
 import type { PlanDraft } from '@workout/contracts/planning';
+import { periodPriorityLabel } from './period-priority';
 
 /** Human-readable full before/after review; identities remain internal to the command. */
 export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
@@ -15,7 +16,8 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
             {period.level} · {period.title} · 상위{' '}
             {draft.periods.find((parent) => parent.id === period.parentId)?.title ?? '없음'} ·{' '}
             {period.startDate}–{period.endDateExclusive} (종료일 미포함) · {period.timezone} · 목적{' '}
-            {period.intent || '미정'} · {period.isPartial ? '부분 기간' : '일반 기간'}
+            {period.intent || '미정'} · {period.isPartial ? '부분 기간' : '일반 기간'} · 기간
+            우선순위 {periodPriorityLabel(period.priority)}
           </li>
         ))}
       </ul>

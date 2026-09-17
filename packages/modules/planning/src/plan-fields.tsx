@@ -5,11 +5,13 @@ import { duplicatePlannedSession } from './duplicate-session';
 
 import {
   plannedSessionSchema,
+  periodDraftSchema,
   type PlanDraft,
   type PlannedSession,
 } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
 import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
+import { periodPriorityLabel } from './period-priority';
 import { addDays } from './lens';
 import styles from './planning.module.css';
 
@@ -37,6 +39,7 @@ export function createPeriod(
     timezone: draft.timezone,
     intent: '',
     isPartial: false,
+    priority: null,
   };
 }
 export function PeriodEditor({
@@ -62,6 +65,10 @@ export function PeriodEditor({
     <section aria-labelledby="period-editor-title">
       <h3 id="period-editor-title">기간 트리 초안</h3>
       <p>Block 기본값은 10일이며 수정할 수 있습니다. 종료일은 포함하지 않습니다.</p>
+      <p>
+        기간 우선순위는 기간의 상대적 중요도입니다. 세션 중요도·강도·의무와 별도이며 하위 기간이나
+        일정·훈련량을 자동으로 바꾸지 않습니다.
+      </p>
       <div className={styles.toolbar}>
         {levels.map((level) => (
           <Button
@@ -125,6 +132,24 @@ export function PeriodEditor({
             value={period.intent}
             onChange={(event) => update(period.id, { intent: event.target.value })}
           />
+          <label>
+            기간 우선순위
+            <select
+              value={period.priority ?? ''}
+              onChange={(event) =>
+                update(period.id, {
+                  priority: periodDraftSchema.shape.priority.parse(event.target.value || null),
+                })
+              }
+            >
+              <option value="">미지정</option>
+              {(['low', 'normal', 'high'] as const).map((priority) => (
+                <option key={priority} value={priority}>
+                  {periodPriorityLabel(priority)}
+                </option>
+              ))}
+            </select>
+          </label>
           <TextField
             label="기간 시간대"
             value={period.timezone}

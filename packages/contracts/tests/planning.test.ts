@@ -92,6 +92,43 @@ function session(): PlannedSession {
   };
 }
 describe('M1-02 planned snapshots V2-A07..11', () => {
+  it('preserves legacy period priority absence and explicit null without assigning a default', () => {
+    const legacy = draft();
+    expect(planDraftSchema.parse(legacy)).toStrictEqual(legacy);
+    expect(planDraftSchema.parse(legacy).periods[0]).not.toHaveProperty('priority');
+    for (const priority of [null, 'low', 'normal', 'high'] as const) {
+      const value = {
+        ...legacy,
+        periods: legacy.periods.map((period) => ({ ...period, priority })),
+      };
+      expect(planDraftSchema.parse(value)).toStrictEqual(value);
+      const snapshot = { id: 'saved', version: 1, createdAt: '2026-09-17T00:00:00Z', draft: value };
+      expect(planSnapshotSchema.parse(snapshot)).toStrictEqual(snapshot);
+    }
+  });
+  it('rejects unsupported period priorities without coercing or dropping values', () => {
+    for (const priority of ['urgent', 'HIGH', '', 0, false, {}]) {
+      const value = draft();
+      expect(
+        planDraftSchema.safeParse({
+          ...value,
+          periods: value.periods.map((period) => ({ ...period, priority })),
+        }).success,
+      ).toBe(false);
+    }
+  });
+  it('keeps period priority independent from session locks, projections and session priorities', () => {
+    const baseline = draft();
+    baseline.sessions = [{ ...session(), locks: { date: true, time: true, intensity: true } }];
+    const changed = planDraftSchema.parse({
+      ...baseline,
+      periods: baseline.periods.map((period) => ({ ...period, priority: 'high' })),
+    });
+    expect(changed.sessions).toStrictEqual(baseline.sessions);
+    expect(preservesSessionLocks(baseline, changed)).toBe(true);
+    const lens = { kind: 'calendar', from: '2026-03-01', toExclusive: '2026-03-12' } as const;
+    expect(projectPlan(changed, lens)).toEqual(projectPlan(baseline, lens));
+  });
   it('preserves missing legacy intensity labels without changing historical command JSON', () => {
     const value = draft();
     value.sessions = [session()];

@@ -11,6 +11,7 @@ import { idSchema } from '@workout/contracts/primitives';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import { Button } from '@workout/ui-foundation/button';
 import { updatePlannerSearch } from './lens';
+import { periodPriorityLabel } from './period-priority';
 import { comparePlanHistory } from './plan-history-comparison';
 import styles from './plan-history-panel.module.css';
 
@@ -281,6 +282,12 @@ function PeriodValues({ period, label }: { period: PeriodDraft | null; label: st
             {period.isPartial ? '부분 기간' : '일반 기간'}
           </p>
           <p>목적 {period.intent || '미입력'}</p>
+          <p>
+            기간 우선순위{' '}
+            {period.priority === undefined
+              ? '미지정 (이전 형식에 값 없음)'
+              : periodPriorityLabel(period.priority)}
+          </p>
         </>
       ) : (
         <p>이 버전에 없음</p>

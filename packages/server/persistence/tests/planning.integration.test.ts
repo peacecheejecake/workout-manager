@@ -5,6 +5,7 @@ import type { ManualPlanCommand } from '@workout/contracts/planning';
 import { createDatabase, type Database } from '../src/database.js';
 import { migrate, grantOperations } from '../src/migrate.js';
 import { createPlanningRepository } from '../src/planning.js';
+import { createOperationsRepository } from '../src/operations.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
@@ -16,6 +17,9 @@ beforeAll(async () => {
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON plan_snapshot,plan_head,plan_history,command_receipt,outbox TO workout_runtime',
+  );
+  await admin.query(
+    'GRANT SELECT ON consent,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression TO workout_runtime',
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
 });
@@ -433,4 +437,66 @@ it('reads an owned immutable version outside the latest 100 history entries with
   expect(await repository.readVersion(athlete, second.id)).toEqual(second);
   expect(await repository.read(athlete)).toEqual(before);
   expect((await count()).rows).toEqual(prior.rows);
+});
+
+it('preserves legacy period priority absence and explicit values through immutable snapshots, receipts and export', async () => {
+  const athlete = randomUUID();
+  const repository = createPlanningRepository(database);
+  const input = intensityCommand();
+  input.draft.sessions = input.draft.sessions.map((session) => ({
+    ...session,
+    locks: { date: true, time: true, intensity: true },
+  }));
+  const first = await repository.save(athlete, input);
+  for (const period of first.draft.periods) expect(period).not.toHaveProperty('priority');
+  const second = await repository.save(athlete, {
+    ...input,
+    expectedVersionId: first.id,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...input.draft,
+      periods: input.draft.periods.map((period) => ({
+        ...period,
+        priority: period.level === 'wave' ? null : 'high',
+      })),
+    },
+  });
+  expect(second.draft.sessions).toEqual(first.draft.sessions);
+  expect(second.draft.periods.map((period) => period.priority)).toEqual([
+    'high',
+    null,
+    'high',
+    'high',
+  ]);
+  expect(await repository.save(athlete, input)).toEqual(first);
+  expect((await repository.read(athlete)).head).toEqual(second);
+  expect(await repository.readVersion(athlete, first.id)).toEqual(first);
+  expect(await repository.readVersion(athlete, second.id)).toEqual(second);
+  const exported = await createOperationsRepository(database).exportAccount(athlete);
+  expect(exported.data.planSnapshots.find((row) => row['id'] === first.id)?.['draft']).toEqual(
+    first.draft,
+  );
+  expect(exported.data.planSnapshots.find((row) => row['id'] === second.id)?.['draft']).toEqual(
+    second.draft,
+  );
+  const cleared = await repository.save(athlete, {
+    ...input,
+    expectedVersionId: second.id,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...second.draft,
+      periods: second.draft.periods.map((period) => ({ ...period, priority: null })),
+    },
+  });
+  expect(cleared.draft.sessions).toEqual(input.draft.sessions);
+  expect(cleared.draft.periods.every((period) => period.priority === null)).toBe(true);
+  expect(await repository.readVersion(athlete, second.id)).toEqual(second);
+  expect(
+    (await admin.query('SELECT * FROM activity_canonical WHERE athlete_id=$1', [athlete])).rowCount,
+  ).toBe(0);
+  await database.tenant(athlete, async (tx) => {
+    expect((await tx.query('SELECT * FROM command_receipt')).rowCount).toBe(3);
+    expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(3);
+    expect((await tx.query('SELECT * FROM plan_history')).rowCount).toBe(3);
+  });
 });

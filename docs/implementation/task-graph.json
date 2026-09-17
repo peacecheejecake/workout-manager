@@ -397,6 +397,15 @@
       "evidence": "docs/implementation/progress/M1-04ad.md"
     },
     {
+      "id": "M1-04ae",
+      "title": "기간 우선순위 편집·버전 호환성",
+      "dependsOn": ["M1-02", "M1-04u", "M1-04ad"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S04 기간 상대 우선순위·초안/명시 저장·legacy 누락/null 보존·상세/이력 표시·세션과 독립",
+      "evidence": "docs/implementation/progress/M1-04ae.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -431,7 +440,8 @@
         "M1-04aa",
         "M1-04ab",
         "M1-04ac",
-        "M1-04ad"
+        "M1-04ad",
+        "M1-04ae"
       ],
       "kind": "task",
       "status": "not_started",

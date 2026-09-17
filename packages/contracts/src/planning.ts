@@ -21,6 +21,8 @@ export const periodDraftSchema = z.strictObject({
   timezone: timeZoneSchema,
   intent: z.string().max(2000),
   isPartial: z.boolean(),
+  // Missing remains missing in immutable legacy snapshots and command receipts.
+  priority: z.enum(['low', 'normal', 'high']).nullable().optional(),
 });
 export const plannedSessionSchema = z
   .strictObject({

@@ -205,3 +205,22 @@ describe('immutable plan version route', () => {
     expect(current.planning.readVersion).not.toHaveBeenCalled();
   });
 });
+
+it('rejects unsupported period priorities before persistence', async () => {
+  const { app, planning } = setup();
+  const response = await app.inject({
+    method: 'PUT',
+    url: '/bff/v1/plans/current',
+    headers,
+    payload: {
+      ...body,
+      draft: {
+        ...draft,
+        periods: draft.periods.map((period) => ({ ...period, priority: 'urgent' })),
+      },
+    },
+  });
+  expect(response.statusCode).toBe(400);
+  expect(response.json()).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  expect(planning.save).not.toHaveBeenCalled();
+});

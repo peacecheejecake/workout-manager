@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { planDraftSchema, type PlanDraft, type PeriodDraft } from '@workout/contracts/planning';
 import { Button } from '@workout/ui-foundation/button';
+import { periodPriorityLabel } from './period-priority';
 import { buildPeriodNavigation } from './period-navigation';
 import type { PeriodOrbitProps } from './period-orbit';
 import styles from './period-explorer.module.css';
@@ -63,7 +64,8 @@ function Summary({ period }: { period: PeriodDraft }) {
       </p>
       <p>
         {period.intent || '목적 미정'}
-        {period.isPartial ? ' · 부분 기간' : ''}
+        {period.isPartial ? ' · 부분 기간' : ''} · 기간 우선순위{' '}
+        {periodPriorityLabel(period.priority)}
       </p>
     </>
   );
