@@ -324,8 +324,8 @@ describe('immutable saved plan comparison', () => {
     expect(within(newValues).getAllByRole('listitem')[0]).toHaveTextContent(
       '단계 ID second · work · 미정 · 0m',
     );
-    expect(oldValues).toHaveTextContent('이전 형식에 값 없음');
-    expect(newValues).not.toHaveTextContent('이전 형식에 값 없음');
+    expect(oldValues).toHaveTextContent('강도 라벨 미지정 (이전 형식에 값 없음)');
+    expect(newValues).not.toHaveTextContent('강도 라벨 미지정 (이전 형식에 값 없음)');
     expect(screen.getByText('세션 삭제된 세션 · 삭제')).toBeVisible();
   });
   it('shows the missing-version failure instead of a partial or stale comparison', async () => {

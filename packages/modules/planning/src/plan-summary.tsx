@@ -1,6 +1,7 @@
 import type { PlanDraft } from '@workout/contracts/planning';
 import { PeriodConstraintsSummary } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
+import { heartRateTargetLabel, paceTargetLabel } from './session-target-labels';
 
 /** Human-readable full before/after review; identities remain internal to the command. */
 export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
@@ -35,6 +36,10 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
               {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`} · 거리:{' '}
               {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · RPE:{' '}
               {session.targetRpe ?? '미정'} · 강도 라벨: {session.intensityLabel ?? '미지정'}
+            </p>
+            <p>
+              목표 페이스: {paceTargetLabel(session.paceTarget)} · 목표 심박:{' '}
+              {heartRateTargetLabel(session.heartRateTarget)}
             </p>
             <p>
               잠금: 날짜 {session.locks.date ? '켜짐' : '꺼짐'}, 시각{' '}

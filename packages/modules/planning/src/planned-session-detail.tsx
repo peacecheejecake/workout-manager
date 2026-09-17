@@ -1,4 +1,5 @@
 import type { PlanDraft } from '@workout/contracts/planning';
+import { heartRateTargetLabel, paceTargetLabel } from './session-target-labels';
 export function PlannedSessionDetail({
   source,
   selected,
@@ -36,6 +37,10 @@ export function PlannedSessionDetail({
           <p>
             강도 라벨: {session.intensityLabel ?? '미지정'} · 목표 RPE:{' '}
             {session.targetRpe ?? '미정'}
+          </p>
+          <p>
+            목표 페이스: {paceTargetLabel(session.paceTarget)} · 목표 심박:{' '}
+            {heartRateTargetLabel(session.heartRateTarget)}
           </p>
           {!draft ? (
             <p>수정하려면 계획 초안 편집을 시작하세요. 선택만으로 계획을 변경하지 않습니다.</p>

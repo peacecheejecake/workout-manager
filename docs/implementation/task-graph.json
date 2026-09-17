@@ -478,6 +478,15 @@
       "evidence": "docs/implementation/progress/M1-04am.md"
     },
     {
+      "id": "M1-04an",
+      "title": "세션 페이스·심박 목표 입력",
+      "dependsOn": ["M1-04w", "M1-04ad", "M1-04al"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "사용자 목표 단일값/범위·명시 저장·intensity 잠금·legacy/receipt/export 보존·실제 관측 분리",
+      "evidence": "docs/implementation/progress/M1-04an.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -521,7 +530,8 @@
         "M1-04aj",
         "M1-04ak",
         "M1-04al",
-        "M1-04am"
+        "M1-04am",
+        "M1-04an"
       ],
       "kind": "task",
       "status": "not_started",

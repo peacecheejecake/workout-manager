@@ -575,3 +575,144 @@ it('stores explicit scheduling conflicts and unknown duration constraints withou
     expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(3);
   });
 });
+
+describe('S06 pace and heart-rate target persistence', () => {
+  it('preserves legacy absence and original receipts while saving and exporting explicit target ranges', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const legacy = intensityCommand();
+    const first = await repository.save(athlete, legacy);
+    const targets = {
+      paceTarget: { minSecondsPerKm: 300.5, maxSecondsPerKm: 360 },
+      heartRateTarget: { minBpm: 120, maxBpm: 140 },
+    };
+    const second = await repository.save(athlete, {
+      ...legacy,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...legacy.draft,
+        sessions: legacy.draft.sessions.map((session) => ({ ...session, ...targets })),
+      },
+    });
+    expect(second.draft.sessions[0]).toEqual({ ...first.draft.sessions[0], ...targets });
+    expect(await repository.save(athlete, legacy)).toEqual(first);
+    expect(await repository.readVersion(athlete, first.id)).toEqual(first);
+    expect(first.draft.sessions[0]).not.toHaveProperty('paceTarget');
+    expect(first.draft.sessions[0]).not.toHaveProperty('heartRateTarget');
+    expect((await repository.read(athlete)).head).toEqual(second);
+    const exported = await createOperationsRepository(database).exportAccount(athlete);
+    expect(exported.data.planSnapshots.find((row) => row['id'] === second.id)?.['draft']).toEqual(
+      second.draft,
+    );
+    expect(exported.data.planSnapshots.find((row) => row['id'] === first.id)?.['draft']).toEqual(
+      first.draft,
+    );
+    await database.tenant(athlete, async (tx) => {
+      for (const table of ['command_receipt', 'plan_history', 'outbox'])
+        expect((await tx.query(`SELECT * FROM ${table}`)).rowCount).toBe(2);
+      expect((await tx.query('SELECT * FROM activity_canonical')).rowCount).toBe(0);
+    });
+  });
+  it('requires a separate unlock before changing, clearing or omitting either protected target', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      paceTarget: { minSecondsPerKm: 300, maxSecondsPerKm: 300 },
+      heartRateTarget: { minBpm: 130, maxBpm: 130 },
+      locks: { ...session.locks, intensity: true },
+    }));
+    const first = await repository.save(athlete, input);
+    for (const field of ['paceTarget', 'heartRateTarget'] as const) {
+      for (const mode of ['change', 'clear', 'omit'] as const) {
+        for (const unlock of [false, true]) {
+          const candidate = structuredClone(first.draft);
+          for (const session of candidate.sessions) {
+            session.locks.intensity = !unlock;
+            if (mode === 'omit') {
+              if (field === 'paceTarget') delete session.paceTarget;
+              else delete session.heartRateTarget;
+            } else if (mode === 'clear') session[field] = null;
+            else if (field === 'paceTarget')
+              session.paceTarget = { minSecondsPerKm: 301, maxSecondsPerKm: 320 };
+            else session.heartRateTarget = { minBpm: 131, maxBpm: 140 };
+          }
+          await expect(
+            repository.save(athlete, {
+              ...input,
+              expectedVersionId: first.id,
+              idempotencyKey: randomUUID(),
+              draft: candidate,
+            }),
+          ).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+        }
+      }
+    }
+    const unlocked = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...first.draft,
+        sessions: first.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, intensity: false },
+        })),
+      },
+    });
+    const cleared = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: unlocked.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...unlocked.draft,
+        sessions: unlocked.draft.sessions.map((session) => ({
+          ...session,
+          paceTarget: null,
+          heartRateTarget: null,
+        })),
+      },
+    });
+    expect(cleared.draft.sessions[0]).toMatchObject({
+      paceTarget: null,
+      heartRateTarget: null,
+      durationSeconds: 0,
+      distanceMeters: null,
+      targetRpe: 0,
+    });
+    expect((await repository.read(athlete)).history).toHaveLength(3);
+  });
+  it('treats absent and null as equivalent only for locks while preserving each saved representation', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions.forEach((session) => {
+      session.locks.intensity = true;
+    });
+    const absent = await repository.save(athlete, input);
+    const explicit = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: absent.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...input.draft,
+        sessions: input.draft.sessions.map((session) => ({
+          ...session,
+          paceTarget: null,
+          heartRateTarget: null,
+        })),
+      },
+    });
+    expect(explicit.draft.sessions[0]).toMatchObject({ paceTarget: null, heartRateTarget: null });
+    const restored = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: explicit.id,
+      idempotencyKey: randomUUID(),
+    });
+    expect(restored.draft.sessions[0]).not.toHaveProperty('paceTarget');
+    expect(restored.draft.sessions[0]).not.toHaveProperty('heartRateTarget');
+    expect(await repository.save(athlete, input)).toEqual(absent);
+  });
+});

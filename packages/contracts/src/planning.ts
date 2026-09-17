@@ -12,6 +12,21 @@ import {
 const boundedId = idSchema.max(200);
 const duration = z.number().finite().min(0).max(604800).nullable();
 const distance = z.number().finite().min(0).max(10_000_000).nullable();
+// Technical input bounds, not physiological recommendations or observed measurements.
+const targetPace = z.number().finite().positive().max(86400);
+const targetHeartRate = z.number().int().min(1).max(1000);
+export const paceTargetSchema = z
+  .strictObject({ minSecondsPerKm: targetPace, maxSecondsPerKm: targetPace })
+  .refine((value) => value.minSecondsPerKm <= value.maxSecondsPerKm, {
+    message: 'Fast pace boundary must not exceed slow pace boundary',
+    path: ['maxSecondsPerKm'],
+  });
+export const heartRateTargetSchema = z
+  .strictObject({ minBpm: targetHeartRate, maxBpm: targetHeartRate })
+  .refine((value) => value.minBpm <= value.maxBpm, {
+    message: 'Minimum heart-rate target must not exceed maximum',
+    path: ['maxBpm'],
+  });
 export const periodDraftSchema = z.strictObject({
   id: boundedId,
   parentId: boundedId.nullable(),
@@ -39,6 +54,8 @@ export const plannedSessionSchema = z
     targetRpe: z.number().finite().min(0).max(10).nullable(),
     // Missing stays missing when reading legacy snapshots and idempotency receipts.
     intensityLabel: z.enum(['A', 'B', 'C']).nullable().optional(),
+    paceTarget: paceTargetSchema.nullable().optional(),
+    heartRateTarget: heartRateTargetSchema.nullable().optional(),
     purpose: z.string().max(2000),
     notes: z.string().max(4000),
     priority: z.enum(['low', 'normal', 'high']),
@@ -234,6 +251,10 @@ export function preservesSessionLocks(previous: PlanDraft, next: PlanDraft): boo
         value.sport,
         value.targetRpe,
         value.intensityLabel ?? null,
+        value.paceTarget
+          ? [value.paceTarget.minSecondsPerKm, value.paceTarget.maxSecondsPerKm]
+          : null,
+        value.heartRateTarget ? [value.heartRateTarget.minBpm, value.heartRateTarget.maxBpm] : null,
         value.durationSeconds,
         value.distanceMeters,
         value.steps,

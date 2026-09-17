@@ -14,6 +14,7 @@ import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
 import { PeriodConstraintsEditor } from './period-constraints-editor';
 import { PlanConstraintsReport } from './period-constraints-summary';
 import { StepQuantityField } from './step-quantity-field';
+import { SessionTargetFields } from './session-target-fields';
 import { periodPriorityLabel } from './period-priority';
 import { addDays } from './lens';
 import styles from './planning.module.css';
@@ -467,6 +468,11 @@ export function SessionEditor({
                 onChange={(event) =>
                   update(session.id, { targetRpe: numberOrNull(event.target.value) })
                 }
+              />
+              <SessionTargetFields
+                session={session}
+                disabled={locked?.intensity ?? false}
+                onChange={(patch) => update(session.id, patch)}
               />
               <TextAreaField
                 label="세션 메모"
