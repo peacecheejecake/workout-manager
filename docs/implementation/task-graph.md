@@ -198,6 +198,9 @@ flowchart TD
     sessionCompletionApi --> task14
     sessionCompletionUi --> task14
     periodMove --> task14
+    stepUnitConversion["M1-04al 세션 단계 단위 전환 확인"]
+    sessionStepOrder --> stepUnitConversion
+    stepUnitConversion --> task14
     dashboardUi --> dashboardLayout
     plannerOperations --> dashboardLayout
     dashboardLayout --> task14
@@ -350,7 +353,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04ai 사용자 세션 완료 원장·이동 보호 API | M1-04ah, M1-06a | 자기보고 원장·직렬화/일정 보호·export/erase |
 | M1-04aj 세션 완료 확인·철회 UI | M1-04ai | 명시 확인/철회·이력·초안 보존·보호 표시 |
 | M1-04ak 기간 날짜 이동 영향 확인 | M1-04aj, M1-04af | 자식 포함 명시 선택·완료 고정·영향/초안 undo |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04al 세션 단계 단위 전환 확인 | M1-04ac | 초/분·m/km 명시 확인·0/null/정밀도 보존·잠금/별도 저장 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

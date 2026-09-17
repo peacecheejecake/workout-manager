@@ -460,6 +460,15 @@
       "evidence": "docs/implementation/progress/M1-04ak.md"
     },
     {
+      "id": "M1-04al",
+      "title": "세션 단계 단위 전환 확인",
+      "dependsOn": ["M1-04ac"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "초/분·m/km 명시 확인·동일 차원 입력·정본/정밀도/0/null/잠금 보존·별도 계획 저장",
+      "evidence": "docs/implementation/progress/M1-04al.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -501,7 +510,8 @@
         "M1-04ah",
         "M1-04ai",
         "M1-04aj",
-        "M1-04ak"
+        "M1-04ak",
+        "M1-04al"
       ],
       "kind": "task",
       "status": "not_started",

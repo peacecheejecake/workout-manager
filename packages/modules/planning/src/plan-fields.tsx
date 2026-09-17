@@ -13,6 +13,7 @@ import { Button } from '@workout/ui-foundation/button';
 import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
 import { PeriodConstraintsEditor } from './period-constraints-editor';
 import { PlanConstraintsReport } from './period-constraints-summary';
+import { StepQuantityField } from './step-quantity-field';
 import { periodPriorityLabel } from './period-priority';
 import { addDays } from './lens';
 import styles from './planning.module.css';
@@ -547,32 +548,28 @@ export function SessionEditor({
                         ))}
                       </select>
                     </label>
-                    <TextField
-                      label="단계 시간 (초)"
-                      type="number"
-                      min="0"
-                      value={step.durationSeconds ?? ''}
-                      onChange={(event) =>
+                    <StepQuantityField
+                      dimension="duration"
+                      contextKey={JSON.stringify([session.id, step.id, stepIndex])}
+                      disabled={locked?.intensity ?? false}
+                      value={step.durationSeconds}
+                      onChange={(value) =>
                         update(session.id, {
                           steps: session.steps.map((item) =>
-                            item.id === step.id
-                              ? { ...item, durationSeconds: numberOrNull(event.target.value) }
-                              : item,
+                            item.id === step.id ? { ...item, durationSeconds: value } : item,
                           ),
                         })
                       }
                     />
-                    <TextField
-                      label="단계 거리 (m)"
-                      type="number"
-                      min="0"
-                      value={step.distanceMeters ?? ''}
-                      onChange={(event) =>
+                    <StepQuantityField
+                      dimension="distance"
+                      contextKey={JSON.stringify([session.id, step.id, stepIndex])}
+                      disabled={locked?.intensity ?? false}
+                      value={step.distanceMeters}
+                      onChange={(value) =>
                         update(session.id, {
                           steps: session.steps.map((item) =>
-                            item.id === step.id
-                              ? { ...item, distanceMeters: numberOrNull(event.target.value) }
-                              : item,
+                            item.id === step.id ? { ...item, distanceMeters: value } : item,
                           ),
                         })
                       }

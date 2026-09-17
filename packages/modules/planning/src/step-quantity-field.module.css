@@ -1,0 +1,22 @@
+.field {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.unit {
+  display: grid;
+  gap: var(--space-2);
+}
+.unit select {
+  min-width: 0;
+  min-height: var(--target-primary, 44px);
+  max-width: 100%;
+  font: inherit;
+}
+.confirm {
+  min-inline-size: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
