@@ -1,0 +1,33 @@
+.panel {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+.field input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--target-primary, 44px);
+  font: inherit;
+}
+.options,
+.preview {
+  min-inline-size: 0;
+}
+.options label {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-primary, 44px);
+  gap: var(--space-2);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

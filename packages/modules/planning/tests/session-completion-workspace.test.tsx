@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { transportReplySchema, type TransportRequest } from '@workout/contracts/core';
@@ -63,11 +63,15 @@ const list = sessionCompletionListSchema.parse({
     },
   ],
 });
-function setup(readList: () => Promise<unknown>) {
+function setup(
+  readList: () => Promise<unknown>,
+  saved = head,
+  search = 'lens=calendar&from=2080-01-01&to=2080-02-01&plannedSession=run',
+) {
   const request = vi.fn(async (input: TransportRequest) => {
     let body: unknown;
     if (input.path === '/bff/v1/plans/current/session-completions') body = await readList();
-    else if (input.path === '/bff/v1/plans/current') body = { head, history: [] };
+    else if (input.path === '/bff/v1/plans/current') body = { head: saved, history: [] };
     else if (input.path.startsWith('/bff/v1/activities?')) body = { items: [], total: 0 };
     else return transportReplySchema.parse({ status: 404, body: {}, traceId: null });
     return transportReplySchema.parse({ status: 200, body, traceId: null });
@@ -77,7 +81,7 @@ function setup(readList: () => Promise<unknown>) {
       athleteId="athlete"
       sessionId="auth"
       transport={{ request }}
-      search="lens=calendar&from=2080-01-01&to=2080-02-01&plannedSession=run"
+      search={search}
       onSearchChange={() => {}}
       today="2080-01-01"
     />,
@@ -86,6 +90,51 @@ function setup(readList: () => Promise<unknown>) {
 }
 
 describe('completion scheduling guards in planning workspace', () => {
+  it('applies a reviewed period move as one undo step while completed sessions stay fixed', async () => {
+    const user = userEvent.setup();
+    const saved = structuredClone(head);
+    saved.draft.periods = saved.draft.periods.map((period) =>
+      period.level === 'block'
+        ? period
+        : { ...period, startDate: '2079-12-01', endDateExclusive: '2080-03-01' },
+    );
+    const request = setup(async () => list, saved, 'lens=period&period=block&plannedSession=run');
+    await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
+    const panel = within(screen.getByRole('region', { name: '기간 날짜 이동' }));
+    fireEvent.change(panel.getByLabelText('이동할 기간 시작일'), {
+      target: { value: '2080-01-02' },
+    });
+    await user.click(panel.getByRole('radio', { name: '자식 기간과 세션 함께 이동' }));
+    await user.click(panel.getByRole('button', { name: '기간 이동 영향 확인' }));
+    const block = within(screen.getByRole('group', { name: 'block: block' }));
+    expect(block.getByLabelText('기간 시작일')).toHaveValue('2080-01-01');
+    await user.click(panel.getByRole('button', { name: '확인하고 기간 이동 초안 적용' }));
+    expect(block.getByLabelText('기간 시작일')).toHaveValue('2080-01-02');
+    expect(block.getByLabelText('기간 종료일 (미포함)')).toHaveValue('2080-02-02');
+    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2080-01-03');
+    await user.click(screen.getByRole('button', { name: '실행 취소' }));
+    expect(block.getByLabelText('기간 시작일')).toHaveValue('2080-01-01');
+    expect(block.getByLabelText('기간 종료일 (미포함)')).toHaveValue('2080-02-01');
+    expect(screen.getByLabelText('세션 날짜')).toBeDisabled();
+    expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+  });
+
+  it('does not prepare period movement when completion records are unavailable', async () => {
+    const user = userEvent.setup();
+    setup(
+      async () => {
+        throw new Error('offline');
+      },
+      head,
+      'lens=period&period=block',
+    );
+    await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
+    const panel = within(screen.getByRole('region', { name: '기간 날짜 이동' }));
+    expect(panel.getByRole('button', { name: '기간 이동 영향 확인' })).toBeDisabled();
+    expect(
+      panel.queryByRole('button', { name: '확인하고 기간 이동 초안 적용' }),
+    ).not.toBeInTheDocument();
+  });
   it('protects saved completion schedules while allowing content edits without changing reports', async () => {
     const user = userEvent.setup();
     const request = setup(async () => list);

@@ -455,8 +455,9 @@
       "title": "기간 날짜 이동 영향 확인",
       "dependsOn": ["M1-04aj", "M1-04af"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "동일 길이 날짜 이동·자식 기간/세션 포함 명시 선택·영향 미리보기/초안 undo·완료/잠금 고정·제약 재검토"
+      "status": "completed",
+      "scope": "동일 길이 날짜 이동·자식 기간/세션 포함 명시 선택·영향 미리보기/초안 undo·완료/잠금 고정·제약 재검토",
+      "evidence": "docs/implementation/progress/M1-04ak.md"
     },
     {
       "id": "M1-04",

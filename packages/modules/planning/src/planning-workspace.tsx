@@ -48,6 +48,7 @@ import { PeriodSummaryPanel } from './period-summary-panel';
 import { PlanHistoryPanel } from './plan-history-panel';
 import { SessionCompletionPanel } from './session-completion-panel';
 import { useSessionCompletions } from './use-session-completions';
+import { PeriodMovePanel } from './period-move-panel';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -498,6 +499,34 @@ function Planner({
                   }
                 />
                 <PeriodEditor draft={draft} edit={edit} today={today} createId={createId} />
+                <PeriodMovePanel
+                  draft={draft}
+                  baseline={state.baseline?.draft ?? null}
+                  selectedPeriodId={selectedPeriodId}
+                  completionState={
+                    currentPlan?.head === null && state.baseline === null
+                      ? { status: 'ready', reports: [], revision: 'no-saved-plan' }
+                      : currentPlan?.head &&
+                          state.baseline?.id === currentPlan.head.id &&
+                          completions.isSuccess &&
+                          !completions.isFetching &&
+                          completions.data.currentPlanVersionId === currentPlan.head.id
+                        ? {
+                            status: 'ready',
+                            reports: completions.data.items,
+                            revision: JSON.stringify([
+                              currentPlan.head.id,
+                              completions.data.collectionRevision,
+                            ]),
+                          }
+                        : { status: 'unavailable' }
+                  }
+                  onApply={(next) => {
+                    const current = readDraftState().state;
+                    if (!current.draft || current.preview || save.isPending) return;
+                    edit(() => next);
+                  }}
+                />
                 <SessionEditor
                   completedSessionIds={completedSessionIds}
                   selectedId={url.plannedSession}
