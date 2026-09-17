@@ -83,6 +83,8 @@ function fixture(initialRevision = 1) {
   let delayList: Promise<void> | null = null;
   const respond = async (input: TransportRequest) => {
     const path = input.path;
+    if (path === '/bff/v1/coaching-constraints')
+      return { status: 200, body: { headRevision: null, items: [] } };
     if (input.method === 'POST') {
       const { signal: _signal, ...sent } = input;
       posts.push(structuredClone(sent));
@@ -316,7 +318,12 @@ describe('coaching workspace user records', () => {
     const f = fixture();
     const rendered = render(<Harness transport={f.transport} initial="thread=bad" />);
     expect(screen.getByRole('alert')).toHaveTextContent('상담 조회 주소');
-    expect(f.transport.request).not.toHaveBeenCalled();
+    expect(
+      f.transport.request.mock.calls.every(
+        ([request]) => request.path === '/bff/v1/coaching-constraints',
+      ),
+    ).toBe(true);
+    expect(screen.getByRole('region', { name: '필수 사용자 제약' })).toBeInTheDocument();
     rendered.unmount();
     render(<Harness transport={f.transport} />);
     const box = await ready();

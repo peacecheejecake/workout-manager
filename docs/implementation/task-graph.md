@@ -261,7 +261,7 @@ flowchart TD
     sessionChanges --> task14
     dashboardActivityNavigation["M1-04ay 대시보드 실제 요약에서 기간별 활동 탐색"]
     dashboardUi --> dashboardActivityNavigation
-    activityWorkbench --> dashboardActivityNavigation
+    activityBrowser --> dashboardActivityNavigation
     dashboardPeriodNavigation --> dashboardActivityNavigation
     dashboardActivityNavigation --> task14
     planScenarios["M1-04ar 계획 시나리오 A/B/C 저장·비교·적용"]
@@ -297,6 +297,15 @@ flowchart TD
     coachingThreads --> coreEvidence
     coreEvidence --> task15
     evidenceUi["M1-05e 상담 근거 저장·선택·검토 UI"]
+    mandatoryConstraints["M1-05f 사용자 확인 필수 제약 원장·상담 UI"]
+    mandatoryEvidence["M1-05g 필수 제약을 포함한 근거 버전"]
+    coachingUi --> mandatoryConstraints
+    task16 --> mandatoryConstraints
+    mandatoryConstraints --> mandatoryEvidence
+    coreEvidence --> mandatoryEvidence
+    evidenceUi --> mandatoryEvidence
+    mandatoryConstraints --> task15
+    mandatoryEvidence --> task15
     coreEvidence --> evidenceUi
     coachingUi --> evidenceUi
     evidenceUi --> task15
@@ -466,7 +475,9 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05c 상담 기록 UI·검토 범위·메시지 복구 | M1-05b, M0-03, M0-04 | 두 shell 공통 UI·고정 scope/제약·사용자 초안·동시 수정/응답 유실 복구 |
 | M1-05d 구조화 근거 본문·의존성 snapshot 저장 | M1-05a, M1-05b | 본문·revision 동일 시점·멱등성·원본 삭제/동의 철회·export/복원 |
 | M1-05e 상담 근거 저장·선택·검토 UI | M1-05c, M1-05d | 명시 저장·고정 본문·회수 상태·동일 키 복구·두 shell |
-| M1-05 Evidence·Coach·승인 | M1-04, M1-05a, M1-05b, M1-05c, M1-05d, M1-05e | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
+| M1-05f 사용자 확인 필수 제약 원장·상담 UI | M1-05c, M1-06a | 확인 문장 CRUD·CAS·삭제/내보내기/복원; 자동 일정 해석과 분리 |
+| M1-05g 필수 제약을 포함한 근거 버전 | M1-05d, M1-05e, M1-05f | 새 snapshot 강제 포함·제약 revision·삭제 회수; 과거 v1 보존 |
+| M1-05 Evidence·Coach·승인 | M1-04, M1-05a, M1-05b, M1-05c, M1-05d, M1-05e, M1-05f, M1-05g | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
 | M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |

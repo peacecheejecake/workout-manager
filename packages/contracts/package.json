@@ -96,6 +96,10 @@
     "./evidence-snapshots": {
       "types": "./src/evidence-snapshots.ts",
       "default": "./dist/evidence-snapshots.js"
+    },
+    "./coaching-constraints": {
+      "types": "./src/coaching-constraints.ts",
+      "default": "./dist/coaching-constraints.js"
     }
   },
   "scripts": {

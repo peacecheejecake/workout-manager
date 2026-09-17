@@ -392,6 +392,10 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
 });
 
 it.each([
+  ['GET', '/bff/v1/coaching-constraints'],
+  ['POST', '/bff/v1/coaching-constraints'],
+  ['PUT', '/bff/v1/coaching-constraints/constraint'],
+  ['DELETE', '/bff/v1/coaching-constraints/constraint'],
   ['GET', '/bff/v1/coaching-threads?limit=20'],
   ['GET', '/bff/v1/evidence-snapshots/snapshot'],
   ['GET', '/bff/v1/coaching-threads/thread/evidence-snapshots?limit=20'],
@@ -405,8 +409,8 @@ it.each([
   await createSessionTransport(session, vi.fn()).request({
     method,
     path,
-    body: method === 'POST' ? { message: 'Synthetic user text' } : null,
-    idempotencyKey: method === 'POST' ? 'coaching-key' : null,
+    body: method !== 'GET' ? { message: 'Synthetic user text' } : null,
+    idempotencyKey: method !== 'GET' ? 'coaching-key' : null,
     signal: controller.signal,
   });
   expect(fetchMock).toHaveBeenCalledWith(
@@ -416,14 +420,18 @@ it.each([
       credentials: 'same-origin',
       headers: expect.objectContaining({
         'x-workout-session-id': session.sessionId,
-        ...(method === 'POST'
+        ...(method !== 'GET'
           ? { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'coaching-key' }
           : {}),
       }),
     }),
   );
 });
-it.each(['/bff/v1/coaching-threads-admin', '/bff/v1/evidence-snapshots-admin'])(
+it.each([
+  '/bff/v1/coaching-constraints-admin',
+  '/bff/v1/coaching-threads-admin',
+  '/bff/v1/evidence-snapshots-admin',
+])(
   'keeps similarly named non-coaching route %s outside the authenticated allowlist',
   async (path) => {
     await expect(

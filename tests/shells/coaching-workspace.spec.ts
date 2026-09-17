@@ -77,6 +77,10 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
       return;
     }
     expect(request.headers()['x-workout-session-id']).toBe(`session-${account}`);
+    if (path === '/bff/v1/coaching-constraints' && request.method() === 'GET') {
+      await route.fulfill({ json: { headRevision: null, items: [] } });
+      return;
+    }
     if (request.method() !== 'GET') {
       expect(request.headers()['x-csrf-token']).toBe('c'.repeat(43));
       expect(request.headers()['idempotency-key']).toBeTruthy();

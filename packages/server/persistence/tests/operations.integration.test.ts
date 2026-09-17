@@ -123,7 +123,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(6);
+    expect(before.schemaVersion).toBe(7);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);

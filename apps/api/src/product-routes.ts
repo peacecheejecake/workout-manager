@@ -1,3 +1,5 @@
+import type { CoachingConstraintRepository } from '@workout/server-persistence/coaching-constraints';
+import { registerCoachingConstraintRoutes } from './coaching-constraint-routes.js';
 import type { CoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { registerCoreEvidenceSnapshotRoutes } from './evidence-snapshot-routes.js';
 import type { CoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
@@ -28,6 +30,7 @@ export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
+  coachingConstraints?: CoachingConstraintRepository;
   coachingThreads?: CoachingThreadRepository;
   evidenceSnapshots?: CoreEvidenceSnapshotRepository;
   sessionActuals?: SessionActualsRepository;
@@ -45,6 +48,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.coachingConstraints)
+    registerCoachingConstraintRoutes(routes, repositories.coachingConstraints, principal);
   if (repositories.evidenceSnapshots)
     registerCoreEvidenceSnapshotRoutes(routes, repositories.evidenceSnapshots, principal);
   if (repositories.coachingThreads)

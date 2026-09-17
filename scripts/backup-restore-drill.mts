@@ -1,3 +1,9 @@
+import {
+  captureConstraintRestoreLedger,
+  parseConstraintRestoreLedger,
+  restoreConstraintLedger,
+} from './coaching-constraint-restore.mjs';
+import { createCoachingConstraintRepository } from '../packages/server/persistence/src/coaching-constraints.js';
 import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.js';
 import type {
   CoreEvidenceCapture,
@@ -27,6 +33,7 @@ import {
   grantPlanScenarios,
   grantCoachingThreads,
   grantCoreEvidenceSnapshots,
+  grantCoachingConstraints,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -390,9 +397,35 @@ async function execute() {
     await grantPlanScenarios(url('drill_source'), 'drill_runtime');
     await grantCoachingThreads(url('drill_source'), 'drill_runtime');
     await grantCoreEvidenceSnapshots(url('drill_source'), 'drill_runtime');
+    await grantCoachingConstraints(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
+    const constraintRepo = createCoachingConstraintRepository(sourceDb);
+    const oldConstraintCommand = {
+      expectedHeadRevision: null,
+      confirmed: true as const,
+      text: 'Synthetic old restriction to correct',
+      idempotencyKey: randomUUID(),
+    };
+    const oldConstraint = await constraintRepo.create(retainedAthlete, oldConstraintCommand);
+    const removedConstraintCommand = {
+      expectedHeadRevision: 1,
+      confirmed: true as const,
+      text: 'Synthetic old restriction to delete',
+      idempotencyKey: randomUUID(),
+    };
+    const removedConstraint = await constraintRepo.create(
+      retainedAthlete,
+      removedConstraintCommand,
+    );
+    await constraintRepo.create(deletedAthlete, {
+      ...oldConstraintCommand,
+      idempotencyKey: randomUUID(),
+    });
+    const backupConstraintLedger = await captureConstraintRestoreLedger(source, []);
+    const backupConstraintOwners = backupConstraintLedger.subjects.map((row) => row.athleteId);
+    const constraintLedgerFile = join(directory, 'post-backup-constraint-ledger.json');
     const manualIds = new Map<string, string>();
     const manualHistories = new Map<string, unknown>();
     const checkInIds = new Map<string, string>();
@@ -409,7 +442,12 @@ async function execute() {
       'session_completion_receipt',
       'session_completion_collection_head',
     ];
-    const coachingTables = ['coaching_thread', 'coaching_message'];
+    const coachingTables = [
+      'coaching_thread',
+      'coaching_message',
+      'coaching_constraint',
+      'coaching_constraint_head',
+    ];
     const scenarioTables = ['plan_scenario', 'plan_scenario_revision', 'plan_scenario_application'];
     const selfReportTables = [
       'core_evidence_snapshot',
@@ -475,7 +513,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 6);
+      assert.equal(before.schemaVersion, 7);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -514,7 +552,7 @@ async function execute() {
       assert.equal(evidenceSnapshot.status, 'available');
       evidenceSnapshots.set(athleteId, { command: evidenceCommand, snapshot: evidenceSnapshot });
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 6) throw new Error('Expected coaching export v6');
+      if (coachingExport.schemaVersion !== 7) throw new Error('Expected coaching export v7');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       coachingExports.set(athleteId, {
@@ -608,6 +646,19 @@ async function execute() {
       '--file',
       archive,
     ]);
+    await constraintRepo.update(retainedAthlete, oldConstraint.id, {
+      expectedHeadRevision: 2,
+      expectedRevision: 1,
+      confirmed: true,
+      text: 'Synthetic latest confirmed restriction',
+      idempotencyKey: randomUUID(),
+    });
+    await constraintRepo.remove(retainedAthlete, removedConstraint.id, {
+      expectedHeadRevision: 3,
+      expectedRevision: 1,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    });
     const revokedConsent = await createConsentRepository(sourceDb).setConsent(withdrawnAthlete, {
       kind: 'ai',
       granted: false,
@@ -638,6 +689,31 @@ async function execute() {
       { kind: 'ai', granted: false, revision: 0 },
     );
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
+    const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
+    assert.throws(() =>
+      parseConstraintRestoreLedger(
+        {
+          ...currentConstraints,
+          subjects: currentConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
+        },
+        backupConstraintOwners,
+      ),
+    );
+    assert.throws(() =>
+      parseConstraintRestoreLedger(
+        {
+          ...currentConstraints,
+          subjects: currentConstraints.subjects.map((row) =>
+            row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
+          ),
+        },
+        backupConstraintOwners,
+      ),
+    );
+    await writeFile(constraintLedgerFile, JSON.stringify(currentConstraints), {
+      mode: 0o600,
+      flag: 'wx',
+    });
     // One SQL statement supplies both sets from the same MVCC snapshot after the withdrawal.
     const evidenceWithdrawalResult = await source.query<{ ledger: unknown }>(
       `
@@ -846,6 +922,98 @@ async function execute() {
         await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
         await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
       }
+      await restoreConstraintLedger(
+        restored,
+        parseConstraintRestoreLedger(
+          JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
+          backupConstraintOwners,
+        ),
+      );
+      // Test fail-closed replay against real restored rows. The helper deliberately does not
+      // commit/rollback: maintenance owns the transaction, including earlier owner changes.
+      const safeConstraints = await captureConstraintRestoreLedger(
+        restored,
+        backupConstraintOwners,
+      );
+      const originalConstraintSubject = backupConstraintLedger.subjects.find(
+        (row) => row.athleteId === retainedAthlete,
+      );
+      const safeConstraintHead = safeConstraints.subjects.find(
+        (row) => row.athleteId === retainedAthlete,
+      )?.head;
+      assert.ok(originalConstraintSubject && safeConstraintHead);
+      const invalidConstraintLedgers = [
+        {
+          ...safeConstraints,
+          subjects: safeConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
+        },
+        {
+          ...safeConstraints,
+          subjects: safeConstraints.subjects.map((row) =>
+            row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
+          ),
+        },
+        {
+          ...safeConstraints,
+          subjects: safeConstraints.subjects.map((row) =>
+            row.athleteId === retainedAthlete
+              ? {
+                  ...row,
+                  rows: row.rows.map((item) =>
+                    item.deleted
+                      ? item
+                      : { ...item, text: 'Synthetic same-revision contradiction' },
+                  ),
+                }
+              : row,
+          ),
+        },
+        {
+          ...safeConstraints,
+          subjects: safeConstraints.subjects.map((row) =>
+            row.athleteId === retainedAthlete ? originalConstraintSubject : row,
+          ),
+        },
+        {
+          ...safeConstraints,
+          subjects: safeConstraints.subjects.map((row) =>
+            row.athleteId === retainedAthlete
+              ? {
+                  ...row,
+                  head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
+                  rows: row.rows.map((item) =>
+                    item.deleted
+                      ? {
+                          ...item,
+                          revision: item.revision + 1,
+                          deleted: false,
+                          text: 'Synthetic forbidden resurrection',
+                        }
+                      : item,
+                  ),
+                }
+              : row,
+          ),
+        },
+      ];
+      for (const invalid of invalidConstraintLedgers) {
+        await restored.query('SAVEPOINT invalid_constraint_replay');
+        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [retainedAthlete]);
+        await restored.query(
+          "UPDATE coaching_constraint_head SET updated_at='2000-01-01T00:00:00Z' WHERE athlete_id=$1",
+          [retainedAthlete],
+        );
+        await assert.rejects(() => restoreConstraintLedger(restored, invalid));
+        await restored.query('ROLLBACK TO SAVEPOINT invalid_constraint_replay');
+        await restored.query('RELEASE SAVEPOINT invalid_constraint_replay');
+        assert.deepEqual(
+          (await captureConstraintRestoreLedger(restored, backupConstraintOwners)).subjects,
+          safeConstraints.subjects,
+        );
+      }
+      checks.push(
+        'invalid_constraint_ledger_owner_row_revision_and_tombstone_replay_fails_closed_with_caller_rollback',
+      );
       // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
       for (const entry of replayWithdrawalLedger.snapshots) {
         await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
@@ -1005,6 +1173,40 @@ async function execute() {
     assert.deepEqual(replayedCleanup, cleanupLedger);
     checks.push('all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved');
     const restoreDb = database('drill_restore');
+    const restoredConstraints = createCoachingConstraintRepository(restoreDb);
+    assert.deepEqual(
+      await restoredConstraints.list(retainedAthlete),
+      await constraintRepo.list(retainedAthlete),
+    );
+    assert.deepEqual(
+      await restoredConstraints.create(retainedAthlete, oldConstraintCommand),
+      oldConstraint,
+    );
+    assert.deepEqual(
+      await restoredConstraints.create(retainedAthlete, removedConstraintCommand),
+      removedConstraint,
+    );
+    const constraintRows = (
+      await restored.query(
+        'SELECT text,deleted FROM coaching_constraint WHERE athlete_id=$1 ORDER BY id',
+        [retainedAthlete],
+      )
+    ).rows;
+    assert.equal(constraintRows.filter((row) => row.deleted && row.text === null).length, 1);
+    assert.equal(
+      constraintRows.filter(
+        (row) => !row.deleted && row.text === 'Synthetic latest confirmed restriction',
+      ).length,
+      1,
+    );
+    assert.ok(!JSON.stringify(constraintRows).includes('Synthetic old restriction'));
+    await assert.rejects(() => restoredConstraints.list(deletedAthlete), TenantErasedError);
+    checks.push(
+      'latest_constraint_ledger_replaces_backup_text_and_preserves_null_tombstones_before_runtime_access',
+    );
+    checks.push(
+      'old_constraint_receipts_replay_metadata_without_restoring_deleted_or_corrected_text',
+    );
     const withdrawnRepository = createCoreEvidenceSnapshotRepository(restoreDb);
     assert.deepEqual(
       await withdrawnRepository.read(withdrawnAthlete, beforeWithdrawal.id),
@@ -1024,7 +1226,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    if (withdrawnExport.schemaVersion !== 7) throw new Error('Expected evidence export v7');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1049,7 +1251,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    if (absentExport.schemaVersion !== 7) throw new Error('Expected evidence export v7');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -1085,7 +1287,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 6);
+    assert.equal(retainedExport.schemaVersion, 7);
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
     );
@@ -1165,7 +1367,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 6) throw new Error('Expected coaching export v6');
+    if (retainedExport.schemaVersion !== 7) throw new Error('Expected coaching export v7');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -1297,11 +1499,11 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 6) throw new Error('Expected coaching export v6');
+    if (coachingAfterReplay.schemaVersion !== 7) throw new Error('Expected coaching export v7');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
-      'coaching_scope_revision_and_immutable_user_messages_export_v6_restored_receipts_replayed_without_duplicates',
+      'coaching_scope_revision_and_immutable_user_messages_export_v7_restored_receipts_replayed_without_duplicates',
     );
     await assert.rejects(
       () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
@@ -1473,7 +1675,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    if (scrubbedExport.schemaVersion !== 7) throw new Error('Expected evidence export v7');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     checks.push('restored_source_deletion_scrubs_evidence_body_in_read_export_and_old_receipt');
     checks.push('erasure_gate_rejects_stale_runtime_write');
@@ -1506,6 +1708,7 @@ async function execute() {
     trustedArchive: true,
     restoreBeforeRuntimeAccess: [
       'replay_latest_external_erasure_ledger',
+      'replay_latest_complete_external_constraint_ledger_before_runtime_access',
       'replay_latest_external_evidence_withdrawal_ledger_and_current_ai_consent',
       'invalidate_all_restored_sessions_and_login_attempts',
       'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
@@ -1515,6 +1718,7 @@ async function execute() {
     cleanup: { clusterStopped: true, temporaryClusterArchiveLedgerRemoved: !existsSync(directory) },
     limitations: [
       'Requires an independently retained, complete and current erasure ledger before production traffic resumes.',
+      'Constraint restoration requires a complete, current, private owner/head/current-row ledger; missing coverage, missing tombstones or regressed revisions fail closed. Its health text must not be logged. This synthetic drill does not prove production ledger freshness or operations.',
       'Requires an independently retained, complete and current evidence withdrawal ledger with explicit exists/absent AI consent states covering backup owners, current consent owners and snapshot owners captured together; a missing, incomplete or stale ledger cannot authorize production restoration.',
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
       'External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised.',

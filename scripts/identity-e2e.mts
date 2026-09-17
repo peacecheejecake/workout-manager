@@ -1,3 +1,4 @@
+import { createCoachingConstraintRepository } from '../packages/server/persistence/src/coaching-constraints.ts';
 import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.ts';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
 import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
@@ -27,6 +28,7 @@ import {
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
+  grantCoachingConstraints,
   grantCoachingThreads,
   grantCoreEvidenceSnapshots,
   grantGarmin,
@@ -131,6 +133,7 @@ try {
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
+    await grantCoachingConstraints(adminUrl, 'workout_runtime');
     await grantCoachingThreads(adminUrl, 'workout_runtime');
     await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
     await grantGarmin(adminUrl, 'workout_runtime');
@@ -205,6 +208,7 @@ try {
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     planScenarios: createPlanScenarioRepository(database),
+    coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),
     evidenceSnapshots: createCoreEvidenceSnapshotRepository(database),
     sessionCompletions: createSessionCompletionRepository(database),

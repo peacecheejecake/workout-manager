@@ -25,6 +25,7 @@ import { ThreadList } from './thread-list';
 import { ScopeView } from './scope-view';
 import { coachingScopeLabels } from './scope-context';
 import { EvidencePanel } from './evidence-panel';
+import { ConstraintsPanel } from './constraints-panel';
 import { createEvidenceDraftStore, type EvidenceDraftStore } from './evidence-store';
 import styles from './coaching.module.css';
 export interface CoachingWorkspaceProps {
@@ -284,6 +285,12 @@ function Workspace({
         저장된 계획에 연결해 사용자 메시지를 기록합니다. AI 답변·제안·계획 변경은 실행하지 않습니다.
         작성 중인 내용은 이 로그인 세션의 메모리에만 유지됩니다.
       </p>
+      <ConstraintsPanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        createId={createId}
+      />
       {parsed.error ? <p role="alert">{parsed.error}</p> : null}
       {feedback ? (
         <p role={phase === 'uncertain' || conflict ? 'alert' : 'status'}>{feedback}</p>

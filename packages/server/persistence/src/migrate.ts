@@ -26,6 +26,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '011_plan_scenarios.sql',
       '012_coaching_threads.sql',
       '013_evidence_snapshots.sql',
+      '014_coaching_constraints.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -107,7 +108,7 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot TO "${runtimeRole}"`,
+      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
@@ -222,6 +223,22 @@ export async function grantCoreEvidenceSnapshots(
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
     await pool.query(`GRANT SELECT,INSERT ON core_evidence_snapshot TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** User-confirmed statements allow correction and scrubbing, never runtime hard deletion. */
+export async function grantCoachingConstraints(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

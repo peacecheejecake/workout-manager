@@ -145,3 +145,41 @@ it('requires evidence snapshots in v6 and preserves historical v5 exports unchan
   expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 6 }).success).toBe(false);
   expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 5 }).success).toBe(false);
 });
+
+it('requires both constraint collections in v7 without manufacturing them in v6', () => {
+  const previous = {
+    ...legacy,
+    schemaVersion: 6,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+    },
+  };
+  const artifact = {
+    ...previous,
+    schemaVersion: 7,
+    data: {
+      ...previous.data,
+      coachingConstraints: [{ id: 'constraint', revision: 2, text: null, deleted: true }],
+      coachingConstraintHeads: [{ revision: 2 }],
+    },
+  };
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.parse(previous).data).not.toHaveProperty('coachingConstraints');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 7 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 6 }).success).toBe(false);
+  for (const key of ['coachingConstraints', 'coachingConstraintHeads']) {
+    expect(
+      accountExportSchema.safeParse({ ...artifact, data: { ...artifact.data, [key]: undefined } })
+        .success,
+    ).toBe(false);
+  }
+});
