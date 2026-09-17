@@ -12,9 +12,13 @@ import { Button } from '@workout/ui-foundation/button';
 import { PeriodConstraintsSummary, PlanConstraintsReport } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
 import { buildPeriodNavigation } from './period-navigation';
+import { PeriodTimeline } from './period-timeline';
+import type { PeriodView } from './lens';
 import type { PeriodOrbitProps } from './period-orbit';
 import styles from './period-explorer.module.css';
 export interface PeriodExplorerProps {
+  view: PeriodView;
+  onViewChange(view: PeriodView): void;
   plan: PlanDraft | undefined;
   selectedId: string | null;
   unavailableReason?: string;
@@ -74,6 +78,8 @@ function Summary({ period }: { period: PeriodDraft }) {
 }
 export function PeriodExplorer({
   plan,
+  view,
+  onViewChange,
   selectedId,
   unavailableReason,
   onSelect,
@@ -81,16 +87,18 @@ export function PeriodExplorer({
 }: PeriodExplorerProps) {
   const [previewState, setPreviewState] = useState<{
     selection: string | null;
+    view: PeriodView;
     focus: string | null;
     hover: string | null;
-  }>({ selection: selectedId, focus: null, hover: null });
-  if (previewState.selection !== selectedId)
-    setPreviewState({ selection: selectedId, focus: null, hover: null });
+  }>({ selection: selectedId, view, focus: null, hover: null });
+  if (previewState.selection !== selectedId || previewState.view !== view)
+    setPreviewState({ selection: selectedId, view, focus: null, hover: null });
   const preview =
     previewState.selection === selectedId ? (previewState.focus ?? previewState.hover) : null;
   const setPreview = (id: string | null, source: 'focus' | 'hover') =>
     setPreviewState((current) => ({
       selection: selectedId,
+      view,
       focus: current.selection === selectedId ? current.focus : null,
       hover: current.selection === selectedId ? current.hover : null,
       [source]: id,
@@ -120,7 +128,7 @@ export function PeriodExplorer({
       <section className={styles.explorer} aria-label="기간 탐색">
         <h2>Season · Wave · Phase · Block</h2>
         <p role="alert">
-          초안의 기간 구조가 유효하지 않아 원형 탐색을 표시할 수 없습니다. 입력 내용을 수정하세요.
+          초안의 기간 구조가 유효하지 않아 기간 탐색을 표시할 수 없습니다. 입력 내용을 수정하세요.
         </p>
       </section>
     );
@@ -187,24 +195,60 @@ export function PeriodExplorer({
         ) : null}
       </div>
       <PlanConstraintsReport plan={plan} periodId={selectedId} />
+      <div role="group" aria-label="기간 보기 선택">
+        <Button
+          variant="secondary"
+          aria-pressed={view === 'orbit'}
+          onClick={() => onViewChange('orbit')}
+        >
+          기간 원형 보기
+        </Button>
+        <Button
+          variant="secondary"
+          aria-pressed={view === 'timeline'}
+          onClick={() => onViewChange('timeline')}
+        >
+          기간 타임라인 보기
+        </Button>
+      </div>
       <p>
-        원형 각도는 날짜 길이에 비례하며 훈련량·수행률이 아닙니다. 번호는 아래 목록과 연결됩니다.
+        {view === 'orbit'
+          ? '원형 각도는 날짜 길이에 비례하며 훈련량·수행률이 아닙니다. 번호는 아래 목록과 연결됩니다.'
+          : '타임라인 막대는 날짜 길이에 비례하며 훈련량·수행률이 아닙니다. 번호는 아래 목록과 연결됩니다.'}
       </p>
       <div className={styles.layout}>
         <div>
-          <LazyOrbit
-            centerLabel={current?.title ?? plan.title}
-            segments={model.segments.map((segment) => ({
-              id: segment.period.id,
-              label: `${segment.period.level} · ${segment.period.title}`,
-              number: segment.number,
-              startFraction: segment.startFraction,
-              endFraction: segment.endFraction,
-              days: segment.days,
-            }))}
-            onSelect={onSelect}
-            onPreview={setPreview}
-          />
+          {view === 'timeline' ? (
+            <PeriodTimeline
+              startDate={model.startDate}
+              endDateExclusive={model.endDateExclusive}
+              segments={model.segments.map((segment) => ({
+                id: segment.period.id,
+                label: `${segment.period.level} · ${segment.period.title}`,
+                number: segment.number,
+                startFraction: segment.startFraction,
+                endFraction: segment.endFraction,
+                days: segment.days,
+                partial: segment.period.isPartial,
+              }))}
+              onSelect={onSelect}
+              onPreview={setPreview}
+            />
+          ) : (
+            <LazyOrbit
+              centerLabel={current?.title ?? plan.title}
+              segments={model.segments.map((segment) => ({
+                id: segment.period.id,
+                label: `${segment.period.level} · ${segment.period.title}`,
+                number: segment.number,
+                startFraction: segment.startFraction,
+                endFraction: segment.endFraction,
+                days: segment.days,
+              }))}
+              onSelect={onSelect}
+              onPreview={setPreview}
+            />
+          )}
           {model.children.length ? (
             <p>자식 기간 미배정: {model.unassignedDays}일</p>
           ) : (

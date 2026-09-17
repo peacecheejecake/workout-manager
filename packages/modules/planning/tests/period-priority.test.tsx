@@ -148,7 +148,14 @@ describe('explicit independent period priority', () => {
     const view = render(
       <>
         <PlanSummary draft={value} />
-        <PeriodExplorer plan={value} selectedId="phase" onSelect={select} onCalendar={calendar} />
+        <PeriodExplorer
+          plan={value}
+          selectedId="phase"
+          view="orbit"
+          onViewChange={vi.fn()}
+          onSelect={select}
+          onCalendar={calendar}
+        />
       </>,
     );
     expect(screen.getAllByText(/기간 우선순위 높음/).length).toBeGreaterThanOrEqual(2);
@@ -165,7 +172,14 @@ describe('explicit independent period priority', () => {
     ).toBeVisible();
     expect(select).not.toHaveBeenCalled();
     view.rerender(
-      <PeriodExplorer plan={value} selectedId="block" onSelect={select} onCalendar={calendar} />,
+      <PeriodExplorer
+        plan={value}
+        selectedId="block"
+        view="orbit"
+        onViewChange={vi.fn()}
+        onSelect={select}
+        onCalendar={calendar}
+      />,
     );
     expect(
       within(screen.getByRole('region', { name: '현재 선택한 기간' })).getByText(

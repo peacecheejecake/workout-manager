@@ -424,6 +424,15 @@
       "evidence": "docs/implementation/progress/M1-04ag.md"
     },
     {
+      "id": "M1-04ah",
+      "title": "기간 타임라인·URL 보기 전환",
+      "dependsOn": ["M1-04u", "M1-04ag"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S04 날짜 비례 타임라인·Orbit/목록 동일 탐색·URL 복원·부분/미배정·선택/초안 유지·읽기 전용",
+      "evidence": "docs/implementation/progress/M1-04ah.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -461,7 +470,8 @@
         "M1-04ad",
         "M1-04ae",
         "M1-04af",
-        "M1-04ag"
+        "M1-04ag",
+        "M1-04ah"
       ],
       "kind": "task",
       "status": "not_started",

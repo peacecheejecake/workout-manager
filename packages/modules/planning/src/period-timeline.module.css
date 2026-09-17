@@ -1,0 +1,45 @@
+.timeline {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rows {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.row {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2);
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.row:hover {
+  border-color: var(--ink);
+}
+.track {
+  position: relative;
+  display: block;
+  height: 1rem;
+  background: var(--line);
+}
+.bar {
+  left: var(--period-start);
+  width: var(--period-width);
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+}

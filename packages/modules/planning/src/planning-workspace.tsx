@@ -290,9 +290,14 @@ function Planner({
           계획 초안 편집
         </Button>
       ) : null}
+      {url.periodViewError ? (
+        <p role="alert">URL의 기간 보기 값이 유효하지 않아 원형 보기를 표시합니다.</p>
+      ) : null}
       <PeriodExplorer
         plan={projectionSource}
         selectedId={selectedPeriodId}
+        view={url.periodView}
+        onViewChange={(periodView) => changeSearch({ periodView })}
         unavailableReason={
           draft && !validated.success
             ? '초안의 기간 구조가 유효하지 않습니다. 입력 내용을 수정하면 기간 탐색을 다시 사용할 수 있습니다.'

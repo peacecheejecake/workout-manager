@@ -75,6 +75,37 @@ const draft: PlanDraft = {
 };
 
 describe('period explorer', () => {
+  it('switches renderers without selecting periods and clears departed hover previews', async () => {
+    const selected = vi.fn();
+    function Host() {
+      const [view, setView] = useState<'orbit' | 'timeline'>('timeline');
+      return (
+        <PeriodExplorer
+          view={view}
+          onViewChange={setView}
+          plan={draft}
+          selectedId="phase"
+          onSelect={selected}
+          onCalendar={vi.fn()}
+        />
+      );
+    }
+    render(<Host />);
+    const bar = screen.getByRole('button', { name: '기간 타임라인: block · 10일 Block' });
+    fireEvent.mouseEnter(bar);
+    expect(screen.getByRole('complementary', { name: '기간 미리보기' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: '기간 원형 보기' }));
+    expect(screen.queryByRole('complementary', { name: '기간 미리보기' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: '기간 날짜 길이 원형 탐색' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: '기간 타임라인 보기' }));
+    expect(screen.getByRole('region', { name: '기간 날짜 길이 타임라인' })).toBeVisible();
+    expect(screen.queryByRole('complementary', { name: '기간 미리보기' })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: '현재 선택한 기간' })).getByRole('heading'),
+    ).toHaveTextContent('페이즈');
+    expect(selected).not.toHaveBeenCalled();
+  });
+
   it('shares explicit ring/list selection and breadcrumbs while focus only previews', async () => {
     const user = userEvent.setup();
     const changed = vi.fn();
@@ -82,6 +113,8 @@ describe('period explorer', () => {
       const [selected, setSelected] = useState<string | null>(null);
       return (
         <PeriodExplorer
+          view="orbit"
+          onViewChange={vi.fn()}
           plan={draft}
           selectedId={selected}
           onCalendar={vi.fn()}
@@ -141,7 +174,14 @@ describe('period explorer', () => {
       ],
     };
     render(
-      <PeriodExplorer plan={plan} selectedId="season" onSelect={onSelect} onCalendar={vi.fn()} />,
+      <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
+        plan={plan}
+        selectedId="season"
+        onSelect={onSelect}
+        onCalendar={vi.fn()}
+      />,
     );
     const list = screen.getByRole('button', { name: 'wave · 다른 웨이브' });
     fireEvent.mouseEnter(list);
@@ -175,22 +215,32 @@ describe('period explorer', () => {
       ),
     };
     const props = { plan, onSelect, onCalendar: vi.fn() };
-    const ui = render(<PeriodExplorer {...props} selectedId="phase" />);
+    const ui = render(
+      <PeriodExplorer view="orbit" onViewChange={vi.fn()} {...props} selectedId="phase" />,
+    );
     act(() => screen.getByRole('button', { name: 'block · 10일 Block' }).focus());
     expect(screen.getByRole('complementary', { name: '기간 미리보기' })).toHaveTextContent(
       '부분 기간',
     );
     await user.keyboard('{Enter}');
     expect(onSelect).toHaveBeenCalledWith('block');
-    ui.rerender(<PeriodExplorer {...props} selectedId="block" />);
+    ui.rerender(
+      <PeriodExplorer view="orbit" onViewChange={vi.fn()} {...props} selectedId="block" />,
+    );
     expect(screen.queryByRole('complementary', { name: '기간 미리보기' })).not.toBeInTheDocument();
-    ui.rerender(<PeriodExplorer {...props} selectedId="phase" />);
+    ui.rerender(
+      <PeriodExplorer view="orbit" onViewChange={vi.fn()} {...props} selectedId="phase" />,
+    );
     expect(
       within(screen.getByRole('region', { name: '현재 선택한 기간' })).getByRole('heading'),
     ).toHaveFocus();
     expect(screen.queryByRole('complementary', { name: '기간 미리보기' })).not.toBeInTheDocument();
-    ui.rerender(<PeriodExplorer {...props} selectedId="block" />);
-    ui.rerender(<PeriodExplorer {...props} selectedId="phase" />);
+    ui.rerender(
+      <PeriodExplorer view="orbit" onViewChange={vi.fn()} {...props} selectedId="block" />,
+    );
+    ui.rerender(
+      <PeriodExplorer view="orbit" onViewChange={vi.fn()} {...props} selectedId="phase" />,
+    );
     expect(screen.queryByRole('complementary', { name: '기간 미리보기' })).not.toBeInTheDocument();
   });
   it('shows partial/gap/date semantics and invokes calendar separately from selecting a period', async () => {
@@ -216,7 +266,14 @@ describe('period explorer', () => {
       ],
     };
     render(
-      <PeriodExplorer plan={plan} selectedId="phase" onSelect={onSelect} onCalendar={onCalendar} />,
+      <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
+        plan={plan}
+        selectedId="phase"
+        onSelect={onSelect}
+        onCalendar={onCalendar}
+      />,
     );
     expect(screen.getByText('자식 기간 미배정: 19일')).toBeVisible();
     expect(screen.getByRole('button', { name: 'block · 짧은 부분' })).toBeVisible();
@@ -233,6 +290,8 @@ describe('period explorer', () => {
     const onSelect = vi.fn();
     const ui = render(
       <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
         plan={undefined}
         selectedId={null}
         unavailableReason="조회 중입니다."
@@ -243,6 +302,8 @@ describe('period explorer', () => {
     expect(screen.getByText('조회 중입니다.')).toBeVisible();
     ui.rerender(
       <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
         plan={{ ...draft, periods: [], sessions: [] }}
         selectedId={null}
         onSelect={onSelect}
@@ -252,6 +313,8 @@ describe('period explorer', () => {
     expect(screen.getByText(/등록된 기간이 없습니다/)).toBeVisible();
     ui.rerender(
       <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
         plan={{ ...draft, title: '' }}
         selectedId={null}
         onSelect={onSelect}
@@ -260,12 +323,26 @@ describe('period explorer', () => {
     );
     expect(screen.getByRole('alert')).toHaveTextContent('초안의 기간 구조');
     ui.rerender(
-      <PeriodExplorer plan={draft} selectedId="absent" onSelect={onSelect} onCalendar={vi.fn()} />,
+      <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
+        plan={draft}
+        selectedId="absent"
+        onSelect={onSelect}
+        onCalendar={vi.fn()}
+      />,
     );
     await user.click(screen.getByRole('button', { name: '전체 계획 보기' }));
     expect(onSelect).toHaveBeenCalledWith(null);
     ui.rerender(
-      <PeriodExplorer plan={draft} selectedId="block" onSelect={onSelect} onCalendar={vi.fn()} />,
+      <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
+        plan={draft}
+        selectedId="block"
+        onSelect={onSelect}
+        onCalendar={vi.fn()}
+      />,
     );
     expect(screen.getByText(/하위 기간이 없습니다/)).toBeVisible();
     expect(screen.getByRole('region', { name: '현재 선택한 기간' })).toHaveTextContent(
@@ -283,7 +360,14 @@ describe('period explorer', () => {
     };
     const onCalendar = vi.fn();
     render(
-      <PeriodExplorer plan={plan} selectedId="season" onSelect={vi.fn()} onCalendar={onCalendar} />,
+      <PeriodExplorer
+        view="orbit"
+        onViewChange={vi.fn()}
+        plan={plan}
+        selectedId="season"
+        onSelect={vi.fn()}
+        onCalendar={onCalendar}
+      />,
     );
     expect(screen.getByRole('button', { name: '이 기간 달력 보기' })).toBeDisabled();
     expect(screen.getByText(/최대 366일/)).toBeVisible();

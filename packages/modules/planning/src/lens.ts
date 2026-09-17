@@ -7,9 +7,13 @@ import {
   type PlannedTablePin,
 } from './planned-table-state';
 
+export type PeriodView = 'orbit' | 'timeline';
+
 export interface PlannerUrlState {
   lens: PlanningLens;
   view: 'stack' | 'split';
+  periodView: PeriodView;
+  periodViewError: boolean;
   plannedView: 'auto' | 'agenda' | 'calendar' | 'table' | 'split';
   plannedSession: string | null;
   tableSort: PlannedTableSort;
@@ -44,8 +48,11 @@ export function readPlannerSearch(search: string, today: string): PlannerUrlStat
   const selected = params.get('plannedSession');
   const validSelection = selected === null || idSchema.safeParse(selected).success;
   const plannedView = params.get('plannedView') ?? 'auto';
+  const periodView = params.get('periodView') ?? 'orbit';
   const table = readPlannedTableState(params);
   return {
+    periodView: periodView === 'timeline' ? 'timeline' : 'orbit',
+    periodViewError: !['orbit', 'timeline'].includes(periodView),
     tableSort: table.sort,
     tableColumns: table.columns,
     tablePinned: table.pinned,

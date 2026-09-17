@@ -2,7 +2,7 @@
   min-width: 0;
   padding: var(--space-4);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   overflow-wrap: anywhere;
 }
 .totals {
