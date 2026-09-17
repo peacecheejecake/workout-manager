@@ -40,6 +40,12 @@ function Lifetime(props: ActivityBrowserProps) {
     </QueryClientProvider>
   );
 }
+const qualityLabels = {
+  missing_distance: '거리 미입력',
+  missing_duration: '시간 미입력',
+  missing_start: '시작 시각 미입력',
+  corrected: '사용자 정정됨',
+};
 const sortLabels = {
   started_desc: '시작 시각 최신순',
   started_asc: '시작 시각 오래된순',
@@ -107,7 +113,16 @@ function Workspace({
   function change(changes: Record<string, string | null>) {
     onSearchChange(updateActivitySearch(search, changes));
   }
-  const filterKey = ['search', 'from', 'toExclusive', 'timezone', 'kind', 'source', 'sort']
+  const filterKey = [
+    'search',
+    'from',
+    'toExclusive',
+    'timezone',
+    'kind',
+    'source',
+    'quality',
+    'sort',
+  ]
     .map((name) => `${name}:${params.get(name)}`)
     .join('|');
   return (
@@ -158,6 +173,7 @@ function Workspace({
             timezone: from || to ? String(data.get('timezone') ?? '') : null,
             kind: String(data.get('kind') ?? ''),
             source: String(data.get('source') ?? ''),
+            quality: String(data.get('quality') ?? ''),
             sort: String(data.get('sort')),
             offset: null,
           });
@@ -201,6 +217,25 @@ function Workspace({
             ))}
           </select>
         </label>
+        <label>
+          기록 상태
+          <select
+            name="quality"
+            aria-describedby={`${headingId}-quality-help`}
+            defaultValue={params.get('quality') ?? ''}
+          >
+            <option value="">모든 기록</option>
+            {Object.entries(qualityLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p id={`${headingId}-quality-help`}>
+          기록 상태는 현재 정정 반영 값을 기준으로 조회합니다. 0은 알려진 값이며 미입력이 아닙니다.
+          사용자 정정됨은 사용자 수정이 있는 기록입니다.
+        </p>
         <label>
           활동 정렬
           <select name="sort" defaultValue={params.get('sort') ?? 'started_desc'}>
@@ -246,8 +281,8 @@ function Workspace({
         <div role="alert">
           <p>
             조회 주소를 확인하세요. 날짜는 시작일·종료일·시간대를 함께 지정하고 1~3660일 범위를
-            사용하세요. 종목·출처·정렬·보기·선택한 기록도 유효해야 합니다. 계획 연결은 버전과
-            Block을 함께 지정하세요.
+            사용하세요. 종목·출처·기록 상태·정렬·보기·선택한 기록도 유효해야 합니다. 계획 연결은
+            버전과 Block을 함께 지정하세요.
           </p>
           <Button
             variant="secondary"
@@ -259,6 +294,7 @@ function Workspace({
                 timezone: null,
                 kind: null,
                 source: null,
+                quality: null,
                 sort: null,
                 offset: null,
                 view: null,
@@ -277,7 +313,8 @@ function Workspace({
             적용 조건 (모두 충족): 제목 {parsed.query?.search ?? '전체'} · 종목{' '}
             {parsed.query?.kind ? kindLabels[parsed.query.kind] : '전체'} · 출처{' '}
             {parsed.query?.source ? sourceLabels[parsed.query.source] : '전체'} · 정렬{' '}
-            {sortLabels[parsed.query?.sort ?? 'started_desc']}
+            {sortLabels[parsed.query?.sort ?? 'started_desc']} · 기록 상태{' '}
+            {parsed.query?.quality ? qualityLabels[parsed.query.quality] : '모든 기록'}
             {parsed.query?.from
               ? ` · 날짜 ${parsed.query.from} ~ ${parsed.query.toExclusive} (종료일 제외) · ${parsed.query.timezone}`
               : ' · 날짜 제한 없음'}

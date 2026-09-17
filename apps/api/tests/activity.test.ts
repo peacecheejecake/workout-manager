@@ -439,3 +439,32 @@ describe('explicit immutable linked Block query boundary', () => {
     expect(activities.listActivities).not.toHaveBeenCalled();
   });
 });
+
+describe('activity record-state filter boundary', () => {
+  it.each(['missing_distance', 'missing_duration', 'missing_start', 'corrected'] as const)(
+    'delegates quality=%s with authenticated ownership',
+    async (quality) => {
+      const { app, activities } = setup();
+      expect(
+        (await app.inject({ url: `/bff/v1/activities?quality=${quality}&source=manual`, headers }))
+          .statusCode,
+      ).toBe(200);
+      expect(activities.listActivities).toHaveBeenCalledWith(athleteId, {
+        limit: 50,
+        offset: 0,
+        quality,
+        source: 'manual',
+      });
+    },
+  );
+  it.each(['', 'complete', 'high_confidence'])(
+    'rejects unsupported quality=%s',
+    async (quality) => {
+      const { app, activities } = setup();
+      expect(
+        (await app.inject({ url: `/bff/v1/activities?quality=${quality}`, headers })).statusCode,
+      ).toBe(400);
+      expect(activities.listActivities).not.toHaveBeenCalled();
+    },
+  );
+});

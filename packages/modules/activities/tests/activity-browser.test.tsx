@@ -93,6 +93,50 @@ function setup(
   };
 }
 describe('read-only activity browser', () => {
+  it('applies record state with other URL filters, resets paging and preserves off-page selection', async () => {
+    const user = userEvent.setup();
+    const { request, changed } = setup(async (input) => {
+      if (!input.path.includes('?')) return reply(context(activity));
+      const quality = new URL(input.path, 'http://local').searchParams.get('quality');
+      return reply({
+        items: quality === 'missing_distance' ? [missing] : [activity, missing],
+        total: quality === 'missing_distance' ? 1 : 2,
+      });
+    }, `selected=${activity.id}&offset=20&view=table&search=훈련`);
+    await screen.findByRole('region', { name: '선택한 활동 상세' });
+    await user.selectOptions(screen.getByLabelText('기록 상태'), 'missing_distance');
+    await user.click(screen.getByRole('button', { name: '활동 필터 적용' }));
+    await screen.findByText(/기록 상태 거리 미입력/);
+    const applied = new URLSearchParams(changed.mock.lastCall?.[0]);
+    expect(applied.get('quality')).toBe('missing_distance');
+    expect(applied.get('selected')).toBe(activity.id);
+    expect(applied.get('view')).toBe('table');
+    expect(applied.get('search')).toBe('훈련');
+    expect(applied.has('offset')).toBe(false);
+    expect(
+      request.mock.calls.some(([input]) => input.path.includes('quality=missing_distance')),
+    ).toBe(true);
+    expect(screen.getByText(/0은 알려진 값/)).toBeVisible();
+    await user.selectOptions(screen.getByLabelText('기록 상태'), '');
+    await user.click(screen.getByRole('button', { name: '활동 필터 적용' }));
+    const cleared = new URLSearchParams(changed.mock.lastCall?.[0]);
+    expect(cleared.has('quality')).toBe(false);
+    expect(cleared.get('selected')).toBe(activity.id);
+  });
+  it('rejects an invalid record state without an activity request and recovers through reset', async () => {
+    const user = userEvent.setup();
+    const { request, changed } = setup(undefined, 'quality=score');
+    expect(screen.getByRole('alert')).toHaveTextContent('기록 상태');
+    expect(request.mock.calls.every(([input]) => input.path === '/bff/v1/plans/current')).toBe(
+      true,
+    );
+    await user.click(screen.getByRole('button', { name: '활동 조회 조건 초기화' }));
+    expect(new URLSearchParams(changed.mock.lastCall?.[0]).has('quality')).toBe(false);
+    await screen.findByText('관측된 영');
+    for (const quality of ['missing_distance', 'missing_duration', 'missing_start', 'corrected']) {
+      expect(readActivitySearch(`quality=${quality}`).query?.quality).toBe(quality);
+    }
+  });
   it('rejects invalid supported URL values without fetching', () => {
     const { request } = setup(undefined, 'from=2026-03-01&view=invalid');
     expect(screen.getByRole('alert')).toHaveTextContent('조회 주소');
@@ -101,6 +145,7 @@ describe('read-only activity browser', () => {
     );
     for (const search of [
       'sort=bad',
+      'quality=score',
       'selected=bad',
       'source=garmin',
       'offset=10001',

@@ -258,7 +258,8 @@ export function createActivityRepository(
             SELECT base.*,${activityInstantSql("(CASE WHEN overlay ? 'startedAt' THEN overlay ELSE original END)->>'startedAt'")} AS started_at,
               (CASE WHEN overlay ? 'kind' THEN overlay ELSE original END)->>'kind' AS effective_kind,
               (CASE WHEN overlay ? 'title' THEN overlay ELSE original END)->>'title' AS effective_title,
-              ((CASE WHEN overlay ? 'distanceMeters' THEN overlay ELSE original END)->>'distanceMeters')::numeric AS effective_distance
+              ((CASE WHEN overlay ? 'distanceMeters' THEN overlay ELSE original END)->>'distanceMeters')::numeric AS effective_distance,
+              ((CASE WHEN overlay ? 'durationSeconds' THEN overlay ELSE original END)->>'durationSeconds')::numeric AS effective_duration
             FROM (${selectActivity}) base
           ), filtered AS MATERIALIZED (
             SELECT * FROM effective WHERE
@@ -274,6 +275,12 @@ export function createActivityRepository(
                     AND EXISTS (SELECT 1 FROM jsonb_array_elements(p.draft->'sessions') session WHERE session->>'id'=effective.overlay#>>'{userReport,planLink,sessionId}' AND session->>'blockId'=$11::text)
                 )
               ))
+              AND ($12::text IS NULL OR CASE $12::text
+                WHEN 'missing_distance' THEN effective_distance IS NULL
+                WHEN 'missing_duration' THEN effective_duration IS NULL
+                WHEN 'missing_start' THEN started_at IS NULL
+                WHEN 'corrected' THEN NULLIF(btrim(overlay->>'reason'),'') IS NOT NULL
+                ELSE false END)
           ), page AS (
             SELECT *,row_number() OVER (ORDER BY ${order}) AS ordinal FROM filtered ORDER BY ${order} LIMIT $2 OFFSET $3
           ) SELECT (SELECT count(*)::int FROM filtered) AS total,
@@ -290,6 +297,7 @@ export function createActivityRepository(
             query.search ?? null,
             query.linkedPlanVersionId ?? null,
             query.linkedBlockId ?? null,
+            query.quality ?? null,
           ],
         );
         const row = z

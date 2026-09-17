@@ -128,6 +128,10 @@ export const activityListQuerySchema = z
     timezone: timeZoneSchema.optional(),
     kind: activityValuesSchema.shape.kind.optional(),
     source: activitySourceSchema.shape.kind.optional(),
+    // Current effective values and explicit user correction, never a quality score.
+    quality: z
+      .enum(['missing_distance', 'missing_duration', 'missing_start', 'corrected'])
+      .optional(),
     search: z.string().trim().min(1).max(200).optional(),
     linkedPlanVersionId: z.uuid().optional(),
     linkedBlockId: idSchema.optional(),

@@ -262,6 +262,15 @@
       "evidence": "docs/implementation/progress/M1-04o.md"
     },
     {
+      "id": "M1-04p",
+      "title": "활동 기록 상태 필터",
+      "dependsOn": ["M1-04l", "M1-04m"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "effective 누락값·명시 사용자 정정·URL 필터·동일 snapshot paging·실제 DB/E2E",
+      "evidence": "docs/implementation/progress/M1-04p.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -281,7 +290,8 @@
         "M1-04l",
         "M1-04m",
         "M1-04n",
-        "M1-04o"
+        "M1-04o",
+        "M1-04p"
       ],
       "kind": "task",
       "status": "not_started",

@@ -270,3 +270,30 @@ describe('explicit linked Block list filters', () => {
       expect(activityListQuerySchema.safeParse(query).success).toBe(false);
   });
 });
+
+describe('activity record-state filters', () => {
+  it.each(['missing_distance', 'missing_duration', 'missing_start', 'corrected'])(
+    'accepts %s alongside existing filters without changing their requirements',
+    (quality) => {
+      const input = {
+        quality,
+        source: 'manual',
+        kind: 'running',
+        from: '2026-09-01',
+        toExclusive: '2026-10-01',
+        timezone: 'Asia/Seoul',
+        linkedPlanVersionId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+        linkedBlockId: 'block',
+        offset: 20,
+      };
+      expect(activityListQuerySchema.parse(input)).toMatchObject(input);
+      expect(activityListQuerySchema.safeParse({ quality, from: input.from }).success).toBe(false);
+    },
+  );
+  it('keeps omission unfiltered and rejects unknown or multiple states', () => {
+    expect(activityListQuerySchema.parse({})).not.toHaveProperty('quality');
+    for (const quality of ['', null, 'good', 'corrected ', ['missing_start', 'corrected']]) {
+      expect(activityListQuerySchema.safeParse({ quality }).success).toBe(false);
+    }
+  });
+});

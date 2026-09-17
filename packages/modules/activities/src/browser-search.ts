@@ -15,6 +15,7 @@ export function readActivitySearch(search: string) {
     'timezone',
     'kind',
     'source',
+    'quality',
     'linkedPlanVersionId',
     'linkedBlockId',
   ]) {
