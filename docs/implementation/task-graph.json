@@ -469,6 +469,15 @@
       "evidence": "docs/implementation/progress/M1-04al.md"
     },
     {
+      "id": "M1-04am",
+      "title": "대시보드 기간 탐색 연결",
+      "dependsOn": ["M1-04d", "M1-04u", "M1-04ah"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "저장된 계획 Orbit/타임라인 재사용·URL 선택/뒤로가기·Planner 이동·독립 조회/오류·계정 격리",
+      "evidence": "docs/implementation/progress/M1-04am.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -511,7 +520,8 @@
         "M1-04ai",
         "M1-04aj",
         "M1-04ak",
-        "M1-04al"
+        "M1-04al",
+        "M1-04am"
       ],
       "kind": "task",
       "status": "not_started",

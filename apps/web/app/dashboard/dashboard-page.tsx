@@ -5,6 +5,7 @@ import {
   useAuthenticatedSession,
 } from '@workout/platform/authenticated-workspace';
 import { DashboardWorkspace } from '@workout/modules-dashboard/dashboard-workspace';
+import { PlanningPeriodNavigator } from '@workout/modules-planning/planning-period-navigator';
 import { shiftDashboardDate } from '@workout/contracts/dashboard';
 
 const links = {
@@ -37,6 +38,11 @@ function Dashboard() {
     window.addEventListener('popstate', update);
     return () => window.removeEventListener('popstate', update);
   }, []);
+  function changeSearch(query: string) {
+    const normalized = query ? `?${query.replace(/^\?/, '')}` : '';
+    window.history.pushState(null, '', `${window.location.pathname}${normalized}`);
+    setSearch(normalized);
+  }
   return (
     <DashboardWorkspace
       {...session}
@@ -44,11 +50,24 @@ function Dashboard() {
       initialAnchor={initial.anchor}
       initialTimezone={initial.timezone}
       links={links}
-      onSearchChange={(query) => {
-        const normalized = query ? `?${query.replace(/^\?/, '')}` : '';
-        window.history.pushState(null, '', `${window.location.pathname}${normalized}`);
-        setSearch(normalized);
-      }}
+      onSearchChange={changeSearch}
+      periodNavigation={
+        <PlanningPeriodNavigator
+          {...session}
+          search={search}
+          onSearchChange={changeSearch}
+          planHref={(id) => (id === null ? links.planning : links.planBlock(id))}
+          onCalendar={(period) => {
+            window.location.assign(
+              `/planner?${new URLSearchParams({
+                lens: 'period',
+                period: period.id,
+                plannedView: 'calendar',
+              })}`,
+            );
+          }}
+        />
+      }
     />
   );
 }

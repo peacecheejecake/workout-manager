@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { dashboardQuerySchema, dashboardReadModelSchema } from '@workout/contracts/dashboard';
@@ -26,6 +26,7 @@ export interface DashboardWorkspaceProps {
   initialAnchor: string;
   initialTimezone: string;
   links: DashboardLinks;
+  periodNavigation?: ReactNode;
 }
 export function readDashboardSearch(search: string, anchor: string, timezone: string) {
   const params = new URLSearchParams(search);
@@ -60,6 +61,7 @@ function Workspace({
   initialAnchor,
   initialTimezone,
   links,
+  periodNavigation,
 }: DashboardWorkspaceProps) {
   const headingId = useId();
   const parsed = readDashboardSearch(search, initialAnchor, initialTimezone);
@@ -101,6 +103,7 @@ function Workspace({
   return (
     <section className={styles.workspace} aria-labelledby={headingId}>
       <h1 id={headingId}>오늘과 최근 기록</h1>
+      {periodNavigation}
       <form
         key={`${params.get('anchor')}:${params.get('window')}:${params.get('timezone')}`}
         className={styles.filters}

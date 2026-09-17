@@ -17,6 +17,7 @@
   },
   "exports": {
     "./planning-workspace": "./src/planning-workspace.tsx",
+    "./planning-period-navigator": "./src/planning-period-navigator.tsx",
     "./draft-store": "./src/draft-store.ts"
   }
 }
