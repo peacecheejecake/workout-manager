@@ -1,3 +1,4 @@
+import { sessionCompletionRequestError } from './session-completion-routes.js';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
@@ -40,7 +41,7 @@ export function registerPlanningRoutes(
         (error) =>
           error instanceof PlanLockedError
             ? new ProductRequestError(409, 'PLAN_LOCKED')
-            : undefined,
+            : sessionCompletionRequestError(error),
       ),
     );
   });

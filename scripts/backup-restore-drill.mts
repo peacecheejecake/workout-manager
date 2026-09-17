@@ -16,12 +16,79 @@ import {
   grantOperations,
   grantGarmin,
   grantCheckIns,
+  grantSessionCompletions,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.js';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
+import { createPlanningRepository } from '../packages/server/persistence/src/planning.js';
+import {
+  createSessionCompletionRepository,
+  SessionCompletionError,
+} from '../packages/server/persistence/src/session-completions.js';
+import { planDraftSchema } from '../packages/contracts/src/planning.js';
+import type { SessionCompletionCommand } from '../packages/contracts/src/session-completion.js';
+
+async function seedCompletion(database: Database, athleteId: string) {
+  const draft = planDraftSchema.parse({
+    title: 'Synthetic completion restore plan',
+    timezone: 'UTC',
+    periods: ['season', 'wave', 'phase', 'block'].map((level, index, levels) => ({
+      id: level,
+      parentId: index === 0 ? null : levels[index - 1],
+      level,
+      title: level,
+      startDate: '2026-09-01',
+      endDateExclusive: '2026-10-01',
+      timezone: 'UTC',
+      intent: '',
+      isPartial: false,
+    })),
+    sessions: [
+      {
+        id: 'restore-session',
+        blockId: 'block',
+        date: '2026-09-16',
+        localStartTime: null,
+        title: 'Synthetic completion session',
+        sport: 'running',
+        durationSeconds: null,
+        distanceMeters: 0,
+        targetRpe: null,
+        purpose: '',
+        notes: '',
+        priority: 'normal',
+        locks: { date: false, time: false, intensity: false },
+        steps: [],
+      },
+    ],
+  });
+  const plan = await createPlanningRepository(database).save(athleteId, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    draft,
+  });
+  const command: SessionCompletionCommand = {
+    action: 'complete',
+    confirmed: true,
+    expectedPlanVersionId: plan.id,
+    expectedRevision: null,
+    reason: null,
+    idempotencyKey: randomUUID(),
+  };
+  const result = await createSessionCompletionRepository(database).write(
+    athleteId,
+    'restore-session',
+    command,
+  );
+  assert.equal(result.report.revision, 1);
+  assert.equal(result.collectionRevision, 1);
+  return { plan, command, result };
+}
 
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
@@ -135,21 +202,32 @@ async function execute() {
     await source.query(
       'GRANT SELECT,INSERT,UPDATE,DELETE ON consent,command_receipt,outbox,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO drill_runtime',
     );
-    await source.query('GRANT SELECT ON plan_snapshot,plan_head,plan_history TO drill_runtime');
+    await source.query(
+      'GRANT SELECT,INSERT,UPDATE ON plan_snapshot,plan_head,plan_history TO drill_runtime',
+    );
     await grantOperations(url('drill_source'), 'drill_runtime');
     await grantGarmin(url('drill_source'), 'drill_runtime');
     await grantCheckIns(url('drill_source'), 'drill_runtime');
+    await grantSessionCompletions(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
     const manualIds = new Map<string, string>();
     const manualHistories = new Map<string, unknown>();
     const checkInIds = new Map<string, string>();
-    const checkInTables = [
+    const completions = new Map<string, Awaited<ReturnType<typeof seedCompletion>>>();
+    const completionTables = [
+      'session_completion',
+      'session_completion_revision',
+      'session_completion_receipt',
+      'session_completion_collection_head',
+    ];
+    const selfReportTables = [
       'check_in',
       'check_in_revision',
       'check_in_receipt',
       'check_in_collection_head',
+      ...completionTables,
     ];
     const checkInValues = {
       observedAt: '2026-09-16T08:00:00+09:00',
@@ -205,7 +283,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 2);
+      assert.equal(before.schemaVersion, 3);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -223,6 +301,7 @@ async function execute() {
         values: checkInValues,
       });
       checkInIds.set(athleteId, checkIn.id);
+      completions.set(athleteId, await seedCompletion(sourceDb, athleteId));
       await source.query(
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
@@ -325,7 +404,7 @@ async function execute() {
       2,
     );
     checks.push('trusted_custom_archive_restored_pre_deletion_rows');
-    for (const table of checkInTables) {
+    for (const table of selfReportTables) {
       assert.equal(
         (
           await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
@@ -408,7 +487,7 @@ async function execute() {
       0,
     );
     checks.push('deleted_tenant_absent_from_all_13_health_and_command_tables_and_identity');
-    for (const table of checkInTables) {
+    for (const table of selfReportTables) {
       assert.equal(
         (
           await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
@@ -483,7 +562,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 2);
+    assert.equal(retainedExport.schemaVersion, 3);
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
     );
@@ -527,6 +606,90 @@ async function execute() {
       TenantErasedError,
     );
     checks.push('check_in_erasure_replayed_across_all_four_tables_retained_self_report_readable');
+    const completion = completions.get(retainedAthlete);
+    const deletedCompletion = completions.get(deletedAthlete);
+    assert.ok(completion && deletedCompletion);
+    const completionRepository = createSessionCompletionRepository(restoreDb);
+    const retainedCompletion = await completionRepository.read(retainedAthlete, 'restore-session');
+    assert.deepEqual(retainedCompletion, {
+      sessionId: 'restore-session',
+      currentPlanVersionId: completion.plan.id,
+      report: completion.result.report,
+      history: [completion.result.report],
+      totalHistory: 1,
+    });
+    assert.deepEqual(await completionRepository.list(retainedAthlete), {
+      currentPlanVersionId: completion.plan.id,
+      collectionRevision: 1,
+      items: [completion.result.report],
+    });
+    for (const rows of [
+      retainedExport.data.sessionCompletions,
+      retainedExport.data.sessionCompletionRevisions,
+    ]) {
+      assert.deepEqual(rows, [
+        { session_id: 'restore-session', revision: 1, record_json: completion.result.report },
+      ]);
+    }
+    assert.deepEqual(
+      await completionRepository.write(retainedAthlete, 'restore-session', completion.command),
+      completion.result,
+    );
+    assert.deepEqual(
+      await completionRepository.read(retainedAthlete, 'restore-session'),
+      retainedCompletion,
+    );
+    await assert.rejects(
+      () =>
+        createPlanningRepository(restoreDb).save(retainedAthlete, {
+          source: 'manual',
+          confirmed: true,
+          expectedVersionId: completion.plan.id,
+          idempotencyKey: randomUUID(),
+          draft: {
+            ...completion.plan.draft,
+            sessions: completion.plan.draft.sessions.map((session) => ({
+              ...session,
+              date: '2026-09-17',
+            })),
+          },
+        }),
+      (error: unknown) =>
+        error instanceof SessionCompletionError && error.code === 'PLAN_COMPLETED_SESSION',
+    );
+    assert.deepEqual(
+      (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
+      completion.plan,
+    );
+    assert.equal(
+      (await createActivityRepository(restoreDb).listActivities(retainedAthlete)).total,
+      2,
+    );
+    await assert.rejects(
+      () =>
+        completionRepository.write(deletedAthlete, 'restore-session', deletedCompletion.command),
+      TenantErasedError,
+    );
+    for (const table of completionTables) {
+      for (const [athleteId, expectedCount] of [
+        [deletedAthlete, 0],
+        [retainedAthlete, 1],
+      ] as const) {
+        assert.equal(
+          (
+            await restored.query(
+              `SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`,
+              [athleteId],
+            )
+          ).rows[0].count,
+          expectedCount,
+        );
+      }
+    }
+    checks.push(
+      'session_completion_four_table_erasure_replayed_retained_history_export_v3_and_receipt_preserved',
+    );
+    checks.push('restored_completion_blocks_schedule_change_without_new_plan_or_actual_activity');
     await assert.rejects(
       () =>
         createConsentRepository(restoreDb).setConsent(deletedAthlete, {

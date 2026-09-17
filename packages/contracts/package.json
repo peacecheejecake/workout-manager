@@ -37,6 +37,10 @@
       "types": "./src/period-summary.ts",
       "default": "./dist/period-summary.js"
     },
+    "./session-completion": {
+      "types": "./src/session-completion.ts",
+      "default": "./dist/session-completion.js"
+    },
     "./operations": {
       "types": "./src/operations.ts",
       "default": "./dist/operations.js"

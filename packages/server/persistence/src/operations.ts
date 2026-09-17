@@ -19,6 +19,13 @@ export interface OperationsRepository {
   status(athleteId: string): Promise<OperationsStatus>;
 }
 const collections = [
+  ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
+  [
+    'sessionCompletionRevisions',
+    'session_completion_revision',
+    'session_id,revision,record_json',
+    'session_id,revision',
+  ],
   ['consents', 'consent', 'kind,granted,revision', 'kind'],
   ['planSnapshots', 'plan_snapshot', 'id,version,created_at,draft', 'version'],
   ['planHead', 'plan_head', 'version_id', 'version_id'],
@@ -75,7 +82,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 2,
+          schemaVersion: 3,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

@@ -4,7 +4,7 @@ import { garminConnectionStateSchema } from './garmin.js';
 const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
 /** Versioned download artifact, deliberately excludes authentication and command internals. */
-export const accountExportSchema = z.strictObject({
+const accountExportV2Schema = z.strictObject({
   schemaVersion: z.literal(2),
   athleteId: z.string().min(1).max(200),
   exportedAt: z.iso.datetime({ offset: true }),
@@ -23,6 +23,17 @@ export const accountExportSchema = z.strictObject({
     checkInRevisions: rows,
   }),
 });
+// Existing v2 artifacts remain readable; new exports include the separate user completion ledger.
+export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
+  accountExportV2Schema,
+  accountExportV2Schema.extend({
+    schemaVersion: z.literal(3),
+    data: accountExportV2Schema.shape.data.extend({
+      sessionCompletions: rows,
+      sessionCompletionRevisions: rows,
+    }),
+  }),
+]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),
   outbox: z.strictObject({ pending: count, leased: count, retrying: count, completed: count }),

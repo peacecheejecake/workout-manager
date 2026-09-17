@@ -22,6 +22,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '007_check_ins.sql',
       '008_manual_activities.sql',
       '009_activity_details.sql',
+      '010_session_completion.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -104,7 +105,7 @@ export async function grantOperations(
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON garmin_connection,check_in,check_in_revision TO "${runtimeRole}"`,
+      `GRANT SELECT ON garmin_connection,check_in,check_in_revision,session_completion,session_completion_revision,session_completion_collection_head TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
@@ -150,6 +151,25 @@ export async function grantCheckIns(connectionString: string, runtimeRole: strin
     );
     await pool.query(`GRANT SELECT,INSERT,DELETE ON check_in_revision TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON check_in_receipt TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Separate user confirmations share planning serialization but never write activity tables. */
+export async function grantSessionCompletions(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON session_completion,session_completion_collection_head TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT ON session_completion_revision,session_completion_receipt TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

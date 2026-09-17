@@ -67,7 +67,7 @@ test('OIDC scoped check-in API persists null and zero, corrects revisions, expor
   const exported = await page.request.post('/bff/v1/operations/export', { headers });
   expect(exported.status()).toBe(200);
   const artifact = accountExportSchema.parse(await exported.json());
-  expect(artifact.schemaVersion).toBe(2);
+  expect(artifact.schemaVersion).toBe(3);
   expect(JSON.stringify(artifact.data.checkIns)).toContain(marker);
   expect(
     artifact.data.checkInRevisions.filter((row) => row.check_in_id === original.id),

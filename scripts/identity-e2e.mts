@@ -1,3 +1,4 @@
+import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
 import { createPeriodSummaryRepository } from '../packages/server/persistence/src/period-summary.ts';
 import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
@@ -20,6 +21,7 @@ import {
   grantIdentityFunctions,
   grantOperations,
   grantCheckIns,
+  grantSessionCompletions,
   grantGarmin,
   grantGarminWorker,
   migrate,
@@ -120,6 +122,7 @@ try {
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantOperations(adminUrl, 'workout_runtime');
     await grantCheckIns(adminUrl, 'workout_runtime');
+    await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantGarmin(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
@@ -191,6 +194,7 @@ try {
     }),
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
+    sessionCompletions: createSessionCompletionRepository(database),
     periodSummary: createPeriodSummaryRepository(database),
     activities: createActivityRepository(database),
     activityContext: createActivityContextRepository(database),

@@ -1,3 +1,4 @@
+import { createSessionCompletionRepository } from '@workout/server-persistence/session-completions';
 import { createPeriodSummaryRepository } from '@workout/server-persistence/period-summary';
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
@@ -68,6 +69,7 @@ export async function createConfiguredApi(environment: unknown) {
           : createGarminService({ store: createGarminStore(database), ...garminConfiguration }),
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
+      sessionCompletions: createSessionCompletionRepository(database),
       periodSummary: createPeriodSummaryRepository(database),
       activities: createActivityRepository(database),
       activityContext: createActivityContextRepository(database),

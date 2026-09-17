@@ -54,7 +54,7 @@ Garmin OAuth 추가 후에는 백업 안의 모든 Garmin credential·미완료 
 
 ## 체크인 저장 이후의 내보내기·복구
 
-M1-04a부터 새 export artifact는 `schemaVersion: 2`다. 기존 v1 다운로드 파일은 변경하지 않으며
+M1-04a에서 export artifact `schemaVersion: 2`를 도입했다. 기존 v1 다운로드 파일은 변경하지 않으며
 이번 앱은 과거 export를 다시 import하는 기능을 제공하지 않는다. v2는 기존 collection에
 `checkIns`와 `checkInRevisions`를 추가한다. 원래 관측 시각·시간대·0/null·정정 이유와 이력을
 내보내며 인증 정보·명령 receipt는 제외한다. 레코드 삭제는 건강 payload와 해당 정정 이력을 제거한다.
@@ -63,3 +63,16 @@ M1-04a부터 새 export artifact는 `schemaVersion: 2`다. 기존 v1 다운로�
 Migration 007과 `grantCheckIns`를 API runtime에 적용한다. 계정 삭제와 백업 복구의 최신 삭제 원장
 재적용 시 `check_in`, `check_in_revision`, `check_in_receipt`, `check_in_collection_head`도 함께
 삭제해야 한다. 신규 보고서의 체크인 복구 검사는 실제 임시 DB 검증이며 운영 복구 서비스 배포 증거는 아니다.
+
+## 세션 완료 확인 이후의 내보내기·복구
+
+M1-04ai부터 새 export는 `schemaVersion: 3`이며 `sessionCompletions`와
+`sessionCompletionRevisions`를 추가한다. 기존 v2 artifact 파서는 계속 지원하지만 이전 파일에
+없는 완료 기록을 만들어 넣지 않는다. 완료 확인은 사용자 자기보고이며 실제 활동·이행률이 아니다.
+확인/철회·사유·확인 시각·참조한 불변 계획 버전과 일정을 내보내고 명령 receipt는 제외한다.
+
+Migration 010과 `grantSessionCompletions`를 적용한다. 현재 완료 확인 기록은 계획 저장과 같은
+사용자 단위 lock으로 직렬화되어 날짜·시각·Block·시간대 변경과 삭제를 차단한다. 정정은
+별도의 명시 철회 명령이다. 계정 삭제 및 복구 전 최신 삭제 원장 재적용은 `session_completion`,
+`session_completion_revision`, `session_completion_receipt`, `session_completion_collection_head`를
+함께 제거한다. runtime에 복구 DB를 열기 전에 기존 복구 절차를 그대로 완료해야 한다.

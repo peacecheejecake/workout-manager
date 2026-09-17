@@ -42,7 +42,7 @@ runtime role을 운영 배포 도구로 생성한다. 앱에는 migration owner 
 
 ```bash
 node --import tsx --input-type=module <<'JS'
-import { migrate, grantIdentityFunctions, grantOperations, grantGarmin, grantCheckIns } from './packages/server/persistence/src/migrate.ts';
+import { migrate, grantIdentityFunctions, grantOperations, grantGarmin, grantCheckIns, grantSessionCompletions } from './packages/server/persistence/src/migrate.ts';
 const admin = process.env.DEPLOY_DATABASE_URL;
 const role = process.env.RUNTIME_DB_ROLE;
 if (!admin || !role) throw new Error('Deployment DB configuration required');
@@ -51,6 +51,7 @@ await grantIdentityFunctions(admin, role);
 await grantOperations(admin, role);
 await grantGarmin(admin, role);
 await grantCheckIns(admin, role);
+await grantSessionCompletions(admin, role);
 JS
 ```
 
@@ -71,7 +72,8 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. `grantOperations`는 삭제 차단 원장 조회,
 민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. `grantGarmin`은 현재 tenant의
 연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. `grantCheckIns`는 자기보고 원장·정정·
-명령 receipt의 제한된 DML을 허용한다. migration 001–007은 checksum으로 보호한다.
+명령 receipt의 제한된 DML을 허용한다. `grantSessionCompletions`는 사용자 세션 완료 확인·철회
+원장과 revision·receipt·collection head의 제한된 DML을 허용한다. migration 001–010은 checksum으로 보호한다.
 
 ## 요청 경계
 

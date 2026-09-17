@@ -20,6 +20,7 @@
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
     "./period-summary": "./src/period-summary.ts",
+    "./session-completions": "./src/session-completions.ts",
     "./activities": "./src/activities.ts",
     "./operations": "./src/operations.ts",
     "./garmin": "./src/garmin.ts",

@@ -1,3 +1,8 @@
+import {
+  preservesSessionCompletions,
+  sessionCompletionSchema,
+} from '@workout/contracts/session-completion';
+import { SessionCompletionError } from './session-completions.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import {
@@ -98,6 +103,17 @@ export function createPlanningRepository(database: Database): PlanningRepository
           throw new PersistenceConflict('REVISION_CONFLICT');
         if (previous !== null && !preservesSessionLocks(previous.draft, command.draft))
           throw new PlanLockedError();
+        const completions = await transaction.query(
+          "SELECT record_json FROM session_completion WHERE athlete_id=$1 AND record_json->>'status'='completed'",
+          [athleteId],
+        );
+        if (
+          !preservesSessionCompletions(
+            command.draft,
+            completions.rows.map((row) => sessionCompletionSchema.parse(row['record_json'])),
+          )
+        )
+          throw new SessionCompletionError('PLAN_COMPLETED_SESSION');
         const id = randomUUID();
         const inserted = await transaction.query(
           'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,$3,$4::jsonb) RETURNING *',

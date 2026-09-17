@@ -41,7 +41,7 @@ export function createDatabase(options: { connectionString: string; max?: number
     try {
       await client.query('BEGIN');
       const role = await client.query(
-        "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt', 'plan_snapshot', 'plan_head', 'plan_history', 'activity_canonical', 'activity_source_head', 'activity_source_revision', 'activity_overlay', 'activity_overlay_revision', 'activity_suppression', 'activity_import_receipt', 'tenant_erasure', 'operations_audit', 'garmin_connection', 'garmin_attempt', 'check_in', 'check_in_revision', 'check_in_receipt', 'check_in_collection_head') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
+        "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt', 'plan_snapshot', 'plan_head', 'plan_history', 'activity_canonical', 'activity_source_head', 'activity_source_revision', 'activity_overlay', 'activity_overlay_revision', 'activity_suppression', 'activity_import_receipt', 'tenant_erasure', 'operations_audit', 'garmin_connection', 'garmin_attempt', 'check_in', 'check_in_revision', 'check_in_receipt', 'check_in_collection_head', 'session_completion', 'session_completion_revision', 'session_completion_receipt', 'session_completion_collection_head') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
       );
       const privileges = z.object({
         rolsuper: z.literal(false),
