@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { curlRequest, parseArguments, probe } from '../../../scripts/probe-routing.mjs';
 
 const url = new URL('https://routing.openstreetmap.de/routed-foot/route/v1/foot/0,0;0.001,0.001');
@@ -33,6 +34,90 @@ function payload() {
 }
 
 describe('explicit routing research transport', () => {
+  it('records the exact request options and coordinate order with a deterministic request hash', async () => {
+    const requests = [];
+    const request = async (url) => {
+      requests.push(url.href);
+      return { status: 400, payload: { code: 'NoSegment' } };
+    };
+    const first = await probe({ ...testCase, revision: 2 }, request);
+    const repeat = await probe({ ...testCase, revision: 2 }, request);
+    const reversed = await probe(
+      { ...testCase, coordinates: [...testCase.coordinates].reverse() },
+      request,
+    );
+    const expected =
+      'https://routing.openstreetmap.de/routed-foot/route/v1/foot/0,0;0.001,0.001?radiuses=100%3B100&overview=full&geometries=geojson&alternatives=false&steps=false';
+    expect(requests[0]).toBe(expected);
+    expect(first.requestedOptions).toEqual({
+      radiuses: '100;100',
+      overview: 'full',
+      geometries: 'geojson',
+      alternatives: 'false',
+      steps: 'false',
+    });
+    expect(first.caseRevision).toBe(2);
+    expect(first.requestedCoordinates).toEqual(testCase.coordinates);
+    expect(first.requestHash).toBe(createHash('sha256').update(`GET\n${expected}`).digest('hex'));
+    expect(repeat.requestHash).toBe(first.requestHash);
+    expect(reversed.requestHash).not.toBe(first.requestHash);
+    expect(first.expectedVerdict).toBeNull();
+  });
+  it.each([
+    [200, 'InvalidOptions', 'options_rejection', 'inconclusive', 'provider_rejected'],
+    [400, 'NoSegment', 'snap_failure', 'observed_rejection', 'unreachable'],
+    [400, 'NoRoute', 'route_failure', 'observed_rejection', 'unreachable'],
+    [200, 'Ok', 'route_response', 'unexpected_route', 'computed_not_reviewed'],
+    [429, 'TooManyRequests', 'provider_rejection', 'inconclusive', 'provider_rejected'],
+    [429, 'NoSegment', 'snap_failure', 'inconclusive', 'unreachable'],
+    [500, 'NoRoute', 'route_failure', 'inconclusive', 'unreachable'],
+  ])(
+    'classifies negative control HTTP %s code %s without promoting coverage',
+    async (status, code, diagnostic, expectedVerdict, outcome) => {
+      const result = await probe(
+        { ...testCase, id: 'NEG-SYN-03', negativeControl: true },
+        async () => ({
+          status,
+          payload: { ...payload(), code, message: 'untrusted secret provider details' },
+        }),
+      );
+      expect(result).toMatchObject({
+        httpStatus: status,
+        providerCode: code,
+        diagnostic,
+        expectedVerdict,
+        outcome,
+        coverageReview: 'not_reviewed',
+      });
+      expect(JSON.stringify(result)).not.toContain('untrusted secret');
+      expect(result).not.toHaveProperty('geometry');
+    },
+  );
+  it('does not count malformed Ok geometry as an unexpected valid route', async () => {
+    const result = await probe(
+      { ...testCase, id: 'NEG-SYN-03', negativeControl: true },
+      async () => ({ status: 200, payload: { code: 'Ok', routes: [] } }),
+    );
+    expect(result).toMatchObject({
+      outcome: 'request_failed',
+      diagnostic: 'route_response',
+      expectedVerdict: 'inconclusive',
+    });
+  });
+  it('leaves a transport failure inconclusive rather than counting it as ocean rejection', async () => {
+    const result = await probe(
+      { ...testCase, id: 'NEG-SYN-03', negativeControl: true },
+      async () => {
+        throw new Error('TIMEOUT');
+      },
+    );
+    expect(result).toMatchObject({
+      outcome: 'request_failed',
+      diagnostic: 'request_failure',
+      expectedVerdict: 'inconclusive',
+      httpStatus: null,
+    });
+  });
   it('requires explicit execution and curl opt-in without silently accepting extra options', () => {
     expect(parseArguments(['--execute'])).toBe('node');
     expect(parseArguments(['--execute', '--transport=curl'])).toBe('curl');

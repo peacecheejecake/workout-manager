@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-17T14:44:10.909Z",
+  "timingScope": "Recorded after reading the response, not the request timestamp.",
+  "caseId": "NEG-SYN-01",
+  "caseRevision": 1,
+  "requestCount": 1,
+  "transport": "curl",
+  "endpointOrigin": "https://routing.openstreetmap.de",
+  "requestedCoordinates": [
+    [0, 0],
+    [0.001, 0.001]
+  ],
+  "requestedOptions": {
+    "radiuses": "100;100",
+    "steps": "false",
+    "geometries": "geojson",
+    "overview": "full"
+  },
+  "requestHash": "f2d8211bb197da00a8b2dc081683f264eeaeee3e6e6b9fa02b18a41d4a2a9600",
+  "httpStatus": 200,
+  "providerCode": "InvalidOptions",
+  "diagnostic": "null_island_request_guard",
+  "evidenceSource": "Direct provider response message from one bounded manual request; raw message not retained.",
+  "finding": "The provider explicitly rejects requests containing 0,0 to preserve resources. This does not test road snapping or routing failure.",
+  "action": "Retire NEG-SYN-01 from active requests, preserve its history, and use distinct nonzero NEG-SYN-03 at the same 100m snap radius.",
+  "coverageReview": "not_reviewed",
+  "operatorPolicy": "https://routing.openstreetmap.de/about.html"
+}

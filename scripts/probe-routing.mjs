@@ -10,6 +10,7 @@ const endpoint = `${origin}/routed-foot/route/v1/foot/`;
 const cases = [
   {
     id: 'KR-SYN-01',
+    revision: 1,
     context: 'Synthetic Seoul city probe; exact walkway not independently reviewed',
     coordinates: [
       [126.978, 37.566],
@@ -18,6 +19,7 @@ const cases = [
   },
   {
     id: 'KR-SYN-02',
+    revision: 1,
     context:
       'Synthetic Han River crossing probe; bridge/access suitability not independently reviewed',
     coordinates: [
@@ -26,11 +28,13 @@ const cases = [
     ],
   },
   {
-    id: 'NEG-SYN-01',
-    context: 'Synthetic ocean coordinates; no long-distance snap allowed',
+    id: 'NEG-SYN-03',
+    negativeControl: true,
+    revision: 1,
+    context: 'Synthetic nonzero ocean coordinates near Null Island; no long-distance snap allowed',
     coordinates: [
-      [0, 0],
-      [0.001, 0.001],
+      [0.01, 0.01],
+      [0.011, 0.011],
     ],
   },
 ];
@@ -180,7 +184,11 @@ export async function probe(testCase, request = nodeRequest) {
   }).toString();
   const result = {
     caseId: testCase.id,
-    caseRevision: 1,
+    caseRevision: testCase.revision ?? 1,
+    requestedOptions: Object.fromEntries(url.searchParams),
+    requestHash: createHash('sha256').update(`GET\n${url.href}`).digest('hex'),
+    diagnostic: 'request_failure',
+    expectedVerdict: testCase.negativeControl === true ? 'inconclusive' : null,
     context: testCase.context,
     requestedCoordinates: testCase.coordinates,
     requestedRadiusMeters: 100,
@@ -210,6 +218,22 @@ export async function probe(testCase, request = nodeRequest) {
       typeof payload.code === 'string' && /^[A-Za-z_]{1,64}$/.test(payload.code)
         ? payload.code
         : null;
+    result.diagnostic =
+      result.providerCode === 'InvalidOptions'
+        ? 'options_rejection'
+        : result.providerCode === 'NoSegment'
+          ? 'snap_failure'
+          : result.providerCode === 'NoRoute'
+            ? 'route_failure'
+            : result.providerCode === 'Ok'
+              ? 'route_response'
+              : 'provider_rejection';
+    if (testCase.negativeControl === true)
+      result.expectedVerdict =
+        (status === 200 || status === 400) &&
+        (result.providerCode === 'NoSegment' || result.providerCode === 'NoRoute')
+          ? 'observed_rejection'
+          : 'inconclusive';
     if (status < 200 || status >= 300 || payload.code !== 'Ok') {
       result.outcome =
         payload.code === 'NoRoute' || payload.code === 'NoSegment'
@@ -249,6 +273,7 @@ export async function probe(testCase, request = nodeRequest) {
     result.geometryHash = createHash('sha256').update(JSON.stringify(route.geometry)).digest('hex');
     result.geometryCoordinateCount = coordinates.length;
     result.outcome = 'computed_not_reviewed';
+    if (testCase.negativeControl === true) result.expectedVerdict = 'unexpected_route';
     return result;
   } catch (error) {
     result.errorName =

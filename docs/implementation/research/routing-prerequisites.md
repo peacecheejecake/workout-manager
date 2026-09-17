@@ -65,6 +65,22 @@ FOSSGIS 운영자 소개 페이지가 연결하는 [공식 frontend 설정](http
 
 M0-06b에서는 조건을 충족하는 제한적 수동 조사로 공개 합성 좌표 1~3건을 순차 실행하는 방안을 검토할 수 있다. 표시에는 [OpenStreetMap 데이터 출처](https://www.openstreetmap.org/copyright)와 [오류 제보](https://www.openstreetmap.org/fixthemap)를 포함하고 개인 GPS는 보내지 않는다. **이번 M0-06a에서는 routing 요청을 실행하지 않았다.** 실제 응답·snap·거리·형상과 한국 통행 적합성 판정은 후속 증거로 분리하고 반복 CI는 외부 demo를 호출하지 않는 fixture로 구성하는 제안이다.
 
+## 음성 대조군 후속 진단
+
+2026-09-17 음성 대조군 후속: [단일 진단 기록](routing-negative-control-diagnostic.json)에서
+공급자는 `(0,0)`을 포함하는 요청을 자원 절약 목적으로 별도 거절한다고 응답했다.
+따라서 NEG-SYN-01의 `InvalidOptions`는 보행망 snap 실패를 입증하지 않는다.
+이 case는 과거 기록으로 보존하고 활성 요청에서 제외한다. 위 표의 NEG-SYN-02는 여전히
+429/timeout 주입 시험용 ID이며 새 해상 표본에 재사용하지 않는다.
+
+새 활성 해상 대조군은 **NEG-SYN-03 revision 1**, `[0.01,0.01] → [0.011,0.011]`이다.
+0,0 특수 거절을 피하는 별도 합성 입력이며 snap 반경은 기존과 같은 100m다.
+현재·과거 입력을 같은 case 성공/실패로 비교하지 않는다. 옵션 거절은 판정 불가,
+`NoSegment`·`NoRoute`는 각각 snap·경로 실패 관측, 검증된 경로 반환은 예상과 다른 경로로
+기록한다. [OSRM 오류 정의](https://project-osrm.org/docs/v5.24.0/api/)에 따라 `NoSegment`를
+양안 연결 불가능으로 해석하지 않는다. HTTP 200만으로 대조군 통과를 부여하지 않는다.
+실제 옵션과 GET URL hash를 새 실행 보고서에 보존하며, 이 판정은 한국 coverage 승인과 별개다.
+
 ## 다음 작업을 열기 위한 외부 조건
 
 1. routing/tile/geocoding/elevation 각각의 후보·운영 방식·사용 목적·비용 상한 결정. Hosted는 승인된 key/계약, self-hosted는 데이터 추출물·배포 환경·갱신 담당 확보.
