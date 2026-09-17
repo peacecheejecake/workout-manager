@@ -6,6 +6,7 @@ import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { dashboardQuerySchema, dashboardReadModelSchema } from '@workout/contracts/dashboard';
 import { Button } from '@workout/ui-foundation/button';
 import { DashboardOverview } from './overview';
+import { DashboardLayoutLifetime } from './dashboard-layout-lifetime';
 import styles from './dashboard.module.css';
 
 export interface DashboardLinks {
@@ -44,7 +45,9 @@ function Lifetime(props: DashboardWorkspaceProps) {
   useEffect(() => () => client.clear(), [client]);
   return (
     <QueryClientProvider client={client}>
-      <Workspace {...props} />
+      <DashboardLayoutLifetime athleteId={props.athleteId}>
+        <Workspace {...props} />
+      </DashboardLayoutLifetime>
     </QueryClientProvider>
   );
 }

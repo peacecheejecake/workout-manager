@@ -1,0 +1,71 @@
+.editor {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+.grid[data-columns='two'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.grid[data-columns='two'] > [data-size='wide'] {
+  grid-column: 1 / -1;
+}
+.widget {
+  min-width: 0;
+  max-width: 100%;
+}
+.widget[data-editing='true'] {
+  border: 1px dashed var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+}
+.widget[data-dashboard-drop-target='true'] {
+  outline: 3px dashed var(--accent);
+  outline-offset: 2px;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.controls label {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.controls select {
+  max-width: 100%;
+  min-height: var(--target-primary);
+  color: var(--ink);
+  background: var(--surface-strong);
+  font: inherit;
+}
+.handle {
+  min-height: var(--target-primary);
+  min-width: var(--target-primary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  background: var(--surface-strong);
+  font: inherit;
+  touch-action: none;
+}
+.handle:focus-visible,
+.controls select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

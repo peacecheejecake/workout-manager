@@ -316,6 +316,15 @@
       "evidence": "docs/implementation/progress/M1-04u.md"
     },
     {
+      "id": "M1-04v",
+      "title": "대시보드 카드 배치 편집·사용자별 보존",
+      "dependsOn": ["M1-04d", "M1-04t"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "기존 카드 공통 ID 순서·mode별 크기; 명시 edit drag/버튼 대안·취소/적용·반응형 초안 보존·allowlist 로컬 설정",
+      "evidence": "docs/implementation/progress/M1-04v.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -341,7 +350,8 @@
         "M1-04r",
         "M1-04s",
         "M1-04t",
-        "M1-04u"
+        "M1-04u",
+        "M1-04v"
       ],
       "kind": "task",
       "status": "not_started",

@@ -7,6 +7,8 @@ import {
 import type { PlannedSession } from '@workout/contracts/planning';
 import type { DashboardLinks } from './dashboard-workspace';
 import { metricText } from './format';
+import { DashboardLayoutEditor } from './dashboard-layout-editor';
+import { useDashboardLayout } from './dashboard-layout-lifetime';
 const DistanceView = lazy(() =>
   import('./distance-view').then((module) => ({ default: module.DistanceView })),
 );
@@ -85,6 +87,7 @@ export function DashboardOverview({
   model: DashboardReadModel;
   links: DashboardLinks;
 }) {
+  const layout = useDashboardLayout();
   return (
     <>
       <p>
@@ -102,81 +105,93 @@ export function DashboardOverview({
         선택한 기준일: {model.period.anchor}. 최근 {model.period.days}×24시간이 아닌 현지 달력
         날짜를 조회합니다.
       </p>
-      <div className={styles.grid}>
-        <section className={styles.card} aria-label="현재 계획">
-          <h2>현재 계획</h2>
-          <p>
-            {model.planVersion
-              ? `계획 버전 ${model.planVersion.version}`
-              : '저장된 계획이 없습니다.'}
-          </p>
-          {model.currentBlock ? (
-            <>
-              <h3>
-                <a href={links.planBlock(model.currentBlock.id)}>{model.currentBlock.title}</a>
-              </h3>
+      <DashboardLayoutEditor
+        {...layout}
+        widgets={{
+          plan: (
+            <section className={styles.card} aria-label="현재 계획">
+              <h2>현재 계획</h2>
               <p>
-                {model.currentBlock.startDate} ~ {model.currentBlock.endDateExclusive} (종료일 제외)
-                {model.currentBlock.isPartial ? ' · 부분 Block' : ''}
+                {model.planVersion
+                  ? `계획 버전 ${model.planVersion.version}`
+                  : '저장된 계획이 없습니다.'}
               </p>
-              <p>{model.currentBlock.intent}</p>
-            </>
-          ) : (
-            <p>기준일에 해당하는 Block이 없습니다.</p>
-          )}
-          <Sessions label="기준일 계획 세션" sessions={model.todaySessions} links={links} />
-          <Sessions label="가까운 계획 일정" sessions={model.upcomingSessions} links={links} />
-          <p>향후 조회 종료일: {model.period.upcomingToExclusive} (제외)</p>
-          <a href={links.planning}>계획 전체 보기</a>
-        </section>
-        <section className={styles.card} aria-label="최신 체크인">
-          <h2>최신 체크인</h2>
-          {model.latestCheckIn ? (
-            <>
+              {model.currentBlock ? (
+                <>
+                  <h3>
+                    <a href={links.planBlock(model.currentBlock.id)}>{model.currentBlock.title}</a>
+                  </h3>
+                  <p>
+                    {model.currentBlock.startDate} ~ {model.currentBlock.endDateExclusive} (종료일
+                    제외)
+                    {model.currentBlock.isPartial ? ' · 부분 Block' : ''}
+                  </p>
+                  <p>{model.currentBlock.intent}</p>
+                </>
+              ) : (
+                <p>기준일에 해당하는 Block이 없습니다.</p>
+              )}
+              <Sessions label="기준일 계획 세션" sessions={model.todaySessions} links={links} />
+              <Sessions label="가까운 계획 일정" sessions={model.upcomingSessions} links={links} />
+              <p>향후 조회 종료일: {model.period.upcomingToExclusive} (제외)</p>
+              <a href={links.planning}>계획 전체 보기</a>
+            </section>
+          ),
+          'check-in': (
+            <section className={styles.card} aria-label="최신 체크인">
+              <h2>최신 체크인</h2>
+              {model.latestCheckIn ? (
+                <>
+                  <p>
+                    관측 시각: {model.latestCheckIn.values.observedAt} ·{' '}
+                    {model.latestCheckIn.values.timezone}
+                  </p>
+                  <p>저장된 현지 날짜: {model.latestCheckIn.localDate}</p>
+                  <p>
+                    피로 {model.latestCheckIn.values.fatigue ?? '보고하지 않음'} · 불편감{' '}
+                    {model.latestCheckIn.values.discomfort ?? '보고하지 않음'}
+                  </p>
+                  <p>부위: {model.latestCheckIn.values.bodyLocation ?? '보고하지 않음'}</p>
+                  <p>{model.latestCheckIn.values.note ?? '메모 보고하지 않음'}</p>
+                  <p>
+                    출처: 사용자 자기 보고 · {model.latestCheckIn.definitionVersion} · 수정{' '}
+                    {model.latestCheckIn.revision}
+                  </p>
+                  <a href={links.checkIn(model.latestCheckIn.id)}>이 체크인 상세 보기</a>
+                </>
+              ) : (
+                <p>조회 범위에서 확인된 체크인이 없습니다.</p>
+              )}
               <p>
-                관측 시각: {model.latestCheckIn.values.observedAt} ·{' '}
-                {model.latestCheckIn.values.timezone}
+                <a href={links.wellbeing}>체크인 작성·목록</a>
               </p>
-              <p>저장된 현지 날짜: {model.latestCheckIn.localDate}</p>
+            </section>
+          ),
+          'period-summary': (
+            <section aria-label="기간별 계획과 실제">
+              <h2>기간별 계획과 실제</h2>
+              <p>{dashboardDefinition.coverage}</p>
               <p>
-                피로 {model.latestCheckIn.values.fatigue ?? '보고하지 않음'} · 불편감{' '}
-                {model.latestCheckIn.values.discomfort ?? '보고하지 않음'}
+                직전 기간: {model.period.previousFrom} ~ {model.period.from} (종료일 제외)
               </p>
-              <p>부위: {model.latestCheckIn.values.bodyLocation ?? '보고하지 않음'}</p>
-              <p>{model.latestCheckIn.values.note ?? '메모 보고하지 않음'}</p>
+              <div className={styles.grid}>
+                <WindowMetrics label="현재 기간" value={model.current} />
+                <WindowMetrics label="직전 기간" value={model.previous} />
+              </div>
               <p>
-                출처: 사용자 자기 보고 · {model.latestCheckIn.definitionVersion} · 수정{' '}
-                {model.latestCheckIn.revision}
+                날짜를 배정하지 못한 활동 {model.unplacedActivityCount}개. 날짜별 값에 임의 배정하지
+                않습니다.
               </p>
-              <a href={links.checkIn(model.latestCheckIn.id)}>이 체크인 상세 보기</a>
-            </>
-          ) : (
-            <p>조회 범위에서 확인된 체크인이 없습니다.</p>
-          )}
-          <p>
-            <a href={links.wellbeing}>체크인 작성·목록</a>
-          </p>
-        </section>
-      </div>
-      <section aria-label="기간별 계획과 실제">
-        <h2>기간별 계획과 실제</h2>
-        <p>{dashboardDefinition.coverage}</p>
-        <p>
-          직전 기간: {model.period.previousFrom} ~ {model.period.from} (종료일 제외)
-        </p>
-        <div className={styles.grid}>
-          <WindowMetrics label="현재 기간" value={model.current} />
-          <WindowMetrics label="직전 기간" value={model.previous} />
-        </div>
-        <p>
-          날짜를 배정하지 못한 활동 {model.unplacedActivityCount}개. 날짜별 값에 임의 배정하지
-          않습니다.
-        </p>
-        <a href={links.activities}>활동 목록 보기</a>
-      </section>
-      <Suspense fallback={<p role="status">날짜별 그래프와 표를 불러오고 있습니다.</p>}>
-        <DistanceView days={model.days} links={links} />
-      </Suspense>
+              <a href={links.activities}>활동 목록 보기</a>
+            </section>
+          ),
+          'daily-distance': (
+            <Suspense fallback={<p role="status">날짜별 그래프와 표를 불러오고 있습니다.</p>}>
+              <DistanceView days={model.days} links={links} />
+            </Suspense>
+          ),
+        }}
+      />
       <section className={styles.card} aria-label="확인할 수 없는 정보">
         <h2>아직 제공하지 않는 정보</h2>
         <p>AI 제안: 아직 제공하지 않습니다.</p>
