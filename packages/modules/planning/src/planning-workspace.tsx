@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-query';
 import { useStore } from 'zustand';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
-import { transportReplySchema } from '@workout/contracts/core';
+import { transportReplySchema, transportRequestDtoSchema } from '@workout/contracts/core';
 import {
   planDraftSchema,
   planReadSchema,
@@ -146,7 +146,8 @@ function Planner({
         await transport.request({
           path: '/bff/v1/plans/current',
           method: 'PUT',
-          body,
+          // Keep legacy optional fields absent on the JSON wire, including explicit undefined.
+          body: transportRequestDtoSchema.shape.body.parse(JSON.parse(JSON.stringify(body))),
           idempotencyKey,
         }),
       );

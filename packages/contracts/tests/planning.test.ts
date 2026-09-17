@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   manualPlanCommandSchema,
   planDraftSchema,
+  plannedSessionSchema,
+  planSnapshotSchema,
   projectPlan,
   preservesSessionLocks,
   type PlanDraft,
@@ -90,6 +92,68 @@ function session(): PlannedSession {
   };
 }
 describe('M1-02 planned snapshots V2-A07..11', () => {
+  it('preserves missing legacy intensity labels without changing historical command JSON', () => {
+    const value = draft();
+    value.sessions = [session()];
+    const command = {
+      source: 'manual',
+      confirmed: true,
+      expectedVersionId: null,
+      draft: value,
+      idempotencyKey: 'legacy-save-0001',
+    };
+    expect(manualPlanCommandSchema.parse(command)).toStrictEqual(command);
+    const snapshot = {
+      id: 'legacy-v1',
+      version: 1,
+      createdAt: '2026-03-01T00:00:00.000Z',
+      draft: value,
+    };
+    expect(planSnapshotSchema.parse(snapshot)).toEqual(snapshot);
+    expect(planSnapshotSchema.parse(snapshot).draft.sessions[0]).not.toHaveProperty(
+      'intensityLabel',
+    );
+  });
+  it.each(['A', 'B', 'C', null] as const)(
+    'accepts independent intensity label %s without inferring numeric targets',
+    (intensityLabel) => {
+      const original = { ...session(), durationSeconds: 0, targetRpe: 0 };
+      const parsed = plannedSessionSchema.parse({ ...original, intensityLabel });
+      expect(parsed).toEqual({ ...original, intensityLabel });
+    },
+  );
+  it.each(['D', 'a', '', ' A ', 0, {}, ['A']])('rejects invalid label %j', (intensityLabel) => {
+    expect(plannedSessionSchema.safeParse({ ...session(), intensityLabel }).success).toBe(false);
+  });
+  it('protects labels using the saved intensity lock and treats missing/null as unspecified', () => {
+    const previous = draft();
+    previous.sessions = [{ ...session(), locks: { date: false, time: false, intensity: true } }];
+    const unspecified = structuredClone(previous);
+    unspecified.sessions = unspecified.sessions.map((item) => ({ ...item, intensityLabel: null }));
+    expect(preservesSessionLocks(previous, unspecified)).toBe(true);
+    expect(preservesSessionLocks(unspecified, previous)).toBe(true);
+    const labelled = structuredClone(previous);
+    labelled.sessions = labelled.sessions.map((item) => ({ ...item, intensityLabel: 'A' }));
+    expect(preservesSessionLocks(previous, labelled)).toBe(false);
+    for (const intensityLabel of ['B', 'C', null, undefined] as const) {
+      const next = structuredClone(labelled);
+      next.sessions = next.sessions.map((item) => ({
+        ...item,
+        intensityLabel,
+        locks: { ...item.locks, intensity: false },
+      }));
+      expect(preservesSessionLocks(labelled, next)).toBe(false);
+    }
+    const unlocked = structuredClone(labelled);
+    unlocked.sessions = unlocked.sessions.map((item) => ({
+      ...item,
+      locks: { ...item.locks, intensity: false },
+    }));
+    expect(preservesSessionLocks(labelled, unlocked)).toBe(true);
+    const changed = structuredClone(unlocked);
+    changed.sessions = changed.sessions.map((item) => ({ ...item, intensityLabel: 'B' }));
+    expect(preservesSessionLocks(unlocked, changed)).toBe(true);
+  });
   it('accepts variable blocks, explicit partial status and null distinct from zero', () => {
     const value = draft();
     value.sessions = [session()];

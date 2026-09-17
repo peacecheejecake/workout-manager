@@ -325,6 +325,15 @@
       "evidence": "docs/implementation/progress/M1-04v.md"
     },
     {
+      "id": "M1-04w",
+      "title": "세션 강도 라벨 편집·저장 호환성",
+      "dependsOn": ["M1-02", "M1-04t"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S06 intensity A/B/C·미지정 편집/preview/명시 저장; baseline 잠금·legacy snapshot/receipt·복제/이동 보존; pace/HR/course는 별도",
+      "evidence": "docs/implementation/progress/M1-04w.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -351,7 +360,8 @@
         "M1-04s",
         "M1-04t",
         "M1-04u",
-        "M1-04v"
+        "M1-04v",
+        "M1-04w"
       ],
       "kind": "task",
       "status": "not_started",

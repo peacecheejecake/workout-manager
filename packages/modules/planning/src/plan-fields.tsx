@@ -180,6 +180,7 @@ export function createSession(draft: PlanDraft, today: string, id: string): Plan
     locks: { date: false, time: false, intensity: false },
     steps: [],
     targetRpe: null,
+    intensityLabel: null,
   };
 }
 function numberOrNull(value: string) {
@@ -360,6 +361,26 @@ export function SessionEditor({
                   update(session.id, { distanceMeters: numberOrNull(event.target.value) })
                 }
               />
+              <label>
+                강도 라벨
+                <select
+                  disabled={locked?.intensity}
+                  value={session.intensityLabel ?? ''}
+                  onChange={(event) =>
+                    update(session.id, {
+                      intensityLabel: plannedSessionSchema.shape.intensityLabel.parse(
+                        event.target.value || null,
+                      ),
+                    })
+                  }
+                >
+                  <option value="">미지정</option>
+                  {(['A', 'B', 'C'] as const).map((label) => (
+                    <option key={label}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <p>강도 라벨은 목표 RPE·시나리오와 별도로 지정하는 구분입니다.</p>
               <TextField
                 label="목표 RPE (0–10, 미정 가능)"
                 type="number"

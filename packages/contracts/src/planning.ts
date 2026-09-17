@@ -33,6 +33,8 @@ export const plannedSessionSchema = z
     durationSeconds: duration,
     distanceMeters: distance,
     targetRpe: z.number().finite().min(0).max(10).nullable(),
+    // Missing stays missing when reading legacy snapshots and idempotency receipts.
+    intensityLabel: z.enum(['A', 'B', 'C']).nullable().optional(),
     purpose: z.string().max(2000),
     notes: z.string().max(4000),
     priority: z.enum(['low', 'normal', 'high']),
@@ -208,6 +210,7 @@ export function preservesSessionLocks(previous: PlanDraft, next: PlanDraft): boo
       JSON.stringify([
         value.sport,
         value.targetRpe,
+        value.intensityLabel ?? null,
         value.durationSeconds,
         value.distanceMeters,
         value.steps,

@@ -231,3 +231,162 @@ describe('M1-02 manual plans real transaction invariants', () => {
     await expect(repository.save(randomUUID(), { ...input, confirmed: false })).rejects.toThrow();
   });
 });
+
+function intensityCommand(): ManualPlanCommand {
+  const input = command();
+  const root = input.draft.periods[0];
+  if (!root) throw new Error('Missing fixture season');
+  input.draft.periods.push(
+    { ...root, id: 'wave', parentId: 'season', level: 'wave' },
+    { ...root, id: 'phase', parentId: 'wave', level: 'phase' },
+    { ...root, id: 'block', parentId: 'phase', level: 'block' },
+  );
+  input.draft.sessions = [
+    {
+      id: 'run',
+      blockId: 'block',
+      date: '2026-01-02',
+      localStartTime: null,
+      title: 'Run',
+      sport: 'running',
+      durationSeconds: 0,
+      distanceMeters: null,
+      targetRpe: 0,
+      purpose: '',
+      notes: '',
+      priority: 'normal',
+      locks: { date: false, time: false, intensity: false },
+      steps: [
+        { id: 'step', kind: 'work', durationSeconds: null, distanceMeters: 0, repetitions: 1 },
+      ],
+    },
+  ];
+  return input;
+}
+
+describe('S06 intensity label snapshot compatibility', () => {
+  it('preserves absent legacy fields and original receipts after a labeled version is saved', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const legacy = intensityCommand();
+    const first = await repository.save(athlete, legacy);
+    expect(first.draft.sessions[0]).not.toHaveProperty('intensityLabel');
+    const second = await repository.save(athlete, {
+      ...legacy,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...legacy.draft,
+        sessions: legacy.draft.sessions.map((session) => ({ ...session, intensityLabel: 'C' })),
+      },
+    });
+    expect(second.draft.sessions[0]).toEqual({ ...legacy.draft.sessions[0], intensityLabel: 'C' });
+    expect(await repository.save(athlete, legacy)).toEqual(first);
+    const read = await repository.read(athlete);
+    expect(read.head).toEqual(second);
+    expect(read.history).toHaveLength(2);
+    await database.tenant(athlete, async (tx) => {
+      const stored = await tx.query(
+        "SELECT (draft->'sessions'->0) ? 'intensityLabel' AS has_label FROM plan_snapshot WHERE id=$1",
+        [first.id],
+      );
+      expect(stored.rows[0]?.['has_label']).toBe(false);
+      expect((await tx.query('SELECT * FROM command_receipt')).rowCount).toBe(2);
+      expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(2);
+      expect((await tx.query('SELECT * FROM plan_history')).rowCount).toBe(2);
+    });
+    expect(
+      (await admin.query('SELECT id FROM activity_canonical WHERE athlete_id=$1', [athlete]))
+        .rowCount,
+    ).toBe(0);
+  });
+  it('rejects changing or clearing a locked label, including simultaneous unlock', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      intensityLabel: 'A',
+      locks: { ...session.locks, intensity: true },
+    }));
+    const first = await repository.save(athlete, input);
+    for (const label of ['B', null, undefined] as const) {
+      for (const unlock of [false, true]) {
+        const sessions = input.draft.sessions.map((session) => {
+          const replacement = { ...session, locks: { ...session.locks, intensity: !unlock } };
+          if (label === undefined) delete replacement.intensityLabel;
+          else replacement.intensityLabel = label;
+          return replacement;
+        });
+        await expect(
+          repository.save(athlete, {
+            ...input,
+            expectedVersionId: first.id,
+            idempotencyKey: randomUUID(),
+            draft: { ...input.draft, sessions },
+          }),
+        ).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+      }
+    }
+    expect((await repository.read(athlete)).head).toEqual(first);
+    expect((await repository.read(athlete)).history).toHaveLength(1);
+    const unlocked = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...input.draft,
+        sessions: input.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, intensity: false },
+        })),
+      },
+    });
+    const changed = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: unlocked.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...unlocked.draft,
+        sessions: unlocked.draft.sessions.map((session) => ({ ...session, intensityLabel: 'B' })),
+      },
+    });
+    expect(changed.version).toBe(3);
+    expect(changed.draft.sessions[0]?.intensityLabel).toBe('B');
+    await database.tenant(athlete, async (tx) => {
+      expect((await tx.query('SELECT * FROM command_receipt')).rowCount).toBe(3);
+      expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(3);
+    });
+    expect(
+      (await admin.query('SELECT id FROM activity_canonical WHERE athlete_id=$1', [athlete]))
+        .rowCount,
+    ).toBe(0);
+  });
+  it('treats missing and null as the same unspecified value under an intensity lock', async () => {
+    const athlete = randomUUID();
+    const repository = createPlanningRepository(database);
+    const input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      locks: { ...session.locks, intensity: true },
+    }));
+    const absent = await repository.save(athlete, input);
+    const explicit = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: absent.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...input.draft,
+        sessions: input.draft.sessions.map((session) => ({ ...session, intensityLabel: null })),
+      },
+    });
+    expect(explicit.draft.sessions[0]?.intensityLabel).toBeNull();
+    const absentAgain = await repository.save(athlete, {
+      ...input,
+      expectedVersionId: explicit.id,
+      idempotencyKey: randomUUID(),
+    });
+    expect(absentAgain.draft.sessions[0]).not.toHaveProperty('intensityLabel');
+    expect(absentAgain.draft.sessions).toEqual(input.draft.sessions);
+  });
+});

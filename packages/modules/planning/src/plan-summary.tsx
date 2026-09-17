@@ -30,7 +30,7 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
               목적: {session.purpose || '미정'} · 중요도: {session.priority} · 시간:{' '}
               {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`} · 거리:{' '}
               {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · RPE:{' '}
-              {session.targetRpe ?? '미정'}
+              {session.targetRpe ?? '미정'} · 강도 라벨: {session.intensityLabel ?? '미지정'}
             </p>
             <p>
               잠금: 날짜 {session.locks.date ? '켜짐' : '꺼짐'}, 시각{' '}

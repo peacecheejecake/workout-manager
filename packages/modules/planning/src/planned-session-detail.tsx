@@ -33,6 +33,10 @@ export function PlannedSessionDetail({
             거리 {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · 시간{' '}
             {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`}
           </p>
+          <p>
+            강도 라벨: {session.intensityLabel ?? '미지정'} · 목표 RPE:{' '}
+            {session.targetRpe ?? '미정'}
+          </p>
           {!draft ? (
             <p>수정하려면 계획 초안 편집을 시작하세요. 선택만으로 계획을 변경하지 않습니다.</p>
           ) : null}

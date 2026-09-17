@@ -28,6 +28,7 @@ const labels = {
   distance: '거리',
   duration: '시간',
   rpe: '목표 RPE',
+  intensity: '강도 라벨',
   notes: '메모',
 };
 const sortLabels: Record<PlannedTableSort, string> = {
@@ -124,6 +125,7 @@ export function PlannedTable({
     distance: 160,
     duration: 160,
     rpe: 160,
+    intensity: 160,
     notes: 240,
   };
   const visiblePins = columns.filter((column) => tablePinned.includes(column));
@@ -206,6 +208,8 @@ export function PlannedTable({
         return session.durationSeconds === null ? '시간 미정' : `${session.durationSeconds}초`;
       case 'rpe':
         return session.targetRpe === null ? '미정' : `${session.targetRpe}`;
+      case 'intensity':
+        return session.intensityLabel ?? '미지정';
       case 'notes':
         return session.notes || '메모 없음';
     }

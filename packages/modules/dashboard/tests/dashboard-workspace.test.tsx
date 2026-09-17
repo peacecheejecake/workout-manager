@@ -4,6 +4,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
+import { transportReplySchema } from '@workout/contracts/core';
 import { shiftDashboardDate, type DashboardReadModel } from '@workout/contracts/dashboard';
 import {
   DashboardWorkspace,
@@ -65,7 +66,8 @@ function model(window = 3): DashboardReadModel {
     },
   };
 }
-const reply = (body: DashboardReadModel): Reply => ({ status: 200, body, traceId: null });
+const reply = (body: DashboardReadModel): Reply =>
+  transportReplySchema.parse({ status: 200, body, traceId: null });
 function setup(
   handler: (input: TransportRequest) => Promise<Reply> = async () => reply(model()),
   search = 'window=3',

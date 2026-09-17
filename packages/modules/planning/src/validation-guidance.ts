@@ -19,6 +19,7 @@ const fieldNames: Readonly<Record<string, string>> = {
   durationSeconds: '시간 (초)',
   distanceMeters: '거리 (m)',
   targetRpe: '목표 RPE',
+  intensityLabel: '강도 라벨',
   purpose: '목적',
   notes: '메모',
   priority: '중요도',
@@ -58,6 +59,7 @@ export function validationGuidance(issue: ValidationIssue): string {
   if (issue.path.length === 1 && collection === 'periods' && issue.code === 'too_small') {
     return '기간: Season을 추가한 뒤 필요한 Wave·Phase·Block을 구성하세요.';
   }
+  if (leaf === 'intensityLabel') return prefix + '미지정 또는 A·B·C 중 하나를 선택하세요.';
   if (leaf === 'timezone') return prefix + 'Asia/Seoul, UTC 등 유효한 시간대를 입력하세요.';
   if (leaf === 'startDate' || leaf === 'endDateExclusive' || leaf === 'date') {
     return prefix + '달력에서 유효한 날짜를 선택하세요.';
