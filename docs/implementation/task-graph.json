@@ -370,6 +370,15 @@
       "evidence": "docs/implementation/progress/M1-04aa.md"
     },
     {
+      "id": "M1-04ab",
+      "title": "선택 활동 요약 JSON 내보내기",
+      "dependsOn": ["M1-04z", "M1-04aa"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S07 별도 versioned 요약 파일·고정 선택 revision·전체 조회 성공 후 명시 다운로드·Blob 수명/계정 격리",
+      "evidence": "docs/implementation/progress/M1-04ab.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -401,7 +410,8 @@
         "M1-04x",
         "M1-04y",
         "M1-04z",
-        "M1-04aa"
+        "M1-04aa",
+        "M1-04ab"
       ],
       "kind": "task",
       "status": "not_started",

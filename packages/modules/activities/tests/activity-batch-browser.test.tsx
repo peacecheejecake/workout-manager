@@ -153,6 +153,12 @@ describe('activity batch selection in the browser', () => {
     await user.click(screen.getByRole('button', { name: '계획 연결 변경 미리보기' }));
     const preview = await screen.findByRole('group', { name: '일괄 계획 연결 확인' });
     expect(await within(preview).findAllByText(/이미 같은 연결/)).toHaveLength(2);
+    const exportOpener = screen.getByRole('button', { name: '선택 활동 내보내기 미리보기' });
+    expect(exportOpener).toBeDisabled();
+    await user.click(exportOpener);
+    expect(
+      screen.queryByRole('group', { name: '선택 활동 내보내기 확인' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' }));
     expect(screen.queryByRole('group', { name: '일괄 로컬 삭제 확인' })).not.toBeInTheDocument();
@@ -169,6 +175,7 @@ describe('activity batch selection in the browser', () => {
     expect(screen.queryByRole('group', { name: '일괄 계획 연결 확인' })).not.toBeInTheDocument();
     expect(checkbox(2)).toBeChecked();
     expect(checkbox(2)).toBeEnabled();
+    expect(exportOpener).toBeEnabled();
     expect(selection()).toHaveTextContent('일괄 선택 2개');
     expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeEnabled();
     expect(new URLSearchParams(changed.mock.lastCall?.[0]).get('selected')).toBe(activity(1).id);
@@ -185,6 +192,12 @@ describe('activity batch selection in the browser', () => {
     await user.type(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' }), '검토 사유');
     await user.click(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' }));
     const opener = screen.getByRole('button', { name: '계획 연결 변경 미리보기' });
+    const exportOpener = screen.getByRole('button', { name: '선택 활동 내보내기 미리보기' });
+    expect(exportOpener).toBeDisabled();
+    await user.click(exportOpener);
+    expect(
+      screen.queryByRole('group', { name: '선택 활동 내보내기 확인' }),
+    ).not.toBeInTheDocument();
     expect(opener).toBeDisabled();
     expect(screen.getByRole('combobox', { name: '일괄 계획 동작' })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' })).toBeDisabled();
@@ -192,6 +205,7 @@ describe('activity batch selection in the browser', () => {
     expect(screen.queryByRole('group', { name: '일괄 계획 연결 확인' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '일괄 삭제 취소' }));
     expect(opener).toBeEnabled();
+    expect(exportOpener).toBeEnabled();
     expect(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' })).toHaveValue('검토 사유');
     expect(checkbox(1)).toBeChecked();
     await user.click(opener);
@@ -199,6 +213,63 @@ describe('activity batch selection in the browser', () => {
     expect(await within(preview).findByText(/이미 같은 연결/)).toBeVisible();
     expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeDisabled();
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+  });
+
+  it('locks both mutation workflows during export preview and closes without a file, writes or selection changes', async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn(() => 'blob:unconfirmed-export');
+    const revokeObjectURL = vi.fn();
+    const OriginalURL = URL;
+    vi.stubGlobal(
+      'URL',
+      class extends OriginalURL {
+        static override createObjectURL = createObjectURL;
+        static override revokeObjectURL = revokeObjectURL;
+      },
+    );
+    try {
+      const { request, changed } = setup(undefined, 2, `selected=${activity(1).id}`);
+      await screen.findByRole('region', { name: '정정 반영 기록' });
+      await user.click(screen.getByRole('button', { name: '현재 페이지 선택' }));
+      await user.click(screen.getByRole('button', { name: '선택 활동 내보내기 미리보기' }));
+      const preview = await screen.findByRole('group', { name: '선택 활동 내보내기 확인' });
+      await waitFor(() =>
+        expect(
+          within(preview).getByRole('button', { name: '확인하고 내보내기 파일 만들기' }),
+        ).toBeEnabled(),
+      );
+      const deletion = screen.getByRole('button', { name: '선택 활동 삭제 미리보기' });
+      const link = screen.getByRole('button', { name: '계획 연결 변경 미리보기' });
+      expect(deletion).toBeDisabled();
+      expect(link).toBeDisabled();
+      expect(checkbox(1)).toBeDisabled();
+      expect(screen.getByRole('button', { name: '일괄 선택 해제' })).toBeDisabled();
+      await user.click(deletion);
+      await user.click(link);
+      expect(screen.queryByRole('group', { name: '일괄 로컬 삭제 확인' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: '일괄 계획 연결 확인' })).not.toBeInTheDocument();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('link', { name: '선택 활동 JSON 다운로드' }),
+      ).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: '내보내기 닫기' }));
+      expect(
+        screen.queryByRole('group', { name: '선택 활동 내보내기 확인' }),
+      ).not.toBeInTheDocument();
+      expect(checkbox(1)).toBeChecked();
+      expect(checkbox(2)).toBeChecked();
+      expect(checkbox(1)).toBeEnabled();
+      expect(selection()).toHaveTextContent('일괄 선택 2개');
+      expect(deletion).toBeEnabled();
+      expect(link).toBeEnabled();
+      expect(changed).not.toHaveBeenCalled();
+      expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent('활동 1');
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('retains captured revisions until explicit deselection and locks all choices during preview', async () => {

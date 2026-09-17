@@ -156,6 +156,10 @@ flowchart TD
     activityEditor --> activityBatchLink
     activityContext --> activityBatchLink
     activityBatchLink --> task14
+    activityBatchExport["M1-04ab 선택 활동 요약 JSON 내보내기"]
+    activityBatchDelete --> activityBatchExport
+    activityBatchLink --> activityBatchExport
+    activityBatchExport --> task14
     dashboardUi --> dashboardLayout
     plannerOperations --> dashboardLayout
     dashboardLayout --> task14
@@ -298,7 +302,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04y 활동 구간·시계열 workbench | M1-04x | 실제 API·chart/lap 공유 선택·null/gap·반응형 |
 | M1-04z 활동 다중 선택·일괄 로컬 삭제 | M1-04f, M1-04k | 명시 확인·고정 revision·부분 성공/충돌·계정 격리 |
 | M1-04aa 활동 일괄 계획 연결·해제 | M1-04z, M1-04h, M1-04i | 고정 버전·revision·RPE/메모 보존·부분 적용/충돌·동일 요청 재시도 |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04ab 선택 활동 요약 JSON 내보내기 | M1-04z, M1-04aa | versioned 파일·전체 조회 성공·원본/정정/보고·명시 다운로드·Blob 정리 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05 Evidence·Coach·승인 | M1-04 | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |

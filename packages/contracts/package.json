@@ -41,6 +41,10 @@
       "types": "./src/activity-details.ts",
       "default": "./dist/activity-details.js"
     },
+    "./activity-export": {
+      "types": "./src/activity-export.ts",
+      "default": "./dist/activity-export.js"
+    },
     "./garmin": {
       "types": "./src/garmin.ts",
       "default": "./dist/garmin.js"
