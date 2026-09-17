@@ -237,3 +237,104 @@ it('maps the completed-session guard on plan saves', async () => {
   expect(response.statusCode).toBe(409);
   expect(response.json().error.code).toBe('PLAN_COMPLETED_SESSION');
 });
+
+const alias = `/bff/v1/plans/session-completion?sessionId=${encodeURIComponent(sessionId)}`;
+it('query alias reads and writes the authenticated owner and preserves command receipt', async () => {
+  const { app, sessionCompletions } = setup();
+  expect((await app.inject({ url: alias, headers })).statusCode).toBe(200);
+  expect(sessionCompletions.read).toHaveBeenCalledWith('auth-athlete', sessionId);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await app.inject({ method: 'POST', url: alias, headers, payload: body });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ report, collectionRevision: 1 });
+  }
+  expect(sessionCompletions.write).toHaveBeenCalledTimes(2);
+  expect(sessionCompletions.write).toHaveBeenLastCalledWith('auth-athlete', sessionId, {
+    ...body,
+    idempotencyKey: headers['idempotency-key'],
+  });
+});
+it('query alias accepts a 200-character Unicode ID containing spaces and slash', async () => {
+  const { app, sessionCompletions } = setup();
+  const boundedId = `한 /${'한'.repeat(197)}`;
+  const boundedReport = { ...report, sessionId: boundedId };
+  sessionCompletions.read.mockResolvedValue({
+    sessionId: boundedId,
+    currentPlanVersionId: version,
+    report: boundedReport,
+    history: [boundedReport],
+    totalHistory: 1,
+  });
+  sessionCompletions.write.mockResolvedValue({ report: boundedReport, collectionRevision: 1 });
+  const url = `/bff/v1/plans/session-completion?sessionId=${encodeURIComponent(boundedId)}`;
+  expect((await app.inject({ url, headers })).statusCode).toBe(200);
+  expect((await app.inject({ method: 'POST', url, headers, payload: body })).statusCode).toBe(200);
+  expect(sessionCompletions.read).toHaveBeenCalledWith('auth-athlete', boundedId);
+});
+it('query alias rejects missing, empty, oversized, duplicated and extra query values', async () => {
+  const { app, sessionCompletions } = setup();
+  for (const query of [
+    '',
+    '?sessionId=',
+    `?sessionId=${'x'.repeat(201)}`,
+    '?sessionId=x&athleteId=foreign',
+    '?sessionId=x&sessionId=y',
+  ]) {
+    const url = `/bff/v1/plans/session-completion${query}`;
+    for (const method of ['GET', 'POST'] as const) {
+      expect(
+        (
+          await app.inject({
+            method,
+            url,
+            headers,
+            ...(method === 'POST' ? { payload: body } : {}),
+          })
+        ).statusCode,
+      ).toBe(400);
+    }
+  }
+  expect(sessionCompletions.read).not.toHaveBeenCalled();
+  expect(sessionCompletions.write).not.toHaveBeenCalled();
+});
+it('query alias inherits authentication, session and CSRF boundaries', async () => {
+  const unauthenticated = setup(false);
+  for (const method of ['GET', 'POST'] as const) {
+    expect(
+      (
+        await unauthenticated.app.inject({
+          method,
+          url: alias,
+          headers,
+          ...(method === 'POST' ? { payload: body } : {}),
+        })
+      ).statusCode,
+    ).toBe(401);
+  }
+  const { app, sessionCompletions } = setup();
+  expect(
+    (await app.inject({ url: alias, headers: { ...headers, 'x-workout-session-id': 'stale' } }))
+      .statusCode,
+  ).toBe(409);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: alias,
+        headers: { ...headers, 'x-csrf-token': 'invalid' },
+        payload: body,
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(sessionCompletions.read).not.toHaveBeenCalled();
+  expect(sessionCompletions.write).not.toHaveBeenCalled();
+});
+it('query alias retains missing and conflicting command error semantics', async () => {
+  const { app, sessionCompletions } = setup();
+  sessionCompletions.read.mockResolvedValue(null);
+  expect((await app.inject({ url: alias, headers })).statusCode).toBe(404);
+  sessionCompletions.write.mockRejectedValue(new SessionCompletionError('PLAN_REVISION_CONFLICT'));
+  const response = await app.inject({ method: 'POST', url: alias, headers, payload: body });
+  expect(response.statusCode).toBe(409);
+  expect(response.json()).toMatchObject({ error: { code: 'PLAN_REVISION_CONFLICT' } });
+});

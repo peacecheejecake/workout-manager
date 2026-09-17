@@ -8,6 +8,7 @@ export interface SessionOperationsProps {
   baseline: PlanDraft | null;
   selected: string | null;
   today: string;
+  completedSessionIds?: readonly string[];
   onOperation(sessionId: string, operation: PlannedSessionOperation): void;
 }
 export function SessionOperations(props: SessionOperationsProps) {
@@ -56,6 +57,7 @@ function Controls({
   today,
   onOperation,
   session,
+  completedSessionIds = [],
 }: SessionOperationsProps & { session: PlannedSession }) {
   const [date, setDate] = useState(session.date);
   const [blockId, setBlockId] = useState(session.blockId);
@@ -73,7 +75,8 @@ function Controls({
   const instructions = useId();
   const prior = baseline?.sessions.find((value) => value.id === session.id);
   const past = session.date < today;
-  const moveLocked = past || session.locks.date || prior?.locks.date === true;
+  const completed = completedSessionIds.includes(session.id);
+  const moveLocked = completed || past || session.locks.date || prior?.locks.date === true;
   const resizeLocked = past || session.locks.intensity || prior?.locks.intensity === true;
   useEffect(() => {
     const cancel = () => {
@@ -137,6 +140,12 @@ function Controls({
         변경은 계획 초안에만 반영됩니다. 저장은 미리보기와 명시적 확인이 필요하며 실제 기록과 세부
         단계 길이는 바뀌지 않습니다.
       </p>
+      {completed ? (
+        <p>
+          완료 자기보고가 있어 날짜와 Block 이동이 보호됩니다. 이동하려면 완료 기록을 먼저
+          철회하세요. 기존 잠금과 과거 날짜 제한이 없다면 계획 시간 길이는 수정할 수 있습니다.
+        </p>
+      ) : null}
       {past ? <p>과거 세션은 이 조작으로 이동하거나 길이를 바꿀 수 없습니다.</p> : null}
       <div
         className={styles.controls}
@@ -179,12 +188,15 @@ function Controls({
           data-operation-control="apply-date"
           disabled={moveLocked}
           onClick={() => {
-            if (!composing.current) onOperation(session.id, { kind: 'move', date, blockId });
+            if (!moveLocked && !composing.current)
+              onOperation(session.id, { kind: 'move', date, blockId });
           }}
         >
           계획 날짜 이동
         </Button>
-        {moveLocked && !past ? <p>날짜 잠금을 먼저 해제하고 저장한 뒤 이동하세요.</p> : null}
+        {moveLocked && !past && !completed ? (
+          <p>날짜 잠금을 먼저 해제하고 저장한 뒤 이동하세요.</p>
+        ) : null}
         <label>
           변경할 계획 시간 (초)
           <input

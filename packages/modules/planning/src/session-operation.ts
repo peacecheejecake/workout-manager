@@ -16,6 +16,7 @@ export type SessionOperationReason =
   | 'missing_block'
   | 'outside_block'
   | 'locked'
+  | 'completed'
   | 'past_session'
   | 'past_date';
 type SessionPosition = { date: string; blockId: string; durationSeconds: number | null };

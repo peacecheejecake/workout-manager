@@ -10,6 +10,8 @@ const errors: Record<SessionOperationReason, string> = {
   missing_block: '날짜가 속할 Block을 선택하세요.',
   outside_block: '선택한 날짜가 해당 Block의 범위 밖입니다.',
   locked: '잠긴 날짜·Block 또는 시간 길이는 바꿀 수 없습니다. 먼저 잠금 해제를 저장하세요.',
+  completed:
+    '사용자가 완료를 확인한 세션은 이동할 수 없습니다. 변경하려면 완료 확인을 사유와 함께 철회하세요.',
   past_session: '이미 지난 세션은 이 이동·길이 조절 도구로 변경하지 않습니다.',
   past_date: '지난 날짜로 이동할 수 없습니다. 실제 기록 정정은 실제 활동에서 진행하세요.',
 };

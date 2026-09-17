@@ -227,6 +227,7 @@ export function SessionEditor({
   createId,
   selectedId,
   onDuplicate,
+  completedSessionIds = [],
 }: {
   draft: PlanDraft;
   baseline: PlanDraft | null;
@@ -235,6 +236,7 @@ export function SessionEditor({
   createId: () => string;
   selectedId?: string | null;
   onDuplicate(id: string): void;
+  completedSessionIds?: readonly string[];
 }) {
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [stepOrderMessage, setStepOrderMessage] = useState('');
@@ -325,9 +327,16 @@ export function SessionEditor({
         .filter((session) => !selectedId || session.id === selectedId)
         .map((session) => {
           const locked = baseline?.sessions.find((item) => item.id === session.id)?.locks;
+          const completed = completedSessionIds.includes(session.id);
           return (
             <fieldset key={session.id}>
               <legend>{session.title}</legend>
+              {completed ? (
+                <p>
+                  완료 자기보고가 있어 날짜·Block·시작 시각 변경과 삭제가 보호됩니다. 변경하려면
+                  완료 기록을 먼저 철회하세요. 계획 내용 수정과 복제는 가능합니다.
+                </p>
+              ) : null}
               <TextField
                 label="세션 제목"
                 ref={(element) => {
@@ -343,7 +352,7 @@ export function SessionEditor({
                 소속 Block
                 <select
                   value={session.blockId}
-                  disabled={locked?.date}
+                  disabled={completed || locked?.date}
                   onChange={(event) => update(session.id, { blockId: event.target.value })}
                 >
                   {draft.periods
@@ -358,14 +367,14 @@ export function SessionEditor({
               <TextField
                 label="세션 날짜"
                 type="date"
-                disabled={locked?.date}
+                disabled={completed || locked?.date}
                 value={session.date}
                 onChange={(event) => update(session.id, { date: event.target.value })}
               />
               <TextField
                 label="시작 시각 (미정 가능)"
                 type="time"
-                disabled={locked?.time}
+                disabled={completed || locked?.time}
                 value={session.localStartTime ?? ''}
                 onChange={(event) =>
                   update(session.id, { localStartTime: event.target.value || null })
@@ -624,7 +633,7 @@ export function SessionEditor({
               </Button>
               <Button
                 variant="danger"
-                disabled={locked && Object.values(locked).some(Boolean)}
+                disabled={completed || (locked && Object.values(locked).some(Boolean))}
                 onClick={() =>
                   edit((current) => ({
                     ...current,

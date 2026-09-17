@@ -21,6 +21,7 @@ import {
   type ManualPlanCommand,
 } from '@workout/contracts/planning';
 import { idSchema, localDateSchema, timeZoneSchema } from '@workout/contracts/primitives';
+import { preservesSessionCompletions } from '@workout/contracts/session-completion';
 import { AdaptiveWorkspace } from '@workout/ui-foundation/adaptive-workspace';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
@@ -45,6 +46,8 @@ import { sessionOperationDate } from './session-operation-clock';
 import { PeriodExplorer } from './period-explorer';
 import { PeriodSummaryPanel } from './period-summary-panel';
 import { PlanHistoryPanel } from './plan-history-panel';
+import { SessionCompletionPanel } from './session-completion-panel';
+import { useSessionCompletions } from './use-session-completions';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -165,20 +168,46 @@ function Planner({
       actions.reset();
       setOperationFeedback(null);
       await client.resetQueries({ queryKey: key, exact: true });
+      await refreshCompletionQueries();
     },
     onError: async () => {
       // A lost response or conflict can also mean the head changed. Preserve the draft/key,
       // but never offer a new edit from a cached pre-command head.
       await client.cancelQueries({ queryKey: key, exact: true });
       await client.resetQueries({ queryKey: key, exact: true });
+      await refreshCompletionQueries();
     },
   });
+  const completions = useSessionCompletions({
+    athleteId,
+    sessionId,
+    transport,
+    planVersionId: plan.data?.head?.id ?? null,
+  });
+  const completedReports =
+    completions.data?.items.filter((item) => item.status === 'completed') ?? [];
+  const completedSessionIds = completedReports.map((item) => item.sessionId);
+  async function refreshCompletionQueries() {
+    const queryKey = ['planning-completions', athleteId, sessionId];
+    await client.cancelQueries({ queryKey });
+    await client.resetQueries({ queryKey });
+  }
+  async function refreshAfterCompletion() {
+    // A receipt acknowledges the command; current state comes from fresh server reads.
+    // Completion reports never reset or replace an in-progress planning draft.
+    await client.cancelQueries({ queryKey: key, exact: true });
+    await Promise.all([
+      client.resetQueries({ queryKey: key, exact: true }),
+      refreshCompletionQueries(),
+    ]);
+  }
   const currentPlan = plan.isSuccess && !plan.isFetching && !save.isPending ? plan.data : undefined;
   const url = readPlannerSearch(search, today);
   const draft = state.draft;
   const validated = planDraftSchema.safeParse(draft);
   const lockValid =
     !(draft && state.baseline) || preservesSessionLocks(state.baseline.draft, draft);
+  const completionValid = !draft || preservesSessionCompletions(draft, completedReports);
   const projectionSource = draft
     ? validated.success
       ? validated.data
@@ -203,6 +232,10 @@ function Planner({
   function operateSession(sessionId: string, operation: PlannedSessionOperation) {
     const current = readDraftState().state;
     if (!current.draft || current.preview || save.isPending) return;
+    if (operation.kind === 'move' && completedSessionIds.includes(sessionId)) {
+      setOperationFeedback({ status: 'rejected', reason: 'completed' });
+      return;
+    }
     const timezone = timeZoneSchema.safeParse(current.draft.timezone);
     const actionToday =
       explicitToday ??
@@ -224,8 +257,8 @@ function Planner({
     <section className={styles.workspace} aria-labelledby="planning-title">
       <h1 id="planning-title">훈련 계획</h1>
       <p>
-        계획과 실제 수행은 별도입니다. 이 화면은 수동 계획 버전만 저장하며 실제 활동이나 AI 제안을
-        승인하지 않습니다.
+        계획과 실제 수행은 별도입니다. 수동 계획 버전과 사용자가 확인한 완료 기록을 저장합니다. 완료
+        확인은 실제 활동이나 AI 제안 승인이 아닙니다.
       </p>
       {plan.isPending ? (
         <StatusNotice state="loading">계획을 불러오고 있습니다.</StatusNotice>
@@ -330,6 +363,33 @@ function Planner({
         periodId={selectedPeriodId}
         onSelectSession={(id) => changeSearch({ plannedSession: id })}
       />
+      {plan.data?.head ? (
+        <div>
+          <Button
+            variant="secondary"
+            disabled={completions.isFetching || save.isPending}
+            onClick={() => void refreshAfterCompletion()}
+          >
+            완료 상태 다시 확인
+          </Button>
+          {completedSessionIds.length > 0 ? (
+            <p>
+              사용자 완료 확인 {completedSessionIds.length}개: 해당 세션의 일정·삭제와 계획 시간대를
+              보호합니다. 계획 내용 편집과 완료 확인 철회는 별도입니다.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {plan.data?.head && (completions.isError || completions.isFetching) ? (
+        <p role="status">
+          {completions.isError
+            ? '완료 상태를 확인하지 못했습니다. 계획 초안은 유지되며 저장 시 서버에서 완료된 일정 보호를 다시 확인합니다.'
+            : '완료 상태를 확인하는 중입니다. 계획 저장 시 서버에서 완료된 일정 보호를 다시 확인합니다.'}
+        </p>
+      ) : null}
+      {completions.data && completions.data.currentPlanVersionId !== plan.data?.head?.id ? (
+        <p role="status">완료 기록과 조회한 계획 버전이 다릅니다. 저장된 계획을 다시 확인하세요.</p>
+      ) : null}
       <section aria-label="조회 범위">
         <h2>달력·rolling 조회</h2>
         <p>조회 범위는 기간 트리를 변경하지 않습니다. Rolling은 기준일까지의 최근 N일입니다.</p>
@@ -419,9 +479,12 @@ function Planner({
                 <TextField
                   label="계획 시간대"
                   description="IANA 시간대 예: Asia/Seoul. 새 계획 기본값은 UTC입니다."
-                  disabled={state.baseline?.draft.sessions.some(
-                    (session) => session.locks.date || session.locks.time,
-                  )}
+                  disabled={
+                    completedSessionIds.length > 0 ||
+                    state.baseline?.draft.sessions.some(
+                      (session) => session.locks.date || session.locks.time,
+                    )
+                  }
                   value={draft.timezone}
                   onChange={(event) =>
                     edit((current) => ({
@@ -436,6 +499,7 @@ function Planner({
                 />
                 <PeriodEditor draft={draft} edit={edit} today={today} createId={createId} />
                 <SessionEditor
+                  completedSessionIds={completedSessionIds}
                   selectedId={url.plannedSession}
                   onDuplicate={(plannedSession) => changeSearch({ plannedSession })}
                   draft={draft}
@@ -445,6 +509,7 @@ function Planner({
                   createId={createId}
                 />
                 <SessionOperations
+                  completedSessionIds={completedSessionIds}
                   draft={draft}
                   baseline={state.baseline?.draft ?? null}
                   selected={url.plannedSession}
@@ -475,9 +540,9 @@ function Planner({
                     <PlanSummary draft={state.preview.draft} />
                   </details>
                   <Button
-                    disabled={save.isPending || isConflict}
+                    disabled={save.isPending || isConflict || !completionValid}
                     onClick={() => {
-                      if (state.preview) save.mutate(state.preview);
+                      if (state.preview && completionValid) save.mutate(state.preview);
                     }}
                   >
                     확인하고 계획 버전 저장
@@ -496,7 +561,7 @@ function Planner({
               ) : (
                 <div className={styles.toolbar}>
                   <Button
-                    disabled={!validated.success || !lockValid}
+                    disabled={!validated.success || !lockValid || !completionValid}
                     onClick={() => actions.preview()}
                   >
                     변경 미리보기
@@ -542,6 +607,13 @@ function Planner({
               ) : null}
               {!lockValid ? (
                 <p role="alert">저장된 잠금과 충돌합니다. 잠금을 먼저 해제해 저장하세요.</p>
+              ) : null}
+              {!completionValid ? (
+                <p role="alert">
+                  초안이 사용자 완료 확인으로 고정된 일정과 충돌합니다. 초안의 날짜·Block·시작
+                  시각·시간대·삭제를 되돌리거나, 해당 완료 확인을 사유와 함께 철회한 뒤 다시
+                  검토하세요. 실행 취소는 완료 기록을 철회하지 않습니다.
+                </p>
               ) : null}
             </section>
           ) : null}
@@ -616,11 +688,12 @@ function Planner({
                       operateSession(sessionId, { kind: 'move', date, blockId })
                   : undefined
               }
-              dateLockedIds={
-                state.baseline?.draft.sessions
+              dateLockedIds={[
+                ...completedSessionIds,
+                ...(state.baseline?.draft.sessions
                   .filter((session) => session.locks.date)
-                  .map((session) => session.id) ?? []
-              }
+                  .map((session) => session.id) ?? []),
+              ]}
             />
           ) : (
             <p>조회할 계획이 없습니다.</p>
@@ -634,6 +707,15 @@ function Planner({
                 : null
             }
             draft={draft !== null}
+          />
+          <SessionCompletionPanel
+            athleteId={athleteId}
+            sessionId={sessionId}
+            transport={transport}
+            head={currentPlan?.head}
+            plannedSessionId={url.plannedSession}
+            createId={createId}
+            onCommitted={refreshAfterCompletion}
           />
         </section>
       </AdaptiveWorkspace>

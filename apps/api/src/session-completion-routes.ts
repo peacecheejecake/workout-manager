@@ -30,16 +30,12 @@ export function registerSessionCompletionRoutes(
     input(emptyQuery, request.query);
     return sessionCompletionListSchema.parse(await repository.list(principal(request).athleteId));
   });
-  routes.get('/plans/sessions/:sessionId/completion', async (request) => {
-    input(emptyQuery, request.query);
-    const { sessionId } = input(sessionCompletionPathSchema, request.params);
+  async function read(request: FastifyRequest, sessionId: string) {
     const result = await repository.read(principal(request).athleteId, sessionId);
     if (result === null) throw new ProductRequestError(404, 'SESSION_COMPLETION_NOT_FOUND');
     return sessionCompletionReadSchema.parse(result);
-  });
-  routes.post('/plans/sessions/:sessionId/completion', async (request) => {
-    input(emptyQuery, request.query);
-    const { sessionId } = input(sessionCompletionPathSchema, request.params);
+  }
+  async function write(request: FastifyRequest, sessionId: string) {
     const body = input(sessionCompletionBodySchema, request.body);
     const payload = input(sessionCompletionCommandSchema, {
       ...body,
@@ -51,5 +47,25 @@ export function registerSessionCompletionRoutes(
         sessionCompletionRequestError,
       ),
     );
-  });
+  }
+  for (const method of ['GET', 'POST'] as const) {
+    const handler = method === 'GET' ? read : write;
+    routes.route({
+      method,
+      url: '/plans/sessions/:sessionId/completion',
+      handler: async (request) => {
+        input(emptyQuery, request.query);
+        const { sessionId } = input(sessionCompletionPathSchema, request.params);
+        return handler(request, sessionId);
+      },
+    });
+    routes.route({
+      method,
+      url: '/plans/session-completion',
+      handler: async (request) => {
+        const { sessionId } = input(sessionCompletionPathSchema, request.query);
+        return handler(request, sessionId);
+      },
+    });
+  }
 }
