@@ -1,0 +1,19 @@
+.badge {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-block-start: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.badge[data-session-change='changed'],
+.badge[data-session-change='added'] {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}

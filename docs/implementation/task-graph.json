@@ -568,6 +568,15 @@
       "evidence": "docs/implementation/progress/M1-04aw.md"
     },
     {
+      "id": "M1-04ax",
+      "title": "세션별 저장본·초안 변경 표시",
+      "dependsOn": ["M1-04n", "M1-04s", "M1-04ad"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "표·달력·agenda; 세션 값·시간대 비교·새 ID·undo·저장 상태",
+      "evidence": "docs/implementation/progress/M1-04ax.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -621,7 +630,8 @@
         "M1-04at",
         "M1-04au",
         "M1-04av",
-        "M1-04aw"
+        "M1-04aw",
+        "M1-04ax"
       ],
       "kind": "task",
       "status": "not_started",

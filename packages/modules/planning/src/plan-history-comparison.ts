@@ -1,3 +1,4 @@
+import { samePlanValue } from './plan-value-equality';
 import type {
   PeriodDraft,
   PlanDraft,
@@ -40,24 +41,6 @@ export interface PlanHistoryComparison {
 }
 function presence(before: boolean, after: boolean): ComparisonPresence {
   return before && after ? 'shared' : before ? 'beforeOnly' : 'afterOnly';
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-/** Object key order is immaterial; array order and absent fields remain meaningful. */
-function sameValue(before: unknown, after: unknown): boolean {
-  if (Object.is(before, after)) return true;
-  if (Array.isArray(before) && Array.isArray(after))
-    return (
-      before.length === after.length &&
-      before.every((value, index) => sameValue(value, after[index]))
-    );
-  if (!isRecord(before) || !isRecord(after)) return false;
-  const keys = Object.keys(before);
-  return (
-    keys.length === Object.keys(after).length &&
-    keys.every((key) => Object.hasOwn(after, key) && sameValue(before[key], after[key]))
-  );
 }
 /** Each immutable version resolves its own hierarchy, never the current head's hierarchy. */
 function periodScope(periods: PeriodDraft[], selected: string | null): Set<string> {
@@ -126,7 +109,7 @@ function compareRows<T extends { id: string }>(
           ? 'added'
           : right === null
             ? 'removed'
-            : sameValue(left, right)
+            : samePlanValue(left, right)
               ? 'unchanged'
               : 'changed',
     };
@@ -182,7 +165,7 @@ export function comparePlanHistory(
     planMetadata: {
       before: beforeMetadata,
       after: afterMetadata,
-      changed: !sameValue(beforeMetadata, afterMetadata),
+      changed: !samePlanValue(beforeMetadata, afterMetadata),
     },
   };
 }

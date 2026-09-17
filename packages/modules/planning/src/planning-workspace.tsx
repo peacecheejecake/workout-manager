@@ -758,6 +758,11 @@ function Planner({
           ) : projectionSource && projection.length ? (
             <PlannedSessionViews
               source={projectionSource}
+              changeContext={
+                draft
+                  ? { kind: 'draft', baseline: state.baseline?.draft ?? null }
+                  : { kind: 'saved' }
+              }
               days={projection}
               view={url.plannedView}
               selected={url.plannedSession}

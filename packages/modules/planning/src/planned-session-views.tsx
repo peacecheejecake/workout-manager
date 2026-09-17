@@ -10,6 +10,12 @@ import {
   type PlannedTableInteractionStore,
 } from './planned-table-interaction';
 import { SessionDragProvider, DraggableSession, DayDropTarget } from './session-drag';
+import {
+  plannedSessionChanges,
+  type PlannedSessionChange,
+  type PlannedSessionChangeContext,
+} from './planned-session-change';
+import { PlannedSessionChangeBadge } from './planned-session-change-badge';
 interface SessionMoveSettings {
   onMove?: ((id: string, date: string, blockId: string) => void) | undefined;
   dateLockedIds?: readonly string[];
@@ -25,6 +31,7 @@ function SessionView({
   interactionStore,
   onMove,
   dateLockedIds = [],
+  sessionChanges,
   ...tableSettings
 }: PlannedTableSettings &
   PlannedTableReports &
@@ -37,6 +44,7 @@ function SessionView({
     readScroll(view: SingleView): number;
     saveScroll(view: SingleView, left: number): void;
     interactionStore: PlannedTableInteractionStore;
+    sessionChanges: ReadonlyMap<string, PlannedSessionChange>;
   }) {
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -59,6 +67,7 @@ function SessionView({
         >
           계획: {session.title}
         </Button>
+        <PlannedSessionChangeBadge change={sessionChanges.get(session.id) ?? 'saved'} />
       </DraggableSession>
     ) : null;
   };
@@ -71,6 +80,7 @@ function SessionView({
           selected={selected}
           onSelect={onSelect}
           interactionStore={interactionStore}
+          sessionChanges={sessionChanges}
           {...tableSettings}
         />
         {days.every((day) => day.plannedSessionIds.length === 0) ? (
@@ -152,11 +162,17 @@ interface PlannedSessionViewsProps
   source: PlanDraft;
   days: DayProjection[];
   view: RequestedView;
+  changeContext?: PlannedSessionChangeContext;
   selected: string | null;
   onSelect(id: string): void;
 }
 
-export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps) {
+export function PlannedSessionViews({
+  view,
+  changeContext = { kind: 'saved' },
+  ...props
+}: PlannedSessionViewsProps) {
+  const sessionChanges = plannedSessionChanges(props.source, changeContext);
   const [interactionStore] = useState(createPlannedTableInteractionStore);
   const scrollPositions = useRef<Record<SingleView, number>>({ agenda: 0, calendar: 0, table: 0 });
   const readScroll = useCallback((view: SingleView) => scrollPositions.current[view], []);
@@ -233,6 +249,12 @@ export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps
               ? '표'
               : 'agenda'}
       </p>
+      {changeContext.kind === 'draft' ? (
+        <p>
+          세션 표시는 편집 시작 시 저장본의 세션 내용과 계획 시간대를 비교합니다. 계획 제목·기간
+          변경과 삭제는 변경 미리보기에서 확인할 수 있습니다.
+        </p>
+      ) : null}
       <div className={styles.toolbar}>
         <Button
           ref={fallbackLauncher}
@@ -293,6 +315,7 @@ export function PlannedSessionViews({ view, ...props }: PlannedSessionViewsProps
                 readScroll={readScroll}
                 saveScroll={saveScroll}
                 interactionStore={interactionStore}
+                sessionChanges={sessionChanges}
               />
             </section>
           ))}

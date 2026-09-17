@@ -22,6 +22,8 @@ import styles from './planning.module.css';
 import { plannedCompletionLabel, type PlannedCompletionState } from './planned-completion-state';
 import { PlannedActualCell, type PlannedActualsState } from './planned-actuals';
 import { sessionActualsDefinition } from '@workout/contracts/session-actuals';
+import type { PlannedSessionChange } from './planned-session-change';
+import { PlannedSessionChangeBadge } from './planned-session-change-badge';
 
 export interface PlannedTableReports {
   completionState?: PlannedCompletionState;
@@ -110,6 +112,7 @@ export function PlannedTable({
   completionState = { state: 'loading' },
   actualsState = { state: 'loading' },
   onRefreshActuals,
+  sessionChanges,
 }: PlannedTableSettings &
   PlannedTableReports & {
     source: PlanDraft;
@@ -117,6 +120,7 @@ export function PlannedTable({
     selected: string | null;
     onSelect(id: string): void;
     interactionStore: PlannedTableInteractionStore;
+    sessionChanges?: ReadonlyMap<string, PlannedSessionChange>;
   }) {
   const rows = useMemo(
     () => sortedPlannedSessions(source, days, tableSort),
@@ -219,14 +223,17 @@ export function PlannedTable({
         return session.date;
       case 'title':
         return (
-          <Button
-            variant="secondary"
-            data-planned-session={session.id}
-            aria-pressed={selected === session.id}
-            onClick={() => onSelect(session.id)}
-          >
-            계획: {session.title}
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              data-planned-session={session.id}
+              aria-pressed={selected === session.id}
+              onClick={() => onSelect(session.id)}
+            >
+              계획: {session.title}
+            </Button>
+            <PlannedSessionChangeBadge change={sessionChanges?.get(session.id) ?? 'saved'} />
+          </>
         );
       case 'block':
         return (
