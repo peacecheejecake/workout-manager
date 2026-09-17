@@ -1,3 +1,4 @@
+import { createSessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
 import { createSessionCompletionRepository } from '@workout/server-persistence/session-completions';
 import { createPeriodSummaryRepository } from '@workout/server-persistence/period-summary';
@@ -72,6 +73,7 @@ export async function createConfiguredApi(environment: unknown) {
       planning: createPlanningRepository(database),
       planScenarios: createPlanScenarioRepository(database),
       sessionCompletions: createSessionCompletionRepository(database),
+      sessionActuals: createSessionActualsRepository(database),
       periodSummary: createPeriodSummaryRepository(database),
       activities: createActivityRepository(database),
       activityContext: createActivityContextRepository(database),

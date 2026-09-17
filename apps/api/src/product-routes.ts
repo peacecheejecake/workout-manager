@@ -1,3 +1,5 @@
+import type { SessionActualsRepository } from '@workout/server-persistence/session-actuals';
+import { registerSessionActualsRoutes } from './session-actuals-routes.js';
 import type { PlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
 import { registerPlanScenarioRoutes } from './plan-scenario-routes.js';
 import type { SessionCompletionRepository } from '@workout/server-persistence/session-completions';
@@ -22,6 +24,7 @@ export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
+  sessionActuals?: SessionActualsRepository;
   planScenarios?: PlanScenarioRepository;
   sessionCompletions?: SessionCompletionRepository;
   periodSummary?: PeriodSummaryRepository;
@@ -36,6 +39,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.sessionActuals)
+    registerSessionActualsRoutes(routes, repositories.sessionActuals, principal);
   if (repositories.planScenarios)
     registerPlanScenarioRoutes(routes, repositories.planScenarios, principal);
   if (repositories.sessionCompletions)

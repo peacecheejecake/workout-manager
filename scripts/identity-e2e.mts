@@ -1,3 +1,4 @@
+import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
 import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
 import { createPeriodSummaryRepository } from '../packages/server/persistence/src/period-summary.ts';
@@ -199,6 +200,7 @@ try {
     planning: createPlanningRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     sessionCompletions: createSessionCompletionRepository(database),
+    sessionActuals: createSessionActualsRepository(database),
     periodSummary: createPeriodSummaryRepository(database),
     activities: createActivityRepository(database),
     activityContext: createActivityContextRepository(database),

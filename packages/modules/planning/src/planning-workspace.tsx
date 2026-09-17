@@ -49,6 +49,8 @@ import { PlanHistoryPanel } from './plan-history-panel';
 import { SessionCompletionPanel } from './session-completion-panel';
 import { useSessionCompletions } from './use-session-completions';
 import type { PlannedCompletionState } from './planned-completion-state';
+import { useSessionActuals } from './use-session-actuals';
+import type { PlannedActualsState } from './planned-actuals';
 import { PeriodMovePanel } from './period-move-panel';
 import { PlanScenarioPanel } from './scenario-panel';
 import { createScenarioDraftStore, type ScenarioDraftStore } from './scenario-draft-store';
@@ -199,6 +201,12 @@ function Planner({
   const completedReports =
     completions.data?.items.filter((item) => item.status === 'completed') ?? [];
   const completedSessionIds = completedReports.map((item) => item.sessionId);
+  const sessionActuals = useSessionActuals({
+    athleteId,
+    sessionId,
+    transport,
+    head: plan.data?.head,
+  });
   async function refreshCompletionQueries() {
     const queryKey = ['planning-completions', athleteId, sessionId];
     await client.cancelQueries({ queryKey });
@@ -216,6 +224,25 @@ function Planner({
   const currentPlan = plan.isSuccess && !plan.isFetching && !save.isPending ? plan.data : undefined;
   const url = readPlannerSearch(search, today);
   const draft = state.draft;
+  function readTableActualsState(): PlannedActualsState {
+    if (plan.isFetching || save.isPending) return { state: 'loading' };
+    if (plan.isError) return { state: 'error' };
+    if (!currentPlan) return { state: 'loading' };
+    if (!currentPlan.head) return { state: 'unsaved' };
+    if (draft && state.baseline?.id !== currentPlan.head.id) return { state: 'stale' };
+    if (sessionActuals.isFetching) return { state: 'loading' };
+    if (sessionActuals.isError)
+      return { state: sessionActuals.error.message === 'MISMATCH' ? 'stale' : 'error' };
+    if (!sessionActuals.data) return { state: 'loading' };
+    if (sessionActuals.data.currentPlanVersionId !== currentPlan.head.id) return { state: 'stale' };
+    return {
+      state: 'ready',
+      read: sessionActuals.data,
+      sessions: new Map(
+        sessionActuals.data.sessions.map((session) => [session.sessionId, session]),
+      ),
+    };
+  }
   function readTableCompletionState(): PlannedCompletionState {
     if (plan.isFetching || save.isPending) return { state: 'loading' };
     if (plan.isError) return { state: 'error' };
@@ -736,6 +763,8 @@ function Planner({
               selected={url.plannedSession}
               tableSort={url.tableSort}
               completionState={readTableCompletionState()}
+              actualsState={readTableActualsState()}
+              onRefreshActuals={() => void Promise.all([plan.refetch(), sessionActuals.refetch()])}
               tableColumns={url.tableColumns}
               tablePinned={url.tablePinned}
               onTableSort={(plannedSort) => changeSearch({ plannedSort })}

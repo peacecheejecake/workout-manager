@@ -20,9 +20,13 @@ import {
 } from './planned-table-state';
 import styles from './planning.module.css';
 import { plannedCompletionLabel, type PlannedCompletionState } from './planned-completion-state';
+import { PlannedActualCell, type PlannedActualsState } from './planned-actuals';
+import { sessionActualsDefinition } from '@workout/contracts/session-actuals';
 
 export interface PlannedTableReports {
   completionState?: PlannedCompletionState;
+  actualsState?: PlannedActualsState;
+  onRefreshActuals?: () => void;
 }
 
 export interface PlannedTableSettings {
@@ -41,6 +45,8 @@ const labels = {
   rpe: '목표 RPE',
   intensity: '강도 라벨',
   completion: '완료 보고',
+  actual: '연결된 실제 활동',
+  comparison: '거리 비교',
   notes: '메모',
 };
 const sortLabels: Record<PlannedTableSort, string> = {
@@ -102,6 +108,8 @@ export function PlannedTable({
   onTablePinned,
   interactionStore,
   completionState = { state: 'loading' },
+  actualsState = { state: 'loading' },
+  onRefreshActuals,
 }: PlannedTableSettings &
   PlannedTableReports & {
     source: PlanDraft;
@@ -148,6 +156,8 @@ export function PlannedTable({
     rpe: 160,
     intensity: 160,
     completion: 200,
+    actual: 320,
+    comparison: 240,
     notes: 240,
   };
   const visiblePins = columns.filter((column) => tablePinned.includes(column));
@@ -238,6 +248,9 @@ export function PlannedTable({
         return session.intensityLabel ?? '미지정';
       case 'completion':
         return plannedCompletionLabel(completionState, session.id);
+      case 'actual':
+      case 'comparison':
+        return <PlannedActualCell state={actualsState} sessionId={session.id} column={column} />;
       case 'notes':
         return session.notes || '메모 없음';
     }
@@ -357,6 +370,33 @@ export function PlannedTable({
         </p>
       ) : null}
       <p>현재 정렬: {sortLabels[tableSort]}. 미정 값은 정렬 방향과 관계없이 마지막에 표시합니다.</p>
+      {tableColumns.includes('actual') || tableColumns.includes('comparison') ? (
+        <section aria-label="계획 표 연결 실적 기준">
+          <p>
+            {sessionActualsDefinition.actual} 저장하지 않은 목표 변경은 거리 비교에 반영하지
+            않습니다.
+          </p>
+          <p>
+            {sessionActualsDefinition.coverage} {sessionActualsDefinition.duration}
+          </p>
+          {actualsState.state === 'ready' ? (
+            <p>
+              조회 기준: 저장 버전 {actualsState.read.planVersion.version} ·{' '}
+              {actualsState.read.planVersion.title} · 관측 시각{' '}
+              <time dateTime={actualsState.read.observedAt}>{actualsState.read.observedAt}</time>
+            </p>
+          ) : null}
+          {onRefreshActuals ? (
+            <Button
+              variant="secondary"
+              disabled={actualsState.state === 'loading'}
+              onClick={onRefreshActuals}
+            >
+              연결된 실적 다시 확인
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
       {tableColumns.includes('completion') ? (
         <p>
           완료 보고는 저장된 세션에 대한 사용자의 확인이며 실제 활동·측정값과 별개입니다. 확인

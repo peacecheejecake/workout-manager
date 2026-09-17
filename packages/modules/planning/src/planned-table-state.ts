@@ -16,6 +16,8 @@ export const plannedTableColumns = [
   'duration',
   'rpe',
   'intensity',
+  'actual',
+  'comparison',
   'completion',
   'notes',
 ] as const;

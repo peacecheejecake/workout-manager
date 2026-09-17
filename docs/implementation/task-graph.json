@@ -559,6 +559,15 @@
       "evidence": "docs/implementation/progress/M1-04av.md"
     },
     {
+      "id": "M1-04aw",
+      "title": "세션별 연결 실제 집계·거리 비교",
+      "dependsOn": ["M1-04av", "M1-04i", "M1-04ap"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "저장 버전/세션 명시 연결 전체 집계·0/null/부분/시간 정의·거리 비교·초안 분리·소유권/동시 조회",
+      "evidence": "docs/implementation/progress/M1-04aw.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -611,7 +620,8 @@
         "M1-04as",
         "M1-04at",
         "M1-04au",
-        "M1-04av"
+        "M1-04av",
+        "M1-04aw"
       ],
       "kind": "task",
       "status": "not_started",

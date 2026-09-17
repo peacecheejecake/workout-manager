@@ -13,6 +13,7 @@
     "@workout/contracts": "workspace:*"
   },
   "exports": {
+    "./session-actuals": "./src/session-actuals.ts",
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",
     "./outbox": "./src/outbox.ts",

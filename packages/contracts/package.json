@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./session-actuals": {
+      "types": "./src/session-actuals.ts",
+      "default": "./dist/session-actuals.js"
+    },
     "./primitives": {
       "types": "./src/primitives.ts",
       "default": "./dist/primitives.js"

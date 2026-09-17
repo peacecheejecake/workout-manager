@@ -248,7 +248,10 @@ describe('idempotent receipt versus authoritative head', () => {
     let finishRead: ((value: ReturnType<typeof transportReplySchema.parse>) => void) | undefined;
     const transport: AuthenticatedTransport = {
       request: async (input) => {
-        if (input.path === '/bff/v1/plans/current/session-completions')
+        if (
+          input.path === '/bff/v1/plans/current/session-completions' ||
+          input.path.endsWith('/session-actuals')
+        )
           return transportReplySchema.parse(reply({}, 503));
         if (input.path.startsWith('/bff/v1/activities?'))
           return transportReplySchema.parse(reply({ items: [], total: 0 }));
@@ -285,7 +288,10 @@ describe('idempotent receipt versus authoritative head', () => {
     let reads = 0;
     const transport: AuthenticatedTransport = {
       request: async (input) => {
-        if (input.path === '/bff/v1/plans/current/session-completions')
+        if (
+          input.path === '/bff/v1/plans/current/session-completions' ||
+          input.path.endsWith('/session-actuals')
+        )
           return transportReplySchema.parse(reply({}, 503));
         if (input.path.startsWith('/bff/v1/activities?'))
           return transportReplySchema.parse(reply({ items: [], total: 0 }));
