@@ -377,6 +377,7 @@ function Planner({
                 <PeriodEditor draft={draft} edit={edit} today={today} createId={createId} />
                 <SessionEditor
                   selectedId={url.plannedSession}
+                  onDuplicate={(plannedSession) => changeSearch({ plannedSession })}
                   draft={draft}
                   baseline={state.baseline?.draft ?? null}
                   edit={edit}
@@ -435,7 +436,16 @@ function Planner({
                   <Button
                     variant="secondary"
                     disabled={state.undo.length === 0}
-                    onClick={actions.undo}
+                    onClick={() => {
+                      const previous = state.undo.at(-1);
+                      actions.undo();
+                      if (
+                        previous &&
+                        url.plannedSession &&
+                        !previous.sessions.some((session) => session.id === url.plannedSession)
+                      )
+                        changeSearch({ plannedSession: null });
+                    }}
                   >
                     실행 취소
                   </Button>

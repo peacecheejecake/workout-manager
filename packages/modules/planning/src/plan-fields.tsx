@@ -1,5 +1,8 @@
 'use client';
 
+import { useRef, useState } from 'react';
+import { duplicatePlannedSession } from './duplicate-session';
+
 import {
   plannedSessionSchema,
   type PlanDraft,
@@ -189,6 +192,7 @@ export function SessionEditor({
   today,
   createId,
   selectedId,
+  onDuplicate,
 }: {
   draft: PlanDraft;
   baseline: PlanDraft | null;
@@ -196,7 +200,28 @@ export function SessionEditor({
   today: string;
   createId: () => string;
   selectedId?: string | null;
+  onDuplicate(id: string): void;
 }) {
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const pendingDuplicateFocus = useRef<string | null>(null);
+  function duplicate(sourceId: string) {
+    const result = duplicatePlannedSession(draft, sourceId, createId);
+    if (!result.ok) {
+      const messages = {
+        invalid_draft: '초안의 입력 오류를 먼저 수정한 뒤 복제하세요.',
+        capacity: '계획 세션은 최대 1,000개까지 작성할 수 있습니다.',
+        id_collision: '새 세션 식별자가 기존 항목과 겹칩니다. 다시 복제하세요.',
+        invalid_id: '새 세션 식별자를 만들지 못했습니다. 다시 복제하세요.',
+        missing_session: '복제할 원본 세션을 찾을 수 없습니다. 선택을 다시 확인하세요.',
+      };
+      setDuplicateError(messages[result.error]);
+      return;
+    }
+    setDuplicateError(null);
+    pendingDuplicateFocus.current = result.sessionId;
+    edit(() => result.draft);
+    onDuplicate(result.sessionId);
+  }
   function update(id: string, patch: Partial<PlannedSession>) {
     edit((current) => ({
       ...current,
@@ -208,6 +233,12 @@ export function SessionEditor({
   return (
     <section aria-labelledby="session-editor-title">
       <h3 id="session-editor-title">계획 세션 초안</h3>
+      <p>
+        복제본은 잠금을 해제한 새 계획 초안입니다. 원본 계획과 실제 기록은 그대로 유지되며,
+        저장하려면 미리보기 후 확인하세요.
+      </p>
+      {duplicateError ? <p role="alert">{duplicateError}</p> : null}
+      {draft.sessions.length >= 1000 ? <p>계획 세션이 1,000개여서 더 복제할 수 없습니다.</p> : null}
       <Button
         variant="secondary"
         disabled={!draft.periods.some((period) => period.level === 'block')}
@@ -232,6 +263,12 @@ export function SessionEditor({
               <legend>{session.title}</legend>
               <TextField
                 label="세션 제목"
+                ref={(element) => {
+                  if (element && pendingDuplicateFocus.current === session.id) {
+                    pendingDuplicateFocus.current = null;
+                    element.focus();
+                  }
+                }}
                 value={session.title}
                 onChange={(event) => update(session.id, { title: event.target.value })}
               />
@@ -465,21 +502,8 @@ export function SessionEditor({
               </fieldset>
               <Button
                 variant="secondary"
-                onClick={() =>
-                  edit((current) => ({
-                    ...current,
-                    sessions: [
-                      ...current.sessions,
-                      {
-                        ...session,
-                        id: createId(),
-                        title: `${session.title} 복사`,
-                        locks: { date: false, time: false, intensity: false },
-                        steps: session.steps.map((step) => ({ ...step, id: createId() })),
-                      },
-                    ],
-                  }))
-                }
+                disabled={draft.sessions.length >= 1000}
+                onClick={() => duplicate(session.id)}
               >
                 세션 복제
               </Button>

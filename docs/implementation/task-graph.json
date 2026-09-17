@@ -280,6 +280,15 @@
       "evidence": "docs/implementation/progress/M1-04q.md"
     },
     {
+      "id": "M1-04r",
+      "title": "세션 복제 초안 선택·경계 보완",
+      "dependsOn": ["M1-04n"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "복제 후 선택·제목/개수/ID 경계·원본 잠금 보존·undo·명시 저장·실제 브라우저",
+      "evidence": "docs/implementation/progress/M1-04r.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -301,7 +310,8 @@
         "M1-04n",
         "M1-04o",
         "M1-04p",
-        "M1-04q"
+        "M1-04q",
+        "M1-04r"
       ],
       "kind": "task",
       "status": "not_started",

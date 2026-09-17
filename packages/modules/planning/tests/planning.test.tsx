@@ -326,6 +326,8 @@ describe('plan editor constraints', () => {
     await user.click(screen.getByRole('button', { name: '세션 추가' }));
     await user.click(screen.getByRole('button', { name: '단계 추가' }));
     await user.click(screen.getByRole('button', { name: '세션 복제' }));
+    expect(screen.getAllByRole('textbox', { name: '세션 제목' })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '계획 세션 선택 해제' }));
     expect(screen.getAllByRole('textbox', { name: '세션 제목' })).toHaveLength(2);
     const deleteButtons = screen.getAllByRole('button', { name: '세션 삭제' });
     const duplicateDelete = deleteButtons.at(1);
