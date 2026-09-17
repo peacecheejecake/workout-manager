@@ -20,6 +20,8 @@ import { instantSchema, timeZoneSchema } from '@workout/contracts/primitives';
 import { Button } from '@workout/ui-foundation/button';
 import { createCheckInDraftStore, type CheckInFields } from './draft-store';
 import { changeWellbeingSearch, localDateAt, readWellbeingSearch } from './search';
+import { CheckInTrend } from './check-in-trend';
+import { fetchCheckInTrend, readTrendQuery } from './check-in-trend-query';
 import styles from './wellbeing.module.css';
 
 export interface WellbeingWorkspaceProps {
@@ -116,6 +118,8 @@ function Workspace({
   const active = useRef(true);
   const composing = useRef(false);
   const request = useRef<AbortController | null>(null);
+  const detailPanel = useRef<HTMLElement | null>(null);
+  const trendSelection = useRef<string | null>(null);
   const [pending, setPending] = useState<PendingCommand | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -126,6 +130,7 @@ function Workspace({
   const [switchTarget, setSwitchTarget] = useState<CheckIn | 'new' | null>(null);
   const today = localDateAt(initialObservedAt, initialTimezone);
   const parsed = readWellbeingSearch(search, today);
+  const trendSearch = readTrendQuery(search, parsed.query);
   const params = new URLSearchParams(search);
   const selected = params.get('selected');
   const selectedId = z.uuid().safeParse(selected);
@@ -172,6 +177,29 @@ function Workspace({
       return checkInSchema.parse(result.body);
     },
   });
+  const trend = useQuery({
+    queryKey: [...prefix, 'trend', trendSearch.query],
+    enabled: trendSearch.query !== null,
+    queryFn: ({ signal }) => {
+      if (!trendSearch.query) throw new Error('INVALID_TREND_QUERY');
+      return fetchCheckInTrend(transport, trendSearch.query, signal);
+    },
+  });
+  useEffect(() => {
+    if (trendSelection.current !== selected) return;
+    trendSelection.current = null;
+    detailPanel.current?.focus();
+    detailPanel.current?.scrollIntoView?.({ block: 'start' });
+  }, [selected]);
+  function selectTrendRecord(recordId: string) {
+    if (selected === recordId) {
+      detailPanel.current?.focus();
+      detailPanel.current?.scrollIntoView?.({ block: 'start' });
+      return;
+    }
+    trendSelection.current = recordId;
+    navigate({ selected: recordId });
+  }
   const locked = busy || pending !== null;
   useEffect(() => {
     if (!dirty && pending === null) return;
@@ -559,6 +587,7 @@ function Workspace({
                 from: String(form.get('from')),
                 toExclusive: String(form.get('toExclusive')),
                 offset: null,
+                trendOffset: null,
               });
             }}
           >
@@ -646,7 +675,7 @@ function Workspace({
             <p role="alert">선택한 기록 주소가 올바르지 않습니다.</p>
           ) : null}
           {selectedId.success ? (
-            <section aria-label="선택한 체크인">
+            <section aria-label="선택한 체크인" ref={detailPanel} tabIndex={-1}>
               <h3>선택한 체크인</h3>
               {detail.isFetching ? <p role="status">선택한 기록을 확인하고 있습니다.</p> : null}
               {detail.isError ? (
@@ -670,6 +699,79 @@ function Workspace({
           ) : null}
         </section>
       </div>
+      <section aria-label="체크인 추세">
+        <h2>체크인 추세</h2>
+        <p>
+          위 조회 기간을 사용하며 목록과 별도로 100개씩 확인합니다. 페이지 간 기록을 합산하지
+          않습니다.
+        </p>
+        {trendSearch.error ? <p role="alert">{trendSearch.error}</p> : null}
+        {parsed.error ? (
+          <p>유효한 조회 기간과 목록 페이지를 지정하면 추세를 확인할 수 있습니다.</p>
+        ) : null}
+        <div className={styles.actions}>
+          <Button
+            disabled={!trendSearch.query || trend.isFetching}
+            onClick={() => void trend.refetch()}
+          >
+            추세 다시 확인
+          </Button>
+          <Button variant="secondary" onClick={() => navigate({ trendOffset: null })}>
+            추세 첫 페이지
+          </Button>
+        </div>
+        {trend.isFetching ? <p role="status">체크인 추세를 불러오고 있습니다.</p> : null}
+        {trend.isError && !trend.isFetching ? (
+          <p role="alert">최신 추세를 확인하지 못했습니다. 추세 다시 확인을 눌러 재시도하세요.</p>
+        ) : null}
+        {trend.isSuccess && !trend.isFetching && trendSearch.query ? (
+          <>
+            <p>
+              추세 확인 시각: {new Date(trend.dataUpdatedAt).toISOString()} · 기록 모음 수정{' '}
+              {trend.data.collectionRevision}
+            </p>
+            <CheckInTrend
+              data={trend.data}
+              from={trendSearch.query.from}
+              toExclusive={trendSearch.query.toExclusive}
+              offset={trendSearch.query.offset}
+              onSelect={selectTrendRecord}
+            />
+            {trendSearch.query.offset >= 10000 &&
+            trendSearch.query.offset + trend.data.items.length < trend.data.total ? (
+              <p>
+                조회 가능한 페이지 범위를 넘는 기록이 있습니다. 조회 기간을 줄여 나머지 기록을
+                확인하세요.
+              </p>
+            ) : null}
+            <div className={styles.actions}>
+              <Button
+                variant="secondary"
+                disabled={trendSearch.query.offset === 0}
+                onClick={() =>
+                  navigate({
+                    trendOffset: String(Math.max(0, (trendSearch.query?.offset ?? 0) - 100)),
+                  })
+                }
+              >
+                추세 이전 페이지
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={
+                  trendSearch.query.offset + 100 >= trend.data.total ||
+                  trendSearch.query.offset + 100 > 10000
+                }
+                onClick={() =>
+                  navigate({ trendOffset: String((trendSearch.query?.offset ?? 0) + 100) })
+                }
+              >
+                추세 다음 페이지
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </section>
     </section>
   );
 }

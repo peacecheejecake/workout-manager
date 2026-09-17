@@ -532,6 +532,15 @@
       "evidence": "docs/implementation/progress/M1-04as.md"
     },
     {
+      "id": "M1-04at",
+      "title": "체크인 자기보고 관측 추세",
+      "dependsOn": ["M1-04b"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "피로/불편감 원본 관측점·독립 페이지·부분 조회·null/0·기간/계정 수명·상세 이동",
+      "evidence": "docs/implementation/progress/M1-04at.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -581,7 +590,8 @@
         "M1-04ap",
         "M1-04aq",
         "M1-04ar",
-        "M1-04as"
+        "M1-04as",
+        "M1-04at"
       ],
       "kind": "task",
       "status": "not_started",

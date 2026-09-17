@@ -1,0 +1,51 @@
+.trend {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.series {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--space-4);
+}
+.series > section {
+  min-width: 0;
+}
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.chart text {
+  fill: var(--ink);
+  font-size: 14px;
+}
+.chart line {
+  stroke: var(--ink-muted);
+  stroke-width: 1;
+}
+.chart circle {
+  fill: var(--accent);
+}
+.axis {
+  font-size: var(--font-size-small, 0.875rem);
+}
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.scroll table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 48rem;
+}
+.scroll th,
+.scroll td {
+  padding: var(--space-2);
+  text-align: start;
+  border-bottom: 1px solid var(--ink-muted);
+}
