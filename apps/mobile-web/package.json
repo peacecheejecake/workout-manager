@@ -16,6 +16,8 @@
     "@workout/modules-activities": "workspace:*",
     "@workout/contracts": "workspace:*",
     "@workout/ui-foundation": "workspace:*",
-    "@workout/ui-spike": "workspace:*"
+    "@workout/ui-spike": "workspace:*",
+    "@workout/modules-coaching": "workspace:*",
+    "@workout/modules-identity": "workspace:*"
   }
 }

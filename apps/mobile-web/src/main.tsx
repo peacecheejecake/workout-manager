@@ -6,12 +6,29 @@ import './styles.css';
 const SpikeWorkspace = lazy(() =>
   import('@workout/ui-spike/workspace').then((module) => ({ default: module.SpikeWorkspace })),
 );
+const CoachingPage = lazy(() =>
+  import('./coaching-page').then((module) => ({ default: module.CoachingPage })),
+);
+const AccountPage = lazy(() =>
+  import('./account-page').then((module) => ({ default: module.AccountPage })),
+);
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
     <main className="wm-page mobile-shell">
-      {location.pathname === '/ui-spike' ? (
+      {location.pathname === '/coach' ? (
+        <Suspense fallback={<p role="status">상담 기록 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/account">계정</a>
+          </nav>
+          <CoachingPage />
+        </Suspense>
+      ) : location.pathname === '/account' ? (
+        <Suspense fallback={<p role="status">계정 화면 준비 중</p>}>
+          <AccountPage />
+        </Suspense>
+      ) : location.pathname === '/ui-spike' ? (
         <Suspense fallback={<p>검증 화면 준비 중</p>}>
           <SpikeWorkspace workerUrl="/dist/maplibre/maplibre-gl-worker.mjs" />
         </Suspense>

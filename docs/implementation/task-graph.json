@@ -667,9 +667,18 @@
       "evidence": "docs/implementation/progress/M1-05b.md"
     },
     {
+      "id": "M1-05c",
+      "title": "상담 기록 UI·검토 범위·메시지 복구",
+      "dependsOn": ["M1-05b", "M0-03", "M0-04"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "공통 상담 UI·불변 계획 scope·제약 조회·대화 초안·revision 충돌/응답 유실 복구·두 shell",
+      "evidence": "docs/implementation/progress/M1-05c.md"
+    },
+    {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04", "M1-05a", "M1-05b"],
+      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"

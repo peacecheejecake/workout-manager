@@ -1,0 +1,82 @@
+.workspace {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--space-4);
+}
+.card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+.workspace fieldset {
+  min-width: 0;
+  margin-block: var(--space-4);
+  border: 1px solid var(--line);
+}
+.workspace label {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.workspace input,
+.workspace textarea,
+.workspace select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-primary);
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  font: inherit;
+  padding: var(--space-2);
+}
+.workspace textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+.workspace button {
+  min-height: var(--target-primary);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+.workspace button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.workspace :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace ul,
+.workspace ol {
+  padding-inline-start: var(--space-5);
+}
+.workspace li {
+  margin-block: var(--space-3);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.message {
+  white-space: pre-wrap;
+}

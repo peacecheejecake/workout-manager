@@ -390,3 +390,44 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
     expect(screen.getByRole('status')).toHaveTextContent('로그인 상태');
   });
 });
+
+it.each([
+  ['GET', '/bff/v1/coaching-threads?limit=20'],
+  ['GET', '/bff/v1/coaching-threads/thread/messages?afterRevision=1'],
+  ['POST', '/bff/v1/coaching-threads'],
+  ['POST', '/bff/v1/coaching-threads/thread/messages'],
+] as const)('uses the session-bound coaching namespace for %s %s', async (method, path) => {
+  fetchMock.mockResolvedValue(json({ accepted: true }));
+  const controller = new AbortController();
+  await createSessionTransport(session, vi.fn()).request({
+    method,
+    path,
+    body: method === 'POST' ? { message: 'Synthetic user text' } : null,
+    idempotencyKey: method === 'POST' ? 'coaching-key' : null,
+    signal: controller.signal,
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({
+      signal: controller.signal,
+      credentials: 'same-origin',
+      headers: expect.objectContaining({
+        'x-workout-session-id': session.sessionId,
+        ...(method === 'POST'
+          ? { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'coaching-key' }
+          : {}),
+      }),
+    }),
+  );
+});
+it('keeps similarly named non-coaching routes outside the authenticated allowlist', async () => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method: 'POST',
+      path: '/bff/v1/coaching-threads-admin',
+      body: {},
+      idempotencyKey: 'private',
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});

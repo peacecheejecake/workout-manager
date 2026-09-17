@@ -211,7 +211,7 @@ try {
     operations: createOperationsRepository(database),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
-    allowedOrigins: ['http://127.0.0.1:3100'],
+    allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],
   });
   closers.push(() => api.close());
   await api.listen({ host: '127.0.0.1', port: identityApiPort });

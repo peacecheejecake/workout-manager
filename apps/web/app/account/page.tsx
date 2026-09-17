@@ -7,6 +7,8 @@ export default function AccountPage() {
       <nav aria-label="훈련 작업">
         <a href="/dashboard">대시보드</a> · <a href="/planner">훈련 계획</a> ·{' '}
         <a href="/activities">가져온 활동</a> · <a href="/wellbeing">체크인</a>
+        {' · '}
+        <a href="/coach">상담 기록</a>
       </nav>
     </main>
   );

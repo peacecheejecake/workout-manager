@@ -129,6 +129,12 @@ importers:
       '@workout/modules-activities':
         specifier: workspace:*
         version: link:../../packages/modules/activities
+      '@workout/modules-coaching':
+        specifier: workspace:*
+        version: link:../../packages/modules/coaching
+      '@workout/modules-identity':
+        specifier: workspace:*
+        version: link:../../packages/modules/identity
       '@workout/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -178,6 +184,9 @@ importers:
       '@workout/modules-activities':
         specifier: workspace:*
         version: link:../../packages/modules/activities
+      '@workout/modules-coaching':
+        specifier: workspace:*
+        version: link:../../packages/modules/coaching
       '@workout/modules-dashboard':
         specifier: workspace:*
         version: link:../../packages/modules/dashboard
@@ -283,6 +292,27 @@ importers:
       '@workout/platform':
         specifier: workspace:*
         version: link:../../platform
+      '@workout/ui-foundation':
+        specifier: workspace:*
+        version: link:../../ui/foundation
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+      zustand:
+        specifier: 5.0.15
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
+
+  packages/modules/coaching:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation
