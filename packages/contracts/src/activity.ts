@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { idSchema, instantSchema, localDateSchema, timeZoneSchema } from './primitives.js';
-import { activityDetailsSchema } from './activity-details.js';
+import {
+  activityDetailsSchema,
+  activityDetailsV1Schema,
+  activityDetailsV2Schema,
+} from './activity-details.js';
 
 const boundedMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
 /** User-local labels. Normalize Unicode/outer whitespace; case remains significant. */
@@ -63,7 +67,14 @@ export const activityExportSchema = z.discriminatedUnion('schemaVersion', [
   z.strictObject({
     schemaVersion: z.literal(2),
     imports: z
-      .array(importActivitySchema.extend({ details: activityDetailsSchema }))
+      .array(importActivitySchema.extend({ details: activityDetailsV1Schema }))
+      .min(1)
+      .max(100),
+  }),
+  z.strictObject({
+    schemaVersion: z.literal(3),
+    imports: z
+      .array(importActivitySchema.extend({ details: activityDetailsV2Schema }))
       .min(1)
       .max(100),
   }),

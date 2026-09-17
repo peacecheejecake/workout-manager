@@ -195,11 +195,23 @@ def test_opt_in_fixture_revision_identity_and_legacy_default(tmp_path):
     assert main(["export-activity", str(source), "--output", str(output), "--include-details"]) == 0
     value = json.loads(output.read_text())
     fixture = Path(__file__).parents[1] / "fixtures" / "fit-activity-details-export.json"
-    assert value == json.loads(fixture.read_text())
-    assert value["schemaVersion"] == 2
+    legacy = json.loads(fixture.read_text())
+    expected = json.loads(fixture.read_text())
+    expected["schemaVersion"] = 3
+    expected["imports"][0]["source"]["revision"] = 3
+    expected["imports"][0]["idempotencyKey"] = legacy["imports"][0]["idempotencyKey"].replace(
+        "fit-details-v1-", "fit-details-v2-"
+    )
+    expected["imports"][0]["details"]["schemaVersion"] = 2
+    expected["imports"][0]["details"]["sessionSummary"] = {
+        "averageHeartRateBpm": None,
+        "maximumHeartRateBpm": None,
+    }
+    assert value == expected
+    assert value["schemaVersion"] == 3
     assert value["imports"][0]["source"]["sourceId"] == before[0]["source"]["sourceId"]
-    assert value["imports"][0]["source"]["revision"] == 2
-    assert value["imports"][0]["idempotencyKey"].startswith("fit-details-v1-")
+    assert value["imports"][0]["source"]["revision"] == 3
+    assert value["imports"][0]["idempotencyKey"].startswith("fit-details-v2-")
     assert len(value["imports"][0]["idempotencyKey"]) <= 128
     assert activity_commands(source) == before
 
@@ -249,3 +261,24 @@ def test_changed_source_aborts_without_output(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="changed during export"):
         export_activity(source, output, include_details=True)
     assert not output.exists()
+
+
+@pytest.mark.parametrize("field", ["avg_heart_rate", "max_heart_rate"])
+@pytest.mark.parametrize("value", [-1, 256, 1.5, float("inf")])
+def test_invalid_session_summary_rejected(stream_export, field, value):
+    with pytest.raises(ValueError):
+        stream_export({"session": [{field: value}], "record": [], "lap": []})
+
+
+def test_session_summary_does_not_use_record_or_lap_values(stream_export):
+    result = stream_export(
+        {
+            "session": [{}],
+            "record": [{"heart_rate": 120}],
+            "lap": [{"avg_heart_rate": 125, "max_heart_rate": 180}],
+        }
+    )[0]["details"]
+    assert result["sessionSummary"] == {
+        "averageHeartRateBpm": None,
+        "maximumHeartRateBpm": None,
+    }

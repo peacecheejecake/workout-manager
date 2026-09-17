@@ -134,9 +134,14 @@ pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
 uv run workout-manager export-activity /path/to/activity.fit --output /path/to/activity.json --timezone Asia/Seoul
 ```
 
-구간·심박·거리 시계열을 함께 가져오려면 `--include-details`를 추가합니다.
+구간·심박·거리 시계열과 출처 세션 평균·최대 심박을 함께 가져오려면 `--include-details`를 추가합니다.
 기존 요약 파일은 그대로 지원하며, 상세 파일은 같은 활동의 원본 revision을 갱신합니다.
 앱에서 파일을 선택해 미리보기를 확인한 뒤 명시적으로 가져오세요.
+
+새 상세 파일은 export v3 / details v2 / source revision 3입니다. 기존 export v1/v2도 읽습니다.
+활동 상세의 페이스는 원본과 정정 반영 거리·시간으로 각각 계산하며 시간 정의를 함께 표시합니다.
+세션 심박은 출처 관측값이며 레코드·랩으로 추정하지 않습니다.
+[요약 형식·검증 기록](docs/implementation/progress/M1-04as.md).
 
 ```bash
 uv run workout-manager export-activity /path/to/activity.fit --output /path/to/activity-details.json --timezone Asia/Seoul --include-details

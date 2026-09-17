@@ -523,6 +523,15 @@
       "evidence": "docs/implementation/progress/M1-04ar.md"
     },
     {
+      "id": "M1-04as",
+      "title": "활동 페이스·심박 요약",
+      "dependsOn": ["M1-04h", "M1-04y"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "원본/정정 페이스·시간 정의·FIT session 심박·상세 버전 호환·출처 확인",
+      "evidence": "docs/implementation/progress/M1-04as.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -571,7 +580,8 @@
         "M1-04ao",
         "M1-04ap",
         "M1-04aq",
-        "M1-04ar"
+        "M1-04ar",
+        "M1-04as"
       ],
       "kind": "task",
       "status": "not_started",

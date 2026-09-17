@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 3,
+  "imports": [
+    {
+      "idempotencyKey": "fit-details-v2-e8453416baed92964f7ed95bb8b7b7e624063d6ed1e0ab216b11aafd3bf4214c-0",
+      "source": {
+        "kind": "fit",
+        "sourceId": "sha256:e8453416baed92964f7ed95bb8b7b7e624063d6ed1e0ab216b11aafd3bf4214c:session:0",
+        "revision": 3,
+        "contentHash": "e8453416baed92964f7ed95bb8b7b7e624063d6ed1e0ab216b11aafd3bf4214c"
+      },
+      "activity": {
+        "title": null,
+        "kind": "unknown",
+        "startedAt": null,
+        "timezone": null,
+        "durationSeconds": null,
+        "durationKind": "unknown",
+        "distanceMeters": null
+      },
+      "details": {
+        "schemaVersion": 2,
+        "streamIndex": 0,
+        "sessionIndex": 0,
+        "startedAt": null,
+        "recordedAt": "2024-11-08T11:33:20+00:00",
+        "elapsedSeconds": null,
+        "sessionSummary": {
+          "averageHeartRateBpm": 146,
+          "maximumHeartRateBpm": 181
+        },
+        "records": [
+          {
+            "index": 0,
+            "timestamp": "2024-11-08T11:33:20+00:00",
+            "distanceMeters": null,
+            "heartRateBpm": 120
+          }
+        ],
+        "laps": [
+          {
+            "index": 0,
+            "startedAt": null,
+            "recordedAt": "2024-11-08T11:33:20+00:00",
+            "elapsedSeconds": null,
+            "timerSeconds": null,
+            "distanceMeters": null,
+            "averageHeartRateBpm": 110,
+            "maximumHeartRateBpm": 130
+          }
+        ]
+      }
+    }
+  ]
+}

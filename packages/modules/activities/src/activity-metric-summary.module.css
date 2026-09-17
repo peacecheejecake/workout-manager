@@ -1,0 +1,13 @@
+.summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-4);
+}
+.values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+}
+.values > section {
+  min-width: 0;
+}

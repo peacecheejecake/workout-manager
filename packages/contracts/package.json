@@ -53,6 +53,10 @@
       "types": "./src/activity-details.ts",
       "default": "./dist/activity-details.js"
     },
+    "./activity-metrics": {
+      "types": "./src/activity-metrics.ts",
+      "default": "./dist/activity-metrics.js"
+    },
     "./activity-export": {
       "types": "./src/activity-export.ts",
       "default": "./dist/activity-export.js"

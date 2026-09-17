@@ -1,5 +1,7 @@
 'use client';
 
+import { ActivityMetricSummary } from './activity-metric-summary';
+
 import { useEffect, useId, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useStore } from 'zustand';
@@ -513,6 +515,18 @@ function Workspace({
                       <a href={editHref(detail.data.activity.id)}>이 활동 정정</a>
                     </p>
                   ) : null}
+                  <ActivityMetricSummary
+                    activity={detail.data.activity}
+                    sourceDetails={
+                      sourceDetails.isFetching
+                        ? { state: 'loading' }
+                        : sourceDetails.isError
+                          ? { state: 'error' }
+                          : pairReady
+                            ? { state: 'ready', value: sourceDetails.data }
+                            : { state: 'unavailable' }
+                    }
+                  />
                   <BrowserDetail activity={detail.data.activity} />
                   <ActivityContextPanel
                     context={detail.data}

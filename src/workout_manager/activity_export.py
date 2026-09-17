@@ -89,7 +89,7 @@ def export_activity(
     if output.exists() or output.is_symlink():
         raise ValueError("Activity export already exists")
     value = {
-        "schemaVersion": 2 if include_details else 1,
+        "schemaVersion": 3 if include_details else 1,
         "imports": activity_commands(source, timezone_name, include_details=include_details),
     }
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
@@ -230,12 +230,20 @@ def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str,
         for local_index, row in enumerate(stream["session"]):
             index = len(commands)
             details = {
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "streamIndex": stream_index,
                 "sessionIndex": index,
                 "startedAt": timestamp(row.get("start_time")),
                 "recordedAt": timestamp(row.get("timestamp")),
                 "elapsedSeconds": detail_number(row.get("total_elapsed_time")),
+                "sessionSummary": {
+                    "averageHeartRateBpm": detail_number(
+                        row.get("avg_heart_rate"), heart_rate=True
+                    ),
+                    "maximumHeartRateBpm": detail_number(
+                        row.get("max_heart_rate"), heart_rate=True
+                    ),
+                },
                 "records": records[local_index],
                 "laps": laps[local_index],
             }
@@ -251,11 +259,11 @@ def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str,
                 kind = "unknown"
             commands.append(
                 {
-                    "idempotencyKey": f"fit-details-v1-{digest}-{index}",
+                    "idempotencyKey": f"fit-details-v2-{digest}-{index}",
                     "source": {
                         "kind": "fit",
                         "sourceId": f"sha256:{digest}:session:{index}",
-                        "revision": 2,
+                        "revision": 3,
                         "contentHash": digest,
                     },
                     "activity": {

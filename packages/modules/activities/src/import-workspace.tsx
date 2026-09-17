@@ -284,6 +284,21 @@ function DetailPreview({ details }: { details: ActivityDetails | undefined }) {
       <p>
         세부 기록: 레코드 {details.records.length}개 · 랩 {details.laps.length}개
       </p>
+      {details.schemaVersion === 1 ? (
+        <p>세션 심박: 이전 형식에 요약 없음</p>
+      ) : (
+        <p>
+          출처 세션 평균 심박:{' '}
+          {details.sessionSummary.averageHeartRateBpm === null
+            ? '미보고'
+            : `${details.sessionSummary.averageHeartRateBpm} bpm`}{' '}
+          · 최대 심박:{' '}
+          {details.sessionSummary.maximumHeartRateBpm === null
+            ? '미보고'
+            : `${details.sessionSummary.maximumHeartRateBpm} bpm`}
+        </p>
+      )}
+
       <p>
         레코드 미확인: 시각 {details.records.filter((item) => item.timestamp === null).length}개 ·
         거리 {details.records.filter((item) => item.distanceMeters === null).length}개 · 심박수{' '}

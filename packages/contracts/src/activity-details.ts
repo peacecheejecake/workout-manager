@@ -28,33 +28,51 @@ export const activityLapSchema = z.strictObject({
   maximumHeartRateBpm: heartRate,
 });
 /** Source observations; summary timestamps are write times, never interval endpoints. */
-export const activityDetailsSchema = z
-  .strictObject({
-    schemaVersion: z.literal(1),
-    streamIndex: z.number().int().min(0).max(127),
-    sessionIndex: z.number().int().min(0).max(99),
-    startedAt: timestamp,
-    recordedAt: timestamp,
-    elapsedSeconds: metric,
-    records: z.array(activityRecordSchema).max(activityDetailLimits.records),
-    laps: z.array(activityLapSchema).max(activityDetailLimits.laps),
+const detailFields = z.strictObject({
+  schemaVersion: z.literal(1),
+  streamIndex: z.number().int().min(0).max(127),
+  sessionIndex: z.number().int().min(0).max(99),
+  startedAt: timestamp,
+  recordedAt: timestamp,
+  elapsedSeconds: metric,
+  records: z.array(activityRecordSchema).max(activityDetailLimits.records),
+  laps: z.array(activityLapSchema).max(activityDetailLimits.laps),
+});
+const checkDetails = (
+  details: Omit<z.infer<typeof detailFields>, 'schemaVersion'>,
+  context: z.RefinementCtx,
+) => {
+  for (const key of ['records', 'laps'] as const) {
+    let previous = -1;
+    details[key].forEach((item, index) => {
+      if (item.index <= previous)
+        context.addIssue({
+          code: 'custom',
+          message: 'Source indices must be unique and increasing',
+          path: [key, index, 'index'],
+        });
+      previous = item.index;
+    });
+  }
+  if (new TextEncoder().encode(JSON.stringify(details)).length > activityDetailLimits.detailBytes)
+    context.addIssue({ code: 'custom', message: 'Activity details exceed byte limit' });
+};
+/** Legacy source payloads retain their exact fields for hash and receipt compatibility. */
+export const activityDetailsV1Schema = detailFields.superRefine(checkDetails);
+export const activitySessionSummarySchema = z.strictObject({
+  averageHeartRateBpm: heartRate,
+  maximumHeartRateBpm: heartRate,
+});
+export const activityDetailsV2Schema = detailFields
+  .extend({
+    schemaVersion: z.literal(2),
+    sessionSummary: activitySessionSummarySchema,
   })
-  .superRefine((details, context) => {
-    for (const key of ['records', 'laps'] as const) {
-      let previous = -1;
-      details[key].forEach((item, index) => {
-        if (item.index <= previous)
-          context.addIssue({
-            code: 'custom',
-            message: 'Source indices must be unique and increasing',
-            path: [key, index, 'index'],
-          });
-        previous = item.index;
-      });
-    }
-    if (new TextEncoder().encode(JSON.stringify(details)).length > activityDetailLimits.detailBytes)
-      context.addIssue({ code: 'custom', message: 'Activity details exceed byte limit' });
-  });
+  .superRefine(checkDetails);
+export const activityDetailsSchema = z.discriminatedUnion('schemaVersion', [
+  activityDetailsV1Schema,
+  activityDetailsV2Schema,
+]);
 export type ActivityDetails = z.infer<typeof activityDetailsSchema>;
 export type ActivityRecord = z.infer<typeof activityRecordSchema>;
 export type ActivityLap = z.infer<typeof activityLapSchema>;
