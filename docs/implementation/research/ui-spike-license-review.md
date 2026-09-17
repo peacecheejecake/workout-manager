@@ -86,3 +86,37 @@ root 파일만 수집하는 기존 inventory에는 이 파일이 없으므로 �
 
 문서 추가 외에 코드·패키지·규칙·기존 증거를 수정하지 않았다. 앱 실행이나 테스트 결과를
 이 라이선스 조사에서 새로 통과했다고 기록하지 않는다.
+
+## 배포 고지 후속 구현 · 2026-09-18
+
+위 내용은 최초 조사 당시 기록이다. 후속 구현에서는 `generate-ui-notices.mjs`가 설치된
+`@workout/ui-spike`의 production dependency 및 설치된 peer 전체에서 고지를 수집한다.
+root LICENSE/LICENCE/COPYING/NOTICE 본문을 그대로 포함하고, ECharts의 `licenses/LICENSE-d3`와
+murmurhash-js README의 MIT 절을 추가한다. 두 보충 파일은 확인한 버전·원문 해시가 달라지면
+재검토가 필요하도록 생성에 실패한다. 본문이 없는 외부 package나 필수 dependency 누락도 실패한다.
+
+과거 inventory를 갱신하지 않고, `THIRD_PARTY_NOTICES.txt`와 `manifest.json`을
+각 shell의 `public/dist/notices`에 생성한다. manifest에는 package/version, package 내부 상대
+출처 경로, 원문·포함 본문 해시와 lockfile·전체 고지 해시를 기록한다. 시간이나 절대 설치 경로는
+포함하지 않는다. 필수 검증을 끝낸 뒤 파일을 작성하고 build/dev 명령은 실패 시 다음 단계를 실행하지 않는다.
+
+Next·Vite·Storybook build/dev에 생성을 연결했다. build cache는 생성 스크립트와 lockfile 변경을
+입력으로 추적한다. `/ui-spike`의 “오픈소스 라이선스 고지” 링크는 같은 origin의 생성된 텍스트를 연다.
+이 산출물은 설치된 UI 후보 dependency 범위이며 tree-shaking 후의 정확한 번들 목록이나 전체 앱의
+모든 의존성·지도 데이터·서비스 약관 검토를 대신하지 않는다. Native 앱의 실제 동봉 검증은 남아 있다.
+
+[산출물 검증 기록](ui-spike-notice-distribution.json): 외부 package 99개·고지 101개,
+UTF-8 149,988 bytes다. root·중첩 notice 파일명을 추가 탐색한 101개 package/5,942개 항목에서
+이미 포함한 ECharts 하위 고지 외의 추가 후보는 없었으며 symlink로 제외된 항목도 없었다.
+이는 파일명 기반 수록 점검이며 모든 소스 주석이나 전체 제품의 법적 조건 검토는 아니다.
+
+각 포함 본문과 원문 해시를 다시 계산했다. Next public, Vite public/dist, Storybook public/dist
+다섯 산출물 사본의 본문 및 manifest는 byte 단위로 같다. Turbo dry-run에서 세 shell의 build
+입력에 생성 스크립트·collector·lockfile이 포함된 것을 확인했다. 기존 inventory는 byte 단위로 유지됐다.
+
+전체 검사 1,463 tests/133 files, production build 7개, 두 shell의 UI E2E 24개를 통과했다.
+새 E2E는 링크 focus·이동, HTTP 200/text/plain, 필요한 고지 본문 및 전체 manifest 해시를 확인한다.
+Aside에서도 두 shell 링크의 실제 같은 origin 응답 200·149,988 bytes와 동일 본문을 확인했다.
+Next 화면의 `ui-notices-next.png`를 직접 검토했다(Aside 세션 `2026-09-17_VL6gkWAp84sonbHw`).
+고지 생성 단위 테스트 6개는 deterministic output, 보충 원문 보존, 누락·변조·경로 이탈·파일 크기
+거절과 검증 실패 시 기존 산출물 보존을 포함한다. Herdr 독립 리뷰의 base/tree는 커밋 본문에 남긴다.

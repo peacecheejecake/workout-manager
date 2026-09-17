@@ -4,7 +4,8 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "public/dist/**", ".next/**", "!.next/cache/**"],
-      "env": ["API_ORIGIN"]
+      "env": ["API_ORIGIN"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/**", "$TURBO_ROOT$/pnpm-lock.yaml"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],

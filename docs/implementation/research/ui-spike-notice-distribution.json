@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-17T15:11:57.862Z",
+  "scope": "Local installed ui-spike dependency notice generation and build artifact byte equality; not full-app/native/legal clearance.",
+  "packageCount": 99,
+  "sourceNoticeCount": 101,
+  "lockfileSha256": "f57667ef7d96e7bb62fa1d5ff768a45d74178d37006e7034061adcc4b274bae1",
+  "bundleSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+  "artifacts": [
+    {
+      "directory": "apps/web/public/dist/notices",
+      "textBytes": 149988,
+      "textSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+      "manifestSha256": "19c5eadb25f3fd97973c41096142df4f8be7dd661224f7c2e607b7403ce4b48a"
+    },
+    {
+      "directory": "apps/mobile-web/public/dist/notices",
+      "textBytes": 149988,
+      "textSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+      "manifestSha256": "19c5eadb25f3fd97973c41096142df4f8be7dd661224f7c2e607b7403ce4b48a"
+    },
+    {
+      "directory": "apps/mobile-web/dist/dist/notices",
+      "textBytes": 149988,
+      "textSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+      "manifestSha256": "19c5eadb25f3fd97973c41096142df4f8be7dd661224f7c2e607b7403ce4b48a"
+    },
+    {
+      "directory": "apps/storybook/public/dist/notices",
+      "textBytes": 149988,
+      "textSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+      "manifestSha256": "19c5eadb25f3fd97973c41096142df4f8be7dd661224f7c2e607b7403ce4b48a"
+    },
+    {
+      "directory": "apps/storybook/dist/dist/notices",
+      "textBytes": 149988,
+      "textSha256": "0e92039a6c13e12ab7fbd23bb8c626f01afcd75ae2318d265365d4fcfc6c1edf",
+      "manifestSha256": "19c5eadb25f3fd97973c41096142df4f8be7dd661224f7c2e607b7403ce4b48a"
+    }
+  ],
+  "sourceValidation": "All included source files and emitted full bodies matched manifest hashes; historical inventory unchanged.",
+  "nestedNoticeAudit": {
+    "packages": 101,
+    "entries": 5942,
+    "skippedSymlinks": 0,
+    "additionalPaths": ["echarts@6.1.0/licenses/LICENSE-d3"]
+  },
+  "nativeVerification": "not_executed"
+}

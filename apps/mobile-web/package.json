@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "node ../../scripts/copy-map-worker.mjs && vite build",
-    "dev": "node ../../scripts/copy-map-worker.mjs && vite --host 127.0.0.1 --port 4200 --strictPort",
+    "build": "node ../../scripts/copy-map-worker.mjs && node ../../scripts/generate-ui-notices.mjs && vite build",
+    "dev": "node ../../scripts/copy-map-worker.mjs && node ../../scripts/generate-ui-notices.mjs && vite --host 127.0.0.1 --port 4200 --strictPort",
     "preview": "vite preview --host 127.0.0.1 --port 4200 --strictPort"
   },
   "dependencies": {

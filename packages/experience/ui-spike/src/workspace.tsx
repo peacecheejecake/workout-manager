@@ -39,6 +39,9 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
         개발용 가상 데이터입니다. 계정·건강 기록·외부 공급자와 연결되지 않습니다. 입력은 이 페이지
         메모리에만 남습니다.
       </p>
+      <p>
+        <a href="/dist/notices/THIRD_PARTY_NOTICES.txt">오픈소스 라이선스 고지</a>
+      </p>
       <button type="button" onClick={() => setShowRoutingRecovery((value) => !value)}>
         {showRoutingRecovery ? '라우팅 오류 검증 닫기' : '라우팅 오류 검증 열기'}
       </button>

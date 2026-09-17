@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "node ../../scripts/copy-map-worker.mjs && next build",
-    "dev": "node ../../scripts/copy-map-worker.mjs && next dev --hostname 127.0.0.1 --port 3100",
+    "build": "node ../../scripts/copy-map-worker.mjs && node ../../scripts/generate-ui-notices.mjs && next build",
+    "dev": "node ../../scripts/copy-map-worker.mjs && node ../../scripts/generate-ui-notices.mjs && next dev --hostname 127.0.0.1 --port 3100",
     "start": "next start --hostname 127.0.0.1 --port 3100"
   },
   "dependencies": {
