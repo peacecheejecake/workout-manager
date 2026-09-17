@@ -347,8 +347,9 @@
       "title": "활동 구간·시계열 상세 workbench",
       "dependsOn": ["M1-04x"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "실제 상세 API·개요/구간/출처·chart/lap 시간 선택·null/gap·반응형; 지도 연동 gate 별도"
+      "status": "completed",
+      "scope": "실제 상세 API·개요/구간/출처·chart/lap 시간 선택·null/gap·반응형; 지도 연동 gate 별도",
+      "evidence": "docs/implementation/progress/M1-04y.md"
     },
     {
       "id": "M1-04",

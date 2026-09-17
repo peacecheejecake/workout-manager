@@ -59,7 +59,16 @@ function setup(
   const request = vi.fn((input: TransportRequest) =>
     input.path === '/bff/v1/plans/current'
       ? Promise.resolve(reply({ head: null, history: [] }))
-      : handler(input),
+      : input.path.endsWith('/details')
+        ? Promise.resolve(
+            reply({
+              activityId: activity.id,
+              activityRevision: activity.revision,
+              source: activity.source,
+              details: null,
+            }),
+          )
+        : handler(input),
   );
   const changed = vi.fn();
   const props: ActivityBrowserProps = {

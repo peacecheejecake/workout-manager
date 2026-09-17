@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
-import { activityListSchema } from '@workout/contracts/activity';
+import { activityDetailsReadSchema, activityListSchema } from '@workout/contracts/activity';
 import { Button } from '@workout/ui-foundation/button';
 import { readActivitySearch, updateActivitySearch } from './browser-search';
 import { BrowserRecords, BrowserDetail, kindLabels, sourceLabels } from './browser-records';
@@ -12,6 +12,8 @@ import { activityContextSchema } from '@workout/contracts/activity-context';
 import { BrowserBlockFilter } from './browser-block-filter';
 import { ActivityDelete } from './activity-delete';
 import { ActivityContextPanel } from './activity-context-panel';
+import { ActivityWorkbench } from './activity-workbench';
+import { detailsMatchActivity } from './detail-projection';
 
 export interface ActivityBrowserProps {
   athleteId: string;
@@ -110,6 +112,37 @@ function Workspace({
       return context;
     },
   });
+  const sourceDetails = useQuery({
+    queryKey: [...prefix, 'source-details', parsed.selected],
+    enabled: !parsed.invalid && parsed.selected !== null,
+    queryFn: async ({ signal }) => {
+      const response = await transport.request({
+        path: `/bff/v1/activities/${parsed.selected}/details`,
+        method: 'GET',
+        body: null,
+        idempotencyKey: null,
+        signal,
+      });
+      if (signal.aborted) throw new Error('CANCELLED');
+      if (response.status !== 200)
+        throw new Error(response.status === 404 ? 'NOT_FOUND' : 'SOURCE_DETAILS_UNAVAILABLE');
+      const read = activityDetailsReadSchema.parse(response.body);
+      if (read.activityId !== parsed.selected) throw new Error('SOURCE_DETAILS_MISMATCH');
+      return read;
+    },
+  });
+  const pairReady =
+    detail.isSuccess && !detail.isFetching && sourceDetails.isSuccess && !sourceDetails.isFetching;
+  const pairMatches =
+    detail.data !== undefined &&
+    sourceDetails.data !== undefined &&
+    detailsMatchActivity(detail.data.activity, sourceDetails.data);
+  const pairNotFound =
+    (detail.isError && detail.error.message === 'NOT_FOUND') ||
+    (sourceDetails.isError && sourceDetails.error.message === 'NOT_FOUND');
+  function refreshDetails() {
+    return Promise.all([detail.refetch(), sourceDetails.refetch()]);
+  }
   function change(changes: Record<string, string | null>) {
     onSearchChange(updateActivitySearch(search, changes));
   }
@@ -388,8 +421,8 @@ function Workspace({
               </Button>
               <Button
                 variant="secondary"
-                disabled={detail.isFetching}
-                onClick={() => void detail.refetch()}
+                disabled={detail.isFetching || sourceDetails.isFetching}
+                onClick={() => void refreshDetails()}
               >
                 활동 상세 다시 확인
               </Button>
@@ -416,6 +449,37 @@ function Workspace({
                   />
                 </>
               ) : null}
+              <section aria-label="활동 세부 기록 조회">
+                {sourceDetails.isFetching ? (
+                  <p role="status">레코드·랩을 확인하고 있습니다.</p>
+                ) : null}
+                {sourceDetails.isError ? (
+                  <p role="alert">
+                    {sourceDetails.error.message === 'NOT_FOUND'
+                      ? '세부 기록을 확인할 수 없습니다. 기록이 삭제되었거나 접근할 수 없습니다.'
+                      : '세부 기록 최신 확인 실패. 요약과 세부 기록을 다시 확인하세요.'}
+                  </p>
+                ) : null}
+                {pairReady && !pairMatches ? (
+                  <p role="alert">
+                    활동 요약과 세부 기록의 버전이 다릅니다. 두 기록을 다시 확인하세요.
+                  </p>
+                ) : null}
+                {sourceDetails.isError || (pairReady && !pairMatches) ? (
+                  <Button
+                    variant="secondary"
+                    disabled={detail.isFetching || sourceDetails.isFetching}
+                    onClick={() => void refreshDetails()}
+                  >
+                    요약과 세부 기록 다시 확인
+                  </Button>
+                ) : null}
+                {pairMatches && !pairNotFound ? (
+                  <div hidden={!pairReady}>
+                    <ActivityWorkbench activity={detail.data.activity} read={sourceDetails.data} />
+                  </div>
+                ) : null}
+              </section>
             </section>
           ) : null}
         </>
