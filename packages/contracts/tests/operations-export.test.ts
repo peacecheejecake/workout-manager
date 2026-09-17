@@ -113,3 +113,35 @@ it('requires conversation collections in v5 without changing v4 artifacts', () =
     ).toBe(false);
   }
 });
+
+it('requires evidence snapshots in v6 and preserves historical v5 exports unchanged', () => {
+  const previous = {
+    ...legacy,
+    schemaVersion: 5,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+    },
+  };
+  const artifact = {
+    ...previous,
+    schemaVersion: 6,
+    data: {
+      ...previous.data,
+      evidenceSnapshots: [
+        { id: 'synthetic-snapshot', body: null, purged_reason: 'source_deleted' },
+      ],
+    },
+  };
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.parse(previous).data).not.toHaveProperty('evidenceSnapshots');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 6 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 5 }).success).toBe(false);
+});

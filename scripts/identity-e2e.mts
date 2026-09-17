@@ -1,3 +1,4 @@
+import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.ts';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
 import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
@@ -27,6 +28,7 @@ import {
   grantSessionCompletions,
   grantPlanScenarios,
   grantCoachingThreads,
+  grantCoreEvidenceSnapshots,
   grantGarmin,
   grantGarminWorker,
   migrate,
@@ -130,6 +132,7 @@ try {
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
     await grantCoachingThreads(adminUrl, 'workout_runtime');
+    await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
     await grantGarmin(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
@@ -203,6 +206,7 @@ try {
     planning: createPlanningRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     coachingThreads: createCoachingThreadRepository(database),
+    evidenceSnapshots: createCoreEvidenceSnapshotRepository(database),
     sessionCompletions: createSessionCompletionRepository(database),
     sessionActuals: createSessionActualsRepository(database),
     periodSummary: createPeriodSummaryRepository(database),

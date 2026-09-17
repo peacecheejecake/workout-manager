@@ -1,3 +1,5 @@
+import type { CoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
+import { registerCoreEvidenceSnapshotRoutes } from './evidence-snapshot-routes.js';
 import type { CoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
 import { registerCoachingThreadRoutes } from './coaching-thread-routes.js';
 import type { SessionActualsRepository } from '@workout/server-persistence/session-actuals';
@@ -27,6 +29,7 @@ export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
   coachingThreads?: CoachingThreadRepository;
+  evidenceSnapshots?: CoreEvidenceSnapshotRepository;
   sessionActuals?: SessionActualsRepository;
   planScenarios?: PlanScenarioRepository;
   sessionCompletions?: SessionCompletionRepository;
@@ -42,6 +45,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.evidenceSnapshots)
+    registerCoreEvidenceSnapshotRoutes(routes, repositories.evidenceSnapshots, principal);
   if (repositories.coachingThreads)
     registerCoachingThreadRoutes(routes, repositories.coachingThreads, principal);
   if (repositories.sessionActuals)

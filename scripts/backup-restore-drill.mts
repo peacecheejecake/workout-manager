@@ -1,3 +1,8 @@
+import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.js';
+import type {
+  CoreEvidenceCapture,
+  CoreEvidenceSnapshot,
+} from '../packages/contracts/src/evidence-snapshots.js';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.js';
 import assert from 'node:assert/strict';
@@ -21,6 +26,7 @@ import {
   grantSessionCompletions,
   grantPlanScenarios,
   grantCoachingThreads,
+  grantCoreEvidenceSnapshots,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -34,6 +40,88 @@ import {
 } from '../packages/server/persistence/src/session-completions.js';
 import { planDraftSchema } from '../packages/contracts/src/planning.js';
 import type { SessionCompletionCommand } from '../packages/contracts/src/session-completion.js';
+
+// Separate current revocation facts, never a copy of private snapshot bodies or messages.
+// Keep this script independent of a root Zod dependency; validate unknown JSON strictly here.
+function parseEvidenceWithdrawalLedger(value: unknown, backupAiOwners: readonly string[]) {
+  const record = (input: unknown, keys: string[]): Record<string, unknown> => {
+    assert.ok(typeof input === 'object' && input !== null && !Array.isArray(input));
+    assert.deepEqual(Object.keys(input).sort(), [...keys].sort());
+    return Object.fromEntries(Object.entries(input));
+  };
+  const uuid = (input: unknown) => {
+    assert.ok(
+      typeof input === 'string' &&
+        /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(input),
+    );
+    return input;
+  };
+  const ledger = record(value, [
+    'schemaVersion',
+    'capturedAt',
+    'subjects',
+    'snapshots',
+    'consents',
+  ]);
+  assert.equal(ledger['schemaVersion'], 2);
+  const capturedAt = ledger['capturedAt'];
+  assert.ok(
+    typeof capturedAt === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(capturedAt) &&
+      Number.isFinite(Date.parse(capturedAt)) &&
+      new Date(capturedAt).toISOString() === capturedAt,
+  );
+  const subjectRows: unknown = ledger['subjects'];
+  assert.ok(Array.isArray(subjectRows) && subjectRows.length <= 1000);
+  const subjects = subjectRows.map(uuid);
+  assert.equal(new Set(subjects).size, subjects.length);
+  for (const owner of backupAiOwners) assert.ok(subjects.includes(uuid(owner)));
+  const snapshotRows: unknown = ledger['snapshots'];
+  const consentRows: unknown = ledger['consents'];
+  assert.ok(Array.isArray(snapshotRows) && snapshotRows.length <= 1000);
+  assert.ok(Array.isArray(consentRows) && consentRows.length <= 1000);
+  const snapshots = snapshotRows.map((input: unknown) => {
+    const row = record(input, ['athlete_id', 'id', 'purged_reason']);
+    const reason: unknown = row['purged_reason'];
+    assert.ok(reason === 'source_deleted' || reason === 'consent_withdrawn');
+    return { athlete_id: uuid(row['athlete_id']), id: uuid(row['id']), purged_reason: reason };
+  });
+  const consents = consentRows.map((input: unknown) => {
+    const row = record(input, ['athlete_id', 'kind', 'state']);
+    const athlete_id = uuid(row['athlete_id']);
+    assert.equal(row['kind'], 'ai');
+    const state: unknown = row['state'];
+    assert.ok(typeof state === 'object' && state !== null && 'kind' in state);
+    if (state.kind === 'absent') {
+      record(state, ['kind']);
+      return { athlete_id, kind: 'ai' as const, state: { kind: 'absent' as const } };
+    }
+    const present = record(state, ['kind', 'revision', 'granted']);
+    assert.equal(present['kind'], 'exists');
+    const revision: unknown = present['revision'];
+    const granted: unknown = present['granted'];
+    assert.ok(
+      typeof revision === 'number' &&
+        Number.isSafeInteger(revision) &&
+        revision > 0 &&
+        revision <= 2147483647,
+    );
+    assert.ok(typeof granted === 'boolean');
+    return {
+      athlete_id,
+      kind: 'ai' as const,
+      state: { kind: 'exists' as const, revision, granted },
+    };
+  });
+  assert.equal(
+    new Set(snapshots.map((row) => `${row.athlete_id}:${row.id}`)).size,
+    snapshots.length,
+  );
+  assert.equal(new Set(consents.map((row) => row.athlete_id)).size, consents.length);
+  assert.deepEqual(consents.map((row) => row.athlete_id).sort(), [...subjects].sort());
+  for (const snapshot of snapshots) assert.ok(subjects.includes(snapshot.athlete_id));
+  return { schemaVersion: 2 as const, capturedAt, subjects, snapshots, consents };
+}
 
 async function seedCompletion(database: Database, athleteId: string) {
   const draft = planDraftSchema.parse({
@@ -153,6 +241,29 @@ async function seedCoachingThread(database: Database, athleteId: string, planVer
   return { createCommand, appendCommand, created, appended };
 }
 
+async function seedEvidenceWithAiConsent(database: Database, athleteId: string) {
+  const completion = await seedCompletion(database, athleteId);
+  const coaching = await seedCoachingThread(database, athleteId, completion.plan.id);
+  const consent = await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'ai',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  const command: CoreEvidenceCapture = {
+    expectedConversationRevision: coaching.appended.thread.revision,
+    window: { from: '2026-09-01', toExclusive: '2026-10-01', timezone: 'UTC' },
+    idempotencyKey: randomUUID(),
+  };
+  const snapshot = await createCoreEvidenceSnapshotRepository(database).capture(
+    athleteId,
+    coaching.appended.thread.id,
+    command,
+  );
+  assert.ok(snapshot.status === 'available');
+  return { consent, command, snapshot };
+}
+
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
 function run(bin: string, name: string, args: string[]): string {
@@ -204,6 +315,10 @@ async function execute() {
   const archive = join(directory, 'synthetic.dump');
   const ledgerFile = join(directory, 'post-backup-erasure-ledger.json');
   const cleanupLedgerFile = join(directory, 'post-backup-encrypted-cleanup-ledger.json');
+  const evidenceWithdrawalLedgerFile = join(
+    directory,
+    'post-backup-evidence-withdrawal-ledger.json',
+  );
   const pools: Pool[] = [];
   const databases: Database[] = [];
   let started = false;
@@ -274,6 +389,7 @@ async function execute() {
     await grantSessionCompletions(url('drill_source'), 'drill_runtime');
     await grantPlanScenarios(url('drill_source'), 'drill_runtime');
     await grantCoachingThreads(url('drill_source'), 'drill_runtime');
+    await grantCoreEvidenceSnapshots(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -282,6 +398,10 @@ async function execute() {
     const checkInIds = new Map<string, string>();
     const completions = new Map<string, Awaited<ReturnType<typeof seedCompletion>>>();
     const coachingThreads = new Map<string, Awaited<ReturnType<typeof seedCoachingThread>>>();
+    const evidenceSnapshots = new Map<
+      string,
+      { command: CoreEvidenceCapture; snapshot: CoreEvidenceSnapshot }
+    >();
     const coachingExports = new Map<string, { threads: unknown[]; messages: unknown[] }>();
     const completionTables = [
       'session_completion',
@@ -292,6 +412,7 @@ async function execute() {
     const coachingTables = ['coaching_thread', 'coaching_message'];
     const scenarioTables = ['plan_scenario', 'plan_scenario_revision', 'plan_scenario_application'];
     const selfReportTables = [
+      'core_evidence_snapshot',
       ...scenarioTables,
       ...coachingTables,
       'check_in',
@@ -354,7 +475,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 5);
+      assert.equal(before.schemaVersion, 6);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -378,8 +499,22 @@ async function execute() {
         athleteId,
         await seedCoachingThread(sourceDb, athleteId, completion.plan.id),
       );
+      const thread = coachingThreads.get(athleteId);
+      assert.ok(thread);
+      const evidenceCommand: CoreEvidenceCapture = {
+        expectedConversationRevision: thread.appended.thread.revision,
+        window: { from: '2026-09-01', toExclusive: '2026-10-01', timezone: 'Asia/Seoul' },
+        idempotencyKey: randomUUID(),
+      };
+      const evidenceSnapshot = await createCoreEvidenceSnapshotRepository(sourceDb).capture(
+        athleteId,
+        thread.appended.thread.id,
+        evidenceCommand,
+      );
+      assert.equal(evidenceSnapshot.status, 'available');
+      evidenceSnapshots.set(athleteId, { command: evidenceCommand, snapshot: evidenceSnapshot });
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 5) throw new Error('Expected coaching export v5');
+      if (coachingExport.schemaVersion !== 6) throw new Error('Expected coaching export v6');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       coachingExports.set(athleteId, {
@@ -436,6 +571,32 @@ async function execute() {
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
+    // These extra tenants add no identity, provider connection or activity to the original checks.
+    const withdrawnAthlete = randomUUID();
+    const {
+      consent: aiConsent,
+      command: withdrawnCommand,
+      snapshot: beforeWithdrawal,
+    } = await seedEvidenceWithAiConsent(sourceDb, withdrawnAthlete);
+    const absentConsentAthlete = randomUUID();
+    const beforeConsentDeletion = await seedEvidenceWithAiConsent(sourceDb, absentConsentAthlete);
+    // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
+    await createConsentRepository(sourceDb).setConsent(deletedAthlete, {
+      kind: 'ai',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    // The private drill has no concurrent writers between this owner manifest and pg_dump.
+    const backupAiOwners = (
+      await source.query<{ athlete_id: string }>(
+        "SELECT athlete_id FROM consent WHERE kind='ai' ORDER BY athlete_id",
+      )
+    ).rows.map((row) => row.athlete_id);
+    assert.deepEqual(
+      backupAiOwners,
+      [withdrawnAthlete, absentConsentAthlete, deletedAthlete].sort(),
+    );
     run(bin, 'pg_dump', [
       '-h',
       directory,
@@ -447,7 +608,137 @@ async function execute() {
       '--file',
       archive,
     ]);
+    const revokedConsent = await createConsentRepository(sourceDb).setConsent(withdrawnAthlete, {
+      kind: 'ai',
+      granted: false,
+      expectedRevision: aiConsent.revision,
+      idempotencyKey: randomUUID(),
+    });
+    const withdrawnEvidence = await createCoreEvidenceSnapshotRepository(sourceDb).read(
+      withdrawnAthlete,
+      beforeWithdrawal.id,
+    );
+    assert.ok(withdrawnEvidence);
+    assert.equal(withdrawnEvidence.status, 'purged');
+    assert.ok(!('body' in withdrawnEvidence));
+    await sourceDb.tenant(absentConsentAthlete, async (transaction) => {
+      const deleted = await transaction.query(
+        "DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'",
+        [absentConsentAthlete],
+      );
+      assert.equal(deleted.rowCount, 1);
+    });
+    const absentConsentEvidence = await createCoreEvidenceSnapshotRepository(sourceDb).read(
+      absentConsentAthlete,
+      beforeConsentDeletion.snapshot.id,
+    );
+    assert.ok(absentConsentEvidence?.status === 'purged');
+    assert.deepEqual(
+      await createConsentRepository(sourceDb).getConsent(absentConsentAthlete, 'ai'),
+      { kind: 'ai', granted: false, revision: 0 },
+    );
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
+    // One SQL statement supplies both sets from the same MVCC snapshot after the withdrawal.
+    const evidenceWithdrawalResult = await source.query<{ ledger: unknown }>(
+      `
+      WITH subjects AS (
+        SELECT unnest($1::text[]) AS athlete_id
+        UNION SELECT athlete_id FROM consent WHERE kind='ai'
+        UNION SELECT athlete_id FROM core_evidence_snapshot
+      )
+      SELECT jsonb_build_object(
+        'schemaVersion',2,
+        'capturedAt',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'subjects',(SELECT jsonb_agg(athlete_id ORDER BY athlete_id) FROM subjects),
+        'snapshots',COALESCE((SELECT jsonb_agg(jsonb_build_object('athlete_id',athlete_id,'id',id,'purged_reason',purged_reason) ORDER BY athlete_id,id)
+          FROM core_evidence_snapshot WHERE body IS NULL),'[]'::jsonb),
+        'consents',(SELECT jsonb_agg(jsonb_build_object('athlete_id',s.athlete_id,'kind','ai','state',
+          CASE WHEN c.athlete_id IS NULL THEN jsonb_build_object('kind','absent')
+          ELSE jsonb_build_object('kind','exists','revision',c.revision,'granted',c.granted) END) ORDER BY s.athlete_id)
+          FROM subjects s LEFT JOIN consent c ON c.athlete_id=s.athlete_id AND c.kind='ai')
+      ) AS ledger`,
+      [backupAiOwners],
+    );
+    const evidenceWithdrawalLedger = parseEvidenceWithdrawalLedger(
+      evidenceWithdrawalResult.rows[0]?.ledger,
+      backupAiOwners,
+    );
+    const expectedSubjects = [
+      withdrawnAthlete,
+      absentConsentAthlete,
+      deletedAthlete,
+      retainedAthlete,
+    ].sort();
+    assert.deepEqual(evidenceWithdrawalLedger.subjects, expectedSubjects);
+    assert.deepEqual(
+      evidenceWithdrawalLedger.snapshots,
+      [
+        {
+          athlete_id: withdrawnAthlete,
+          id: beforeWithdrawal.id,
+          purged_reason: 'consent_withdrawn',
+        },
+        {
+          athlete_id: absentConsentAthlete,
+          id: beforeConsentDeletion.snapshot.id,
+          purged_reason: 'consent_withdrawn',
+        },
+      ].sort((left, right) => left.athlete_id.localeCompare(right.athlete_id)),
+    );
+    assert.deepEqual(
+      evidenceWithdrawalLedger.consents,
+      expectedSubjects.map((athlete_id) => ({
+        athlete_id,
+        kind: 'ai',
+        state:
+          athlete_id === withdrawnAthlete
+            ? { kind: 'exists', revision: revokedConsent.revision, granted: false }
+            : { kind: 'absent' },
+      })),
+    );
+    // Missing entries cannot silently mean absence: every declared and backup owner must be covered.
+    assert.throws(() =>
+      parseEvidenceWithdrawalLedger(
+        {
+          ...evidenceWithdrawalLedger,
+          consents: evidenceWithdrawalLedger.consents.filter(
+            (row) => row.athlete_id !== absentConsentAthlete,
+          ),
+        },
+        backupAiOwners,
+      ),
+    );
+    assert.throws(() =>
+      parseEvidenceWithdrawalLedger(
+        {
+          ...evidenceWithdrawalLedger,
+          subjects: evidenceWithdrawalLedger.subjects.filter((id) => id !== absentConsentAthlete),
+          consents: evidenceWithdrawalLedger.consents.filter(
+            (row) => row.athlete_id !== absentConsentAthlete,
+          ),
+        },
+        backupAiOwners,
+      ),
+    );
+    assert.throws(() =>
+      parseEvidenceWithdrawalLedger(
+        {
+          ...evidenceWithdrawalLedger,
+          consents: evidenceWithdrawalLedger.consents.map((row) =>
+            row.athlete_id === absentConsentAthlete
+              ? { ...row, state: { kind: 'absent', granted: true } }
+              : row,
+          ),
+        },
+        backupAiOwners,
+      ),
+    );
+    checks.push('withdrawal_ledger_requires_complete_owner_coverage_and_explicit_absence');
+    await writeFile(evidenceWithdrawalLedgerFile, JSON.stringify(evidenceWithdrawalLedger), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    checks.push('post_backup_evidence_withdrawal_and_consent_ledger_captured_atomically');
     const ledger = (
       await source.query<{ athlete_id: string }>(
         'SELECT athlete_id FROM tenant_erasure ORDER BY athlete_id',
@@ -478,6 +769,44 @@ async function execute() {
     ]);
     const restored = pool('drill_restore');
     // Admin inspection only: the runtime has not connected to the restored database yet.
+    const restoredOldEvidence = await restored.query<{ body: unknown; purged_reason: unknown }>(
+      'SELECT body,purged_reason FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$2',
+      [withdrawnAthlete, beforeWithdrawal.id],
+    );
+    assert.equal(beforeWithdrawal.status, 'available');
+    if (beforeWithdrawal.status !== 'available')
+      throw new Error('Expected pre-withdrawal evidence');
+    assert.deepEqual(restoredOldEvidence.rows, [
+      { body: beforeWithdrawal.body, purged_reason: null },
+    ]);
+    assert.deepEqual(
+      (
+        await restored.query(
+          'SELECT kind,revision,granted FROM consent WHERE athlete_id=$1 AND kind=$2',
+          [withdrawnAthlete, 'ai'],
+        )
+      ).rows,
+      [aiConsent],
+    );
+    assert.deepEqual(
+      (
+        await restored.query(
+          'SELECT body,purged_reason FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$2',
+          [absentConsentAthlete, beforeConsentDeletion.snapshot.id],
+        )
+      ).rows,
+      [{ body: beforeConsentDeletion.snapshot.body, purged_reason: null }],
+    );
+    assert.deepEqual(
+      (
+        await restored.query(
+          "SELECT kind,revision,granted FROM consent WHERE athlete_id=$1 AND kind='ai'",
+          [absentConsentAthlete],
+        )
+      ).rows,
+      [beforeConsentDeletion.consent],
+    );
+    checks.push('trusted_archive_contains_pre_withdrawal_evidence_and_ai_consent');
     assert.equal(
       (
         await restored.query(
@@ -500,6 +829,11 @@ async function execute() {
     }
     const replayLedger: unknown = JSON.parse(await readFile(ledgerFile, 'utf8'));
     assert.ok(Array.isArray(replayLedger));
+    const replayWithdrawalLedger = parseEvidenceWithdrawalLedger(
+      JSON.parse(await readFile(evidenceWithdrawalLedgerFile, 'utf8')) as unknown,
+      backupAiOwners,
+    );
+    assert.deepEqual(replayWithdrawalLedger, evidenceWithdrawalLedger);
     await restored.query('BEGIN');
     try {
       for (const entry of replayLedger) {
@@ -512,6 +846,57 @@ async function execute() {
         await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
         await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
       }
+      // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
+      for (const entry of replayWithdrawalLedger.snapshots) {
+        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
+        await restored.query(
+          'UPDATE core_evidence_snapshot SET body=NULL,purged_reason=$3 WHERE athlete_id=$1 AND id=$2 AND body IS NOT NULL',
+          [entry.athlete_id, entry.id, entry.purged_reason],
+        );
+      }
+      let skippedErasedConsentOwners = 0;
+      for (const consent of replayWithdrawalLedger.consents) {
+        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [consent.athlete_id]);
+        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
+          consent.athlete_id,
+        ]);
+        if (erased.rowCount !== 0) {
+          assert.equal(
+            (
+              await restored.query('SELECT 1 FROM consent WHERE athlete_id=$1', [
+                consent.athlete_id,
+              ])
+            ).rowCount,
+            0,
+          );
+          skippedErasedConsentOwners++;
+          continue;
+        }
+        if (consent.state.kind === 'absent') {
+          await restored.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+            consent.athlete_id,
+          ]);
+          assert.equal(
+            (
+              await restored.query("SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+                consent.athlete_id,
+              ])
+            ).rowCount,
+            0,
+          );
+          continue;
+        }
+        // Fail closed if the purported latest ledger would overwrite a newer or contradictory state.
+        const applied = await restored.query(
+          `INSERT INTO consent(athlete_id,kind,revision,granted) VALUES($1,$2,$3,$4)
+           ON CONFLICT(athlete_id,kind) DO UPDATE SET revision=EXCLUDED.revision,granted=EXCLUDED.granted
+           WHERE consent.revision<EXCLUDED.revision OR (consent.revision=EXCLUDED.revision AND consent.granted=EXCLUDED.granted)
+           RETURNING athlete_id`,
+          [consent.athlete_id, consent.kind, consent.state.revision, consent.state.granted],
+        );
+        assert.equal(applied.rowCount, 1);
+      }
+      assert.equal(skippedErasedConsentOwners, 1);
       await restored.query('DELETE FROM identity_private.session');
       await restored.query('DELETE FROM identity_private.login_attempt');
       // Old backup grants can have been rotated/disconnected since the snapshot.
@@ -536,6 +921,7 @@ async function execute() {
       throw error;
     }
     checks.push('latest_erasure_replayed_before_runtime_access');
+    checks.push('latest_evidence_withdrawal_and_consent_replayed_before_runtime_access');
     const tables = [
       'consent',
       'command_receipt',
@@ -619,6 +1005,59 @@ async function execute() {
     assert.deepEqual(replayedCleanup, cleanupLedger);
     checks.push('all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved');
     const restoreDb = database('drill_restore');
+    const withdrawnRepository = createCoreEvidenceSnapshotRepository(restoreDb);
+    assert.deepEqual(
+      await withdrawnRepository.read(withdrawnAthlete, beforeWithdrawal.id),
+      withdrawnEvidence,
+    );
+    assert.deepEqual(
+      await withdrawnRepository.capture(
+        withdrawnAthlete,
+        beforeWithdrawal.threadId,
+        withdrawnCommand,
+      ),
+      withdrawnEvidence,
+    );
+    assert.deepEqual(
+      await createConsentRepository(restoreDb).getConsent(withdrawnAthlete, 'ai'),
+      revokedConsent,
+    );
+    const withdrawnExport =
+      await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
+    if (withdrawnExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
+    assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
+    assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
+    assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.purged_reason, 'consent_withdrawn');
+    assert.deepEqual(withdrawnExport.data.consents, [revokedConsent]);
+    checks.push('restored_withdrawn_evidence_stays_purged_in_read_export_and_receipt');
+    assert.deepEqual(
+      await withdrawnRepository.read(absentConsentAthlete, beforeConsentDeletion.snapshot.id),
+      absentConsentEvidence,
+    );
+    assert.deepEqual(
+      await withdrawnRepository.capture(
+        absentConsentAthlete,
+        beforeConsentDeletion.snapshot.threadId,
+        beforeConsentDeletion.command,
+      ),
+      absentConsentEvidence,
+    );
+    assert.deepEqual(
+      await createConsentRepository(restoreDb).getConsent(absentConsentAthlete, 'ai'),
+      { kind: 'ai', granted: false, revision: 0 },
+    );
+    const absentExport =
+      await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
+    if (absentExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    assert.deepEqual(absentExport.data.consents, []);
+    assert.equal(absentExport.data.evidenceSnapshots.length, 1);
+    assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
+    assert.equal(absentExport.data.evidenceSnapshots[0]?.body, null);
+    assert.equal(absentExport.data.evidenceSnapshots[0]?.purged_reason, 'consent_withdrawn');
+    checks.push(
+      'restored_deleted_ai_consent_remains_absent_and_evidence_stays_purged_in_read_export_and_receipt',
+    );
     assert.equal(
       (await createGarminStore(restoreDb).status(retainedAthlete)).state,
       'reconnect_required',
@@ -646,7 +1085,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 5);
+    assert.equal(retainedExport.schemaVersion, 6);
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
     );
@@ -726,7 +1165,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 5) throw new Error('Expected coaching export v5');
+    if (retainedExport.schemaVersion !== 6) throw new Error('Expected coaching export v6');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -858,11 +1297,11 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 5) throw new Error('Expected coaching export v5');
+    if (coachingAfterReplay.schemaVersion !== 6) throw new Error('Expected coaching export v6');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
-      'coaching_scope_revision_and_immutable_user_messages_export_v5_restored_receipts_replayed_without_duplicates',
+      'coaching_scope_revision_and_immutable_user_messages_export_v6_restored_receipts_replayed_without_duplicates',
     );
     await assert.rejects(
       () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
@@ -879,6 +1318,43 @@ async function execute() {
     );
     checks.push(
       'coaching_threads_messages_and_command_outbox_erasure_replayed_before_runtime_access',
+    );
+    const retainedEvidence = evidenceSnapshots.get(retainedAthlete);
+    const deletedEvidence = evidenceSnapshots.get(deletedAthlete);
+    assert.ok(retainedEvidence && deletedEvidence);
+    const evidenceRepository = createCoreEvidenceSnapshotRepository(restoreDb);
+    assert.deepEqual(
+      await evidenceRepository.read(retainedAthlete, retainedEvidence.snapshot.id),
+      retainedEvidence.snapshot,
+    );
+    assert.deepEqual(
+      await evidenceRepository.capture(
+        retainedAthlete,
+        retainedEvidence.snapshot.threadId,
+        retainedEvidence.command,
+      ),
+      retainedEvidence.snapshot,
+    );
+    assert.equal(retainedExport.data.evidenceSnapshots.length, 1);
+    assert.deepEqual(
+      retainedExport.data.evidenceSnapshots[0]?.body,
+      retainedEvidence.snapshot.status === 'available' ? retainedEvidence.snapshot.body : null,
+    );
+    await assert.rejects(
+      () => evidenceRepository.read(deletedAthlete, deletedEvidence.snapshot.id),
+      TenantErasedError,
+    );
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT count(*)::int AS count FROM core_evidence_snapshot WHERE athlete_id=$1',
+          [deletedAthlete],
+        )
+      ).rows[0].count,
+      0,
+    );
+    checks.push(
+      'core_evidence_body_and_manifest_restored_with_idempotent_receipt_erased_tenant_removed',
     );
     const completionRepository = createSessionCompletionRepository(restoreDb);
     const retainedCompletion = await completionRepository.read(retainedAthlete, 'restore-session');
@@ -971,6 +1447,35 @@ async function execute() {
         }),
       TenantErasedError,
     );
+    const restoredCheckInId = checkInIds.get(retainedAthlete);
+    assert.ok(restoredCheckInId);
+    const checkInRepository = createCheckInRepository(restoreDb);
+    const restoredCheckIn = await checkInRepository.getCheckIn(retainedAthlete, restoredCheckInId);
+    assert.ok(restoredCheckIn);
+    await checkInRepository.deleteCheckIn(retainedAthlete, restoredCheckInId, {
+      expectedRevision: restoredCheckIn.revision,
+      idempotencyKey: randomUUID(),
+    });
+    const purgedEvidence = await evidenceRepository.read(
+      retainedAthlete,
+      retainedEvidence.snapshot.id,
+    );
+    assert.ok(purgedEvidence);
+    assert.equal(purgedEvidence.status, 'purged');
+    assert.ok(!('body' in purgedEvidence));
+    assert.deepEqual(
+      await evidenceRepository.capture(
+        retainedAthlete,
+        retainedEvidence.snapshot.threadId,
+        retainedEvidence.command,
+      ),
+      purgedEvidence,
+    );
+    const scrubbedExport =
+      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
+    if (scrubbedExport.schemaVersion !== 6) throw new Error('Expected evidence export v6');
+    assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
+    checks.push('restored_source_deletion_scrubs_evidence_body_in_read_export_and_old_receipt');
     checks.push('erasure_gate_rejects_stale_runtime_write');
   } finally {
     process.removeListener('SIGINT', interrupt);
@@ -1001,6 +1506,7 @@ async function execute() {
     trustedArchive: true,
     restoreBeforeRuntimeAccess: [
       'replay_latest_external_erasure_ledger',
+      'replay_latest_external_evidence_withdrawal_ledger_and_current_ai_consent',
       'invalidate_all_restored_sessions_and_login_attempts',
       'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
     ],
@@ -1009,6 +1515,7 @@ async function execute() {
     cleanup: { clusterStopped: true, temporaryClusterArchiveLedgerRemoved: !existsSync(directory) },
     limitations: [
       'Requires an independently retained, complete and current erasure ledger before production traffic resumes.',
+      'Requires an independently retained, complete and current evidence withdrawal ledger with explicit exists/absent AI consent states covering backup owners, current consent owners and snapshot owners captured together; a missing, incomplete or stale ledger cannot authorize production restoration.',
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
       'External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised.',
     ],

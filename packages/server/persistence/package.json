@@ -30,7 +30,8 @@
     "./activity-context": "./src/activity-context.ts",
     "./plan-scenarios": "./src/plan-scenarios.ts",
     "./evidence-dependencies": "./src/evidence-dependencies.ts",
-    "./coaching-threads": "./src/coaching-threads.ts"
+    "./coaching-threads": "./src/coaching-threads.ts",
+    "./evidence-snapshots": "./src/evidence-snapshots.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

@@ -92,6 +92,10 @@
     "./coaching-threads": {
       "types": "./src/coaching-threads.ts",
       "default": "./dist/coaching-threads.js"
+    },
+    "./evidence-snapshots": {
+      "types": "./src/evidence-snapshots.ts",
+      "default": "./dist/evidence-snapshots.js"
     }
   },
   "scripts": {

@@ -393,6 +393,9 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
 
 it.each([
   ['GET', '/bff/v1/coaching-threads?limit=20'],
+  ['GET', '/bff/v1/evidence-snapshots/snapshot'],
+  ['GET', '/bff/v1/coaching-threads/thread/evidence-snapshots?limit=20'],
+  ['POST', '/bff/v1/coaching-threads/thread/evidence-snapshots'],
   ['GET', '/bff/v1/coaching-threads/thread/messages?afterRevision=1'],
   ['POST', '/bff/v1/coaching-threads'],
   ['POST', '/bff/v1/coaching-threads/thread/messages'],
@@ -420,14 +423,17 @@ it.each([
     }),
   );
 });
-it('keeps similarly named non-coaching routes outside the authenticated allowlist', async () => {
-  await expect(
-    createSessionTransport(session, vi.fn()).request({
-      method: 'POST',
-      path: '/bff/v1/coaching-threads-admin',
-      body: {},
-      idempotencyKey: 'private',
-    }),
-  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
-  expect(fetchMock).not.toHaveBeenCalled();
-});
+it.each(['/bff/v1/coaching-threads-admin', '/bff/v1/evidence-snapshots-admin'])(
+  'keeps similarly named non-coaching route %s outside the authenticated allowlist',
+  async (path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        method: 'POST',
+        path,
+        body: {},
+        idempotencyKey: 'private',
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);

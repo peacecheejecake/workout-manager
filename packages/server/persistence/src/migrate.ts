@@ -25,6 +25,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '010_session_completion.sql',
       '011_plan_scenarios.sql',
       '012_coaching_threads.sql',
+      '013_evidence_snapshots.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -106,7 +107,7 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message TO "${runtimeRole}"`,
+      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
@@ -207,6 +208,20 @@ export async function grantCoachingThreads(
   try {
     await pool.query(`GRANT SELECT,INSERT ON coaching_thread,coaching_message TO "${runtimeRole}"`);
     await pool.query(`GRANT UPDATE(revision,updated_at) ON coaching_thread TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Stored core evidence is append-only; lifecycle triggers alone scrub withdrawn content. */
+export async function grantCoreEvidenceSnapshots(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT,INSERT ON core_evidence_snapshot TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

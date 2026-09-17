@@ -120,7 +120,7 @@ it('upgrades source revisions in place, preserves reports/tags and legacy receip
   ).toBe('unchanged');
   expect((await repo.getActivityDetails(athlete, first.activityId))?.details).toEqual(detail2);
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(5);
+  expect(exported.schemaVersion).toBe(6);
   expect(
     exported.data.sourceRevisions.map((row) => ({
       revision: row['source_revision'],

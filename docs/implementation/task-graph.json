@@ -676,9 +676,18 @@
       "evidence": "docs/implementation/progress/M1-05c.md"
     },
     {
+      "id": "M1-05d",
+      "title": "구조화 근거 본문·의존성 snapshot 저장",
+      "dependsOn": ["M1-05a", "M1-05b"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "동일 SQL snapshot의 계획/대화/관측 본문과 revision; bounded capture·멱등성·삭제/동의 철회·export/복원; 전체 AI/승인 기반은 부모 통합",
+      "evidence": "docs/implementation/progress/M1-05d.md"
+    },
+    {
       "id": "M1-05",
       "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c"],
+      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c", "M1-05d"],
       "kind": "task",
       "status": "not_started",
       "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"

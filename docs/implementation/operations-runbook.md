@@ -28,7 +28,7 @@ pnpm exec tsx scripts/backup-restore-drill.mts --execute # 합성 자료, 새 �
 ```
 
 PostgreSQL binaries가 필요하다. 스크립트는 상속된 DB URL을 사용하지 않고 private Unix socket의
-새 cluster와 source/restore DB를 생성한다. 별도 시험 runtime role, 합성 계정 두 개만 사용한다.
+새 cluster와 source/restore DB를 생성한다. 별도 시험 runtime role과 합성 계정(삭제·보존 및 동의 철회 검증)을 사용한다.
 자신이 생성한 trusted custom dump만 복원한다. 종료 시 cluster·dump·삭제 원장 파일을 정리한다.
 검증 보고서는 `research/backup-restore-result.json`에 기록되며 다시 실행하면 교체된다.
 
@@ -105,3 +105,24 @@ v2/v3/v4 다운로드 읽기는 그대로 지원하고 없었던 대화 컬렉�
 `EXPORT_TOO_LARGE`로 실패하며 일부 대화를 누락한 성공 다운로드를 만들지 않는다.
 계정 삭제는 메시지→스레드→계획 순서로 제거하고, 삭제 ledger를 복원 DB에 재적용한다.
 이 원장은 사용자 메시지만 저장한다. AI 전송·assistant 답변·근거 생성·계획 승인은 후속 기능이다.
+
+## 구조화 근거 snapshot
+
+Migration 013과 `grantCoreEvidenceSnapshots`를 적용한다. `running-core-v1`의 본문과 원장
+의존성을 한 시점에 고정하며 새 export v6의 `evidenceSnapshots`에 포함한다. v2~v5 읽기는
+유지한다. 기존 전체 export 8MiB/컬렉션 1,000행 제한은 그대로 적용한다.
+
+근거 본문은 생성 후 수정할 수 없지만 원본 활동·체크인 삭제 또는 AI 동의 철회 시 회수한다.
+회수된 내용은 API·export·이전 명령 receipt를 통해 다시 제공하지 않는다. receipt에는 ID만
+저장하고 outbox에도 건강 본문을 넣지 않는다. 계정 삭제는 근거→상담→계획 순으로 처리한다.
+
+앱 안의 사용자 근거 저장은 외부 AI 전송과 별도다. 전송·후보·승인 통합은 별도로 동의·정책과
+전체 의존성의 최신성을 재검사해야 한다. 이 profile만으로 승인 권한을 부여하지 않는다.
+
+백업 이후 회수된 근거도 과거 dump의 본문으로 복구해서는 안 된다. 복원 DB를 runtime에
+열기 전에 독립 보관한 최신 근거 회수 원장(`athlete_id`, snapshot ID, 회수 사유)과 AI 동의
+현재 상태를 함께 적용한다. 과거 dump 안의 동의·회수 정보로 최신 원장을 대체하지 않는다.
+AI 동의 행이 삭제된 경우도 명시적인 부재 상태로 기록하여 복원 DB의 이전 동의 행을 제거한다.
+백업 시점의 동의 소유자를 포함한 대상 목록을 검증하고, 원장 항목 누락을 부재로 추정하지 않는다.
+회수 원장이 없거나 완전성·최신성을 확인할 수 없으면 근거 제공을 재개하지 않는다.
+이 복구 절차의 로컬 합성 검증은 별도 원장 전달·보관 인프라의 운영 배포 완료를 의미하지 않는다.

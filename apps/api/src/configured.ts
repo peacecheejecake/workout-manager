@@ -1,3 +1,4 @@
+import { createCoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { createCoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
 import { createSessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
@@ -74,6 +75,7 @@ export async function createConfiguredApi(environment: unknown) {
       planning: createPlanningRepository(database),
       planScenarios: createPlanScenarioRepository(database),
       coachingThreads: createCoachingThreadRepository(database),
+      evidenceSnapshots: createCoreEvidenceSnapshotRepository(database),
       sessionCompletions: createSessionCompletionRepository(database),
       sessionActuals: createSessionActualsRepository(database),
       periodSummary: createPeriodSummaryRepository(database),

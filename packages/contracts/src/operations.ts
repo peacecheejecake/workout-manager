@@ -38,17 +38,22 @@ const accountExportV4Schema = accountExportV3Schema.extend({
     planScenarioApplications: rows,
   }),
 });
+const accountExportV5Schema = accountExportV4Schema.extend({
+  schemaVersion: z.literal(5),
+  data: accountExportV4Schema.shape.data.extend({
+    coachingThreads: rows,
+    coachingMessages: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
   accountExportV3Schema,
   accountExportV4Schema,
-  accountExportV4Schema.extend({
-    schemaVersion: z.literal(5),
-    data: accountExportV4Schema.shape.data.extend({
-      coachingThreads: rows,
-      coachingMessages: rows,
-    }),
+  accountExportV5Schema,
+  accountExportV5Schema.extend({
+    schemaVersion: z.literal(6),
+    data: accountExportV5Schema.shape.data.extend({ evidenceSnapshots: rows }),
   }),
 ]);
 export const operationsStatusSchema = z.strictObject({
