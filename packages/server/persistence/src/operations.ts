@@ -33,7 +33,7 @@ const collections = [
   [
     'sourceRevisions',
     'activity_source_revision',
-    'kind,source_id,source_revision,content_hash,normalized_raw',
+    'kind,source_id,source_revision,content_hash,normalized_raw,details_json',
     'kind,source_id,source_revision',
   ],
   ['overlays', 'activity_overlay', 'activity_id,values_json', 'activity_id'],

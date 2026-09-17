@@ -24,11 +24,14 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("source", type=Path)
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--timezone", default=None)
+    export.add_argument("--include-details", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         if args.command == "export-activity":
-            export_activity(args.source, args.output, args.timezone)
+            export_activity(
+                args.source, args.output, args.timezone, include_details=args.include_details
+            )
             return 0
         return convert_batch(
             args.source,

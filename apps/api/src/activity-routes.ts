@@ -11,7 +11,9 @@ import {
   activitySummarySchema,
   manualActivityCreateSchema,
   manualActivityResultSchema,
+  activityDetailsReadSchema,
 } from '@workout/contracts/activity';
+import { activityDetailLimits } from '@workout/contracts/activity-details';
 import {
   ActivityNotFound,
   ActivityValidationError,
@@ -45,17 +47,23 @@ export function registerActivityRoutes(
       ),
     );
   });
-  routes.post('/activity-imports', async (request) => {
-    input(emptyQuery, request.query);
-    const body = input(importActivitySchema.omit({ idempotencyKey: true }), request.body);
-    const payload = input(importActivitySchema, {
-      ...body,
-      idempotencyKey: request.headers['idempotency-key'],
-    });
-    return activityImportResultSchema.parse(
-      await activityCommand(() => activities.importActivity(principal(request).athleteId, payload)),
-    );
-  });
+  routes.post(
+    '/activity-imports',
+    { bodyLimit: activityDetailLimits.importRequestBytes },
+    async (request) => {
+      input(emptyQuery, request.query);
+      const body = input(importActivitySchema.omit({ idempotencyKey: true }), request.body);
+      const payload = input(importActivitySchema, {
+        ...body,
+        idempotencyKey: request.headers['idempotency-key'],
+      });
+      return activityImportResultSchema.parse(
+        await activityCommand(() =>
+          activities.importActivity(principal(request).athleteId, payload),
+        ),
+      );
+    },
+  );
   routes.get('/activities', async (request) =>
     activityListSchema.parse(
       await activities.listActivities(
@@ -74,6 +82,13 @@ export function registerActivityRoutes(
     const result = await activities.getActivity(principal(request).athleteId, id);
     if (!result) throw new ProductRequestError(404, 'NOT_FOUND');
     return activitySchema.parse(result);
+  });
+  routes.get('/activities/:id/details', async (request) => {
+    input(emptyQuery, request.query);
+    const { id } = input(params, request.params);
+    const result = await activities.getActivityDetails(principal(request).athleteId, id);
+    if (!result) throw new ProductRequestError(404, 'NOT_FOUND');
+    return activityDetailsReadSchema.parse(result);
   });
   routes.patch('/activities/:id', async (request) => {
     input(emptyQuery, request.query);

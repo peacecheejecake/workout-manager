@@ -134,6 +134,18 @@ pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
 uv run workout-manager export-activity /path/to/activity.fit --output /path/to/activity.json --timezone Asia/Seoul
 ```
 
+구간·심박·거리 시계열을 함께 가져오려면 `--include-details`를 추가합니다.
+기존 요약 파일은 그대로 지원하며, 상세 파일은 같은 활동의 원본 revision을 갱신합니다.
+앱에서 파일을 선택해 미리보기를 확인한 뒤 명시적으로 가져오세요.
+
+```bash
+uv run workout-manager export-activity /path/to/activity.fit --output /path/to/activity-details.json --timezone Asia/Seoul --include-details
+```
+
+세션별 record 20,000개·lap 1,000개, 전체 JSON 파일 16 MiB까지 지원합니다.
+여러 세션의 관측 소속이 모호하거나 상한을 넘으면 데이터를 잘라내지 않고 실패합니다.
+현재 상세 형식에는 GPS가 포함되지 않습니다. [상세 수입 검증 기록](docs/implementation/progress/M1-04x.md).
+
 `/activities`에서 JSON을 선택하고 확인하면 활동을 가져옵니다. 같은 파일의 재수입, 원본과 정정 분리,
 로컬 삭제 후 재수입 억제를 지원합니다. timezone 생략은 미확인, 기존 출력 파일은 덮어쓰지 않습니다.
 공식 Garmin sync는 후속 작업입니다. [M1-03 검증 기록](docs/implementation/progress/M1-03.md).

@@ -14,10 +14,11 @@ import {
   activityListSchema,
   activitySummarySchema,
   activityImportResultSchema,
-  importActivitySchema,
+  activityExportSchema,
   type Activity,
   type ActivityImport,
 } from '@workout/contracts/activity';
+import { activityDetailLimits, type ActivityDetails } from '@workout/contracts/activity-details';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { StatusNotice } from '@workout/ui-foundation/status-notice';
@@ -42,10 +43,6 @@ function Lifetime(props: Props) {
     </QueryClientProvider>
   );
 }
-const exportSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  imports: z.array(importActivitySchema).min(1).max(100),
-});
 function Workspace({ athleteId, sessionId, transport }: Props) {
   const client = useQueryClient();
   const fileRead = useRef(0);
@@ -97,7 +94,7 @@ function Workspace({ athleteId, sessionId, transport }: Props) {
         const result = await transport.request({
           path: '/bff/v1/activity-imports',
           method: 'POST',
-          body,
+          body: z.json().parse(body),
           idempotencyKey,
         });
         if (result.status !== 200) throw new Error('IMPORT_UNCONFIRMED');
@@ -142,15 +139,16 @@ function Workspace({ athleteId, sessionId, transport }: Props) {
               setFileError('');
               upload.reset();
               if (!file) return;
-              if (file.size > 1024 * 1024) {
-                setFileError('파일은 1 MiB 이하여야 합니다.');
+              if (file.size > activityDetailLimits.importFileBytes) {
+                setFileError('파일은 16 MiB 이하여야 합니다.');
                 return;
               }
               void file
                 .text()
                 .then((text) => {
                   if (generation !== fileRead.current) return;
-                  const parsed = exportSchema.parse(JSON.parse(text));
+                  const candidate: unknown = JSON.parse(text);
+                  const parsed = activityExportSchema.parse(candidate);
                   setImports(parsed.imports);
                 })
                 .catch(() => {
@@ -164,6 +162,7 @@ function Workspace({ athleteId, sessionId, transport }: Props) {
         {imports.length ? (
           <>
             <p>가져오기 미리보기: {imports.length}개 세션</p>
+            <p>레코드와 랩은 각 활동의 상세 기록이며 별도 활동으로 집계하지 않습니다.</p>
             <ul>
               {imports.map((item, index) => (
                 <li key={`${item.idempotencyKey}:${index}`}>
@@ -172,6 +171,7 @@ function Workspace({ athleteId, sessionId, transport }: Props) {
                     ? '시간 미확인'
                     : `${item.activity.durationSeconds}초`}{' '}
                   · {item.source.kind}
+                  <DetailPreview details={item.details} />
                 </li>
               ))}
             </ul>
@@ -274,6 +274,29 @@ function Workspace({ athleteId, sessionId, transport }: Props) {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+function DetailPreview({ details }: { details: ActivityDetails | undefined }) {
+  if (!details) return <p>세부 기록 없음 · 요약만 제공된 활동입니다.</p>;
+  return (
+    <div>
+      <p>
+        세부 기록: 레코드 {details.records.length}개 · 랩 {details.laps.length}개
+      </p>
+      <p>
+        레코드 미확인: 시각 {details.records.filter((item) => item.timestamp === null).length}개 ·
+        거리 {details.records.filter((item) => item.distanceMeters === null).length}개 · 심박수{' '}
+        {details.records.filter((item) => item.heartRateBpm === null).length}개
+      </p>
+      <p>
+        랩 미확인: 시작 시각 {details.laps.filter((item) => item.startedAt === null).length}개 ·
+        경과 시간 {details.laps.filter((item) => item.elapsedSeconds === null).length}개 · 타이머
+        시간 {details.laps.filter((item) => item.timerSeconds === null).length}개 · 거리{' '}
+        {details.laps.filter((item) => item.distanceMeters === null).length}개 · 평균 심박수{' '}
+        {details.laps.filter((item) => item.averageHeartRateBpm === null).length}개 · 최고 심박수{' '}
+        {details.laps.filter((item) => item.maximumHeartRateBpm === null).length}개
+      </p>
     </div>
   );
 }

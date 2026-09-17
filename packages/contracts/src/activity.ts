@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema, instantSchema, localDateSchema, timeZoneSchema } from './primitives.js';
+import { activityDetailsSchema } from './activity-details.js';
 
 const boundedMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
 export const activityValuesSchema = z.strictObject({
@@ -33,7 +34,32 @@ export const importActivitySchema = z.strictObject({
     .regex(/^[a-zA-Z0-9_-]+$/),
   source: importActivitySourceSchema,
   activity: activityValuesSchema,
+  // Omission preserves the hash of legacy summary-only import commands.
+  details: activityDetailsSchema.optional(),
 });
+export const activityExportSchema = z.discriminatedUnion('schemaVersion', [
+  z.strictObject({
+    schemaVersion: z.literal(1),
+    imports: z
+      .array(importActivitySchema.extend({ details: z.never().optional() }))
+      .min(1)
+      .max(100),
+  }),
+  z.strictObject({
+    schemaVersion: z.literal(2),
+    imports: z
+      .array(importActivitySchema.extend({ details: activityDetailsSchema }))
+      .min(1)
+      .max(100),
+  }),
+]);
+export const activityDetailsReadSchema = z.strictObject({
+  activityId: z.uuid(),
+  activityRevision: z.number().int().positive(),
+  source: activitySourceSchema,
+  details: activityDetailsSchema.nullable(),
+});
+export type ActivityDetailsRead = z.infer<typeof activityDetailsReadSchema>;
 export const activityReportValuesSchema = z.strictObject({
   sessionRpe: z.number().finite().min(0).max(10).nullable(),
   note: z.string().trim().min(1).max(4000).nullable(),

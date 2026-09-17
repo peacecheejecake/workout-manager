@@ -404,3 +404,68 @@ it('reports lease and retry backlog facts without claiming first-attempt process
   );
   expect((await operations.status(athlete)).audit).toHaveLength(10);
 });
+
+describe('activity source detail data lifecycle', () => {
+  it('exports source detail observations and erases all revisions without exposing another tenant', async () => {
+    const athlete = randomUUID(),
+      other = randomUUID();
+    const activity = createActivityRepository(database);
+    const details = {
+      schemaVersion: 1 as const,
+      streamIndex: 0,
+      sessionIndex: 0,
+      startedAt: null,
+      recordedAt: null,
+      elapsedSeconds: null,
+      records: [{ index: 0, timestamp: null, distanceMeters: 0, heartRateBpm: null }],
+      laps: [],
+    };
+    await activity.importActivity(athlete, {
+      idempotencyKey: randomUUID(),
+      source: { kind: 'fixture', sourceId: randomUUID(), revision: 2, contentHash: hash() },
+      activity: {
+        title: 'Detail lifecycle',
+        kind: 'running',
+        startedAt: null,
+        durationSeconds: null,
+        durationKind: 'unknown',
+        timezone: null,
+        distanceMeters: 0,
+      },
+      details,
+    });
+    const exported = await operations.exportAccount(athlete);
+    expect(exported.data.sourceRevisions[0]?.['details_json']).toEqual(details);
+    expect((await operations.exportAccount(other)).data.sourceRevisions).toEqual([]);
+    await operations.eraseAccount(athlete);
+    expect(
+      (await admin.query('SELECT * FROM activity_source_revision WHERE athlete_id=$1', [athlete]))
+        .rowCount,
+    ).toBe(0);
+    await expect(operations.exportAccount(athlete)).rejects.toThrow('ACCOUNT_ERASED');
+  });
+});
+
+it('counts source detail bytes toward the export ceiling before writing an export audit', async () => {
+  const athlete = randomUUID();
+  await database.tenant(athlete, async (tx) => {
+    await tx.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) SELECT $1,gen_random_uuid(),1,'{}'::jsonb FROM generate_series(1,3)",
+      [athlete],
+    );
+    await tx.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) SELECT athlete_id,'fixture',id::text,1,repeat('a',64),id FROM activity_canonical WHERE athlete_id=$1",
+      [athlete],
+    );
+    // Deliberately synthetic DB payload: tests the export byte guard independently of DTO validation.
+    // Every row stays below the details_json SQL limit, while the combined export exceeds 8 MiB.
+    await tx.query(
+      "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw,details_json) SELECT athlete_id,kind,source_id,1,content_hash,'{}'::jsonb,jsonb_build_object('bounded_fixture',repeat('x',3*1024*1024)) FROM activity_source_head WHERE athlete_id=$1",
+      [athlete],
+    );
+  });
+  await expect(operations.exportAccount(athlete)).rejects.toMatchObject({
+    code: 'EXPORT_TOO_LARGE',
+  });
+  expect((await operations.status(athlete)).audit).toEqual([]);
+});

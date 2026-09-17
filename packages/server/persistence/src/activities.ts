@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   activitySchema,
+  activityDetailsReadSchema,
+  type ActivityDetailsRead,
   activityValuesSchema,
   manualActivityCreateSchema,
   manualActivityResultSchema,
@@ -25,6 +27,7 @@ import {
   type ActivitySummary,
   type ActivityOverlayWrite,
 } from '@workout/contracts/activity';
+import { activityDetailsSchema } from '@workout/contracts/activity-details';
 import { selectActivity, decodeActivity } from './activity-record.js';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -61,6 +64,7 @@ export interface ActivityRepository {
   ): Promise<ManualActivityResult>;
   importActivity(athleteId: string, input: ActivityImport): Promise<ActivityImportResult>;
   listActivities(athleteId: string, input?: Partial<ActivityListQuery>): Promise<ActivityList>;
+  getActivityDetails(athleteId: string, id: string): Promise<ActivityDetailsRead | null>;
   getActivity(athleteId: string, id: string): Promise<Activity | null>;
   updateOverlay(athleteId: string, id: string, input: ActivityOverlayWrite): Promise<Activity>;
   deleteActivity(athleteId: string, id: string, input: { expectedRevision: number }): Promise<void>;
@@ -181,14 +185,19 @@ export function createActivityRepository(
           outcome = 'suppressed';
         else {
           const raw = await tx.query(
-            'SELECT content_hash,normalized_raw FROM activity_source_revision WHERE athlete_id=$1 AND kind=$2 AND source_id=$3 AND source_revision=$4',
+            'SELECT content_hash,normalized_raw,details_json FROM activity_source_revision WHERE athlete_id=$1 AND kind=$2 AND source_id=$3 AND source_revision=$4',
             [athleteId, source.kind, source.sourceId, source.revision],
           );
           if (raw.rows[0]) {
             if (
               raw.rows[0]['content_hash'] !== source.contentHash ||
               digest(activityValuesSchema.parse(raw.rows[0]['normalized_raw'])) !==
-                digest(command.activity)
+                digest(command.activity) ||
+              digest(
+                raw.rows[0]['details_json'] === null
+                  ? null
+                  : activityDetailsSchema.parse(raw.rows[0]['details_json']),
+              ) !== digest(command.details ?? null)
             )
               throw new PersistenceConflict('REVISION_CONFLICT');
             outcome = 'unchanged';
@@ -205,7 +214,7 @@ export function createActivityRepository(
               );
             }
             await tx.query(
-              'INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,$2,$3,$4,$5,$6::jsonb)',
+              'INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw,details_json) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)',
               [
                 athleteId,
                 source.kind,
@@ -213,6 +222,7 @@ export function createActivityRepository(
                 source.revision,
                 source.contentHash,
                 JSON.stringify(command.activity),
+                command.details === undefined ? null : JSON.stringify(command.details),
               ],
             );
             if (source.revision < headRevision) outcome = 'stale';
@@ -236,6 +246,22 @@ export function createActivityRepository(
           [athleteId, command.idempotencyKey, hash, JSON.stringify(result)],
         );
         return result;
+      });
+    },
+    getActivityDetails(athleteId, id) {
+      z.uuid().parse(id);
+      return database.tenant(athleteId, async (tx) => {
+        const result = await tx.query(
+          `SELECT c.id AS "activityId",c.revision AS "activityRevision",
+            jsonb_build_object('kind',s.kind,'sourceId',s.source_id,'revision',s.source_revision,'contentHash',s.content_hash) AS source,
+            r.details_json AS details
+           FROM activity_canonical c
+           JOIN activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id
+           JOIN activity_source_revision r ON r.athlete_id=s.athlete_id AND r.kind=s.kind AND r.source_id=s.source_id AND r.source_revision=s.source_revision
+           WHERE c.athlete_id=$1 AND c.id=$2 AND NOT c.deleted`,
+          [athleteId, id],
+        );
+        return result.rows[0] ? activityDetailsReadSchema.parse(result.rows[0]) : null;
       });
     },
     listActivities(athleteId, input = {}) {

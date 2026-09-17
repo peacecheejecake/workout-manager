@@ -54,15 +54,16 @@ def fit_streams(data: bytes) -> Iterator[bytes]:
         offset = end
 
 
-def parse_fit(source: Path) -> dict[str, pd.DataFrame]:
+def parse_fit_streams(source: Path) -> list[dict[str, list[dict[str, object]]]]:
     """Validate the complete FIT stream, including CRC, before writing any output."""
     with source.open("rb") as stream:
         data = stream.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
         raise ValueError("FIT exceeds the 64 MiB local conversion limit")
-    rows: dict[str, list[dict[str, object]]] = {name: [] for name in MESSAGE_TYPES}
+    streams: list[dict[str, list[dict[str, object]]]] = []
     message_count = 0
     for stream in fit_streams(data):
+        rows: dict[str, list[dict[str, object]]] = {name: [] for name in MESSAGE_TYPES}
         fit = FitFile(stream, check_crc=True)
         try:
             for message in fit.get_messages(with_definitions=True):
@@ -77,6 +78,16 @@ def parse_fit(source: Path) -> dict[str, pd.DataFrame]:
             raise FitParseError("Invalid FIT message structure") from error
         finally:
             fit.close()
+        streams.append(rows)
+    return streams
+
+
+def parse_fit(source: Path) -> dict[str, pd.DataFrame]:
+    """Preserve the historical merged conversion frames across chained streams."""
+    rows: dict[str, list[dict[str, object]]] = {name: [] for name in MESSAGE_TYPES}
+    for stream in parse_fit_streams(source):
+        for name in MESSAGE_TYPES:
+            rows[name].extend(stream[name])
     # CSV needs a header even when the FIT contains no messages of this type.
     return {
         name: pd.DataFrame(values) if values else pd.DataFrame(columns=["timestamp"])

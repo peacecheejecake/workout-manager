@@ -699,3 +699,185 @@ it('rolls back all manual rows and receipt when outbox fails', async () => {
   );
   expect(counts.rows[0]).toEqual({ actual: 0, history: 0, receipts: 0 });
 });
+
+function details(): NonNullable<ActivityImport['details']> {
+  return {
+    schemaVersion: 1,
+    streamIndex: 0,
+    sessionIndex: 0,
+    startedAt: '2026-09-15T23:00:00Z',
+    recordedAt: '2026-09-15T23:02:00Z',
+    elapsedSeconds: 120,
+    records: [
+      { index: 0, timestamp: null, distanceMeters: 0, heartRateBpm: null },
+      { index: 1, timestamp: '2026-09-15T23:00:10Z', distanceMeters: null, heartRateBpm: 0 },
+    ],
+    laps: [
+      {
+        index: 0,
+        startedAt: '2026-09-15T23:00:00Z',
+        recordedAt: '2026-09-15T23:02:01Z',
+        elapsedSeconds: 120,
+        timerSeconds: 100,
+        distanceMeters: 0,
+        averageHeartRateBpm: null,
+        maximumHeartRateBpm: null,
+      },
+    ],
+  };
+}
+describe('M1-04x source revision activity details', () => {
+  it('enriches the same canonical once under concurrent delivery and replays the old summary receipt', async () => {
+    const athlete = randomUUID();
+    const legacy = input();
+    const first = await repository.importActivity(athlete, legacy);
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toBeNull();
+    const enriched = {
+      ...legacy,
+      idempotencyKey: randomUUID(),
+      source: { ...legacy.source, revision: 2 },
+      details: details(),
+    };
+    const [second, duplicate] = await Promise.all([
+      repository.importActivity(athlete, enriched),
+      repository.importActivity(athlete, enriched),
+    ]);
+    expect(second).toEqual(duplicate);
+    expect(second).toMatchObject({ activityId: first.activityId, revision: 2 });
+    expect(await repository.importActivity(athlete, legacy)).toEqual(first);
+    expect(await repository.getActivityDetails(athlete, first.activityId)).toEqual({
+      activityId: first.activityId,
+      activityRevision: 2,
+      source: enriched.source,
+      details: enriched.details,
+    });
+    expect((await repository.listActivities(athlete)).total).toBe(1);
+    expect(await repository.getActivity(athlete, first.activityId)).not.toHaveProperty('details');
+    await database.tenant(athlete, async (tx) => {
+      expect((await tx.query('SELECT * FROM activity_source_revision')).rowCount).toBe(2);
+      expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(2);
+    });
+    await expect(
+      repository.importActivity(athlete, {
+        ...enriched,
+        idempotencyKey: randomUUID(),
+        details: { ...details(), elapsedSeconds: 121 },
+      }),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    await expect(
+      repository.importActivity(athlete, {
+        ...enriched,
+        idempotencyKey: randomUUID(),
+        details: undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  });
+  it('reads exactly the current source revision, never falls back, and keeps source clocks through overlays', async () => {
+    const athlete = randomUUID();
+    const command = { ...input(), details: details() };
+    const first = await repository.importActivity(athlete, command);
+    await repository.updateOverlay(athlete, first.activityId, {
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+      reason: 'Correct local start',
+      startedAt: '2026-09-16T09:00:00+09:00',
+      timezone: 'Asia/Seoul',
+    });
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toEqual(
+      command.details,
+    );
+    const noDetails = input();
+    const third = {
+      ...noDetails,
+      source: { ...command.source, revision: 3 },
+      activity: command.activity,
+    };
+    await repository.importActivity(athlete, third);
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toBeNull();
+    expect(
+      (
+        await repository.importActivity(athlete, {
+          ...command,
+          idempotencyKey: randomUUID(),
+          source: { ...command.source, revision: 2 },
+        })
+      ).outcome,
+    ).toBe('stale');
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.source.revision).toBe(
+      3,
+    );
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toBeNull();
+    expect((await repository.getActivity(athlete, first.activityId))?.effective.startedAt).toBe(
+      '2026-09-16T09:00:00+09:00',
+    );
+    expect(await repository.getActivityDetails(randomUUID(), first.activityId)).toBeNull();
+  });
+  it('hides deleted details and suppresses later enrichment without rewriting source history', async () => {
+    const athlete = randomUUID();
+    const command = { ...input(), details: details() };
+    const first = await repository.importActivity(athlete, command);
+    await repository.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
+    expect(await repository.getActivityDetails(athlete, first.activityId)).toBeNull();
+    expect(await repository.importActivity(athlete, command)).toEqual(first);
+    expect(
+      (
+        await repository.importActivity(athlete, {
+          ...command,
+          idempotencyKey: randomUUID(),
+          source: { ...command.source, revision: 2 },
+        })
+      ).outcome,
+    ).toBe('suppressed');
+    expect(await repository.getActivityDetails(athlete, first.activityId)).toBeNull();
+    await database.tenant(athlete, async (tx) => {
+      expect((await tx.query('SELECT details_json FROM activity_source_revision')).rows).toEqual([
+        { details_json: details() },
+      ]);
+    });
+  });
+});
+
+it('rolls back source detail enrichment and its head when outbox delivery cannot be enqueued', async () => {
+  const athlete = randomUUID();
+  const legacy = input();
+  const first = await repository.importActivity(athlete, legacy);
+  const before = await repository.getActivity(athlete, first.activityId);
+  const enrichment = {
+    ...legacy,
+    idempotencyKey: randomUUID(),
+    source: { ...legacy.source, revision: 2 },
+    details: details(),
+  };
+  const failing = createActivityRepository({
+    ...database,
+    tenant: (id, operation) =>
+      database.tenant(id, (tx) =>
+        operation({
+          ...tx,
+          query: (sql, args) => {
+            if (sql.includes('INSERT INTO outbox'))
+              throw new Error('detail enrichment outbox failure');
+            return tx.query(sql, args);
+          },
+        }),
+      ),
+  });
+  await expect(failing.importActivity(athlete, enrichment)).rejects.toThrow(
+    'detail enrichment outbox failure',
+  );
+  expect(await repository.getActivity(athlete, first.activityId)).toEqual(before);
+  expect(await repository.getActivityDetails(athlete, first.activityId)).toEqual({
+    activityId: first.activityId,
+    activityRevision: 1,
+    source: legacy.source,
+    details: null,
+  });
+  await database.tenant(athlete, async (tx) => {
+    expect(
+      (await tx.query('SELECT source_revision,details_json FROM activity_source_revision')).rows,
+    ).toEqual([{ source_revision: 1, details_json: null }]);
+    expect((await tx.query('SELECT * FROM activity_import_receipt')).rowCount).toBe(1);
+    expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(1);
+  });
+  expect((await repository.importActivity(athlete, enrichment)).revision).toBe(2);
+});

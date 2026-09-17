@@ -334,6 +334,23 @@
       "evidence": "docs/implementation/progress/M1-04w.md"
     },
     {
+      "id": "M1-04x",
+      "title": "FIT 구간·시계열 상세 수입·저장 기반",
+      "dependsOn": ["M1-03", "M1-04f", "M1-04k"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "versioned FIT 상세 export·session/stream 매핑·bounded import·source revision 원자 저장·조회·삭제/내보내기; GPS/상세 시각화는 후속",
+      "evidence": "docs/implementation/progress/M1-04x.md"
+    },
+    {
+      "id": "M1-04y",
+      "title": "활동 구간·시계열 상세 workbench",
+      "dependsOn": ["M1-04x"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "실제 상세 API·개요/구간/출처·chart/lap 시간 선택·null/gap·반응형; 지도 연동 gate 별도"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -361,7 +378,9 @@
         "M1-04t",
         "M1-04u",
         "M1-04v",
-        "M1-04w"
+        "M1-04w",
+        "M1-04x",
+        "M1-04y"
       ],
       "kind": "task",
       "status": "not_started",

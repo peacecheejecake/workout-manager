@@ -21,6 +21,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '006_garmin.sql',
       '007_check_ins.sql',
       '008_manual_activities.sql',
+      '009_activity_details.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');

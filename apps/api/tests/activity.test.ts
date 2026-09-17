@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Activity } from '@workout/contracts/activity';
+import { activityDetailLimits, activityDetailsSchema } from '@workout/contracts/activity-details';
 import {
   ActivityValidationError,
   type ActivityRepository,
@@ -21,6 +22,7 @@ function setup(authenticated = true) {
     createManualActivity: vi.fn<ActivityRepository['createManualActivity']>(),
     listActivities: vi.fn(async () => ({ items: [], total: 0 })),
     getActivity: vi.fn<ActivityRepository['getActivity']>().mockResolvedValue(null),
+    getActivityDetails: vi.fn<ActivityRepository['getActivityDetails']>().mockResolvedValue(null),
     importActivity: vi.fn(),
     updateOverlay: vi.fn<ActivityRepository['updateOverlay']>(),
     deleteActivity: vi.fn(),
@@ -467,4 +469,181 @@ describe('activity record-state filter boundary', () => {
       expect(activities.listActivities).not.toHaveBeenCalled();
     },
   );
+});
+
+const observedDetails = activityDetailsSchema.parse({
+  schemaVersion: 1,
+  streamIndex: 0,
+  sessionIndex: 0,
+  startedAt: '2022-08-03T12:00:00Z',
+  recordedAt: '2022-08-03T12:30:00Z',
+  elapsedSeconds: null,
+  records: [
+    { index: 0, timestamp: null, distanceMeters: 0, heartRateBpm: 0 },
+    { index: 1, timestamp: '2022-08-03T12:00:01Z', distanceMeters: null, heartRateBpm: null },
+  ],
+  laps: [
+    {
+      index: 0,
+      startedAt: null,
+      recordedAt: '2022-08-03T12:30:00Z',
+      elapsedSeconds: null,
+      timerSeconds: 0,
+      distanceMeters: null,
+      averageHeartRateBpm: 0,
+      maximumHeartRateBpm: null,
+    },
+  ],
+});
+const detailImport = {
+  source: {
+    kind: 'fixture',
+    sourceId: 'synthetic-details',
+    revision: 2,
+    contentHash: 'b'.repeat(64),
+  },
+  activity: manualBody.activity,
+  details: observedDetails,
+} as const;
+
+describe('activity source details boundary', () => {
+  const url = `/bff/v1/activities/${manualId}/details`;
+  it('requires authentication and a current session before details access', async () => {
+    const denied = setup(false);
+    expect((await denied.app.inject({ url, headers })).statusCode).toBe(401);
+    expect(denied.activities.getActivityDetails).not.toHaveBeenCalled();
+    const { app, activities } = setup();
+    expect(
+      (await app.inject({ url, headers: { ...headers, 'x-workout-session-id': 'stale' } }))
+        .statusCode,
+    ).toBe(409);
+    expect(activities.getActivityDetails).not.toHaveBeenCalled();
+  });
+  it('returns only validated details for the authenticated owner with zero and unknown intact', async () => {
+    const { app, activities } = setup();
+    const result = {
+      activityId: manualId,
+      activityRevision: 2,
+      source: detailImport.source,
+      details: observedDetails,
+    };
+    activities.getActivityDetails.mockResolvedValue(result);
+    const response = await app.inject({ url, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(result);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(activities.getActivityDetails).toHaveBeenCalledWith(athleteId, manualId);
+    expect(activities.getActivity).not.toHaveBeenCalled();
+  });
+  it('distinguishes a legacy activity without details from an absent or deleted activity', async () => {
+    const { app, activities } = setup();
+    expect((await app.inject({ url, headers })).statusCode).toBe(404);
+    activities.getActivityDetails.mockResolvedValue({
+      activityId: manualId,
+      activityRevision: 1,
+      source: detailImport.source,
+      details: null,
+    });
+    const response = await app.inject({ url, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().details).toBeNull();
+  });
+  it.each(['/bff/v1/activities/bad/details', `${url}?athleteId=foreign`, `${url}?revision=1`])(
+    'rejects unsupported details addressing %s',
+    async (url) => {
+      const { app, activities } = setup();
+      expect((await app.inject({ url, headers })).statusCode).toBe(400);
+      expect(activities.getActivityDetails).not.toHaveBeenCalled();
+    },
+  );
+  it('forwards a valid import larger than the default body limit only after authorization', async () => {
+    const { app, activities } = setup();
+    const payload = {
+      ...detailImport,
+      details: {
+        ...observedDetails,
+        records: Array.from({ length: 300 }, (_, index) => ({
+          index,
+          timestamp: null,
+          distanceMeters: null,
+          heartRateBpm: 0,
+        })),
+      },
+    };
+    expect(Buffer.byteLength(JSON.stringify(payload))).toBeGreaterThan(16 * 1024);
+    activities.importActivity.mockResolvedValue({
+      outcome: 'imported',
+      activityId: manualId,
+      revision: 2,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/activity-imports',
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(activities.importActivity).toHaveBeenCalledWith(athleteId, {
+      ...payload,
+      idempotencyKey: headers['idempotency-key'],
+    });
+    activities.importActivity.mockClear();
+    for (const override of [{ 'x-csrf-token': '' }, { origin: 'https://foreign.example' }]) {
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/bff/v1/activity-imports',
+            headers: { ...headers, ...override },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    expect(activities.importActivity).not.toHaveBeenCalled();
+  });
+  it('retains the default write bound elsewhere and rejects an oversized import', async () => {
+    const { app, activities } = setup();
+    const jsonHeaders = { ...headers, 'content-type': 'application/json' };
+    const large = JSON.stringify(manualBody) + ' '.repeat(16 * 1024);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/bff/v1/activities',
+          headers: jsonHeaders,
+          payload: large,
+        })
+      ).statusCode,
+    ).toBe(413);
+    const oversizedImport =
+      JSON.stringify(detailImport) + ' '.repeat(activityDetailLimits.importRequestBytes);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/bff/v1/activity-imports',
+          headers: jsonHeaders,
+          payload: oversizedImport,
+        })
+      ).statusCode,
+    ).toBe(413);
+    expect(activities.createManualActivity).not.toHaveBeenCalled();
+    expect(activities.importActivity).not.toHaveBeenCalled();
+  });
+  it('rejects malformed source observations before repository writes', async () => {
+    const { app, activities } = setup();
+    const payload = {
+      ...detailImport,
+      details: {
+        ...observedDetails,
+        records: [{ index: 0, timestamp: null, distanceMeters: 0, heartRateBpm: 256 }],
+      },
+    };
+    expect(
+      (await app.inject({ method: 'POST', url: '/bff/v1/activity-imports', headers, payload }))
+        .statusCode,
+    ).toBe(400);
+    expect(activities.importActivity).not.toHaveBeenCalled();
+  });
 });

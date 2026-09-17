@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "imports": [
+    {
+      "idempotencyKey": "fit-details-v1-4b28ffa0a3c4d2c9708b88ca34d8fb11e3084ab21ce7f0b65b986bb8e709dfde-0",
+      "source": {
+        "kind": "fit",
+        "sourceId": "sha256:4b28ffa0a3c4d2c9708b88ca34d8fb11e3084ab21ce7f0b65b986bb8e709dfde:session:0",
+        "revision": 2,
+        "contentHash": "4b28ffa0a3c4d2c9708b88ca34d8fb11e3084ab21ce7f0b65b986bb8e709dfde"
+      },
+      "activity": {
+        "title": null,
+        "kind": "unknown",
+        "startedAt": null,
+        "timezone": null,
+        "durationSeconds": null,
+        "durationKind": "unknown",
+        "distanceMeters": null
+      },
+      "details": {
+        "schemaVersion": 1,
+        "streamIndex": 0,
+        "sessionIndex": 0,
+        "startedAt": null,
+        "recordedAt": "2024-11-08T11:33:20+00:00",
+        "elapsedSeconds": null,
+        "records": [
+          {
+            "index": 0,
+            "timestamp": "2024-11-08T11:33:20+00:00",
+            "distanceMeters": null,
+            "heartRateBpm": 120
+          }
+        ],
+        "laps": [
+          {
+            "index": 0,
+            "startedAt": null,
+            "recordedAt": "2024-11-08T11:33:20+00:00",
+            "elapsedSeconds": null,
+            "timerSeconds": null,
+            "distanceMeters": null,
+            "averageHeartRateBpm": null,
+            "maximumHeartRateBpm": null
+          }
+        ]
+      }
+    }
+  ]
+}
