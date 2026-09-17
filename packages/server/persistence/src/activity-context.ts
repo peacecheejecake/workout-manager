@@ -84,20 +84,38 @@ export function createActivityContextRepository(
               distanceComparison: {
                 actual,
                 planned,
+                ...(session.distanceRange == null
+                  ? {}
+                  : {
+                      plannedRange: session.distanceRange,
+                      rangePosition:
+                        actual === null
+                          ? 'unknown'
+                          : actual < session.distanceRange.minMeters
+                            ? 'below'
+                            : actual > session.distanceRange.maxMeters
+                              ? 'above'
+                              : 'within',
+                    }),
                 delta: actual !== null && planned !== null ? actual - planned : null,
                 status:
-                  actual === null
-                    ? planned === null
-                      ? 'missing_both'
-                      : 'missing_actual'
-                    : planned === null
-                      ? 'missing_plan'
-                      : 'available',
+                  session.distanceRange != null
+                    ? actual === null
+                      ? 'range_missing_actual'
+                      : 'range_available'
+                    : actual === null
+                      ? planned === null
+                        ? 'missing_both'
+                        : 'missing_actual'
+                      : planned === null
+                        ? 'missing_plan'
+                        : 'available',
               },
               durationComparison: {
                 actual: activity.effective.durationSeconds,
                 actualKind: activity.effective.durationKind,
                 planned: session.durationSeconds,
+                ...(session.durationRange == null ? {} : { plannedRange: session.durationRange }),
                 delta: null,
                 status: 'not_comparable',
                 reason: 'planned_duration_definition_missing',

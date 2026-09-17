@@ -125,6 +125,26 @@ describe('dashboard actual read model', () => {
       ...day,
       actual: index === 0 ? zero : index === 1 ? distance : actual,
     }));
+    value.todaySessions = [
+      {
+        id: 'range-session',
+        blockId: 'block',
+        date: '2026-03-09',
+        localStartTime: null,
+        title: '범위 계획',
+        sport: 'running',
+        durationSeconds: null,
+        distanceMeters: null,
+        durationRange: { minSeconds: 60, maxSeconds: 90 },
+        distanceRange: { minMeters: 100, maxMeters: 300 },
+        targetRpe: null,
+        purpose: '',
+        notes: '',
+        priority: 'normal',
+        locks: { date: false, time: false, intensity: false },
+        steps: [],
+      },
+    ];
     const { container } = setup(async () => reply(value));
     const table = await screen.findByRole('table', { name: '날짜별 거리와 보고 현황' });
     const rows = within(table).getAllByRole('row').slice(1);
@@ -257,4 +277,86 @@ describe('dashboard actual read model', () => {
       '/wellbeing',
     );
   });
+});
+
+it('renders planned interval endpoints and equal-bound zero without inventing a midpoint, preserving actual metrics', async () => {
+  const value = model();
+  const ranged = {
+    count: 2,
+    distanceMeters: { value: null, knownCount: 0, missingCount: 2 },
+    durationSeconds: { value: null, knownCount: 0, missingCount: 2 },
+    targets: {
+      definitionVersion: 'planned-targets-v1' as const,
+      distanceMeters: { min: 100, max: 300, knownCount: 1, missingCount: 1, rangeCount: 1 },
+      durationSeconds: { min: 60, max: 90, knownCount: 1, missingCount: 1, rangeCount: 1 },
+    },
+  };
+  value.current = { ...value.current, planned: ranged };
+  value.days = value.days.map((day, index) => ({
+    ...day,
+    planned:
+      index === 0
+        ? ranged
+        : index === 1
+          ? {
+              ...ranged,
+              count: 1,
+              distanceMeters: { value: null, knownCount: 0, missingCount: 1 },
+              durationSeconds: { value: null, knownCount: 0, missingCount: 1 },
+              targets: {
+                ...ranged.targets,
+                distanceMeters: { min: 0, max: 0, knownCount: 1, missingCount: 0, rangeCount: 1 },
+                durationSeconds: {
+                  min: null,
+                  max: null,
+                  knownCount: 0,
+                  missingCount: 1,
+                  rangeCount: 0,
+                },
+              },
+            }
+          : day.planned,
+  }));
+  value.todaySessions = [
+    {
+      id: 'range-session',
+      blockId: 'block',
+      date: '2026-03-09',
+      localStartTime: null,
+      title: '범위 계획',
+      sport: 'running',
+      durationSeconds: null,
+      distanceMeters: null,
+      durationRange: { minSeconds: 60, maxSeconds: 90 },
+      distanceRange: { minMeters: 100, maxMeters: 300 },
+      targetRpe: null,
+      purpose: '',
+      notes: '',
+      priority: 'normal',
+      locks: { date: false, time: false, intensity: false },
+      steps: [],
+    },
+  ];
+  const { container } = setup(async () => reply(value));
+  const current = await screen.findByRole('region', { name: '현재 기간' });
+  expect(
+    within(current).getByText(
+      '거리: 100–300m · 알려진 1개 · 미보고 1개 · 범위 목표 1개 · 부분 합계',
+    ),
+  ).toBeVisible();
+  expect(
+    within(current).getByText(
+      '시간: 60–90초 · 알려진 1개 · 미보고 1개 · 범위 목표 1개 · 부분 합계',
+    ),
+  ).toBeVisible();
+  await screen.findByRole('table', { name: '날짜별 거리와 보고 현황' });
+  expect(
+    within(screen.getByRole('region', { name: '기준일 계획 세션' })).getByText(/계획 거리/),
+  ).toHaveTextContent('계획 거리 100–300m · 계획 시간 60–90초');
+  const interval = container.querySelector('[data-series="planned-range"]');
+  expect(interval).toHaveAttribute('data-min', '100');
+  expect(interval).toHaveAttribute('data-max', '300');
+  expect(interval?.querySelector('[data-value="200"]')).toBeNull();
+  expect(container.querySelector('[data-series="planned"][data-value="0"]')).toBeInTheDocument();
+  expect(within(current).getByText('거리: 미보고 · 알려진 0개 · 미보고 0개')).toBeVisible();
 });

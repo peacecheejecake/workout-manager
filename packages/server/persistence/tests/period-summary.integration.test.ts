@@ -120,6 +120,11 @@ describe('owned immutable period summaries', () => {
     });
     expect(result?.currentPlanVersionId).toBe(later.id);
     expect(result?.planned).toEqual({
+      targets: {
+        definitionVersion: 'planned-targets-v1',
+        distanceMeters: { min: 0, max: 0, knownCount: 1, missingCount: 1, rangeCount: 0 },
+        durationSeconds: { min: 0, max: 0, knownCount: 1, missingCount: 1, rangeCount: 0 },
+      },
       count: 2,
       distanceMeters: { value: 0, knownCount: 1, missingCount: 1 },
       durationSeconds: { value: 0, knownCount: 1, missingCount: 1 },

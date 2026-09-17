@@ -6,6 +6,8 @@ const errors: Record<SessionOperationReason, string> = {
   invalid_baseline: '기준 계획을 확인할 수 없습니다. 최신 버전을 다시 확인하세요.',
   invalid_today: '현재 날짜를 확인할 수 없어 변경하지 않았습니다.',
   missing_session: '선택한 세션이 초안에 없습니다.',
+  range_duration:
+    '범위 시간은 길이 도구로 변경할 수 없습니다. 세션 편집에서 단일값으로 전환하고 숫자를 입력하세요.',
   invalid_operation: '날짜와 시간 길이 입력을 확인하세요.',
   missing_block: '날짜가 속할 Block을 선택하세요.',
   outside_block: '선택한 날짜가 해당 Block의 범위 밖입니다.',

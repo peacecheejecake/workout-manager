@@ -1,3 +1,5 @@
+import { emptyActual, emptyPlanned, summarizeDays } from '../src/dashboard-metrics.js';
+import { createPeriodSummaryRepository } from '../src/period-summary.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, it, expect } from 'vitest';
@@ -332,4 +334,150 @@ it('reads every component in one SELECT while concurrent commits remain visible 
   expect(fresh.dataRevision.activities.count).toBe(1);
   expect(fresh.dataRevision.checkIns).toBe(1);
   expect(fresh.latestCheckIn).not.toBeNull();
+});
+
+it('aggregates explicit ranges and scalar targets consistently across SQL days and immutable whole-period summaries', async () => {
+  const athlete = randomUUID();
+  const input = draft();
+  const base = input.sessions[0];
+  if (!base) throw new Error('Missing fixture');
+  input.sessions = [
+    {
+      ...base,
+      id: 'range',
+      date: '2024-03-08',
+      durationSeconds: null,
+      distanceMeters: null,
+      durationRange: { minSeconds: 10, maxSeconds: 20 },
+      distanceRange: { minMeters: 100, maxMeters: 200 },
+    },
+    { ...base, id: 'scalar', date: '2024-03-09', durationSeconds: 30, distanceMeters: 50 },
+    { ...base, id: 'unknown', date: '2024-03-10', durationSeconds: null, distanceMeters: null },
+    {
+      ...base,
+      id: 'range-zero',
+      date: '2024-03-10',
+      durationSeconds: null,
+      distanceMeters: null,
+      durationRange: { minSeconds: 0, maxSeconds: 0 },
+      distanceRange: { minMeters: 0, maxMeters: 0 },
+    },
+  ];
+  const saved = await savePlan(athlete, input);
+  const model = await createDashboardRepository(database).read(athlete, query);
+  const targets = {
+    definitionVersion: 'planned-targets-v1',
+    distanceMeters: { min: 150, max: 250, knownCount: 3, missingCount: 1, rangeCount: 2 },
+    durationSeconds: { min: 40, max: 50, knownCount: 3, missingCount: 1, rangeCount: 2 },
+  };
+  expect(model.current.planned.targets).toEqual(targets);
+  expect(model.current.planned.distanceMeters).toEqual({
+    value: 50,
+    knownCount: 1,
+    missingCount: 3,
+  });
+  expect(model.current.planned.durationSeconds).toEqual({
+    value: 30,
+    knownCount: 1,
+    missingCount: 3,
+  });
+  expect(model.days[2]?.planned.targets?.durationSeconds).toEqual({
+    min: 0,
+    max: 0,
+    knownCount: 1,
+    missingCount: 1,
+    rangeCount: 1,
+  });
+  expect(model.previous.planned.targets?.distanceMeters).toEqual({
+    min: null,
+    max: null,
+    knownCount: 0,
+    missingCount: 0,
+    rangeCount: 0,
+  });
+  const period = await createPeriodSummaryRepository(database).read(athlete, {
+    planVersionId: saved.id,
+    periodId: 'season',
+  });
+  expect(period?.planned).toEqual(model.current.planned);
+  expect(
+    (await createDashboardRepository(database).read(randomUUID(), query)).current.planned.targets
+      ?.distanceMeters,
+  ).toEqual({ min: null, max: null, knownCount: 0, missingCount: 0, rangeCount: 0 });
+  expect(model.current.actual.count).toBe(0);
+});
+
+it('does not infer range bounds when a legacy daily aggregate lacks target evidence', () => {
+  const legacy = emptyPlanned();
+  delete legacy.targets;
+  const mixed = summarizeDays([
+    { date: '2024-03-09', actual: emptyActual(), planned: legacy, checkInCount: 0 },
+    { date: '2024-03-10', actual: emptyActual(), planned: emptyPlanned(), checkInCount: 0 },
+  ]);
+  expect(mixed.planned).not.toHaveProperty('targets');
+  expect(mixed.planned.distanceMeters.value).toBeNull();
+  expect(summarizeDays([]).planned.targets?.distanceMeters).toEqual({
+    min: null,
+    max: null,
+    knownCount: 0,
+    missingCount: 0,
+    rangeCount: 0,
+  });
+});
+
+it('matches SQL decimal day sums and JavaScript period/window target sums for fractional ranges and scalars', async () => {
+  const athlete = randomUUID(),
+    input = draft(),
+    base = input.sessions[0];
+  if (!base) throw new Error('Missing fixture');
+  input.sessions = [0.1, 0.2].flatMap((value, index) => [
+    {
+      ...base,
+      id: `range-${index}`,
+      date: '2024-03-10',
+      durationSeconds: null,
+      distanceMeters: null,
+      durationRange: { minSeconds: value, maxSeconds: value },
+      distanceRange: { minMeters: value, maxMeters: value },
+    },
+    {
+      ...base,
+      id: `scalar-${index}`,
+      date: '2024-03-10',
+      durationSeconds: value,
+      distanceMeters: value,
+    },
+  ]);
+  const saved = await savePlan(athlete, input);
+  const dashboard = await createDashboardRepository(database).read(athlete, query);
+  const period = await createPeriodSummaryRepository(database).read(athlete, {
+    planVersionId: saved.id,
+    periodId: 'season',
+  });
+  expect(dashboard.days[2]?.planned).toEqual(period?.planned);
+  expect(dashboard.current.planned).toEqual(period?.planned);
+  expect(period?.planned.distanceMeters.value).toBe(0.3);
+  expect(period?.planned.targets?.distanceMeters).toEqual({
+    min: 0.6,
+    max: 0.6,
+    knownCount: 4,
+    missingCount: 0,
+    rangeCount: 2,
+  });
+  const plans = createPlanningRepository(database);
+  const scalars = {
+    ...input,
+    sessions: input.sessions.filter((session) => session.id.startsWith('scalar')),
+  };
+  await plans.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: saved.id,
+    idempotencyKey: randomUUID(),
+    draft: scalars,
+  });
+  expect(
+    (await createDashboardRepository(database).read(athlete, query)).current.planned.targets
+      ?.durationSeconds,
+  ).toEqual({ min: 0.3, max: 0.3, knownCount: 2, missingCount: 0, rangeCount: 0 });
 });

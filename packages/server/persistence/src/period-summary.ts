@@ -6,10 +6,10 @@ import {
   type PeriodSummaryQuery,
 } from '@workout/contracts/period-summary';
 import { dashboardActualSchema } from '@workout/contracts/dashboard';
-import { planDraftSchema } from '@workout/contracts/planning';
+import { planDraftSchema, sumTargetQuantities } from '@workout/contracts/planning';
 import type { Database } from './database.js';
 import { activityInstantSql } from './activity-calendar.js';
-import { durationKinds } from './dashboard-metrics.js';
+import { durationKinds, plannedTargets } from './dashboard-metrics.js';
 export interface PeriodSummaryRepository {
   read(athleteId: string, input: PeriodSummaryQuery): Promise<PeriodSummary | null>;
 }
@@ -44,7 +44,7 @@ const rowSchema = z.object({
 const metric = (values: (number | null)[]) => {
   const known = values.filter((value): value is number => value !== null);
   return {
-    value: known.length ? known.reduce((sum, value) => sum + value, 0) : null,
+    value: known.length ? sumTargetQuantities(known) : null,
     knownCount: known.length,
     missingCount: values.length - known.length,
   };
@@ -84,6 +84,7 @@ export function createPeriodSummaryRepository(
           period,
           planned: {
             count: sessions.length,
+            targets: plannedTargets(sessions),
             distanceMeters: metric(sessions.map((session) => session.distanceMeters)),
             durationSeconds: metric(sessions.map((session) => session.durationSeconds)),
           },

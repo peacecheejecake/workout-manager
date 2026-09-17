@@ -1,4 +1,9 @@
-import { planDraftSchema, type PlanDraft } from './planning.js';
+import {
+  planDraftSchema,
+  sessionDurationBounds,
+  sumTargetQuantities,
+  type PlanDraft,
+} from './planning.js';
 
 export interface PlanConstraintDay {
   date: string;
@@ -7,9 +12,12 @@ export interface PlanConstraintDay {
   availableSeconds: number | null;
   sessionIds: string[];
   knownDurationSeconds: number;
+  durationRangeSeconds: { min: number; max: number } | null;
+  rangeDurationSessionIds: string[];
   unknownDurationSessionIds: string[];
   unavailableConflict: boolean;
   exceedsAvailableTime: boolean;
+  possibleTimeExcess: boolean;
   status: 'conflict' | 'unknown' | 'no_conflict';
 }
 
@@ -22,6 +30,7 @@ export interface PlanConstraintDay {
 export function evaluatePlanConstraints(input: PlanDraft): PlanConstraintDay[] {
   const draft = planDraftSchema.parse(input);
   const days = new Map<string, PlanConstraintDay>();
+  const quantities = new Map<string, { min: number[]; max: number[]; exact: number[] }>();
   const getDay = (date: string) => {
     let day = days.get(date);
     if (!day) {
@@ -32,12 +41,16 @@ export function evaluatePlanConstraints(input: PlanDraft): PlanConstraintDay[] {
         availableSeconds: null,
         sessionIds: [],
         knownDurationSeconds: 0,
+        durationRangeSeconds: null,
+        rangeDurationSessionIds: [],
         unknownDurationSessionIds: [],
         unavailableConflict: false,
         exceedsAvailableTime: false,
+        possibleTimeExcess: false,
         status: 'no_conflict',
       };
       days.set(date, day);
+      quantities.set(date, { min: [], max: [], exact: [] });
     }
     return day;
   };
@@ -57,21 +70,41 @@ export function evaluatePlanConstraints(input: PlanDraft): PlanConstraintDay[] {
     const day = days.get(session.date);
     if (!day) continue;
     day.sessionIds.push(session.id);
-    if (session.durationSeconds === null) day.unknownDurationSessionIds.push(session.id);
-    else day.knownDurationSeconds += session.durationSeconds;
+    const bounds = sessionDurationBounds(session);
+    if (bounds === null) day.unknownDurationSessionIds.push(session.id);
+    else {
+      const values = quantities.get(session.date);
+      if (!values) throw new Error('Missing constrained date quantities');
+      values.min.push(bounds.min);
+      values.max.push(bounds.max);
+      if (session.durationRange) day.rangeDurationSessionIds.push(session.id);
+      else if (session.durationSeconds !== null) values.exact.push(session.durationSeconds);
+    }
   }
   for (const day of days.values()) {
+    const values = quantities.get(day.date);
+    if (!values) throw new Error('Missing constrained date quantities');
+    day.knownDurationSeconds = sumTargetQuantities(values.exact);
+    day.durationRangeSeconds = values.min.length
+      ? { min: sumTargetQuantities(values.min), max: sumTargetQuantities(values.max) }
+      : null;
     day.unavailablePeriodIds.sort();
     day.timeLimitSources.sort((a, b) => a.periodId.localeCompare(b.periodId));
     day.sessionIds.sort();
     day.unknownDurationSessionIds.sort();
+    day.rangeDurationSessionIds.sort();
     day.unavailableConflict = day.unavailablePeriodIds.length > 0 && day.sessionIds.length > 0;
     day.exceedsAvailableTime =
-      day.availableSeconds !== null && day.knownDurationSeconds > day.availableSeconds;
+      day.availableSeconds !== null && (day.durationRangeSeconds?.min ?? 0) > day.availableSeconds;
+    day.possibleTimeExcess =
+      day.availableSeconds !== null &&
+      !day.exceedsAvailableTime &&
+      (day.durationRangeSeconds?.max ?? 0) > day.availableSeconds;
     day.status =
       day.unavailableConflict || day.exceedsAvailableTime
         ? 'conflict'
-        : day.availableSeconds !== null && day.unknownDurationSessionIds.length > 0
+        : day.availableSeconds !== null &&
+            (day.unknownDurationSessionIds.length > 0 || day.possibleTimeExcess)
           ? 'unknown'
           : 'no_conflict';
   }

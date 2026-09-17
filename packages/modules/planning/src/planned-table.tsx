@@ -3,7 +3,13 @@ import { useStore } from 'zustand';
 import { usePlannedTableViewport } from './planned-table-viewport';
 import { visibleRangeIds, type PlannedTableInteractionStore } from './planned-table-interaction';
 import type { DayProjection } from '@workout/contracts/core';
-import type { PlanDraft, PlannedSession } from '@workout/contracts/planning';
+import {
+  sessionDurationBounds,
+  sessionDistanceBounds,
+  type PlanDraft,
+  type PlannedSession,
+} from '@workout/contracts/planning';
+import { sessionDurationLabel, sessionDistanceLabel } from './session-quantity-labels';
 import { Button } from '@workout/ui-foundation/button';
 import {
   plannedTableColumns,
@@ -50,13 +56,20 @@ export function sortedPlannedSessions(
   const visible = new Set(days.flatMap((day) => day.plannedSessionIds));
   const value = (session: PlannedSession): string | number | null => {
     if (sort.startsWith('title_')) return session.title;
-    if (sort.startsWith('distance_')) return session.distanceMeters;
-    if (sort.startsWith('duration_')) return session.durationSeconds;
     return session.date;
   };
   return source.sessions
     .filter((session) => visible.has(session.id))
     .sort((a, b) => {
+      if (sort.startsWith('distance_') || sort.startsWith('duration_')) {
+        const bounds = sort.startsWith('distance_') ? sessionDistanceBounds : sessionDurationBounds;
+        const av = bounds(a),
+          bv = bounds(b);
+        if (av === null && bv !== null) return 1;
+        if (bv === null && av !== null) return -1;
+        const compared = av && bv ? av.min - bv.min || av.max - bv.max : 0;
+        return (sort.endsWith('_desc') ? -compared : compared) || lexical(a.id, b.id);
+      }
       const av = value(a),
         bv = value(b);
       if (av === null && bv !== null) return 1;
@@ -203,9 +216,13 @@ export function PlannedTable({
       case 'purpose':
         return session.purpose || '목적 미입력';
       case 'distance':
-        return session.distanceMeters === null ? '거리 미정' : `${session.distanceMeters}m`;
+        return session.distanceMeters === null && !session.distanceRange
+          ? '거리 미정'
+          : sessionDistanceLabel(session);
       case 'duration':
-        return session.durationSeconds === null ? '시간 미정' : `${session.durationSeconds}초`;
+        return session.durationSeconds === null && !session.durationRange
+          ? '시간 미정'
+          : sessionDurationLabel(session);
       case 'rpe':
         return session.targetRpe === null ? '미정' : `${session.targetRpe}`;
       case 'intensity':

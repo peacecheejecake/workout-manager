@@ -104,6 +104,31 @@ function Metric({
     </p>
   );
 }
+function PlannedMetric({
+  label,
+  metric,
+  target,
+  unit,
+}: {
+  label: string;
+  metric: PeriodSummary['planned']['distanceMeters'];
+  target: NonNullable<PeriodSummary['planned']['targets']>['distanceMeters'] | undefined;
+  unit: string;
+}) {
+  if (target === undefined) return <Metric label={label} metric={metric} unit={unit} />;
+  const value =
+    target.min === null || target.max === null
+      ? '미정'
+      : target.min === target.max
+        ? `${target.min} ${unit}`
+        : `${target.min}–${target.max} ${unit}`;
+  return (
+    <p>
+      {label}: {value} · 알려진 {target.knownCount}개 · 미정 {target.missingCount}개 · 범위 목표{' '}
+      {target.rangeCount}개{target.knownCount > 0 && target.missingCount > 0 ? ' · 부분 합계' : ''}
+    </p>
+  );
+}
 const durationLabels = {
   timer: '타이머 시간 (timer)',
   elapsed: '경과 시간 (elapsed)',
@@ -134,8 +159,18 @@ function Summary({
         <section aria-label="기간 계획 합계">
           <h3>계획</h3>
           <p>계획 세션 {data.planned.count}개</p>
-          <Metric label="거리" metric={data.planned.distanceMeters} unit="m" />
-          <Metric label="계획 시간" metric={data.planned.durationSeconds} unit="초" />
+          <PlannedMetric
+            label="거리"
+            metric={data.planned.distanceMeters}
+            target={data.planned.targets?.distanceMeters}
+            unit="m"
+          />
+          <PlannedMetric
+            label="계획 시간"
+            metric={data.planned.durationSeconds}
+            target={data.planned.targets?.durationSeconds}
+            unit="초"
+          />
           <p>{periodSummaryDefinition.planned}</p>
         </section>
         <section aria-label="기간 실제 합계">

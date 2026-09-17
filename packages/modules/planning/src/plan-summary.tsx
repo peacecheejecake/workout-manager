@@ -1,3 +1,8 @@
+import {
+  sessionDurationLabel,
+  sessionDistanceLabel,
+  rangePresenceLabel,
+} from './session-quantity-labels';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { PeriodConstraintsSummary } from './period-constraints-summary';
 import { periodPriorityLabel } from './period-priority';
@@ -34,8 +39,7 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
             {draft.periods.find((period) => period.id === session.blockId)?.title ?? '미배정'}
             <p>
               목적: {session.purpose || '미정'} · 중요도: {session.priority} · 시간:{' '}
-              {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`} · 거리:{' '}
-              {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · RPE:{' '}
+              {sessionDurationLabel(session)} · 거리: {sessionDistanceLabel(session)} · RPE:{' '}
               {session.targetRpe ?? '미정'} · 강도 라벨: {session.intensityLabel ?? '미지정'}
             </p>
             <p>
@@ -48,6 +52,10 @@ export function PlanSummary({ draft }: { draft: PlanDraft | null }) {
               {session.locks.intensity ? '켜짐' : '꺼짐'}
             </p>
             <p>참석 잠금: {attendanceLockLabel(session.locks.attendance)}</p>
+            <p>
+              시간 범위: {rangePresenceLabel(session.durationRange)} · 거리 범위:{' '}
+              {rangePresenceLabel(session.distanceRange)}
+            </p>
             <p>메모: {session.notes || '없음'}</p>
             <ol>
               {session.steps.map((step) => (

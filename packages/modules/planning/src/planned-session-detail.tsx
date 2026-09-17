@@ -1,3 +1,8 @@
+import {
+  sessionDurationLabel,
+  sessionDistanceLabel,
+  rangePresenceLabel,
+} from './session-quantity-labels';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { heartRateTargetLabel, paceTargetLabel } from './session-target-labels';
 import { attendanceLockLabel } from './attendance-lock-label';
@@ -32,8 +37,7 @@ export function PlannedSessionDetail({
             목적 {session.purpose || '미입력'}
           </p>
           <p>
-            거리 {session.distanceMeters === null ? '미정' : `${session.distanceMeters}m`} · 시간{' '}
-            {session.durationSeconds === null ? '미정' : `${session.durationSeconds}초`}
+            거리 {sessionDistanceLabel(session)} · 시간 {sessionDurationLabel(session)}
           </p>
           <p>
             강도 라벨: {session.intensityLabel ?? '미지정'} · 목표 RPE:{' '}
@@ -44,6 +48,10 @@ export function PlannedSessionDetail({
             {heartRateTargetLabel(session.heartRateTarget)}
           </p>
           <p>참석 잠금: {attendanceLockLabel(session.locks.attendance)}</p>
+          <p>
+            시간 범위: {rangePresenceLabel(session.durationRange)} · 거리 범위:{' '}
+            {rangePresenceLabel(session.distanceRange)}
+          </p>
           {!draft ? (
             <p>수정하려면 계획 초안 편집을 시작하세요. 선택만으로 계획을 변경하지 않습니다.</p>
           ) : null}

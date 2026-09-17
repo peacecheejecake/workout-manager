@@ -16,7 +16,13 @@ export function SessionOperations(props: SessionOperationsProps) {
   const root = useRef<HTMLDivElement>(null);
   const focusedControl = useRef<string | null>(null);
   const key = session
-    ? JSON.stringify([session.id, session.date, session.blockId, session.durationSeconds])
+    ? JSON.stringify([
+        session.id,
+        session.date,
+        session.blockId,
+        session.durationSeconds,
+        session.durationRange,
+      ])
     : null;
   useLayoutEffect(() => {
     if (document.activeElement !== document.body || !focusedControl.current) return;
@@ -77,7 +83,9 @@ function Controls({
   const past = session.date < today;
   const completed = completedSessionIds.includes(session.id);
   const moveLocked = completed || past || session.locks.date || prior?.locks.date === true;
-  const resizeLocked = past || session.locks.intensity || prior?.locks.intensity === true;
+  const rangeDuration = session.durationRange != null;
+  const resizeLocked =
+    rangeDuration || past || session.locks.intensity || prior?.locks.intensity === true;
   useEffect(() => {
     const cancel = () => {
       if (!gesture.current) return;
@@ -214,7 +222,7 @@ function Controls({
           data-operation-control="apply-duration"
           disabled={resizeLocked}
           onClick={() => {
-            if (composing.current) return;
+            if (composing.current || resizeLocked) return;
             if (
               duration.trim() === '' ||
               !Number.isFinite(Number(duration)) ||
@@ -297,14 +305,24 @@ function Controls({
           }}
         />
       </label>
-      <p>임시 길이: {slider}초. 놓거나 방향키를 뗄 때 적용하며 Escape로 취소합니다.</p>
-      {session.durationSeconds === null ? (
+      {!rangeDuration ? (
+        <p>임시 길이: {slider}초. 놓거나 방향키를 뗄 때 적용하며 Escape로 취소합니다.</p>
+      ) : null}
+      {rangeDuration ? (
+        <p>
+          범위 시간은 길이 도구로 변경할 수 없습니다. 세션 편집에서 단일값으로 전환하고 숫자를
+          입력하세요.
+        </p>
+      ) : null}
+      {session.durationSeconds === null && !rangeDuration ? (
         <p>
           계획 시간이 미정이므로 길이 손잡이는 사용할 수 없습니다. 초 단위 숫자를 입력해 먼저
           적용하세요.
         </p>
       ) : null}
-      {resizeLocked && !past ? <p>강도 잠금을 먼저 해제하고 저장한 뒤 길이를 조절하세요.</p> : null}
+      {resizeLocked && !past && !rangeDuration ? (
+        <p>강도 잠금을 먼저 해제하고 저장한 뒤 길이를 조절하세요.</p>
+      ) : null}
     </section>
   );
 }

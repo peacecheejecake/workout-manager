@@ -362,3 +362,72 @@ it('rejects a supported UTC year whose linked timezone projection crosses into B
       ?.planContext,
   ).toEqual({ status: 'unavailable', reason: 'unsupported_calendar' });
 });
+
+it('compares immutable planned distance ranges to actuals without manufacturing a scalar delta or duration comparability', async () => {
+  const athlete = randomUUID();
+  const plans = createPlanningRepository(database);
+  const input = draft();
+  input.sessions = input.sessions.map((session) => ({
+    ...session,
+    distanceMeters: null,
+    durationSeconds: null,
+    distanceRange: { minMeters: 0, maxMeters: 100 },
+    durationRange: { minSeconds: 20, maxSeconds: 40 },
+  }));
+  const saved = await plans.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    draft: input,
+  });
+  await plans.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: saved.id,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...input,
+      sessions: input.sessions.map((session) => ({
+        ...session,
+        distanceRange: { minMeters: 200, maxMeters: 300 },
+      })),
+    },
+  });
+  for (const [distance, position] of [
+    [null, 'unknown'],
+    [0, 'within'],
+    [100, 'within'],
+    [101, 'above'],
+  ] as const) {
+    const created = await actual(athlete, saved.id, '2024-03-10T05:00:00Z', distance);
+    const context = await createActivityContextRepository(database).read(
+      athlete,
+      created.activityId,
+    );
+    expect(context?.planContext).toMatchObject({
+      status: 'linked',
+      planVersion: { id: saved.id },
+      distanceComparison: {
+        actual: distance,
+        planned: null,
+        plannedRange: { minMeters: 0, maxMeters: 100 },
+        delta: null,
+        status: distance === null ? 'range_missing_actual' : 'range_available',
+        rangePosition: position,
+      },
+      durationComparison: {
+        planned: null,
+        plannedRange: { minSeconds: 20, maxSeconds: 40 },
+        delta: null,
+        status: 'not_comparable',
+      },
+    });
+  }
+  const newer = await plans.read(athlete);
+  if (!newer.head) throw new Error('Missing head');
+  const below = await actual(athlete, newer.head.id);
+  expect(
+    (await createActivityContextRepository(database).read(athlete, below.activityId))?.planContext,
+  ).toMatchObject({ distanceComparison: { rangePosition: 'below', delta: null } });
+});

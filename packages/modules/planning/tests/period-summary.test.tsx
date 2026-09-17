@@ -218,3 +218,27 @@ describe('saved period summary', () => {
     expect(screen.queryByText('실제 활동 0개')).not.toBeInTheDocument();
   });
 });
+
+it('shows range aggregate bounds and partial counts without replacing unknown actual time', async () => {
+  const ranged: PeriodSummary = {
+    ...data,
+    planned: {
+      count: 2,
+      distanceMeters: { value: null, knownCount: 0, missingCount: 2 },
+      durationSeconds: { value: null, knownCount: 0, missingCount: 2 },
+      targets: {
+        definitionVersion: 'planned-targets-v1',
+        distanceMeters: { min: 0, max: 1000, knownCount: 1, missingCount: 1, rangeCount: 1 },
+        durationSeconds: { min: 60, max: 120, knownCount: 1, missingCount: 1, rangeCount: 1 },
+      },
+    },
+  };
+  setup({ request: async () => reply(ranged) });
+  expect(
+    await screen.findByText('거리: 0–1000 m · 알려진 1개 · 미정 1개 · 범위 목표 1개 · 부분 합계'),
+  ).toBeVisible();
+  expect(
+    screen.getByText('계획 시간: 60–120 초 · 알려진 1개 · 미정 1개 · 범위 목표 1개 · 부분 합계'),
+  ).toBeVisible();
+  expect(screen.getByText('타이머 시간 (timer): 미정 · 알려진 0개 · 미정 1개')).toBeVisible();
+});

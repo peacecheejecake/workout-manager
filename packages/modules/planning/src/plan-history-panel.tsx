@@ -1,3 +1,8 @@
+import {
+  sessionDurationLabel,
+  sessionDistanceLabel,
+  rangePresenceLabel,
+} from './session-quantity-labels';
 import { useLayoutEffect, useRef } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import {
@@ -316,9 +321,8 @@ function SessionValues({ session, label }: { session: PlannedSession | null; lab
             {session.notes || '없음'}
           </p>
           <p>
-            거리 {metric(session.distanceMeters, 'm')} · 시간{' '}
-            {metric(session.durationSeconds, '초')} · 목표 RPE {session.targetRpe ?? '미정'} · 강도
-            라벨{' '}
+            거리 {sessionDistanceLabel(session)} · 시간 {sessionDurationLabel(session)} · 목표 RPE{' '}
+            {session.targetRpe ?? '미정'} · 강도 라벨{' '}
             {session.intensityLabel === undefined
               ? '미지정 (이전 형식에 값 없음)'
               : (session.intensityLabel ?? '미지정')}
@@ -328,6 +332,10 @@ function SessionValues({ session, label }: { session: PlannedSession | null; lab
             {session.locks.time ? '켜짐' : '꺼짐'}, 강도 {session.locks.intensity ? '켜짐' : '꺼짐'}
           </p>
           <p>참석 잠금: {attendanceLockLabel(session.locks.attendance)}</p>
+          <p>
+            시간 범위: {rangePresenceLabel(session.durationRange)} · 거리 범위:{' '}
+            {rangePresenceLabel(session.distanceRange)}
+          </p>
           <p>목표 페이스: {paceTargetLabel(session.paceTarget)}</p>
           <p>목표 심박: {heartRateTargetLabel(session.heartRateTarget)}</p>
           <ol>

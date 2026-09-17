@@ -94,12 +94,29 @@ export function PlanConstraintsReport({
                   : '알려진 계획의 충돌 없음'}
             </h5>
             <p>
-              계획 세션 {day.sessionIds.length}개 · 알려진 계획 시간 {day.knownDurationSeconds}초 ·
-              시간 미정 세션 {day.unknownDurationSessionIds.length}개 · 적용 가용량{' '}
-              {day.availableSeconds === null ? '미지정' : `${day.availableSeconds}초`}
+              계획 세션 {day.sessionIds.length}개 ·{' '}
+              {day.rangeDurationSessionIds.length ? '단일값 계획 시간' : '알려진 계획 시간'}{' '}
+              {day.knownDurationSeconds}초 · 시간 미정 세션 {day.unknownDurationSessionIds.length}개
+              · 적용 가용량 {day.availableSeconds === null ? '미지정' : `${day.availableSeconds}초`}
             </p>
+            {day.durationRangeSeconds && day.rangeDurationSessionIds.length > 0 ? (
+              <p>
+                알려진 계획 시간 범위 {day.durationRangeSeconds.min}–{day.durationRangeSeconds.max}
+                초 · 범위 시간 세션 {day.rangeDurationSessionIds.length}개. 단일값 시간과 범위
+                시간을 한 번씩 합산했습니다.
+              </p>
+            ) : null}
+            {day.possibleTimeExcess ? (
+              <p>계획 시간 범위의 상한이 가용량을 초과할 수 있어 충족 여부가 미확인입니다.</p>
+            ) : null}
             {day.unavailableConflict ? <p>운동 불가 날짜에 계획 세션이 있습니다.</p> : null}
-            {day.exceedsAvailableTime ? <p>알려진 계획 시간이 가용량을 초과합니다.</p> : null}
+            {day.exceedsAvailableTime ? (
+              <p>
+                {day.rangeDurationSessionIds.length
+                  ? '알려진 계획 시간 범위의 하한이 가용량을 초과합니다.'
+                  : '알려진 계획 시간이 가용량을 초과합니다.'}
+              </p>
+            ) : null}
             <p>
               운동 불가 출처:{' '}
               {day.unavailablePeriodIds.length

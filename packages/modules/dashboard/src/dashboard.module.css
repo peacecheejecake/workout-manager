@@ -106,3 +106,8 @@
   font-weight: 600;
   margin-block-end: var(--space-3);
 }
+
+.plannedRange {
+  stroke: var(--ink);
+  stroke-width: 3;
+}

@@ -1,0 +1,9 @@
+.fields {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.quantity {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}

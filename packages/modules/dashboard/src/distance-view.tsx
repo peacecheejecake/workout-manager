@@ -3,7 +3,14 @@ import { Button } from '@workout/ui-foundation/button';
 import type { DashboardDay } from '@workout/contracts/dashboard';
 import type { DashboardLinks } from './dashboard-workspace';
 import styles from './dashboard.module.css';
-import { metricText } from './format';
+import { metricText, plannedMetricText } from './format';
+
+function plannedBounds(day: DashboardDay) {
+  const target = day.planned.targets?.distanceMeters;
+  return target === undefined
+    ? { min: day.planned.distanceMeters.value, max: day.planned.distanceMeters.value }
+    : { min: target.min, max: target.max };
+}
 
 export function DistanceView({ days, links }: { days: DashboardDay[]; links: DashboardLinks }) {
   const titleId = useId();
@@ -14,18 +21,16 @@ export function DistanceView({ days, links }: { days: DashboardDay[]; links: Das
   const descriptionId = useId();
   const max = Math.max(
     1,
-    ...days.flatMap((day) => [
-      day.planned.distanceMeters.value ?? 0,
-      day.actual.distanceMeters.value ?? 0,
-    ]),
+    ...days.flatMap((day) => [plannedBounds(day).max ?? 0, day.actual.distanceMeters.value ?? 0]),
   );
   const width = Math.max(360, days.length * 44 + 40);
   return (
     <section aria-label="날짜별 기록">
       <h2>날짜별 계획·실제 거리</h2>
       <p>
-        계획은 진한색 사각형, 실제는 청록색 원으로 표시합니다. 미보고는 점을 그리지 않으며 알려진
-        0m는 기준선에 표시합니다.
+        계획 단일값은 진한색 사각형, 범위는 하한·상한을 잇는 선과 경계점, 실제는 청록색 원으로
+        표시합니다. 중간값은 추정하지 않습니다. 미보고는 점을 그리지 않으며 알려진 0m는 기준선에
+        표시합니다.
       </p>
       <div className={styles.actions}>
         <Button
@@ -72,23 +77,57 @@ export function DistanceView({ days, links }: { days: DashboardDay[]; links: Das
           </text>
           {days.map((day, index) => {
             const x = 45 + index * ((width - 60) / days.length);
+            const bounds = plannedBounds(day);
             return (
               <g key={day.date}>
                 <title>
-                  {day.date}: 계획 {metricText(day.planned.distanceMeters, 'm')}, 실제{' '}
-                  {metricText(day.actual.distanceMeters, 'm')}
+                  {day.date}: 계획{' '}
+                  {plannedMetricText(
+                    day.planned.distanceMeters,
+                    day.planned.targets?.distanceMeters,
+                    'm',
+                  )}
+                  , 실제 {metricText(day.actual.distanceMeters, 'm')}
                 </title>
-                {day.planned.distanceMeters.value !== null ? (
-                  <rect
-                    className={styles.planned}
-                    x={x - 7}
-                    y={181 - (day.planned.distanceMeters.value / max) * 155}
-                    width={8}
-                    height={8}
-                    data-date={day.date}
-                    data-series="planned"
-                    data-value={day.planned.distanceMeters.value}
-                  />
+                {bounds.min !== null && bounds.max !== null ? (
+                  bounds.min === bounds.max ? (
+                    <rect
+                      className={styles.planned}
+                      x={x - 7}
+                      y={181 - (bounds.min / max) * 155}
+                      width={8}
+                      height={8}
+                      data-date={day.date}
+                      data-series="planned"
+                      data-value={bounds.min}
+                    />
+                  ) : (
+                    <g
+                      data-date={day.date}
+                      data-series="planned-range"
+                      data-min={bounds.min}
+                      data-max={bounds.max}
+                    >
+                      <line
+                        className={styles.plannedRange}
+                        x1={x - 3}
+                        x2={x - 3}
+                        y1={185 - (bounds.min / max) * 155}
+                        y2={185 - (bounds.max / max) * 155}
+                      />
+                      {[bounds.min, bounds.max].map((value) => (
+                        <rect
+                          key={value}
+                          className={styles.planned}
+                          x={x - 7}
+                          y={181 - (value / max) * 155}
+                          width={8}
+                          height={8}
+                          data-value={value}
+                        />
+                      ))}
+                    </g>
+                  )
                 ) : null}
                 {day.actual.distanceMeters.value !== null ? (
                   <circle
@@ -149,7 +188,13 @@ export function DistanceView({ days, links }: { days: DashboardDay[]; links: Das
                 <th scope="row">
                   <a href={links.planDay(day.date)}>{day.date} 계획</a>
                 </th>
-                <td>{metricText(day.planned.distanceMeters, 'm')}</td>
+                <td>
+                  {plannedMetricText(
+                    day.planned.distanceMeters,
+                    day.planned.targets?.distanceMeters,
+                    'm',
+                  )}
+                </td>
                 <td>{metricText(day.actual.distanceMeters, 'm')}</td>
                 <td>
                   {day.planned.count} / {day.actual.count}

@@ -71,11 +71,35 @@ export const dashboardActualSchema = z
       actual.overlayCount <= actual.count,
     'Activity aggregate counts must agree',
   );
+export const plannedTargetMetricSchema = z
+  .strictObject({
+    min: z.number().finite().nonnegative().nullable(),
+    max: z.number().finite().nonnegative().nullable(),
+    knownCount: count,
+    missingCount: count,
+    rangeCount: count,
+  })
+  .refine(
+    (value) =>
+      value.rangeCount <= value.knownCount &&
+      (value.knownCount === 0
+        ? value.min === null && value.max === null
+        : value.min !== null && value.max !== null && value.min <= value.max),
+    'Known targets require ordered bounds; absence is not zero',
+  );
+export const plannedTargetsSchema = z.strictObject({
+  definitionVersion: z.literal('planned-targets-v1'),
+  distanceMeters: plannedTargetMetricSchema,
+  durationSeconds: plannedTargetMetricSchema,
+});
+export type PlannedTargetMetric = z.infer<typeof plannedTargetMetricSchema>;
 export const dashboardPlannedSchema = z
   .strictObject({
     count,
     distanceMeters: dashboardMetricSchema,
     durationSeconds: dashboardMetricSchema,
+    // Additive definition: original metrics remain exact-value-only partial sums.
+    targets: plannedTargetsSchema.optional(),
   })
   .refine(
     (planned) =>
@@ -83,6 +107,23 @@ export const dashboardPlannedSchema = z
         (metric) => metric.knownCount + metric.missingCount === planned.count,
       ),
     'Planned aggregate counts must agree',
+  )
+  .refine(
+    (planned) =>
+      !planned.targets ||
+      (['distanceMeters', 'durationSeconds'] as const).every((key) => {
+        const bounds = planned.targets?.[key];
+        const exact = planned[key];
+        return (
+          bounds &&
+          bounds.knownCount + bounds.missingCount === planned.count &&
+          bounds.knownCount === exact.knownCount + bounds.rangeCount &&
+          exact.missingCount === bounds.missingCount + bounds.rangeCount &&
+          (bounds.rangeCount !== 0 || (bounds.min === exact.value && bounds.max === exact.value)) &&
+          (exact.value === null || (bounds.min !== null && bounds.min >= exact.value))
+        );
+      }),
+    'Target bounds and exact-only counts must agree',
   );
 export const dashboardDaySchema = z.strictObject({
   date: localDateSchema,

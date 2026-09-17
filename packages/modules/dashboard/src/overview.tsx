@@ -4,9 +4,13 @@ import {
   type DashboardReadModel,
   type DashboardWindow,
 } from '@workout/contracts/dashboard';
-import type { PlannedSession } from '@workout/contracts/planning';
+import {
+  sessionDistanceBounds,
+  sessionDurationBounds,
+  type PlannedSession,
+} from '@workout/contracts/planning';
 import type { DashboardLinks } from './dashboard-workspace';
-import { metricText } from './format';
+import { metricText, plannedMetricText, boundsText } from './format';
 import { DashboardLayoutEditor } from './dashboard-layout-editor';
 import { useDashboardLayout } from './dashboard-layout-lifetime';
 const DistanceView = lazy(() =>
@@ -39,8 +43,22 @@ function WindowMetrics({ label, value }: { label: string; value: DashboardWindow
         기록 {value.actual.sources.manual}개 · 사용자 정정 {value.actual.overlayCount}개
       </p>
       <h4>계획 · {value.planned.count}개</h4>
-      <p>거리: {metricText(value.planned.distanceMeters, 'm')}</p>
-      <p>시간: {metricText(value.planned.durationSeconds, '초')}</p>
+      <p>
+        거리:{' '}
+        {plannedMetricText(
+          value.planned.distanceMeters,
+          value.planned.targets?.distanceMeters,
+          'm',
+        )}
+      </p>
+      <p>
+        시간:{' '}
+        {plannedMetricText(
+          value.planned.durationSeconds,
+          value.planned.targets?.durationSeconds,
+          '초',
+        )}
+      </p>
       <p>
         체크인 {value.checkInCount}개 · 보고가 있는 날짜 {value.checkInDays}일
       </p>
@@ -70,8 +88,8 @@ function Sessions({
               </a>
               <p>
                 {session.localStartTime ?? '시간 미정'} · {session.sport} · 계획 거리{' '}
-                {session.distanceMeters === null ? '미보고' : `${session.distanceMeters}m`} · 계획
-                시간 {session.durationSeconds === null ? '미보고' : `${session.durationSeconds}초`}
+                {boundsText(sessionDistanceBounds(session), 'm')} · 계획 시간{' '}
+                {boundsText(sessionDurationBounds(session), '초')}
               </p>
             </li>
           ))}

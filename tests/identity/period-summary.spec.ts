@@ -141,6 +141,13 @@ async function setupSummary(page: Page, seedActuals: boolean) {
   });
   expect(savedResponse.status()).toBe(200);
   const saved = planSnapshotSchema.parse(await savedResponse.json());
+  // Account revision includes tombstoned activities from earlier isolated-fixture journeys.
+  // Read the same revision manifest before seeding; visible activity counts omit those rows.
+  const baselineResponse = await page.request.get(summaryPath(saved.id), { headers });
+  expect(baselineResponse.status()).toBe(200);
+  const baselineRevision = periodSummarySchema.parse(await baselineResponse.json()).dataRevision
+    .activities;
+
   const create = async (
     name: string,
     startedAt: string,
@@ -213,7 +220,16 @@ async function setupSummary(page: Page, seedActuals: boolean) {
       browserWrites.push(request.method());
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  return { headers, saved, draft, readPlan, readSummary, movingId, browserWrites };
+  return {
+    headers,
+    saved,
+    draft,
+    readPlan,
+    readSummary,
+    movingId,
+    browserWrites,
+    baselineRevision,
+  };
 }
 
 const summaryPanel = (page: Page) =>
@@ -229,6 +245,11 @@ test('saved period summary covers every activity across DST boundaries and keeps
     count: 3,
     distanceMeters: { value: 100, knownCount: 2, missingCount: 1 },
     durationSeconds: { value: 0, knownCount: 1, missingCount: 2 },
+    targets: {
+      definitionVersion: 'planned-targets-v1',
+      distanceMeters: { min: 100, max: 100, knownCount: 2, missingCount: 1, rangeCount: 0 },
+      durationSeconds: { min: 0, max: 0, knownCount: 1, missingCount: 2, rangeCount: 0 },
+    },
   });
   expect(before.keySessions.map((session) => session.id)).toEqual(['key-one', 'key-two']);
   expect(before.actual).toEqual({
@@ -248,7 +269,10 @@ test('saved period summary covers every activity across DST boundaries and keeps
   });
   expect(before.unplacedActivityCount).toBe(1);
   expect(before.coverage).toBe('unknown');
-  expect(before.dataRevision.activities.count).toBe(27);
+  expect(before.dataRevision.activities.count).toBe(f.baselineRevision.count + 27);
+  expect(BigInt(before.dataRevision.activities.revisionSum)).toBe(
+    BigInt(f.baselineRevision.revisionSum) + 27n,
+  );
   expect(before.currentPlanVersionId).toBe(f.saved.id);
   await page.goto(plannerUrl);
   const panel = summaryPanel(page);
@@ -307,8 +331,9 @@ test('saved period summary covers every activity across DST boundaries and keeps
     status: 'available',
     totals: { count: 24, overlayCount: 1, distanceMeters: { value: 260 } },
   });
-  expect(updated.dataRevision.activities.revisionSum).not.toBe(
-    before.dataRevision.activities.revisionSum,
+  expect(updated.dataRevision.activities.count).toBe(before.dataRevision.activities.count);
+  expect(BigInt(updated.dataRevision.activities.revisionSum)).toBe(
+    BigInt(before.dataRevision.activities.revisionSum) + 1n,
   );
   expect((await f.readSummary(f.saved.id, 'block-a')).actual).toMatchObject({
     status: 'available',

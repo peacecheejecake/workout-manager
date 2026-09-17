@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { duplicatePlannedSession } from './duplicate-session';
+import { SessionQuantityFields } from './session-quantity-fields';
 
 import {
   plannedSessionSchema,
@@ -418,25 +419,10 @@ export function SessionEditor({
                   ))}
                 </select>
               </label>
-              <TextField
-                label="시간 (초, 미정 가능)"
-                type="number"
-                min="0"
-                value={session.durationSeconds ?? ''}
-                disabled={locked?.intensity}
-                onChange={(event) =>
-                  update(session.id, { durationSeconds: numberOrNull(event.target.value) })
-                }
-              />
-              <TextField
-                label="거리 (m, 미정 가능)"
-                disabled={locked?.intensity}
-                type="number"
-                min="0"
-                value={session.distanceMeters ?? ''}
-                onChange={(event) =>
-                  update(session.id, { distanceMeters: numberOrNull(event.target.value) })
-                }
+              <SessionQuantityFields
+                session={session}
+                disabled={locked?.intensity ?? false}
+                onChange={(patch) => update(session.id, patch)}
               />
               <label>
                 강도 라벨

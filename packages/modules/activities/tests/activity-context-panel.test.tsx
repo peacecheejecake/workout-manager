@@ -196,3 +196,52 @@ it('links the exact immutable Block even when its version is historical', () => 
     screen.getByRole('link', { name: '이 Block에 명시적으로 연결된 활동 보기' }),
   ).toHaveAttribute('href', `/activities?linkedPlanVersionId=${version}&linkedBlockId=block`);
 });
+
+it.each([
+  [0, 'below', '범위 미만'],
+  [100, 'within', '범위 안'],
+  [301, 'above', '범위 초과'],
+  [null, 'unknown', '실제 거리 미확인'],
+] as const)(
+  'compares actual %s to explicit distance bounds without a fabricated scalar delta',
+  (actual, position, label) => {
+    const base = linked();
+    const context = activityContextSchema.parse({
+      ...base,
+      activity: {
+        ...base.activity,
+        effective: { ...base.activity.effective, distanceMeters: actual },
+      },
+      planContext: {
+        ...base.planContext,
+        session: {
+          ...base.planContext.session,
+          distanceMeters: null,
+          durationSeconds: null,
+          distanceRange: { minMeters: 100, maxMeters: 300 },
+          durationRange: { minSeconds: 60, maxSeconds: 120 },
+        },
+        distanceComparison: {
+          actual,
+          planned: null,
+          delta: null,
+          plannedRange: { minMeters: 100, maxMeters: 300 },
+          rangePosition: position,
+          status: actual === null ? 'range_missing_actual' : 'range_available',
+        },
+        durationComparison: {
+          ...base.planContext.durationComparison,
+          planned: null,
+          plannedRange: { minSeconds: 60, maxSeconds: 120 },
+        },
+      },
+    });
+    render(<ActivityContextPanel context={context} />);
+    const comparison = screen.getByRole('region', { name: '계획과 실제의 단순 비교' });
+    expect(within(comparison).getByText(/거리: 실제/)).toHaveTextContent('계획 100–300m');
+    expect(within(comparison).getByText(/거리 목표 범위:/)).toHaveTextContent(label);
+    expect(within(comparison).queryByText(/거리 차이 \(실제/)).not.toBeInTheDocument();
+    expect(within(comparison).getByText(/시간: 실제/)).toHaveTextContent('계획 60–120초');
+    expect(within(comparison).getByText(/시간 차이를 계산하지 않습니다/)).toBeVisible();
+  },
+);

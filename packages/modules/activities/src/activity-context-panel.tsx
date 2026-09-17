@@ -1,4 +1,5 @@
 import type { ActivityContext } from '@workout/contracts/activity-context';
+import { sessionDistanceBounds, sessionDurationBounds } from '@workout/contracts/planning';
 import type { DashboardMetric } from '@workout/contracts/dashboard';
 const durationLabels = {
   timer: '타이머 시간 (timer)',
@@ -11,6 +12,10 @@ function metric(value: DashboardMetric, unit: string) {
 }
 function measurement(value: number | null, unit: string) {
   return value === null ? '미확인' : `${value}${unit}`;
+}
+function plannedMeasurement(bounds: { min: number; max: number } | null, unit: string) {
+  if (bounds === null) return '미확인';
+  return bounds.min === bounds.max ? `${bounds.min}${unit}` : `${bounds.min}–${bounds.max}${unit}`;
 }
 export function ActivityContextPanel({
   context,
@@ -91,17 +96,19 @@ export function ActivityContextPanel({
             <h4>계획과 실제의 단순 비교</h4>
             <p>
               거리: 실제 {measurement(plan.distanceComparison.actual, 'm')} · 계획{' '}
-              {measurement(plan.distanceComparison.planned, 'm')}
+              {plannedMeasurement(sessionDistanceBounds(plan.session), 'm')}
             </p>
             <p>
-              {plan.distanceComparison.delta === null
-                ? '거리 차이를 계산할 수 없습니다. 실제 또는 계획 거리가 미확인입니다.'
-                : `거리 차이 (실제 − 계획): ${plan.distanceComparison.delta}m`}
+              {plan.distanceComparison.plannedRange
+                ? `거리 목표 범위: ${{ below: '범위 미만', within: '범위 안', above: '범위 초과', unknown: '실제 거리 미확인' }[plan.distanceComparison.rangePosition ?? 'unknown']} · 단일 거리 차이는 계산하지 않습니다.`
+                : plan.distanceComparison.delta === null
+                  ? '거리 차이를 계산할 수 없습니다. 실제 또는 계획 거리가 미확인입니다.'
+                  : `거리 차이 (실제 − 계획): ${plan.distanceComparison.delta}m`}
             </p>
             <p>
               시간: 실제 {measurement(plan.durationComparison.actual, '초')} ·{' '}
               {durationLabels[plan.durationComparison.actualKind]} · 계획{' '}
-              {measurement(plan.durationComparison.planned, '초')}
+              {plannedMeasurement(sessionDurationBounds(plan.session), '초')}
             </p>
             <p>
               계획 시간의 측정 정의가 없어 시간을 비교할 수 없습니다. 시간 차이를 계산하지 않습니다.

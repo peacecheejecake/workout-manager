@@ -12,6 +12,18 @@ import {
 const boundedId = idSchema.max(200);
 const duration = z.number().finite().min(0).max(604800).nullable();
 const distance = z.number().finite().min(0).max(10_000_000).nullable();
+export const durationRangeSchema = z
+  .strictObject({ minSeconds: duration.unwrap(), maxSeconds: duration.unwrap() })
+  .refine((value) => value.minSeconds <= value.maxSeconds, {
+    message: 'Minimum duration must not exceed maximum',
+    path: ['maxSeconds'],
+  });
+export const distanceRangeSchema = z
+  .strictObject({ minMeters: distance.unwrap(), maxMeters: distance.unwrap() })
+  .refine((value) => value.minMeters <= value.maxMeters, {
+    message: 'Minimum distance must not exceed maximum',
+    path: ['maxMeters'],
+  });
 // Technical input bounds, not physiological recommendations or observed measurements.
 const targetPace = z.number().finite().positive().max(86400);
 const targetHeartRate = z.number().int().min(1).max(1000);
@@ -51,6 +63,9 @@ export const plannedSessionSchema = z
     sport: z.enum(['running', 'cycling', 'swimming', 'strength', 'other']),
     durationSeconds: duration,
     distanceMeters: distance,
+    // Explicit ranges and exact quantities are mutually exclusive. Never infer a midpoint.
+    durationRange: durationRangeSchema.nullable().optional(),
+    distanceRange: distanceRangeSchema.nullable().optional(),
     targetRpe: z.number().finite().min(0).max(10).nullable(),
     // Missing stays missing when reading legacy snapshots and idempotency receipts.
     intensityLabel: z.enum(['A', 'B', 'C']).nullable().optional(),
@@ -79,6 +94,18 @@ export const plannedSessionSchema = z
       .max(100),
   })
   .superRefine((session, context) => {
+    if (session.durationRange && session.durationSeconds !== null)
+      context.addIssue({
+        code: 'custom',
+        message: 'Duration range requires a null exact duration',
+        path: ['durationSeconds'],
+      });
+    if (session.distanceRange && session.distanceMeters !== null)
+      context.addIssue({
+        code: 'custom',
+        message: 'Distance range requires a null exact distance',
+        path: ['distanceMeters'],
+      });
     if (new Set(session.steps.map((step) => step.id)).size !== session.steps.length)
       context.addIssue({ code: 'custom', message: 'Duplicate step IDs', path: ['steps'] });
   });
@@ -263,8 +290,53 @@ export function preservesSessionLocks(previous: PlanDraft, next: PlanDraft): boo
         value.heartRateTarget ? [value.heartRateTarget.minBpm, value.heartRateTarget.maxBpm] : null,
         value.durationSeconds,
         value.distanceMeters,
+        value.durationRange
+          ? [value.durationRange.minSeconds, value.durationRange.maxSeconds]
+          : null,
+        value.distanceRange ? [value.distanceRange.minMeters, value.distanceRange.maxMeters] : null,
         value.steps,
       ]);
     return !locks.intensity || intensity(session) === intensity(replacement);
   });
+}
+
+/** Known target bounds only; these are neither measurements nor an inferred exact target. */
+export function sessionDurationBounds(
+  session: PlannedSession,
+): { min: number; max: number } | null {
+  if (session.durationRange)
+    return { min: session.durationRange.minSeconds, max: session.durationRange.maxSeconds };
+  return session.durationSeconds === null
+    ? null
+    : { min: session.durationSeconds, max: session.durationSeconds };
+}
+export function sessionDistanceBounds(
+  session: PlannedSession,
+): { min: number; max: number } | null {
+  if (session.distanceRange)
+    return { min: session.distanceRange.minMeters, max: session.distanceRange.maxMeters };
+  return session.distanceMeters === null
+    ? null
+    : { min: session.distanceMeters, max: session.distanceMeters };
+}
+
+/** Sum canonical decimal quantities as stored in JSON/PostgreSQL numeric, rounding only the result. */
+export function sumTargetQuantities(values: readonly number[]): number {
+  let total = 0n;
+  let scale = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value) || value < 0)
+      throw new RangeError('Target quantities must be finite and nonnegative');
+    const [coefficient = '0', exponent = '0'] = value.toString().split('e');
+    const [whole = '0', fraction = ''] = coefficient.split('.');
+    const inputScale = fraction.length - Number(exponent);
+    const nextScale = Math.max(scale, inputScale);
+    total =
+      total * 10n ** BigInt(nextScale - scale) +
+      BigInt(whole + fraction) * 10n ** BigInt(nextScale - inputScale);
+    scale = nextScale;
+  }
+  const result = Number(`${total}e-${scale}`);
+  if (!Number.isFinite(result)) throw new RangeError('Target sum exceeds the numeric bound');
+  return result;
 }

@@ -111,7 +111,10 @@ test('empty dashboard keeps missing data explicit and URL periods follow presets
   ).toBeVisible();
   await expect(
     current.getByText('거리: 미보고 · 알려진 0개 · 미보고 0개', { exact: true }),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
+  await expect(
+    current.getByText('거리: 미보고 · 알려진 0개 · 미보고 0개 · 범위 목표 0개', { exact: true }),
+  ).toBeVisible();
   await expect(current.getByText(/^거리: 0m/)).toHaveCount(0);
   await expect(page.getByRole('region', { name: '최신 체크인', exact: true })).toContainText(
     '조회 범위에서 확인된 체크인이 없습니다.',
@@ -162,7 +165,7 @@ test('dashboard graph and table preserve known zero, missing values and check-in
       current.getByText('거리: 0m · 알려진 1개 · 미보고 1개', { exact: true }),
     ).toBeVisible();
     await expect(
-      current.getByText('거리: 미보고 · 알려진 0개 · 미보고 0개', { exact: true }),
+      current.getByText('거리: 미보고 · 알려진 0개 · 미보고 0개 · 범위 목표 0개', { exact: true }),
     ).toBeVisible();
     const table = page.getByRole('table', { name: '날짜별 거리와 보고 현황', exact: true });
     await expect(table.getByRole('row')).toHaveCount(4);
@@ -172,7 +175,9 @@ test('dashboard graph and table preserve known zero, missing values and check-in
     const unknownRow = table
       .getByRole('row')
       .filter({ has: page.getByRole('link', { name: '2023-04-13 계획', exact: true }) });
-    await expect(zeroRow.getByRole('cell').nth(0)).toHaveText('미보고 · 알려진 0개 · 미보고 0개');
+    await expect(zeroRow.getByRole('cell').nth(0)).toHaveText(
+      '미보고 · 알려진 0개 · 미보고 0개 · 범위 목표 0개',
+    );
     await expect(zeroRow.getByRole('cell').nth(1)).toHaveText('0m · 알려진 1개 · 미보고 0개');
     await expect(unknownRow.getByRole('cell').nth(1)).toHaveText(
       '미보고 · 알려진 0개 · 미보고 1개',

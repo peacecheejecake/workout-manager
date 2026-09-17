@@ -20,7 +20,9 @@ function metricSql(column: string, condition = 'true') {
   return `jsonb_build_object('value',sum(${column}) FILTER(WHERE ${condition}),'knownCount',count(${column}) FILTER(WHERE ${condition}),'missingCount',count(*) FILTER(WHERE ${condition} AND ${column} IS NULL))`;
 }
 const actualSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metricSql('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
-const plannedSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',${metricSql('duration')})`;
+const targetSql = (prefix: 'distance' | 'duration') =>
+  `jsonb_build_object('min',sum(${prefix}_min),'max',sum(${prefix}_max),'knownCount',count(${prefix}_min),'missingCount',count(*) FILTER(WHERE ${prefix}_min IS NULL),'rangeCount',count(*) FILTER(WHERE ${prefix}_range))`;
+const plannedSql = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',${metricSql('duration')},'targets',jsonb_build_object('definitionVersion','planned-targets-v1','distanceMeters',${targetSql('distance')},'durationSeconds',${targetSql('duration')}))`;
 const sql = `WITH plan AS MATERIALIZED (
  SELECT s.id,s.version,s.draft FROM plan_head h JOIN plan_snapshot s ON s.athlete_id=h.athlete_id AND s.id=h.version_id WHERE h.athlete_id=$1
 ), settings AS (SELECT coalesce((SELECT draft->>'timezone' FROM plan),$2::text) AS timezone),
@@ -33,7 +35,13 @@ const sql = `WITH plan AS MATERIALIZED (
  s.kind,(o.activity_id IS NOT NULL AND c.revision > 1) AS overlaid FROM canonical c JOIN activity_source_head s ON s.athlete_id=$1 AND s.activity_id=c.id
  LEFT JOIN activity_overlay o ON o.athlete_id=$1 AND o.activity_id=c.id CROSS JOIN settings WHERE NOT c.deleted
 ), actual_daily AS (SELECT date,${actualSql} AS actual FROM effective WHERE date >= $3::date AND date < $4::date GROUP BY date),
- sessions AS MATERIALIZED (SELECT (item->>'date')::date AS date,(item->>'distanceMeters')::numeric AS distance,(item->>'durationSeconds')::numeric AS duration FROM plan CROSS JOIN LATERAL jsonb_array_elements(draft->'sessions') item),
+ sessions AS MATERIALIZED (SELECT (item->>'date')::date AS date,(item->>'distanceMeters')::numeric AS distance,(item->>'durationSeconds')::numeric AS duration,
+ coalesce((item->'distanceRange'->>'minMeters')::numeric,(item->>'distanceMeters')::numeric) AS distance_min,
+ coalesce((item->'distanceRange'->>'maxMeters')::numeric,(item->>'distanceMeters')::numeric) AS distance_max,
+ coalesce((item->'durationRange'->>'minSeconds')::numeric,(item->>'durationSeconds')::numeric) AS duration_min,
+ coalesce((item->'durationRange'->>'maxSeconds')::numeric,(item->>'durationSeconds')::numeric) AS duration_max,
+ jsonb_typeof(item->'distanceRange')='object' AS distance_range,
+ jsonb_typeof(item->'durationRange')='object' AS duration_range FROM plan CROSS JOIN LATERAL jsonb_array_elements(draft->'sessions') item),
  planned_daily AS (SELECT date,${plannedSql} AS planned FROM sessions WHERE date >= $3::date AND date < $4::date GROUP BY date),
  checkins AS MATERIALIZED (SELECT c.*,((c.values_json->>'observedAt')::timestamptz AT TIME ZONE settings.timezone)::date AS date FROM check_in c CROSS JOIN settings WHERE c.athlete_id=$1 AND NOT c.deleted),
  checkin_daily AS (SELECT date,count(*) AS count FROM checkins WHERE date >= $3::date AND date < $4::date GROUP BY date),

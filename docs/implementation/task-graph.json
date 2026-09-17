@@ -496,6 +496,15 @@
       "evidence": "docs/implementation/progress/M1-04ao.md"
     },
     {
+      "id": "M1-04ap",
+      "title": "세션 거리·시간 목표 범위와 집계",
+      "dependsOn": ["M1-04ao", "M1-04ag"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "단일/범위 목표·명시 전환·표 정렬·하한/상한 집계·가용 시간 판정·실제 비교·legacy 보존",
+      "evidence": "docs/implementation/progress/M1-04ap.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -541,7 +550,8 @@
         "M1-04al",
         "M1-04am",
         "M1-04an",
-        "M1-04ao"
+        "M1-04ao",
+        "M1-04ap"
       ],
       "kind": "task",
       "status": "not_started",

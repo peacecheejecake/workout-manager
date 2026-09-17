@@ -18,7 +18,8 @@ export type SessionOperationReason =
   | 'locked'
   | 'completed'
   | 'past_session'
-  | 'past_date';
+  | 'past_date'
+  | 'range_duration';
 type SessionPosition = { date: string; blockId: string; durationSeconds: number | null };
 export type SessionOperationResult =
   | {
@@ -80,6 +81,7 @@ export function applyPlannedSessionOperation({
       return reject('locked');
     replacement = { ...source, date: operation.date, blockId: operation.blockId };
   } else if (operation.kind === 'resize') {
+    if (source.durationRange) return reject('range_duration');
     if (
       typeof operation.durationSeconds !== 'number' ||
       !plannedSessionSchema.shape.durationSeconds.safeParse(operation.durationSeconds).success

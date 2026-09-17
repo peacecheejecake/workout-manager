@@ -851,3 +851,118 @@ describe('attendance deletion lock persistence', () => {
     ).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
   });
 });
+
+describe('session distance and duration range compatibility', () => {
+  it('preserves legacy scalar receipts and exports explicit ranges without a synthetic midpoint', async () => {
+    const athlete = randomUUID(),
+      repo = createPlanningRepository(database),
+      input = intensityCommand();
+    const first = await repo.save(athlete, input);
+    const rangeDraft = {
+      ...first.draft,
+      sessions: first.draft.sessions.map((session) => ({
+        ...session,
+        durationSeconds: null,
+        distanceMeters: null,
+        durationRange: { minSeconds: 0, maxSeconds: 12.5 },
+        distanceRange: { minMeters: 0, maxMeters: 100 },
+      })),
+    };
+    const ranged = await repo.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: rangeDraft,
+    });
+    expect(await repo.save(athlete, input)).toEqual(first);
+    expect(await repo.readVersion(athlete, first.id)).toEqual(first);
+    expect(first.draft.sessions[0]).not.toHaveProperty('durationRange');
+    expect(ranged.draft).toEqual(rangeDraft);
+    expect((await repo.read(athlete)).head).toEqual(ranged);
+    const exported = await createOperationsRepository(database).exportAccount(athlete);
+    expect(exported.data.planSnapshots.find((row) => row['id'] === ranged.id)?.['draft']).toEqual(
+      rangeDraft,
+    );
+    await database.tenant(athlete, async (tx) => {
+      expect((await tx.query('SELECT * FROM outbox')).rowCount).toBe(2);
+      expect((await tx.query('SELECT * FROM activity_canonical')).rowCount).toBe(0);
+    });
+  });
+  it('protects ranges with intensity locks including scalar replacement and simultaneous unlock', async () => {
+    const athlete = randomUUID(),
+      repo = createPlanningRepository(database),
+      input = intensityCommand();
+    input.draft.sessions = input.draft.sessions.map((session) => ({
+      ...session,
+      durationSeconds: null,
+      distanceMeters: null,
+      durationRange: { minSeconds: 0, maxSeconds: 20 },
+      distanceRange: { minMeters: 0, maxMeters: 100 },
+      locks: { ...session.locks, intensity: true },
+    }));
+    const first = await repo.save(athlete, input);
+    for (const unlock of [false, true])
+      for (const mode of ['change', 'clear', 'omit', 'scalar'] as const) {
+        const candidate = structuredClone(first.draft);
+        for (const session of candidate.sessions) {
+          session.locks.intensity = !unlock;
+          if (mode === 'change') {
+            session.durationRange = { minSeconds: 0, maxSeconds: 21 };
+            session.distanceRange = { minMeters: 0, maxMeters: 101 };
+          } else if (mode === 'omit') {
+            delete session.durationRange;
+            delete session.distanceRange;
+          } else {
+            session.durationRange = null;
+            session.distanceRange = null;
+            if (mode === 'scalar') {
+              session.durationSeconds = 10;
+              session.distanceMeters = 50;
+            }
+          }
+        }
+        await expect(
+          repo.save(athlete, {
+            ...input,
+            expectedVersionId: first.id,
+            idempotencyKey: randomUUID(),
+            draft: candidate,
+          }),
+        ).rejects.toMatchObject({ code: 'PLAN_LOCKED' });
+      }
+    const unlocked = await repo.save(athlete, {
+      ...input,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...first.draft,
+        sessions: first.draft.sessions.map((session) => ({
+          ...session,
+          locks: { ...session.locks, intensity: false },
+        })),
+      },
+    });
+    const scalar = await repo.save(athlete, {
+      ...input,
+      expectedVersionId: unlocked.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...unlocked.draft,
+        sessions: unlocked.draft.sessions.map((session) => ({
+          ...session,
+          durationRange: null,
+          distanceRange: null,
+          durationSeconds: 0,
+          distanceMeters: 0,
+        })),
+      },
+    });
+    expect(scalar.draft.sessions[0]).toMatchObject({
+      durationSeconds: 0,
+      distanceMeters: 0,
+      durationRange: null,
+      distanceRange: null,
+    });
+    expect((await repo.read(athlete)).history).toHaveLength(3);
+  });
+});
