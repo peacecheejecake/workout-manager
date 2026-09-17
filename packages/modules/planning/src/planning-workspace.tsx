@@ -42,6 +42,7 @@ import {
 } from './session-operation-feedback';
 import { sessionOperationDate } from './session-operation-clock';
 import { PeriodExplorer } from './period-explorer';
+import { PlanHistoryPanel } from './plan-history-panel';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -633,17 +634,14 @@ function Planner({
           {...(activityHref ? { activityHref } : {})}
         />
       </div>
-      <section aria-label="계획 버전 이력">
-        <h2>버전 이력 (최근 100개)</h2>
-        <ol>
-          {currentPlan?.history.map((version) => (
-            <li key={version.id}>
-              버전 {version.version} · {version.title} ·{' '}
-              <time dateTime={version.createdAt}>{version.createdAt}</time>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <PlanHistoryPanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        search={search}
+        onSearchChange={onSearchChange}
+        current={currentPlan}
+      />
     </section>
   );
 }

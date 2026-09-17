@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import {
   manualPlanCommandSchema,
@@ -19,6 +20,7 @@ export class PlanLockedError extends Error {
 }
 export interface PlanningRepository {
   read(athleteId: string): Promise<PlanRead>;
+  readVersion(athleteId: string, versionId: string): Promise<PlanSnapshot | null>;
   save(athleteId: string, input: ManualPlanCommand): Promise<PlanSnapshot>;
 }
 function snapshot(row: Record<string, unknown>): PlanSnapshot {
@@ -32,6 +34,16 @@ function snapshot(row: Record<string, unknown>): PlanSnapshot {
 }
 export function createPlanningRepository(database: Database): PlanningRepository {
   return {
+    async readVersion(athleteId, versionId) {
+      const id = z.uuid().parse(versionId).toLowerCase();
+      return database.tenant(athleteId, async (transaction) => {
+        const result = await transaction.query(
+          'SELECT id,version,created_at,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2',
+          [athleteId, id],
+        );
+        return result.rows[0] ? snapshot(result.rows[0]) : null;
+      });
+    },
     async read(athleteId) {
       return database.tenant(athleteId, async (transaction) => {
         // One query observes head and history from one PostgreSQL statement snapshot.

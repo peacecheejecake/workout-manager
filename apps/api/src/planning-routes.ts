@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   manualPlanCommandSchema,
@@ -12,6 +13,16 @@ export function registerPlanningRoutes(
   planning: PlanningRepository,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  routes.get('/plans/versions/:versionId', async (request) => {
+    input(emptyQuery, request.query);
+    const { versionId } = input(
+      z.strictObject({ versionId: z.uuid().transform((value) => value.toLowerCase()) }),
+      request.params,
+    );
+    const version = await planning.readVersion(principal(request).athleteId, versionId);
+    if (version === null) throw new ProductRequestError(404, 'PLAN_VERSION_NOT_FOUND');
+    return planSnapshotSchema.parse(version);
+  });
   routes.get('/plans/current', async (request) => {
     input(emptyQuery, request.query);
     return planReadSchema.parse(await planning.read(principal(request).athleteId));

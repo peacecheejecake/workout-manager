@@ -390,3 +390,47 @@ describe('S06 intensity label snapshot compatibility', () => {
     expect(absentAgain.draft.sessions).toEqual(input.draft.sessions);
   });
 });
+
+it('reads an owned immutable version outside the latest 100 history entries without write side effects', async () => {
+  const athlete = randomUUID(),
+    foreign = randomUUID();
+  const repository = createPlanningRepository(database);
+  const legacy = intensityCommand();
+  const first = await repository.save(athlete, legacy);
+  const second = await repository.save(athlete, {
+    ...legacy,
+    expectedVersionId: first.id,
+    idempotencyKey: randomUUID(),
+    draft: { ...legacy.draft, title: 'Second' },
+  });
+  expect(await repository.readVersion(athlete, first.id.toUpperCase())).toEqual(first);
+  expect((await repository.readVersion(athlete, first.id))?.draft.sessions[0]).not.toHaveProperty(
+    'intensityLabel',
+  );
+  expect(await repository.readVersion(foreign, first.id)).toBeNull();
+  expect(await repository.readVersion(athlete, randomUUID())).toBeNull();
+  let latest = second;
+  for (let version = 3; version <= 102; version++) {
+    latest = await repository.save(athlete, {
+      ...legacy,
+      expectedVersionId: latest.id,
+      idempotencyKey: randomUUID(),
+      draft: { ...legacy.draft, title: `Version ${version}` },
+    });
+  }
+  const before = await repository.read(athlete);
+  expect(before.history).toHaveLength(100);
+  expect(before.history.some((item) => item.id === first.id)).toBe(false);
+  expect(before.head).toEqual(latest);
+  const count = () =>
+    database.tenant(athlete, (tx) =>
+      tx.query(
+        'SELECT (SELECT count(*)::int FROM command_receipt) AS receipts,(SELECT count(*)::int FROM outbox) AS events,(SELECT count(*)::int FROM plan_history) AS history',
+      ),
+    );
+  const prior = await count();
+  expect(await repository.readVersion(athlete, first.id)).toEqual(first);
+  expect(await repository.readVersion(athlete, second.id)).toEqual(second);
+  expect(await repository.read(athlete)).toEqual(before);
+  expect((await count()).rows).toEqual(prior.rows);
+});

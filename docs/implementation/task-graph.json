@@ -388,6 +388,15 @@
       "evidence": "docs/implementation/progress/M1-04ac.md"
     },
     {
+      "id": "M1-04ad",
+      "title": "저장된 계획 버전 조회·기간 비교",
+      "dependsOn": ["M1-02", "M1-04u", "M1-04ac"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S04 tenant별 불변 snapshot 조회·URL 고정 version pair·기간/세션 ID 기준 비교·초안 보존·조회 전용",
+      "evidence": "docs/implementation/progress/M1-04ad.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -421,7 +430,8 @@
         "M1-04z",
         "M1-04aa",
         "M1-04ab",
-        "M1-04ac"
+        "M1-04ac",
+        "M1-04ad"
       ],
       "kind": "task",
       "status": "not_started",

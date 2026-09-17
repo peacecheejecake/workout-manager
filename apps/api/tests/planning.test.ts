@@ -2,7 +2,7 @@ import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { PlanLockedError } from '@workout/server-persistence/planning';
-import type { PlanDraft } from '@workout/contracts/planning';
+import type { PlanDraft, PlanSnapshot } from '@workout/contracts/planning';
 import { createApi } from '../src/app.js';
 const athleteId = 'athlete-from-auth';
 const csrfToken = 'c'.repeat(43);
@@ -36,6 +36,9 @@ const saved = { id: 'version-one', version: 1, createdAt: '2026-01-01T00:00:00Z'
 const instances: ReturnType<typeof createApi>[] = [];
 function setup(authenticated = true) {
   const planning = {
+    readVersion: vi.fn<(_athlete: string, _id: string) => Promise<PlanSnapshot | null>>(
+      async () => saved,
+    ),
     read: vi.fn(async () => ({
       head: saved,
       history: [{ id: saved.id, version: 1, createdAt: saved.createdAt, title: draft.title }],
@@ -150,5 +153,55 @@ describe('planning route authorization and wire boundaries', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: { code: error.code } });
+  });
+});
+
+describe('immutable plan version route', () => {
+  const id = 'ABCDEFAB-1234-4234-8234-123456789012';
+  it('normalizes a UUID and derives ownership without writes', async () => {
+    const { app, planning } = setup();
+    planning.readVersion.mockResolvedValue({ ...saved, id: id.toLowerCase() });
+    const response = await app.inject({ url: `/bff/v1/plans/versions/${id}`, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ...saved, id: id.toLowerCase() });
+    expect(planning.readVersion).toHaveBeenCalledWith(athleteId, id.toLowerCase());
+    expect(planning.save).not.toHaveBeenCalled();
+  });
+  it.each(['not-a-uuid', `${id}?athleteId=foreign`, `${id}?limit=1`])(
+    'rejects invalid path/query %s',
+    async (suffix) => {
+      const { app, planning } = setup();
+      expect(
+        (await app.inject({ url: `/bff/v1/plans/versions/${suffix}`, headers })).statusCode,
+      ).toBe(400);
+      expect(planning.readVersion).not.toHaveBeenCalled();
+    },
+  );
+  it('uses the same not-found response for inaccessible and missing versions', async () => {
+    const { app, planning } = setup();
+    planning.readVersion.mockResolvedValue(null);
+    for (const missing of [id, '22345678-1234-4234-8234-123456789012']) {
+      const response = await app.inject({ url: `/bff/v1/plans/versions/${missing}`, headers });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: { code: 'PLAN_VERSION_NOT_FOUND' } });
+    }
+  });
+  it('requires authentication and the bound current browser session', async () => {
+    const unauthenticated = setup(false);
+    expect(
+      (await unauthenticated.app.inject({ url: `/bff/v1/plans/versions/${id}`, headers }))
+        .statusCode,
+    ).toBe(401);
+    expect(unauthenticated.planning.readVersion).not.toHaveBeenCalled();
+    const current = setup();
+    expect(
+      (
+        await current.app.inject({
+          url: `/bff/v1/plans/versions/${id}`,
+          headers: { ...headers, 'x-workout-session-id': 'old' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(current.planning.readVersion).not.toHaveBeenCalled();
   });
 });
