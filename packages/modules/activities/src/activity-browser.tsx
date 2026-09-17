@@ -13,6 +13,7 @@ import { activityContextSchema } from '@workout/contracts/activity-context';
 import { BrowserBlockFilter } from './browser-block-filter';
 import { ActivityDelete } from './activity-delete';
 import { ActivityBatchDelete } from './activity-batch-delete';
+import { ActivityBatchLink } from './activity-batch-link';
 import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from './batch-selection';
 import { ActivityContextPanel } from './activity-context-panel';
 import { ActivityWorkbench } from './activity-workbench';
@@ -349,6 +350,7 @@ function Workspace({
           </Button>
         </div>
       </section>
+      <ActivityBatchLink store={batchStore} transport={transport} scope={prefix} />
       <ActivityBatchDelete
         store={batchStore}
         transport={transport}

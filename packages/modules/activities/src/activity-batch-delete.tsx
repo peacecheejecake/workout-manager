@@ -26,6 +26,7 @@ const statusLabels = {
 };
 function Controller({ store, transport, scope, onDeleted }: ActivityBatchDeleteProps) {
   const targets = useStore(store, (state) => state.targets);
+  const locked = useStore(store, (state) => state.locked);
   const exceeded = useStore(store, (state) => state.limitExceeded);
   const client = useQueryClient();
   const [frozen, setFrozen] = useState<BatchTarget[] | null>(null);
@@ -163,7 +164,7 @@ function Controller({ store, transport, scope, onDeleted }: ActivityBatchDeleteP
         <p role="alert">선택은 최대 100개입니다. 일부를 해제한 뒤 다시 선택하세요.</p>
       ) : null}
       {!frozen ? (
-        <Button ref={trigger} variant="danger" disabled={!targets.length} onClick={open}>
+        <Button ref={trigger} variant="danger" disabled={locked || !targets.length} onClick={open}>
           선택 활동 삭제 미리보기
         </Button>
       ) : (

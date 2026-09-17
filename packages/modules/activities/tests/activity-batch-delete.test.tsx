@@ -45,6 +45,23 @@ async function confirm(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: '선택 활동 삭제 확인' }));
 }
 describe('explicit frozen batch deletion', () => {
+  it('disables the deletion opener while another workflow owns the selection lock', async () => {
+    const user = userEvent.setup();
+    const request = vi.fn();
+    const { store } = setup({ request });
+    act(() => store.getState().setLocked(true));
+    const opener = screen.getByRole('button', { name: '선택 활동 삭제 미리보기' });
+    expect(opener).toBeDisabled();
+    await user.click(opener);
+    expect(screen.queryByRole('group', { name: '일괄 로컬 삭제 확인' })).not.toBeInTheDocument();
+    expect(store.getState().targets).toEqual(targets);
+    expect(store.getState().locked).toBe(true);
+    act(() => store.getState().setLocked(false));
+    expect(opener).toBeEnabled();
+    await user.click(opener);
+    expect(screen.getByRole('group', { name: '일괄 로컬 삭제 확인' })).toBeVisible();
+    expect(request).not.toHaveBeenCalled();
+  });
   it('requires confirmation, locks selection and restores trigger focus on keyboard cancellation', async () => {
     const user = userEvent.setup(),
       request = vi.fn();

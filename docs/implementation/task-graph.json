@@ -361,6 +361,15 @@
       "evidence": "docs/implementation/progress/M1-04z.md"
     },
     {
+      "id": "M1-04aa",
+      "title": "활동 일괄 계획 연결·해제",
+      "dependsOn": ["M1-04z", "M1-04h", "M1-04i"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S07 고정 계획 version/session·선택 revision 사전 확인·RPE/메모 보존·항목별 명시 적용/해제·재시도",
+      "evidence": "docs/implementation/progress/M1-04aa.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -391,7 +400,8 @@
         "M1-04w",
         "M1-04x",
         "M1-04y",
-        "M1-04z"
+        "M1-04z",
+        "M1-04aa"
       ],
       "kind": "task",
       "status": "not_started",

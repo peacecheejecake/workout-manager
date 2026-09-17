@@ -52,9 +52,11 @@ function setup(
       );
       return reply({ items, total: Math.max(0, total - deleted.size) });
     }
-    const selected = input.path.split('/').at(-2);
+    const directActivity = /^\/bff\/v1\/activities\/[^/]+$/.test(input.path);
+    const selected = input.path.split('/').at(directActivity ? -1 : -2);
     const value = [activity(1), activity(2)].find((item) => item.id === selected) ?? activity(1);
     if (deleted.has(value.id)) return reply({ error: { code: 'NOT_FOUND' } }, 404);
+    if (directActivity) return reply(value);
     if (input.path.endsWith('/details'))
       return reply({
         activityId: value.id,
@@ -134,6 +136,68 @@ describe('activity batch selection in the browser', () => {
     expect(checkbox(2)).toBeChecked();
     expect(new URLSearchParams(changed.mock.lastCall?.[0]).get('selected')).toBe(activity(1).id);
     expect(selection()).toHaveTextContent('일괄 선택 2개');
+    expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+  });
+
+  it('shares the lock with plan changes and cancellation preserves off-page selection and the detail URL', async () => {
+    const user = userEvent.setup();
+    const { request, changed } = setup(
+      (url) => (url.searchParams.get('search') ? [activity(2)] : [activity(1), activity(2)]),
+      2,
+      `selected=${activity(1).id}`,
+    );
+    await screen.findByRole('region', { name: '정정 반영 기록' });
+    await user.click(screen.getByRole('button', { name: '현재 페이지 선택' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: '일괄 계획 동작' }), 'unlink');
+    await user.type(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' }), '기존 연결 검토');
+    await user.click(screen.getByRole('button', { name: '계획 연결 변경 미리보기' }));
+    const preview = await screen.findByRole('group', { name: '일괄 계획 연결 확인' });
+    expect(await within(preview).findAllByText(/이미 같은 연결/)).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' }));
+    expect(screen.queryByRole('group', { name: '일괄 로컬 삭제 확인' })).not.toBeInTheDocument();
+    expect(checkbox(1)).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '표 보기' }));
+    expect(checkbox(1)).toBeChecked();
+    expect(checkbox(1)).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: '활동 제목 검색' }), '다른 페이지');
+    await user.click(screen.getByRole('button', { name: '활동 필터 적용' }));
+    await screen.findByText(/제목 다른 페이지/);
+    expect(checkbox(2)).toBeDisabled();
+    expect(selection()).toHaveTextContent('일괄 선택 2개');
+    await user.click(screen.getByRole('button', { name: '계획 연결 변경 취소' }));
+    expect(screen.queryByRole('group', { name: '일괄 계획 연결 확인' })).not.toBeInTheDocument();
+    expect(checkbox(2)).toBeChecked();
+    expect(checkbox(2)).toBeEnabled();
+    expect(selection()).toHaveTextContent('일괄 선택 2개');
+    expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeEnabled();
+    expect(new URLSearchParams(changed.mock.lastCall?.[0]).get('selected')).toBe(activity(1).id);
+    expect(screen.getByRole('region', { name: '정정 반영 기록' })).toHaveTextContent('활동 1');
+    expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+  });
+
+  it('prevents the plan workflow from opening while deletion owns the lock', async () => {
+    const user = userEvent.setup();
+    const { request } = setup();
+    await screen.findByRole('checkbox', { name: '일괄 선택: 활동 1' });
+    await user.click(checkbox(1));
+    await user.selectOptions(screen.getByRole('combobox', { name: '일괄 계획 동작' }), 'unlink');
+    await user.type(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' }), '검토 사유');
+    await user.click(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' }));
+    const opener = screen.getByRole('button', { name: '계획 연결 변경 미리보기' });
+    expect(opener).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: '일괄 계획 동작' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' })).toBeDisabled();
+    await user.click(opener);
+    expect(screen.queryByRole('group', { name: '일괄 계획 연결 확인' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '일괄 삭제 취소' }));
+    expect(opener).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: '일괄 계획 연결 사유' })).toHaveValue('검토 사유');
+    expect(checkbox(1)).toBeChecked();
+    await user.click(opener);
+    const preview = await screen.findByRole('group', { name: '일괄 계획 연결 확인' });
+    expect(await within(preview).findByText(/이미 같은 연결/)).toBeVisible();
+    expect(screen.getByRole('button', { name: '선택 활동 삭제 미리보기' })).toBeDisabled();
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
   });
 
