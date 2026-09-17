@@ -15,6 +15,7 @@ import { ActivityDelete } from './activity-delete';
 import { ActivityBatchDelete } from './activity-batch-delete';
 import { ActivityBatchLink } from './activity-batch-link';
 import { ActivityBatchExport } from './activity-batch-export';
+import { ActivityBatchTags } from './activity-batch-tags';
 import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from './batch-selection';
 import { ActivityContextPanel } from './activity-context-panel';
 import { ActivityWorkbench } from './activity-workbench';
@@ -156,6 +157,7 @@ function Workspace({
   }
   const filterKey = [
     'search',
+    'tag',
     'from',
     'toExclusive',
     'timezone',
@@ -209,6 +211,9 @@ function Workspace({
           const to = String(data.get('toExclusive') ?? '');
           change({
             search: String(data.get('search') ?? '').trim(),
+            tag: String(data.get('tag') ?? '')
+              .trim()
+              .normalize('NFC'),
             from,
             toExclusive: to,
             timezone: from || to ? String(data.get('timezone') ?? '') : null,
@@ -224,6 +229,14 @@ function Workspace({
           활동 제목 검색
           <input name="search" maxLength={200} defaultValue={params.get('search') ?? ''} />
         </label>
+        <label>
+          로컬 태그 필터
+          <input name="tag" defaultValue={params.get('tag') ?? ''} />
+        </label>
+        <p>
+          태그 전체가 정확히 같은 활동을 조회합니다. 대소문자를 구분하며 공백 정리와 유니코드
+          정규화를 적용합니다.
+        </p>
         <label>
           활동 시작일
           <input name="from" type="date" defaultValue={params.get('from') ?? ''} />
@@ -275,7 +288,7 @@ function Workspace({
         </label>
         <p id={`${headingId}-quality-help`}>
           기록 상태는 현재 정정 반영 값을 기준으로 조회합니다. 0은 알려진 값이며 미입력이 아닙니다.
-          사용자 정정됨은 사용자 수정이 있는 기록입니다.
+          사용자 정정됨은 로컬 태그만 변경한 경우를 포함하여 사용자 수정이 있는 기록입니다.
         </p>
         <label>
           활동 정렬
@@ -351,6 +364,7 @@ function Workspace({
           </Button>
         </div>
       </section>
+      <ActivityBatchTags store={batchStore} transport={transport} scope={prefix} />
       <ActivityBatchLink store={batchStore} transport={transport} scope={prefix} />
       <ActivityBatchExport store={batchStore} transport={transport} scope={prefix} />
       <ActivityBatchDelete
@@ -373,6 +387,7 @@ function Workspace({
             onClick={() =>
               change({
                 search: null,
+                tag: null,
                 from: null,
                 toExclusive: null,
                 timezone: null,
@@ -394,7 +409,8 @@ function Workspace({
       ) : (
         <>
           <p>
-            적용 조건 (모두 충족): 제목 {parsed.query?.search ?? '전체'} · 종목{' '}
+            적용 조건 (모두 충족): 제목 {parsed.query?.search ?? '전체'} · 로컬 태그{' '}
+            {parsed.query?.tag ?? '전체'} · 종목{' '}
             {parsed.query?.kind ? kindLabels[parsed.query.kind] : '전체'} · 출처{' '}
             {parsed.query?.source ? sourceLabels[parsed.query.source] : '전체'} · 정렬{' '}
             {sortLabels[parsed.query?.sort ?? 'started_desc']} · 기록 상태{' '}

@@ -105,7 +105,7 @@ export function serializeActivityBatchExport({
     return result.activity;
   });
   const data = selectedActivityExportSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     format: 'workout-manager-activity-summary',
     generatedAt,
     consistency: 'per-activity-revision',

@@ -10,6 +10,7 @@ export function readActivitySearch(search: string) {
   };
   for (const key of [
     'search',
+    'tag',
     'from',
     'toExclusive',
     'timezone',

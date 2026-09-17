@@ -90,6 +90,7 @@ test('selected export refuses partial reads and downloads a report-preserving ar
         durationSeconds: 0,
         durationKind: 'elapsed',
         reason: '내보낼 정정 검증',
+        tags: ['내보내기', 'Easy', 'easy'],
       },
     });
     expect(correction.status()).toBe(200);
@@ -175,7 +176,9 @@ test('selected export refuses partial reads and downloads a report-preserving ar
     const path = await file.path();
     assert.ok(path);
     const artifact = selectedActivityExportSchema.parse(JSON.parse(await readFile(path, 'utf8')));
+    expect(artifact.schemaVersion).toBe(2);
     expect(artifact.activities).toEqual(expected);
+    expect(artifact.activities[0]?.overlay.tags).toEqual(['내보내기', 'Easy', 'easy']);
     expect(artifact.consistency).toBe('per-activity-revision');
     expect(artifact.activities[0]?.original.durationSeconds).toBeNull();
     expect(artifact.activities[0]?.effective.durationSeconds).toBe(0);

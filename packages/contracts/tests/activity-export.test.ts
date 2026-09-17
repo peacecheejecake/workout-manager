@@ -70,7 +70,7 @@ describe('selected activity summary export boundary', () => {
     }
   });
   it('rejects unsupported versions and false atomic snapshot claims', () => {
-    expect(selectedActivityExportSchema.safeParse({ ...artifact, schemaVersion: 2 }).success).toBe(
+    expect(selectedActivityExportSchema.safeParse({ ...artifact, schemaVersion: 3 }).success).toBe(
       false,
     );
     expect(

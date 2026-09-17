@@ -25,6 +25,18 @@ function distance(value: number | null) {
 function duration(value: Activity['effective']) {
   return `${value.durationSeconds === null ? '시간 미확인' : `${value.durationSeconds}초`} · ${durationLabels[value.durationKind]} (${value.durationKind})`;
 }
+function Tags({ tags }: { tags: Activity['overlay']['tags'] }) {
+  return (
+    <p>
+      로컬 태그:{' '}
+      {tags === undefined
+        ? '없음 (이전 형식에 값 없음)'
+        : tags.length
+          ? tags.join(' · ')
+          : '없음 (명시적으로 비움)'}
+    </p>
+  );
+}
 export function BrowserRecords({
   items,
   view,
@@ -70,6 +82,7 @@ export function BrowserRecords({
             <article>
               {batchSelect(item)}
               {select(item)}
+              <Tags tags={item.overlay.tags} />
               <p>
                 {kindLabels[item.effective.kind]} · {item.effective.startedAt ?? '시작 시각 미확인'}{' '}
                 · {item.effective.timezone ?? '시간대 미확인'}
@@ -128,7 +141,10 @@ export function BrowserRecords({
             {items.map((item) => (
               <tr key={item.id}>
                 {batch ? <td>{batchSelect(item)}</td> : null}
-                <th scope="row">{select(item)}</th>
+                <th scope="row">
+                  {select(item)}
+                  <Tags tags={item.overlay.tags} />
+                </th>
                 <td>{kindLabels[item.effective.kind]}</td>
                 <td>
                   {item.effective.startedAt ?? '시작 시각 미확인'} ·{' '}
@@ -181,6 +197,11 @@ export function BrowserDetail({ activity }: { activity: Activity }) {
         <Values label="원본 기록" values={activity.original} />
         <Values label="정정 반영 기록" values={activity.effective} />
       </div>
+      <section aria-label="활동 로컬 태그">
+        <h3>활동 로컬 태그</h3>
+        <Tags tags={activity.overlay.tags} />
+        <p>사용자가 이 앱에서 붙인 태그입니다. 측정값·자기보고·원본 출처는 변경하지 않습니다.</p>
+      </section>
       <p>정정 사유: {activity.overlay.reason ?? '기록된 정정 사유 없음'}</p>
       <section aria-label="활동 자기보고">
         <h3>활동 자기보고</h3>

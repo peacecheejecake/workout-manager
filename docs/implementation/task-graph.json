@@ -505,6 +505,15 @@
       "evidence": "docs/implementation/progress/M1-04ap.md"
     },
     {
+      "id": "M1-04aq",
+      "title": "활동 로컬 태그·일괄 편집·필터",
+      "dependsOn": ["M1-04aa", "M1-04ab"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "로컬 태그 집합·revision/원본 보존·일괄 추가/제거 확인·정확 일치 필터·선택 export v2",
+      "evidence": "docs/implementation/progress/M1-04aq.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -551,7 +560,8 @@
         "M1-04am",
         "M1-04an",
         "M1-04ao",
-        "M1-04ap"
+        "M1-04ap",
+        "M1-04aq"
       ],
       "kind": "task",
       "status": "not_started",

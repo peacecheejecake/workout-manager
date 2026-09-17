@@ -3,6 +3,21 @@ import { idSchema, instantSchema, localDateSchema, timeZoneSchema } from './prim
 import { activityDetailsSchema } from './activity-details.js';
 
 const boundedMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
+/** User-local labels. Normalize Unicode/outer whitespace; case remains significant. */
+export const activityTagSchema = z
+  .string()
+  .transform((value) => value.trim().normalize('NFC'))
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(40)
+      .regex(/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$/u),
+  );
+export const activityTagsSchema = z
+  .array(activityTagSchema)
+  .max(20)
+  .refine((tags) => new Set(tags).size === tags.length, 'Duplicate local tags');
 export const activityValuesSchema = z.strictObject({
   title: z.string().trim().min(1).max(200).nullable(),
   kind: z.enum(['running', 'cycling', 'walking', 'strength', 'other', 'unknown']),
@@ -98,6 +113,8 @@ const overlayFields = {
   durationSeconds: boundedMetric.optional(),
   durationKind: activityValuesSchema.shape.durationKind.optional(),
   reason: z.string().trim().min(1).max(500).optional(),
+  // Missing preserves legacy data; [] explicitly clears user-local tags.
+  tags: activityTagsSchema.optional(),
 };
 const pairedOverlayFields = (value: {
   durationSeconds?: number | null | undefined;
@@ -129,6 +146,7 @@ export const activityOverlayWriteSchema = z
       value.startedAt !== undefined ||
       value.distanceMeters !== undefined ||
       value.durationSeconds !== undefined ||
+      value.tags !== undefined ||
       value.report !== undefined,
   );
 export const activityDeleteSchema = z.strictObject({
@@ -159,6 +177,7 @@ export const activityListQuerySchema = z
       .enum(['missing_distance', 'missing_duration', 'missing_start', 'corrected'])
       .optional(),
     search: z.string().trim().min(1).max(200).optional(),
+    tag: activityTagSchema.optional(),
     linkedPlanVersionId: z.uuid().optional(),
     linkedBlockId: idSchema.optional(),
     sort: z

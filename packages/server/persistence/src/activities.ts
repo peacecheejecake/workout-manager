@@ -307,6 +307,7 @@ export function createActivityRepository(
                 WHEN 'missing_start' THEN started_at IS NULL
                 WHEN 'corrected' THEN NULLIF(btrim(overlay->>'reason'),'') IS NOT NULL
                 ELSE false END)
+              AND ($13::text IS NULL OR coalesce(overlay->'tags','[]'::jsonb) ? $13::text)
           ), page AS (
             SELECT *,row_number() OVER (ORDER BY ${order}) AS ordinal FROM filtered ORDER BY ${order} LIMIT $2 OFFSET $3
           ) SELECT (SELECT count(*)::int FROM filtered) AS total,
@@ -324,6 +325,7 @@ export function createActivityRepository(
             query.linkedPlanVersionId ?? null,
             query.linkedBlockId ?? null,
             query.quality ?? null,
+            query.tag ?? null,
           ],
         );
         const row = z
@@ -367,6 +369,7 @@ export function createActivityRepository(
             ? {}
             : { userReport: reportValue(command.report, current.userReport, now()) }),
           reason: command.reason,
+          ...(command.tags === undefined ? {} : { tags: command.tags }),
           ...(command.title === undefined ? {} : { title: command.title }),
           ...(command.distanceMeters === undefined
             ? {}

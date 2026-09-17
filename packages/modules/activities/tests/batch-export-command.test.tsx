@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { selectedActivityExportSchema } from '@workout/contracts/activity-export';
 import { describe, it, expect, vi } from 'vitest';
 import type { Activity } from '@workout/contracts/activity';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
@@ -51,6 +52,7 @@ describe('selected activity summary export', () => {
     const results = await prepareActivityBatchExport({ ...f, targets: [target] });
     target.revision = 99;
     const exported = serializeActivityBatchExport({ results, generatedAt });
+    expect(exported.data.schemaVersion).toBe(2);
     expect(exported.data.activities).toEqual([value]);
     expect(JSON.parse(exported.json)).toEqual(exported.data);
     value.effective.title = 'Later';
@@ -196,4 +198,26 @@ describe('selected activity summary export', () => {
     expect(results[1]?.target.revision).toBe(2);
     expect(f.request).toHaveBeenCalledTimes(1);
   });
+});
+
+it('exports local tags losslessly in v2 and accepts only tag-free legacy v1 artifacts', () => {
+  const original = activity();
+  const tagged = {
+    ...original,
+    overlay: { ...original.overlay, tags: ['é', 'Easy', 'easy', '산 / 길'] },
+  };
+  const exported = serializeActivityBatchExport({ results: [ready(tagged)], generatedAt });
+  expect(exported.data.schemaVersion).toBe(2);
+  expect(exported.data.activities[0]?.overlay).toEqual(tagged.overlay);
+  expect(exported.data.activities[0]?.original).toEqual(original.original);
+  expect(
+    selectedActivityExportSchema.safeParse({ ...exported.data, schemaVersion: 1 }).success,
+  ).toBe(false);
+  const legacy = { ...exported.data, schemaVersion: 1, activities: [original] };
+  expect(selectedActivityExportSchema.parse(legacy)).toEqual(legacy);
+  const cleared = { ...tagged, overlay: { ...tagged.overlay, tags: [] } };
+  expect(
+    serializeActivityBatchExport({ results: [ready(cleared)], generatedAt }).data.activities[0]
+      ?.overlay.tags,
+  ).toEqual([]);
 });

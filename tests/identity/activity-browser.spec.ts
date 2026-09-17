@@ -120,8 +120,18 @@ test('activity browser keeps independent selected details through paging, filter
     await expect(
       workspace.getByText('조회 조건에 맞는 활동 21개 · 현재 페이지 20개', { exact: true }),
     ).toBeVisible();
-    await expect(table.getByRole('rowheader').nth(0)).toHaveText(`${records.prefix} cycling`);
-    await expect(table.getByRole('rowheader').nth(1)).toHaveText(`${records.prefix} zero`);
+    await expect(table.getByRole('rowheader').nth(0).getByRole('button')).toHaveText(
+      `${records.prefix} cycling`,
+    );
+    await expect(
+      table
+        .getByRole('rowheader')
+        .nth(0)
+        .getByText('로컬 태그: 없음 (이전 형식에 값 없음)', { exact: true }),
+    ).toBeVisible();
+    await expect(table.getByRole('rowheader').nth(1).getByRole('button')).toHaveText(
+      `${records.prefix} zero`,
+    );
     await table.getByRole('button', { name: `${records.prefix} zero`, exact: true }).click();
     await expect(page).toHaveURL(
       (url) => url.searchParams.get('selected') === records.zero.activityId,
@@ -135,7 +145,9 @@ test('activity browser keeps independent selected details through paging, filter
     await expect(
       workspace.getByText('조회 조건에 맞는 활동 21개 · 현재 페이지 1개', { exact: true }),
     ).toBeVisible();
-    await expect(table.getByRole('rowheader')).toHaveText([`${records.prefix} missing`]);
+    await expect(table.getByRole('rowheader').getByRole('button')).toHaveText([
+      `${records.prefix} missing`,
+    ]);
     await expect(effective.getByText(`${records.prefix} zero`, { exact: true })).toBeVisible();
     const detailResponse = page.waitForResponse(
       (response) =>
@@ -145,7 +157,9 @@ test('activity browser keeps independent selected details through paging, filter
     );
     await page.reload();
     expect((await detailResponse).status()).toBe(200);
-    await expect(table.getByRole('rowheader')).toHaveText([`${records.prefix} missing`]);
+    await expect(table.getByRole('rowheader').getByRole('button')).toHaveText([
+      `${records.prefix} missing`,
+    ]);
     await expect(effective.getByText(`${records.prefix} zero`, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '이전 활동', exact: true }).click();
     await expect(
@@ -156,7 +170,9 @@ test('activity browser keeps independent selected details through paging, filter
       .selectOption('distance_asc');
     await page.getByRole('button', { name: '활동 필터 적용', exact: true }).click();
     await expect(page).toHaveURL((url) => url.searchParams.get('sort') === 'distance_asc');
-    await expect(table.getByRole('rowheader').nth(0)).toHaveText(`${records.prefix} zero`);
+    await expect(table.getByRole('rowheader').nth(0).getByRole('button')).toHaveText(
+      `${records.prefix} zero`,
+    );
 
     await page
       .getByRole('textbox', { name: '활동 제목 검색', exact: true })
@@ -177,7 +193,9 @@ test('activity browser keeps independent selected details through paging, filter
         url.searchParams.get('source') === 'fit' &&
         url.searchParams.get('selected') === records.zero.activityId,
     );
-    await expect(table.getByRole('rowheader')).toHaveText([`${records.prefix} cycling`]);
+    await expect(table.getByRole('rowheader').getByRole('button')).toHaveText([
+      `${records.prefix} cycling`,
+    ]);
     await expect(effective.getByText(`${records.prefix} zero`, { exact: true })).toBeVisible();
     await page.goBack();
     await expect(page.getByRole('textbox', { name: '활동 제목 검색', exact: true })).toHaveValue(
@@ -185,7 +203,9 @@ test('activity browser keeps independent selected details through paging, filter
     );
     await expect(page.getByRole('combobox', { name: '출처 필터', exact: true })).toHaveValue('');
     await expect(table.getByRole('rowheader')).toHaveCount(20);
-    await expect(table.getByRole('rowheader').nth(0)).toHaveText(`${records.prefix} zero`);
+    await expect(table.getByRole('rowheader').nth(0).getByRole('button')).toHaveText(
+      `${records.prefix} zero`,
+    );
     await page.goto(`${records.url}&from=2022-08-03`);
     await expect(workspace.getByRole('alert')).toContainText('조회 주소를 확인하세요.');
     await expect(table).toBeHidden();
@@ -213,11 +233,14 @@ test('activity cards and table preserve unknowns and zero, reflow and recover fr
     await expect(table).toBeHidden();
     await page.unroute(listRequests);
     await page.getByRole('button', { name: '활동 목록 다시 확인', exact: true }).click();
-    await expect(table.getByRole('rowheader')).toHaveText([
+    await expect(table.getByRole('rowheader').getByRole('button')).toHaveText([
       `${records.prefix} cycling`,
       `${records.prefix} zero`,
       `${records.prefix} missing`,
     ]);
+    await expect(
+      table.getByText('로컬 태그: 없음 (이전 형식에 값 없음)', { exact: true }),
+    ).toHaveCount(3);
     const zeroRow = table
       .getByRole('row')
       .filter({ has: page.getByRole('button', { name: `${records.prefix} zero`, exact: true }) });
