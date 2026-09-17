@@ -1,3 +1,5 @@
+import type { PlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
+import { registerPlanScenarioRoutes } from './plan-scenario-routes.js';
 import type { SessionCompletionRepository } from '@workout/server-persistence/session-completions';
 import { registerSessionCompletionRoutes } from './session-completion-routes.js';
 import type { PeriodSummaryRepository } from '@workout/server-persistence/period-summary';
@@ -20,6 +22,7 @@ export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
+  planScenarios?: PlanScenarioRepository;
   sessionCompletions?: SessionCompletionRepository;
   periodSummary?: PeriodSummaryRepository;
   activities?: ActivityRepository;
@@ -33,6 +36,8 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.planScenarios)
+    registerPlanScenarioRoutes(routes, repositories.planScenarios, principal);
   if (repositories.sessionCompletions)
     registerSessionCompletionRoutes(routes, repositories.sessionCompletions, principal);
   if (repositories.periodSummary)

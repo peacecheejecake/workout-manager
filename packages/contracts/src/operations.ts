@@ -23,14 +23,23 @@ const accountExportV2Schema = z.strictObject({
     checkInRevisions: rows,
   }),
 });
-// Existing v2 artifacts remain readable; new exports include the separate user completion ledger.
+const accountExportV3Schema = accountExportV2Schema.extend({
+  schemaVersion: z.literal(3),
+  data: accountExportV2Schema.shape.data.extend({
+    sessionCompletions: rows,
+    sessionCompletionRevisions: rows,
+  }),
+});
+// Existing v2/v3 artifacts remain readable without manufacturing absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
-  accountExportV2Schema.extend({
-    schemaVersion: z.literal(3),
-    data: accountExportV2Schema.shape.data.extend({
-      sessionCompletions: rows,
-      sessionCompletionRevisions: rows,
+  accountExportV3Schema,
+  accountExportV3Schema.extend({
+    schemaVersion: z.literal(4),
+    data: accountExportV3Schema.shape.data.extend({
+      planScenarios: rows,
+      planScenarioRevisions: rows,
+      planScenarioApplications: rows,
     }),
   }),
 ]);

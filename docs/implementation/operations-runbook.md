@@ -66,7 +66,7 @@ Migration 007과 `grantCheckIns`를 API runtime에 적용한다. 계정 삭제�
 
 ## 세션 완료 확인 이후의 내보내기·복구
 
-M1-04ai부터 새 export는 `schemaVersion: 3`이며 `sessionCompletions`와
+M1-04ai에서 도입한 export는 `schemaVersion: 3`이며 `sessionCompletions`와
 `sessionCompletionRevisions`를 추가한다. 기존 v2 artifact 파서는 계속 지원하지만 이전 파일에
 없는 완료 기록을 만들어 넣지 않는다. 완료 확인은 사용자 자기보고이며 실제 활동·이행률이 아니다.
 확인/철회·사유·확인 시각·참조한 불변 계획 버전과 일정을 내보내고 명령 receipt는 제외한다.
@@ -76,3 +76,19 @@ Migration 010과 `grantSessionCompletions`를 적용한다. 현재 완료 확인
 별도의 명시 철회 명령이다. 계정 삭제 및 복구 전 최신 삭제 원장 재적용은 `session_completion`,
 `session_completion_revision`, `session_completion_receipt`, `session_completion_collection_head`를
 함께 제거한다. runtime에 복구 DB를 열기 전에 기존 복구 절차를 그대로 완료해야 한다.
+
+## 시나리오 이후의 내보내기·복구
+
+M1-04ar의 새 계정 export는 `schemaVersion: 4`이다. `planScenarios`,
+`planScenarioRevisions`, `planScenarioApplications`에 대안의 현재 수정본·불변 수정 이력·
+현재 계획으로 적용한 출처를 포함한다. 기존 v2/v3 읽기를 유지하고 과거 파일에 시나리오를
+만들어 넣지 않는다. 명령 receipt·인증 정보는 내보내지 않는다.
+
+Migration 011과 `grantPlanScenarios`를 적용한다. 시나리오 생성·저장은 현재 계획 head를
+변경하지 않는다. 적용 명령은 저장된 시나리오 수정번호·현재 계획 버전·완료 원장 버전을
+검사하며 현재 계획 잠금과 완료 일정 보호를 동일하게 적용한다. 분기에서 잠금을 해제해도
+현재 계획의 잠금을 우회할 수 없다. 활동 연결은 실제 불변 계획 버전을 계속 참조한다.
+
+계정 삭제 및 복구 전 삭제 원장 재적용은 적용 출처 → 수정 이력 → 시나리오 head를
+기존 계획보다 먼저 제거한다. 새 테이블에도 tenant RLS를 강제하고 수정·적용 이력은
+불변으로 유지한다. 분기 생성·수정·적용의 outbox와 receipt는 각각 같은 거래에 저장한다.

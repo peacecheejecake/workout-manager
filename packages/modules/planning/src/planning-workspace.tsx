@@ -49,6 +49,8 @@ import { PlanHistoryPanel } from './plan-history-panel';
 import { SessionCompletionPanel } from './session-completion-panel';
 import { useSessionCompletions } from './use-session-completions';
 import { PeriodMovePanel } from './period-move-panel';
+import { PlanScenarioPanel } from './scenario-panel';
+import { createScenarioDraftStore, type ScenarioDraftStore } from './scenario-draft-store';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -70,6 +72,7 @@ export function PlanningWorkspace(props: PlanningWorkspaceProps) {
 }
 function PlanningLifetime(props: PlanningWorkspaceProps) {
   const [store] = useState(() => createPlanningDraftStore(props.createId ?? randomId));
+  const [scenarioStore] = useState(createScenarioDraftStore);
   const [client] = useState(
     () =>
       new QueryClient({
@@ -93,6 +96,7 @@ function PlanningLifetime(props: PlanningWorkspaceProps) {
           today={localDateSchema.parse(props.today ?? defaultToday)}
           explicitToday={props.today}
           referenceInstant={referenceInstant}
+          scenarioStore={scenarioStore}
         />
       </DraftContext>
     </QueryClientProvider>
@@ -114,10 +118,12 @@ function Planner({
   activityHref,
   referenceInstant,
   explicitToday,
+  scenarioStore,
 }: PlanningWorkspaceProps & {
   today: string;
   referenceInstant: number;
   explicitToday: string | undefined;
+  scenarioStore: ScenarioDraftStore;
 }) {
   const store = use(DraftContext);
   if (!store) throw new Error('PlanningLifetime required');
@@ -126,6 +132,10 @@ function Planner({
   const actions = useStore(store, (value) => value.actions);
   const [operationFeedback, setOperationFeedback] = useState<SessionOperationFeedbackValue | null>(
     null,
+  );
+  const scenarioExclusive = useStore(
+    scenarioStore,
+    (state) => state.draft !== null || state.phase !== 'idle',
   );
   const actualRecordsId = useId();
   const client = useQueryClient();
@@ -310,7 +320,9 @@ function Planner({
       ) : null}
       {!draft && currentPlan ? (
         <Button
+          disabled={scenarioExclusive}
           onClick={() => {
+            if (scenarioExclusive) return;
             setOperationFeedback(null);
             actions.start(currentPlan.head, {
               title: '새 훈련 계획',
@@ -761,6 +773,19 @@ function Planner({
           {...(activityHref ? { activityHref } : {})}
         />
       </div>
+      <PlanScenarioPanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        current={currentPlan}
+        search={search}
+        onSearchChange={onSearchChange}
+        manualDraftActive={draft !== null || save.isPending}
+        store={scenarioStore}
+        onApplied={refreshAfterCompletion}
+        today={today}
+        createId={createId}
+      />
       <PlanHistoryPanel
         athleteId={athleteId}
         sessionId={sessionId}

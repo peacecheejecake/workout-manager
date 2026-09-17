@@ -72,6 +72,10 @@
     "./activity-context": {
       "types": "./src/activity-context.ts",
       "default": "./dist/activity-context.js"
+    },
+    "./plan-scenarios": {
+      "types": "./src/plan-scenarios.ts",
+      "default": "./dist/plan-scenarios.js"
     }
   },
   "scripts": {

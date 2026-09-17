@@ -380,7 +380,9 @@ describe('plan editor constraints', () => {
       />,
     );
     await screen.findByRole('button', { name: '계획 초안 편집' });
-    expect(screen.getByRole('alert')).toHaveTextContent('기간을 찾을 수 없습니다');
+    expect(
+      within(screen.getByRole('region', { name: '기간 탐색' })).getByRole('alert'),
+    ).toHaveTextContent('기간을 찾을 수 없습니다');
   });
 });
 

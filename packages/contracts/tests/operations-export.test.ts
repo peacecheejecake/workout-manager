@@ -21,6 +21,34 @@ const legacy = {
   },
 };
 describe('account export completion-ledger compatibility', () => {
+  it('requires all scenario collections in v4 while leaving v2/v3 artifacts unchanged', () => {
+    const previous = {
+      ...legacy,
+      schemaVersion: 3,
+      data: { ...legacy.data, sessionCompletions: [], sessionCompletionRevisions: [] },
+    };
+    const artifact = {
+      ...previous,
+      schemaVersion: 4,
+      data: {
+        ...previous.data,
+        planScenarios: [{ id: 'synthetic-scenario', revision: 2 }],
+        planScenarioRevisions: [{ scenario_id: 'synthetic-scenario', revision: 1 }],
+        planScenarioApplications: [{ scenario_id: 'synthetic-scenario', scenario_revision: 2 }],
+      },
+    };
+    expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+    expect(accountExportSchema.parse(previous)).toEqual(previous);
+    expect(accountExportSchema.parse(previous).data).not.toHaveProperty('planScenarios');
+    expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 4 }).success).toBe(false);
+    expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 3 }).success).toBe(false);
+    for (const key of ['planScenarios', 'planScenarioRevisions', 'planScenarioApplications']) {
+      expect(
+        accountExportSchema.safeParse({ ...artifact, data: { ...artifact.data, [key]: undefined } })
+          .success,
+      ).toBe(false);
+    }
+  });
   it('reads old v2 artifacts without manufacturing absent completion collections', () => {
     expect(accountExportSchema.parse(legacy)).toEqual(legacy);
     expect(accountExportSchema.parse(legacy).data).not.toHaveProperty('sessionCompletions');

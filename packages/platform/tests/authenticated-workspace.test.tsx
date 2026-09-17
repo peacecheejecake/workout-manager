@@ -66,6 +66,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('session-bound authenticated transport', () => {
+  it.each([
+    ['GET', '/bff/v1/plan-scenarios?limit=3'],
+    ['GET', '/bff/v1/plan-scenarios/scenario/revisions/1'],
+    ['POST', '/bff/v1/plan-scenarios'],
+    ['PUT', '/bff/v1/plan-scenarios/scenario'],
+    ['POST', '/bff/v1/plan-scenarios/scenario/apply'],
+  ] as const)('carries session-bound scenario %s %s through the host', async (method, path) => {
+    fetchMock.mockResolvedValue(json({ accepted: true }));
+    const write = method !== 'GET';
+    await createSessionTransport(session, vi.fn()).request({
+      path,
+      method,
+      body: write ? { confirmed: true } : null,
+      idempotencyKey: write ? 'scenario-key' : null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      path,
+      expect.objectContaining({
+        credentials: 'same-origin',
+        redirect: 'error',
+        headers: expect.objectContaining({
+          'x-workout-session-id': session.sessionId,
+          ...(write
+            ? { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'scenario-key' }
+            : {}),
+        }),
+      }),
+    );
+  });
   it('passes current session/CSRF/idempotency while preserving cancellation and null semantics', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     const expired = vi.fn();
@@ -138,6 +167,8 @@ describe('session-bound authenticated transport', () => {
   });
   it.each([
     '/bff/v1/consents/ai',
+    '/bff/v1/plan-scenarios-admin',
+    '/bff/v1/plan-scenarios/../consents/ai',
     '/bff/v1/check-ins-admin',
     '/bff/v1/dashboard-admin',
     '/bff/v1/dashboard/../consents/ai',

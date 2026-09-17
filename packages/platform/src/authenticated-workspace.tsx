@@ -47,7 +47,7 @@ export function createSessionTransport(
       }
       const path = apiPathSchema.parse(input.path);
       if (
-        !/^\/bff\/v1\/(?:plans|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
+        !/^\/bff\/v1\/(?:plans|plan-scenarios|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
           path,
         )
       )

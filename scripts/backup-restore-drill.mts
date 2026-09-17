@@ -1,3 +1,4 @@
+import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, randomBytes, randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ import {
   grantGarmin,
   grantCheckIns,
   grantSessionCompletions,
+  grantPlanScenarios,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -65,13 +67,38 @@ async function seedCompletion(database: Database, athleteId: string) {
       },
     ],
   });
-  const plan = await createPlanningRepository(database).save(athleteId, {
+  const basePlan = await createPlanningRepository(database).save(athleteId, {
     source: 'manual',
     confirmed: true,
     expectedVersionId: null,
     idempotencyKey: randomUUID(),
     draft,
   });
+  const scenarioRepository = createPlanScenarioRepository(database);
+  const createScenario = {
+    confirmed: true as const,
+    basePlanVersionId: basePlan.id,
+    label: 'A' as const,
+    idempotencyKey: randomUUID(),
+  };
+  const initialScenario = await scenarioRepository.create(athleteId, createScenario);
+  const saveScenario = {
+    confirmed: true as const,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    draft: { ...initialScenario.draft, title: 'Synthetic scenario applied before completion' },
+  };
+  const scenario = await scenarioRepository.save(athleteId, initialScenario.id, saveScenario);
+  assert.deepEqual((await createPlanningRepository(database).read(athleteId)).head, basePlan);
+  const applyScenario = {
+    confirmed: true as const,
+    expectedScenarioRevision: 2,
+    expectedPlanVersionId: basePlan.id,
+    expectedCompletionRevision: 0,
+    idempotencyKey: randomUUID(),
+  };
+  const application = await scenarioRepository.apply(athleteId, scenario.id, applyScenario);
+  const plan = application.plan;
   const command: SessionCompletionCommand = {
     action: 'complete',
     confirmed: true,
@@ -87,7 +114,18 @@ async function seedCompletion(database: Database, athleteId: string) {
   );
   assert.equal(result.report.revision, 1);
   assert.equal(result.collectionRevision, 1);
-  return { plan, command, result };
+  return {
+    plan,
+    command,
+    result,
+    basePlan,
+    scenario,
+    initialScenario,
+    application,
+    createScenario,
+    saveScenario,
+    applyScenario,
+  };
 }
 
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
@@ -209,6 +247,7 @@ async function execute() {
     await grantGarmin(url('drill_source'), 'drill_runtime');
     await grantCheckIns(url('drill_source'), 'drill_runtime');
     await grantSessionCompletions(url('drill_source'), 'drill_runtime');
+    await grantPlanScenarios(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -222,7 +261,9 @@ async function execute() {
       'session_completion_receipt',
       'session_completion_collection_head',
     ];
+    const scenarioTables = ['plan_scenario', 'plan_scenario_revision', 'plan_scenario_application'];
     const selfReportTables = [
+      ...scenarioTables,
       'check_in',
       'check_in_revision',
       'check_in_receipt',
@@ -283,7 +324,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 3);
+      assert.equal(before.schemaVersion, 4);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -411,7 +452,7 @@ async function execute() {
             deletedAthlete,
           ])
         ).rows[0].count,
-        1,
+        table === 'plan_scenario_revision' ? 2 : 1,
       );
     }
     const replayLedger: unknown = JSON.parse(await readFile(ledgerFile, 'utf8'));
@@ -562,7 +603,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 3);
+    assert.equal(retainedExport.schemaVersion, 4);
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
     );
@@ -609,6 +650,69 @@ async function execute() {
     const completion = completions.get(retainedAthlete);
     const deletedCompletion = completions.get(deletedAthlete);
     assert.ok(completion && deletedCompletion);
+    const scenarioRepository = createPlanScenarioRepository(restoreDb);
+    assert.deepEqual(
+      await scenarioRepository.read(retainedAthlete, completion.scenario.id),
+      completion.scenario,
+    );
+    assert.deepEqual(
+      await scenarioRepository.readRevision(retainedAthlete, completion.scenario.id, 1),
+      completion.initialScenario,
+    );
+    assert.deepEqual(
+      await scenarioRepository.create(retainedAthlete, completion.createScenario),
+      completion.initialScenario,
+    );
+    assert.deepEqual(
+      await scenarioRepository.save(
+        retainedAthlete,
+        completion.scenario.id,
+        completion.saveScenario,
+      ),
+      completion.scenario,
+    );
+    assert.deepEqual(
+      await scenarioRepository.apply(
+        retainedAthlete,
+        completion.scenario.id,
+        completion.applyScenario,
+      ),
+      completion.application,
+    );
+    assert.deepEqual(
+      (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
+      completion.plan,
+    );
+    if (retainedExport.schemaVersion !== 4) throw new Error('Expected scenario export v4');
+    assert.equal(retainedExport.data.planScenarios.length, 1);
+    assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
+    assert.equal(retainedExport.data.planScenarioApplications.length, 1);
+    assert.equal(retainedExport.data.planScenarioApplications[0]?.version_id, completion.plan.id);
+    for (const [table, count] of [
+      ['plan_scenario', 1],
+      ['plan_scenario_revision', 2],
+      ['plan_scenario_application', 1],
+    ] as const) {
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            retainedAthlete,
+          ])
+        ).rows[0].count,
+        count,
+      );
+      assert.equal(
+        (
+          await restored.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            deletedAthlete,
+          ])
+        ).rows[0].count,
+        0,
+      );
+    }
+    checks.push(
+      'scenario_revisions_application_and_receipts_restored_without_duplicate_promotion_erased_tenant_absent',
+    );
     const completionRepository = createSessionCompletionRepository(restoreDb);
     const retainedCompletion = await completionRepository.read(retainedAthlete, 'restore-session');
     assert.deepEqual(retainedCompletion, {

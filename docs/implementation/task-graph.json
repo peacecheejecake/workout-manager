@@ -514,6 +514,15 @@
       "evidence": "docs/implementation/progress/M1-04aq.md"
     },
     {
+      "id": "M1-04ar",
+      "title": "계획 시나리오 A/B/C 저장·비교·적용",
+      "dependsOn": ["M1-04ad", "M1-04aj", "M1-04ap"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "기준 계획별 독립 대안·불변 수정 비교·명시 적용·현재 계획/완료 revision·잠금 보호·export/복원/삭제",
+      "evidence": "docs/implementation/progress/M1-04ar.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -561,7 +570,8 @@
         "M1-04an",
         "M1-04ao",
         "M1-04ap",
-        "M1-04aq"
+        "M1-04aq",
+        "M1-04ar"
       ],
       "kind": "task",
       "status": "not_started",

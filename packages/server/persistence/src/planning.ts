@@ -11,10 +11,11 @@ import {
   planSnapshotSchema,
   preservesSessionLocks,
   type ManualPlanCommand,
+  type PlanDraft,
   type PlanRead,
   type PlanSnapshot,
 } from '@workout/contracts/planning';
-import type { Database } from './database.js';
+import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
 
 export class PlanLockedError extends Error {
@@ -37,6 +38,50 @@ function snapshot(row: Record<string, unknown>): PlanSnapshot {
     draft: row['draft'],
   });
 }
+/** Internal transaction primitive. Callers own successful-receipt replay before this call,
+ * and history/outbox/source audit/receipt writes afterwards in the SAME transaction.
+ * The shared lock serializes current-plan writes with completion reports.
+ */
+export async function persistPlanVersion(
+  transaction: Transaction,
+  { expectedVersionId, draft }: { expectedVersionId: string | null; draft: PlanDraft },
+): Promise<PlanSnapshot> {
+  await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+    transaction.athleteId,
+  ]);
+  const current = await transaction.query(
+    'SELECT p.* FROM plan_head h JOIN plan_snapshot p ON p.athlete_id=h.athlete_id AND p.id=h.version_id WHERE h.athlete_id=$1',
+    [transaction.athleteId],
+  );
+  const previous = current.rows[0] === undefined ? null : snapshot(current.rows[0]);
+  if ((previous?.id ?? null) !== expectedVersionId)
+    throw new PersistenceConflict('REVISION_CONFLICT');
+  if (previous !== null && !preservesSessionLocks(previous.draft, draft))
+    throw new PlanLockedError();
+  const completions = await transaction.query(
+    "SELECT record_json FROM session_completion WHERE athlete_id=$1 AND record_json->>'status'='completed'",
+    [transaction.athleteId],
+  );
+  if (
+    !preservesSessionCompletions(
+      draft,
+      completions.rows.map((row) => sessionCompletionSchema.parse(row['record_json'])),
+    )
+  )
+    throw new SessionCompletionError('PLAN_COMPLETED_SESSION');
+  const id = randomUUID();
+  const inserted = await transaction.query(
+    'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
+    [transaction.athleteId, id, (previous?.version ?? 0) + 1, JSON.stringify(draft)],
+  );
+  const saved = snapshot(inserted.rows[0] ?? {});
+  await transaction.query(
+    'INSERT INTO plan_head(athlete_id,version_id) VALUES($1,$2) ON CONFLICT(athlete_id) DO UPDATE SET version_id=EXCLUDED.version_id',
+    [transaction.athleteId, id],
+  );
+  return saved;
+}
+
 export function createPlanningRepository(database: Database): PlanningRepository {
   return {
     async readVersion(athleteId, versionId) {
@@ -94,36 +139,11 @@ export function createPlanningRepository(database: Database): PlanningRepository
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return planSnapshotSchema.parse(receipt.rows[0]?.['result']);
         }
-        const current = await transaction.query(
-          'SELECT p.* FROM plan_head h JOIN plan_snapshot p ON p.athlete_id=h.athlete_id AND p.id=h.version_id WHERE h.athlete_id=$1',
-          [athleteId],
-        );
-        const previous = current.rows[0] === undefined ? null : snapshot(current.rows[0]);
-        if ((previous?.id ?? null) !== command.expectedVersionId)
-          throw new PersistenceConflict('REVISION_CONFLICT');
-        if (previous !== null && !preservesSessionLocks(previous.draft, command.draft))
-          throw new PlanLockedError();
-        const completions = await transaction.query(
-          "SELECT record_json FROM session_completion WHERE athlete_id=$1 AND record_json->>'status'='completed'",
-          [athleteId],
-        );
-        if (
-          !preservesSessionCompletions(
-            command.draft,
-            completions.rows.map((row) => sessionCompletionSchema.parse(row['record_json'])),
-          )
-        )
-          throw new SessionCompletionError('PLAN_COMPLETED_SESSION');
-        const id = randomUUID();
-        const inserted = await transaction.query(
-          'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
-          [athleteId, id, (previous?.version ?? 0) + 1, JSON.stringify(command.draft)],
-        );
-        const saved = snapshot(inserted.rows[0] ?? {});
-        await transaction.query(
-          'INSERT INTO plan_head(athlete_id,version_id) VALUES($1,$2) ON CONFLICT(athlete_id) DO UPDATE SET version_id=EXCLUDED.version_id',
-          [athleteId, id],
-        );
+        const saved = await persistPlanVersion(transaction, {
+          expectedVersionId: command.expectedVersionId,
+          draft: command.draft,
+        });
+        const id = saved.id;
         await transaction.query(
           "INSERT INTO plan_history(athlete_id,version_id,action) VALUES($1,$2,'manual_saved')",
           [athleteId, id],

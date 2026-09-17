@@ -26,7 +26,8 @@
     "./garmin": "./src/garmin.ts",
     "./check-ins": "./src/check-ins.ts",
     "./dashboard": "./src/dashboard.ts",
-    "./activity-context": "./src/activity-context.ts"
+    "./activity-context": "./src/activity-context.ts",
+    "./plan-scenarios": "./src/plan-scenarios.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"
