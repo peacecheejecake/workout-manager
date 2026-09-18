@@ -63,7 +63,7 @@ describe('planned table settings', () => {
     const user = userEvent.setup();
     function Host() {
       const [store] = useState(createPlannedTableInteractionStore);
-      const [columns, setColumns] = useState<PlannedTableColumn[]>(['completion']);
+      const [columns, setColumns] = useState<PlannedTableColumn[]>(['completion', 'planType']);
       const [pins, setPins] = useState<PlannedTablePin[]>([]);
       return (
         <PlannedTable
@@ -89,6 +89,8 @@ describe('planned table settings', () => {
     }
     render(<Host />);
     const table = within(screen.getByRole('table', { name: '계획 세션 표' }));
+    expect(table.getByRole('columnheader', { name: '계획 종류' })).toBeVisible();
+    expect(table.getAllByText('운동')).toHaveLength(4);
     expect(table.getByText('완료 확인 기록 없음')).toBeVisible();
     expect(table.getAllByText('저장 전 세션')).toHaveLength(3);
     await user.click(screen.getByRole('checkbox', { name: '완료 보고 열 고정' }));

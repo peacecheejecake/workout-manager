@@ -114,6 +114,16 @@ test('planned table sorting and columns remain display-only through reload and r
     '/planner?lens=calendar&from=2026-09-14&to=2026-09-28&plannedView=table&view=stack',
   );
   const table = page.getByRole('table', { name: '계획 세션 표', exact: true });
+  await expect(table.getByRole('columnheader', { name: '계획 종류', exact: true })).toBeVisible();
+  await expect(
+    table
+      .getByRole('row')
+      .filter({ has: page.getByRole('button', { name: `계획: ${marker} zero`, exact: true }) })
+      .getByRole('cell', { name: '운동', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: '계획 종류 열 표시', exact: true }).uncheck();
+  await expect(table.getByRole('columnheader', { name: '계획 종류', exact: true })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: '계획 종류 열 표시', exact: true }).check();
   const names = (suffixes: string[]) => suffixes.map((suffix) => `계획: ${marker} ${suffix}`);
   const rowTitles = table.getByRole('button', { name: /^계획:/ });
   const distanceSort = page.getByRole('button', { name: '거리 정렬', exact: true });

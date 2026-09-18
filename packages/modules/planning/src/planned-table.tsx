@@ -41,6 +41,7 @@ export interface PlannedTableSettings {
 }
 const labels = {
   block: 'Block',
+  planType: '계획 종류',
   purpose: '목적',
   distance: '거리',
   duration: '시간',
@@ -154,6 +155,7 @@ export function PlannedTable({
     date: 160,
     title: 240,
     block: 160,
+    planType: 160,
     purpose: 200,
     distance: 160,
     duration: 160,
@@ -239,6 +241,8 @@ export function PlannedTable({
         return (
           source.periods.find((period) => period.id === session.blockId)?.title ?? 'Block 미확인'
         );
+      case 'planType':
+        return '운동';
       case 'purpose':
         return session.purpose || '목적 미입력';
       case 'distance':

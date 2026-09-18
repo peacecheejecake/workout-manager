@@ -586,6 +586,15 @@
       "evidence": "docs/implementation/progress/M1-04ay.md"
     },
     {
+      "id": "M1-04az",
+      "title": "계획 종류 도메인 열",
+      "dependsOn": ["M1-04q"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S05 계획 종류를 종목과 분리해 도메인으로 표시; 현재 운동 행과 후속 도메인 통합 경계·브라우저 검증",
+      "evidence": "docs/implementation/progress/M1-04az.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -641,7 +650,8 @@
         "M1-04av",
         "M1-04aw",
         "M1-04ax",
-        "M1-04ay"
+        "M1-04ay",
+        "M1-04az"
       ],
       "kind": "task",
       "status": "in_progress",

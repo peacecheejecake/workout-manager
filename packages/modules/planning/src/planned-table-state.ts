@@ -11,6 +11,7 @@ export const plannedTableSorts = [
 export type PlannedTableSort = (typeof plannedTableSorts)[number];
 export const plannedTableColumns = [
   'block',
+  'planType',
   'purpose',
   'distance',
   'duration',

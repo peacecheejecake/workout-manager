@@ -2,13 +2,14 @@
 
 기준: [구현 계획](README.md). 초기 계획 이후 구현을 진행 중이다. 최신 상태와 검증 기록은 [task-graph.json](task-graph.json)의 status/evidence를 따른다.
 
-M1-04는 [화면별 수용 대조](progress/M1-04.md)를 진행 중이다. S05 계획 종류의 의미 결정이 남아 있으며,
-지도·코치·제공자·Native 등 기존 후속 task의 미완료 범위는 별도로 유지한다.
+M1-04는 [화면별 수용 대조](progress/M1-04.md)를 진행 중이다. S05 계획 종류는 운동·영양·회복·루틴
+도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속
+task의 미완료 범위는 별도로 유지한다.
 
 M1-05b는 소유한 불변 계획 버전의 검토 범위와 사용자 메시지 저장을 별도로 준비한다.
 대화 저장은 모델 실행·근거 스냅샷·후보 생성·승인을 수행하지 않으며, 부모 gate는 그대로다.
 
-M1-05a는 이미 구현된 원장의 변경 여부를 캡처·비교하는 기반으로 분리했다. S05 계획 종류를
+M1-05a는 이미 구현된 원장의 변경 여부를 캡처·비교하는 기반으로 분리했다. S05 도메인 종류를
 해석하지 않으므로 기존 원장 계약만 선행 조건으로 삼는다. M1-05 전체는 계속 M1-04 완료 후
 근거 저장·정책/대화/자료 의존성·후보·명시 승인·원자적 쓰기를 통합한다.
 
@@ -264,6 +265,9 @@ flowchart TD
     activityBrowser --> dashboardActivityNavigation
     dashboardPeriodNavigation --> dashboardActivityNavigation
     dashboardActivityNavigation --> task14
+    planTypeColumn["M1-04az 계획 종류 도메인 열"]
+    plannerTable --> planTypeColumn
+    planTypeColumn --> task14
     planScenarios["M1-04ar 계획 시나리오 A/B/C 저장·비교·적용"]
     planHistoryComparison --> planScenarios
     sessionCompletionUi --> planScenarios
@@ -469,7 +473,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-04aw 세션별 연결 실제 집계·거리 비교 | M1-04av, M1-04i, M1-04ap | 명시 연결 전체 집계·저장 목표·부분 합계·동시 snapshot·표 UI |
 | M1-04ax 세션별 저장본·초안 변경 표시 | M1-04n, M1-04s, M1-04ad | 표·달력·agenda의 세션 값·시간대 비교·새 ID·undo·저장 상태 |
 | M1-04ay 대시보드 실제 요약에서 기간별 활동 탐색 | M1-04d, M1-04f, M1-04am | 현재·직전·일별 적용 시간대·날짜 경계와 활동 필터 navigation |
-| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao, M1-04ap, M1-04aq, M1-04ar, M1-04as, M1-04at, M1-04au, M1-04av, M1-04aw, M1-04ax, M1-04ay | dashboard/wellbeing/workbench; 실제 API·반응형 |
+| M1-04az 계획 종류 도메인 열 | M1-04q | S05 계획 종류와 종목 분리·현재 운동 행·후속 도메인 경계·브라우저 검증 |
+| M1-04 오늘·활동·체크인 UI | M1-02, M1-03, M1-04a, M1-04b, M1-04c, M1-04d, M1-04e, M1-04f, M1-04g, M1-04h, M1-04i, M1-04j, M1-04k, M1-04l, M1-04m, M1-04n, M1-04o, M1-04p, M1-04q, M1-04r, M1-04s, M1-04t, M1-04u, M1-04v, M1-04w, M1-04x, M1-04y, M1-04z, M1-04aa, M1-04ab, M1-04ac, M1-04ad, M1-04ae, M1-04af, M1-04ag, M1-04ah, M1-04ai, M1-04aj, M1-04ak, M1-04al, M1-04am, M1-04an, M1-04ao, M1-04ap, M1-04aq, M1-04ar, M1-04as, M1-04at, M1-04au, M1-04av, M1-04aw, M1-04ax, M1-04ay, M1-04az | dashboard/wellbeing/workbench; 실제 API·반응형 |
 | M1-05a 기존 원장 근거 의존성 캡처·비교 | M1-01, M1-02, M1-03, M1-04a, M1-04ai | 단일 snapshot·부재/현재 head·원장/동의 revision 비교; 승인 권한·전체 freshness와 구분 |
 | M1-05b 상담 스레드·사용자 메시지·검토 범위 저장 | M1-01, M1-02, M1-06a | 불변 계획 scope·대화 revision·멱등 재전송·export/erase/복원; 모델 실행과 분리 |
 | M1-05c 상담 기록 UI·검토 범위·메시지 복구 | M1-05b, M0-03, M0-04 | 두 shell 공통 UI·고정 scope/제약·사용자 초안·동시 수정/응답 유실 복구 |
