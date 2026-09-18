@@ -138,7 +138,7 @@ Migration 014와 `grantCoachingConstraints`를 적용한다. 전체 head와 항�
 비운 tombstone을 남긴다. 명령 receipt에는 요청 해시와 결과 메타데이터만 보관하며 outbox도
 본문을 복제하지 않는다. 완료 세션 상태나 기간 운동 불가 날짜·가용 시간과는 별도 원장이다.
 
-현재 export v7에는 `coachingConstraints`, `coachingConstraintHeads`가 추가된다. v2~v6
+M1-05f 시점의 export v7에는 `coachingConstraints`, `coachingConstraintHeads`가 추가됐다. v2~v6
 다운로드 읽기는 보존하고 과거에 없던 컬렉션을 합성하지 않는다. 기존 내보내기 크기 제한과
 계정 삭제 gate가 그대로 적용된다. 과거 running-core-v1 근거에는 포함되지 않는다.
 신규 running-core-v2의 강제 포함·삭제 회수는 M1-05g에서 연결한다.
@@ -167,3 +167,20 @@ running-core-v2 본문과 core-ledgers-v2 의존성을 한 SQL snapshot으로 �
 일치하는 tenant 문맥의 table owner에게만 허용된다. runtime은 계속 한 revision씩만 증가하며
 ID/소유권 변경·삭제 tombstone 부활은 허용하지 않는다. 계정 삭제 원장 우선 적용, 완전성·역행
 검사, 실패 시 유지보수 transaction rollback은 기존과 같다.
+
+## 코치 실행 기록 (M1-05i2b1)
+
+Migration 017은 tenant별 실행 원장과 별도의 내부 미검증 출력 저장소를 만든다. 계정 삭제는
+출력→실행→근거 순서로 제거한다. 근거 삭제·AI 동의 철회는 활성 실행을 취소하고 출력 본문과
+종료 상태의 질문·실패 문구를 같은 transaction에서 회수한다. 실행 상태는 승인된 계획이나
+검증된 결정의 증거가 아니다.
+
+계정 내보내기 v8은 `coachingRuns`와 `coachingAnalysisOutputs`를 추가한다. 사용자 소유
+출력 본문은 현재 근거와 AI 동의가 유효할 때에만 포함한다. 회수 후에는 메타데이터만 내보내고
+본문을 NULL로 유지한다. 과거 v2~v7 artifact는 각 당시 컬렉션 그대로 읽으며 누락된 실행
+기록을 합성하지 않는다. 크기 제한은 전체 8MiB, 컬렉션별 1,000행으로 유지한다. 멱등
+receipt·outbox는 다운로드에 포함하지 않는다.
+
+복원 절차에서는 최신 삭제 원장과 AI 동의 상태를 적용한 뒤 runtime 접근을 열어야 한다.
+과거 백업의 미검증 출력이 철회된 동의나 삭제된 근거를 통해 다시 노출되어서는 안 된다.
+일반 서버의 실행 생성 경로와 결정론 runner는 M1-05i2b2가 끝나기 전까지 비활성이다.

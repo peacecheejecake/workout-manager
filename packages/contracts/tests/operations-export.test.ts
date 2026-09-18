@@ -183,3 +183,50 @@ it('requires both constraint collections in v7 without manufacturing them in v6'
     ).toBe(false);
   }
 });
+
+it('requires coaching run and output collections in v8 while preserving historical v7', () => {
+  const previous = {
+    ...legacy,
+    schemaVersion: 7,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+    },
+  };
+  const artifact = {
+    ...previous,
+    schemaVersion: 8,
+    data: {
+      ...previous.data,
+      coachingRuns: [{ id: 'synthetic-run', basis: { schemaVersion: 1 } }],
+      coachingAnalysisOutputs: [
+        {
+          id: 'synthetic-output',
+          run_id: 'synthetic-run',
+          body: null,
+          purged_reason: 'source_deleted',
+        },
+      ],
+    },
+  };
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.parse(previous).data).not.toHaveProperty('coachingRuns');
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 8 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 7 }).success).toBe(false);
+  for (const key of ['coachingRuns', 'coachingAnalysisOutputs']) {
+    expect(
+      accountExportSchema.safeParse({ ...artifact, data: { ...artifact.data, [key]: undefined } })
+        .success,
+    ).toBe(false);
+  }
+});

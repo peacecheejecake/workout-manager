@@ -49,6 +49,13 @@ const accountExportV6Schema = accountExportV5Schema.extend({
   schemaVersion: z.literal(6),
   data: accountExportV5Schema.shape.data.extend({ evidenceSnapshots: rows }),
 });
+const accountExportV7Schema = accountExportV6Schema.extend({
+  schemaVersion: z.literal(7),
+  data: accountExportV6Schema.shape.data.extend({
+    coachingConstraints: rows,
+    coachingConstraintHeads: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -56,11 +63,12 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV4Schema,
   accountExportV5Schema,
   accountExportV6Schema,
-  accountExportV6Schema.extend({
-    schemaVersion: z.literal(7),
-    data: accountExportV6Schema.shape.data.extend({
-      coachingConstraints: rows,
-      coachingConstraintHeads: rows,
+  accountExportV7Schema,
+  accountExportV7Schema.extend({
+    schemaVersion: z.literal(8),
+    data: accountExportV7Schema.shape.data.extend({
+      coachingRuns: rows,
+      coachingAnalysisOutputs: rows,
     }),
   }),
 ]);

@@ -759,12 +759,29 @@
       "evidence": "docs/implementation/progress/M1-05i2a.md"
     },
     {
-      "id": "M1-05i2b",
-      "title": "코치 실행 adapter·preflight·운영 수명주기",
+      "id": "M1-05i2b1",
+      "title": "코치 실행 기록 운영·내보내기·복원",
       "dependsOn": ["M1-05i2a"],
       "kind": "task",
+      "status": "completed",
+      "scope": "실행·미검증 출력의 버전별 내보내기·계정 삭제·backup restore·동의 철회 후 회수 회귀; 과거 export 호환",
+      "evidence": "docs/implementation/progress/M1-05i2b1.md"
+    },
+    {
+      "id": "M1-05i2b2",
+      "title": "결정론 실행 adapter·preflight·fixture 노출",
+      "dependsOn": ["M1-05i2b1"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "결정론 adapter·실행 직전/직후 근거/동의/정책 재검사·미검증 출력/실패/취소·lease/재시도·삭제/내보내기/복원·비프로덕션 fixture 노출; 실제 provider 별도 검증"
+      "scope": "실행 직전/직후 근거/동의/정책 재검사·tenant lease/중복 방지·결정론 adapter·미검증 분석/질문/실패/취소·비프로덕션 fixture 노출; 실제 provider 별도 검증"
+    },
+    {
+      "id": "M1-05i2b",
+      "title": "코치 실행 adapter·preflight·운영 수명주기",
+      "dependsOn": ["M1-05i2b1", "M1-05i2b2"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "결정론 adapter·실행 직전/직후 근거/동의/정책 재검사·미검증 분석/실패/취소·lease/재시도·삭제/내보내기/복원·비프로덕션 fixture 노출; 실제 provider 별도 검증"
     },
     {
       "id": "M1-05i2",

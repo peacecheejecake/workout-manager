@@ -79,6 +79,120 @@ async function waitForBlockedLogin() {
   throw new Error('Expected login to wait on erasure lock');
 }
 
+it('exports run basis and output only while evidence and AI consent remain available', async () => {
+  const athlete = randomUUID();
+  const other = randomUUID();
+  await seed(athlete);
+  await seed(other);
+  const planId = (await operations.exportAccount(athlete)).data.planSnapshots[0]?.['id'];
+  expect(typeof planId).toBe('string');
+  const threadId = randomUUID();
+  const snapshotId = randomUUID();
+  const runId = randomUUID();
+  const outputId = randomUUID();
+  const privateText = 'Synthetic untrusted output body';
+  const connection = await admin.connect();
+  try {
+    await connection.query('BEGIN');
+    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await connection.query(
+      `INSERT INTO coaching_thread(athlete_id,id,plan_version_id,title,scope,revision)
+       VALUES($1,$2,$3,'Synthetic run','{"kind":"session","targetId":"session"}'::jsonb,1)`,
+      [athlete, threadId, planId],
+    );
+    await connection.query(
+      `INSERT INTO core_evidence_snapshot(athlete_id,id,thread_id,created_at,body)
+       VALUES($1,$2,$3,clock_timestamp(),'{}'::jsonb)`,
+      [athlete, snapshotId, threadId],
+    );
+    await connection.query(
+      `INSERT INTO coaching_run(athlete_id,id,thread_id,evidence_snapshot_id,conversation_revision,policy,source,basis)
+       VALUES($1,$2,$3,$4,1,'{"id":"running-core-v2-training","version":"1"}'::jsonb,
+        '{"kind":"deterministic_fixture","fixtureId":"export-test"}'::jsonb,
+        '{"schemaVersion":1,"marker":"synthetic-basis"}'::jsonb)`,
+      [athlete, runId, threadId, snapshotId],
+    );
+    await connection.query(
+      'INSERT INTO coaching_analysis_output(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
+      [athlete, outputId, runId, JSON.stringify({ text: privateText })],
+    );
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally {
+    connection.release();
+  }
+  const before = await operations.exportAccount(athlete);
+  if (before.schemaVersion !== 8) throw new Error('Expected run export v8');
+  expect(before.data.coachingRuns).toEqual([
+    expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
+  ]);
+  expect(before.data.coachingAnalysisOutputs).toEqual([
+    expect.objectContaining({ id: outputId, run_id: runId, body: { text: privateText } }),
+  ]);
+  const otherExport = await operations.exportAccount(other);
+  if (otherExport.schemaVersion !== 8) throw new Error('Expected run export v8');
+  expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
+  await database.tenant(athlete, (tx) =>
+    tx.query(
+      "UPDATE consent SET granted=false,revision=revision+1 WHERE athlete_id=$1 AND kind='ai'",
+      [athlete],
+    ),
+  );
+  const withdrawn = await operations.exportAccount(athlete);
+  if (withdrawn.schemaVersion !== 8) throw new Error('Expected run export v8');
+  expect(withdrawn.data.coachingAnalysisOutputs).toEqual([
+    expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
+  ]);
+  expect(JSON.stringify(withdrawn)).not.toContain(privateText);
+  // Simulate a legacy or malformed restored row to verify the export projection fails closed.
+  const legacy = await admin.connect();
+  try {
+    await legacy.query('BEGIN');
+    await legacy.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await legacy.query("SET LOCAL session_replication_role='replica'");
+    await legacy.query(
+      'UPDATE coaching_analysis_output SET body=$3::jsonb,purged_reason=NULL WHERE athlete_id=$1 AND id=$2',
+      [athlete, outputId, JSON.stringify({ text: privateText })],
+    );
+    await legacy.query('COMMIT');
+  } catch (error) {
+    await legacy.query('ROLLBACK');
+    throw error;
+  } finally {
+    legacy.release();
+  }
+  const guarded = await operations.exportAccount(athlete);
+  if (guarded.schemaVersion !== 8) throw new Error('Expected run export v8');
+  expect(guarded.data.coachingAnalysisOutputs).toEqual([
+    expect.objectContaining({
+      id: outputId,
+      body: null,
+      purged_reason: 'consent_or_evidence_unavailable',
+    }),
+  ]);
+  expect(JSON.stringify(guarded)).not.toContain(privateText);
+  await operations.eraseAccount(athlete);
+  const auditor = await admin.connect();
+  try {
+    await auditor.query('BEGIN');
+    await auditor.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    for (const table of ['coaching_run', 'coaching_analysis_output']) {
+      expect(
+        (
+          await auditor.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
+            athlete,
+          ])
+        ).rows[0].count,
+      ).toBe(0);
+    }
+    await auditor.query('ROLLBACK');
+  } finally {
+    auditor.release();
+  }
+});
+
 describe('M1-06a scoped export, operational status and durable erasure', () => {
   it('exports a complete allowlisted tenant snapshot without credentials, receipts or outbox internals', async () => {
     const first = randomUUID(),
@@ -123,7 +237,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(7);
+    expect(before.schemaVersion).toBe(8);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);

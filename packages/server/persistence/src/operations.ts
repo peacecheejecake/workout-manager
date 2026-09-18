@@ -20,6 +20,32 @@ export interface OperationsRepository {
 }
 const collections = [
   [
+    'coachingRuns',
+    'coaching_run',
+    'id,thread_id,evidence_snapshot_id,conversation_revision,policy,source,basis,status,created_at,updated_at',
+    'created_at,id',
+  ],
+  [
+    'coachingAnalysisOutputs',
+    'coaching_analysis_output',
+    `id,run_id,CASE WHEN body IS NOT NULL
+       AND EXISTS(SELECT 1 FROM core_evidence_snapshot e JOIN coaching_run run
+        ON run.athlete_id=e.athlete_id AND run.evidence_snapshot_id=e.id
+        WHERE run.athlete_id=coaching_analysis_output.athlete_id
+         AND run.id=coaching_analysis_output.run_id AND e.body IS NOT NULL)
+       AND EXISTS(SELECT 1 FROM consent c WHERE c.athlete_id=coaching_analysis_output.athlete_id
+        AND c.kind='ai' AND c.granted) THEN body ELSE NULL END AS body,
+     CASE WHEN body IS NOT NULL AND (
+       NOT EXISTS(SELECT 1 FROM core_evidence_snapshot e JOIN coaching_run run
+        ON run.athlete_id=e.athlete_id AND run.evidence_snapshot_id=e.id
+        WHERE run.athlete_id=coaching_analysis_output.athlete_id
+         AND run.id=coaching_analysis_output.run_id AND e.body IS NOT NULL)
+       OR NOT EXISTS(SELECT 1 FROM consent c WHERE c.athlete_id=coaching_analysis_output.athlete_id
+        AND c.kind='ai' AND c.granted)) THEN 'consent_or_evidence_unavailable'
+      ELSE purged_reason END AS purged_reason,created_at`,
+    'created_at,id',
+  ],
+  [
     'coachingConstraints',
     'coaching_constraint',
     'id,revision,text,confirmed_at,updated_at,deleted',
@@ -125,7 +151,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 7,
+          schemaVersion: 8,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

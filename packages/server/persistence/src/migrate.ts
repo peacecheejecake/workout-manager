@@ -111,7 +111,7 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head,coaching_run,coaching_analysis_output TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
@@ -234,7 +234,7 @@ export async function grantCoreEvidenceSnapshots(
   }
 }
 
-/** Durable coaching attempts expose run metadata, not model output, to the API role. */
+/** Run endpoints need only metadata; account export grants tenant-scoped output reads separately. */
 export async function grantCoachingRuns(
   connectionString: string,
   runtimeRole: string,
