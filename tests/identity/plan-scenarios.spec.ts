@@ -200,7 +200,7 @@ test('a separately saved scenario leaves current scheduling untouched until an e
   await page.unroute(pattern);
 });
 
-test('scenario API rejects stale dependencies and foreign access while preserving immutable revisions and same-label slots', async ({
+test('scenario API allows arbitrary names per base while rejecting duplicate names and stale dependencies', async ({
   page,
   browser,
 }) => {
@@ -216,6 +216,13 @@ test('scenario API rejects stale dependencies and foreign access while preservin
   expect(created.status()).toBe(200);
   const original = planScenarioSchema.parse(await created.json());
   expect((await post(scenarioRoot, createBody)).status()).toBe(409);
+  const named = await post(scenarioRoot, {
+    confirmed: true,
+    basePlanVersionId: f.saved.id,
+    label: '대회 준비 주간',
+  });
+  expect(named.status()).toBe(200);
+  expect(planScenarioSchema.parse(await named.json()).label).toBe('대회 준비 주간');
   const editedDraft = { ...original.draft, title: 'Synthetic changed alternative' };
   const changed = await page.request.put(`${scenarioRoot}/${original.id}`, {
     headers: { ...f.headers, 'idempotency-key': randomUUID() },

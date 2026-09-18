@@ -595,6 +595,15 @@
       "evidence": "docs/implementation/progress/M1-04az.md"
     },
     {
+      "id": "M1-04ba",
+      "title": "기준 버전별 가변 시나리오 이름",
+      "dependsOn": ["M1-04ar"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "기준 계획 버전별 0..N 사용자 이름 시나리오·A/B/C 호환·중복/이력·기존 명시 적용 보호·migration 016",
+      "evidence": "docs/implementation/progress/M1-04ba.md"
+    },
+    {
       "id": "M1-04",
       "title": "오늘·활동·체크인 UI",
       "dependsOn": [
@@ -651,7 +660,8 @@
         "M1-04aw",
         "M1-04ax",
         "M1-04ay",
-        "M1-04az"
+        "M1-04az",
+        "M1-04ba"
       ],
       "kind": "task",
       "status": "in_progress",

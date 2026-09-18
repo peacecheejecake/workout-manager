@@ -5,7 +5,13 @@ import { manualPlanCommandSchema, planDraftSchema, planSnapshotSchema } from './
 const id = z.uuid().transform((value) => value.toLowerCase());
 const revision = z.number().int().min(1).max(2147483646);
 const completionRevision = z.number().int().min(0).max(2147483646);
-export const planScenarioLabelSchema = z.enum(['A', 'B', 'C']);
+/** User supplied alternative name. A/B/C remain convenient examples, not a fixed slot set. */
+export const planScenarioLabelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine((value) => !value.includes('\u0000'), 'Scenario label contains an invalid character');
 /** Separate alternatives, never a session intensity label or an approved current schedule. */
 export const planScenarioSchema = z.strictObject({
   id,
@@ -22,7 +28,7 @@ export const planScenarioSummarySchema = planScenarioSchema.omit({ draft: true }
 export const planScenarioListQuerySchema = z.strictObject({
   basePlanVersionId: id.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(100),
-  offset: z.coerce.number().int().min(0).max(10000).default(0),
+  offset: z.coerce.number().int().min(0).max(2147483646).default(0),
 });
 export const planScenarioListSchema = z.strictObject({
   items: z.array(planScenarioSummarySchema).max(100),

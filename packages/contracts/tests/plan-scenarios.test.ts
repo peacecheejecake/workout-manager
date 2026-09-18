@@ -44,16 +44,20 @@ describe('separate saved plan alternatives', () => {
     expect(value).not.toHaveProperty('version');
     expect(planScenarioSchema.safeParse({ ...value, current: true }).success).toBe(false);
   });
-  it('creates only from an existing base reference with a confirmed A/B/C slot', () => {
-    const create = { ...command, basePlanVersionId: base, label: 'B' };
+  it('accepts any bounded user name per base reference while keeping A/B/C compatible examples', () => {
+    const create = { ...command, basePlanVersionId: base, label: '대회 준비 주간' };
     expect(planScenarioCreateSchema.parse(create).basePlanVersionId).toBe(base.toLowerCase());
+    expect(planScenarioCreateSchema.parse({ ...create, label: 'B' }).label).toBe('B');
     for (const invalid of [
       { ...create, confirmed: false },
-      { ...create, label: 'D' },
+      { ...create, label: '   ' },
+      { ...create, label: 'x'.repeat(81) },
+      { ...create, label: 'bad\u0000label' },
       { ...create, basePlanVersionId: 'session-id' },
       { ...create, draft },
     ])
       expect(planScenarioCreateSchema.safeParse(invalid).success).toBe(false);
+    expect(planScenarioCreateSchema.parse({ ...create, label: '  Base  ' }).label).toBe('Base');
   });
   it('requires both confirmation and the expected branch revision when saving', () => {
     const save = { ...command, expectedRevision: 2, draft };
@@ -86,11 +90,11 @@ describe('separate saved plan alternatives', () => {
   });
   it('bounds history discovery without confusing an empty page with no saved branches', () => {
     expect(planScenarioListQuerySchema.parse({})).toEqual({ limit: 100, offset: 0 });
-    expect(planScenarioListQuerySchema.parse({ limit: '3', offset: '10000' })).toEqual({
+    expect(planScenarioListQuerySchema.parse({ limit: '3', offset: '10001' })).toEqual({
       limit: 3,
-      offset: 10000,
+      offset: 10001,
     });
-    for (const invalid of [{ limit: 101 }, { offset: 10001 }, { offset: -1 }, { label: 'A' }])
+    for (const invalid of [{ limit: 101 }, { offset: 2147483647 }, { offset: -1 }, { label: 'A' }])
       expect(planScenarioListQuerySchema.safeParse(invalid).success).toBe(false);
   });
 });

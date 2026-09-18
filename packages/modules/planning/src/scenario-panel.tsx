@@ -11,7 +11,9 @@ import {
 } from '@workout/contracts/planning';
 import {
   planScenarioSchema,
+  planScenarioLabelSchema,
   planScenarioListSchema,
+  planScenarioListQuerySchema,
   planScenarioCreateSchema,
   planScenarioSaveSchema,
 } from '@workout/contracts/plan-scenarios';
@@ -69,6 +71,7 @@ function Controller({
   const setPhase = store.getState().setPhase;
   const [message, setMessage] = useState(''),
     [error, setError] = useState('');
+  const [newScenarioLabel, setNewScenarioLabel] = useState('');
   const [authExpired, setAuthExpired] = useState(false);
   const revoked = useRef(false);
   const active = useRef(true),
@@ -132,13 +135,18 @@ function Controller({
     .nullable()
     .safeParse(params.get('scenarioBase') ?? current?.head?.id ?? null);
   const selectedId = planScenarioSchema.shape.id.nullable().safeParse(params.get('scenario'));
+  const requestedOffset = planScenarioListQuerySchema.shape.offset.safeParse(
+    params.get('scenarioOffset') ?? 0,
+  );
   const revision = planScenarioSchema.shape.revision
     .nullable()
     .safeParse(params.has('scenarioRevision') ? Number(params.get('scenarioRevision')) : null);
-  const invalid = !baseId.success || !selectedId.success || !revision.success;
+  const invalid =
+    !baseId.success || !selectedId.success || !revision.success || !requestedOffset.success;
   const base = baseId.success ? (baseId.data?.toLowerCase() ?? null) : null;
   const selected = selectedId.success ? (selectedId.data?.toLowerCase() ?? null) : null;
   const version = revision.success ? revision.data : null;
+  const offset = requestedOffset.success ? requestedOffset.data : 0;
   function change(values: Record<string, string | null>) {
     const next = new URLSearchParams(search);
     for (const [key, value] of Object.entries(values))
@@ -162,13 +170,13 @@ function Controller({
     },
   });
   const list = useQuery({
-    queryKey: [...scope, 'list', base],
+    queryKey: [...scope, 'list', base, offset],
     enabled: !authExpired && !invalid && base !== null,
     retry: false,
     queryFn: ({ signal }) =>
       readScenarioResource(
         transport,
-        `/bff/v1/plan-scenarios?${new URLSearchParams({ basePlanVersionId: base ?? '', limit: '100', offset: '0' })}`,
+        `/bff/v1/plan-scenarios?${new URLSearchParams({ basePlanVersionId: base ?? '', limit: '100', offset: String(offset) })}`,
         planScenarioListSchema,
         signal,
       ),
@@ -206,6 +214,7 @@ function Controller({
   const reports = completions.data?.items.filter((item) => item.status === 'completed') ?? [];
   const completionValid = !draft || preservesSessionCompletions(draft, reports);
   const writable = !manualDraftActive && !busy && !invalid;
+  const parsedNewLabel = planScenarioLabelSchema.safeParse(newScenarioLabel);
   async function refresh() {
     await client.cancelQueries({ queryKey: scope });
     await client.resetQueries({ queryKey: scope }, { throwOnError: true });
@@ -279,6 +288,7 @@ function Controller({
           scenarioBase: result.scenario.basePlanVersionId,
           scenario: result.scenario.id,
           scenarioRevision: null,
+          scenarioOffset: null,
         });
       try {
         await Promise.all([
@@ -370,7 +380,8 @@ function Controller({
     <section className={styles.panel} aria-label="계획 시나리오">
       <h2>계획 시나리오</h2>
       <p>
-        하나의 저장된 기준 계획에서 A·B·C 대안을 따로 관리합니다. 강도 라벨이 아니며 선택·편집·대안
+        하나의 저장된 기준 계획 버전에서 여러 대안을 따로 관리합니다. A·B·C는 이름을 정할 때 사용할
+        수 있는 예시일 뿐 개수나 이름을 제한하지 않습니다. 강도 라벨이 아니며 선택·편집·대안
         저장만으로 현재 계획이나 실제 활동은 바뀌지 않습니다.
       </p>
       {manualDraftActive ? (
@@ -386,7 +397,14 @@ function Controller({
           <Button
             variant="secondary"
             disabled={busy}
-            onClick={() => change({ scenarioBase: null, scenario: null, scenarioRevision: null })}
+            onClick={() =>
+              change({
+                scenarioBase: null,
+                scenario: null,
+                scenarioRevision: null,
+                scenarioOffset: null,
+              })
+            }
           >
             시나리오 조회 초기화
           </Button>
@@ -403,6 +421,7 @@ function Controller({
                 scenarioBase: event.target.value || null,
                 scenario: null,
                 scenarioRevision: null,
+                scenarioOffset: null,
                 scenarioCompareFrom: null,
                 scenarioCompareTo: null,
                 scenarioPeriod: null,
@@ -445,6 +464,42 @@ function Controller({
           <p>시나리오를 만들려면 저장된 계획이 필요합니다.</p>
         )}
         <div className={styles.actions}>
+          <label>
+            새 시나리오 이름
+            <input
+              value={newScenarioLabel}
+              maxLength={80}
+              onChange={(event) => setNewScenarioLabel(event.target.value)}
+              placeholder="예: 대회 준비 주간"
+            />
+          </label>
+          <Button
+            variant="secondary"
+            disabled={
+              !writable ||
+              !readyBase ||
+              !list.isSuccess ||
+              list.isFetching ||
+              !parsedNewLabel.success ||
+              list.data.items.some((item) => item.label === parsedNewLabel.data)
+            }
+            onClick={() => {
+              if (!readyBase || !writable) return;
+              if (!parsedNewLabel.success) return;
+              startReview({
+                kind: 'create',
+                base: readyBase,
+                command: planScenarioCreateSchema.parse({
+                  confirmed: true,
+                  idempotencyKey: createId(),
+                  basePlanVersionId: readyBase.id,
+                  label: parsedNewLabel.data,
+                }),
+              });
+            }}
+          >
+            이름으로 시나리오 만들기
+          </Button>
           {(['A', 'B', 'C'] as const).map((label) => (
             <Button
               key={label}
@@ -480,7 +535,11 @@ function Controller({
           <p role="status">대안 목록을 조회하고 있습니다.</p>
         ) : list.isSuccess ? (
           <>
-            <p>이 기준의 시나리오 {list.data.total}개</p>
+            <p>
+              이 기준의 시나리오 {list.data.total}개 ·{' '}
+              {list.data.items.length === 0 ? 0 : offset + 1}–
+              {Math.min(offset + list.data.items.length, list.data.total)} 표시
+            </p>
             <ul>
               {list.data.items.map((item) => (
                 <li key={item.id}>
@@ -503,6 +562,22 @@ function Controller({
                 </li>
               ))}
             </ul>
+            <div className={styles.actions}>
+              <Button
+                variant="secondary"
+                disabled={offset === 0}
+                onClick={() => change({ scenarioOffset: String(Math.max(0, offset - 100)) })}
+              >
+                이전 시나리오 페이지
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={offset + 100 >= list.data.total}
+                onClick={() => change({ scenarioOffset: String(offset + 100) })}
+              >
+                다음 시나리오 페이지
+              </Button>
+            </div>
           </>
         ) : null}
       </fieldset>

@@ -36,14 +36,6 @@ export function ScenarioComparison({
   const afterId = planScenarioSchema.shape.id.safeParse(
     params.get('scenarioCompareToId') ?? scenario.id,
   );
-  const choices = [
-    ...new Map(
-      [{ ...scenario, title: scenario.draft.title }, ...alternatives].map((item) => [
-        item.id,
-        item,
-      ]),
-    ).values(),
-  ];
   const selections = [
     { parsed: before, id: beforeId },
     { parsed: after, id: afterId },
@@ -85,6 +77,27 @@ export function ScenarioComparison({
   });
   const left = queries[unique.findIndex((item) => item.key === selections[0]?.key)],
     right = queries[unique.findIndex((item) => item.key === selections[1]?.key)];
+  const choices = new Map<
+    string,
+    { id: string; label: string; revision: number | null; source: 'page' | 'comparison' }
+  >();
+  for (const item of [scenario, ...alternatives])
+    choices.set(item.id, {
+      id: item.id,
+      label: item.label,
+      revision: item.revision,
+      source: 'page',
+    });
+  for (const selected of [beforeId, afterId]) {
+    if (!selected.success || choices.has(selected.data)) continue;
+    const loaded = [left?.data, right?.data].find((item) => item?.id === selected.data);
+    choices.set(selected.data, {
+      id: selected.data,
+      label: loaded?.label ?? selected.data,
+      revision: loaded?.revision ?? null,
+      source: 'comparison',
+    });
+  }
   const ready = left?.isSuccess && !left.isFetching && right?.isSuccess && !right.isFetching;
   const wrap = (value: PlanScenario) => ({
     id: value.id,
@@ -128,9 +141,13 @@ export function ScenarioComparison({
         <label>
           이전 비교 시나리오
           <select name="fromId" defaultValue={beforeId.success ? beforeId.data : scenario.id}>
-            {choices.map((item) => (
+            {[...choices.values()].map((item) => (
               <option key={item.id} value={item.id}>
-                시나리오 {item.label} · 최신 수정 {item.revision}
+                {item.source === 'page'
+                  ? `시나리오 ${item.label} · 최신 수정 ${item.revision}`
+                  : item.revision === null
+                    ? `다른 페이지 비교 대상 ${item.id} · 조회 중`
+                    : `시나리오 ${item.label} · 선택 수정 ${item.revision}`}
               </option>
             ))}
           </select>
@@ -138,9 +155,13 @@ export function ScenarioComparison({
         <label>
           이후 비교 시나리오
           <select name="toId" defaultValue={afterId.success ? afterId.data : scenario.id}>
-            {choices.map((item) => (
+            {[...choices.values()].map((item) => (
               <option key={item.id} value={item.id}>
-                시나리오 {item.label} · 최신 수정 {item.revision}
+                {item.source === 'page'
+                  ? `시나리오 ${item.label} · 최신 수정 ${item.revision}`
+                  : item.revision === null
+                    ? `다른 페이지 비교 대상 ${item.id} · 조회 중`
+                    : `시나리오 ${item.label} · 선택 수정 ${item.revision}`}
               </option>
             ))}
           </select>

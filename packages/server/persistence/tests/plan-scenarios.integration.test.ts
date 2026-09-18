@@ -94,7 +94,7 @@ function intensityCommand(): ManualPlanCommand {
   return input;
 }
 
-const createCommand = (basePlanVersionId: string, label: 'A' | 'B' | 'C' = 'A') => ({
+const createCommand = (basePlanVersionId: string, label = 'A') => ({
   confirmed: true as const,
   basePlanVersionId,
   label,
@@ -205,7 +205,7 @@ describe('plan scenario durable alternatives', () => {
         (await admin.query(`SELECT * FROM ${table} WHERE athlete_id=$1`, [athlete])).rowCount,
       ).toBe(0);
   });
-  it('serializes slot creation and competing saves and keeps bounded list totals and immutable revisions tenant-owned', async () => {
+  it('serializes same-name creation while allowing unbounded named alternatives per base version', async () => {
     const { athlete, base } = await seed(),
       repo = createPlanScenarioRepository(database);
     const creates = await Promise.allSettled([
@@ -235,10 +235,18 @@ describe('plan scenario durable alternatives', () => {
     });
     await repo.create(athlete, createCommand(base.id, 'B'));
     await repo.create(athlete, createCommand(base.id, 'C'));
+    await repo.create(athlete, createCommand(base.id, '대회 준비 주간'));
     expect(await repo.list(athlete, { basePlanVersionId: base.id, offset: 99, limit: 1 })).toEqual({
       items: [],
-      total: 3,
+      total: 4,
     });
+    const nextBase = await createPlanningRepository(database).save(athlete, {
+      ...command(),
+      expectedVersionId: base.id,
+    });
+    const sameNameOnNextBase = await repo.create(athlete, createCommand(nextBase.id, 'A'));
+    expect(sameNameOnNextBase.basePlanVersionId).toBe(nextBase.id);
+    expect((await repo.list(athlete, { basePlanVersionId: nextBase.id })).total).toBe(1);
     expect((await repo.list(athlete, { limit: 1 })).items).toHaveLength(1);
     const other = randomUUID();
     expect(await repo.read(other, first.id)).toBeNull();

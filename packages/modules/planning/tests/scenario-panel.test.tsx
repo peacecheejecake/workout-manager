@@ -76,6 +76,13 @@ function setup(
     manual?: boolean;
     existing?: boolean;
     override?: AuthenticatedTransport['request'];
+    listPage?: (
+      offset: number,
+      saved: PlanScenario | null,
+    ) => {
+      items: ReturnType<typeof summary>[];
+      total: number;
+    };
   } = {},
 ) {
   const store = createScenarioDraftStore();
@@ -90,11 +97,17 @@ function setup(
     if (input.path.endsWith('/session-completions'))
       return response({ currentPlanVersionId: baseId, collectionRevision: 0, items: [] });
     if (input.path.includes('/plans/versions/')) return response(base());
-    if (input.path.startsWith('/bff/v1/plan-scenarios?'))
-      return response({
-        items: saved ? [summary(saved)] : [],
-        total: saved ? 1 : 0,
-      });
+    if (input.path.startsWith('/bff/v1/plan-scenarios?')) {
+      const offset = Number(
+        new URL(input.path, 'https://workout.example').searchParams.get('offset'),
+      );
+      return response(
+        options.listPage?.(offset, saved) ?? {
+          items: saved ? [summary(saved)] : [],
+          total: saved ? 1 : 0,
+        },
+      );
+    }
     if (input.method === 'POST' && input.path === '/bff/v1/plan-scenarios') {
       saved = alternative();
       return response(saved, 201);
@@ -167,6 +180,45 @@ describe('scenario panel independent approval workflows', () => {
       body: { confirmed: true, basePlanVersionId: baseId, label: 'A' },
     });
     expect(f.onApplied).not.toHaveBeenCalled();
+  });
+  it('creates a user-named alternative outside the A/B/C examples', async () => {
+    const f = setup({ existing: false });
+    const input = await screen.findByRole('textbox', { name: '새 시나리오 이름' });
+    const create = screen.getByRole('button', { name: '이름으로 시나리오 만들기' });
+    expect(create).toBeDisabled();
+    await userEvent.type(input, '대회 준비 주간');
+    await waitFor(() => expect(create).toBeEnabled());
+    await userEvent.click(create);
+    await userEvent.click(screen.getByRole('button', { name: '확인하고 시나리오 만들기' }));
+    expect(f.writes.mock.calls[0]?.[0]).toMatchObject({
+      method: 'POST',
+      body: { confirmed: true, basePlanVersionId: baseId, label: '대회 준비 주간' },
+    });
+  });
+  it('pages through alternatives beyond the first hundred without losing the selected scenario', async () => {
+    const f = setup({
+      listPage: (offset, saved) => ({
+        items:
+          offset === 0
+            ? saved
+              ? [summary(saved)]
+              : []
+            : [{ ...summary(alternative()), id: secondId, label: '오래된 대안' }],
+        total: 101,
+      }),
+    });
+    const next = await screen.findByRole('button', { name: '다음 시나리오 페이지' });
+    await waitFor(() => expect(next).toBeEnabled());
+    await userEvent.click(next);
+    await screen.findByRole('button', { name: '시나리오 오래된 대안 선택' });
+    expect(screen.getByRole('heading', { name: '시나리오 A · 수정 1' })).toBeVisible();
+    expect(
+      f.request.mock.calls.some(
+        ([input]) => input.path.includes('plan-scenarios?') && input.path.includes('offset=100'),
+      ),
+    ).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: '이전 시나리오 페이지' }));
+    await screen.findByRole('button', { name: '시나리오 A 선택' });
   });
   it('keeps a full separate draft through undo and saves only the scenario endpoint with unchanged legacy/null/zero values', async () => {
     const f = setup();
@@ -421,6 +473,41 @@ describe('scenario panel independent approval workflows', () => {
 });
 
 describe('immutable cross-scenario comparison', () => {
+  it('keeps a compared scenario selected after its list page changes and preserves it on resubmit', async () => {
+    const a = alternative();
+    const b: PlanScenario = { ...a, id: secondId, label: 'B', revision: 2 };
+    const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+      response(input.path.includes(secondId) ? b : a),
+    );
+    const onChange = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const search = `scenarioCompareFromId=${a.id}&scenarioCompareFrom=1&scenarioCompareToId=${b.id}&scenarioCompareTo=2`;
+    const renderComparison = (items: PlanScenario[]) => (
+      <QueryClientProvider client={client}>
+        <ScenarioComparison
+          scenario={a}
+          alternatives={items.map(summary)}
+          transport={{ request }}
+          scope={['alice', 'scenario']}
+          search={search}
+          onChange={onChange}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(renderComparison([a, b]));
+    await screen.findByText(/시나리오 A 수정 1 → 시나리오 B 수정 2/);
+    const compared = screen.getByRole('combobox', { name: '이후 비교 시나리오' });
+    expect(compared).toHaveValue(secondId);
+    view.rerender(renderComparison([a]));
+    expect(compared).toHaveValue(secondId);
+    expect(
+      within(compared).getByRole('option', { name: /시나리오 B · 선택 수정 2/ }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: '시나리오 수정 비교하기' }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ scenarioCompareFromId: a.id, scenarioCompareToId: b.id }),
+    );
+  });
   it('reads independent A/B revisions by stable IDs and preserves legacy/null/zero under a period scope', async () => {
     const a = alternative(),
       b: PlanScenario = {

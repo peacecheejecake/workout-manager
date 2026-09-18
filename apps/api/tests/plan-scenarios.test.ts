@@ -202,7 +202,9 @@ it('strictly validates confirmation, body provenance, required dependency revisi
     { ...create, confirmed: false },
     { ...create, athleteId: 'foreign' },
     { ...create, idempotencyKey: 'body-key-0001' },
-    { ...create, label: 'D' },
+    { ...create, label: '   ' },
+    { ...create, label: 'x'.repeat(81) },
+    { ...create, label: 'invalid\u0000name' },
   ])
     expect((await app.inject({ method: 'POST', url: root, headers, payload })).statusCode).toBe(
       400,
