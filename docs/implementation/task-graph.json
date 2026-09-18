@@ -664,7 +664,7 @@
         "M1-04ba"
       ],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "dashboard/wellbeing/workbench; 지도와 독립적인 실제 API·반응형 UI; 지도 coverage는 M0-06b/M2-01, 전체 입력 회귀는 M2-06에서 검증",
       "evidence": "docs/implementation/progress/M1-04.md"
     },

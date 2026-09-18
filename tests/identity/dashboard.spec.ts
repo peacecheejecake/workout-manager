@@ -224,6 +224,11 @@ test('dashboard separates planned and actual data across DST and tracks correcti
     count: 2,
     distanceMeters: { value: 5000, knownCount: 1, missingCount: 1 },
     durationSeconds: { value: 1800, knownCount: 1, missingCount: 1 },
+    targets: {
+      definitionVersion: 'planned-targets-v1',
+      distanceMeters: { min: 5000, max: 5000, knownCount: 1, missingCount: 1, rangeCount: 0 },
+      durationSeconds: { min: 1800, max: 1800, knownCount: 1, missingCount: 1, rangeCount: 0 },
+    },
   });
   expect(dashboard.current).toMatchObject({ checkInCount: 2, checkInDays: 1 });
   expect(dashboard.previous).toMatchObject({
