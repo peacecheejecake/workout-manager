@@ -37,6 +37,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '022_integrated_dependency_heads.sql',
       '023_routine_core.sql',
       '024_stretching.sql',
+      '025_recovery_core.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');

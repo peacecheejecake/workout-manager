@@ -41,6 +41,7 @@ const config: NextConfig = {
     '@workout/modules-dashboard',
     '@workout/modules-nutrition',
     '@workout/modules-supplementary',
+    '@workout/modules-recovery',
     '@workout/ui-spike',
   ],
 };

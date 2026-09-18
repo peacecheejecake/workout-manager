@@ -21,6 +21,7 @@ import { createNutritionRepository } from '../packages/server/persistence/src/nu
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
 import { createStretchingRepository } from '../packages/server/persistence/src/stretching.ts';
 import { createRoutineRepository } from '../packages/server/persistence/src/routine-core.ts';
+import { createRecoveryRepository } from '../packages/server/persistence/src/recovery-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -152,6 +153,13 @@ try {
     await admin.query('GRANT SELECT,INSERT ON stretch_profile TO workout_runtime');
     await admin.query('GRANT SELECT,INSERT,UPDATE ON stretching_log TO workout_runtime');
     await admin.query('GRANT SELECT,INSERT ON stretching_log_revision TO workout_runtime');
+    // This fixture role and cluster are deleted after the E2E run.
+    await admin.query(
+      'GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO workout_runtime',
+    );
+    await admin.query(
+      'GRANT SELECT,INSERT,UPDATE ON recovery_method_head,recovery_strategy_head,recovery_action_log TO workout_runtime',
+    );
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
@@ -259,6 +267,7 @@ try {
     supplementary: createSupplementaryRepository(database),
     stretching: createStretchingRepository(database),
     routines: createRoutineRepository(database),
+    recovery: createRecoveryRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),

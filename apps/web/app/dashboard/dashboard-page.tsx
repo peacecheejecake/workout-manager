@@ -58,7 +58,8 @@ function Dashboard() {
       periodNavigation={
         <>
           <nav aria-label="추가 기록">
-            <a href="/nutrition">영양 계획과 섭취</a> · <a href="/supplementary">보강 운동</a>
+            <a href="/nutrition">영양 계획과 섭취</a> · <a href="/supplementary">보강 운동</a> ·{' '}
+            <a href="/recovery">회복 전략</a>
           </nav>
           <PlanningPeriodNavigator
             {...session}

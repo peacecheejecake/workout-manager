@@ -1011,8 +1011,9 @@
       "title": "회복 전략",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "recovery; 비운동 원장·계획·재평가"
+      "status": "in_progress",
+      "scope": "recovery; 비운동 원장·계획·재평가",
+      "evidence": "docs/implementation/progress/M1c-03.md"
     },
     {
       "id": "M1c-04",

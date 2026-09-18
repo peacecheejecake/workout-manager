@@ -35,6 +35,9 @@ const StretchingPage = lazy(() =>
 const RoutinePage = lazy(() =>
   import('./routine-page').then((module) => ({ default: module.RoutinePage })),
 );
+const RecoveryPage = lazy(() =>
+  import('./recovery-page').then((module) => ({ default: module.RecoveryPage })),
+);
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
@@ -67,6 +70,14 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/recovery' || location.pathname.startsWith('/recovery/') ? (
+        <Suspense fallback={<p role="status">회복 전략 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/wellbeing">체크인</a> · <a href="/nutrition">영양</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <RecoveryPage path={location.pathname} />
+        </Suspense>
       ) : location.pathname === '/stretching' || location.pathname.startsWith('/stretching/') ? (
         <Suspense fallback={<p role="status">스트레칭 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
@@ -81,7 +92,7 @@ createRoot(root).render(
         <Suspense fallback={<p role="status">루틴 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/planner">훈련 계획</a> · <a href="/supplementary">보강 운동</a> ·{' '}
-            <a href="/account">계정</a>
+            <a href="/recovery">회복 전략</a> · <a href="/account">계정</a>
           </nav>
           <RoutinePage path={location.pathname} />
         </Suspense>
@@ -130,7 +141,7 @@ createRoot(root).render(
           <nav aria-label="더보기">
             <a href="/nutrition">영양 계획·섭취 기록</a> · <a href="/supplementary">보강 운동</a> ·{' '}
             <a href="/routines">루틴</a> · <a href="/stretching">스트레칭</a> ·{' '}
-            <a href="/account">계정</a>
+            <a href="/recovery">회복 전략</a> · <a href="/account">계정</a>
           </nav>
           <DemoWorkspace />
         </>

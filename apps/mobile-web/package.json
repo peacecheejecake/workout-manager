@@ -22,6 +22,7 @@
     "@workout/modules-planning": "workspace:*",
     "@workout/modules-nutrition": "workspace:*",
     "@workout/modules-supplementary": "workspace:*",
-    "@workout/modules-routines": "workspace:*"
+    "@workout/modules-routines": "workspace:*",
+    "@workout/modules-recovery": "workspace:*"
   }
 }

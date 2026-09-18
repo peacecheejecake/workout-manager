@@ -1,0 +1,97 @@
+.workspace {
+  max-width: 90rem;
+  margin-inline: auto;
+  padding: 1.5rem;
+  color: var(--color-text-primary, #18202a);
+}
+
+.header {
+  margin-block-end: 1.5rem;
+}
+
+.eyebrow {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.columns {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+}
+
+.panel,
+.card,
+.form,
+.notice {
+  border: 1px solid var(--color-border, #b8c0ca);
+  border-radius: 0.75rem;
+  background: var(--color-surface, #fff);
+  padding: 1rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+  margin-block-start: 1rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+
+.fields {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.form label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.form input,
+.form select,
+.form textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  color: inherit;
+  background: inherit;
+  border: 1px solid var(--color-border, #778391);
+  border-radius: 0.375rem;
+}
+
+.form textarea {
+  min-height: 4rem;
+}
+
+.row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+}
+
+.workspace button {
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+  cursor: pointer;
+}
+
+.workspace :focus-visible {
+  outline: 3px solid var(--color-focus, #1d62a8);
+  outline-offset: 2px;
+}
+
+.notice {
+  margin-block-start: 1rem;
+}

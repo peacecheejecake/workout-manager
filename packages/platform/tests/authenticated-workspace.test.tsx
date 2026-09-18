@@ -185,6 +185,33 @@ describe('session-bound authenticated transport', () => {
       }),
     );
   });
+  it('binds recovery strategy and action writes to the session and CSRF token', async () => {
+    fetchMock.mockImplementation(async () => json({ accepted: true }));
+    const transport = createSessionTransport(session, vi.fn());
+    for (const path of [
+      '/bff/v1/recovery/strategy-drafts',
+      '/bff/v1/recovery/strategies/10000000-0000-4000-8000-000000000001/confirm',
+      '/bff/v1/recovery/action-logs',
+    ]) {
+      await transport.request({
+        path,
+        method: 'POST',
+        body: { confirmed: true },
+        idempotencyKey: 'recovery-command-1',
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        path,
+        expect.objectContaining({
+          credentials: 'same-origin',
+          headers: expect.objectContaining({
+            'x-csrf-token': session.csrfToken,
+            'x-workout-session-id': session.sessionId,
+            'idempotency-key': 'recovery-command-1',
+          }),
+        }),
+      );
+    }
+  });
   it('keeps dashboard reads bound to the current session without write credentials', async () => {
     fetchMock.mockResolvedValue(json({ definitionVersion: 'dashboard-v1' }));
     const transport = createSessionTransport(session, vi.fn());
@@ -214,6 +241,8 @@ describe('session-bound authenticated transport', () => {
     '/bff/v1/supplementary/../consents/ai',
     '/bff/v1/stretching-admin',
     '/bff/v1/stretching/../consents/ai',
+    '/bff/v1/recovery-admin',
+    '/bff/v1/recovery/../consents/ai',
     '/bff/v1/check-ins/../consents/ai',
     'https://evil.example/bff/v1/activities',
     '/bff/v1/activities/../consents/ai',
