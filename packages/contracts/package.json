@@ -93,6 +93,10 @@
       "types": "./src/coaching-basis.ts",
       "default": "./dist/coaching-basis.js"
     },
+    "./coaching-runs": {
+      "types": "./src/coaching-runs.ts",
+      "default": "./dist/coaching-runs.js"
+    },
     "./coaching-threads": {
       "types": "./src/coaching-threads.ts",
       "default": "./dist/coaching-threads.js"

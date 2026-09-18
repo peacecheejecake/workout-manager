@@ -1,0 +1,109 @@
+import { z } from 'zod';
+import { trainingCoachingPolicySchema } from './coaching-basis.js';
+import { instantSchema } from './primitives.js';
+
+const uuid = z.uuid().refine((value) => value === value.toLowerCase());
+const revision = z.number().int().min(1).max(2147483646);
+const boundedText = (max: number) =>
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .refine((value) => value.trim() === value && !value.includes('\0') && value.length > 0);
+
+/** The thread ID comes from the route and the policy/source come from trusted server configuration. */
+export const coachingRunCreateCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  evidenceSnapshotId: uuid,
+  expectedConversationRevision: revision,
+  idempotencyKey: boundedText(200),
+});
+
+export const coachingRunModelSourceSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('deterministic_fixture'), fixtureId: boundedText(200) }),
+  z.strictObject({
+    kind: z.literal('provider'),
+    providerId: boundedText(200),
+    modelId: boundedText(200),
+  }),
+]);
+
+/** Progress is a user-facing stage, never a model reasoning trace or validated decision. */
+export const coachingRunStatusSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('queued') }),
+  z.strictObject({
+    kind: z.literal('running'),
+    stage: z.enum(['preparing_evidence', 'evaluating', 'validating_candidates']),
+  }),
+  // A stored model output is not a validated Decision and cannot be approved.
+  z.strictObject({ kind: z.literal('analysis_ready'), outputId: uuid }),
+  z.strictObject({ kind: z.literal('needs_question'), question: boundedText(2000) }),
+  z.strictObject({ kind: z.literal('validated_final'), decisionId: uuid }),
+  z.strictObject({
+    kind: z.literal('unable_to_evaluate'),
+    code: z.enum([
+      'provider_unavailable',
+      'provider_rejected',
+      'invalid_output',
+      'stale_basis',
+      'budget_exceeded',
+      'internal_error',
+    ]),
+    reason: boundedText(500),
+  }),
+  z.strictObject({
+    kind: z.literal('cancelled'),
+    reason: z.enum(['user_requested', 'consent_withdrawn', 'source_deleted', 'stale_basis']),
+  }),
+]);
+
+/** Status is authoritative only when persisted by the server. Provisional text is never a final decision. */
+export const coachingRunV1Schema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    id: uuid,
+    threadId: uuid,
+    evidenceSnapshotId: uuid,
+    conversationRevision: revision,
+    policy: trainingCoachingPolicySchema,
+    source: coachingRunModelSourceSchema,
+    createdAt: instantSchema,
+    updatedAt: instantSchema,
+    status: coachingRunStatusSchema,
+  })
+  .refine((value) => Date.parse(value.updatedAt) >= Date.parse(value.createdAt), {
+    message: 'Update time cannot precede creation',
+    path: ['updatedAt'],
+  });
+
+export type CoachingRunCreateCommandV1 = z.infer<typeof coachingRunCreateCommandV1Schema>;
+export type CoachingRunModelSource = z.infer<typeof coachingRunModelSourceSchema>;
+export type CoachingRunStatus = z.infer<typeof coachingRunStatusSchema>;
+export type CoachingRunV1 = z.infer<typeof coachingRunV1Schema>;
+
+/** A question or failure finishes this evidence-bound attempt; answering/retrying creates a new run. */
+export function canTransitionCoachingRunStatus(from: unknown, to: unknown): boolean {
+  const previous = coachingRunStatusSchema.safeParse(from);
+  const next = coachingRunStatusSchema.safeParse(to);
+  if (!previous.success || !next.success) return false;
+  switch (previous.data.kind) {
+    case 'queued':
+      if (next.data.kind === 'running') return next.data.stage === 'preparing_evidence';
+      return ['unable_to_evaluate', 'cancelled'].includes(next.data.kind);
+    case 'running':
+      if (next.data.kind === 'running')
+        return previous.data.stage === 'preparing_evidence' && next.data.stage === 'evaluating';
+      if (next.data.kind === 'analysis_ready') return previous.data.stage === 'evaluating';
+      if (next.data.kind === 'validated_final')
+        return previous.data.stage === 'validating_candidates';
+      return ['needs_question', 'unable_to_evaluate', 'cancelled'].includes(next.data.kind);
+    case 'analysis_ready':
+      if (next.data.kind === 'running') return next.data.stage === 'validating_candidates';
+      return ['unable_to_evaluate', 'cancelled'].includes(next.data.kind);
+    case 'needs_question':
+    case 'validated_final':
+    case 'unable_to_evaluate':
+    case 'cancelled':
+      return false;
+  }
+}

@@ -16,6 +16,7 @@ M1-04 완료 후 M1-05h~m을 승인 read basis → 코치 실행 → 후보/diff
 실DB 통합 수용 순으로 진행한다. 현재 근거 v2가 제외하는 자료·정책·provider 세부를 승인에
 몰래 포함하지 않으며, M1 core의 자료 미사용과 실제 모델 호출 미검증을 명시한다. M1-05h의
 순수 계약은 완료했고, 서버 승인 권한·transaction 재검사는 M1-05k에서 구현한다.
+M1-05i는 상태·요청 계약(i1, 완료)과 실DB 실행 원장·preflight·adapter(i2)를 분리한다.
 
 **병렬 진행은 가능하다.** 계약이 확정된 뒤 Host/UI, API/DB, FIT 도구를 분리하고 각 통합 지점에서 실제 데이터를 연결한다. 아래 그래프는 작업 우선순위 제안이며 일정·인력·완료 예상일을 의미하지 않는다.
 
@@ -321,6 +322,8 @@ flowchart TD
     coachingUi --> evidenceUi
     evidenceUi --> task15
     approvalBasis["M1-05h 훈련 승인 read basis 계약"]
+    coachRunContract["M1-05i1 코치 실행 상태·요청 계약"]
+    coachRunBackend["M1-05i2 코치 실행 원장·preflight·adapter"]
     coachRun["M1-05i 코치 실행 원장·adapter"]
     proposals["M1-05j 불변 후보·diff·검증"]
     approvalCommit["M1-05k 훈련 계획 명시 승인 transaction"]
@@ -328,7 +331,10 @@ flowchart TD
     coachAcceptance["M1-05m 러닝 코치·승인 통합 수용"]
     task14 --> approvalBasis
     mandatoryEvidence --> approvalBasis
-    approvalBasis --> coachRun
+    approvalBasis --> coachRunContract
+    coachRunContract --> coachRunBackend
+    coachRunContract --> coachRun
+    coachRunBackend --> coachRun
     coachRun --> proposals
     proposals --> approvalCommit
     coachRun --> proposalUi
@@ -512,7 +518,9 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05f 사용자 확인 필수 제약 원장·상담 UI | M1-05c, M1-06a | 확인 문장 CRUD·CAS·삭제/내보내기/복원; 자동 일정 해석과 분리 |
 | M1-05g 필수 제약을 포함한 근거 버전 | M1-05d, M1-05e, M1-05f | 새 snapshot 강제 포함·제약 revision·삭제 회수; 과거 v1 보존 |
 | M1-05h 훈련 승인 read basis 계약 | M1-04, M1-05g | 근거 v2·현재 계획·대화·AI 동의·정책·자료 미사용; fail-closed, 승인 실행 아님 |
-| M1-05i 코치 실행 원장·adapter | M1-05h | 진행/질문/취소/실패·결정론 adapter·동의 재검사; 실제 모델 별도 |
+| M1-05i1 코치 실행 상태·요청 계약 | M1-05h | 미검증 분석과 검증 완료 분리·명시 상태/전이·모델 출처·멱등 요청; 실행 아님 |
+| M1-05i2 코치 실행 원장·preflight·adapter | M1-05i1 | 실DB 원장·동의/근거 직전 검사·미검증 분석/실패/취소·결정론 adapter·API |
+| M1-05i 코치 실행 원장·adapter | M1-05i1, M1-05i2 | 실행 수명주기 통합; 실제 모델 별도 증거 |
 | M1-05j 불변 후보·diff·검증 | M1-05i | Decision/Proposal/Candidate 정본·변경 영향·unknown/error·digest |
 | M1-05k 훈련 계획 명시 승인 transaction | M1-05j | 소유권·freshness·digest·잠금 재검사, 버전/이력/outbox/receipt 원자성 |
 | M1-05l 코치·후보 검토 제품 UI | M1-05i, M1-05j, M1-05k | S10/S11 두 shell·전후 비교·stale/미확인·명시 승인·브라우저 |

@@ -741,11 +741,28 @@
       "evidence": "docs/implementation/progress/M1-05h.md"
     },
     {
-      "id": "M1-05i",
-      "title": "코치 실행 원장·adapter",
+      "id": "M1-05i1",
+      "title": "코치 실행 상태·요청 계약",
       "dependsOn": ["M1-05h"],
       "kind": "task",
+      "status": "completed",
+      "scope": "versioned 상태·미검증 분석/명시 질문/실패/취소/검증 완료 구분·모델 출처·요청 멱등 키·terminal 전이 금지; 실행 아님",
+      "evidence": "docs/implementation/progress/M1-05i1.md"
+    },
+    {
+      "id": "M1-05i2",
+      "title": "코치 실행 원장·preflight·adapter",
+      "dependsOn": ["M1-05i1"],
+      "kind": "task",
       "status": "not_started",
+      "scope": "실DB 실행/재시도 수명주기·동의/근거 최신성 직전 검사·결정론 adapter·미검증 분석/실패/취소·API; 실제 provider 별도 검증"
+    },
+    {
+      "id": "M1-05i",
+      "title": "코치 실행 원장·adapter",
+      "dependsOn": ["M1-05i1", "M1-05i2"],
+      "kind": "task",
+      "status": "in_progress",
       "scope": "동의 직전 검사·진행/질문/취소/실패 원장·결정론 adapter·재시도/수명주기; 실제 모델 연결은 별도 증거"
     },
     {

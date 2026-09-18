@@ -88,7 +88,7 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 
 M1-04의 지도 독립 workbench 범위는 [수용 대조](progress/M1-04.md)와 통합 시험을 거쳐 완료했다. 위 4번의 전체 화면 요구나 출시 gate 완료를 뜻하지 않으며, M1-05 후보·diff·승인과 지도·Native·공식 Garmin 검증은 후속 task에 남는다.
 
-M1-05 구현은 [DAG](task-graph.md)의 h~m으로 나눈다. h의 training-only 승인 read basis 계약을 완료했고, 코치 실행 원장·불변 후보/diff·원자 승인·S10/S11 UI·실DB 통합 수용은 i~m에 남는다. 현재 근거가 담지 않는 자료나 실제 모델 출력을 있는 것처럼 승인하지 않는다. 각 slice의 완료와 부모 수용을 분리한다.
+M1-05 구현은 [DAG](task-graph.md)의 h~m으로 나눈다. h의 training-only 승인 read basis와 i1의 코치 실행 상태 계약을 완료했고, 실행 원장·preflight·adapter(i2)와 후보/diff·원자 승인·S10/S11 UI·실DB 통합 수용은 후속 task에 남는다. 현재 근거가 담지 않는 자료나 실제 모델 출력을 있는 것처럼 승인하지 않는다. 각 slice의 완료와 부모 수용을 분리한다.
 
 계획 시나리오는 기준 계획 버전마다 0개 이상을 저장한다. A/B/C는 기존 호환 데이터와 예시
 이름이며, 사용자 이름을 추가해도 고정 슬롯이나 자동 병합은 없다. 이 보완은
