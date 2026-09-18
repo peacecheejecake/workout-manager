@@ -401,6 +401,7 @@ async function execute() {
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
+    const removedConstraintAthlete = randomUUID();
     const constraintRepo = createCoachingConstraintRepository(sourceDb);
     const oldConstraintCommand = {
       expectedHeadRevision: null,
@@ -410,13 +411,13 @@ async function execute() {
     };
     const oldConstraint = await constraintRepo.create(retainedAthlete, oldConstraintCommand);
     const removedConstraintCommand = {
-      expectedHeadRevision: 1,
+      expectedHeadRevision: null,
       confirmed: true as const,
       text: 'Synthetic old restriction to delete',
       idempotencyKey: randomUUID(),
     };
     const removedConstraint = await constraintRepo.create(
-      retainedAthlete,
+      removedConstraintAthlete,
       removedConstraintCommand,
     );
     await constraintRepo.create(deletedAthlete, {
@@ -618,6 +619,27 @@ async function execute() {
     } = await seedEvidenceWithAiConsent(sourceDb, withdrawnAthlete);
     const absentConsentAthlete = randomUUID();
     const beforeConsentDeletion = await seedEvidenceWithAiConsent(sourceDb, absentConsentAthlete);
+    const constraintPlan = await seedCompletion(sourceDb, removedConstraintAthlete);
+    const constraintThread = await seedCoachingThread(
+      sourceDb,
+      removedConstraintAthlete,
+      constraintPlan.plan.id,
+    );
+    const constraintCapture: CoreEvidenceCapture = {
+      expectedConversationRevision: constraintThread.appended.thread.revision,
+      window: { from: '2026-09-01', toExclusive: '2026-10-01', timezone: 'UTC' },
+      idempotencyKey: randomUUID(),
+    };
+    const constraintSnapshot = await createCoreEvidenceSnapshotRepository(sourceDb).capture(
+      removedConstraintAthlete,
+      constraintThread.appended.thread.id,
+      constraintCapture,
+    );
+    assert.ok(
+      constraintSnapshot.status === 'available' && constraintSnapshot.body.schemaVersion === 2,
+    );
+    assert.equal(constraintSnapshot.body.userConstraints.items[0]?.id, removedConstraint.id);
+
     // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
     await createConsentRepository(sourceDb).setConsent(deletedAthlete, {
       kind: 'ai',
@@ -647,14 +669,21 @@ async function execute() {
       archive,
     ]);
     await constraintRepo.update(retainedAthlete, oldConstraint.id, {
-      expectedHeadRevision: 2,
+      expectedHeadRevision: 1,
       expectedRevision: 1,
+      confirmed: true,
+      text: 'Synthetic intermediate correction',
+      idempotencyKey: randomUUID(),
+    });
+    await constraintRepo.update(retainedAthlete, oldConstraint.id, {
+      expectedHeadRevision: 2,
+      expectedRevision: 2,
       confirmed: true,
       text: 'Synthetic latest confirmed restriction',
       idempotencyKey: randomUUID(),
     });
-    await constraintRepo.remove(retainedAthlete, removedConstraint.id, {
-      expectedHeadRevision: 3,
+    await constraintRepo.remove(removedConstraintAthlete, removedConstraint.id, {
+      expectedHeadRevision: 1,
       expectedRevision: 1,
       confirmed: true,
       idempotencyKey: randomUUID(),
@@ -744,6 +773,7 @@ async function execute() {
       absentConsentAthlete,
       deletedAthlete,
       retainedAthlete,
+      removedConstraintAthlete,
     ].sort();
     assert.deepEqual(evidenceWithdrawalLedger.subjects, expectedSubjects);
     assert.deepEqual(
@@ -758,6 +788,11 @@ async function execute() {
           athlete_id: absentConsentAthlete,
           id: beforeConsentDeletion.snapshot.id,
           purged_reason: 'consent_withdrawn',
+        },
+        {
+          athlete_id: removedConstraintAthlete,
+          id: constraintSnapshot.id,
+          purged_reason: 'source_deleted',
         },
       ].sort((left, right) => left.athlete_id.localeCompare(right.athlete_id)),
     );
@@ -939,7 +974,7 @@ async function execute() {
         (row) => row.athleteId === retainedAthlete,
       );
       const safeConstraintHead = safeConstraints.subjects.find(
-        (row) => row.athleteId === retainedAthlete,
+        (row) => row.athleteId === removedConstraintAthlete,
       )?.head;
       assert.ok(originalConstraintSubject && safeConstraintHead);
       const invalidConstraintLedgers = [
@@ -977,7 +1012,7 @@ async function execute() {
         {
           ...safeConstraints,
           subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete
+            row.athleteId === removedConstraintAthlete
               ? {
                   ...row,
                   head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
@@ -1183,13 +1218,13 @@ async function execute() {
       oldConstraint,
     );
     assert.deepEqual(
-      await restoredConstraints.create(retainedAthlete, removedConstraintCommand),
+      await restoredConstraints.create(removedConstraintAthlete, removedConstraintCommand),
       removedConstraint,
     );
     const constraintRows = (
       await restored.query(
-        'SELECT text,deleted FROM coaching_constraint WHERE athlete_id=$1 ORDER BY id',
-        [retainedAthlete],
+        'SELECT text,deleted FROM coaching_constraint WHERE athlete_id=ANY($1::text[]) ORDER BY id',
+        [[retainedAthlete, removedConstraintAthlete]],
       )
     ).rows;
     assert.equal(constraintRows.filter((row) => row.deleted && row.text === null).length, 1);
@@ -1204,6 +1239,29 @@ async function execute() {
     checks.push(
       'latest_constraint_ledger_replaces_backup_text_and_preserves_null_tombstones_before_runtime_access',
     );
+    const constraintEvidenceRepo = createCoreEvidenceSnapshotRepository(restoreDb);
+    const purgedConstraintEvidence = await constraintEvidenceRepo.read(
+      removedConstraintAthlete,
+      constraintSnapshot.id,
+    );
+    assert.ok(purgedConstraintEvidence?.status === 'purged');
+    assert.equal(purgedConstraintEvidence.reason, 'source_deleted');
+    assert.deepEqual(
+      await constraintEvidenceRepo.capture(
+        removedConstraintAthlete,
+        constraintThread.appended.thread.id,
+        constraintCapture,
+      ),
+      purgedConstraintEvidence,
+    );
+    const constraintExport =
+      await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
+    assert.ok(constraintExport.schemaVersion === 7);
+    assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
+    checks.push(
+      'latest_constraint_deletion_purges_frozen_evidence_and_capture_receipt_before_runtime_access',
+    );
+
     checks.push(
       'old_constraint_receipts_replay_metadata_without_restoring_deleted_or_corrected_text',
     );

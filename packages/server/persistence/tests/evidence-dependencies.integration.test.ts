@@ -1,3 +1,4 @@
+import { createCoachingConstraintRepository } from '../src/coaching-constraints.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, it, expect } from 'vitest';
@@ -7,6 +8,7 @@ import { createDatabase, TenantErasedError, type Database } from '../src/databas
 import {
   migrate,
   grantOperations,
+  grantCoachingConstraints,
   grantCheckIns,
   grantSessionCompletions,
 } from '../src/migrate.js';
@@ -25,6 +27,7 @@ let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCoachingConstraints(adminUrl, 'workout_runtime');
   await grantCheckIns(adminUrl, 'workout_runtime');
   await grantSessionCompletions(adminUrl, 'workout_runtime');
   await admin.query(
@@ -101,6 +104,9 @@ it('captures absent heads and advances only current dependencies through real mu
   const first = await capture();
   expect(first).toMatchObject({
     athleteId: athlete,
+    schemaVersion: 2,
+    scope: 'core-ledgers-v2',
+    userConstraints: absent,
     trainingPlan: absent,
     activities: { count: '0', revisionSum: '0' },
     checkIns: absent,
@@ -240,6 +246,10 @@ it('retains a single statement snapshot when a concurrent real writer commits be
                   'INSERT INTO check_in_collection_head(athlete_id,revision) VALUES($1,1)',
                   [athlete],
                 );
+                await writer.query(
+                  'INSERT INTO coaching_constraint_head(athlete_id,revision) VALUES($1,1)',
+                  [athlete],
+                );
               });
               committed = true;
             }
@@ -249,12 +259,43 @@ it('retains a single statement snapshot when a concurrent real writer commits be
       ),
   };
   const repo = createEvidenceDependenciesRepository(measured);
-  expect(await repo.capture(athlete)).toMatchObject({ aiConsent: absent, checkIns: absent });
+  expect(await repo.capture(athlete)).toMatchObject({
+    aiConsent: absent,
+    checkIns: absent,
+    userConstraints: absent,
+  });
   expect(committed).toBe(true);
   expect(queries).toBe(1);
   expect(await repo.capture(athlete)).toMatchObject({
     aiConsent: { kind: 'exists', revision: 1, granted: true },
+    userConstraints: { kind: 'exists', revision: 1 },
     checkIns: { kind: 'exists', revision: 1 },
   });
   expect(queries).toBe(2);
+});
+
+it('captures the explicit constraint ledger even after all items are removed', async () => {
+  const athlete = randomUUID(),
+    constraints = createCoachingConstraintRepository(database),
+    dependencies = createEvidenceDependenciesRepository(database);
+  const first = await constraints.create(athlete, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Synthetic constraint',
+    idempotencyKey: randomUUID(),
+  });
+  expect(await dependencies.capture(athlete)).toMatchObject({
+    schemaVersion: 2,
+    userConstraints: { kind: 'exists', revision: 1 },
+  });
+  await constraints.remove(athlete, first.id, {
+    expectedHeadRevision: 1,
+    expectedRevision: 1,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await dependencies.capture(athlete)).toMatchObject({
+    schemaVersion: 2,
+    userConstraints: { kind: 'exists', revision: 2 },
+  });
 });

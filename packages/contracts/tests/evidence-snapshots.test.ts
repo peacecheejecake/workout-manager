@@ -290,3 +290,103 @@ describe('structured core evidence snapshot', () => {
     expect(coreEvidenceBodySchema.safeParse(b).success).toBe(false);
   });
 });
+
+describe('v2 pinned mandatory user constraints', () => {
+  function v2() {
+    const old = fixture();
+    return {
+      ...old,
+      schemaVersion: 2,
+      scope: 'running-core-v2',
+      dependencies: {
+        ...old.dependencies,
+        schemaVersion: 2,
+        scope: 'core-ledgers-v2',
+        userConstraints: { kind: 'absent' },
+      },
+      userConstraints: { headRevision: null, items: [] },
+    };
+  }
+  it('retains historical v1 exactly and requires v2 constraints even when unrecorded', () => {
+    const old = fixture();
+    expect(coreEvidenceBodySchema.parse(old)).toEqual(old);
+    const current = v2();
+    expect(coreEvidenceBodySchema.parse(current)).toEqual(current);
+    const { userConstraints: removed, ...missing } = current;
+    expect(removed.headRevision).toBeNull();
+    expect(coreEvidenceBodySchema.safeParse(missing).success).toBe(false);
+    expect(
+      coreEvidenceBodySchema.safeParse({ ...old, userConstraints: current.userConstraints })
+        .success,
+    ).toBe(false);
+  });
+  it('distinguishes unrecorded vs explicitly cleared heads and rejects mismatches', () => {
+    const current = v2();
+    const cleared = {
+      ...current,
+      userConstraints: { headRevision: 2, items: [] },
+      dependencies: { ...current.dependencies, userConstraints: { kind: 'exists', revision: 2 } },
+    };
+    expect(coreEvidenceBodySchema.safeParse(cleared).success).toBe(true);
+    expect(
+      coreEvidenceBodySchema.safeParse({
+        ...cleared,
+        userConstraints: { headRevision: null, items: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      coreEvidenceBodySchema.safeParse({
+        ...cleared,
+        userConstraints: { headRevision: 3, items: [] },
+      }).success,
+    ).toBe(false);
+  });
+  it('covers all active record revisions and forbids duplicates/more than50', () => {
+    const current = v2();
+    const entry = { id, revision: 2, text: '확인한 문장', confirmedAt: at, updatedAt: at };
+    const body = {
+      ...current,
+      userConstraints: { headRevision: 3, items: [entry, { ...entry, id: other, revision: 1 }] },
+      dependencies: { ...current.dependencies, userConstraints: { kind: 'exists', revision: 3 } },
+    };
+    expect(coreEvidenceBodySchema.safeParse(body).success).toBe(true);
+    expect(
+      coreEvidenceBodySchema.safeParse({
+        ...body,
+        userConstraints: { headRevision: 3, items: [entry, { ...entry, id: other }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      coreEvidenceBodySchema.safeParse({
+        ...body,
+        userConstraints: { headRevision: 3, items: [entry, entry] },
+      }).success,
+    ).toBe(false);
+    expect(
+      coreEvidenceBodySchema.safeParse({
+        ...body,
+        userConstraints: { headRevision: 3, items: Array.from({ length: 51 }, () => entry) },
+      }).success,
+    ).toBe(false);
+  });
+  it('rejects mixed manifest versions and preserves common body integrity checks in v2', () => {
+    const current = v2(),
+      old = fixture();
+    expect(
+      coreEvidenceBodySchema.safeParse({ ...current, dependencies: old.dependencies }).success,
+    ).toBe(false);
+    expect(
+      coreEvidenceBodySchema.safeParse({ ...old, dependencies: current.dependencies }).success,
+    ).toBe(false);
+    expect(coreEvidenceBodySchema.safeParse({ ...current, messages: [] }).success).toBe(false);
+    expect(
+      coreEvidenceSnapshotSchema.safeParse({
+        id,
+        threadId: other,
+        createdAt: at,
+        status: 'available',
+        body: current,
+      }).success,
+    ).toBe(false);
+  });
+});

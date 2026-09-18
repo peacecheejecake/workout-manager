@@ -89,11 +89,14 @@ const captureSql = `WITH pinned AS (
  COALESCE((SELECT jsonb_agg(to_jsonb(a)||jsonb_build_object('projected',CASE WHEN a.local_date IS NULL THEN NULL ELSE ${localDate('a.local_date')} END) ORDER BY id) FROM selected_activities a),'[]'::jsonb) AS activities,
  COALESCE((SELECT jsonb_agg(to_jsonb(c)||jsonb_build_object('projected',${localDate('c.projected_date')},'local_date',${localDate('c.local_date')}) ORDER BY id) FROM selected_checkins c),'[]'::jsonb) AS checkins,
  COALESCE((SELECT jsonb_agg(record_json ORDER BY session_id) FROM (SELECT record_json,session_id FROM session_completion WHERE athlete_id=$1 AND session_id IN (SELECT value->>'id' FROM jsonb_array_elements(pinned.draft->'sessions')) ORDER BY session_id LIMIT 1001)c),'[]'::jsonb) AS completions,
- jsonb_build_object('schemaVersion',1,'scope','core-ledgers-v1','athleteId',$1::text,'capturedAt',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+ (SELECT revision FROM coaching_constraint_head WHERE athlete_id=$1) AS constraint_head,
+ COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM (SELECT id,revision,text,confirmed_at,updated_at FROM coaching_constraint WHERE athlete_id=$1 AND NOT deleted ORDER BY id LIMIT 51)c),'[]'::jsonb) AS constraints,
+ jsonb_build_object('schemaVersion',2,'scope','core-ledgers-v2','athleteId',$1::text,'capturedAt',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
  'trainingPlan',COALESCE((SELECT jsonb_build_object('kind','exists','versionId',version_id) FROM plan_head WHERE athlete_id=$1),'{"kind":"absent"}'::jsonb),
  'activities',(SELECT jsonb_build_object('count',count(*)::text,'revisionSum',coalesce(sum(revision),0)::text) FROM activity_canonical WHERE athlete_id=$1),
  'checkIns',COALESCE((SELECT jsonb_build_object('kind','exists','revision',revision) FROM check_in_collection_head WHERE athlete_id=$1),'{"kind":"absent"}'::jsonb),
  'sessionCompletions',COALESCE((SELECT jsonb_build_object('kind','exists','revision',revision) FROM session_completion_collection_head WHERE athlete_id=$1),'{"kind":"absent"}'::jsonb),
+ 'userConstraints',COALESCE((SELECT jsonb_build_object('kind','exists','revision',revision) FROM coaching_constraint_head WHERE athlete_id=$1),'{"kind":"absent"}'::jsonb),
  'aiConsent',COALESCE((SELECT jsonb_build_object('kind','exists','revision',revision,'granted',granted) FROM consent WHERE athlete_id=$1 AND kind='ai'),'{"kind":"absent"}'::jsonb)) AS dependencies
  FROM pinned`;
 export function createCoreEvidenceSnapshotRepository(
@@ -152,11 +155,13 @@ export function createCoreEvidenceSnapshotRepository(
           pinned = row.parse(captured['pinned']);
         if (pinned['revision'] !== command.expectedConversationRevision)
           throw new CoreEvidenceSnapshotError('CONVERSATION_REVISION_CONFLICT');
-        const messages = rows.parse(captured['messages']),
+        const constraints = rows.parse(captured['constraints']),
+          messages = rows.parse(captured['messages']),
           activities = rows.parse(captured['activities']),
           checkins = rows.parse(captured['checkins']),
           completions = z.array(z.unknown()).parse(captured['completions']);
         if (
+          constraints.length > 50 ||
           messages.length > 100 ||
           activities.length > 500 ||
           checkins.length > 100 ||
@@ -164,8 +169,18 @@ export function createCoreEvidenceSnapshotRepository(
         )
           throw new CoreEvidenceSnapshotError('EVIDENCE_TOO_LARGE');
         const body = coreEvidenceBodySchema.parse({
-          schemaVersion: 1,
-          scope: 'running-core-v1',
+          schemaVersion: 2,
+          scope: 'running-core-v2',
+          userConstraints: {
+            headRevision: captured['constraint_head'],
+            items: constraints.map((item) => ({
+              id: item['id'],
+              revision: item['revision'],
+              text: item['text'],
+              confirmedAt: iso(item['confirmed_at']),
+              updatedAt: iso(item['updated_at']),
+            })),
+          },
           window: command.window,
           thread: coachingThreadSchema.parse({
             id: pinned['id'],

@@ -1,4 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { coreEvidenceSnapshotSchema } from '@workout/contracts/evidence-snapshots';
+import { createCoachingConstraintRepository } from '../src/coaching-constraints.js';
+import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
@@ -6,6 +8,7 @@ import { createDatabase, TenantErasedError, type Database } from '../src/databas
 import {
   migrate,
   grantOperations,
+  grantCoachingConstraints,
   grantCoachingThreads,
   grantCoreEvidenceSnapshots,
   grantCheckIns,
@@ -27,6 +30,7 @@ let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCoachingConstraints(adminUrl, 'workout_runtime');
   await grantCoachingThreads(adminUrl, 'workout_runtime');
   await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
   await grantCheckIns(adminUrl, 'workout_runtime');
@@ -315,6 +319,13 @@ it('serializes capture with source corrections so manifest and effective revisio
     conversation = await thread(athlete, plan.id),
     a = await activity(athlete),
     repo = createCoreEvidenceSnapshotRepository(database);
+  const constraints = createCoachingConstraintRepository(database);
+  const constraint = await constraints.create(athlete, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Before correction',
+    idempotencyKey: randomUUID(),
+  });
   const [snapshot] = await Promise.all([
     repo.capture(athlete, conversation.id, input()),
     createActivityRepository(database).updateOverlay(athlete, a.activityId, {
@@ -323,8 +334,25 @@ it('serializes capture with source corrections so manifest and effective revisio
       reason: 'Concurrent correction',
       distanceMeters: 123,
     }),
+    constraints.update(athlete, constraint.id, {
+      expectedHeadRevision: 1,
+      expectedRevision: 1,
+      confirmed: true,
+      text: 'After correction',
+      idempotencyKey: randomUUID(),
+    }),
   ]);
   if (snapshot.status !== 'available') throw new Error('Expected available');
+  if (snapshot.body.schemaVersion !== 2) throw new Error('Expected current evidence');
+  const capturedConstraint = snapshot.body.userConstraints.items[0];
+  expect(snapshot.body.dependencies.userConstraints).toEqual({
+    kind: 'exists',
+    revision: capturedConstraint?.revision,
+  });
+  expect(snapshot.body.userConstraints.headRevision).toBe(capturedConstraint?.revision);
+  expect(capturedConstraint?.text).toBe(
+    capturedConstraint?.revision === 1 ? 'Before correction' : 'After correction',
+  );
   const record = snapshot.body.activities[0]?.record;
   expect(record).toBeDefined();
   expect(snapshot.body.dependencies.activities.revisionSum).toBe(String(record?.revision));
@@ -446,7 +474,7 @@ it('scrubs on explicit first AI denial and repeated denial without prohibiting n
   });
 });
 
-it.each(['activity', 'consent'] as const)(
+it.each(['activity', 'consent', 'constraint'] as const)(
   'serializes raw %s removal at the database trigger boundary with capture insertion',
   async (kind) => {
     const athlete = randomUUID(),
@@ -459,6 +487,12 @@ it.each(['activity', 'consent'] as const)(
       kind: 'ai',
       granted: true,
       expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    const constraint = await createCoachingConstraintRepository(database).create(athlete, {
+      expectedHeadRevision: null,
+      confirmed: true,
+      text: 'Concurrent constraint',
       idempotencyKey: randomUUID(),
     });
     let reached!: () => void, release!: () => void;
@@ -510,6 +544,11 @@ it.each(['activity', 'consent'] as const)(
           'UPDATE activity_canonical SET deleted=true,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
           [athlete, a.activityId],
         );
+      else if (kind === 'constraint')
+        await tx.query(
+          'UPDATE coaching_constraint SET deleted=true,text=NULL,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
+          [athlete, constraint.id],
+        );
       else await tx.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [athlete]);
     });
     try {
@@ -536,10 +575,194 @@ it.each(['activity', 'consent'] as const)(
     const [snapshot] = await Promise.all([capturing, removing]);
     const expected = {
       status: 'purged',
-      reason: kind === 'activity' ? 'source_deleted' : 'consent_withdrawn',
+      reason: kind === 'consent' ? 'consent_withdrawn' : 'source_deleted',
     };
     expect(await repo.read(athlete, snapshot.id)).toMatchObject(expected);
     expect(await repo.capture(athlete, conversation.id, command)).toMatchObject(expected);
     expect(await repo.capture(athlete, conversation.id, command)).not.toHaveProperty('body');
   },
 );
+
+it('captures constraint content and head together, freezes corrections, and irreversibly purges explicit deletion', async () => {
+  const athlete = randomUUID(),
+    plan = await seed(athlete),
+    conversation = await thread(athlete, plan.id),
+    repo = createCoreEvidenceSnapshotRepository(database),
+    constraints = createCoachingConstraintRepository(database);
+  const absentSnapshot = await repo.capture(athlete, conversation.id, input());
+  expect(absentSnapshot).toMatchObject({
+    status: 'available',
+    body: {
+      schemaVersion: 2,
+      scope: 'running-core-v2',
+      userConstraints: { headRevision: null, items: [] },
+      dependencies: { schemaVersion: 2, userConstraints: { kind: 'absent' } },
+    },
+  });
+  const initial = await constraints.create(athlete, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Original confirmed text',
+    idempotencyKey: randomUUID(),
+  });
+  const command = input(),
+    frozen = await repo.capture(athlete, conversation.id, command);
+  expect(frozen).toMatchObject({
+    body: {
+      userConstraints: {
+        headRevision: 1,
+        items: [{ id: initial.id, revision: 1, text: 'Original confirmed text' }],
+      },
+      dependencies: { userConstraints: { kind: 'exists', revision: 1 } },
+    },
+  });
+  await constraints.update(athlete, initial.id, {
+    expectedHeadRevision: 1,
+    expectedRevision: 1,
+    confirmed: true,
+    text: 'Corrected confirmed text',
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.read(athlete, frozen.id)).toEqual(frozen);
+  const corrected = await repo.capture(athlete, conversation.id, input());
+  expect(corrected).toMatchObject({
+    body: {
+      userConstraints: {
+        headRevision: 2,
+        items: [{ revision: 2, text: 'Corrected confirmed text' }],
+      },
+      dependencies: { userConstraints: { kind: 'exists', revision: 2 } },
+    },
+  });
+  expect(await repo.read(randomUUID(), frozen.id)).toBeNull();
+  await constraints.remove(athlete, initial.id, {
+    expectedHeadRevision: 2,
+    expectedRevision: 2,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  for (const snapshot of [frozen, corrected])
+    expect(await repo.read(athlete, snapshot.id)).toMatchObject({
+      status: 'purged',
+      reason: 'source_deleted',
+    });
+  expect(await repo.capture(athlete, conversation.id, command)).toMatchObject({ status: 'purged' });
+  expect(await repo.read(athlete, absentSnapshot.id)).toEqual(absentSnapshot);
+  expect(await repo.capture(athlete, conversation.id, input())).toMatchObject({
+    body: {
+      userConstraints: { headRevision: 3, items: [] },
+      dependencies: { userConstraints: { kind: 'exists', revision: 3 } },
+    },
+  });
+  const exported = await createOperationsRepository(database).exportAccount(athlete);
+  expect(JSON.stringify(exported)).not.toContain('Original confirmed text');
+  expect(JSON.stringify(exported)).not.toContain('Corrected confirmed text');
+});
+
+it('preserves original v1 snapshot receipts and rejects oversized current constraint sources', async () => {
+  const athlete = randomUUID(),
+    plan = await seed(athlete),
+    conversation = await thread(athlete, plan.id),
+    repo = createCoreEvidenceSnapshotRepository(database),
+    current = await repo.capture(athlete, conversation.id, input());
+  if (current.status !== 'available') throw new Error('Missing synthetic evidence');
+  const legacy = coreEvidenceSnapshotSchema.parse({
+    ...current,
+    id: randomUUID(),
+    body: {
+      ...Object.fromEntries(
+        Object.entries(current.body).filter(([key]) => key !== 'userConstraints'),
+      ),
+      schemaVersion: 1,
+      scope: 'running-core-v1',
+      dependencies: {
+        ...Object.fromEntries(
+          Object.entries(current.body.dependencies).filter(([key]) => key !== 'userConstraints'),
+        ),
+        schemaVersion: 1,
+        scope: 'core-ledgers-v1',
+      },
+    },
+  });
+  if (legacy.status !== 'available') throw new Error('Missing legacy fixture');
+  const command = input();
+  await database.tenant(athlete, async (tx) => {
+    await tx.query(
+      'INSERT INTO core_evidence_snapshot(athlete_id,id,thread_id,created_at,body) VALUES($1,$2,$3,$4,$5)',
+      [athlete, legacy.id, conversation.id, legacy.createdAt, JSON.stringify(legacy.body)],
+    );
+    await tx.query(
+      'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3,$4)',
+      [
+        athlete,
+        `evidence:capture:${createHash('sha256').update(command.idempotencyKey).digest('hex')}`,
+        JSON.stringify({
+          threadId: conversation.id,
+          window: command.window,
+          expectedConversationRevision: 1,
+        }),
+        JSON.stringify({ snapshotId: legacy.id }),
+      ],
+    );
+    await tx.query('INSERT INTO coaching_constraint_head(athlete_id,revision) VALUES($1,51)', [
+      athlete,
+    ]);
+    await tx.query(
+      "INSERT INTO coaching_constraint(athlete_id,id,revision,text,confirmed_at,updated_at) SELECT $1,gen_random_uuid(),1,'Synthetic bounded source',clock_timestamp(),clock_timestamp() FROM generate_series(1,51)",
+      [athlete],
+    );
+  });
+  expect(await repo.capture(athlete, conversation.id, command)).toEqual(legacy);
+  await expect(repo.capture(athlete, conversation.id, input())).rejects.toMatchObject({
+    code: 'EVIDENCE_TOO_LARGE',
+  });
+});
+
+it('reserves multi-revision maintenance advances to the owner and purges owner hard deletions', async () => {
+  const athlete = randomUUID(),
+    plan = await seed(athlete),
+    conversation = await thread(athlete, plan.id),
+    repo = createCoreEvidenceSnapshotRepository(database);
+  const constraint = await createCoachingConstraintRepository(database).create(athlete, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Private owner fixture',
+    idempotencyKey: randomUUID(),
+  });
+  const snapshot = await repo.capture(athlete, conversation.id, input());
+  await expect(
+    database.tenant(athlete, (tx) =>
+      tx.query('UPDATE coaching_constraint SET revision=revision+2 WHERE athlete_id=$1', [athlete]),
+    ),
+  ).rejects.toThrow('IMMUTABLE_CONSTRAINT_IDENTITY');
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await client.query('UPDATE coaching_constraint SET revision=revision+2 WHERE athlete_id=$1', [
+      athlete,
+    ]);
+    await client.query(
+      'UPDATE coaching_constraint_head SET revision=revision+2 WHERE athlete_id=$1',
+      [athlete],
+    );
+    await client.query('COMMIT');
+    expect(await repo.read(athlete, snapshot.id)).toEqual(snapshot);
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await client.query('DELETE FROM coaching_constraint WHERE athlete_id=$1 AND id=$2', [
+      athlete,
+      constraint.id,
+    ]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  expect(await repo.read(athlete, snapshot.id)).toMatchObject({
+    status: 'purged',
+    reason: 'source_deleted',
+  });
+});

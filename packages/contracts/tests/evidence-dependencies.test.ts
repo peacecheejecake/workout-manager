@@ -144,3 +144,54 @@ describe('core evidence dependencies', () => {
     expect(expected).toEqual(snapshot);
   });
 });
+
+describe('v2 mandatory user constraint dependency', () => {
+  const v2 = {
+    ...base,
+    schemaVersion: 2,
+    scope: 'core-ledgers-v2',
+    userConstraints: { kind: 'absent' },
+  };
+  it('reads unchanged historical v1 without adding a new head', () => {
+    expect(coreEvidenceDependencyManifestSchema.parse(base)).toEqual(base);
+    expect(compareCoreEvidenceDependencies(base, v2)).toEqual({
+      status: 'unsupported',
+      reason: 'INVALID_OR_UNSUPPORTED_MANIFEST',
+    });
+    expect(compareCoreEvidenceDependencies(v2, base)).toEqual({
+      status: 'unsupported',
+      reason: 'INVALID_OR_UNSUPPORTED_MANIFEST',
+    });
+  });
+  it('compares absence, explicit cleared head and later revisions conservatively', () => {
+    expect(
+      compareCoreEvidenceDependencies(v2, { ...v2, capturedAt: '2020-01-01T00:00:00Z' }),
+    ).toEqual({ status: 'fresh', changed: [] });
+    const exists = { ...v2, userConstraints: { kind: 'exists', revision: 2 } };
+    expect(compareCoreEvidenceDependencies(v2, exists)).toEqual({
+      status: 'stale',
+      changed: ['userConstraints'],
+    });
+    expect(
+      compareCoreEvidenceDependencies(exists, {
+        ...exists,
+        userConstraints: { kind: 'exists', revision: 3 },
+      }),
+    ).toEqual({ status: 'stale', changed: ['userConstraints'] });
+  });
+  it('rejects missing v2 head and a new head smuggled into v1', () => {
+    expect(
+      coreEvidenceDependencyManifestSchema.safeParse({
+        ...base,
+        schemaVersion: 2,
+        scope: 'core-ledgers-v2',
+      }).success,
+    ).toBe(false);
+    expect(
+      coreEvidenceDependencyManifestSchema.safeParse({
+        ...base,
+        userConstraints: { kind: 'absent' },
+      }).success,
+    ).toBe(false);
+  });
+});

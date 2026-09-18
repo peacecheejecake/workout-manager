@@ -27,6 +27,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '012_coaching_threads.sql',
       '013_evidence_snapshots.sql',
       '014_coaching_constraints.sql',
+      '015_evidence_constraints.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -223,6 +224,9 @@ export async function grantCoreEvidenceSnapshots(
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
     await pool.query(`GRANT SELECT,INSERT ON core_evidence_snapshot TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

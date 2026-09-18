@@ -27,7 +27,7 @@ const activitiesSchema = z
 /** Conservative core-ledger capture, including canonical activity tombstones.
  * Excludes detail/provider heads and is not the complete coaching expectedBasis.
  */
-export const coreEvidenceDependencyManifestSchema = z.strictObject({
+export const coreEvidenceDependencyManifestV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   scope: z.literal('core-ledgers-v1'),
   athleteId: z
@@ -57,9 +57,31 @@ export const coreEvidenceDependencyManifestSchema = z.strictObject({
     }),
   ]),
 });
+export const coreEvidenceDependencyManifestV2Schema = coreEvidenceDependencyManifestV1Schema.extend(
+  {
+    schemaVersion: z.literal(2),
+    scope: z.literal('core-ledgers-v2'),
+    userConstraints: revisionHeadSchema,
+  },
+);
+export const coreEvidenceDependencyManifestSchema = z.discriminatedUnion('schemaVersion', [
+  coreEvidenceDependencyManifestV1Schema,
+  coreEvidenceDependencyManifestV2Schema,
+]);
+export type CoreEvidenceDependencyManifestV1 = z.infer<
+  typeof coreEvidenceDependencyManifestV1Schema
+>;
+export type CoreEvidenceDependencyManifestV2 = z.infer<
+  typeof coreEvidenceDependencyManifestV2Schema
+>;
 export type CoreEvidenceDependencyManifest = z.infer<typeof coreEvidenceDependencyManifestSchema>;
 export type CoreEvidenceDependencyField =
-  'trainingPlan' | 'activities' | 'checkIns' | 'sessionCompletions' | 'aiConsent';
+  | 'trainingPlan'
+  | 'activities'
+  | 'checkIns'
+  | 'sessionCompletions'
+  | 'aiConsent'
+  | 'userConstraints';
 export type CoreEvidenceDependencyComparison =
   | { status: 'fresh'; changed: [] }
   | { status: 'stale'; changed: CoreEvidenceDependencyField[] }
@@ -74,11 +96,11 @@ export function compareCoreEvidenceDependencies(
 ): CoreEvidenceDependencyComparison {
   const before = coreEvidenceDependencyManifestSchema.safeParse(expected);
   const after = coreEvidenceDependencyManifestSchema.safeParse(current);
-  if (!before.success || !after.success)
+  if (!before.success || !after.success || before.data.schemaVersion !== after.data.schemaVersion)
     return { status: 'unsupported', reason: 'INVALID_OR_UNSUPPORTED_MANIFEST' };
   if (before.data.athleteId !== after.data.athleteId)
     return { status: 'unsupported', reason: 'OWNER_MISMATCH' };
-  const fields: CoreEvidenceDependencyField[] = [
+  const fields: Exclude<CoreEvidenceDependencyField, 'userConstraints'>[] = [
     'trainingPlan',
     'activities',
     'checkIns',
@@ -86,8 +108,14 @@ export function compareCoreEvidenceDependencies(
     'aiConsent',
   ];
   // Strict schema parsing produces a canonical field order; caller key order is irrelevant.
-  const changed = fields.filter(
+  const changed: CoreEvidenceDependencyField[] = fields.filter(
     (field) => JSON.stringify(before.data[field]) !== JSON.stringify(after.data[field]),
   );
+  if (
+    before.data.schemaVersion === 2 &&
+    after.data.schemaVersion === 2 &&
+    JSON.stringify(before.data.userConstraints) !== JSON.stringify(after.data.userConstraints)
+  )
+    changed.push('userConstraints');
   return changed.length ? { status: 'stale', changed } : { status: 'fresh', changed: [] };
 }

@@ -290,6 +290,11 @@ function Workspace({
         sessionId={sessionId}
         transport={transport}
         createId={createId}
+        onChanged={() => {
+          void client.resetQueries({
+            queryKey: ['users', athleteId, 'sessions', sessionId, 'evidence'],
+          });
+        }}
       />
       {parsed.error ? <p role="alert">{parsed.error}</p> : null}
       {feedback ? (

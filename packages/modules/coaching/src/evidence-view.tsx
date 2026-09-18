@@ -1,11 +1,13 @@
 import type { Activity } from '@workout/contracts/activity';
 import {
   coreEvidenceSnapshotDefinition,
+  coreEvidenceSnapshotV2Definition,
   type CoreEvidenceBody,
   type CoreEvidenceSnapshot,
 } from '@workout/contracts/evidence-snapshots';
 import { sessionCompletionDefinition } from '@workout/contracts/session-completion';
 import { checkInDefinition } from '@workout/contracts/check-ins';
+import { coachingConstraintDefinition } from '@workout/contracts/coaching-constraints';
 import { ScopeView } from './scope-view';
 import styles from './evidence-view.module.css';
 
@@ -183,8 +185,60 @@ function Completions({ items }: { items: CoreEvidenceBody['sessionCompletions'] 
     </details>
   );
 }
+function UserConstraints({ body }: { body: CoreEvidenceBody }) {
+  return (
+    <section className={styles.group} aria-label="필수 사용자 제약 근거">
+      <h4>필수 사용자 제약 근거</h4>
+      {body.schemaVersion === 1 ? (
+        <p>
+          이전 근거 v1에는 사용자 제약 원장이 포함되지 않았습니다. 제약이 없었다는 뜻은 아니며, 현재
+          제약으로 과거 근거를 채우지 않습니다.
+        </p>
+      ) : (
+        <>
+          <p>
+            저장 당시 전체 사용자 제약입니다. 활동 조회 날짜와 상담 범위에 관계없이 필수로 포함하며,
+            이 근거에서 숨기거나 제외할 수 없습니다.
+          </p>
+          <p>{coachingConstraintDefinition.meaning}</p>
+          {body.dependencies.userConstraints.kind === 'absent' ? (
+            <p>저장 당시 제약 미기록 · 사용자 제약 원장의 변경 기준 없음</p>
+          ) : (
+            <>
+              <p>저장 당시 제약 원장 버전 {body.dependencies.userConstraints.revision}</p>
+              {body.userConstraints.items.length === 0 ? (
+                <p>저장 당시 명시적으로 비운 제약 원장 · 확인된 제약 문장 0개</p>
+              ) : (
+                <ul>
+                  {body.userConstraints.items.map((item) => (
+                    <li key={item.id}>
+                      <p className={styles.text}>{item.text}</p>
+                      <p>
+                        제약 ID {item.id} · 기록 버전 {item.revision}
+                      </p>
+                      <p>
+                        사용자 확인 시각:{' '}
+                        <time dateTime={item.confirmedAt}>{item.confirmedAt}</time>
+                      </p>
+                      <p>
+                        마지막 수정 시각: <time dateTime={item.updatedAt}>{item.updatedAt}</time>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          <p>저장된 문장과 확인 시각이며, 현재 제약 원장의 최신 상태를 뜻하지 않습니다.</p>
+        </>
+      )}
+    </section>
+  );
+}
 function Dependencies({ body }: { body: CoreEvidenceBody }) {
   const stamps = body.dependencies;
+  const definition =
+    body.schemaVersion === 1 ? coreEvidenceSnapshotDefinition : coreEvidenceSnapshotV2Definition;
   const head = (value: CoreEvidenceBody['dependencies']['checkIns']) =>
     value.kind === 'absent' ? '저장 당시 기록 없음' : `저장 당시 전체 기록 버전 ${value.revision}`;
   return (
@@ -212,9 +266,9 @@ function Dependencies({ body }: { body: CoreEvidenceBody }) {
             : `${stamps.aiConsent.granted ? '허용' : '허용하지 않음'} · 동의 기록 버전 ${stamps.aiConsent.revision}`}
         </dd>
       </dl>
-      <p>기본 운동 기록만 포함합니다. 다음 항목은 포함하지 않았습니다.</p>
+      <p>이 버전의 근거에 다음 항목은 포함하지 않았습니다.</p>
       <ul>
-        {coreEvidenceSnapshotDefinition.excluded.map((key) => (
+        {definition.excluded.map((key) => (
           <li key={key}>{excludedLabels[key]}</li>
         ))}
       </ul>
@@ -237,7 +291,7 @@ export function EvidenceView({ snapshot }: { snapshot: CoreEvidenceSnapshot }) {
         <p role="status">
           근거 본문이 폐기되었습니다.{' '}
           {snapshot.reason === 'source_deleted'
-            ? '포함된 원본 기록이 삭제되었습니다.'
+            ? '포함된 원본 기록 또는 사용자 제약이 삭제되었습니다.'
             : 'AI 동의 철회에 따라 저장된 본문을 폐기했습니다.'}{' '}
           기존 근거는 다시 복원되지 않습니다.
         </p>
@@ -257,6 +311,7 @@ export function EvidenceView({ snapshot }: { snapshot: CoreEvidenceSnapshot }) {
               : snapshot.body.dependencies.trainingPlan.versionId}
           </p>
           <ScopeView plan={snapshot.body.plan} scope={snapshot.body.thread.scope} />
+          <UserConstraints body={snapshot.body} />
           <details className={styles.group}>
             <summary>사용자 메시지 전체 {snapshot.body.messages.length}개</summary>
             <ol>

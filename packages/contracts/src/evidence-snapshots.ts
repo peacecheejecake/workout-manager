@@ -2,7 +2,12 @@ import { z } from 'zod';
 import { instantSchema, localDateSchema, timeZoneSchema } from './primitives.js';
 import { coachingThreadSchema, coachingUserMessageSchema } from './coaching-threads.js';
 import { planSnapshotSchema } from './planning.js';
-import { coreEvidenceDependencyManifestSchema } from './evidence-dependencies.js';
+import {
+  coreEvidenceDependencyManifestV1Schema,
+  coreEvidenceDependencyManifestV2Schema,
+  type CoreEvidenceDependencyManifest,
+} from './evidence-dependencies.js';
+import { coachingConstraintListSchema } from './coaching-constraints.js';
 import { activitySchema } from './activity.js';
 import { checkInSchema } from './check-ins.js';
 import { sessionCompletionSchema } from './session-completion.js';
@@ -18,6 +23,12 @@ export const coreEvidenceSnapshotDefinition = {
     'model_output',
     'approval_authority',
   ],
+} as const;
+export const coreEvidenceSnapshotV2Definition = {
+  scope: 'running-core-v2',
+  excluded: coreEvidenceSnapshotDefinition.excluded.filter(
+    (value) => value !== 'global_constraints',
+  ),
 } as const;
 export const coreEvidenceWindowSchema = z
   .strictObject({ from: localDateSchema, toExclusive: localDateSchema, timezone: timeZoneSchema })
@@ -50,104 +61,136 @@ function localDate(instant: string, timezone: string): string {
   const year = Number(value('year'));
   return `${String(value('era') === 'BC' ? 1 - year : year).padStart(4, '0')}-${value('month')}-${value('day')}`;
 }
-export const coreEvidenceBodySchema = z
+const coreEvidenceBodyBaseSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  scope: z.literal('running-core-v1'),
+  window: coreEvidenceWindowSchema,
+  thread: coachingThreadSchema,
+  plan: planSnapshotSchema,
+  messages: z.array(coachingUserMessageSchema).max(100),
+  dependencies: coreEvidenceDependencyManifestV1Schema,
+  activities: z
+    .array(z.strictObject({ localDate: localDateSchema.nullable(), record: activitySchema }))
+    .max(500),
+  checkIns: z.array(z.strictObject({ localDate: localDateSchema, record: checkInSchema })).max(100),
+  sessionCompletions: z.array(sessionCompletionSchema).max(1000),
+});
+function validateCoreBody(
+  v: Omit<
+    z.infer<typeof coreEvidenceBodyBaseSchema>,
+    'schemaVersion' | 'scope' | 'dependencies'
+  > & { dependencies: CoreEvidenceDependencyManifest },
+  ctx: z.RefinementCtx,
+) {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+  if (v.plan.id !== v.thread.planVersionId) fail('Pinned plan mismatch');
+  const scope = v.thread.scope;
+  if (
+    scope.kind === 'session'
+      ? !v.plan.draft.sessions.some((s) => s.id === scope.targetId)
+      : !v.plan.draft.periods.some((p) => p.id === scope.targetId && p.level === scope.kind)
+  )
+    fail('Scope not present in pinned plan');
+  if (
+    v.messages.length !== v.thread.revision ||
+    v.messages.some((m, i) => m.threadId !== v.thread.id || m.revision !== i + 1)
+  )
+    fail('Entire ordered conversation required');
+  const unique = (values: string[]) => new Set(values).size === values.length;
+  if (
+    !unique(v.messages.map((m) => m.id)) ||
+    !unique(v.activities.map((a) => a.record.id)) ||
+    !unique(v.checkIns.map((c) => c.record.id)) ||
+    !unique(v.sessionCompletions.map((c) => c.sessionId))
+  )
+    fail('Duplicate evidence record');
+  const within = (date: string) => date >= v.window.from && date < v.window.toExclusive;
+  for (const a of v.activities) {
+    const instant = a.record.effective.startedAt;
+    const expected = instant === null ? null : localDate(instant, v.window.timezone);
+    if (a.localDate !== expected || (a.localDate !== null && !within(a.localDate)))
+      fail('Activity local date mismatch or outside window');
+  }
+  for (const c of v.checkIns)
+    if (
+      c.localDate !== localDate(c.record.values.observedAt, v.window.timezone) ||
+      !within(c.localDate)
+    )
+      fail('Check-in local date mismatch or outside window');
+  const ids = new Set(v.plan.draft.sessions.map((s) => s.id));
+  if (v.sessionCompletions.some((c) => !ids.has(c.sessionId)))
+    fail('Completion outside pinned plan');
+  if (
+    [
+      ...v.activities.map((a) => a.record.revision),
+      ...v.checkIns.map((c) => c.record.revision),
+      ...v.sessionCompletions.map((c) => c.revision),
+    ].some((n) => !Number.isSafeInteger(n) || n < 1)
+  ) {
+    fail('Invalid record revision');
+    return;
+  }
+  const a = v.dependencies.activities;
+  if (/^(0|[1-9][0-9]{0,39})$/.test(a.count) && /^(0|[1-9][0-9]{0,39})$/.test(a.revisionSum)) {
+    if (
+      BigInt(a.count) < BigInt(v.activities.length) ||
+      BigInt(a.revisionSum) <
+        v.activities.reduce((sum, item) => sum + BigInt(item.record.revision), 0n)
+    )
+      fail('Activity dependencies do not cover records');
+  }
+  const cover = (
+    head: { kind: 'absent' } | { kind: 'exists'; revision: number },
+    revisions: number[],
+  ) =>
+    revisions.length === 0 ||
+    (head.kind === 'exists' &&
+      Number.isSafeInteger(head.revision) &&
+      BigInt(head.revision) >= revisions.reduce((sum, n) => sum + BigInt(n), 0n));
+  if (
+    !cover(
+      v.dependencies.checkIns,
+      v.checkIns.map((c) => c.record.revision),
+    )
+  )
+    fail('Check-in dependencies do not cover records');
+  if (
+    !cover(
+      v.dependencies.sessionCompletions,
+      v.sessionCompletions.map((c) => c.revision),
+    )
+  )
+    fail('Completion dependencies do not cover records');
+}
+export const coreEvidenceBodyV1Schema = coreEvidenceBodyBaseSchema.superRefine(validateCoreBody);
+export const coreEvidenceBodyV2Schema = z
   .strictObject({
-    schemaVersion: z.literal(1),
-    scope: z.literal('running-core-v1'),
-    window: coreEvidenceWindowSchema,
-    thread: coachingThreadSchema,
-    plan: planSnapshotSchema,
-    messages: z.array(coachingUserMessageSchema).max(100),
-    dependencies: coreEvidenceDependencyManifestSchema,
-    activities: z
-      .array(z.strictObject({ localDate: localDateSchema.nullable(), record: activitySchema }))
-      .max(500),
-    checkIns: z
-      .array(z.strictObject({ localDate: localDateSchema, record: checkInSchema }))
-      .max(100),
-    sessionCompletions: z.array(sessionCompletionSchema).max(1000),
+    ...coreEvidenceBodyBaseSchema.shape,
+    schemaVersion: z.literal(2),
+    scope: z.literal('running-core-v2'),
+    dependencies: coreEvidenceDependencyManifestV2Schema,
+    userConstraints: coachingConstraintListSchema,
   })
-  .superRefine((v, ctx) => {
-    const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
-    if (v.plan.id !== v.thread.planVersionId) fail('Pinned plan mismatch');
-    const scope = v.thread.scope;
+  .superRefine(validateCoreBody)
+  .superRefine((value, context) => {
+    const head = value.dependencies.userConstraints;
+    const list = value.userConstraints;
+    const revision = head.kind === 'exists' ? head.revision : null;
     if (
-      scope.kind === 'session'
-        ? !v.plan.draft.sessions.some((s) => s.id === scope.targetId)
-        : !v.plan.draft.periods.some((p) => p.id === scope.targetId && p.level === scope.kind)
+      revision !== list.headRevision ||
+      (revision !== null && list.items.reduce((sum, item) => sum + item.revision, 0) > revision)
     )
-      fail('Scope not present in pinned plan');
-    if (
-      v.messages.length !== v.thread.revision ||
-      v.messages.some((m, i) => m.threadId !== v.thread.id || m.revision !== i + 1)
-    )
-      fail('Entire ordered conversation required');
-    const unique = (values: string[]) => new Set(values).size === values.length;
-    if (
-      !unique(v.messages.map((m) => m.id)) ||
-      !unique(v.activities.map((a) => a.record.id)) ||
-      !unique(v.checkIns.map((c) => c.record.id)) ||
-      !unique(v.sessionCompletions.map((c) => c.sessionId))
-    )
-      fail('Duplicate evidence record');
-    const within = (date: string) => date >= v.window.from && date < v.window.toExclusive;
-    for (const a of v.activities) {
-      const instant = a.record.effective.startedAt;
-      const expected = instant === null ? null : localDate(instant, v.window.timezone);
-      if (a.localDate !== expected || (a.localDate !== null && !within(a.localDate)))
-        fail('Activity local date mismatch or outside window');
-    }
-    for (const c of v.checkIns)
-      if (
-        c.localDate !== localDate(c.record.values.observedAt, v.window.timezone) ||
-        !within(c.localDate)
-      )
-        fail('Check-in local date mismatch or outside window');
-    const ids = new Set(v.plan.draft.sessions.map((s) => s.id));
-    if (v.sessionCompletions.some((c) => !ids.has(c.sessionId)))
-      fail('Completion outside pinned plan');
-    if (
-      [
-        ...v.activities.map((a) => a.record.revision),
-        ...v.checkIns.map((c) => c.record.revision),
-        ...v.sessionCompletions.map((c) => c.revision),
-      ].some((n) => !Number.isSafeInteger(n) || n < 1)
-    ) {
-      fail('Invalid record revision');
-      return;
-    }
-    const a = v.dependencies.activities;
-    if (/^(0|[1-9][0-9]{0,39})$/.test(a.count) && /^(0|[1-9][0-9]{0,39})$/.test(a.revisionSum)) {
-      if (
-        BigInt(a.count) < BigInt(v.activities.length) ||
-        BigInt(a.revisionSum) <
-          v.activities.reduce((sum, item) => sum + BigInt(item.record.revision), 0n)
-      )
-        fail('Activity dependencies do not cover records');
-    }
-    const cover = (
-      head: { kind: 'absent' } | { kind: 'exists'; revision: number },
-      revisions: number[],
-    ) =>
-      revisions.length === 0 ||
-      (head.kind === 'exists' &&
-        Number.isSafeInteger(head.revision) &&
-        BigInt(head.revision) >= revisions.reduce((sum, n) => sum + BigInt(n), 0n));
-    if (
-      !cover(
-        v.dependencies.checkIns,
-        v.checkIns.map((c) => c.record.revision),
-      )
-    )
-      fail('Check-in dependencies do not cover records');
-    if (
-      !cover(
-        v.dependencies.sessionCompletions,
-        v.sessionCompletions.map((c) => c.revision),
-      )
-    )
-      fail('Completion dependencies do not cover records');
+      context.addIssue({
+        code: 'custom',
+        message: 'User constraints must match the captured collection head',
+      });
   });
+export const coreEvidenceBodySchema = z.discriminatedUnion('schemaVersion', [
+  coreEvidenceBodyV1Schema,
+  coreEvidenceBodyV2Schema,
+]);
+export type CoreEvidenceBodyV1 = z.infer<typeof coreEvidenceBodyV1Schema>;
+export type CoreEvidenceBodyV2 = z.infer<typeof coreEvidenceBodyV2Schema>;
 const metadata = { id: z.uuid(), threadId: z.uuid(), createdAt: instantSchema };
 const purged = z.strictObject({
   ...metadata,

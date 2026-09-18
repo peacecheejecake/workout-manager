@@ -110,8 +110,8 @@ async function setup(page: Page) {
     const response = await page.request.post('/bff/v1/operations/export', { headers });
     expect(response.status()).toBe(200);
     const artifact = accountExportSchema.parse(await response.json());
-    assert.equal(artifact.schemaVersion, 6);
-    if (artifact.schemaVersion !== 6) throw new Error('Expected snapshot export v6');
+    assert.equal(artifact.schemaVersion, 7);
+    if (artifact.schemaVersion !== 7) throw new Error('Expected snapshot export v7');
     return artifact;
   };
   return { headers, get, post, saved, thread, collection, command, capture, read, exported };

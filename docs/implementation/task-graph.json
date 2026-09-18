@@ -707,8 +707,9 @@
       "title": "필수 제약을 포함한 근거 버전",
       "dependsOn": ["M1-05d", "M1-05e", "M1-05f"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "새 snapshot 본문·의존성에 필수 제약 강제 포함·정정 freshness·삭제 회수; 과거 v1 보존"
+      "status": "completed",
+      "scope": "새 snapshot 본문·의존성에 필수 제약 강제 포함·정정 freshness·삭제 회수; 과거 v1 보존",
+      "evidence": "docs/implementation/progress/M1-05g.md"
     },
     {
       "id": "M1-05",

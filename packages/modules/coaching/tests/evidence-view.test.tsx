@@ -1,17 +1,19 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect } from 'vitest';
 import {
   coreEvidenceSnapshotSchema,
   type CoreEvidenceBody,
+  type CoreEvidenceBodyV1,
+  type CoreEvidenceBodyV2,
 } from '@workout/contracts/evidence-snapshots';
 import { EvidenceView } from '../src/evidence-view';
 afterEach(cleanup);
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   at = '2026-09-18T00:00:00Z';
-function fixture(): CoreEvidenceBody {
+function fixture(): CoreEvidenceBodyV1 {
   const values = {
     title: null,
     kind: 'running' as const,
@@ -98,7 +100,7 @@ function fixture(): CoreEvidenceBody {
   };
 }
 
-function available(body = fixture()) {
+function available(body: CoreEvidenceBody = fixture()) {
   return coreEvidenceSnapshotSchema.parse({
     id,
     threadId: id,
@@ -107,10 +109,99 @@ function available(body = fixture()) {
     body,
   });
 }
+function withConstraints(): CoreEvidenceBodyV2 {
+  const body = fixture();
+  return {
+    ...body,
+    schemaVersion: 2,
+    scope: 'running-core-v2',
+    dependencies: {
+      ...body.dependencies,
+      schemaVersion: 2,
+      scope: 'core-ledgers-v2',
+      userConstraints: { kind: 'exists', revision: 3 },
+    },
+    userConstraints: {
+      headRevision: 3,
+      items: [
+        {
+          id: other,
+          revision: 2,
+          text: '<img src=x onerror=alert(1)>\n  저장된 사용자 제약',
+          confirmedAt: '2026-09-01T00:00:00Z',
+          updatedAt: '2026-09-02T00:00:00Z',
+        },
+      ],
+    },
+  };
+}
 async function expand(name: string) {
   await userEvent.click(screen.getByText(name, { selector: 'summary' }));
 }
 describe('frozen evidence view', () => {
+  it('shows every v2 constraint outside collapsed evidence groups and date/scope filters with frozen provenance', async () => {
+    const body = withConstraints();
+    const saved = JSON.stringify(body);
+    const { container } = render(<EvidenceView snapshot={available(body)} />);
+    const region = screen.getByRole('region', { name: '필수 사용자 제약 근거' });
+    expect(region).toBeVisible();
+    expect(region.closest('details')).toBeNull();
+    const text = body.userConstraints.items[0]?.text;
+    if (!text) throw new Error('Missing constraint fixture');
+    expect(within(region).getByText(text, { normalizer: (value) => value })).toBeVisible();
+    expect(region).toHaveTextContent('저장 당시 제약 원장 버전 3');
+    expect(region).toHaveTextContent(`제약 ID ${other} · 기록 버전 2`);
+    expect(region).toHaveTextContent('사용자 확인 시각: 2026-09-01T00:00:00Z');
+    expect(region).toHaveTextContent('마지막 수정 시각: 2026-09-02T00:00:00Z');
+    expect(region).toHaveTextContent('날짜와 상담 범위에 관계없이 필수로 포함');
+    expect(region).toHaveTextContent('현재 제약 원장의 최신 상태를 뜻하지 않습니다');
+    expect(within(region).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(region).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+    expect(JSON.stringify(body)).toBe(saved);
+    await expand('저장 당시 근거 범위와 변경 기준');
+    expect(screen.queryByText('전체 사용자 제약', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('전체 사용자 선호')).toBeVisible();
+  });
+  it('distinguishes an absent v2 ledger from a captured explicitly emptied ledger', () => {
+    const body = withConstraints();
+    body.userConstraints = { headRevision: null, items: [] };
+    body.dependencies.userConstraints = { kind: 'absent' };
+    const { rerender } = render(<EvidenceView snapshot={available(body)} />);
+    const region = screen.getByRole('region', { name: '필수 사용자 제약 근거' });
+    expect(region).toHaveTextContent('저장 당시 제약 미기록');
+    expect(region).not.toHaveTextContent('0개');
+    body.userConstraints = { headRevision: 4, items: [] };
+    body.dependencies.userConstraints = { kind: 'exists', revision: 4 };
+    rerender(<EvidenceView snapshot={available(body)} />);
+    expect(region).toHaveTextContent('저장 당시 명시적으로 비운 제약 원장');
+    expect(region).toHaveTextContent('확인된 제약 문장 0개');
+    expect(region).toHaveTextContent('저장 당시 제약 원장 버전 4');
+    expect(region).not.toHaveTextContent('제약 미기록');
+  });
+  it('keeps legacy v1 exclusions explicit instead of implying absence or inserting current constraints', async () => {
+    render(<EvidenceView snapshot={available()} />);
+    const region = screen.getByRole('region', { name: '필수 사용자 제약 근거' });
+    expect(region).toHaveTextContent('이전 근거 v1에는 사용자 제약 원장이 포함되지 않았습니다');
+    expect(region).toHaveTextContent('제약이 없었다는 뜻은 아니며');
+    expect(region).not.toHaveTextContent('0개');
+    await expand('저장 당시 근거 범위와 변경 기준');
+    expect(screen.getByText('전체 사용자 제약', { exact: true })).toBeVisible();
+  });
+  it('removes frozen constraint text and its provenance when the snapshot is purged', () => {
+    const { rerender } = render(<EvidenceView snapshot={available(withConstraints())} />);
+    expect(screen.getByRole('region', { name: '필수 사용자 제약 근거' })).toBeVisible();
+    rerender(
+      <EvidenceView
+        snapshot={{ id, threadId: id, createdAt: at, status: 'purged', reason: 'source_deleted' }}
+      />,
+    );
+    expect(screen.queryByRole('region', { name: '필수 사용자 제약 근거' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/저장된 사용자 제약/)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '원본 기록 또는 사용자 제약이 삭제되었습니다',
+    );
+  });
   it('distinguishes pinned historical plan from captured current head, unknown activity time from in-window data, and known zero from missing', async () => {
     const body = fixture();
     const source = body.activities[0];

@@ -295,7 +295,9 @@ test('explicitly captures saved evidence, keeps unsaved text outside the snapsho
   await expect(selectedEvidence(page).getByRole('status')).toContainText(
     '근거 본문이 폐기되었습니다.',
   );
-  await expect(selectedEvidence(page)).toContainText('포함된 원본 기록이 삭제되었습니다.');
+  await expect(selectedEvidence(page)).toContainText(
+    '포함된 원본 기록 또는 사용자 제약이 삭제되었습니다.',
+  );
   await expect(selectedEvidence(page)).not.toContainText('저장 당시의 합성 체크인');
   await expect(selectedEvidence(page)).not.toContainText('합성 거리 0 활동');
   expect(await f.read(snapshot.id)).toEqual({

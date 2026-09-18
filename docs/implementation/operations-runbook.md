@@ -88,7 +88,6 @@ Migration 011과 `grantPlanScenarios`를 적용한다. 시나리오 생성·저�
 변경하지 않는다. 적용 명령은 저장된 시나리오 수정번호·현재 계획 버전·완료 원장 버전을
 검사하며 현재 계획 잠금과 완료 일정 보호를 동일하게 적용한다. 분기에서 잠금을 해제해도
 현재 계획의 잠금을 우회할 수 없다. 활동 연결은 실제 불변 계획 버전을 계속 참조한다.
-
 계정 삭제 및 복구 전 삭제 원장 재적용은 적용 출처 → 수정 이력 → 시나리오 head를
 기존 계획보다 먼저 제거한다. 새 테이블에도 tenant RLS를 강제하고 수정·적용 이력은
 불변으로 유지한다. 분기 생성·수정·적용의 outbox와 receipt는 각각 같은 거래에 저장한다.
@@ -136,12 +135,30 @@ Migration 014와 `grantCoachingConstraints`를 적용한다. 전체 head와 항�
 
 현재 export v7에는 `coachingConstraints`, `coachingConstraintHeads`가 추가된다. v2~v6
 다운로드 읽기는 보존하고 과거에 없던 컬렉션을 합성하지 않는다. 기존 내보내기 크기 제한과
-계정 삭제 gate가 그대로 적용된다. 기존 running-core-v1 근거에는 아직 포함하지 않는다.
-새 근거 버전의 강제 포함은 M1-05g 범위다.
+계정 삭제 gate가 그대로 적용된다. 과거 running-core-v1 근거에는 포함되지 않는다.
+신규 running-core-v2의 강제 포함·삭제 회수는 M1-05g에서 연결한다.
 
 합성 backup drill은 백업과 현재 원장의 소유자를 모두 포함한 최신 제약 상태(head, 활성
 문장, 삭제 tombstone)를 단일 snapshot으로 별도 보관해 복원한다. 이 자료도 건강정보이므로
 운영 로그나 공개 artifact에 기록하지 않는다. 누락·역행 revision·동일 revision의 본문 변경·
 tombstone 부활은 거절한다. 계정 삭제 원장을 먼저 적용한 뒤 runtime 접근 전에 최신 상태로
-치환한다. 최신 외부 원장 없이 과거 dump의 제약을 현재 제약으로 제공하지 않는다. 로컬
+바뀐 행만 반영한다. 최신 외부 원장 없이 과거 dump의 제약을 현재 제약으로 제공하지 않는다. 로컬
 합성 drill은 외부 원장 보관 인프라나 운영 복구 목표가 검증되었다는 의미가 아니다.
+
+## 필수 제약 근거 v2 (M1-05g)
+
+Migration 015는 제약 삭제 시 이를 포함한 근거를 `source_deleted`로 회수한다. 신규 capture는
+running-core-v2 본문과 core-ledgers-v2 의존성을 한 SQL snapshot으로 읽는다. 필수 사용자
+제약 전체를 포함하며 날짜나 상담 대상에 따라 일부를 제외하지 않는다. 미기록 head와
+명시적으로 비운 head를 구분한다. v1 읽기와 과거 명령의 멱등 재전송은 그대로 지원한다.
+
+제약 정정은 기존 근거의 과거 문장을 보존하되 제약 head 비교에서 stale로 판정한다. 삭제는
+과거 근거 전체 본문을 제거하고 API·export·이전 capture receipt로도 되돌리지 않는다. v1/v2
+의존성 교차 비교는 unsupported이며, v1을 최신 완전 근거로 취급하지 않는다. 현재 schema의
+비교는 제한된 원장 revision 비교일 뿐 전체 승인 freshness나 승인 권한이 아니다.
+
+최신 제약 원장 복원은 행 전체 삭제·재삽입 대신 변경된 행만 반영한다. 유지 중인 과거 근거는
+보존하고 실제 삭제된 제약의 근거만 회수한다. 검증된 외부 최신 원장에 필요한 revision 건너뛰기는
+일치하는 tenant 문맥의 table owner에게만 허용된다. runtime은 계속 한 revision씩만 증가하며
+ID/소유권 변경·삭제 tombstone 부활은 허용하지 않는다. 계정 삭제 원장 우선 적용, 완전성·역행
+검사, 실패 시 유지보수 transaction rollback은 기존과 같다.

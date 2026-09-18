@@ -21,6 +21,7 @@ export interface ConstraintsPanelProps {
   sessionId: string;
   transport: AuthenticatedTransport;
   createId?: () => string;
+  onChanged?: () => void;
 }
 export function ConstraintsPanel(props: ConstraintsPanelProps) {
   return <Lifetime key={JSON.stringify([props.athleteId, props.sessionId])} {...props} />;
@@ -53,6 +54,7 @@ function Panel({
   transport,
   store,
   createId = () => crypto.randomUUID(),
+  onChanged,
 }: ConstraintsPanelProps & { store: ConstraintsDraftStore }) {
   const api = createConstraintsApi(transport),
     client = useQueryClient();
@@ -114,6 +116,7 @@ function Panel({
         await api.update(command.id, command.command, controller.signal);
       else await api.remove(command.id, command.command, controller.signal);
       if (controller.signal.aborted) return;
+      onChanged?.();
       const keepDraft = command.kind === 'delete' && store.getState().editing !== command.id;
       actions.succeeded();
       if (!keepDraft) baseline.current = null;
@@ -202,8 +205,8 @@ function Panel({
       <h2>필수 사용자 제약</h2>
       <p>{coachingConstraintDefinition.meaning}</p>
       <p>
-        저장된 근거 v1에는 이 제약 원장이 아직 포함되지 않습니다. AI나 계획 변경에 자동 적용되지
-        않습니다.
+        새로 저장하는 근거에는 전체 사용자 제약이 필수로 포함됩니다. 이전 근거 v1에는 포함되지
+        않았습니다. AI나 계획 변경에 자동 적용되지 않습니다.
       </p>
       <button type="button" disabled={locked || query.isFetching} onClick={() => void refresh()}>
         최신 제약 확인

@@ -121,27 +121,31 @@ export async function restoreConstraintLedger(pool: Pool, ledger: ConstraintRest
       if (current.revision === previous.revision) assert.deepEqual(current, previous);
       if (previous.deleted) assert.deepEqual(current, previous);
     }
-    await pool.query('DELETE FROM coaching_constraint WHERE athlete_id=$1', [subject.athleteId]);
-    await pool.query('DELETE FROM coaching_constraint_head WHERE athlete_id=$1', [
-      subject.athleteId,
-    ]);
     if (!subject.head) continue;
     await pool.query(
-      'INSERT INTO coaching_constraint_head(athlete_id,revision,updated_at) VALUES($1,$2,$3)',
+      'INSERT INTO coaching_constraint_head(athlete_id,revision,updated_at) VALUES($1,$2,$3) ON CONFLICT(athlete_id) DO UPDATE SET revision=EXCLUDED.revision,updated_at=EXCLUDED.updated_at',
       [subject.athleteId, subject.head.revision, subject.head.updatedAt],
     );
-    for (const row of subject.rows)
+    // Keep unchanged rows: deleting/reinserting them would falsely purge retained evidence.
+    // The owner-only migration guard permits validated revision jumps; runtime still increments by one.
+    for (const row of subject.rows) {
+      const previous = old?.rows.find((item) => item.id === row.id);
+      if (previous?.revision === row.revision) continue;
+      const values = [
+        subject.athleteId,
+        row.id,
+        row.revision,
+        row.text,
+        row.confirmedAt,
+        row.updatedAt,
+        row.deleted,
+      ];
       await pool.query(
-        'INSERT INTO coaching_constraint(athlete_id,id,revision,text,confirmed_at,updated_at,deleted) VALUES($1,$2,$3,$4,$5,$6,$7)',
-        [
-          subject.athleteId,
-          row.id,
-          row.revision,
-          row.text,
-          row.confirmedAt,
-          row.updatedAt,
-          row.deleted,
-        ],
+        previous
+          ? 'UPDATE coaching_constraint SET revision=$3,text=$4,confirmed_at=$5,updated_at=$6,deleted=$7 WHERE athlete_id=$1 AND id=$2'
+          : 'INSERT INTO coaching_constraint(athlete_id,id,revision,text,confirmed_at,updated_at,deleted) VALUES($1,$2,$3,$4,$5,$6,$7)',
+        values,
       );
+    }
   }
 }
