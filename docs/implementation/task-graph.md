@@ -20,6 +20,9 @@ M1-05i는 상태·요청 계약(i1, 완료), 실DB 원장·API 경계(i2a, 완�
 실행 기록 운영·복원(i2b1, 완료), 결정론 runner·직전 검사(i2b2a),
 비프로덕션 fixture 연결·실행 E2E(i2b2b)를 분리한다.
 runner가 준비되기 전 일반 서버의 실행 생성 경로는 열지 않는다.
+M1-05j는 훈련 후보의 순수 계약·diff/검증(j1), tenant 불변 원장·digest·수명주기(j2),
+서버 검증 API·fixture E2E(j3)로 분리한다. fixture의 미검증 분석 문장을 후보로
+자동 승격하지 않으며, 계획 적용은 M1-05k의 명시 승인 transaction에 남긴다.
 
 **병렬 진행은 가능하다.** 계약이 확정된 뒤 Host/UI, API/DB, FIT 도구를 분리하고 각 통합 지점에서 실제 데이터를 연결한다. 아래 그래프는 작업 우선순위 제안이며 일정·인력·완료 예상일을 의미하지 않는다.
 
@@ -334,6 +337,9 @@ flowchart TD
     coachRunAdapter["M1-05i2b 코치 실행 adapter·preflight·운영 수명주기"]
     coachRunBackend["M1-05i2 코치 실행 원장·preflight·adapter"]
     coachRun["M1-05i 코치 실행 원장·adapter"]
+    proposalContract["M1-05j1 훈련 후보 계약·순수 diff/검증"]
+    proposalLedger["M1-05j2 불변 후보 원장·digest·수명주기"]
+    proposalApi["M1-05j3 후보 서버 검증 API·fixture E2E"]
     proposals["M1-05j 불변 후보·diff·검증"]
     approvalCommit["M1-05k 훈련 계획 명시 승인 transaction"]
     proposalUi["M1-05l 코치·후보 검토 제품 UI"]
@@ -353,7 +359,12 @@ flowchart TD
     coachRunAdapter --> coachRunBackend
     coachRunContract --> coachRun
     coachRunBackend --> coachRun
-    coachRun --> proposals
+    coachRun --> proposalContract
+    proposalContract --> proposalLedger
+    proposalLedger --> proposalApi
+    proposalContract --> proposals
+    proposalLedger --> proposals
+    proposalApi --> proposals
     proposals --> approvalCommit
     coachRun --> proposalUi
     proposals --> proposalUi
@@ -545,7 +556,10 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05i2b 코치 실행 adapter·preflight·운영 수명주기 | M1-05i2b1, M1-05i2b2 | 결정론 실행·직전/직후 재검사·출력/실패/취소·lease·운영 수명주기 |
 | M1-05i2 코치 실행 원장·preflight·adapter | M1-05i2a, M1-05i2b | 실DB 원장·동의/근거 직전 검사·미검증 분석/실패/취소·결정론 adapter·API |
 | M1-05i 코치 실행 원장·adapter | M1-05i1, M1-05i2 | 실행 수명주기 통합; 실제 모델 별도 증거 |
-| M1-05j 불변 후보·diff·검증 | M1-05i | Decision/Proposal/Candidate 정본·변경 영향·unknown/error·digest |
+| M1-05j1 훈련 후보 계약·순수 diff/검증 | M1-05i | versioned 계약·원안/변경 비교·수치 영향·error/warning/unknown; 저장·승인 아님 |
+| M1-05j2 불변 후보 원장·digest·수명주기 | M1-05j1 | tenant 정본·서버 digest·멱등/회수·내보내기/삭제/복원; 계획 쓰기 없음 |
+| M1-05j3 후보 서버 검증 API·fixture E2E | M1-05j2 | 구조화 fixture·서버 검증/조회·부분 요청 새 후보·최신성·tenant E2E; 승인 아님 |
+| M1-05j 불변 후보·diff·검증 | M1-05j1, M1-05j2, M1-05j3 | Decision/Proposal/Candidate 정본·변경 영향·unknown/error·digest |
 | M1-05k 훈련 계획 명시 승인 transaction | M1-05j | 소유권·freshness·digest·잠금 재검사, 버전/이력/outbox/receipt 원자성 |
 | M1-05l 코치·후보 검토 제품 UI | M1-05i, M1-05j, M1-05k | S10/S11 두 shell·전후 비교·stale/미확인·명시 승인·브라우저 |
 | M1-05m 러닝 코치·승인 통합 수용 | M1-05l | 가상 활동→후보→diff→승인→새 계획 실DB E2E·실패/철회/동시성 |

@@ -822,11 +822,36 @@
       "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
-      "id": "M1-05j",
-      "title": "불변 후보·diff·검증",
+      "id": "M1-05j1",
+      "title": "훈련 후보 계약·순수 diff/검증",
       "dependsOn": ["M1-05i"],
       "kind": "task",
+      "status": "completed",
+      "scope": "training-only Decision/Proposal/Candidate versioned 계약·원안/변경 비교·수치 영향·error/warning/unknown; 저장·승인 권한 아님",
+      "evidence": "docs/implementation/progress/M1-05j1.md"
+    },
+    {
+      "id": "M1-05j2",
+      "title": "불변 후보 원장·digest·수명주기",
+      "dependsOn": ["M1-05j1"],
+      "kind": "task",
       "status": "not_started",
+      "scope": "tenant Decision/Proposal/Candidate 정본·서버 digest·멱등/회수·내보내기/삭제/복원; 계획 쓰기 없음"
+    },
+    {
+      "id": "M1-05j3",
+      "title": "후보 서버 검증 API·fixture E2E",
+      "dependsOn": ["M1-05j2"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "구조화 fixture와 서버 검증·조회·부분 요청 새 후보·최신성 표시·tenant/동의/계획 불변 E2E; 승인 아님"
+    },
+    {
+      "id": "M1-05j",
+      "title": "불변 후보·diff·검증",
+      "dependsOn": ["M1-05j1", "M1-05j2", "M1-05j3"],
+      "kind": "task",
+      "status": "in_progress",
       "scope": "Decision/Proposal/Candidate 정본·원안/변경 비교·목적/수치 영향·error/warning/unknown·서버 digest; 부분 요청은 새 후보"
     },
     {

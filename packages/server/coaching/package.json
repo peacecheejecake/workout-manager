@@ -12,6 +12,7 @@
     "zod": "4.6.5"
   },
   "exports": {
-    "./runner": "./src/runner.ts"
+    "./runner": "./src/runner.ts",
+    "./candidates": "./src/candidates.ts"
   }
 }
