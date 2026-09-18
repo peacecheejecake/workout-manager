@@ -1,15 +1,38 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { validOrientationObservation } from './fixtures/capacitor-spike/evidence.mjs';
+import {
+  validKeyboardObservation,
+  validOrientationObservation,
+} from './fixtures/capacitor-spike/evidence.mjs';
 
 const exec = promisify(execFile);
 const repository = dirname(dirname(fileURLToPath(import.meta.url)));
 const hash = (value) => createHash('sha256').update(value).digest('hex');
+async function hashWebBundle(directory) {
+  const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name).slice(directory.length + 1))
+    .sort();
+  const manifest = await Promise.all(
+    files.map(async (path) => [path, hash(await readFile(join(directory, path)))]),
+  );
+  return hash(JSON.stringify(manifest));
+}
 async function run(command, args, cwd, timeout = 60000) {
   const { stdout } = await exec(command, args, {
     cwd,
@@ -49,10 +72,13 @@ async function execute() {
   let runtimeVersion;
   let screenshot;
   const orientationObservations = [];
+  const keyboardObservations = [];
   const versions = {};
   const cleanupErrors = [];
   let sourceHash;
   let webIndexHash;
+  let webBundleHash;
+  let webCopiedAt;
   const sim = (args) => run('xcrun', ['simctl', '--set', deviceSet, ...args], directory);
   const cleanup = async () => {
     if (deviceId) {
@@ -89,9 +115,13 @@ async function execute() {
     }
     sourceHash = hash(await readFile(fixture));
     const webDirectory = join(repository, 'apps/mobile-web/dist');
-    webIndexHash = hash(await readFile(join(webDirectory, 'index.html')));
+    const sourceBundleHash = await hashWebBundle(webDirectory);
     await mkdir(project);
     await cp(webDirectory, join(project, 'www'), { recursive: true });
+    webBundleHash = await hashWebBundle(join(project, 'www'));
+    webIndexHash = hash(await readFile(join(project, 'www/index.html')));
+    webCopiedAt = new Date().toISOString();
+    if (webBundleHash !== sourceBundleHash) throw new Error('WEB_DIST_CHANGED_DURING_COPY');
     await symlink(join(repository, 'node_modules'), join(project, 'node_modules'), 'dir');
     await writeFile(
       join(project, 'package.json'),
@@ -219,12 +249,23 @@ async function execute() {
       throw new Error('NATIVE_OBSERVATION_TIMEOUT');
     };
     const artifactDirectory = await mkdtemp(join(tmpdir(), 'workout-capacitor-evidence-'));
-    for (const expectedStage of ['portrait', 'landscape', 'restored']) {
+    for (const expectedStage of [
+      'portrait',
+      'landscape',
+      'restored',
+      'keyboardShown',
+      'keyboardLandscape',
+      'keyboardRestored',
+      'keyboardDismissed',
+    ]) {
       stage = `observe_${expectedStage}`;
       const observation = await readResult(`capacitor-probe-${expectedStage}.json`);
-      if (!validOrientationObservation(observation, expectedStage)) {
+      const valid = expectedStage.startsWith('keyboard')
+        ? validKeyboardObservation(observation, expectedStage)
+        : validOrientationObservation(observation, expectedStage);
+      if (!valid) {
         nativeFailure = observation;
-        throw new Error('INVALID_ORIENTATION_EVIDENCE');
+        throw new Error('INVALID_SIMULATOR_EVIDENCE');
       }
       const screenshotPath = join(artifactDirectory, `mobile-web-${expectedStage}.png`);
       await sim(['io', deviceId, 'screenshot', screenshotPath]);
@@ -233,9 +274,12 @@ async function execute() {
         sha256: hash(await readFile(screenshotPath)),
         visualReview: 'pending',
       };
-      orientationObservations.push({ ...observation, screenshot: capture });
+      const target = expectedStage.startsWith('keyboard')
+        ? keyboardObservations
+        : orientationObservations;
+      target.push({ ...observation, screenshot: capture });
       if (expectedStage === 'portrait') screenshot = capture;
-      if (expectedStage !== 'restored')
+      if (expectedStage !== 'keyboardDismissed')
         await writeFile(join(documents, `capacitor-probe-continue-${expectedStage}`), '');
       console.log(`Capacitor spike: ${expectedStage} measured and captured`);
     }
@@ -250,7 +294,14 @@ async function execute() {
         !Number.isSafeInteger(result.sharedWorkspaceButtonCount) ||
         result.sharedWorkspaceButtonCount < 1 ||
         JSON.stringify(result.orientationStages) !==
-          JSON.stringify(['portrait', 'landscape', 'restored']))
+          JSON.stringify(['portrait', 'landscape', 'restored']) ||
+        JSON.stringify(result.keyboardStages) !==
+          JSON.stringify([
+            'keyboardShown',
+            'keyboardLandscape',
+            'keyboardRestored',
+            'keyboardDismissed',
+          ]))
     )
       throw new Error('INVALID_RENDER_RESULT');
     stage = 'completed';
@@ -272,7 +323,7 @@ async function execute() {
     await cleanup();
   }
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     executedAt: new Date().toISOString(),
     nodeVersion: process.version,
     capacitorVersions: versions,
@@ -280,11 +331,14 @@ async function execute() {
     runtimeVersion: runtimeVersion ?? null,
     instrumentationSha256: sourceHash ?? null,
     webIndexSha256: webIndexHash ?? null,
+    webBundleSha256: webBundleHash ?? null,
+    webCopiedAt: webCopiedAt ?? null,
     result,
     buttonCountScope:
       'All document buttons; this is render evidence, not module interaction acceptance.',
     screenshot: screenshot ?? null,
     orientationObservations,
+    keyboardObservations,
     cleanupCompleted: cleanupErrors.length === 0,
     cleanupErrors,
     scope:
@@ -295,7 +349,8 @@ async function execute() {
       'Production native authentication and secure transport',
       'Minimum supported OS runtime',
       'App Store signing/provisioning',
-      'Full IME, safe area, back and lifecycle acceptance',
+      'WKWebView text-entry gesture and Korean IME behavior',
+      'Full safe area, back and lifecycle acceptance',
     ],
     sources: [
       'https://capacitorjs.com/docs/ios',

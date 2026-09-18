@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 2,
-  "executedAt": "2026-09-18T11:51:15.638Z",
+  "schemaVersion": 3,
+  "executedAt": "2026-09-18T22:39:53.721Z",
   "nodeVersion": "v24.12.0",
   "capacitorVersions": {
     "core": "8.5.2",
@@ -9,12 +9,20 @@
   },
   "xcode": "Xcode 27.0\nBuild version 27A266a",
   "runtimeVersion": "27.0",
-  "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
+  "instrumentationSha256": "7c179606aac45ceef51e937b942fa2d74549f772b8d1484bd30261bdb19559f5",
   "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+  "webBundleSha256": "b546b79ad86ade4c98e9cabdf337ff31efaf7a61529065bced23676886173f00",
+  "webCopiedAt": "2026-09-18T22:38:00.863Z",
   "result": {
     "capacitorPlatform": "ios",
     "demoDisclaimerVisible": true,
     "headingRendered": true,
+    "keyboardStages": [
+      "keyboardShown",
+      "keyboardLandscape",
+      "keyboardRestored",
+      "keyboardDismissed"
+    ],
     "localOriginVerified": true,
     "nativePlatform": true,
     "orientationStages": ["portrait", "landscape", "restored"],
@@ -23,13 +31,9 @@
   },
   "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
   "screenshot": {
-    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
-    "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
-    "visualReview": "reviewed_heading_clear",
-    "observations": [
-      "Portrait title is below the status bar/Dynamic Island and fully visible.",
-      "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
-    ]
+    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-portrait.png",
+    "sha256": "879341ab05b56b9b1a35d0e5e36b85018c4d2f8792b1391ef51031a3164be604",
+    "visualReview": "pending"
   },
   "orientationObservations": [
     {
@@ -108,12 +112,12 @@
       "outcome": "passed",
       "stage": "portrait",
       "screenshot": {
-        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
-        "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-portrait.png",
+        "sha256": "879341ab05b56b9b1a35d0e5e36b85018c4d2f8792b1391ef51031a3164be604",
         "visualReview": "reviewed_heading_clear",
         "observations": [
-          "Portrait title is below the status bar/Dynamic Island and fully visible.",
-          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+          "The title is fully below the status bar in portrait.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
         ]
       }
     },
@@ -193,12 +197,12 @@
       "outcome": "passed",
       "stage": "landscape",
       "screenshot": {
-        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-landscape.png",
-        "sha256": "f60f4f359242d76a450382d4fe192aa14f8d4dbf0fd684e398ce5982aae5dbcd",
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-landscape.png",
+        "sha256": "d7cff7f450ee99d79bde386aa443d95bb1e767b7030e4af074a6728d7a2c7768",
         "visualReview": "reviewed_heading_clear",
         "observations": [
-          "Landscape title and navigation are inside the horizontal safe area; visible content has no horizontal clipping.",
-          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+          "The title and navigation remain inside the horizontal safe area.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
         ]
       }
     },
@@ -278,12 +282,430 @@
       "outcome": "passed",
       "stage": "restored",
       "screenshot": {
-        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-restored.png",
-        "sha256": "73d58f7956b955ec4bf9e649882d36f2349210956da7d01df019402930c388b0",
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-restored.png",
+        "sha256": "879341ab05b56b9b1a35d0e5e36b85018c4d2f8792b1391ef51031a3164be604",
         "visualReview": "reviewed_heading_clear",
         "observations": [
-          "After returning to portrait, the title remains below the status bar and matches the initial layout.",
-          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+          "The title returns below the status bar after rotation.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+        ]
+      }
+    }
+  ],
+  "keyboardObservations": [
+    {
+      "checks": {
+        "focusedControlAboveKeyboard": true,
+        "focusMatches": true,
+        "headingWithinSafeArea": true,
+        "keyboardVisibilityMatches": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 402,
+          "clientWidth": 402,
+          "heading": {
+            "height": 29,
+            "width": 370,
+            "x": 16,
+            "y": 78.078125
+          },
+          "innerHeight": 874,
+          "innerWidth": 402,
+          "padding": {
+            "bottom": 34,
+            "left": 16,
+            "right": 16,
+            "top": 62
+          },
+          "scrollWidth": 402,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 573,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 402
+          }
+        },
+        "headingInWindow": {
+          "height": 29,
+          "width": 370,
+          "x": 16,
+          "y": 78.078125
+        },
+        "keyboard": {
+          "endFrameInWindow": {
+            "height": 301,
+            "width": 402,
+            "x": 0,
+            "y": 573
+          },
+          "focused": true,
+          "focusedControlInWindow": {
+            "height": 44,
+            "width": 370,
+            "x": 16,
+            "y": 162
+          },
+          "notification": "didShow"
+        },
+        "safeAreaInsets": {
+          "bottom": 34,
+          "left": 0,
+          "right": 0,
+          "top": 62
+        },
+        "safeRect": {
+          "height": 778,
+          "width": 402,
+          "x": 0,
+          "y": 62
+        },
+        "view": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "portrait",
+      "outcome": "passed",
+      "stage": "keyboardShown",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-keyboardShown.png",
+        "sha256": "401b498fa2283dfabfad0db42c96d7dc1507f4ec0578130c7825fad7be9dbb66",
+        "visualReview": "reviewed_keyboard_visible",
+        "observations": [
+          "The software keyboard is visibly present; the synthetic native field and title remain above it. The native field overlays some web content.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+        ]
+      }
+    },
+    {
+      "checks": {
+        "focusedControlAboveKeyboard": true,
+        "focusMatches": true,
+        "headingWithinSafeArea": true,
+        "keyboardVisibilityMatches": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 874,
+          "clientWidth": 874,
+          "heading": {
+            "height": 43,
+            "width": 750,
+            "x": 62,
+            "y": 47.421875
+          },
+          "innerHeight": 402,
+          "innerWidth": 874,
+          "padding": {
+            "bottom": 24,
+            "left": 62,
+            "right": 62,
+            "top": 24
+          },
+          "scrollWidth": 874,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 222,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 874
+          }
+        },
+        "headingInWindow": {
+          "height": 43,
+          "width": 750,
+          "x": 62,
+          "y": 47.421875
+        },
+        "keyboard": {
+          "endFrameInWindow": {
+            "height": 180,
+            "width": 874,
+            "x": 0,
+            "y": 222
+          },
+          "focused": true,
+          "focusedControlInWindow": {
+            "height": 44,
+            "width": 718,
+            "x": 78,
+            "y": 100
+          },
+          "notification": "didShow"
+        },
+        "safeAreaInsets": {
+          "bottom": 20,
+          "left": 62,
+          "right": 62,
+          "top": 0
+        },
+        "safeRect": {
+          "height": 382,
+          "width": 750,
+          "x": 62,
+          "y": 0
+        },
+        "view": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "landscapeLeft",
+      "outcome": "passed",
+      "stage": "keyboardLandscape",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-keyboardLandscape.png",
+        "sha256": "feb2e988ee42e521044926f6c1d06f71d91fb841e7b77732d1654e22b05d8fd7",
+        "visualReview": "reviewed_keyboard_visible_rotated",
+        "observations": [
+          "The software keyboard remains visible after rotating to landscape; the native field and title remain above it. The native field overlays some web content.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+        ]
+      }
+    },
+    {
+      "checks": {
+        "focusedControlAboveKeyboard": true,
+        "focusMatches": true,
+        "headingWithinSafeArea": true,
+        "keyboardVisibilityMatches": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 402,
+          "clientWidth": 402,
+          "heading": {
+            "height": 29,
+            "width": 370,
+            "x": 16,
+            "y": 78.078125
+          },
+          "innerHeight": 874,
+          "innerWidth": 402,
+          "padding": {
+            "bottom": 34,
+            "left": 16,
+            "right": 16,
+            "top": 62
+          },
+          "scrollWidth": 402,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 573,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 402
+          }
+        },
+        "headingInWindow": {
+          "height": 29,
+          "width": 370,
+          "x": 16,
+          "y": 78.078125
+        },
+        "keyboard": {
+          "endFrameInWindow": {
+            "height": 301,
+            "width": 402,
+            "x": 0,
+            "y": 573
+          },
+          "focused": true,
+          "focusedControlInWindow": {
+            "height": 44,
+            "width": 370,
+            "x": 16,
+            "y": 162
+          },
+          "notification": "didShow"
+        },
+        "safeAreaInsets": {
+          "bottom": 34,
+          "left": 0,
+          "right": 0,
+          "top": 62
+        },
+        "safeRect": {
+          "height": 778,
+          "width": 402,
+          "x": 0,
+          "y": 62
+        },
+        "view": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "portrait",
+      "outcome": "passed",
+      "stage": "keyboardRestored",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-keyboardRestored.png",
+        "sha256": "92b1419964fbbf8429669e9dd317ac0dab1ec1700bec97468fec7479c7029017",
+        "visualReview": "reviewed_keyboard_visible_restored",
+        "observations": [
+          "The software keyboard remains visible after returning to portrait; the native field and title remain above it. The native field overlays some web content.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+        ]
+      }
+    },
+    {
+      "checks": {
+        "focusedControlAboveKeyboard": true,
+        "focusMatches": true,
+        "headingWithinSafeArea": true,
+        "keyboardVisibilityMatches": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 402,
+          "clientWidth": 402,
+          "heading": {
+            "height": 29,
+            "width": 370,
+            "x": 16,
+            "y": 78.078125
+          },
+          "innerHeight": 874,
+          "innerWidth": 402,
+          "padding": {
+            "bottom": 34,
+            "left": 16,
+            "right": 16,
+            "top": 62
+          },
+          "scrollWidth": 402,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 874,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 402
+          }
+        },
+        "headingInWindow": {
+          "height": 29,
+          "width": 370,
+          "x": 16,
+          "y": 78.078125
+        },
+        "keyboard": {
+          "endFrameInWindow": {
+            "height": 301,
+            "width": 402,
+            "x": 0,
+            "y": 874
+          },
+          "focused": false,
+          "focusedControlInWindow": {
+            "height": 44,
+            "width": 370,
+            "x": 16,
+            "y": 162
+          },
+          "notification": "didHide"
+        },
+        "safeAreaInsets": {
+          "bottom": 34,
+          "left": 0,
+          "right": 0,
+          "top": 62
+        },
+        "safeRect": {
+          "height": 778,
+          "width": 402,
+          "x": 0,
+          "y": 62
+        },
+        "view": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "portrait",
+      "outcome": "passed",
+      "stage": "keyboardDismissed",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-vlb3nd/mobile-web-keyboardDismissed.png",
+        "sha256": "794a3b65492fd73a1efd5742f0fc3141122f8629a2532e3e3ca1137b5ba8db65",
+        "visualReview": "reviewed_keyboard_dismissed",
+        "observations": [
+          "The keyboard is no longer visible after the native field resigns first responder. The native field still overlays some web content.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
         ]
       }
     }
@@ -297,7 +719,8 @@
     "Production native authentication and secure transport",
     "Minimum supported OS runtime",
     "App Store signing/provisioning",
-    "Full IME, safe area, back and lifecycle acceptance"
+    "WKWebView text-entry gesture and Korean IME behavior",
+    "Full safe area, back and lifecycle acceptance"
   ],
   "sources": [
     "https://capacitorjs.com/docs/ios",
@@ -518,6 +941,2160 @@
         "Minimum supported OS runtime",
         "App Store signing/provisioning",
         "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 2,
+      "executedAt": "2026-09-18T11:51:15.638Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "27.0",
+      "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "result": {
+        "capacitorPlatform": "ios",
+        "demoDisclaimerVisible": true,
+        "headingRendered": true,
+        "localOriginVerified": true,
+        "nativePlatform": true,
+        "orientationStages": ["portrait", "landscape", "restored"],
+        "outcome": "passed",
+        "sharedWorkspaceButtonCount": 5
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
+        "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
+        "visualReview": "reviewed_heading_clear",
+        "observations": [
+          "Portrait title is below the status bar/Dynamic Island and fully visible.",
+          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+        ]
+      },
+      "orientationObservations": [
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "portrait",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
+            "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "Portrait title is below the status bar/Dynamic Island and fully visible.",
+              "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 874,
+              "clientWidth": 874,
+              "heading": {
+                "height": 43,
+                "width": 750,
+                "x": 62,
+                "y": 47.421875
+              },
+              "innerHeight": 402,
+              "innerWidth": 874,
+              "padding": {
+                "bottom": 24,
+                "left": 62,
+                "right": 62,
+                "top": 24
+              },
+              "scrollWidth": 874,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 402,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 874
+              }
+            },
+            "headingInWindow": {
+              "height": 43,
+              "width": 750,
+              "x": 62,
+              "y": 47.421875
+            },
+            "safeAreaInsets": {
+              "bottom": 20,
+              "left": 62,
+              "right": 62,
+              "top": 0
+            },
+            "safeRect": {
+              "height": 382,
+              "width": 750,
+              "x": 62,
+              "y": 0
+            },
+            "view": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "landscapeLeft",
+          "outcome": "passed",
+          "stage": "landscape",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-landscape.png",
+            "sha256": "f60f4f359242d76a450382d4fe192aa14f8d4dbf0fd684e398ce5982aae5dbcd",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "Landscape title and navigation are inside the horizontal safe area; visible content has no horizontal clipping.",
+              "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "restored",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-restored.png",
+            "sha256": "73d58f7956b955ec4bf9e649882d36f2349210956da7d01df019402930c388b0",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "After returning to portrait, the title remains below the status bar and matches the initial layout.",
+              "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+            ]
+          }
+        }
+      ],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 3,
+      "executedAt": "2026-09-18T22:20:33.194Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "27.0",
+      "instrumentationSha256": "ce2337c3880d7709c1ffcd27511f115ba60806b45f0508759836f6c69c3c7424",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "result": {
+        "outcome": "failed",
+        "failedStage": "observe_portrait",
+        "nativeFailure": {
+          "checks": {
+            "headingWithinSafeArea": false,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 32.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 16,
+                "left": 16,
+                "right": 16,
+                "top": 16
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 32.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "outcome": "failed",
+          "reason": "geometry_check_failed",
+          "stage": "portrait"
+        },
+        "errorCode": "CAPACITOR_SPIKE_FAILED"
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": null,
+      "orientationObservations": [],
+      "keyboardObservations": [],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "WKWebView text-entry gesture and Korean IME behavior",
+        "Full safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 3,
+      "executedAt": "2026-09-18T22:23:20.575Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "27.0",
+      "instrumentationSha256": "65d117bf3b36f6e9ed9663bbbd932d01a5f59d2e03ced4f87b1e065b0a674a8f",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "result": {
+        "capacitorPlatform": "ios",
+        "demoDisclaimerVisible": true,
+        "headingRendered": true,
+        "keyboardStages": ["keyboardShown", "keyboardDismissed"],
+        "localOriginVerified": true,
+        "nativePlatform": true,
+        "orientationStages": ["portrait", "landscape", "restored"],
+        "outcome": "passed",
+        "sharedWorkspaceButtonCount": 5
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-portrait.png",
+        "sha256": "ba1afb9104a7404312a74e8fb34d5c0b281ed688b3deebd35190cae4b9067270",
+        "visualReview": "pending"
+      },
+      "orientationObservations": [
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "portrait",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-portrait.png",
+            "sha256": "ba1afb9104a7404312a74e8fb34d5c0b281ed688b3deebd35190cae4b9067270",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 874,
+              "clientWidth": 874,
+              "heading": {
+                "height": 43,
+                "width": 750,
+                "x": 62,
+                "y": 47.421875
+              },
+              "innerHeight": 402,
+              "innerWidth": 874,
+              "padding": {
+                "bottom": 24,
+                "left": 62,
+                "right": 62,
+                "top": 24
+              },
+              "scrollWidth": 874,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 402,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 874
+              }
+            },
+            "headingInWindow": {
+              "height": 43,
+              "width": 750,
+              "x": 62,
+              "y": 47.421875
+            },
+            "safeAreaInsets": {
+              "bottom": 20,
+              "left": 62,
+              "right": 62,
+              "top": 0
+            },
+            "safeRect": {
+              "height": 382,
+              "width": 750,
+              "x": 62,
+              "y": 0
+            },
+            "view": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "landscapeLeft",
+          "outcome": "passed",
+          "stage": "landscape",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-landscape.png",
+            "sha256": "d7cff7f450ee99d79bde386aa443d95bb1e767b7030e4af074a6728d7a2c7768",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "restored",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-restored.png",
+            "sha256": "ba1afb9104a7404312a74e8fb34d5c0b281ed688b3deebd35190cae4b9067270",
+            "visualReview": "pending"
+          }
+        }
+      ],
+      "keyboardObservations": [
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 573,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 573
+              },
+              "focused": true,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didShow"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardShown",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-keyboardShown.png",
+            "sha256": "3759c2a28a981b7985b1c9f36e4af7bdf126c0ddae40c5b5647ef0dca2a606ea",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 874
+              },
+              "focused": false,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didHide"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardDismissed",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-MQEogx/mobile-web-keyboardDismissed.png",
+            "sha256": "acea188f6bc1226006ef00d32a492701f02a9177952c769f0542fb14f59ca145",
+            "visualReview": "pending"
+          }
+        }
+      ],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "WKWebView text-entry gesture and Korean IME behavior",
+        "Full safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 3,
+      "executedAt": "2026-09-18T22:26:06.765Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "27.0",
+      "instrumentationSha256": "65d117bf3b36f6e9ed9663bbbd932d01a5f59d2e03ced4f87b1e065b0a674a8f",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "webBundleSha256": "b546b79ad86ade4c98e9cabdf337ff31efaf7a61529065bced23676886173f00",
+      "webCopiedAt": "2026-09-18T22:24:27.799Z",
+      "result": {
+        "capacitorPlatform": "ios",
+        "demoDisclaimerVisible": true,
+        "headingRendered": true,
+        "keyboardStages": ["keyboardShown", "keyboardDismissed"],
+        "localOriginVerified": true,
+        "nativePlatform": true,
+        "orientationStages": ["portrait", "landscape", "restored"],
+        "outcome": "passed",
+        "sharedWorkspaceButtonCount": 5
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-portrait.png",
+        "sha256": "df07f6683f57875890a530aed28f4f8e1eb7bb9eeeb3cd015e778fb71a34c976",
+        "visualReview": "pending"
+      },
+      "orientationObservations": [
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "portrait",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-portrait.png",
+            "sha256": "df07f6683f57875890a530aed28f4f8e1eb7bb9eeeb3cd015e778fb71a34c976",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 874,
+              "clientWidth": 874,
+              "heading": {
+                "height": 43,
+                "width": 750,
+                "x": 62,
+                "y": 47.421875
+              },
+              "innerHeight": 402,
+              "innerWidth": 874,
+              "padding": {
+                "bottom": 24,
+                "left": 62,
+                "right": 62,
+                "top": 24
+              },
+              "scrollWidth": 874,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 402,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 874
+              }
+            },
+            "headingInWindow": {
+              "height": 43,
+              "width": 750,
+              "x": 62,
+              "y": 47.421875
+            },
+            "safeAreaInsets": {
+              "bottom": 20,
+              "left": 62,
+              "right": 62,
+              "top": 0
+            },
+            "safeRect": {
+              "height": 382,
+              "width": 750,
+              "x": 62,
+              "y": 0
+            },
+            "view": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "landscapeLeft",
+          "outcome": "passed",
+          "stage": "landscape",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-landscape.png",
+            "sha256": "f60f4f359242d76a450382d4fe192aa14f8d4dbf0fd684e398ce5982aae5dbcd",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "restored",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-restored.png",
+            "sha256": "eeb7b68d6387ed18cc6228a69170817e9c03ef0459f322f9afb1adb21e432843",
+            "visualReview": "pending"
+          }
+        }
+      ],
+      "keyboardObservations": [
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 573,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 573
+              },
+              "focused": true,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didShow"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardShown",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-keyboardShown.png",
+            "sha256": "63810967bc4ab3230c6f4f9bf817fd3693210a30a712f78a697b7ec43e5ce8a4",
+            "visualReview": "pending"
+          }
+        },
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 874
+              },
+              "focused": false,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didHide"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardDismissed",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-GIorCs/mobile-web-keyboardDismissed.png",
+            "sha256": "3526a0f88e96c0de93f214d688b33d2b07a2b9f3c27f829fdbd7ca358995bd3f",
+            "visualReview": "pending"
+          }
+        }
+      ],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "WKWebView text-entry gesture and Korean IME behavior",
+        "Full safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 3,
+      "executedAt": "2026-09-18T22:30:02.932Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "27.0",
+      "instrumentationSha256": "eaac789f27a9ec2fc41d4ff093df5a741ae890c365a7e0992d7910c5b571277f",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "webBundleSha256": "b546b79ad86ade4c98e9cabdf337ff31efaf7a61529065bced23676886173f00",
+      "webCopiedAt": "2026-09-18T22:28:08.567Z",
+      "result": {
+        "capacitorPlatform": "ios",
+        "demoDisclaimerVisible": true,
+        "headingRendered": true,
+        "keyboardStages": [
+          "keyboardShown",
+          "keyboardLandscape",
+          "keyboardRestored",
+          "keyboardDismissed"
+        ],
+        "localOriginVerified": true,
+        "nativePlatform": true,
+        "orientationStages": ["portrait", "landscape", "restored"],
+        "outcome": "passed",
+        "sharedWorkspaceButtonCount": 5
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-portrait.png",
+        "sha256": "d7ab5e897cfd4276cb0ba25ee399867cc193d5b13c3b038592f0e822d2d02178",
+        "visualReview": "reviewed_heading_clear",
+        "observations": [
+          "The title is fully below the status bar in portrait.",
+          "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+        ]
+      },
+      "orientationObservations": [
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "portrait",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-portrait.png",
+            "sha256": "d7ab5e897cfd4276cb0ba25ee399867cc193d5b13c3b038592f0e822d2d02178",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "The title is fully below the status bar in portrait.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 874,
+              "clientWidth": 874,
+              "heading": {
+                "height": 43,
+                "width": 750,
+                "x": 62,
+                "y": 47.421875
+              },
+              "innerHeight": 402,
+              "innerWidth": 874,
+              "padding": {
+                "bottom": 24,
+                "left": 62,
+                "right": 62,
+                "top": 24
+              },
+              "scrollWidth": 874,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 402,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 874
+              }
+            },
+            "headingInWindow": {
+              "height": 43,
+              "width": 750,
+              "x": 62,
+              "y": 47.421875
+            },
+            "safeAreaInsets": {
+              "bottom": 20,
+              "left": 62,
+              "right": 62,
+              "top": 0
+            },
+            "safeRect": {
+              "height": 382,
+              "width": 750,
+              "x": 62,
+              "y": 0
+            },
+            "view": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "landscapeLeft",
+          "outcome": "passed",
+          "stage": "landscape",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-landscape.png",
+            "sha256": "f60f4f359242d76a450382d4fe192aa14f8d4dbf0fd684e398ce5982aae5dbcd",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "The title and navigation remain inside the horizontal safe area.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "headingWithinSafeArea": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "restored",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-restored.png",
+            "sha256": "4ffa0412fa8a8d9a29ee286d7e22d92c4d940e2a0aed0251918a739ae3e22d54",
+            "visualReview": "reviewed_heading_clear",
+            "observations": [
+              "The title returns below the status bar after rotation.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        }
+      ],
+      "keyboardObservations": [
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 573,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 573
+              },
+              "focused": true,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didShow"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardShown",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-keyboardShown.png",
+            "sha256": "1bca5bb614000496a9105b075ffad63f6a1bf2dcac587d7ca5103fc946bb4591",
+            "visualReview": "reviewed_keyboard_visible",
+            "observations": [
+              "The software keyboard is visibly present; the synthetic native field and title remain above it.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 874,
+              "clientWidth": 874,
+              "heading": {
+                "height": 43,
+                "width": 750,
+                "x": 62,
+                "y": 47.421875
+              },
+              "innerHeight": 402,
+              "innerWidth": 874,
+              "padding": {
+                "bottom": 24,
+                "left": 62,
+                "right": 62,
+                "top": 24
+              },
+              "scrollWidth": 874,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 222,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 874
+              }
+            },
+            "headingInWindow": {
+              "height": 43,
+              "width": 750,
+              "x": 62,
+              "y": 47.421875
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 180,
+                "width": 874,
+                "x": 0,
+                "y": 222
+              },
+              "focused": true,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 718,
+                "x": 78,
+                "y": 100
+              },
+              "notification": "didShow"
+            },
+            "safeAreaInsets": {
+              "bottom": 20,
+              "left": 62,
+              "right": 62,
+              "top": 0
+            },
+            "safeRect": {
+              "height": 382,
+              "width": 750,
+              "x": 62,
+              "y": 0
+            },
+            "view": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 402,
+              "width": 874,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "landscapeLeft",
+          "outcome": "passed",
+          "stage": "keyboardLandscape",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-keyboardLandscape.png",
+            "sha256": "abf3c626a416b079b0ab07e21d26990a5fe583f7907958d0dfadea48d12338af",
+            "visualReview": "reviewed_keyboard_visible_rotated",
+            "observations": [
+              "The software keyboard remains visible after rotating to landscape; the native field and title remain above it.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 573,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 573
+              },
+              "focused": true,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didShow"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardRestored",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-keyboardRestored.png",
+            "sha256": "ce9c16ffcae44971733aa07d878defeee99ad0142dce623be2535b9dcd70a3eb",
+            "visualReview": "reviewed_keyboard_visible_restored",
+            "observations": [
+              "The software keyboard remains visible after returning to portrait.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        },
+        {
+          "checks": {
+            "focusedControlAboveKeyboard": true,
+            "focusMatches": true,
+            "headingWithinSafeArea": true,
+            "keyboardVisibilityMatches": true,
+            "noHorizontalOverflow": true,
+            "orientationMatches": true
+          },
+          "geometry": {
+            "dom": {
+              "bodyScrollWidth": 402,
+              "clientWidth": 402,
+              "heading": {
+                "height": 29,
+                "width": 370,
+                "x": 16,
+                "y": 78.078125
+              },
+              "innerHeight": 874,
+              "innerWidth": 402,
+              "padding": {
+                "bottom": 34,
+                "left": 16,
+                "right": 16,
+                "top": 62
+              },
+              "scrollWidth": 402,
+              "scrollX": 0,
+              "scrollY": 0,
+              "visualViewport": {
+                "height": 874,
+                "offsetLeft": 0,
+                "offsetTop": 0,
+                "scale": 1,
+                "width": 402
+              }
+            },
+            "headingInWindow": {
+              "height": 29,
+              "width": 370,
+              "x": 16,
+              "y": 78.078125
+            },
+            "keyboard": {
+              "endFrameInWindow": {
+                "height": 301,
+                "width": 402,
+                "x": 0,
+                "y": 874
+              },
+              "focused": false,
+              "focusedControlInWindow": {
+                "height": 44,
+                "width": 370,
+                "x": 16,
+                "y": 162
+              },
+              "notification": "didHide"
+            },
+            "safeAreaInsets": {
+              "bottom": 34,
+              "left": 0,
+              "right": 0,
+              "top": 62
+            },
+            "safeRect": {
+              "height": 778,
+              "width": 402,
+              "x": 0,
+              "y": 62
+            },
+            "view": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "webView": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            },
+            "window": {
+              "height": 874,
+              "width": 402,
+              "x": 0,
+              "y": 0
+            }
+          },
+          "orientation": "portrait",
+          "outcome": "passed",
+          "stage": "keyboardDismissed",
+          "screenshot": {
+            "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-dQRATd/mobile-web-keyboardDismissed.png",
+            "sha256": "1034c7e71575768ac77c6f5bb4c7148d1d017abc62297d0170e1d525c8cb39ff",
+            "visualReview": "reviewed_keyboard_dismissed",
+            "observations": [
+              "The keyboard is no longer visible after the native field resigns first responder.",
+              "This disposable native text field does not establish WKWebView text-entry or Korean IME behavior."
+            ]
+          }
+        }
+      ],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "WKWebView text-entry gesture and Korean IME behavior",
+        "Full safe area, back and lifecycle acceptance"
       ],
       "sources": [
         "https://capacitorjs.com/docs/ios",

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { validOrientationObservation } from '../../../scripts/fixtures/capacitor-spike/evidence.mjs';
+import {
+  validKeyboardObservation,
+  validOrientationObservation,
+} from '../../../scripts/fixtures/capacitor-spike/evidence.mjs';
 
 function observation(stage = 'portrait') {
   const landscape = stage === 'landscape';
@@ -166,5 +169,86 @@ describe('measured simulator orientation evidence', () => {
       expect(validOrientationObservation(value, 'portrait')).toBe(false);
     }
     expect(validOrientationObservation(observation(), 'unknown')).toBe(false);
+  });
+});
+
+function keyboardObservation(stage = 'keyboardShown') {
+  const rotated = stage === 'keyboardLandscape';
+  const value = observation(rotated ? 'landscape' : 'restored');
+  const shown = stage !== 'keyboardDismissed';
+  value.stage = stage;
+  if (rotated) {
+    value.geometry.safeAreaInsets = { top: 0, right: 62, bottom: 20, left: 62 };
+    value.geometry.safeRect = { x: 62, y: 0, width: 720, height: 370 };
+    value.geometry.headingInWindow.x = 78;
+  }
+  value.geometry.keyboard = {
+    notification: shown ? 'didShow' : 'didHide',
+    endFrameInWindow: {
+      x: 0,
+      y: shown ? (rotated ? 220 : 540) : 844,
+      width: rotated ? 844 : 390,
+      height: rotated ? 170 : 304,
+    },
+    focusedControlInWindow: {
+      x: rotated ? 78 : 16,
+      y: rotated ? 100 : 144,
+      width: 358,
+      height: 44,
+    },
+    focused: shown,
+  };
+  Object.assign(value.checks, {
+    keyboardVisibilityMatches: true,
+    focusMatches: true,
+    focusedControlAboveKeyboard: true,
+  });
+  return value;
+}
+
+describe('measured simulator keyboard evidence', () => {
+  it.each(['keyboardShown', 'keyboardLandscape', 'keyboardRestored', 'keyboardDismissed'])(
+    'accepts %s only with its native frame',
+    (stage) => {
+      expect(validKeyboardObservation(keyboardObservation(stage), stage)).toBe(true);
+    },
+  );
+  it.each([
+    ['notification mismatch', (value) => (value.geometry.keyboard.notification = 'didHide')],
+    ['missing keyboard frame', (value) => delete value.geometry.keyboard.endFrameInWindow],
+    ['no visible keyboard overlap', (value) => (value.geometry.keyboard.endFrameInWindow.y = 844)],
+    [
+      'keyboard outside horizontally',
+      (value) => (value.geometry.keyboard.endFrameInWindow.x = 900),
+    ],
+    ['keyboard only touches edge', (value) => (value.geometry.keyboard.endFrameInWindow.x = 389)],
+    ['focus missing', (value) => (value.geometry.keyboard.focused = false)],
+    ['field covered', (value) => (value.geometry.keyboard.focusedControlInWindow.y = 550)],
+    ['field outside safe area', (value) => (value.geometry.keyboard.focusedControlInWindow.y = 0)],
+    ['missing native check', (value) => delete value.checks.focusMatches],
+    ['lying native check', (value) => (value.checks.focusMatches = false)],
+  ])('rejects shown keyboard with %s', (_label, mutate) => {
+    const value = keyboardObservation();
+    mutate(value);
+    expect(validKeyboardObservation(value, 'keyboardShown')).toBe(false);
+  });
+  it.each([
+    ['keyboard still visible', (value) => (value.geometry.keyboard.endFrameInWindow.y = 540)],
+    ['focus still held', (value) => (value.geometry.keyboard.focused = true)],
+  ])('rejects dismissed keyboard with %s', (_label, mutate) => {
+    const value = keyboardObservation('keyboardDismissed');
+    mutate(value);
+    expect(validKeyboardObservation(value, 'keyboardDismissed')).toBe(false);
+  });
+  it('accepts a dismissed keyboard completely outside the horizontal safe area', () => {
+    const value = keyboardObservation('keyboardDismissed');
+    value.geometry.keyboard.endFrameInWindow.x = 900;
+    value.geometry.keyboard.endFrameInWindow.y = 540;
+    expect(validKeyboardObservation(value, 'keyboardDismissed')).toBe(true);
+  });
+  it('rejects a keyboard rotation report whose actual scene is still portrait', () => {
+    const value = keyboardObservation('keyboardLandscape');
+    value.orientation = 'portrait';
+    expect(validKeyboardObservation(value, 'keyboardLandscape')).toBe(false);
   });
 });

@@ -90,3 +90,60 @@ export function validOrientationObservation(value, expectedStage) {
     )
   );
 }
+
+/** Require measured keyboard frames and focus in addition to the portrait safe-area evidence. */
+export function validKeyboardObservation(value, expectedStage) {
+  if (
+    !['keyboardShown', 'keyboardLandscape', 'keyboardRestored', 'keyboardDismissed'].includes(
+      expectedStage,
+    )
+  )
+    return false;
+  if (!object(value) || value.stage !== expectedStage) return false;
+  const rotated = expectedStage === 'keyboardLandscape';
+  const orientationStage = rotated ? 'landscape' : 'restored';
+  if (!validOrientationObservation({ ...value, stage: orientationStage }, orientationStage))
+    return false;
+  const { keyboard, safeRect } = value.geometry;
+  if (
+    !object(keyboard) ||
+    !rect(keyboard.endFrameInWindow) ||
+    !rect(keyboard.focusedControlInWindow) ||
+    typeof keyboard.focused !== 'boolean' ||
+    (expectedStage === 'keyboardDismissed'
+      ? keyboard.notification !== 'didHide'
+      : !['didShow', 'didChangeFrame'].includes(keyboard.notification))
+  )
+    return false;
+  const horizontalOverlap = Math.max(
+    0,
+    Math.min(
+      safeRect.x + safeRect.width,
+      keyboard.endFrameInWindow.x + keyboard.endFrameInWindow.width,
+    ) - Math.max(safeRect.x, keyboard.endFrameInWindow.x),
+  );
+  const verticalOverlap = Math.max(
+    0,
+    Math.min(
+      safeRect.y + safeRect.height,
+      keyboard.endFrameInWindow.y + keyboard.endFrameInWindow.height,
+    ) - Math.max(safeRect.y, keyboard.endFrameInWindow.y),
+  );
+  const shown = expectedStage !== 'keyboardDismissed';
+  if (
+    shown
+      ? horizontalOverlap <= safeRect.width / 2 || verticalOverlap <= 100
+      : horizontalOverlap > 1 && verticalOverlap > 1
+  )
+    return false;
+  if (keyboard.focused !== shown) return false;
+  if (!within(keyboard.focusedControlInWindow, safeRect)) return false;
+  if (
+    keyboard.focusedControlInWindow.y + keyboard.focusedControlInWindow.height >
+    keyboard.endFrameInWindow.y + 1
+  )
+    return false;
+  return ['keyboardVisibilityMatches', 'focusMatches', 'focusedControlAboveKeyboard'].every(
+    (key) => value.checks[key] === true,
+  );
+}

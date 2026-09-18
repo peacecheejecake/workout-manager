@@ -25,6 +25,12 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
   private var stableGeometry: Data?
   private var requestedMask: UIInterfaceOrientationMask = .portrait
   private var buttonCount = 0
+  private var keyboardField: UITextField?
+  private var keyboardShownFrame: CGRect?
+  private var keyboardHiddenFrame: CGRect?
+  private var keyboardVisibleNotification = "didShow"
+  private var lastRejectedGeometry: [String: Any]?
+  private var lastRejectedChecks: [String: Bool]?
   override var supportedInterfaceOrientations: UIInterfaceOrientationMask { requestedMask }
   override var shouldAutorotate: Bool { true }
   private var directory: URL {
@@ -53,6 +59,15 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
       WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     DispatchQueue.main.asyncAfter(deadline: .now() + 55) { [weak self] in self?.fail("timeout") }
   }
+  deinit { NotificationCenter.default.removeObserver(self) }
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    guard let field = keyboardField, let window = view.window else { return }
+    let safe = window.safeAreaInsets
+    field.frame = CGRect(
+      x: safe.left + 16, y: safe.top + 100,
+      width: window.bounds.width - safe.left - safe.right - 32, height: 44)
+  }
   func userContentController(
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
   ) {
@@ -71,10 +86,20 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
   }
   private func begin(_ name: String) {
     guard !recorded else { return }
+    if name == "keyboardShown" {
+      beginKeyboard()
+      return
+    }
+    if name == "keyboardDismissed" {
+      dismissKeyboard()
+      return
+    }
     stage = name
-    deadline = Date().addingTimeInterval(10)
+    deadline = Date().addingTimeInterval(name.hasPrefix("keyboard") ? 15 : 10)
     stableGeometry = nil
-    requestedMask = name == "landscape" ? .landscapeLeft : .portrait
+    lastRejectedGeometry = nil
+    lastRejectedChecks = nil
+    requestedMask = name == "landscape" || name == "keyboardLandscape" ? .landscapeLeft : .portrait
     guard #available(iOS 16.0, *), let scene = view.window?.windowScene else {
       fail("orientation_request_failed")
       return
@@ -85,13 +110,93 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
     }
     inspect()
   }
+  private func beginKeyboard() {
+    guard let window = view.window else {
+      fail("keyboard_window_unavailable")
+      return
+    }
+    stage = "keyboardShown"
+    deadline = Date().addingTimeInterval(15)
+    stableGeometry = nil
+    lastRejectedGeometry = nil
+    lastRejectedChecks = nil
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(keyboardDidShow(_:)), name: UIResponder.keyboardDidShowNotification,
+      object: nil)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(keyboardDidHide(_:)), name: UIResponder.keyboardDidHideNotification,
+      object: nil)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(keyboardDidChangeFrame(_:)),
+      name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+    let safe = window.safeAreaInsets
+    let field = UITextField(
+      frame: CGRect(
+        x: safe.left + 16, y: safe.top + 100,
+        width: window.bounds.width - safe.left - safe.right - 32, height: 44))
+    field.accessibilityIdentifier = "simulator-keyboard-probe"
+    field.placeholder = "Simulator keyboard probe"
+    field.borderStyle = .roundedRect
+    field.autocorrectionType = .no
+    field.spellCheckingType = .no
+    view.addSubview(field)
+    keyboardField = field
+    guard field.becomeFirstResponder() else {
+      fail("keyboard_focus_failed")
+      return
+    }
+    later { [weak self] in self?.awaitKeyboardNotification() }
+  }
+  private func dismissKeyboard() {
+    stage = "keyboardDismissed"
+    deadline = Date().addingTimeInterval(15)
+    stableGeometry = nil
+    lastRejectedGeometry = nil
+    lastRejectedChecks = nil
+    guard keyboardField?.resignFirstResponder() == true else {
+      fail("keyboard_dismissal_failed")
+      return
+    }
+    later { [weak self] in self?.awaitKeyboardNotification() }
+  }
+  @objc private func keyboardDidShow(_ notification: Notification) {
+    keyboardShownFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+    keyboardVisibleNotification = "didShow"
+  }
+  @objc private func keyboardDidChangeFrame(_ notification: Notification) {
+    guard stage != "keyboardDismissed" else { return }
+    keyboardShownFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+    keyboardVisibleNotification = "didChangeFrame"
+  }
+  @objc private func keyboardDidHide(_ notification: Notification) {
+    keyboardHiddenFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+  }
+  private func awaitKeyboardNotification() {
+    guard !recorded else { return }
+    guard Date() < deadline else {
+      fail("keyboard_notification_timeout")
+      return
+    }
+    if stage == "keyboardShown" ? keyboardShownFrame != nil : keyboardHiddenFrame != nil {
+      inspect()
+    } else {
+      later { [weak self] in self?.awaitKeyboardNotification() }
+    }
+  }
   private func later(_ action: @escaping () -> Void) {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
   }
   private func inspect() {
     guard !recorded else { return }
     guard Date() < deadline else {
-      fail("geometry_timeout")
+      if let geometry = lastRejectedGeometry, let checks = lastRejectedChecks {
+        finish([
+          "outcome": "failed", "reason": "geometry_check_failed", "stage": stage,
+          "geometry": geometry, "checks": checks,
+        ])
+      } else {
+        fail("geometry_timeout")
+      }
       return
     }
     guard let webView, let window = view.window, let scene = window.windowScene,
@@ -101,7 +206,9 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
       return
     }
     let orientation = scene.interfaceOrientation
-    let matches = stage == "landscape" ? orientation.isLandscape : orientation == .portrait
+    let matches =
+      stage == "landscape" || stage == "keyboardLandscape"
+      ? orientation.isLandscape : orientation == .portrait
     guard matches else {
       later { [weak self] in self?.inspect() }
       return
@@ -127,7 +234,9 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
       }
       // Confirm the scene still has the requested actual orientation after the asynchronous DOM read.
       let actual = scene.interfaceOrientation
-      let orientationMatches = self.stage == "landscape" ? actual.isLandscape : actual == .portrait
+      let orientationMatches =
+        self.stage == "landscape" || self.stage == "keyboardLandscape"
+        ? actual.isLandscape : actual == .portrait
       guard orientationMatches,
         let signature = try? JSONSerialization.data(
           withJSONObject: geometry, options: [.sortedKeys])
@@ -149,10 +258,9 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
         return
       }
       guard checks.values.allSatisfy({ $0 }) else {
-        self.finish([
-          "outcome": "failed", "reason": "geometry_check_failed", "stage": self.stage,
-          "geometry": geometry, "checks": checks,
-        ])
+        self.lastRejectedGeometry = geometry
+        self.lastRejectedChecks = checks
+        self.later { [weak self] in self?.inspect() }
         return
       }
       let orientationName =
@@ -168,12 +276,15 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
         self.fail("write_failed")
         return
       }
-      if self.stage == "restored" {
+      if self.stage == "keyboardDismissed" {
         self.finish([
           "outcome": "passed", "headingRendered": true,
           "sharedWorkspaceButtonCount": self.buttonCount, "capacitorPlatform": "ios",
           "nativePlatform": true, "demoDisclaimerVisible": true, "localOriginVerified": true,
           "orientationStages": ["portrait", "landscape", "restored"],
+          "keyboardStages": [
+            "keyboardShown", "keyboardLandscape", "keyboardRestored", "keyboardDismissed",
+          ],
         ])
       } else {
         self.deadline = Date().addingTimeInterval(10)
@@ -222,7 +333,22 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
       ], "safeRect": rect(window.bounds.inset(by: safe)), "headingInWindow": rect(headingFrame),
       "dom": dom,
     ]
-    return JSONSerialization.isValidJSONObject(native) ? native : nil
+    var measured = native
+    if stage.hasPrefix("keyboard") {
+      guard let field = keyboardField,
+        let screenFrame = stage == "keyboardDismissed" ? keyboardHiddenFrame : keyboardShownFrame
+      else { return nil }
+      let endFrame = window.convert(screenFrame, from: nil)
+      let focused = field.isFirstResponder
+      measured["keyboard"] =
+        [
+          "endFrameInWindow": rect(endFrame),
+          "focusedControlInWindow": rect(field.convert(field.bounds, to: window)),
+          "focused": focused,
+          "notification": stage == "keyboardDismissed" ? "didHide" : keyboardVisibleNotification,
+        ] as [String: Any]
+    }
+    return JSONSerialization.isValidJSONObject(measured) ? measured : nil
   }
   private func checks(_ geometry: [String: Any]) -> [String: Bool]? {
     guard let safe = geometry["safeRect"] as? [String: Double],
@@ -233,12 +359,30 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
       let viewportWidth = number(dom, "innerWidth"), let scrollWidth = number(dom, "scrollWidth"),
       let bodyWidth = number(dom, "bodyScrollWidth")
     else { return nil }
-    return [
+    var result = [
       "orientationMatches": true,
       "headingWithinSafeArea": hx >= x - 0.5 && hy >= y - 0.5 && hx + hw <= x + w + 0.5
         && hy + hh <= y + height + 0.5,
       "noHorizontalOverflow": scrollWidth <= viewportWidth + 1 && bodyWidth <= viewportWidth + 1,
     ]
+    if stage.hasPrefix("keyboard") {
+      guard let keyboard = geometry["keyboard"] as? [String: Any],
+        let frame = keyboard["endFrameInWindow"] as? [String: Double],
+        let field = keyboard["focusedControlInWindow"] as? [String: Double],
+        let kx = frame["x"], let kw = frame["width"],
+        let ky = frame["y"], let kh = frame["height"], let fy = field["y"],
+        let fh = field["height"], let focused = keyboard["focused"] as? Bool
+      else { return nil }
+      let horizontalOverlap = max(0, min(x + w, kx + kw) - max(x, kx))
+      let verticalOverlap = max(0, min(y + height, ky + kh) - max(y, ky))
+      result["keyboardVisibilityMatches"] =
+        stage == "keyboardDismissed"
+        ? horizontalOverlap <= 1 || verticalOverlap <= 1
+        : horizontalOverlap > w / 2 && verticalOverlap > 100
+      result["focusMatches"] = focused == (stage != "keyboardDismissed")
+      result["focusedControlAboveKeyboard"] = fy >= y - 0.5 && fy + fh <= ky + 0.5
+    }
+    return result
   }
   private func waitForAck() {
     guard !recorded else { return }
@@ -249,7 +393,16 @@ final class FeasibilityViewController: CAPBridgeViewController, WKScriptMessageH
     if FileManager.default.fileExists(
       atPath: directory.appendingPathComponent("capacitor-probe-continue-\(stage)").path)
     {
-      begin(stage == "portrait" ? "landscape" : "restored")
+      let next = [
+        "portrait": "landscape", "landscape": "restored", "restored": "keyboardShown",
+        "keyboardShown": "keyboardLandscape", "keyboardLandscape": "keyboardRestored",
+        "keyboardRestored": "keyboardDismissed",
+      ][stage]
+      guard let next else {
+        fail("invalid_stage")
+        return
+      }
+      begin(next)
     } else {
       later { [weak self] in self?.waitForAck() }
     }
