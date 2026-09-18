@@ -2,6 +2,8 @@
 
 작성: 2026-09-16. 기준: `docs/.pre` v0.2.3. 상태: **단계별 제품 구현 중**. 아래 초기 저장소 설명은 계획 수립 당시 기준이며, 현재 완료 상태와 검증은 [작업 그래프](task-graph.md) 및 task별 progress 문서를 따른다.
 
+다른 세션에서 작업을 재개할 때는 [현재 handoff](HANDOFF.md)에서 최신 기준 커밋·검증·남은 gate를 먼저 확인한다.
+
 이 문서는 기존 요구사항을 실행 가능한 작업 순서로 구체화한다. 제품 범위는 [01](../.pre/01_product_screen_spec.md)의 S01~S35, 기능·수용 기준은 [05](../.pre/05_implementation_requirements.md), 미완료 상태는 [06](../.pre/06_follow_up_backlog.md)를 따른다. 과거 QA 결과를 새 구현의 통과 증거로 재사용하지 않는다.
 
 ## 1. 현재 저장소와 이번 결정
