@@ -2,6 +2,10 @@
 
 기준: [구현 계획](README.md). 초기 계획 이후 구현을 진행 중이다. 최신 상태와 검증 기록은 [task-graph.json](task-graph.json)의 status/evidence를 따른다.
 
+러닝 core의 training-only 통합 수용 M1-05m과 내부 개발 gate G1은 완료했다.
+[G1 기록](progress/G1.md)은 실제 OIDC·격리 DB 회귀를 대조하며, 공식 Garmin·실제 LLM·
+지도·Native·출시 gate를 완료로 바꾸지 않는다.
+
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속
 task의 미완료 범위는 별도로 유지한다.

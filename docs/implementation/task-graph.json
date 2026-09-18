@@ -957,8 +957,9 @@
       "title": "러닝 core 통합",
       "dependsOn": ["M1-05", "M1-06a"],
       "kind": "gate",
-      "status": "not_started",
-      "scope": "mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님"
+      "status": "completed",
+      "scope": "mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님",
+      "evidence": "docs/implementation/progress/G1.md"
     },
     {
       "id": "M1b-01",
