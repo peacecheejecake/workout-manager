@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "executedAt": "2026-09-17T14:33:42.037Z",
+  "executedAt": "2026-09-18T11:51:15.638Z",
   "nodeVersion": "v24.12.0",
   "capacitorVersions": {
     "core": "8.5.2",
@@ -8,18 +8,286 @@
     "ios": "8.5.2"
   },
   "xcode": "Xcode 27.0\nBuild version 27A266a",
-  "runtimeVersion": null,
+  "runtimeVersion": "27.0",
   "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
-  "webIndexSha256": "000ad469242f1156375b64a11b3b548dbbc966f88ac9850f18f9fdc4b88d28dc",
+  "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
   "result": {
-    "outcome": "failed",
-    "failedStage": "build",
-    "nativeFailure": null,
-    "errorCode": "CAPACITOR_SPIKE_FAILED"
+    "capacitorPlatform": "ios",
+    "demoDisclaimerVisible": true,
+    "headingRendered": true,
+    "localOriginVerified": true,
+    "nativePlatform": true,
+    "orientationStages": ["portrait", "landscape", "restored"],
+    "outcome": "passed",
+    "sharedWorkspaceButtonCount": 5
   },
   "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
-  "screenshot": null,
-  "orientationObservations": [],
+  "screenshot": {
+    "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
+    "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
+    "visualReview": "reviewed_heading_clear",
+    "observations": [
+      "Portrait title is below the status bar/Dynamic Island and fully visible.",
+      "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+    ]
+  },
+  "orientationObservations": [
+    {
+      "checks": {
+        "headingWithinSafeArea": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 402,
+          "clientWidth": 402,
+          "heading": {
+            "height": 29,
+            "width": 370,
+            "x": 16,
+            "y": 78.078125
+          },
+          "innerHeight": 874,
+          "innerWidth": 402,
+          "padding": {
+            "bottom": 34,
+            "left": 16,
+            "right": 16,
+            "top": 62
+          },
+          "scrollWidth": 402,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 874,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 402
+          }
+        },
+        "headingInWindow": {
+          "height": 29,
+          "width": 370,
+          "x": 16,
+          "y": 78.078125
+        },
+        "safeAreaInsets": {
+          "bottom": 34,
+          "left": 0,
+          "right": 0,
+          "top": 62
+        },
+        "safeRect": {
+          "height": 778,
+          "width": 402,
+          "x": 0,
+          "y": 62
+        },
+        "view": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "portrait",
+      "outcome": "passed",
+      "stage": "portrait",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-portrait.png",
+        "sha256": "d3eef86909ba7afd3cbdbf24295c6a381100d46f2be5aacc665e728b8cf9c191",
+        "visualReview": "reviewed_heading_clear",
+        "observations": [
+          "Portrait title is below the status bar/Dynamic Island and fully visible.",
+          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+        ]
+      }
+    },
+    {
+      "checks": {
+        "headingWithinSafeArea": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 874,
+          "clientWidth": 874,
+          "heading": {
+            "height": 43,
+            "width": 750,
+            "x": 62,
+            "y": 47.421875
+          },
+          "innerHeight": 402,
+          "innerWidth": 874,
+          "padding": {
+            "bottom": 24,
+            "left": 62,
+            "right": 62,
+            "top": 24
+          },
+          "scrollWidth": 874,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 402,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 874
+          }
+        },
+        "headingInWindow": {
+          "height": 43,
+          "width": 750,
+          "x": 62,
+          "y": 47.421875
+        },
+        "safeAreaInsets": {
+          "bottom": 20,
+          "left": 62,
+          "right": 62,
+          "top": 0
+        },
+        "safeRect": {
+          "height": 382,
+          "width": 750,
+          "x": 62,
+          "y": 0
+        },
+        "view": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 402,
+          "width": 874,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "landscapeLeft",
+      "outcome": "passed",
+      "stage": "landscape",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-landscape.png",
+        "sha256": "f60f4f359242d76a450382d4fe192aa14f8d4dbf0fd684e398ce5982aae5dbcd",
+        "visualReview": "reviewed_heading_clear",
+        "observations": [
+          "Landscape title and navigation are inside the horizontal safe area; visible content has no horizontal clipping.",
+          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+        ]
+      }
+    },
+    {
+      "checks": {
+        "headingWithinSafeArea": true,
+        "noHorizontalOverflow": true,
+        "orientationMatches": true
+      },
+      "geometry": {
+        "dom": {
+          "bodyScrollWidth": 402,
+          "clientWidth": 402,
+          "heading": {
+            "height": 29,
+            "width": 370,
+            "x": 16,
+            "y": 78.078125
+          },
+          "innerHeight": 874,
+          "innerWidth": 402,
+          "padding": {
+            "bottom": 34,
+            "left": 16,
+            "right": 16,
+            "top": 62
+          },
+          "scrollWidth": 402,
+          "scrollX": 0,
+          "scrollY": 0,
+          "visualViewport": {
+            "height": 874,
+            "offsetLeft": 0,
+            "offsetTop": 0,
+            "scale": 1,
+            "width": 402
+          }
+        },
+        "headingInWindow": {
+          "height": 29,
+          "width": 370,
+          "x": 16,
+          "y": 78.078125
+        },
+        "safeAreaInsets": {
+          "bottom": 34,
+          "left": 0,
+          "right": 0,
+          "top": 62
+        },
+        "safeRect": {
+          "height": 778,
+          "width": 402,
+          "x": 0,
+          "y": 62
+        },
+        "view": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "webView": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        },
+        "window": {
+          "height": 874,
+          "width": 402,
+          "x": 0,
+          "y": 0
+        }
+      },
+      "orientation": "portrait",
+      "outcome": "passed",
+      "stage": "restored",
+      "screenshot": {
+        "path": "/var/folders/6v/v66kc66j74sdk1sxl6ngwxyr0000gn/T/workout-capacitor-evidence-yst5m1/mobile-web-restored.png",
+        "sha256": "73d58f7956b955ec4bf9e649882d36f2349210956da7d01df019402930c388b0",
+        "visualReview": "reviewed_heading_clear",
+        "observations": [
+          "After returning to portrait, the title remains below the status bar and matches the initial layout.",
+          "This screenshot does not establish keyboard, touch, lifecycle or full-scroll acceptance."
+        ]
+      }
+    }
+  ],
   "cleanupCompleted": true,
   "cleanupErrors": [],
   "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
@@ -136,6 +404,126 @@
         "https://capacitorjs.com/docs/ios",
         "https://capacitorjs.com/docs/ios/spm",
         "https://github.com/ionic-team/capacitor/releases/tag/8.5.2"
+      ]
+    },
+    {
+      "schemaVersion": 2,
+      "executedAt": "2026-09-17T14:33:42.037Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": null,
+      "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
+      "webIndexSha256": "000ad469242f1156375b64a11b3b548dbbc966f88ac9850f18f9fdc4b88d28dc",
+      "result": {
+        "outcome": "failed",
+        "failedStage": "build",
+        "nativeFailure": null,
+        "errorCode": "CAPACITOR_SPIKE_FAILED"
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": null,
+      "orientationObservations": [],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 2,
+      "executedAt": "2026-09-18T11:48:19.560Z",
+      "nodeVersion": "v18.19.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": null,
+      "runtimeVersion": null,
+      "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "result": {
+        "outcome": "failed",
+        "failedStage": "generate",
+        "nativeFailure": null,
+        "errorCode": "CAPACITOR_SPIKE_FAILED"
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": null,
+      "orientationObservations": [],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
+      ]
+    },
+    {
+      "schemaVersion": 2,
+      "executedAt": "2026-09-18T11:48:48.181Z",
+      "nodeVersion": "v24.12.0",
+      "capacitorVersions": {
+        "core": "8.5.2",
+        "cli": "8.5.2",
+        "ios": "8.5.2"
+      },
+      "xcode": "Xcode 27.0\nBuild version 27A266a",
+      "runtimeVersion": "26.2",
+      "instrumentationSha256": "577cd1128f752f6a444e810ac371b514fa843ed691b284acb71a82e428935ff6",
+      "webIndexSha256": "b9fa22b09f59f7ce3107e6ff4c11e9c3f7575aa7ca78b41d857424d9ce6fd5d5",
+      "result": {
+        "outcome": "failed",
+        "failedStage": "simulator",
+        "nativeFailure": null,
+        "errorCode": "CAPACITOR_SPIKE_FAILED"
+      },
+      "buttonCountScope": "All document buttons; this is render evidence, not module interaction acceptance.",
+      "screenshot": null,
+      "orientationObservations": [],
+      "cleanupCompleted": true,
+      "cleanupErrors": [],
+      "scope": "Existing Vite mobile-web demo rendered inside a disposable Capacitor Simulator project; not a production native host.",
+      "unverified": [
+        "Physical devices",
+        "HealthKit authorization or queries",
+        "Production native authentication and secure transport",
+        "Minimum supported OS runtime",
+        "App Store signing/provisioning",
+        "Full IME, safe area, back and lifecycle acceptance"
+      ],
+      "sources": [
+        "https://capacitorjs.com/docs/ios",
+        "https://capacitorjs.com/docs/ios/spm",
+        "https://github.com/ionic-team/capacitor/releases/tag/8.5.2",
+        "https://developer.apple.com/documentation/uikit/uiwindowscene/requestgeometryupdate(_:errorhandler:)"
       ]
     }
   ]

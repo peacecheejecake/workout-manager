@@ -157,11 +157,17 @@ async function execute() {
     const runtimes = JSON.parse(
       await run('xcrun', ['simctl', 'list', 'runtimes', '-j'], directory),
     ).runtimes;
-    const runtime = runtimes.find((value) => value.isAvailable && value.name.startsWith('iOS'));
-    const types = JSON.parse(
-      await run('xcrun', ['simctl', 'list', 'devicetypes', '-j'], directory),
-    ).devicetypes;
-    const deviceType = types.find((value) => value.productFamily === 'iPhone');
+    const runtime = runtimes
+      .filter((value) => value.isAvailable && value.platform === 'iOS')
+      .sort((left, right) =>
+        right.version.localeCompare(left.version, undefined, { numeric: true }),
+      )
+      .find((value) =>
+        value.supportedDeviceTypes?.some((deviceType) => deviceType.productFamily === 'iPhone'),
+      );
+    const deviceType = runtime?.supportedDeviceTypes.find(
+      (value) => value.productFamily === 'iPhone',
+    );
     if (!runtime || !deviceType) throw new Error('SIMULATOR_UNAVAILABLE');
     runtimeVersion = runtime.version;
     await mkdir(deviceSet);
