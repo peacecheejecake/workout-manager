@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
+import { trainingCandidateDraftV1Schema } from '@workout/contracts/coaching-candidates';
 import {
   runOneCoachingJob,
   createDeterministicFixtureAdapter,
@@ -456,6 +457,299 @@ it('serializes fixture candidate creation with consent withdrawal and never leav
       candidates: 0,
     });
   }
+});
+
+it('derives a two-change subset as a new immutable proposal under the same decision', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const parentCommand = command(run.id);
+  const block = parentCommand.proposed.periods.find((period) => period.id === 'block');
+  if (!block) throw new Error('Missing block');
+  block.title = 'Alternate block';
+  const parent = await repo.create(athleteId, parentCommand);
+  expect(parent.candidate.diff.title).not.toBeNull();
+  expect(parent.candidate.diff.periodChanges).toHaveLength(1);
+  expect(parent.candidate.diff.sessionChanges).toHaveLength(1);
+  const selection = {
+    sessionIds: ['session'],
+    periodIds: ['block'],
+    includeTitle: false,
+    idempotencyKey: randomUUID(),
+  };
+  const [partial, replay] = await Promise.all([
+    repo.derivePartial(athleteId, parent.candidate.id, selection),
+    repo.derivePartial(athleteId, parent.candidate.id, selection),
+  ]);
+  expect(replay).toEqual(partial);
+  expect(partial.decision).toEqual(parent.decision);
+  expect(partial.proposal.id).not.toBe(parent.proposal.id);
+  expect(partial.candidate.parentCandidateId).toBe(parent.candidate.id);
+  expect(partial.candidate.digest).toMatch(/^[0-9a-f]{64}$/);
+  const {
+    schemaVersion,
+    scope,
+    basis,
+    before,
+    proposed,
+    asOfLocalDate,
+    strategy: partialStrategy,
+    diff,
+    validation,
+  } = partial.candidate;
+  const draft = trainingCandidateDraftV1Schema.parse({
+    schemaVersion,
+    scope,
+    basis,
+    before,
+    proposed,
+    asOfLocalDate,
+    strategy: partialStrategy,
+    diff,
+    validation,
+  });
+  expect(
+    digestTrainingCandidate({
+      runId: partial.candidate.runId,
+      decisionId: partial.decision.id,
+      proposalId: partial.proposal.id,
+      candidateId: partial.candidate.id,
+      parentCandidateId: randomUUID(),
+      draft,
+    }),
+  ).not.toBe(partial.candidate.digest);
+  expect(partial.candidate.proposed.title).toBe(savedPlan.draft.title);
+  expect(partial.candidate.proposed.periods.find((period) => period.id === 'block')?.title).toBe(
+    'Alternate block',
+  );
+  expect(partial.candidate.proposed.sessions[0]?.durationSeconds).toBe(2100);
+  expect(partial.candidate.diff.title).toBeNull();
+  expect(partial.candidate.diff.periodChanges).toHaveLength(1);
+  expect(partial.candidate.diff.sessionChanges).toHaveLength(1);
+  expect(partial.candidate.validation).toMatchObject({ status: 'checked', errors: [] });
+  expect(await repo.read(athleteId, partial.candidate.id)).toEqual(partial);
+  expect(await repo.status(athleteId, partial.candidate.id)).toEqual({
+    schemaVersion: 1,
+    candidateId: partial.candidate.id,
+    kind: 'current',
+  });
+  expect(await repo.status(randomUUID(), partial.candidate.id)).toBeNull();
+  expect(await repo.status(athleteId, randomUUID())).toBeNull();
+  await expect(
+    repo.derivePartial(randomUUID(), parent.candidate.id, {
+      ...selection,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
+  await expect(
+    repo.derivePartial(athleteId, parent.candidate.id, {
+      ...selection,
+      sessionIds: [],
+    }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  await expect(
+    repo.derivePartial(athleteId, parent.candidate.id, {
+      ...selection,
+      sessionIds: ['unknown'],
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'INVALID_PARTIAL_SELECTION' });
+  expect(() =>
+    repo.derivePartial(athleteId, parent.candidate.id, {
+      ...selection,
+      periodIds: [],
+      sessionIds: [],
+      includeTitle: false,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toThrowError();
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 1,
+    proposals: 2,
+    candidates: 2,
+  });
+  expect((await createPlanningRepository(database).read(athleteId))?.head?.id).toBe(savedPlan.id);
+  await database.tenant(athleteId, async (tx) => {
+    const rows = await tx.query(
+      'SELECT parent_candidate_id,digest FROM coaching_candidate WHERE athlete_id=$1 AND id=$2',
+      [athleteId, partial.candidate.id],
+    );
+    expect(rows.rows).toEqual([
+      { parent_candidate_id: parent.candidate.id, digest: partial.candidate.digest },
+    ]);
+    const receipts = await tx.query(
+      "SELECT request,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'coaching:candidate:partial:%'",
+      [athleteId],
+    );
+    expect(receipts.rows).toEqual([
+      {
+        request: { requestHash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        result: { candidateId: partial.candidate.id },
+      },
+    ]);
+    expect(JSON.stringify(receipts.rows)).not.toContain('Alternate block');
+  });
+});
+
+it('keeps one run at 100 candidates while allowing the final idempotency key to replay', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const repo = candidates();
+  const parent = await repo.create(athleteId, command(run.id));
+  let finalInput = {
+    sessionIds: ['session'],
+    periodIds: [],
+    includeTitle: false,
+    idempotencyKey: randomUUID(),
+  };
+  let finalCandidate = await repo.derivePartial(athleteId, parent.candidate.id, finalInput);
+  for (let index = 1; index < 99; index += 1) {
+    finalInput = { ...finalInput, idempotencyKey: randomUUID() };
+    finalCandidate = await repo.derivePartial(athleteId, parent.candidate.id, finalInput);
+  }
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 1,
+    proposals: 100,
+    candidates: 100,
+  });
+  expect(await repo.list(athleteId, run.id)).toHaveLength(100);
+  expect(await repo.derivePartial(athleteId, parent.candidate.id, finalInput)).toEqual(
+    finalCandidate,
+  );
+  const overflow = { ...finalInput, idempotencyKey: randomUUID() };
+  await expect(repo.derivePartial(athleteId, parent.candidate.id, overflow)).rejects.toMatchObject({
+    code: 'CANDIDATE_LIMIT_REACHED',
+  });
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 1,
+    proposals: 100,
+    candidates: 100,
+  });
+  await database.tenant(athleteId, async (tx) => {
+    const receipts = await tx.query(
+      "SELECT count(*)::integer AS count FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'coaching:candidate:partial:%'",
+      [athleteId],
+    );
+    expect(receipts.rows[0]?.['count']).toBe(99);
+  });
+}, 120000);
+
+it('marks a sealed candidate stale without returning its body and blocks partial replay', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const parentCommand = command(run.id);
+  const parent = await repo.create(athleteId, parentCommand);
+  const selection = {
+    sessionIds: ['session'],
+    periodIds: [],
+    includeTitle: false,
+    idempotencyKey: randomUUID(),
+  };
+  const partial = await repo.derivePartial(athleteId, parent.candidate.id, selection);
+  const changedPlan = structuredClone(savedPlan.draft);
+  changedPlan.title = 'Later confirmed manual plan';
+  await createPlanningRepository(database).save(athleteId, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: savedPlan.id,
+    idempotencyKey: randomUUID(),
+    draft: changedPlan,
+  });
+  expect(await repo.status(athleteId, partial.candidate.id)).toEqual({
+    schemaVersion: 1,
+    candidateId: partial.candidate.id,
+    kind: 'stale',
+  });
+  expect(await repo.read(athleteId, partial.candidate.id)).toBeNull();
+  expect(await repo.read(athleteId, parent.candidate.id)).toBeNull();
+  expect(await repo.list(athleteId, run.id)).toEqual([]);
+  await expect(repo.create(athleteId, parentCommand)).rejects.toMatchObject({
+    code: 'STALE_BASIS',
+  });
+  await expect(repo.derivePartial(athleteId, parent.candidate.id, selection)).rejects.toMatchObject(
+    {
+      code: 'STALE_BASIS',
+    },
+  );
+  await expect(
+    repo.derivePartial(athleteId, parent.candidate.id, {
+      ...selection,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_BASIS' });
+});
+
+it('reports withdrawal using metadata only and refuses a purged parent', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const repo = candidates();
+  const parent = await repo.create(athleteId, command(run.id));
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.status(athleteId, parent.candidate.id)).toEqual({
+    schemaVersion: 1,
+    candidateId: parent.candidate.id,
+    kind: 'withdrawn',
+  });
+  await expect(
+    repo.derivePartial(athleteId, parent.candidate.id, {
+      sessionIds: ['session'],
+      periodIds: [],
+      includeTitle: false,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
+});
+
+it('returns stale metadata for a corrupt physical candidate link and rejects it as a parent', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const repo = candidates();
+  const parent = await repo.create(athleteId, command(run.id));
+  const forgedId = randomUUID();
+  const owner = await admin.connect();
+  try {
+    await owner.query('BEGIN');
+    await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await owner.query(
+      `INSERT INTO coaching_candidate(
+        athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body)
+       VALUES($1,$2,$3,$4,NULL,$5,$6::jsonb)`,
+      [
+        athleteId,
+        forgedId,
+        parent.decision.id,
+        parent.proposal.id,
+        parent.candidate.digest,
+        JSON.stringify(parent.candidate),
+      ],
+    );
+    await owner.query('COMMIT');
+  } catch (error) {
+    await owner.query('ROLLBACK');
+    throw error;
+  } finally {
+    owner.release();
+  }
+  expect(await repo.status(athleteId, forgedId)).toEqual({
+    schemaVersion: 1,
+    candidateId: forgedId,
+    kind: 'stale',
+  });
+  expect(await repo.read(athleteId, forgedId)).toBeNull();
+  await expect(
+    repo.derivePartial(athleteId, forgedId, {
+      sessionIds: ['session'],
+      periodIds: [],
+      includeTitle: false,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
 });
 
 it('refuses stale context before sealing and leaves no partial decision, proposal or candidate', async () => {

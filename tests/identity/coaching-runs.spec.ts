@@ -10,7 +10,10 @@ import {
   coachingRunOutputV1Schema,
   coachingRunV1Schema,
 } from '../../packages/contracts/src/coaching-runs';
-import { trainingCandidateBundleV1Schema } from '../../packages/contracts/src/coaching-candidates';
+import {
+  trainingCandidateBundleV1Schema,
+  trainingCandidateStatusV1Schema,
+} from '../../packages/contracts/src/coaching-candidates';
 import { coreEvidenceSnapshotSchema } from '../../packages/contracts/src/evidence-snapshots';
 import {
   planDraftSchema,
@@ -322,6 +325,135 @@ test('seals a server-validated fixture candidate without accepting a client plan
   await expect(
     (await page.request.get(collection, { headers: fixture.headers })).json(),
   ).resolves.toEqual([]);
+});
+
+test('revalidates a selected change as a new candidate and shows stale or withdrawn status without a body', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await createQueuedRun(page);
+  await dispatchOne(fixture.athleteId);
+  const collection = `/bff/v1/coaching-runs/${fixture.run.id}/candidates`;
+  const originalResponse = await page.request.post(collection, {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+  });
+  expect(originalResponse.status()).toBe(200);
+  const original = trainingCandidateBundleV1Schema.parse(await originalResponse.json());
+  const partialPath = `/bff/v1/coaching-candidates/${original.candidate.id}/partials`;
+  const selection = {
+    schemaVersion: 1,
+    sessionIds: ['synthetic-session'],
+    periodIds: [],
+    includeTitle: false,
+  };
+  const key = randomUUID();
+  const partialResponse = await page.request.post(partialPath, {
+    headers: { ...fixture.headers, 'idempotency-key': key },
+    data: selection,
+  });
+  expect(partialResponse.status()).toBe(200);
+  const partial = trainingCandidateBundleV1Schema.parse(await partialResponse.json());
+  expect(partial.candidate.id).not.toBe(original.candidate.id);
+  expect(partial.candidate.parentCandidateId).toBe(original.candidate.id);
+  expect(partial.candidate.digest).not.toBe(original.candidate.digest);
+  expect(partial.proposal.id).not.toBe(original.proposal.id);
+  expect(partial.decision.id).toBe(original.decision.id);
+  expect(partial.candidate.proposed.sessions[0]?.durationSeconds).toBe(2100);
+  const replay = await page.request.post(partialPath, {
+    headers: { ...fixture.headers, 'idempotency-key': key },
+    data: selection,
+  });
+  expect(trainingCandidateBundleV1Schema.parse(await replay.json())).toEqual(partial);
+  const invalid = await page.request.post(partialPath, {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+    data: { ...selection, sessionIds: ['not-a-changed-session'] },
+  });
+  expect(invalid.status()).toBe(422);
+  const listed: unknown = await (
+    await page.request.get(collection, { headers: fixture.headers })
+  ).json();
+  assert.ok(Array.isArray(listed));
+  expect(
+    listed.map((item: unknown) => trainingCandidateBundleV1Schema.parse(item).candidate.id),
+  ).toEqual([original.candidate.id, partial.candidate.id]);
+  const statusPath = `/bff/v1/coaching-candidates/${partial.candidate.id}/status`;
+  const currentStatus = trainingCandidateStatusV1Schema.parse(
+    await (await page.request.get(statusPath, { headers: fixture.headers })).json(),
+  );
+  expect(currentStatus.kind).toBe('current');
+  expect(Object.keys(currentStatus).sort()).toEqual(['candidateId', 'kind', 'schemaVersion']);
+  const otherContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const otherPage = await otherContext.newPage();
+    const other = await login(otherPage, 'Bob');
+    expect((await otherPage.request.get(statusPath, { headers: other.headers })).status()).toBe(
+      404,
+    );
+    expect(
+      (
+        await otherPage.request.post(partialPath, {
+          headers: { ...other.headers, 'idempotency-key': randomUUID() },
+          data: selection,
+        })
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await otherContext.close();
+  }
+  const stillCurrent = planReadSchema.parse(
+    await (await page.request.get('/bff/v1/plans/current', { headers: fixture.headers })).json(),
+  );
+  expect(stillCurrent.head?.id).toBe(fixture.plan.id);
+  const changedPlan = await page.request.put('/bff/v1/plans/current', {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+    data: {
+      source: 'manual',
+      confirmed: true,
+      expectedVersionId: fixture.plan.id,
+      draft: { ...fixture.plan.draft, title: 'New current synthetic plan' },
+    },
+  });
+  expect(changedPlan.status()).toBe(200);
+  const staleStatus = trainingCandidateStatusV1Schema.parse(
+    await (await page.request.get(statusPath, { headers: fixture.headers })).json(),
+  );
+  expect(staleStatus).toEqual({
+    schemaVersion: 1,
+    candidateId: partial.candidate.id,
+    kind: 'stale',
+  });
+  expect(
+    (
+      await page.request.get(`/bff/v1/coaching-candidates/${partial.candidate.id}`, {
+        headers: fixture.headers,
+      })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await page.request.post(partialPath, {
+        headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+        data: selection,
+      })
+    ).status(),
+  ).toBe(409);
+  const consent = consentSchema.parse(
+    await (await page.request.get('/bff/v1/consents/ai', { headers: fixture.headers })).json(),
+  );
+  expect(
+    (
+      await page.request.put('/bff/v1/consents/ai', {
+        headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+        data: { granted: false, expectedRevision: consent.revision },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    trainingCandidateStatusV1Schema.parse(
+      await (await page.request.get(statusPath, { headers: fixture.headers })).json(),
+    ).kind,
+  ).toBe('withdrawn');
 });
 
 test('keeps a user-cancelled queued attempt cancelled when the worker later sees its event', async ({

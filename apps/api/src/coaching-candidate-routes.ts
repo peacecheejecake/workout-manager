@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { trainingCandidateBundleV1Schema } from '@workout/contracts/coaching-candidates';
+import {
+  trainingCandidateBundleV1Schema,
+  trainingCandidatePartialBodyV1Schema,
+  trainingCandidatePartialRequestV1Schema,
+  trainingCandidateStatusV1Schema,
+} from '@workout/contracts/coaching-candidates';
 import {
   TrainingCandidateError,
   type TrainingCandidateRepository,
@@ -22,9 +27,12 @@ function execute<T>(operation: () => Promise<T>): Promise<T> {
     if (!(error instanceof TrainingCandidateError)) return undefined;
     const statusCode = ['RUN_NOT_FOUND', 'CANDIDATE_UNAVAILABLE'].includes(error.code)
       ? 404
-      : ['EVIDENCE_UNAVAILABLE', 'INVALID_FIXTURE_OUTPUT', 'CANDIDATE_TOO_LARGE'].includes(
-            error.code,
-          )
+      : [
+            'EVIDENCE_UNAVAILABLE',
+            'INVALID_FIXTURE_OUTPUT',
+            'CANDIDATE_TOO_LARGE',
+            'INVALID_PARTIAL_SELECTION',
+          ].includes(error.code)
         ? 422
         : 409;
     return new ProductRequestError(statusCode, error.code);
@@ -67,5 +75,43 @@ export function registerCoachingCandidateRoutes(
     const result = await execute(() => repository.read(principal(request).athleteId, candidateId));
     if (!result) throw new ProductRequestError(404, 'CANDIDATE_UNAVAILABLE');
     return trainingCandidateBundleV1Schema.parse(result);
+  });
+
+  routes.post(
+    '/coaching-candidates/:candidateId/partials',
+    { bodyLimit: 256 * 1024 },
+    async (request) => {
+      input(emptyQuery, request.query);
+      const { candidateId } = input(candidateParams, request.params);
+      const body = input(trainingCandidatePartialBodyV1Schema, request.body);
+      const key = input(
+        trainingCandidatePartialRequestV1Schema.shape.idempotencyKey,
+        request.headers['idempotency-key'],
+      );
+      const command = input(trainingCandidatePartialRequestV1Schema, {
+        ...body,
+        idempotencyKey: key,
+      });
+      return trainingCandidateBundleV1Schema.parse(
+        await execute(() =>
+          repository.derivePartial(principal(request).athleteId, candidateId, {
+            sessionIds: command.sessionIds,
+            periodIds: command.periodIds,
+            includeTitle: command.includeTitle,
+            idempotencyKey: command.idempotencyKey,
+          }),
+        ),
+      );
+    },
+  );
+
+  routes.get('/coaching-candidates/:candidateId/status', async (request) => {
+    input(emptyQuery, request.query);
+    const { candidateId } = input(candidateParams, request.params);
+    const status = await execute(() =>
+      repository.status(principal(request).athleteId, candidateId),
+    );
+    if (!status) throw new ProductRequestError(404, 'CANDIDATE_UNAVAILABLE');
+    return trainingCandidateStatusV1Schema.parse(status);
   });
 }

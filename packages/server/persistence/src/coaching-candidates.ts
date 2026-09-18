@@ -2,12 +2,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   trainingCandidateDraftV1Schema,
+  trainingCandidatePartialRequestV1Schema,
+  trainingCandidateStatusV1Schema,
   trainingCandidateV1Schema,
   trainingCandidateStrategyV1Schema,
   trainingDecisionV1Schema,
   trainingProposalV1Schema,
   type TrainingCandidateDraftV1,
   type TrainingCandidateV1,
+  type TrainingCandidateStatusV1,
   type TrainingDecisionV1,
   type TrainingProposalV1,
 } from '@workout/contracts/coaching-candidates';
@@ -23,7 +26,12 @@ import {
 } from '@workout/contracts/coaching-runs';
 import { coreEvidenceDependencyManifestV2Schema } from '@workout/contracts/evidence-dependencies';
 import { coreEvidenceSnapshotSchema } from '@workout/contracts/evidence-snapshots';
-import { planDraftSchema, planSnapshotSchema } from '@workout/contracts/planning';
+import {
+  planDraftSchema,
+  planSnapshotSchema,
+  type PeriodDraft,
+  type PlannedSession,
+} from '@workout/contracts/planning';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { projectTrainingCandidateV1 } from '@workout/server-coaching/candidates';
 import type { Database, Transaction } from './database.js';
@@ -44,6 +52,17 @@ const createFromFixtureCommandSchema = createCommandSchema.pick({
   runId: true,
   idempotencyKey: true,
 });
+const partialCommandSchema = z
+  .strictObject({
+    sessionIds: trainingCandidatePartialRequestV1Schema.shape.sessionIds,
+    periodIds: trainingCandidatePartialRequestV1Schema.shape.periodIds,
+    includeTitle: trainingCandidatePartialRequestV1Schema.shape.includeTitle,
+    idempotencyKey: trainingCandidatePartialRequestV1Schema.shape.idempotencyKey,
+  })
+  .refine(
+    (value) => value.includeTitle || value.sessionIds.length > 0 || value.periodIds.length > 0,
+    'Select at least one change',
+  );
 const storedFixtureOutputSchema = z.strictObject({
   schemaVersion: z.literal(1),
   content: z.json(),
@@ -52,6 +71,7 @@ const iso = (value: unknown) => z.coerce.date().parse(value).toISOString();
 
 export type TrainingCandidateCreateCommand = z.infer<typeof createCommandSchema>;
 export type TrainingCandidateFixtureCommand = z.infer<typeof createFromFixtureCommandSchema>;
+export type TrainingCandidatePartialCommand = z.infer<typeof partialCommandSchema>;
 export interface TrainingCandidateBundle {
   decision: TrainingDecisionV1;
   proposal: TrainingProposalV1;
@@ -66,8 +86,14 @@ export interface TrainingCandidateRepository {
     athleteId: string,
     command: TrainingCandidateFixtureCommand,
   ): Promise<TrainingCandidateBundle>;
+  derivePartial(
+    athleteId: string,
+    parentCandidateId: string,
+    command: TrainingCandidatePartialCommand,
+  ): Promise<TrainingCandidateBundle>;
   read(athleteId: string, candidateId: string): Promise<TrainingCandidateBundle | null>;
   list(athleteId: string, runId: string): Promise<TrainingCandidateBundle[]>;
+  status(athleteId: string, candidateId: string): Promise<TrainingCandidateStatusV1 | null>;
 }
 export class TrainingCandidateError extends Error {
   constructor(
@@ -81,6 +107,8 @@ export class TrainingCandidateError extends Error {
       | 'INVALID_COMPLETION_BASIS'
       | 'INVALID_PROJECTION'
       | 'INVALID_FIXTURE_OUTPUT'
+      | 'INVALID_PARTIAL_SELECTION'
+      | 'CANDIDATE_LIMIT_REACHED'
       | 'CANDIDATE_UNAVAILABLE'
       | 'CANDIDATE_TOO_LARGE',
   ) {
@@ -109,6 +137,7 @@ export function digestTrainingCandidate(input: {
   decisionId: string;
   proposalId: string;
   candidateId: string;
+  parentCandidateId?: string;
   draft: TrainingCandidateDraftV1;
 }): string {
   return createHash('sha256')
@@ -120,6 +149,9 @@ export function digestTrainingCandidate(input: {
           decisionId: input.decisionId,
           proposalId: input.proposalId,
           candidateId: input.candidateId,
+          ...(input.parentCandidateId === undefined
+            ? {}
+            : { parentCandidateId: input.parentCandidateId }),
         },
         draft: input.draft,
       }),
@@ -260,6 +292,7 @@ async function readBundle(
 ): Promise<TrainingCandidateBundle | null> {
   const selected = await tx.query(
     `SELECT c.id AS candidate_id,c.decision_id AS candidate_decision_id,
+      c.parent_candidate_id,
       c.created_at AS candidate_created_at,
       c.body AS candidate_body,c.digest,c.purged_reason AS candidate_purged_reason,
       p.id AS proposal_id,p.decision_id AS proposal_decision_id,
@@ -292,6 +325,7 @@ async function readBundle(
   if (
     candidate.data.id !== candidateId ||
     candidate.data.id !== row['candidate_id'] ||
+    (candidate.data.parentCandidateId ?? null) !== row['parent_candidate_id'] ||
     candidate.data.createdAt !== iso(row['candidate_created_at']) ||
     candidate.data.digest !== row['digest'] ||
     proposal.data.id !== row['proposal_id'] ||
@@ -312,6 +346,9 @@ async function readBundle(
       decisionId: candidate.data.decisionId,
       proposalId: candidate.data.proposalId,
       candidateId,
+      ...(candidate.data.parentCandidateId === undefined
+        ? {}
+        : { parentCandidateId: candidate.data.parentCandidateId }),
       draft: unsealCandidate(candidate.data),
     }) !== candidate.data.digest
   )
@@ -353,11 +390,11 @@ async function currentLocalDate(tx: Transaction, timezone: string): Promise<stri
 type CandidateContext = Awaited<ReturnType<typeof currentContext>>;
 type ReceiptRequest = { requestHash: string };
 
-function receiptKey(idempotencyKey: string, kind: 'prepared' | 'fixture'): string {
+function receiptKey(idempotencyKey: string, kind: 'prepared' | 'fixture' | 'partial'): string {
   const digest = createHash('sha256').update(idempotencyKey).digest('hex');
-  return kind === 'fixture'
-    ? `coaching:candidate:fixture:${digest}`
-    : `coaching:candidate:${digest}`;
+  return kind === 'prepared'
+    ? `coaching:candidate:${digest}`
+    : `coaching:candidate:${kind}:${digest}`;
 }
 
 function receiptRequest(value: unknown): ReceiptRequest {
@@ -381,10 +418,7 @@ async function replayCandidate(
   const prior = z.strictObject({ candidateId: uuid }).parse(receipt.rows[0]['result']);
   const bundle = await readBundle(tx, prior.candidateId);
   if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
-  const context = await currentContext(tx, bundle.decision.runId, policy, source);
-  requireStatus(context.row, 'validated_final', bundle.decision.id);
-  if (bundle.candidate.asOfLocalDate !== (await currentLocalDate(tx, context.plan.draft.timezone)))
-    throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  await currentCandidateContext(tx, bundle, policy, source);
   return bundle;
 }
 
@@ -416,6 +450,75 @@ async function deriveFixtureProposal(tx: Transaction, context: CandidateContext)
   });
   if (!proposed.success) throw new TrainingCandidateError('INVALID_FIXTURE_OUTPUT');
   return { proposed: proposed.data, strategy: output.data.strategy };
+}
+
+function selectedChanges<T extends { id: string }>(
+  before: readonly T[],
+  proposed: readonly T[],
+  changes: readonly { id: string; before: T | null; after: T | null }[],
+  ids: readonly string[],
+): T[] {
+  const selected = new Set(ids);
+  const byId = new Map(changes.map((change) => [change.id, change]));
+  if (ids.some((id) => !byId.has(id)))
+    throw new TrainingCandidateError('INVALID_PARTIAL_SELECTION');
+  const existingIds = new Set(before.map((item) => item.id));
+  const retained = before.flatMap((item) => {
+    const change = selected.has(item.id) ? byId.get(item.id) : undefined;
+    return change ? (change.after === null ? [] : [change.after]) : [item];
+  });
+  const added = proposed.filter((item) => !existingIds.has(item.id) && selected.has(item.id));
+  return [...retained, ...added];
+}
+
+function derivePartialProposal(
+  parent: TrainingCandidateBundle,
+  command: TrainingCandidatePartialCommand,
+  context: CandidateContext,
+): z.infer<typeof planDraftSchema> {
+  const before = context.plan.draft;
+  const after = parent.candidate.proposed;
+  const changes = parent.candidate.diff;
+  if (command.includeTitle && changes.title === null)
+    throw new TrainingCandidateError('INVALID_PARTIAL_SELECTION');
+  const periods = selectedChanges<PeriodDraft>(
+    before.periods,
+    after.periods,
+    changes.periodChanges,
+    command.periodIds,
+  );
+  const sessions = selectedChanges<PlannedSession>(
+    before.sessions,
+    after.sessions,
+    changes.sessionChanges,
+    command.sessionIds,
+  );
+  const projected = planDraftSchema.safeParse({
+    ...before,
+    title: command.includeTitle ? changes.title?.after : before.title,
+    periods,
+    sessions,
+  });
+  if (!projected.success) throw new TrainingCandidateError('INVALID_PARTIAL_SELECTION');
+  return projected.data;
+}
+
+async function currentCandidateContext(
+  tx: Transaction,
+  bundle: TrainingCandidateBundle,
+  policy: z.infer<typeof trainingCoachingPolicySchema>,
+  source: z.infer<typeof coachingRunModelSourceSchema>,
+): Promise<CandidateContext> {
+  const context = await currentContext(tx, bundle.decision.runId, policy, source);
+  requireStatus(context.row, 'validated_final', bundle.decision.id);
+  const today = await currentLocalDate(tx, context.plan.draft.timezone);
+  if (
+    canonicalJson(context.plan) !== canonicalJson(bundle.candidate.before) ||
+    canonicalJson(context.basis) !== canonicalJson(bundle.candidate.basis) ||
+    bundle.candidate.asOfLocalDate !== today
+  )
+    throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  return context;
 }
 
 async function sealCandidate(
@@ -565,19 +668,136 @@ export function createTrainingCandidateRepository(
         return sealCandidate(tx, context, { runId: command.runId, ...derived }, key, request);
       });
     },
+    derivePartial(athleteId, parentCandidateId, input) {
+      const parentId = uuid.parse(parentCandidateId);
+      const command = partialCommandSchema.parse(input);
+      const selection = {
+        sessionIds: [...command.sessionIds].sort(),
+        periodIds: [...command.periodIds].sort(),
+        includeTitle: command.includeTitle,
+      };
+      const key = receiptKey(command.idempotencyKey, 'partial');
+      const request = receiptRequest({
+        schemaVersion: 1,
+        kind: 'partial_candidate',
+        parentCandidateId: parentId,
+        selection,
+      });
+      return guarded(athleteId, async (tx) => {
+        const replay = await replayCandidate(tx, key, request, policy, source);
+        if (replay) {
+          if (replay.candidate.parentCandidateId !== parentId)
+            throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+          return replay;
+        }
+        const parent = await readBundle(tx, parentId);
+        if (!parent) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        const context = await currentCandidateContext(tx, parent, policy, source);
+        const count = await tx.query(
+          `SELECT count(*)::integer AS count FROM coaching_candidate c
+           JOIN coaching_proposal p ON p.athlete_id=c.athlete_id AND p.id=c.proposal_id
+           JOIN coaching_decision d ON d.athlete_id=p.athlete_id AND d.id=p.decision_id
+           WHERE c.athlete_id=$1 AND d.run_id=$2`,
+          [athleteId, parent.decision.runId],
+        );
+        if (z.number().int().nonnegative().parse(count.rows[0]?.['count']) >= 100)
+          throw new TrainingCandidateError('CANDIDATE_LIMIT_REACHED');
+        const parentProjection = projectTrainingCandidateV1({
+          basis: context.basis,
+          before: context.plan,
+          proposed: parent.candidate.proposed,
+          strategy: parent.candidate.strategy,
+          asOfLocalDate: parent.candidate.asOfLocalDate,
+          completions: context.completions,
+        });
+        if (
+          !parentProjection.ok ||
+          canonicalJson(parentProjection.draft.diff) !== canonicalJson(parent.candidate.diff)
+        )
+          throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        const proposed = derivePartialProposal(parent, command, context);
+        const projection = projectTrainingCandidateV1({
+          basis: context.basis,
+          before: context.plan,
+          proposed,
+          strategy: parent.candidate.strategy,
+          asOfLocalDate: parent.candidate.asOfLocalDate,
+          completions: context.completions,
+        });
+        if (!projection.ok)
+          throw new TrainingCandidateError(
+            projection.reason === 'INVALID_COMPLETION_BASIS'
+              ? 'INVALID_COMPLETION_BASIS'
+              : 'INVALID_PROJECTION',
+          );
+        const proposalId = randomUUID();
+        const candidateId = randomUUID();
+        const createdAt = iso(
+          (await tx.query('SELECT statement_timestamp() AS created_at')).rows[0]?.['created_at'],
+        );
+        const digest = digestTrainingCandidate({
+          runId: parent.decision.runId,
+          decisionId: parent.decision.id,
+          proposalId,
+          candidateId,
+          parentCandidateId: parentId,
+          draft: projection.draft,
+        });
+        const proposal = trainingProposalV1Schema.parse({
+          schemaVersion: 1,
+          scope: 'running-core-v2-training',
+          id: proposalId,
+          runId: parent.decision.runId,
+          decisionId: parent.decision.id,
+          candidateIds: [candidateId],
+          createdAt,
+        });
+        const candidate = trainingCandidateV1Schema.parse({
+          ...projection.draft,
+          id: candidateId,
+          runId: parent.decision.runId,
+          decisionId: parent.decision.id,
+          proposalId,
+          parentCandidateId: parentId,
+          createdAt,
+          digest,
+        });
+        const candidateBody = JSON.stringify(candidate);
+        if (Buffer.byteLength(candidateBody) > 3 * 1024 * 1024)
+          throw new TrainingCandidateError('CANDIDATE_TOO_LARGE');
+        await tx.query(
+          'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body,created_at) VALUES($1,$2,$3,$4::jsonb,$5)',
+          [athleteId, proposalId, parent.decision.id, JSON.stringify(proposal), createdAt],
+        );
+        await tx.query(
+          `INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body,created_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
+          [
+            athleteId,
+            candidateId,
+            parent.decision.id,
+            proposalId,
+            parentId,
+            digest,
+            candidateBody,
+            createdAt,
+          ],
+        );
+        await tx.query(
+          'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
+          [athleteId, key, JSON.stringify(request), JSON.stringify({ candidateId })],
+        );
+        return { decision: parent.decision, proposal, candidate };
+      });
+    },
     read(athleteId, candidateId) {
       const id = uuid.parse(candidateId);
       return guarded(athleteId, async (tx) => {
         const bundle = await readBundle(tx, id);
         if (!bundle) return null;
         try {
-          const context = await currentContext(tx, bundle.decision.runId, policy, source);
-          requireStatus(context.row, 'validated_final', bundle.decision.id);
-          return canonicalJson(context.basis) === canonicalJson(bundle.candidate.basis) &&
-            bundle.candidate.asOfLocalDate ===
-              (await currentLocalDate(tx, context.plan.draft.timezone))
-            ? bundle
-            : null;
+          await currentCandidateContext(tx, bundle, policy, source);
+          return bundle;
         } catch (error) {
           if (error instanceof TrainingCandidateError) return null;
           throw error;
@@ -611,9 +831,56 @@ export function createTrainingCandidateRepository(
           (bundle): bundle is TrainingCandidateBundle =>
             bundle !== null &&
             canonicalJson(bundle.candidate.basis) === canonicalJson(context.basis) &&
+            canonicalJson(bundle.candidate.before) === canonicalJson(context.plan) &&
             bundle.candidate.asOfLocalDate === today &&
             (context.row['status'] as Record<string, unknown>)['decisionId'] === bundle.decision.id,
         );
+      });
+    },
+    status(athleteId, candidateId) {
+      const id = uuid.parse(candidateId);
+      return guarded(athleteId, async (tx) => {
+        const selected = await tx.query(
+          `SELECT d.run_id,c.body IS NULL AS candidate_redacted,
+            p.body IS NULL AS proposal_redacted,d.body IS NULL AS decision_redacted,
+            c.purged_reason AS candidate_purged_reason,
+            p.purged_reason AS proposal_purged_reason,
+            d.purged_reason AS decision_purged_reason
+           FROM coaching_candidate c
+           JOIN coaching_proposal p ON p.athlete_id=c.athlete_id AND p.id=c.proposal_id
+           JOIN coaching_decision d ON d.athlete_id=p.athlete_id AND d.id=p.decision_id
+           WHERE c.athlete_id=$1 AND c.id=$2`,
+          [athleteId, id],
+        );
+        const row = selected.rows[0];
+        if (!row) return null;
+        let kind: TrainingCandidateStatusV1['kind'] = 'stale';
+        if (
+          row['candidate_redacted'] === true ||
+          row['proposal_redacted'] === true ||
+          row['decision_redacted'] === true ||
+          row['candidate_purged_reason'] !== null ||
+          row['proposal_purged_reason'] !== null ||
+          row['decision_purged_reason'] !== null
+        ) {
+          kind = 'withdrawn';
+        } else {
+          const bundle = await readBundle(tx, id);
+          if (bundle) {
+            try {
+              await currentCandidateContext(tx, bundle, policy, source);
+              kind = 'current';
+            } catch (error) {
+              if (error instanceof TrainingCandidateError) {
+                kind =
+                  error.code === 'EVIDENCE_UNAVAILABLE' || error.code === 'AI_CONSENT_REQUIRED'
+                    ? 'withdrawn'
+                    : 'stale';
+              } else throw error;
+            }
+          }
+        }
+        return trainingCandidateStatusV1Schema.parse({ schemaVersion: 1, candidateId: id, kind });
       });
     },
   };

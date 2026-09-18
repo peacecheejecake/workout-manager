@@ -244,3 +244,21 @@ Fixture worker는 정확한 시간이 있는 첫 세션에 한해 300초 변경 
 PlanDraft에 반영해 순수 diff/validation을 실행한다. 성공 시 불변 후보와 서버 digest를
 저장하지만 계획 head는 바꾸지 않는다. 현재 구조화 형식이 아닌 과거 요약 출력은
 후보 생성에서 거절한다. 이 fixture 경로는 실제 코치 모델의 품질이나 계획 승인 증거가 아니다.
+
+## 부분 후보와 최신성 조회 (M1-05j3b)
+
+`POST /bff/v1/coaching-candidates/:candidateId/partials`는 기존 후보 diff의 세션 ID,
+기간 ID, 제목 변경 여부만 선택한다. `schemaVersion: 1`, `sessionIds`, `periodIds`,
+`includeTitle`을 본문에 넣고 `idempotency-key` 헤더를 전달한다. 최소 한 항목을 선택해야
+하며 원본 후보에 없는 변경 ID는 거절한다. 서버는 현재 근거·계획·완료 보고를 잠금 아래
+다시 확인하고 선택 항목만 투영·검증한다. 결과는 원본과 같은 Decision 아래 별도
+Proposal/Candidate로 저장하며 `parentCandidateId`로 계보를 표시한다. 이 요청도 계획
+head를 변경하지 않는다. 같은 키의 재시도는 같은 후보를 반환하고 다른 선택으로 키를
+재사용하면 충돌한다.
+실행 하나의 후보 수는 원본을 포함해 최대 100개다. 한도 이후 새 부분 요청은 충돌로
+거절하고, 이미 성공한 키의 재시도는 기존 후보를 반환한다.
+
+`GET /bff/v1/coaching-candidates/:candidateId/status`는 소유자에게만 `current`,
+`stale`, `withdrawn` 중 하나와 후보 ID를 반환한다. 이 응답에는 계획·근거·후보 본문이
+없다. 계획이나 근거가 바뀐 후보와 철회된 후보는 상세 조회·부분 요청에서 본문을
+반환하지 않는다. 이 상태는 승인 권한이 아니며, 명시 승인 transaction은 M1-05k다.

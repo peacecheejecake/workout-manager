@@ -20,6 +20,16 @@ const uniqueIds = z
   .array(uuid)
   .max(20)
   .refine((ids) => new Set(ids).size === ids.length);
+const boundedId = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((value) => value === value.trim() && !value.includes('\0'));
+const uniqueSelection = (max: number) =>
+  z
+    .array(boundedId)
+    .max(max)
+    .refine((ids) => new Set(ids).size === ids.length, 'Duplicate selection ID');
 
 /** Describes a proposed change. It is neither a clinical conclusion nor approval authority. */
 export const trainingCandidateStrategyV1Schema = z.strictObject({
@@ -172,8 +182,30 @@ export const trainingCandidateV1Schema = trainingCandidateDraftV1Schema.safeExte
   proposalId: uuid,
   decisionId: uuid,
   runId: uuid,
+  parentCandidateId: uuid.optional(),
   createdAt: instantSchema,
   digest,
+});
+
+/** A partial request selects immutable diff entries; callers cannot supply a proposed plan. */
+export const trainingCandidatePartialBodyV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  sessionIds: uniqueSelection(1000),
+  periodIds: uniqueSelection(100),
+  includeTitle: z.boolean(),
+});
+export const trainingCandidatePartialRequestV1Schema = trainingCandidatePartialBodyV1Schema
+  .extend({ idempotencyKey: boundedId })
+  .refine(
+    (value) => value.includeTitle || value.sessionIds.length > 0 || value.periodIds.length > 0,
+    'Select at least one change',
+  );
+
+/** Metadata only; stale and withdrawn candidates never expose the stored body. */
+export const trainingCandidateStatusV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  candidateId: uuid,
+  kind: z.enum(['current', 'stale', 'withdrawn']),
 });
 
 export const trainingDecisionV1Schema = z.strictObject({
@@ -219,6 +251,11 @@ export type TrainingCandidateValidationV1 = z.infer<typeof trainingCandidateVali
 export type TrainingCandidateDiffV1 = z.infer<typeof trainingCandidateDiffV1Schema>;
 export type TrainingCandidateDraftV1 = z.infer<typeof trainingCandidateDraftV1Schema>;
 export type TrainingCandidateV1 = z.infer<typeof trainingCandidateV1Schema>;
+export type TrainingCandidatePartialRequestV1 = z.infer<
+  typeof trainingCandidatePartialRequestV1Schema
+>;
+export type TrainingCandidatePartialBodyV1 = z.infer<typeof trainingCandidatePartialBodyV1Schema>;
+export type TrainingCandidateStatusV1 = z.infer<typeof trainingCandidateStatusV1Schema>;
 export type TrainingDecisionV1 = z.infer<typeof trainingDecisionV1Schema>;
 export type TrainingProposalV1 = z.infer<typeof trainingProposalV1Schema>;
 export type TrainingCandidateBundleV1 = z.infer<typeof trainingCandidateBundleV1Schema>;

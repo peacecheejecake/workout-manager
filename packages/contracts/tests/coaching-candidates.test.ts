@@ -6,6 +6,8 @@ import {
   trainingDecisionV1Schema,
   trainingProposalV1Schema,
   trainingCandidateValidationV1Schema,
+  trainingCandidatePartialRequestV1Schema,
+  trainingCandidateStatusV1Schema,
 } from '../src/coaching-candidates.js';
 
 const planId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -91,6 +93,63 @@ const draft = {
 };
 
 describe('M1-05j1 versioned candidate contracts', () => {
+  it('keeps partial selection bounded, unique and separate from a proposed plan', () => {
+    const request = {
+      schemaVersion: 1,
+      sessionIds: ['session'],
+      periodIds: [],
+      includeTitle: false,
+      idempotencyKey: 'partial-1',
+    };
+    expect(trainingCandidatePartialRequestV1Schema.parse(request)).toEqual(request);
+    for (const invalid of [
+      { ...request, schemaVersion: 2 },
+      { ...request, sessionIds: [], includeTitle: false },
+      { ...request, sessionIds: ['session', 'session'] },
+      { ...request, periodIds: ['block', 'block'] },
+      { ...request, sessionIds: [' bad '] },
+      { ...request, periodIds: ['x'.repeat(201)] },
+      { ...request, sessionIds: Array.from({ length: 1001 }, (_, index) => `s${index}`) },
+      { ...request, periodIds: Array.from({ length: 101 }, (_, index) => `p${index}`) },
+      { ...request, idempotencyKey: '' },
+      { ...request, idempotencyKey: ' bad ' },
+      { ...request, proposed: draft.proposed },
+      { ...request, candidateId },
+    ])
+      expect(trainingCandidatePartialRequestV1Schema.safeParse(invalid).success).toBe(false);
+  });
+
+  it('supports optional lineage on new candidates and metadata-only status', () => {
+    const sealed = {
+      ...draft,
+      id: candidateId,
+      proposalId,
+      decisionId,
+      runId,
+      createdAt: at,
+      digest: 'a'.repeat(64),
+    };
+    expect(trainingCandidateV1Schema.safeParse(sealed).success).toBe(true);
+    expect(
+      trainingCandidateV1Schema.safeParse({ ...sealed, parentCandidateId: runId }).success,
+    ).toBe(true);
+    expect(
+      trainingCandidateV1Schema.safeParse({ ...sealed, parentCandidateId: 'wrong' }).success,
+    ).toBe(false);
+    for (const kind of ['current', 'stale', 'withdrawn'] as const)
+      expect(
+        trainingCandidateStatusV1Schema.parse({ schemaVersion: 1, candidateId, kind }),
+      ).toEqual({ schemaVersion: 1, candidateId, kind });
+    expect(
+      trainingCandidateStatusV1Schema.safeParse({
+        schemaVersion: 1,
+        candidateId,
+        kind: 'stale',
+        candidate: sealed,
+      }).success,
+    ).toBe(false);
+  });
+
   it('keeps pure drafts unsealed and requires a server digest on public candidates', () => {
     expect(trainingCandidateDraftV1Schema.safeParse(draft).success).toBe(true);
     expect(trainingCandidateV1Schema.safeParse(draft).success).toBe(false);

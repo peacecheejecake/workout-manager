@@ -853,24 +853,27 @@
       "title": "부분 요청 새 후보·최신성 표시",
       "dependsOn": ["M1-05j3a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "기존 후보의 일부 변경 선택을 새 후보로 재투영·검증하고 stale 메타데이터를 본문 없이 표시; tenant/철회 E2E"
+      "status": "completed",
+      "scope": "기존 후보의 일부 변경 선택을 새 후보로 재투영·검증하고 stale 메타데이터를 본문 없이 표시; tenant/철회 E2E",
+      "evidence": "docs/implementation/progress/M1-05j3b.md"
     },
     {
       "id": "M1-05j3",
       "title": "후보 서버 검증 API·fixture E2E",
       "dependsOn": ["M1-05j3a", "M1-05j3b"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "구조화 fixture와 서버 검증·조회·부분 요청 새 후보·최신성 표시·tenant/동의/계획 불변 E2E; 승인 아님"
+      "status": "completed",
+      "scope": "구조화 fixture와 서버 검증·조회·부분 요청 새 후보·최신성 표시·tenant/동의/계획 불변 E2E; 승인 아님",
+      "evidence": "docs/implementation/progress/M1-05j3b.md"
     },
     {
       "id": "M1-05j",
       "title": "불변 후보·diff·검증",
       "dependsOn": ["M1-05j1", "M1-05j2", "M1-05j3"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "Decision/Proposal/Candidate 정본·원안/변경 비교·목적/수치 영향·error/warning/unknown·서버 digest; 부분 요청은 새 후보"
+      "status": "completed",
+      "scope": "Decision/Proposal/Candidate 정본·원안/변경 비교·목적/수치 영향·error/warning/unknown·서버 digest; 부분 요청은 새 후보",
+      "evidence": "docs/implementation/progress/M1-05j3b.md"
     },
     {
       "id": "M1-05k",
