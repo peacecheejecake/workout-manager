@@ -732,12 +732,76 @@
       "evidence": "docs/implementation/progress/M1-05g.md"
     },
     {
-      "id": "M1-05",
-      "title": "Evidence·Coach·승인",
-      "dependsOn": ["M1-04", "M1-05a", "M1-05b", "M1-05c", "M1-05d", "M1-05e", "M1-05f", "M1-05g"],
+      "id": "M1-05h",
+      "title": "훈련 승인 read basis 계약",
+      "dependsOn": ["M1-04", "M1-05g"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "running-core-v2 근거·현재 계획·대화 revision·AI 동의·서버 제공 정책 identity·자료 미사용을 엄격히 결합하고 변경/미지원은 fail-closed; 승인 실행 아님",
+      "evidence": "docs/implementation/progress/M1-05h.md"
+    },
+    {
+      "id": "M1-05i",
+      "title": "코치 실행 원장·adapter",
+      "dependsOn": ["M1-05h"],
       "kind": "task",
       "status": "not_started",
-      "scope": "evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"
+      "scope": "동의 직전 검사·진행/질문/취소/실패 원장·결정론 adapter·재시도/수명주기; 실제 모델 연결은 별도 증거"
+    },
+    {
+      "id": "M1-05j",
+      "title": "불변 후보·diff·검증",
+      "dependsOn": ["M1-05i"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "Decision/Proposal/Candidate 정본·원안/변경 비교·목적/수치 영향·error/warning/unknown·서버 digest; 부분 요청은 새 후보"
+    },
+    {
+      "id": "M1-05k",
+      "title": "훈련 계획 명시 승인 transaction",
+      "dependsOn": ["M1-05j"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "소유권·digest·read basis·잠금 재검사 후 PlanVersion/history/outbox/receipt 원자 적용; stale·동시성·중복·rollback"
+    },
+    {
+      "id": "M1-05l",
+      "title": "코치·후보 검토 제품 UI",
+      "dependsOn": ["M1-05i", "M1-05j", "M1-05k"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S10/S11 두 shell·후보 전후 달력/표·미확인/오류/stale·명시 승인·새 계획 재조회·Aside/브라우저 검증"
+    },
+    {
+      "id": "M1-05m",
+      "title": "러닝 코치·승인 통합 수용",
+      "dependsOn": ["M1-05l"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "가상 활동→근거→결정론 후보→diff→명시 승인→새 계획 실DB E2E; 철회·삭제·실패·동시성 회귀, 실제 LLM은 별도 증거"
+    },
+    {
+      "id": "M1-05",
+      "title": "Evidence·Coach·승인",
+      "dependsOn": [
+        "M1-04",
+        "M1-05a",
+        "M1-05b",
+        "M1-05c",
+        "M1-05d",
+        "M1-05e",
+        "M1-05f",
+        "M1-05g",
+        "M1-05h",
+        "M1-05i",
+        "M1-05j",
+        "M1-05k",
+        "M1-05l",
+        "M1-05m"
+      ],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "training-only evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"
     },
     {
       "id": "M1-06a",

@@ -89,6 +89,10 @@
       "types": "./src/evidence-dependencies.ts",
       "default": "./dist/evidence-dependencies.js"
     },
+    "./coaching-basis": {
+      "types": "./src/coaching-basis.ts",
+      "default": "./dist/coaching-basis.js"
+    },
     "./coaching-threads": {
       "types": "./src/coaching-threads.ts",
       "default": "./dist/coaching-threads.js"

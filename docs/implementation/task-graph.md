@@ -12,6 +12,10 @@ M1-05b는 소유한 불변 계획 버전의 검토 범위와 사용자 메시지
 M1-05a는 이미 구현된 원장의 변경 여부를 캡처·비교하는 기반으로 분리했다. S05 도메인 종류를
 해석하지 않으므로 기존 원장 계약만 선행 조건으로 삼는다. M1-05 전체는 계속 M1-04 완료 후
 근거 저장·정책/대화/자료 의존성·후보·명시 승인·원자적 쓰기를 통합한다.
+M1-04 완료 후 M1-05h~m을 승인 read basis → 코치 실행 → 후보/diff → transaction → 제품 UI →
+실DB 통합 수용 순으로 진행한다. 현재 근거 v2가 제외하는 자료·정책·provider 세부를 승인에
+몰래 포함하지 않으며, M1 core의 자료 미사용과 실제 모델 호출 미검증을 명시한다. M1-05h의
+순수 계약은 완료했고, 서버 승인 권한·transaction 재검사는 M1-05k에서 구현한다.
 
 **병렬 진행은 가능하다.** 계약이 확정된 뒤 Host/UI, API/DB, FIT 도구를 분리하고 각 통합 지점에서 실제 데이터를 연결한다. 아래 그래프는 작업 우선순위 제안이며 일정·인력·완료 예상일을 의미하지 않는다.
 
@@ -316,6 +320,27 @@ flowchart TD
     coreEvidence --> evidenceUi
     coachingUi --> evidenceUi
     evidenceUi --> task15
+    approvalBasis["M1-05h 훈련 승인 read basis 계약"]
+    coachRun["M1-05i 코치 실행 원장·adapter"]
+    proposals["M1-05j 불변 후보·diff·검증"]
+    approvalCommit["M1-05k 훈련 계획 명시 승인 transaction"]
+    proposalUi["M1-05l 코치·후보 검토 제품 UI"]
+    coachAcceptance["M1-05m 러닝 코치·승인 통합 수용"]
+    task14 --> approvalBasis
+    mandatoryEvidence --> approvalBasis
+    approvalBasis --> coachRun
+    coachRun --> proposals
+    proposals --> approvalCommit
+    coachRun --> proposalUi
+    proposals --> proposalUi
+    approvalCommit --> proposalUi
+    proposalUi --> coachAcceptance
+    approvalBasis --> task15
+    coachRun --> task15
+    proposals --> task15
+    approvalCommit --> task15
+    proposalUi --> task15
+    coachAcceptance --> task15
     task14 --> task15
     task13 --> task16
     task13 --> task17
@@ -486,7 +511,13 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05e 상담 근거 저장·선택·검토 UI | M1-05c, M1-05d | 명시 저장·고정 본문·회수 상태·동일 키 복구·두 shell |
 | M1-05f 사용자 확인 필수 제약 원장·상담 UI | M1-05c, M1-06a | 확인 문장 CRUD·CAS·삭제/내보내기/복원; 자동 일정 해석과 분리 |
 | M1-05g 필수 제약을 포함한 근거 버전 | M1-05d, M1-05e, M1-05f | 새 snapshot 강제 포함·제약 revision·삭제 회수; 과거 v1 보존 |
-| M1-05 Evidence·Coach·승인 | M1-04, M1-05a, M1-05b, M1-05c, M1-05d, M1-05e, M1-05f, M1-05g | evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증 |
+| M1-05h 훈련 승인 read basis 계약 | M1-04, M1-05g | 근거 v2·현재 계획·대화·AI 동의·정책·자료 미사용; fail-closed, 승인 실행 아님 |
+| M1-05i 코치 실행 원장·adapter | M1-05h | 진행/질문/취소/실패·결정론 adapter·동의 재검사; 실제 모델 별도 |
+| M1-05j 불변 후보·diff·검증 | M1-05i | Decision/Proposal/Candidate 정본·변경 영향·unknown/error·digest |
+| M1-05k 훈련 계획 명시 승인 transaction | M1-05j | 소유권·freshness·digest·잠금 재검사, 버전/이력/outbox/receipt 원자성 |
+| M1-05l 코치·후보 검토 제품 UI | M1-05i, M1-05j, M1-05k | S10/S11 두 shell·전후 비교·stale/미확인·명시 승인·브라우저 |
+| M1-05m 러닝 코치·승인 통합 수용 | M1-05l | 가상 활동→후보→diff→승인→새 계획 실DB E2E·실패/철회/동시성 |
+| M1-05 Evidence·Coach·승인 | M1-04, M1-05a~m | training-only core; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
 | M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |
