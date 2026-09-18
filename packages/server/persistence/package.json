@@ -16,6 +16,9 @@
   "exports": {
     "./nutrition-core": "./src/nutrition-core.ts",
     "./supplementary-core": "./src/supplementary-core.ts",
+    "./integrated-planner": "./src/integrated-planner.ts",
+    "./joint-approval": "./src/joint-approval.ts",
+    "./joint-fixture": "./src/joint-fixture.ts",
     "./session-actuals": "./src/session-actuals.ts",
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",

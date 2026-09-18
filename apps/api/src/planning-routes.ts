@@ -6,8 +6,13 @@ import {
   planReadSchema,
   planSnapshotSchema,
 } from '@workout/contracts/planning';
-import { PlanLockedError, type PlanningRepository } from '@workout/server-persistence/planning';
+import {
+  CombinedReviewRequiredError,
+  PlanLockedError,
+  type PlanningRepository,
+} from '@workout/server-persistence/planning';
 import type { Principal } from './ports.js';
+import { SupplementaryReferenceError } from '@workout/server-persistence/supplementary-core';
 import { input, command, emptyQuery, ProductRequestError } from './product-boundary.js';
 export function registerPlanningRoutes(
   routes: FastifyInstance,
@@ -41,7 +46,11 @@ export function registerPlanningRoutes(
         (error) =>
           error instanceof PlanLockedError
             ? new ProductRequestError(409, 'PLAN_LOCKED')
-            : sessionCompletionRequestError(error),
+            : error instanceof SupplementaryReferenceError
+              ? new ProductRequestError(422, error.code)
+              : error instanceof CombinedReviewRequiredError
+                ? new ProductRequestError(409, 'COMBINED_REVIEW_REQUIRED')
+                : sessionCompletionRequestError(error),
       ),
     );
   });

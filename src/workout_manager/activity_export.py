@@ -30,10 +30,14 @@ def optional_number(value: object) -> float | None:
 
 
 def activity_commands(
-    source: Path, timezone_name: str | None = None, *, include_details: bool = False
+    source: Path,
+    timezone_name: str | None = None,
+    *,
+    include_details: bool = False,
+    include_bouts: bool = False,
 ) -> list[dict[str, object]]:
-    if include_details:
-        return detailed_commands(source, timezone_name)
+    if include_details or include_bouts:
+        return detailed_commands(source, timezone_name, include_bouts=include_bouts)
     if timezone_name is not None:
         ZoneInfo(timezone_name)  # Explicit user metadata; never infer from GPS or this machine.
     if source.stat().st_size > MAX_SOURCE_BYTES:
@@ -84,16 +88,23 @@ def activity_commands(
 
 
 def export_activity(
-    source: Path, output: Path, timezone_name: str | None = None, *, include_details: bool = False
+    source: Path,
+    output: Path,
+    timezone_name: str | None = None,
+    *,
+    include_details: bool = False,
+    include_bouts: bool = False,
 ) -> None:
     if output.exists() or output.is_symlink():
         raise ValueError("Activity export already exists")
     value = {
-        "schemaVersion": 3 if include_details else 1,
-        "imports": activity_commands(source, timezone_name, include_details=include_details),
+        "schemaVersion": 4 if include_bouts else 3 if include_details else 1,
+        "imports": activity_commands(
+            source, timezone_name, include_details=include_details, include_bouts=include_bouts
+        ),
     }
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
-    if include_details and len(content.encode("utf-8")) > MAX_EXPORT_BYTES:
+    if (include_details or include_bouts) and len(content.encode("utf-8")) > MAX_EXPORT_BYTES:
         raise ValueError("Activity export exceeds 16 MiB limit")
     output.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=".activity-export-", dir=output.parent)
@@ -212,7 +223,58 @@ def detail_owners(
     return records, laps
 
 
-def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str, object]]:
+def bout_allocation(parent: dict[str, object], laps: list[dict[str, object]]) -> dict[str, object]:
+    """Only explicit FIT lap boundaries can claim a sport within one parent session."""
+    start, end = summary_range(parent)
+    if end <= start:
+        raise ValueError("FIT parent interval must have positive elapsed time")
+    parent_interval = {"startedAt": start.isoformat(), "endedAtExclusive": end.isoformat()}
+    unknown = lambda a, b: {
+        "sourceLapIndex": None,
+        "startedAt": a.isoformat(),
+        "endedAtExclusive": b.isoformat(),
+        "kind": "mixed_unallocated",
+    }
+    if not laps:
+        return {"parent": parent_interval, "bouts": [unknown(start, end)]}
+    ranges: list[tuple[datetime, datetime, dict[str, object]]] = []
+    for lap in laps:
+        if lap["startedAt"] is None or lap["elapsedSeconds"] is None:
+            # A missing lap edge may cover any portion; do not assign the other laps either.
+            return {"parent": parent_interval, "bouts": [unknown(start, end)]}
+        lap_start = datetime.fromisoformat(str(lap["startedAt"]))
+        lap_end = lap_start + timedelta(seconds=float(lap["elapsedSeconds"]))
+        if lap_start < start or lap_end > end or lap_end <= lap_start:
+            raise ValueError("FIT lap exceeds parent interval")
+        ranges.append((lap_start, lap_end, lap))
+    ranges.sort(key=lambda item: (item[0], item[1], item[2]["index"]))
+    if any(right[0] < left[1] for left, right in pairwise(ranges)):
+        raise ValueError("FIT lap intervals overlap")
+    bouts: list[dict[str, object]] = []
+    cursor = start
+    for lap_start, lap_end, lap in ranges:
+        if cursor < lap_start:
+            bouts.append(unknown(cursor, lap_start))
+        sport = lap["sport"]
+        bouts.append(
+            {
+                "sourceLapIndex": lap["index"],
+                "startedAt": lap_start.isoformat(),
+                "endedAtExclusive": lap_end.isoformat(),
+                "kind": sport
+                if sport in {"running", "cycling", "walking", "strength"}
+                else "mixed_unallocated",
+            }
+        )
+        cursor = lap_end
+    if cursor < end:
+        bouts.append(unknown(cursor, end))
+    return {"parent": parent_interval, "bouts": bouts}
+
+
+def detailed_commands(
+    source: Path, timezone_name: str | None, *, include_bouts: bool = False
+) -> list[dict[str, object]]:
     if timezone_name is not None:
         ZoneInfo(timezone_name)
     if source.stat().st_size > MAX_SOURCE_BYTES:
@@ -229,8 +291,21 @@ def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str,
         records, laps = detail_owners(stream)
         for local_index, row in enumerate(stream["session"]):
             index = len(commands)
+            owned_laps = laps[local_index]
+            if include_bouts:
+                for lap in owned_laps:
+                    source_lap = stream["lap"][int(lap["index"])]
+                    raw_sport = source_lap.get("sport")
+                    raw_sub_sport = source_lap.get("sub_sport")
+                    lap["sport"] = (
+                        "strength"
+                        if raw_sport == "training" and raw_sub_sport == "strength_training"
+                        else raw_sport
+                        if raw_sport in {"running", "cycling", "walking"}
+                        else None
+                    )
             details = {
-                "schemaVersion": 2,
+                "schemaVersion": 3 if include_bouts else 2,
                 "streamIndex": stream_index,
                 "sessionIndex": index,
                 "startedAt": timestamp(row.get("start_time")),
@@ -245,8 +320,10 @@ def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str,
                     ),
                 },
                 "records": records[local_index],
-                "laps": laps[local_index],
+                "laps": owned_laps,
             }
+            if include_bouts:
+                details["allocation"] = bout_allocation(row, owned_laps)
             compact = json.dumps(
                 details, ensure_ascii=False, separators=(",", ":"), allow_nan=False
             )
@@ -257,13 +334,20 @@ def detailed_commands(source: Path, timezone_name: str | None) -> list[dict[str,
             kind = row.get("sport")
             if kind not in {"running", "cycling", "walking", "strength", "other"}:
                 kind = "unknown"
+            if include_bouts:
+                allocated = {bout["kind"] for bout in details["allocation"]["bouts"]}
+                kind = (
+                    next(iter(allocated))
+                    if len(allocated) == 1 and "mixed_unallocated" not in allocated
+                    else "unknown"
+                )
             commands.append(
                 {
-                    "idempotencyKey": f"fit-details-v2-{digest}-{index}",
+                    "idempotencyKey": f"fit-details-v{'3' if include_bouts else '2'}-{digest}-{index}",
                     "source": {
                         "kind": "fit",
                         "sourceId": f"sha256:{digest}:session:{index}",
-                        "revision": 3,
+                        "revision": 4 if include_bouts else 3,
                         "contentHash": digest,
                     },
                     "activity": {

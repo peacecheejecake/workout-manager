@@ -25,6 +25,7 @@ import type { Database, Transaction } from './database.js';
 import { persistPlanVersion, PlanLockedError } from './planning.js';
 import { SessionCompletionError } from './session-completions.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { persistSupplementarySessionLinks } from './supplementary-plan-links.js';
 
 export class PlanScenarioError extends Error {
   constructor(
@@ -244,6 +245,13 @@ export function createPlanScenarioRepository(database: Database): PlanScenarioRe
           expectedVersionId: command.expectedPlanVersionId,
           draft: alternative.draft,
         });
+        await persistSupplementarySessionLinks(
+          tx,
+          command.expectedPlanVersionId,
+          plan.id,
+          alternative.draft,
+          [],
+        );
         await tx.query(
           "INSERT INTO plan_history(athlete_id,version_id,action) VALUES($1,$2,'scenario_applied')",
           [athleteId, plan.id],

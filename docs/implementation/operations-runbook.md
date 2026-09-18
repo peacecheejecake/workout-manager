@@ -245,6 +245,23 @@ PlanDraft에 반영해 순수 diff/validation을 실행한다. 성공 시 불변
 저장하지만 계획 head는 바꾸지 않는다. 현재 구조화 형식이 아닌 과거 요약 출력은
 후보 생성에서 거절한다. 이 fixture 경로는 실제 코치 모델의 품질이나 계획 승인 증거가 아니다.
 
+M1b-03의 공동 훈련·영양 fixture는 같은 비프로덕션 설정에서만
+`POST /bff/v1/joint-fixture-candidates`를 등록한다. 이 endpoint는 상담 ID·영양
+계획 ID·대화 revision·근거 기간만 받는다. 서버가 v3 실행과 미검증 출력을 만든
+뒤 공동 후보를 검증하며, 브라우저가 제안 계획을 제출할 수 없다. 이 경로는 API
+역할이 fixture 출력을 삽입하므로 **fixture 전용 개발·시험 DB 역할에만** 다음
+추가 권한이 필요하다. 격리 identity E2E harness는 이를 자동으로 부여한다.
+
+```sql
+GRANT INSERT ON coaching_analysis_output TO workout_runtime;
+```
+
+일반 `grantCoachingRuns`와 프로덕션 API 역할에는 이 권한을 추가하지 않는다.
+비프로덕션 역할에 권한이 없으면 후보 생성은 500으로 실패한다. v3 후보는 별도
+`/joint-proposals/:candidateId` 화면에서 검토하고, 승인 시 현재 계획·섭취·보강
+개정을 재검사한 뒤 훈련·영양 계획을 한 트랜잭션에 적용한다. fixture 변경은 실제
+모델의 판단이나 의학적·영양학적 타당성을 검증하지 않는다.
+
 ## 부분 후보와 최신성 조회 (M1-05j3b)
 
 `POST /bff/v1/coaching-candidates/:candidateId/partials`는 기존 후보 diff의 세션 ID,

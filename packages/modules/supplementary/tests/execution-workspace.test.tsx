@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -9,6 +9,11 @@ import {
   type SupplementaryExecution,
 } from '@workout/contracts/supplementary-core';
 import { createSupplementaryApi } from '../src/supplementary-api';
+import {
+  OFFLINE_ACCOUNT_SCOPE_KEY,
+  OFFLINE_SET_STORAGE_PREFIX,
+  createOfflineSetQueue,
+} from '../src/offline-set-queue';
 import { ExecutionWorkspace } from '../src/execution-workspace';
 import {
   definitionFromForm,
@@ -97,7 +102,10 @@ function baseReply(
   throw new Error(`UNEXPECTED_PATH:${input.method}:${input.path}`);
 }
 
-function mount(transport: AuthenticatedTransport) {
+function mount(
+  transport: AuthenticatedTransport,
+  offlineQueue?: ReturnType<typeof createOfflineSetQueue>,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const user = userEvent.setup();
   render(
@@ -106,6 +114,7 @@ function mount(transport: AuthenticatedTransport) {
         api={createSupplementaryApi(transport)}
         scope={scope}
         executionId={executionId}
+        {...(offlineQueue ? { offlineQueue } : {})}
       />
     </QueryClientProvider>,
   );
@@ -555,5 +564,208 @@ describe('execution workspace delivery and freshness', () => {
       z.object({ expectedRevision: z.number() }).parse(completions[1]?.body).expectedRevision,
     ).toBe(2);
     expect(completions[1]?.idempotencyKey).not.toBe(completions[0]?.idempotencyKey);
+  });
+
+  it('shows an opted-in actual as pending until the same command is confirmed by the server', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-1');
+    const offlineQueue = createOfflineSetQueue({
+      userId: 'athlete-1',
+      storage: window.localStorage,
+    });
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (
+          input.method === 'POST' &&
+          input.path === `/bff/v1/supplementary/executions/${executionId}/sets`
+        ) {
+          writes.push(input);
+          if (writes.length === 1) throw new Error('NETWORK_UNAVAILABLE');
+          const body = z.object({ logId: z.string().uuid() }).parse(input.body);
+          const recorded = set(1);
+          return {
+            status: 200,
+            body: { status: 'active', current: { ...recorded.current, logId: body.logId } },
+            traceId: null,
+          };
+        }
+        return baseReply(input);
+      },
+    };
+    const { user } = mount(transport, offlineQueue);
+    await user.click(screen.getByRole('button', { name: '오프라인 세트 저장 동의' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: '동작 버전' }),
+      exerciseVersionId,
+    );
+    await user.selectOptions(screen.getByRole('combobox', { name: '상태' }), 'performed');
+    await user.type(screen.getByRole('spinbutton', { name: /실제 횟수/ }), '4');
+    await user.click(screen.getByRole('button', { name: '확인하고 실제 세트 저장' }));
+    expect(await screen.findByText(/서버 동기화 대기 중입니다/)).toBeTruthy();
+    expect(offlineQueue.snapshot().entries).toMatchObject([{ status: 'pending' }]);
+    expect(screen.queryByText('세트 기록을 저장했습니다.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '대기 세트 다시 전송' }));
+    await waitFor(() => expect(offlineQueue.snapshot().entries[0]?.status).toBe('confirmed'));
+    expect(writes).toHaveLength(2);
+    expect(writes[1]?.idempotencyKey).toBe(writes[0]?.idempotencyKey);
+    expect(writes[1]?.body).toEqual(writes[0]?.body);
+    expect(offlineQueue.snapshot().entries[0]).not.toHaveProperty('payload');
+  });
+
+  it('queues successive offline sets with sequential execution revisions', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-1');
+    const offlineQueue = createOfflineSetQueue({
+      userId: 'athlete-1',
+      storage: window.localStorage,
+    });
+    let connected = false;
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (
+          input.method === 'POST' &&
+          input.path === `/bff/v1/supplementary/executions/${executionId}/sets`
+        ) {
+          writes.push(input);
+          if (!connected) throw new Error('NETWORK_UNAVAILABLE');
+          const body = z.object({ logId: z.string().uuid() }).parse(input.body);
+          const recorded = set(1);
+          return {
+            status: 200,
+            body: { status: 'active', current: { ...recorded.current, logId: body.logId } },
+            traceId: null,
+          };
+        }
+        return baseReply(input);
+      },
+    };
+    const { user } = mount(transport, offlineQueue);
+    await user.click(screen.getByRole('button', { name: '오프라인 세트 저장 동의' }));
+    for (const count of ['4', '5']) {
+      await user.selectOptions(
+        await screen.findByRole('combobox', { name: '동작 버전' }),
+        exerciseVersionId,
+      );
+      await user.selectOptions(screen.getByRole('combobox', { name: '상태' }), 'performed');
+      await user.type(screen.getByRole('spinbutton', { name: /실제 횟수/ }), count);
+      await user.click(screen.getByRole('button', { name: '확인하고 실제 세트 저장' }));
+      await waitFor(() =>
+        expect(
+          offlineQueue.snapshot().entries.filter((entry) => entry.status === 'pending'),
+        ).toHaveLength(count === '4' ? 1 : 2),
+      );
+    }
+    const queued = offlineQueue.snapshot().entries;
+    expect(
+      queued.map((entry) =>
+        entry.status === 'pending' && entry.payload.kind === 'create'
+          ? entry.payload.command.expectedExecutionRevision
+          : null,
+      ),
+    ).toEqual([1, 2]);
+    connected = true;
+    await user.click(screen.getByRole('button', { name: '대기 세트 다시 전송' }));
+    await waitFor(() =>
+      expect(offlineQueue.snapshot().entries.every((entry) => entry.status === 'confirmed')).toBe(
+        true,
+      ),
+    );
+    expect(writes.at(-2)?.idempotencyKey).toBe(queued[0]?.idempotencyKey);
+    expect(writes.at(-1)?.idempotencyKey).toBe(queued[1]?.idempotencyKey);
+  });
+
+  it('withdraws offline consent and removes an unsent actual before any online retry', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-1');
+    const offlineQueue = createOfflineSetQueue({
+      userId: 'athlete-1',
+      storage: window.localStorage,
+    });
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (
+          input.method === 'POST' &&
+          input.path === `/bff/v1/supplementary/executions/${executionId}/sets`
+        ) {
+          writes.push(input);
+          throw new Error('NETWORK_UNAVAILABLE');
+        }
+        return baseReply(input);
+      },
+    };
+    const { user } = mount(transport, offlineQueue);
+    await user.click(screen.getByRole('button', { name: '오프라인 세트 저장 동의' }));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: '동작 버전' }),
+      exerciseVersionId,
+    );
+    await user.selectOptions(screen.getByRole('combobox', { name: '상태' }), 'performed');
+    await user.type(screen.getByRole('spinbutton', { name: /실제 횟수/ }), '4');
+    await user.click(screen.getByRole('button', { name: '확인하고 실제 세트 저장' }));
+    await screen.findByText(/서버 동기화 대기 중입니다/);
+    await user.click(screen.getByRole('button', { name: '동의 철회·대기 기록 삭제' }));
+    expect(offlineQueue.snapshot()).toMatchObject({ consented: false, entries: [] });
+    window.dispatchEvent(new Event('online'));
+    expect(writes).toHaveLength(1);
+  });
+
+  it('purges this tab queue when another tab changes the authenticated account scope', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-1');
+    const offlineQueue = createOfflineSetQueue({
+      userId: 'athlete-1',
+      storage: window.localStorage,
+    });
+    offlineQueue.enable();
+    const transport: AuthenticatedTransport = { request: async (input) => baseReply(input) };
+    mount(transport, offlineQueue);
+    expect(screen.getByRole('button', { name: '동의 철회·대기 기록 삭제' })).toBeTruthy();
+    await act(async () => {
+      window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-2');
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: OFFLINE_ACCOUNT_SCOPE_KEY,
+          newValue: 'athlete-2',
+          storageArea: window.localStorage,
+        }),
+      );
+    });
+    expect(
+      [...Array(window.localStorage.length)]
+        .map((_, index) => window.localStorage.key(index))
+        .filter((key) => key?.includes('offline-sets')),
+    ).toEqual([]);
+  });
+
+  it('halts this tab set writes when another tab changes the same account queue', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(OFFLINE_ACCOUNT_SCOPE_KEY, 'athlete-1');
+    const offlineQueue = createOfflineSetQueue({
+      userId: 'athlete-1',
+      storage: window.localStorage,
+    });
+    offlineQueue.enable();
+    const transport: AuthenticatedTransport = { request: async (input) => baseReply(input) };
+    mount(transport, offlineQueue);
+    await screen.findByRole('combobox', { name: '동작 버전' });
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: `${OFFLINE_SET_STORAGE_PREFIX}athlete-1`,
+          newValue: window.localStorage.getItem(`${OFFLINE_SET_STORAGE_PREFIX}athlete-1`),
+          storageArea: window.localStorage,
+        }),
+      );
+    });
+    expect(
+      screen.getByRole('button', { name: '대기 세트 다시 전송' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: '세트 초안 저장' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(screen.getByText(/한 탭에서 계속하세요/)).toBeTruthy();
   });
 });

@@ -12,7 +12,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'node --import tsx scripts/identity-e2e.mts',
+      // Replace Playwright's shell so SIGTERM reaches the fixture's PostgreSQL cleanup handler.
+      command: 'exec node --import tsx scripts/identity-e2e.mts',
       url: `http://127.0.0.1:${identityApiPort}/health`,
       timeout: 60000,
       reuseExistingServer: false,

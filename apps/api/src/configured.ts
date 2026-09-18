@@ -7,6 +7,9 @@ import { createSessionActualsRepository } from '@workout/server-persistence/sess
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
 import { createSessionCompletionRepository } from '@workout/server-persistence/session-completions';
 import { createPeriodSummaryRepository } from '@workout/server-persistence/period-summary';
+import { createIntegratedPlannerRepository } from '@workout/server-persistence/integrated-planner';
+import { createJointApprovalRepository } from '@workout/server-persistence/joint-approval';
+import { createJointFixtureRepository } from '@workout/server-persistence/joint-fixture';
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
 import { createNutritionRepository } from '@workout/server-persistence/nutrition-core';
@@ -69,6 +72,9 @@ export async function createConfiguredApi(environment: unknown) {
   const database = createDatabase({ connectionString: env.DATABASE_URL });
   const store = createIdentityRepository({ connectionString: env.DATABASE_URL });
   try {
+    const jointApproval = createJointApprovalRepository(database, {
+      policy: { id: 'running-core-v3-joint', version: '1' },
+    });
     const identity = createIdentityService({
       store,
       provider,
@@ -105,6 +111,16 @@ export async function createConfiguredApi(environment: unknown) {
       sessionCompletions: createSessionCompletionRepository(database),
       sessionActuals: createSessionActualsRepository(database),
       periodSummary: createPeriodSummaryRepository(database),
+      integratedPlanner: createIntegratedPlannerRepository(database),
+      jointApproval,
+      ...(env.COACHING_FIXTURE_ENABLED === 'true'
+        ? {
+            jointFixture: createJointFixtureRepository(database, jointApproval, {
+              enabled: true,
+              environment: env.NODE_ENV,
+            }),
+          }
+        : {}),
       activities: createActivityRepository(database),
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),

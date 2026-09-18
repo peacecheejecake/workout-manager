@@ -471,6 +471,11 @@ it.each([
   ['GET', '/bff/v1/coaching-candidates/candidate/status'],
   ['POST', '/bff/v1/coaching-candidates/candidate/partials'],
   ['POST', '/bff/v1/coaching-candidates/candidate/approve'],
+  ['GET', '/bff/v1/planner/integrated?from=2026-09-18&toExclusive=2026-09-19&timezone=UTC'],
+  ['GET', '/bff/v1/joint-decisions/decision/candidates'],
+  ['GET', '/bff/v1/joint-candidates/candidate'],
+  ['POST', '/bff/v1/joint-candidates/candidate/partials'],
+  ['POST', '/bff/v1/joint-candidates/candidate/approve'],
 ] as const)('uses the session-bound coaching namespace for %s %s', async (method, path) => {
   fetchMock.mockResolvedValue(json({ accepted: true }));
   const controller = new AbortController();
@@ -500,6 +505,8 @@ it.each([
   '/bff/v1/coaching-threads-admin',
   '/bff/v1/coaching-runs-admin',
   '/bff/v1/coaching-candidates-admin',
+  '/bff/v1/planner-admin',
+  '/bff/v1/joint-candidates-admin',
   '/bff/v1/evidence-snapshots-admin',
 ])(
   'keeps similarly named non-coaching route %s outside the authenticated allowlist',

@@ -13,7 +13,7 @@ import {
   PlanScenarioError,
   type PlanScenarioRepository,
 } from '@workout/server-persistence/plan-scenarios';
-import { PlanLockedError } from '@workout/server-persistence/planning';
+import { CombinedReviewRequiredError, PlanLockedError } from '@workout/server-persistence/planning';
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 import { sessionCompletionRequestError } from './session-completion-routes.js';
@@ -31,6 +31,8 @@ function requestError(error: unknown): ProductRequestError | undefined {
       error.code,
     );
   if (error instanceof PlanLockedError) return new ProductRequestError(409, 'PLAN_LOCKED');
+  if (error instanceof CombinedReviewRequiredError)
+    return new ProductRequestError(409, 'COMBINED_REVIEW_REQUIRED');
   return sessionCompletionRequestError(error);
 }
 export function registerPlanScenarioRoutes(

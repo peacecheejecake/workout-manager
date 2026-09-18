@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 4,
+  "imports": [
+    {
+      "idempotencyKey": "fit-details-v3-bcd3c58fda4a660c1e3fed94ea5023c78410cb6aa8a5e31cf03d13efb7cd8026-0",
+      "source": {
+        "kind": "fit",
+        "sourceId": "sha256:bcd3c58fda4a660c1e3fed94ea5023c78410cb6aa8a5e31cf03d13efb7cd8026:session:0",
+        "revision": 4,
+        "contentHash": "bcd3c58fda4a660c1e3fed94ea5023c78410cb6aa8a5e31cf03d13efb7cd8026"
+      },
+      "activity": {
+        "title": null,
+        "kind": "unknown",
+        "startedAt": "2024-11-08T11:33:20+00:00",
+        "timezone": null,
+        "durationSeconds": 3600.0,
+        "durationKind": "timer",
+        "distanceMeters": null
+      },
+      "details": {
+        "schemaVersion": 3,
+        "streamIndex": 0,
+        "sessionIndex": 0,
+        "startedAt": "2024-11-08T11:33:20+00:00",
+        "recordedAt": "2024-11-08T12:33:20+00:00",
+        "elapsedSeconds": 3600.0,
+        "sessionSummary": {
+          "averageHeartRateBpm": null,
+          "maximumHeartRateBpm": null
+        },
+        "records": [],
+        "laps": [
+          {
+            "index": 0,
+            "startedAt": "2024-11-08T11:33:20+00:00",
+            "recordedAt": null,
+            "elapsedSeconds": 2400.0,
+            "timerSeconds": null,
+            "distanceMeters": null,
+            "averageHeartRateBpm": null,
+            "maximumHeartRateBpm": null,
+            "sport": "running"
+          },
+          {
+            "index": 1,
+            "startedAt": "2024-11-08T12:13:20+00:00",
+            "recordedAt": null,
+            "elapsedSeconds": 600.0,
+            "timerSeconds": null,
+            "distanceMeters": null,
+            "averageHeartRateBpm": null,
+            "maximumHeartRateBpm": null,
+            "sport": "strength"
+          }
+        ],
+        "allocation": {
+          "parent": {
+            "startedAt": "2024-11-08T11:33:20+00:00",
+            "endedAtExclusive": "2024-11-08T12:33:20+00:00"
+          },
+          "bouts": [
+            {
+              "sourceLapIndex": 0,
+              "startedAt": "2024-11-08T11:33:20+00:00",
+              "endedAtExclusive": "2024-11-08T12:13:20+00:00",
+              "kind": "running"
+            },
+            {
+              "sourceLapIndex": 1,
+              "startedAt": "2024-11-08T12:13:20+00:00",
+              "endedAtExclusive": "2024-11-08T12:23:20+00:00",
+              "kind": "strength"
+            },
+            {
+              "sourceLapIndex": null,
+              "startedAt": "2024-11-08T12:23:20+00:00",
+              "endedAtExclusive": "2024-11-08T12:33:20+00:00",
+              "kind": "mixed_unallocated"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

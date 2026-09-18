@@ -38,6 +38,7 @@ import { projectTrainingCandidateV1 } from '@workout/server-coaching/candidates'
 import type { Database, Transaction } from './database.js';
 import { persistPlanVersion } from './planning.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { persistSupplementarySessionLinks } from './supplementary-plan-links.js';
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const createCommandSchema = z.strictObject({
@@ -985,6 +986,13 @@ export function createTrainingCandidateRepository(
           expectedVersionId: bundle.candidate.before.id,
           draft: projection.draft.proposed,
         });
+        await persistSupplementarySessionLinks(
+          tx,
+          bundle.candidate.before.id,
+          saved.id,
+          projection.draft.proposed,
+          [],
+        );
         await tx.query(
           "INSERT INTO plan_history(athlete_id,version_id,action) VALUES($1,$2,'candidate_approved')",
           [athleteId, saved.id],

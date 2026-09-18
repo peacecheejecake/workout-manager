@@ -8,6 +8,7 @@ import pytest
 from test_fit_batch import crc, fit_bytes
 
 from workout_manager.activity_export import activity_commands, export_activity
+from workout_manager.cli import main
 from workout_manager.fit_batch import parse_fit_streams
 
 
@@ -33,6 +34,91 @@ def session_summary_fit(average=146, maximum=181):
     header = struct.pack("<BBHI4s", 14, 0x10, 100, len(data), b".FIT")
     header += struct.pack("<H", crc(header))
     return header + data + struct.pack("<H", crc(header + data))
+
+
+def mixed_parent_bout_fit():
+    """One 60-minute FIT session with 40-minute run and 10-minute strength laps."""
+    start = 1_100_000_000
+    definitions = b""
+    for local, global_number, fields in [
+        (0, 18, [(253, 4, 0x86), (2, 4, 0x86), (7, 4, 0x86), (8, 4, 0x86), (5, 1, 0x00)]),
+        (1, 19, [(2, 4, 0x86), (7, 4, 0x86), (25, 1, 0x00), (39, 1, 0x00)]),
+    ]:
+        definitions += struct.pack("<BBBH", 0x40 | local, 0, 0, global_number)
+        definitions += bytes([len(fields)]) + bytes(value for field in fields for value in field)
+    rows = b"\x00" + struct.pack("<IIIIB", start + 3600, start, 3_600_000, 3_600_000, 0)
+    rows += b"\x01" + struct.pack("<IIBB", start, 2_400_000, 1, 0)
+    rows += b"\x01" + struct.pack("<IIBB", start + 2400, 600_000, 10, 20)
+    data = definitions + rows
+    header = struct.pack("<BBHI4s", 14, 0x10, 100, len(data), b".FIT")
+    header += struct.pack("<H", crc(header))
+    return header + data + struct.pack("<H", crc(header + data))
+
+
+def test_explicit_parent_bouts_export_one_activity_with_unallocated_remainder(tmp_path):
+    source = tmp_path / "mixed.fit"
+    source.write_bytes(mixed_parent_bout_fit())
+    output = tmp_path / "mixed.json"
+    export_activity(source, output, include_bouts=True)
+    exported = json.loads(output.read_text())
+    fixture = Path(__file__).parents[1] / "fixtures" / "fit-activity-bout-export.json"
+    assert exported == json.loads(fixture.read_text())
+    assert exported["schemaVersion"] == 4
+    assert len(exported["imports"]) == 1
+    command = exported["imports"][0]
+    assert command["source"]["revision"] == 4
+    assert command["activity"]["durationSeconds"] == 3600
+    assert command["details"]["schemaVersion"] == 3
+    assert [bout["kind"] for bout in command["details"]["allocation"]["bouts"]] == [
+        "running",
+        "strength",
+        "mixed_unallocated",
+    ]
+    assert [bout["sourceLapIndex"] for bout in command["details"]["allocation"]["bouts"]] == [
+        0,
+        1,
+        None,
+    ]
+    assert [lap["sport"] for lap in command["details"]["laps"]] == ["running", "strength"]
+    assert activity_commands(source, include_details=True)[0]["source"]["revision"] == 3
+    cli_output = tmp_path / "mixed-cli.json"
+    assert (
+        main(["export-activity", str(source), "--output", str(cli_output), "--include-bouts"]) == 0
+    )
+    assert json.loads(cli_output.read_text()) == exported
+
+
+def test_bout_export_rejects_overlap_and_keeps_missing_sport_unallocated(monkeypatch, tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    source = tmp_path / "mixed.fit"
+    source.write_bytes(mixed_parent_bout_fit())
+    start = datetime(2026, 9, 18, tzinfo=UTC)
+    stream = {
+        "session": [{"start_time": start, "total_elapsed_time": 3600}],
+        "record": [],
+        "lap": [
+            {"start_time": start, "total_elapsed_time": 2400, "sport": "running"},
+            {"start_time": start + timedelta(seconds=2400), "total_elapsed_time": 600},
+        ],
+    }
+    monkeypatch.setattr("workout_manager.activity_export.parse_fit_streams", lambda _: [stream])
+    assert [
+        bout["kind"]
+        for bout in activity_commands(source, include_bouts=True)[0]["details"]["allocation"][
+            "bouts"
+        ]
+    ] == ["running", "mixed_unallocated", "mixed_unallocated"]
+    stream["lap"][1]["start_time"] = start + timedelta(seconds=2399)
+    with pytest.raises(ValueError, match="overlap"):
+        activity_commands(source, include_bouts=True)
+    del stream["lap"][1]["start_time"]
+    assert [
+        bout["kind"]
+        for bout in activity_commands(source, include_bouts=True)[0]["details"]["allocation"][
+            "bouts"
+        ]
+    ] == ["mixed_unallocated"]
 
 
 def test_real_session_summary_export_matches_shared_fixture(tmp_path):

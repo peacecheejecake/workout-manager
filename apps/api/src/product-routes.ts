@@ -18,6 +18,12 @@ import type { PeriodSummaryRepository } from '@workout/server-persistence/period
 import { registerPeriodSummaryRoutes } from './period-summary-routes.js';
 import type { ActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { registerActivityContextRoutes } from './activity-context-routes.js';
+import type { IntegratedPlannerRepository } from '@workout/server-persistence/integrated-planner';
+import { registerIntegratedPlannerRoutes } from './integrated-planner-routes.js';
+import type { JointApprovalRepository } from '@workout/server-persistence/joint-approval';
+import { registerJointApprovalRoutes } from './joint-approval-routes.js';
+import type { JointFixtureRepository } from '@workout/server-persistence/joint-fixture';
+import { registerJointFixtureRoutes } from './joint-fixture-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { NutritionRepository } from '@workout/server-persistence/nutrition-core';
@@ -49,6 +55,9 @@ export interface ProductRepositories {
   planScenarios?: PlanScenarioRepository;
   sessionCompletions?: SessionCompletionRepository;
   periodSummary?: PeriodSummaryRepository;
+  integratedPlanner?: IntegratedPlannerRepository;
+  jointApproval?: JointApprovalRepository;
+  jointFixture?: JointFixtureRepository;
   activities?: ActivityRepository;
   activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
@@ -78,6 +87,12 @@ export function registerProductRoutes(
     registerSessionCompletionRoutes(routes, repositories.sessionCompletions, principal);
   if (repositories.periodSummary)
     registerPeriodSummaryRoutes(routes, repositories.periodSummary, principal);
+  if (repositories.integratedPlanner)
+    registerIntegratedPlannerRoutes(routes, repositories.integratedPlanner, principal);
+  if (repositories.jointApproval)
+    registerJointApprovalRoutes(routes, repositories.jointApproval, principal);
+  if (repositories.jointFixture)
+    registerJointFixtureRoutes(routes, repositories.jointFixture, principal);
   if (repositories.activityContext)
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);

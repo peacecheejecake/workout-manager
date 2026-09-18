@@ -9,6 +9,10 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { z } from 'zod';
+import {
+  bindPrivateBrowserStorageAccount,
+  clearPrivateBrowserStorage,
+} from '@workout/platform/private-browser-storage';
 import { OperationsPanel } from './operations-panel';
 import { GarminPanel } from './garmin-panel';
 
@@ -57,6 +61,11 @@ function SessionBoundary() {
     refetchInterval: 60_000,
   });
   useEffect(() => {
+    if (!session.isSuccess) return;
+    if (session.data) bindPrivateBrowserStorageAccount(session.data.athleteId);
+    else clearPrivateBrowserStorage();
+  }, [session.isSuccess, session.data]);
+  useEffect(() => {
     if (!session.data) return;
     const timer = setTimeout(
       () => client.setQueryData(['identity', 'current-session'], null),
@@ -87,12 +96,14 @@ function SessionBoundary() {
       key={session.data.sessionId}
       session={session.data}
       onSessionChanged={() => {
+        clearPrivateBrowserStorage();
         void client.cancelQueries({ queryKey: ['identity', 'current-session'] }).then(() => {
           client.setQueryData(['identity', 'current-session'], null);
           void client.invalidateQueries({ queryKey: ['identity', 'current-session'] });
         });
       }}
       onSignedOut={() => {
+        clearPrivateBrowserStorage();
         void client.cancelQueries({ queryKey: ['identity', 'current-session'] });
         client.setQueryData(['identity', 'current-session'], null);
       }}

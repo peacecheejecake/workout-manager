@@ -984,8 +984,9 @@
       "title": "영양·보강 통합",
       "dependsOn": ["M1b-01", "M1b-02"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "joint approval/Planner; offline actual sync; V022 회귀·단일 Activity"
+      "status": "completed",
+      "scope": "joint approval/Planner; offline actual sync; V022 회귀·단일 Activity",
+      "evidence": "docs/implementation/progress/M1b-03.md"
     },
     {
       "id": "M1c-01",

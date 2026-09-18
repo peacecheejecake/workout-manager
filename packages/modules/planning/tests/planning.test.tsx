@@ -255,6 +255,8 @@ describe('idempotent receipt versus authoritative head', () => {
           return transportReplySchema.parse(reply({}, 503));
         if (input.path.startsWith('/bff/v1/activities?'))
           return transportReplySchema.parse(reply({ items: [], total: 0 }));
+        if (input.path.startsWith('/bff/v1/planner/integrated?'))
+          return transportReplySchema.parse(reply({}, 503));
         if (input.method === 'PUT')
           return transportReplySchema.parse(reply({ ...snapshot, id: 'version-2', version: 2 }));
         reads++;
@@ -295,6 +297,8 @@ describe('idempotent receipt versus authoritative head', () => {
           return transportReplySchema.parse(reply({}, 503));
         if (input.path.startsWith('/bff/v1/activities?'))
           return transportReplySchema.parse(reply({ items: [], total: 0 }));
+        if (input.path.startsWith('/bff/v1/planner/integrated?'))
+          return transportReplySchema.parse(reply({}, 503));
         if (input.method === 'PUT')
           return transportReplySchema.parse(reply({ ...snapshot, id: 'version-2', version: 2 }));
         reads++;
@@ -323,7 +327,7 @@ describe('plan editor constraints', () => {
   it('creates a hierarchy and session from empty state with explicit preview', async () => {
     const user = userEvent.setup();
     let ids = 0;
-    const request = vi.fn(async () =>
+    const request = vi.fn(async (_input: TransportRequest) =>
       transportReplySchema.parse(reply({ head: null, history: [] })),
     );
     render(
@@ -347,7 +351,9 @@ describe('plan editor constraints', () => {
     expect(screen.getByRole('region', { name: '변경 미리보기' })).toHaveTextContent(
       '기간 4개, 계획 세션 1개',
     );
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(
+      request.mock.calls.filter(([input]) => input.path === '/bff/v1/plans/current'),
+    ).toHaveLength(1);
   });
   it('requires prior saved unlock rather than immediately allowing locked changes', async () => {
     const user = userEvent.setup();

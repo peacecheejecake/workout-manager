@@ -42,6 +42,18 @@ function input(): ActivityImport {
   };
 }
 describe('M1-03 canonical activity transactional ingestion', () => {
+  it('advances the integrated activity dependency head across delete and replacement', async () => {
+    const athlete = randomUUID();
+    const first = await repository.importActivity(athlete, input());
+    await repository.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
+    await repository.importActivity(athlete, input());
+    const head = await database.tenant(athlete, (tx) =>
+      tx.query('SELECT activity_revision FROM integrated_dependency_head WHERE athlete_id=$1', [
+        athlete,
+      ]),
+    );
+    expect(head.rows[0]?.['activity_revision']).toBe(3);
+  });
   it('concurrent duplicate deliveries and outbox replay apply exactly one canonical and event', async () => {
     const athlete = randomUUID();
     const command = input();

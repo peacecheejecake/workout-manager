@@ -18,6 +18,8 @@ const common = {
 const v3 = {
   ...common,
   schemaVersion: 3,
+  confirmed: true,
+  proposalDigest: 'a'.repeat(64),
   expectedBasis: {
     ...commonBasis,
     schemaVersion: 3,

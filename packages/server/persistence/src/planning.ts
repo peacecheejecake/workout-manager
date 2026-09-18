@@ -17,11 +17,18 @@ import {
 } from '@workout/contracts/planning';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { persistSupplementarySessionLinks } from './supplementary-plan-links.js';
 
 export class PlanLockedError extends Error {
   readonly code = 'PLAN_LOCKED';
   constructor() {
     super('Plan session is locked');
+  }
+}
+export class CombinedReviewRequiredError extends Error {
+  readonly code = 'COMBINED_REVIEW_REQUIRED';
+  constructor() {
+    super('Relative nutrition plans require a combined change review');
   }
 }
 export interface PlanningRepository {
@@ -38,13 +45,68 @@ function snapshot(row: Record<string, unknown>): PlanSnapshot {
     draft: row['draft'],
   });
 }
+function changedSessionTimingIds(previous: PlanDraft | null, proposed: PlanDraft): string[] {
+  const before = new Map(previous?.sessions.map((session) => [session.id, session]) ?? []);
+  const after = new Map(proposed.sessions.map((session) => [session.id, session]));
+  const timezoneChanged = previous !== null && previous.timezone !== proposed.timezone;
+  return [...new Set([...before.keys(), ...after.keys()])].filter((id) => {
+    const old = before.get(id);
+    const next = after.get(id);
+    if (!old || !next || timezoneChanged) return true;
+    return (
+      old.date !== next.date ||
+      old.localStartTime !== next.localStartTime ||
+      old.durationSeconds !== next.durationSeconds ||
+      JSON.stringify(old.durationRange ?? null) !== JSON.stringify(next.durationRange ?? null)
+    );
+  });
+}
+async function assertRelativeNutritionUnaffected(
+  transaction: Transaction,
+  previous: PlanDraft | null,
+  proposed: PlanDraft,
+  reviewedRelativeNutritionPlanIds: readonly string[] = [],
+): Promise<void> {
+  const ids = changedSessionTimingIds(previous, proposed);
+  if (ids.length === 0) {
+    if (reviewedRelativeNutritionPlanIds.length > 0) throw new CombinedReviewRequiredError();
+    return;
+  }
+  const affected = await transaction.query(
+    `SELECT h.plan_id FROM nutrition_plan_head h JOIN nutrition_plan_version v
+       ON v.athlete_id=h.athlete_id AND v.version_id=h.version_id
+     WHERE h.athlete_id=$1 AND EXISTS (
+       SELECT 1 FROM jsonb_array_elements(v.record_json->'items') item
+       WHERE item->'anchor'->>'kind'='relative'
+         AND item->'anchor'->>'entityId'=ANY($2::text[])
+     ) ORDER BY h.plan_id`,
+    [transaction.athleteId, ids],
+  );
+  const actual = affected.rows.map((row) => String(row['plan_id']));
+  const reviewed = [...new Set(reviewedRelativeNutritionPlanIds)].sort();
+  if (
+    reviewed.length !== reviewedRelativeNutritionPlanIds.length ||
+    reviewed.length !== actual.length ||
+    reviewed.some((id, index) => id !== actual[index])
+  )
+    throw new CombinedReviewRequiredError();
+}
 /** Internal transaction primitive. Callers own successful-receipt replay before this call,
  * and history/outbox/source audit/receipt writes afterwards in the SAME transaction.
  * The shared lock serializes current-plan writes with completion reports.
  */
 export async function persistPlanVersion(
   transaction: Transaction,
-  { expectedVersionId, draft }: { expectedVersionId: string | null; draft: PlanDraft },
+  {
+    expectedVersionId,
+    draft,
+    reviewedRelativeNutritionPlanIds = [],
+  }: {
+    expectedVersionId: string | null;
+    draft: PlanDraft;
+    /** Joint approval only: exact set of current nutrition heads reviewed for changed relative anchors. */
+    reviewedRelativeNutritionPlanIds?: readonly string[];
+  },
 ): Promise<PlanSnapshot> {
   await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
     transaction.athleteId,
@@ -69,6 +131,12 @@ export async function persistPlanVersion(
     )
   )
     throw new SessionCompletionError('PLAN_COMPLETED_SESSION');
+  await assertRelativeNutritionUnaffected(
+    transaction,
+    previous?.draft ?? null,
+    draft,
+    reviewedRelativeNutritionPlanIds,
+  );
   const id = randomUUID();
   const inserted = await transaction.query(
     'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,$3,$4::jsonb) RETURNING *',
@@ -129,6 +197,9 @@ export function createPlanningRepository(database: Database): PlanningRepository
           confirmed: command.confirmed,
           expectedVersionId: command.expectedVersionId,
           draft: command.draft,
+          ...(command.supplementaryLinks === undefined
+            ? {}
+            : { supplementaryLinks: command.supplementaryLinks }),
         };
         const receipt = await transaction.query(
           'SELECT request=$3::jsonb AS matches,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
@@ -143,6 +214,13 @@ export function createPlanningRepository(database: Database): PlanningRepository
           expectedVersionId: command.expectedVersionId,
           draft: command.draft,
         });
+        await persistSupplementarySessionLinks(
+          transaction,
+          command.expectedVersionId,
+          saved.id,
+          command.draft,
+          command.supplementaryLinks ?? [],
+        );
         const id = saved.id;
         await transaction.query(
           "INSERT INTO plan_history(athlete_id,version_id,action) VALUES($1,$2,'manual_saved')",

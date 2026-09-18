@@ -287,9 +287,10 @@ describe('joint schema 3 approval compatibility', () => {
   it('preserves absent nutrition plan heads and never migrates schema versions implicitly', () => {
     const request = {
       schemaVersion: 3,
+      confirmed: true,
       proposalId: 'proposal-1',
       candidateId: 'candidate-1',
-      proposalDigest: 'digest',
+      proposalDigest: 'a'.repeat(64),
       expectedBasis: {
         schemaVersion: 3,
         domains: { scope: 'combined', training, nutrition },
@@ -303,6 +304,9 @@ describe('joint schema 3 approval compatibility', () => {
       idempotencyKey: 'approval-1',
     };
     expect(jointApprovalRequestSchema.parse(request)).toEqual(request);
+    expect(jointApprovalRequestSchema.safeParse({ ...request, confirmed: false }).success).toBe(
+      false,
+    );
     expect(jointApprovalRequestSchema.safeParse({ ...request, schemaVersion: 4 }).success).toBe(
       false,
     );

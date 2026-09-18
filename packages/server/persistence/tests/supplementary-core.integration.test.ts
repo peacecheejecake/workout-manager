@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SetLogCorrectCommand } from '@workout/contracts/supplementary-core';
+import { activityExportSchema, type ActivityImport } from '@workout/contracts/activity';
+import mixedFitFixture from '../../../../tests/fixtures/fit-activity-bout-export.json' with { type: 'json' };
 
 import { createActivityRepository } from '../src/activities.js';
 import { createDatabase, type Database } from '../src/database.js';
@@ -196,6 +198,96 @@ async function seededActivity(athlete: string, kind: 'strength' | 'running' = 's
 }
 
 describe('supplementary core real PostgreSQL ledger', () => {
+  it('links a confirmed strength bout and a user set to the one mixed FIT parent Activity', async () => {
+    const exported = activityExportSchema.parse(mixedFitFixture);
+    if (exported.schemaVersion !== 4) throw new Error('Expected V4 synthetic FIT export');
+    const source = exported.imports[0];
+    if (!source) throw new Error('Missing mixed parent');
+    const athlete = randomUUID();
+    const activityRepository = createActivityRepository(database);
+    const activity = await activityRepository.importActivity(athlete, source);
+    const repository = createSupplementaryRepository(database);
+    const savedExercise = await repository.saveExercise(athlete, exercise());
+    const execution = await repository.createExecution(athlete, {
+      schemaVersion: 2,
+      executionId: randomUUID(),
+      plannedSession: null,
+      activity: { kind: 'match_existing', activityId: activity.activityId },
+      idempotencyKey: randomUUID(),
+      confirmed: true,
+    });
+    const log = await repository.createSetLog(athlete, {
+      schemaVersion: 2,
+      executionId: execution.executionId,
+      logId: randomUUID(),
+      expectedExecutionRevision: 1,
+      idempotencyKey: randomUUID(),
+      confirmation: 'user_confirmed',
+      values: {
+        ...setValues(savedExercise.definition.versionId),
+        targetSetId: null,
+        blockId: null,
+        roundIndex: null,
+        occurredAt: '2024-11-08T12:14:20Z',
+      },
+    });
+    expect(execution.activityId).toBe(activity.activityId);
+    expect(log.status).toBe('active');
+    expect((await activityRepository.listActivities(athlete)).total).toBe(1);
+    expect((await activityRepository.summary(athlete)).durationSeconds.value).toBe(3600);
+    expect((await repository.listExecutions(athlete)).items).toHaveLength(1);
+
+    const { allocation: _allocation, ...v2 } = source.details;
+    const older: ActivityImport = {
+      ...source,
+      source: { ...source.source, sourceId: `${source.source.sourceId}:legacy`, revision: 3 },
+      idempotencyKey: randomUUID(),
+      details: {
+        ...v2,
+        schemaVersion: 2,
+        laps: v2.laps.map(({ sport: _sport, ...lap }) => lap),
+      },
+    };
+    const olderActivity = await activityRepository.importActivity(athlete, older);
+    await expect(
+      repository.createExecution(athlete, {
+        schemaVersion: 2,
+        executionId: randomUUID(),
+        plannedSession: null,
+        activity: { kind: 'match_existing', activityId: olderActivity.activityId },
+        idempotencyKey: randomUUID(),
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ code: 'ACTIVITY_INVALID' });
+    const unallocated = await activityRepository.importActivity(athlete, {
+      ...source,
+      source: { ...source.source, sourceId: `${source.source.sourceId}:unallocated` },
+      idempotencyKey: randomUUID(),
+      details: {
+        ...source.details,
+        allocation: {
+          parent: source.details.allocation.parent,
+          bouts: [
+            {
+              sourceLapIndex: null,
+              ...source.details.allocation.parent,
+              kind: 'mixed_unallocated',
+            },
+          ],
+        },
+      },
+    });
+    await expect(
+      repository.createExecution(athlete, {
+        schemaVersion: 2,
+        executionId: randomUUID(),
+        plannedSession: null,
+        activity: { kind: 'match_existing', activityId: unallocated.activityId },
+        idempotencyKey: randomUUID(),
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ code: 'ACTIVITY_INVALID' });
+  });
   it('bounds the exercise catalog at 100 stable head rows and reports truncation', async () => {
     const athlete = randomUUID();
     const records = Array.from({ length: 101 }, () => exercise().definition);
@@ -353,6 +445,13 @@ describe('supplementary core real PostgreSQL ledger', () => {
       }),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
     await database.tenant(athlete, async (tx) => {
+      expect(
+        (
+          await tx.query(
+            'SELECT exercise_revision,routine_revision FROM integrated_dependency_head',
+          )
+        ).rows[0],
+      ).toEqual({ exercise_revision: 3, routine_revision: 2 });
       expect(
         (await tx.query('SELECT count(*)::int AS count FROM supplementary_exercise_version'))
           .rows[0]?.['count'],
@@ -536,7 +635,20 @@ describe('supplementary core real PostgreSQL ledger', () => {
       }),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
     expect((await repository.readRestTimer(athlete, timerId))?.status).toBe('running');
+    const executionHeadBeforeDelete = Number(
+      await database.tenant(
+        athlete,
+        async (tx) =>
+          (await tx.query('SELECT execution_revision FROM integrated_dependency_head')).rows[0]?.[
+            'execution_revision'
+          ],
+      ),
+    );
+    expect(executionHeadBeforeDelete).toBeGreaterThan(0);
     await database.tenant(athlete, async (tx) => {
+      expect(
+        (await tx.query('SELECT set_revision FROM integrated_dependency_head')).rows[0],
+      ).toEqual({ set_revision: 3 });
       expect(
         (await tx.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0]?.[
           'count'
@@ -577,6 +689,16 @@ describe('supplementary core real PostgreSQL ledger', () => {
       code: 'IDEMPOTENCY_CONFLICT',
     });
     await database.tenant(athlete, async (tx) => {
+      expect(
+        Number(
+          (await tx.query('SELECT execution_revision FROM integrated_dependency_head')).rows[0]?.[
+            'execution_revision'
+          ],
+        ),
+      ).toBeGreaterThan(executionHeadBeforeDelete);
+      expect(
+        (await tx.query('SELECT set_revision FROM integrated_dependency_head')).rows[0],
+      ).toEqual({ set_revision: 4 });
       const receipt = await tx.query(
         'SELECT request,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
         [athlete, `supplementary-set:${createLog.idempotencyKey}`],

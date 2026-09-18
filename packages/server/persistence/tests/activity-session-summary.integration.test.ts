@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import type { ActivityImport } from '@workout/contracts/activity';
+import { activityExportSchema } from '@workout/contracts/activity';
+import mixedFitFixture from '../../../../tests/fixtures/fit-activity-bout-export.json' with { type: 'json' };
 import { createDatabase, type Database } from '../src/database.js';
 import { migrate, grantOperations } from '../src/migrate.js';
 import { createActivityRepository } from '../src/activities.js';
@@ -218,4 +220,45 @@ it('enforces ownership and suppression for session summaries and erases immutabl
     (await admin.query('SELECT * FROM activity_import_receipt WHERE athlete_id=$1', [athlete]))
       .rowCount,
   ).toBe(0);
+});
+
+it('imports one mixed FIT parent with run, strength and unallocated bouts without multiplying Activity totals', async () => {
+  const exported = activityExportSchema.parse(mixedFitFixture);
+  if (exported.schemaVersion !== 4) throw new Error('Expected V4 synthetic FIT export');
+  const command = exported.imports[0];
+  if (!command) throw new Error('Missing FIT parent');
+  const athlete = randomUUID();
+  const repository = createActivityRepository(database);
+  const first = await repository.importActivity(athlete, command);
+  expect(first.outcome).toBe('imported');
+  expect(await repository.importActivity(athlete, command)).toEqual(first);
+  expect(
+    (
+      await repository.importActivity(athlete, {
+        ...command,
+        idempotencyKey: randomUUID(),
+      })
+    ).outcome,
+  ).toBe('unchanged');
+  expect((await repository.listActivities(athlete)).total).toBe(1);
+  const summary = await repository.summary(athlete);
+  expect(summary.count).toBe(1);
+  expect(summary.durationSeconds.value).toBe(3600);
+  expect(summary.durationSeconds.knownCount).toBe(1);
+  expect(summary.durationSeconds.byKind.timer.value).toBe(3600);
+  expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toEqual(
+    command.details,
+  );
+  expect(await repository.getActivityDetails(randomUUID(), first.activityId)).toBeNull();
+  await repository.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
+  expect((await repository.listActivities(athlete)).total).toBe(0);
+  expect(
+    (
+      await repository.importActivity(athlete, {
+        ...command,
+        source: { ...command.source, revision: 5 },
+        idempotencyKey: randomUUID(),
+      })
+    ).outcome,
+  ).toBe('suppressed');
 });

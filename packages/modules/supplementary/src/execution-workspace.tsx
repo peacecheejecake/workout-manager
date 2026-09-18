@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useStore } from 'zustand';
 import { ZodError } from 'zod';
@@ -16,6 +16,16 @@ import { Button } from '@workout/ui-foundation/button';
 import { SupplementaryRequestError, type SupplementaryApi } from './supplementary-api';
 import { setValuesFromInputs, timerRemainingSeconds } from './supplementary-model';
 import { createRunnerStore, type SetDraft } from './runner-store';
+import {
+  type OfflineSetSnapshot,
+  type OfflineSetCommand,
+  type createOfflineSetQueue,
+  OFFLINE_ACCOUNT_SCOPE_KEY,
+  OFFLINE_SET_STORAGE_PREFIX,
+  OfflineSetQueueCorruptError,
+  OfflineSetStorageError,
+  OfflineSetAccountScopeError,
+} from './offline-set-queue';
 import type { SupplementaryScope } from './supplementary-workspace';
 import styles from './supplementary.module.css';
 
@@ -23,12 +33,101 @@ export function ExecutionWorkspace({
   api,
   scope,
   executionId,
+  offlineQueue = null,
+  offlineStorageUnavailable = false,
 }: {
   api: SupplementaryApi;
   scope: SupplementaryScope;
   executionId: string | null;
+  offlineQueue?: ReturnType<typeof createOfflineSetQueue> | null;
+  offlineStorageUnavailable?: boolean;
 }) {
   const client = useQueryClient();
+  const userId = scope[1];
+  const sessionId = scope[3];
+  const [offlineRevision, setOfflineRevision] = useState(0);
+  const [offlineNotice, setOfflineNotice] = useState('');
+  const [otherTabChanged, setOtherTabChanged] = useState(false);
+  const offlineState = useMemo(() => {
+    if (!offlineQueue) return { snapshot: null, error: false };
+    try {
+      return { snapshot: offlineQueue.snapshot(), error: false };
+    } catch {
+      return { snapshot: null, error: true };
+    }
+    // The revision changes only after an explicit queue or storage event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offlineQueue, offlineRevision]);
+  const offlineSnapshot: OfflineSetSnapshot | null = offlineState.snapshot;
+  const refreshOffline = useCallback(() => {
+    if (!offlineQueue) return null;
+    try {
+      const next = offlineQueue.snapshot();
+      setOfflineRevision((revision) => revision + 1);
+      return next;
+    } catch {
+      setOfflineNotice('오프라인 기록 저장소를 읽을 수 없습니다. 동기화하지 않았습니다.');
+      return null;
+    }
+  }, [offlineQueue]);
+  const retryOffline = useCallback(async () => {
+    if (!offlineQueue || otherTabChanged) return;
+    try {
+      if (!offlineQueue.snapshot().consented) return;
+      const result = await offlineQueue.flush(api);
+      refreshOffline();
+      if (result.confirmed > 0) {
+        await client.invalidateQueries({
+          queryKey: ['users', userId, 'sessions', sessionId, 'supplementary'],
+        });
+      }
+      if (result.stoppedBy === 'network')
+        setOfflineNotice('미전송 세트가 남아 있습니다. 온라인 상태에서 다시 전송하세요.');
+      else if (result.stoppedBy === 'review')
+        setOfflineNotice('세트 기록 충돌을 확인해야 합니다. 서버 기록과 비교하세요.');
+      else if (result.confirmed > 0) setOfflineNotice('대기 중이던 세트 기록을 동기화했습니다.');
+    } catch {
+      refreshOffline();
+      setOfflineNotice('오프라인 기록을 동기화하지 못했습니다. 저장소와 연결을 확인하세요.');
+    }
+  }, [offlineQueue, otherTabChanged, api, refreshOffline, client, userId, sessionId]);
+  useEffect(() => {
+    if (!offlineQueue) return;
+    const onOnline = () => {
+      if (navigator.onLine) void retryOffline();
+    };
+    window.addEventListener('online', onOnline);
+    onOnline();
+    return () => window.removeEventListener('online', onOnline);
+  }, [offlineQueue, retryOffline]);
+  useEffect(() => {
+    if (!offlineQueue) return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) return;
+      if (
+        event.key !== null &&
+        event.key !== OFFLINE_ACCOUNT_SCOPE_KEY &&
+        !event.key.startsWith(OFFLINE_SET_STORAGE_PREFIX)
+      )
+        return;
+      if (event.key === OFFLINE_ACCOUNT_SCOPE_KEY && event.newValue !== userId) {
+        try {
+          offlineQueue.clear();
+        } catch {
+          setOfflineNotice('계정이 변경됐습니다. 이전 계정의 오프라인 기록 삭제를 확인하세요.');
+        }
+      } else if (event.key === `${OFFLINE_SET_STORAGE_PREFIX}${userId}`) {
+        offlineQueue.cancel();
+        setOtherTabChanged(true);
+        setOfflineNotice(
+          '다른 탭에서 같은 계정의 세트 기록이 변경됐습니다. 이 탭을 새로고침하고 한 탭에서 계속하세요.',
+        );
+      }
+      refreshOffline();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [offlineQueue, refreshOffline, userId]);
   const executions = useQuery({
     queryKey: [...scope, 'executions'],
     queryFn: ({ signal }) => api.listExecutions(signal),
@@ -115,6 +214,103 @@ export function ExecutionWorkspace({
       <section className={styles.card} aria-labelledby="execution-list-title">
         <h2 id="execution-list-title">보강 수행</h2>
         <p>운동은 공통 Activity 하나로 기록하고 세트는 그 활동의 상세로 연결합니다.</p>
+        <section aria-label="오프라인 세트 기록">
+          <h3>오프라인 세트 기록</h3>
+          <p>
+            직접 확인한 세트의 추가·정정·삭제만 이 기기의 브라우저 저장소에 암호화 없이 최대 7일
+            저장합니다. 동의는 7일 뒤 만료되며 로그아웃·계정 전환·철회 시 대기 기록을 삭제합니다.
+            동기화 대기는 실제 수행의 서버 확정이 아닙니다.
+          </p>
+          <p>같은 계정의 오프라인 세트는 한 번에 한 탭에서 기록하세요.</p>
+          {offlineStorageUnavailable ? (
+            <p role="alert">이 브라우저에서는 안전한 오프라인 저장소에 접근할 수 없습니다.</p>
+          ) : offlineState.error && offlineQueue ? (
+            <div>
+              <p role="alert">
+                오프라인 세트 기록을 읽을 수 없어 자동 전송을 중단했습니다. 이 기기의 기록을 삭제한
+                뒤 다시 동의할 수 있습니다.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  try {
+                    offlineQueue.clear();
+                    refreshOffline();
+                    setOfflineNotice('읽을 수 없는 이 기기 기록을 삭제했습니다.');
+                  } catch {
+                    setOfflineNotice(
+                      '이 기기 기록을 삭제하지 못했습니다. 저장소 접근을 확인하세요.',
+                    );
+                  }
+                }}
+              >
+                읽을 수 없는 기록 삭제
+              </Button>
+            </div>
+          ) : offlineQueue && offlineSnapshot && !offlineSnapshot.consented ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                try {
+                  offlineQueue.enable();
+                  refreshOffline();
+                  setOfflineNotice('이 기기의 세트 오프라인 저장에 동의했습니다.');
+                } catch {
+                  setOfflineNotice('오프라인 저장을 켤 수 없습니다. 저장소 접근을 확인하세요.');
+                }
+              }}
+            >
+              오프라인 세트 저장 동의
+            </Button>
+          ) : offlineQueue && offlineSnapshot?.consented ? (
+            <div className={styles.actions}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={otherTabChanged}
+                onClick={() => void retryOffline()}
+              >
+                대기 세트 다시 전송
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  try {
+                    offlineQueue.clear();
+                    refreshOffline();
+                    setOfflineNotice('동의를 철회하고 이 기기의 대기 세트를 삭제했습니다.');
+                  } catch {
+                    setOfflineNotice('저장소에서 기록을 삭제하지 못했습니다. 다시 시도하세요.');
+                  }
+                }}
+              >
+                동의 철회·대기 기록 삭제
+              </Button>
+            </div>
+          ) : null}
+          {offlineSnapshot?.expiredCount ? (
+            <p role="alert">
+              보존 기간이 지난 미전송 세트 {offlineSnapshot.expiredCount}건은 삭제됐습니다.
+            </p>
+          ) : null}
+          {offlineSnapshot?.entries.some((entry) => entry.status !== 'confirmed') ? (
+            <ul className={styles.list}>
+              {offlineSnapshot.entries
+                .filter((entry) => entry.status !== 'confirmed')
+                .map((entry) => (
+                  <li key={entry.idempotencyKey}>
+                    {entry.kind === 'create' ? '추가' : entry.kind === 'correct' ? '정정' : '삭제'}{' '}
+                    · 세트 {entry.logId} ·{' '}
+                    {entry.status === 'pending' ? '동기화 대기' : '충돌·거절 검토 필요'}
+                  </li>
+                ))}
+            </ul>
+          ) : null}
+          {offlineNotice ? <p role="status">{offlineNotice}</p> : null}
+        </section>
         {executions.isPending ? <p role="status">수행 기록 불러오는 중</p> : null}
         {executions.isError ? <p role="alert">수행 기록을 불러오지 못했습니다.</p> : null}
         {executions.data?.hasMore ? <p role="status">수행 목록이 일부만 표시됩니다.</p> : null}
@@ -232,6 +428,11 @@ export function ExecutionWorkspace({
               execution={current.data}
               exercises={exercises.data?.items ?? []}
               writable={!current.isError && !current.isFetching}
+              offlineQueue={offlineQueue}
+              offlineSnapshot={offlineSnapshot}
+              refreshOffline={refreshOffline}
+              retryOffline={retryOffline}
+              offlineWriteBlocked={otherTabChanged}
             />
           </>
         ) : current.isPending ? (
@@ -256,6 +457,11 @@ function Runner({
   execution,
   exercises,
   writable,
+  offlineQueue = null,
+  offlineSnapshot = null,
+  refreshOffline,
+  retryOffline,
+  offlineWriteBlocked = false,
 }: {
   api: SupplementaryApi;
   scope: SupplementaryScope;
@@ -263,6 +469,11 @@ function Runner({
   execution: NonNullable<Awaited<ReturnType<SupplementaryApi['readExecution']>>>;
   exercises: ExerciseVersionRead[];
   writable: boolean;
+  offlineQueue?: ReturnType<typeof createOfflineSetQueue> | null;
+  offlineSnapshot?: OfflineSetSnapshot | null;
+  refreshOffline?: () => OfflineSetSnapshot | null;
+  retryOffline?: () => Promise<void>;
+  offlineWriteBlocked?: boolean;
 }) {
   const [store] = useState(createRunnerStore);
   const draft = useStore(store, (state) => state.draft);
@@ -359,13 +570,51 @@ function Runner({
       currentLog?.status !== 'active' ||
       currentLog.current.revision !== correcting.revision);
   const correctionAwaitingReplay = correcting !== null && setUncertain;
+  const canQueueActual =
+    offlineQueue !== null && offlineSnapshot?.consented === true && !offlineWriteBlocked;
+  const offlineBlocking =
+    offlineSnapshot?.entries.some(
+      (entry) => entry.executionId === executionId && entry.status !== 'confirmed',
+    ) ?? false;
+  const newSetBlocked =
+    offlineSnapshot?.entries.some(
+      (entry) =>
+        entry.executionId === executionId &&
+        entry.status !== 'confirmed' &&
+        (entry.status === 'needs_review' || entry.kind !== 'create'),
+    ) ?? false;
+  const setActionBlocked = correcting ? offlineBlocking : newSetBlocked;
+  const nextExecutionRevision = Math.max(
+    execution.revision,
+    ...(offlineSnapshot?.entries
+      .filter(
+        (entry) =>
+          entry.executionId === executionId &&
+          entry.status === 'pending' &&
+          entry.kind === 'create',
+      )
+      .map((entry) =>
+        entry.status === 'pending' && entry.payload.kind === 'create'
+          ? entry.payload.command.expectedExecutionRevision + 1
+          : execution.revision,
+      ) ?? []),
+  );
   function change<K extends keyof SetDraft>(key: K, value: SetDraft[K]) {
     pendingSet.current = null;
     actions.change(key, value);
   }
   async function submitSet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || deleteUncertain || !writable || sets.isFetching || sets.isError || !sets.data)
+    const canPersistActual = canQueueActual && draft.state !== 'unconfirmed';
+    if (
+      busy ||
+      deleteUncertain ||
+      offlineWriteBlocked ||
+      setActionBlocked ||
+      (!writable && !canPersistActual) ||
+      (!canPersistActual && (sets.isFetching || sets.isError)) ||
+      !sets.data
+    )
       return;
     const retryCommand = pendingSet.current;
     if (setUncertain && retryCommand === null) {
@@ -414,7 +663,7 @@ function Runner({
             schemaVersion: 2 as const,
             executionId,
             logId: crypto.randomUUID(),
-            expectedExecutionRevision: execution.revision,
+            expectedExecutionRevision: nextExecutionRevision,
             idempotencyKey: crypto.randomUUID(),
             confirmation:
               draft.state === 'unconfirmed' ? ('draft' as const) : ('user_confirmed' as const),
@@ -422,7 +671,29 @@ function Runner({
           };
         })();
       pendingSet.current = command;
-      if ('expectedRevision' in command) {
+      if (command.confirmation === 'user_confirmed' && canQueueActual && offlineQueue) {
+        const payload: OfflineSetCommand =
+          'expectedRevision' in command
+            ? { kind: 'correct', command }
+            : { kind: 'create', command };
+        offlineQueue.enqueue(payload);
+        refreshOffline?.();
+        await retryOffline?.();
+        const queued = offlineQueue
+          .snapshot()
+          .entries.find((item) => item.idempotencyKey === command.idempotencyKey);
+        if (queued?.status !== 'confirmed') {
+          pendingSet.current = null;
+          markSetUncertain(false);
+          actions.reset();
+          setNotice(
+            queued?.status === 'needs_review'
+              ? '서버 기록과 충돌했습니다. 확인 전에는 실제 수행으로 확정하지 않습니다.'
+              : '세트 명령을 이 기기에 보관했습니다. 서버 동기화 대기 중입니다.',
+          );
+          return;
+        }
+      } else if ('expectedRevision' in command) {
         await api.correctSet(command);
       } else {
         await api.createSet(command);
@@ -455,6 +726,17 @@ function Runner({
         pendingSet.current = null;
         markSetUncertain(false);
         setNotice('입력 또는 기록 버전이 맞지 않습니다. 최신 목록을 확인하고 수정하세요.');
+      } else if (error instanceof OfflineSetAccountScopeError) {
+        pendingSet.current = null;
+        markSetUncertain(false);
+        setNotice(
+          '계정이 변경돼 동기화 결과를 확인할 수 없습니다. 원래 계정의 서버 기록을 확인하세요.',
+        );
+      } else if (
+        error instanceof OfflineSetStorageError ||
+        error instanceof OfflineSetQueueCorruptError
+      ) {
+        setNotice('이 기기의 오프라인 저장소를 사용할 수 없어 세트 명령을 전송하지 않았습니다.');
       } else if (pendingSet.current) {
         markSetUncertain(true);
         setNotice('저장 결과가 불확실합니다. 값을 바꾸지 말고 같은 명령을 다시 시도하세요.');
@@ -466,7 +748,15 @@ function Runner({
     }
   }
   async function deleteSet(item: Extract<SetLogRead, { status: 'active' }>) {
-    if (busy || !writable || sets.isFetching || sets.isError || !sets.data) return;
+    if (
+      busy ||
+      offlineWriteBlocked ||
+      offlineBlocking ||
+      (!writable && !canQueueActual) ||
+      (!canQueueActual && (sets.isFetching || sets.isError)) ||
+      !sets.data
+    )
+      return;
     if (pendingDelete.current && pendingDelete.current.logId !== item.current.logId) return;
     setBusy(true);
     try {
@@ -480,7 +770,25 @@ function Runner({
         reason: '사용자가 세트 기록 삭제',
       };
       pendingDelete.current = command;
-      await api.deleteSet(command);
+      if (canQueueActual && offlineQueue) {
+        offlineQueue.enqueue({ kind: 'delete', command });
+        refreshOffline?.();
+        await retryOffline?.();
+        const queued = offlineQueue
+          .snapshot()
+          .entries.find((entry) => entry.idempotencyKey === command.idempotencyKey);
+        if (queued?.status !== 'confirmed') {
+          pendingDelete.current = null;
+          markDeleteUncertain(false);
+          setDeleteUncertainLogId(null);
+          setNotice(
+            queued?.status === 'needs_review'
+              ? '삭제 요청이 서버 기록과 충돌했습니다. 최신 기록을 확인하세요.'
+              : '세트 삭제 명령을 이 기기에 보관했습니다. 서버 동기화 대기 중입니다.',
+          );
+          return;
+        }
+      } else await api.deleteSet(command);
       pendingDelete.current = null;
       markDeleteUncertain(false);
       setDeleteUncertainLogId(null);
@@ -507,6 +815,18 @@ function Runner({
         markDeleteUncertain(false);
         setDeleteUncertainLogId(null);
         setNotice('삭제 요청을 확인하세요.');
+      } else if (error instanceof OfflineSetAccountScopeError) {
+        pendingDelete.current = null;
+        markDeleteUncertain(false);
+        setDeleteUncertainLogId(null);
+        setNotice(
+          '계정이 변경돼 삭제 결과를 확인할 수 없습니다. 원래 계정의 서버 기록을 확인하세요.',
+        );
+      } else if (
+        error instanceof OfflineSetStorageError ||
+        error instanceof OfflineSetQueueCorruptError
+      ) {
+        setNotice('이 기기의 오프라인 저장소를 사용할 수 없어 삭제 명령을 전송하지 않았습니다.');
       } else {
         markDeleteUncertain(true);
         setDeleteUncertainLogId(item.current.logId);
@@ -584,7 +904,15 @@ function Runner({
     }
   }
   async function complete(status: ExecutionStatusCommand['status']) {
-    if (busy || deleteUncertain || !writable || execution.status !== 'active') return;
+    if (
+      busy ||
+      deleteUncertain ||
+      offlineWriteBlocked ||
+      offlineBlocking ||
+      !writable ||
+      execution.status !== 'active'
+    )
+      return;
     if (pendingCompletion.current && pendingCompletion.current.status !== status) {
       setNotice('이전 종료 명령의 결과가 불확실합니다. 같은 명령을 다시 시도하세요.');
       return;
@@ -647,6 +975,8 @@ function Runner({
             disabled={
               busy ||
               deleteUncertain ||
+              offlineWriteBlocked ||
+              offlineBlocking ||
               !writable ||
               (completionUncertainStatus !== null && completionUncertainStatus !== 'finished')
             }
@@ -660,6 +990,8 @@ function Runner({
             disabled={
               busy ||
               deleteUncertain ||
+              offlineWriteBlocked ||
+              offlineBlocking ||
               !writable ||
               (completionUncertainStatus !== null && completionUncertainStatus !== 'stopped')
             }
@@ -704,9 +1036,10 @@ function Runner({
                     busy ||
                     setUncertain ||
                     deleteUncertain ||
-                    !writable ||
-                    sets.isFetching ||
-                    sets.isError
+                    offlineWriteBlocked ||
+                    newSetBlocked ||
+                    (!writable && !canQueueActual) ||
+                    (!canQueueActual && (sets.isFetching || sets.isError))
                   }
                   onClick={() => {
                     pendingSet.current = null;
@@ -742,9 +1075,10 @@ function Runner({
                     busy ||
                     setUncertain ||
                     deleteUncertain ||
-                    !writable ||
-                    sets.isFetching ||
-                    sets.isError
+                    offlineWriteBlocked ||
+                    offlineBlocking ||
+                    (!writable && !canQueueActual) ||
+                    (!canQueueActual && (sets.isFetching || sets.isError))
                   }
                   onClick={() => {
                     pendingSet.current = null;
@@ -801,9 +1135,10 @@ function Runner({
                   variant="secondary"
                   disabled={
                     busy ||
-                    !writable ||
-                    sets.isFetching ||
-                    sets.isError ||
+                    offlineWriteBlocked ||
+                    offlineBlocking ||
+                    (!writable && !canQueueActual) ||
+                    (!canQueueActual && (sets.isFetching || sets.isError)) ||
                     (deleteUncertain && deleteUncertainLogId !== item.current.logId)
                   }
                   onClick={() => void deleteSet(item)}
@@ -831,9 +1166,10 @@ function Runner({
             busy ||
             setUncertain ||
             deleteUncertain ||
-            !writable ||
-            sets.isFetching ||
-            sets.isError ||
+            offlineWriteBlocked ||
+            setActionBlocked ||
+            (!writable && !canQueueActual) ||
+            (!canQueueActual && (sets.isFetching || sets.isError)) ||
             !sets.data
           }
           className={styles.inputGroup}
@@ -992,9 +1328,11 @@ function Runner({
               busy ||
               (correctionStale && !correctionAwaitingReplay) ||
               deleteUncertain ||
-              !writable ||
-              sets.isFetching ||
-              sets.isError ||
+              offlineWriteBlocked ||
+              setActionBlocked ||
+              (!writable && !(canQueueActual && draft.state !== 'unconfirmed')) ||
+              (!(canQueueActual && draft.state !== 'unconfirmed') &&
+                (sets.isFetching || sets.isError)) ||
               !sets.data
             }
           >
@@ -1008,7 +1346,7 @@ function Runner({
             <Button
               type="button"
               variant="secondary"
-              disabled={busy || setUncertain || deleteUncertain || !writable}
+              disabled={busy || setUncertain || deleteUncertain || offlineBlocking}
               onClick={() => {
                 pendingSet.current = null;
                 setCorrectionNeedsReview(false);

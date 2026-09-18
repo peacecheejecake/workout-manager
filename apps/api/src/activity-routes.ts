@@ -52,7 +52,10 @@ export function registerActivityRoutes(
     { bodyLimit: activityDetailLimits.importRequestBytes },
     async (request) => {
       input(emptyQuery, request.query);
-      const body = input(importActivitySchema.omit({ idempotencyKey: true }), request.body);
+      const body = input(
+        z.strictObject({ ...importActivitySchema.shape, idempotencyKey: z.never().optional() }),
+        request.body,
+      );
       const payload = input(importActivitySchema, {
         ...body,
         idempotencyKey: request.headers['idempotency-key'],

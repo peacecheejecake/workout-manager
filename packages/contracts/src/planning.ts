@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { planningLensSchema, type DayProjection, type PlanningLens } from './core.js';
 import { periodConstraintsSchema } from './period-constraints.js';
+import { supplementarySessionLinkSchema } from './supplementary-core.js';
 import {
   idSchema,
   instantSchema,
@@ -197,6 +198,17 @@ export const manualPlanCommandSchema = z.strictObject({
   confirmed: z.literal(true),
   expectedVersionId: boundedId.nullable(),
   draft: planDraftSchema,
+  /** Optional changes to frozen strength-session content in this new plan version. */
+  supplementaryLinks: z
+    .array(
+      z.strictObject({
+        plannedSessionId: boundedId,
+        content: supplementarySessionLinkSchema.shape.content.nullable(),
+      }),
+    )
+    .max(1000)
+    .refine((links) => new Set(links.map((link) => link.plannedSessionId)).size === links.length)
+    .optional(),
   idempotencyKey: z
     .string()
     .min(8)

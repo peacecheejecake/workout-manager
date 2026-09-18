@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import { activityOverlaySchema, activityReportSchema } from '@workout/contracts/activity';
+import { activityDetailsV3Schema } from '@workout/contracts/activity-details';
 import {
   executionCreateCommandSchema,
   executionStatusCommandSchema,
@@ -117,6 +118,9 @@ function hash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 async function lock(tx: Transaction, key: string) {
+  // Joint approvals compare set/catalog heads under the same athlete lock.
+  // Take it before the command lock to preserve one ordering across writers.
+  await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77211))', [
     `${tx.athleteId}:${key}`,
   ]);
@@ -613,8 +617,25 @@ export function createSupplementaryRepository(
           );
           if (!found.rowCount) throw new SupplementaryReferenceError('ACTIVITY_NOT_FOUND');
           const matched = found.rows[0];
-          if (matched?.['kind'] !== 'strength')
-            throw new SupplementaryReferenceError('ACTIVITY_INVALID');
+          if (!matched) throw new SupplementaryReferenceError('ACTIVITY_NOT_FOUND');
+          if (matched['kind'] !== 'strength') {
+            const currentDetail = await tx.query(
+              `SELECT r.details_json AS details
+               FROM activity_source_head s JOIN activity_source_revision r
+                 ON r.athlete_id=s.athlete_id AND r.kind=s.kind
+                 AND r.source_id=s.source_id AND r.source_revision=s.source_revision
+               WHERE s.athlete_id=$1 AND s.activity_id=$2 AND s.kind='fit'`,
+              [athleteId, activityId],
+            );
+            const parsed = activityDetailsV3Schema.safeParse(currentDetail.rows[0]?.['details']);
+            if (
+              !parsed.success ||
+              !parsed.data.allocation.bouts.some(
+                (bout) => bout.kind === 'strength' && bout.sourceLapIndex !== null,
+              )
+            )
+              throw new SupplementaryReferenceError('ACTIVITY_INVALID');
+          }
           if (
             matched['plan_version_id'] !== null &&
             (matched['plan_version_id'] !== command.plannedSession?.planVersionId ||

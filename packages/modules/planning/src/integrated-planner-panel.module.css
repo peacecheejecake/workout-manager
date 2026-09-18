@@ -1,0 +1,54 @@
+.panel {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.panel > * + * {
+  margin-block-start: var(--space-3);
+}
+
+.days {
+  display: grid;
+  gap: var(--space-4);
+  list-style: none;
+  padding: 0;
+}
+
+.day {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.domains {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-3);
+  margin-block-start: var(--space-3);
+}
+
+.domains > section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.domains ul {
+  padding-inline-start: var(--space-4);
+}
+
+.domains li + li {
+  margin-block-start: var(--space-2);
+}
+
+.domains a {
+  color: var(--accent);
+}
+
+.domains a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

@@ -352,9 +352,10 @@ export const jointCoachingBasisSchema = z.strictObject({
 export type JointCoachingBasis = z.infer<typeof jointCoachingBasisSchema>;
 export const jointApprovalRequestSchema = z.strictObject({
   schemaVersion: z.literal(3),
+  confirmed: z.literal(true),
   proposalId: idSchema,
   candidateId: idSchema,
-  proposalDigest: nonEmptyStringSchema,
+  proposalDigest: z.string().regex(/^[0-9a-f]{64}$/),
   expectedBasis: jointCoachingBasisSchema,
   idempotencyKey: nonEmptyStringSchema,
 });

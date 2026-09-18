@@ -54,6 +54,7 @@ import type { PlannedActualsState } from './planned-actuals';
 import { PeriodMovePanel } from './period-move-panel';
 import { PlanScenarioPanel } from './scenario-panel';
 import { createScenarioDraftStore, type ScenarioDraftStore } from './scenario-draft-store';
+import { IntegratedPlannerPanel } from './integrated-planner-panel';
 
 export interface PlanningWorkspaceProps {
   activityHref?: (id: string) => string;
@@ -183,6 +184,7 @@ function Planner({
       setOperationFeedback(null);
       await client.resetQueries({ queryKey: key, exact: true });
       await refreshCompletionQueries();
+      await client.invalidateQueries({ queryKey: ['integrated-planner', athleteId, sessionId] });
     },
     onError: async () => {
       // A lost response or conflict can also mean the head changed. Preserve the draft/key,
@@ -190,6 +192,7 @@ function Planner({
       await client.cancelQueries({ queryKey: key, exact: true });
       await client.resetQueries({ queryKey: key, exact: true });
       await refreshCompletionQueries();
+      await client.invalidateQueries({ queryKey: ['integrated-planner', athleteId, sessionId] });
     },
   });
   const completions = useSessionCompletions({
@@ -520,6 +523,17 @@ function Planner({
           </p>
         ) : null}
       </section>
+      <IntegratedPlannerPanel
+        athleteId={athleteId}
+        sessionId={sessionId}
+        transport={transport}
+        head={currentPlan?.head}
+        lens={url.lens}
+        invalidLens={url.error}
+        draftActive={draft !== null}
+        onSelectSession={(id) => changeSearch({ plannedSession: id })}
+        {...(activityHref ? { activityHref } : {})}
+      />
       <AdaptiveWorkspace requestedView={url.view}>
         <div>
           {draft ? (

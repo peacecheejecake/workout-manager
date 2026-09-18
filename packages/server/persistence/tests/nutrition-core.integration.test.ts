@@ -255,6 +255,13 @@ describe('M1b-01 nutrition persistence', () => {
     expect(listing.coverage.knownEntries).toBe(0);
     await database.tenant(athlete, async (tx) => {
       expect((await tx.query('SELECT * FROM intake_entry_revision')).rowCount).toBe(3);
+      expect(
+        (await tx.query('SELECT intake_revision,food_revision FROM integrated_dependency_head'))
+          .rows[0],
+      ).toEqual({ intake_revision: 3, food_revision: 2 });
+    });
+    await database.tenant(randomUUID(), async (tx) => {
+      expect((await tx.query('SELECT * FROM integrated_dependency_head')).rows).toEqual([]);
     });
     await expect(
       database.tenant(athlete, (tx) => tx.query('DELETE FROM intake_entry_revision')),
@@ -422,6 +429,7 @@ describe('M1b-01 nutrition persistence', () => {
       'food_definition_head',
       'intake_entry',
       'intake_entry_revision',
+      'integrated_dependency_head',
     ]) {
       const rows = await admin.query(`SELECT 1 FROM ${table} WHERE athlete_id=$1`, [athlete]);
       expect(rows.rowCount).toBe(0);

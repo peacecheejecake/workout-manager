@@ -1,6 +1,7 @@
 import { lazy, Suspense, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-candidates';
+import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
 import './styles.css';
 
@@ -12,6 +13,9 @@ const CoachingPage = lazy(() =>
 );
 const ProposalPage = lazy(() =>
   import('./proposal-page').then((module) => ({ default: module.ProposalPage })),
+);
+const JointProposalPage = lazy(() =>
+  import('./joint-proposal-page').then((module) => ({ default: module.JointProposalPage })),
 );
 const PlannerPage = lazy(() =>
   import('./planner-page').then((module) => ({ default: module.PlannerPage })),
@@ -29,12 +33,26 @@ const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
   : null;
+const jointProposalPath = location.pathname.match(/^\/joint-proposals\/([^/]+)\/?$/)?.[1];
+const jointProposalCandidateId = jointProposalPath
+  ? jointCandidateV3Schema.shape.id.safeParse(jointProposalPath)
+  : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
     <main className="wm-page mobile-shell">
-      {proposalCandidateId?.success ? (
+      {jointProposalCandidateId?.success ? (
+        <Suspense fallback={<p role="status">공동 후보 검토 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/coach">코치</a> · <a href="/planner">훈련 계획</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <JointProposalPage candidateId={jointProposalCandidateId.data.toLowerCase()} />
+        </Suspense>
+      ) : jointProposalPath ? (
+        <p role="alert">공동 후보 주소가 올바르지 않습니다.</p>
+      ) : proposalCandidateId?.success ? (
         <Suspense fallback={<p role="status">후보 검토 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/coach">코치</a> · <a href="/account">계정</a>

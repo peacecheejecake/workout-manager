@@ -34,6 +34,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '019_coaching_candidate_approval.sql',
       '020_nutrition_core.sql',
       '021_supplementary_core.sql',
+      '022_integrated_dependency_heads.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -127,6 +128,7 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON supplementary_exercise_version,supplementary_exercise_head,supplementary_routine_version,supplementary_routine_head,supplementary_routine_target_ref,supplementary_session_link,supplementary_session_target_ref,supplementary_execution,supplementary_set_log,supplementary_set_log_revision,supplementary_rest_timer TO "${runtimeRole}"`,
     );
+    await pool.query(`GRANT SELECT ON integrated_dependency_head TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );

@@ -4,6 +4,7 @@ import {
   activityDetailsSchema,
   activityDetailsV1Schema,
   activityDetailsV2Schema,
+  activityDetailsV3Schema,
 } from './activity-details.js';
 
 const boundedMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
@@ -45,36 +46,98 @@ export const activitySourceSchema = z.strictObject({
 export const importActivitySourceSchema = activitySourceSchema.extend({
   kind: z.enum(['fit', 'fixture']),
 });
-export const importActivitySchema = z.strictObject({
-  idempotencyKey: z
-    .string()
-    .min(8)
-    .max(128)
-    .regex(/^[a-zA-Z0-9_-]+$/),
-  source: importActivitySourceSchema,
-  activity: activityValuesSchema,
-  // Omission preserves the hash of legacy summary-only import commands.
-  details: activityDetailsSchema.optional(),
-});
+export const importActivitySchema = z
+  .strictObject({
+    idempotencyKey: z
+      .string()
+      .min(8)
+      .max(128)
+      .regex(/^[a-zA-Z0-9_-]+$/),
+    source: importActivitySourceSchema,
+    activity: activityValuesSchema,
+    // Omission preserves the hash of legacy summary-only import commands.
+    details: activityDetailsSchema.optional(),
+  })
+  .superRefine((command, context) => {
+    if (command.details?.schemaVersion !== 3) return;
+    const start = command.activity.startedAt;
+    const parent = command.details.allocation.parent;
+    if (start === null || Date.parse(start) !== Date.parse(parent.startedAt))
+      context.addIssue({
+        code: 'custom',
+        path: ['activity', 'startedAt'],
+        message: 'Canonical Activity must start with its parent FIT interval',
+      });
+    if (
+      command.activity.durationKind === 'elapsed' &&
+      command.activity.durationSeconds !== command.details.elapsedSeconds
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['activity', 'durationSeconds'],
+        message: 'Elapsed duration must match the parent, not a child bout',
+      });
+    if (
+      command.activity.durationKind === 'timer' &&
+      command.activity.durationSeconds !== null &&
+      command.details.elapsedSeconds !== null &&
+      command.activity.durationSeconds > command.details.elapsedSeconds
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['activity', 'durationSeconds'],
+        message: 'Timer duration cannot exceed parent elapsed duration',
+      });
+    const kinds = new Set(command.details.allocation.bouts.map((bout) => bout.kind));
+    const oneConfirmedSport = kinds.size === 1 && !kinds.has('mixed_unallocated');
+    if (
+      !oneConfirmedSport &&
+      command.activity.kind !== 'unknown' &&
+      command.activity.kind !== 'other'
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['activity', 'kind'],
+        message: 'A mixed or unallocated parent cannot claim one sport',
+      });
+    if (
+      oneConfirmedSport &&
+      command.activity.kind !== 'unknown' &&
+      command.activity.kind !== 'other' &&
+      !kinds.has(command.activity.kind)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['activity', 'kind'],
+        message: 'Parent sport must agree with its confirmed bouts',
+      });
+  });
 export const activityExportSchema = z.discriminatedUnion('schemaVersion', [
   z.strictObject({
     schemaVersion: z.literal(1),
     imports: z
-      .array(importActivitySchema.extend({ details: z.never().optional() }))
+      .array(importActivitySchema.safeExtend({ details: z.never().optional() }))
       .min(1)
       .max(100),
   }),
   z.strictObject({
     schemaVersion: z.literal(2),
     imports: z
-      .array(importActivitySchema.extend({ details: activityDetailsV1Schema }))
+      .array(importActivitySchema.safeExtend({ details: activityDetailsV1Schema }))
       .min(1)
       .max(100),
   }),
   z.strictObject({
     schemaVersion: z.literal(3),
     imports: z
-      .array(importActivitySchema.extend({ details: activityDetailsV2Schema }))
+      .array(importActivitySchema.safeExtend({ details: activityDetailsV2Schema }))
+      .min(1)
+      .max(100),
+  }),
+  z.strictObject({
+    schemaVersion: z.literal(4),
+    imports: z
+      .array(importActivitySchema.safeExtend({ details: activityDetailsV3Schema }))
       .min(1)
       .max(100),
   }),

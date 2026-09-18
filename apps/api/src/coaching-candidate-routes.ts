@@ -12,7 +12,7 @@ import {
   TrainingCandidateError,
   type TrainingCandidateRepository,
 } from '@workout/server-persistence/coaching-candidates';
-import { PlanLockedError } from '@workout/server-persistence/planning';
+import { CombinedReviewRequiredError, PlanLockedError } from '@workout/server-persistence/planning';
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 import { sessionCompletionRequestError } from './session-completion-routes.js';
@@ -29,6 +29,8 @@ const idempotencyKey = z
 function execute<T>(operation: () => Promise<T>): Promise<T> {
   return command(operation, (error) => {
     if (error instanceof PlanLockedError) return new ProductRequestError(409, 'PLAN_LOCKED');
+    if (error instanceof CombinedReviewRequiredError)
+      return new ProductRequestError(409, 'COMBINED_REVIEW_REQUIRED');
     if (!(error instanceof TrainingCandidateError)) return sessionCompletionRequestError(error);
     const statusCode = ['RUN_NOT_FOUND', 'CANDIDATE_UNAVAILABLE'].includes(error.code)
       ? 404

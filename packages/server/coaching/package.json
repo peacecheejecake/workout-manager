@@ -13,6 +13,7 @@
   },
   "exports": {
     "./runner": "./src/runner.ts",
-    "./candidates": "./src/candidates.ts"
+    "./candidates": "./src/candidates.ts",
+    "./joint-candidates": "./src/joint-candidates.ts"
   }
 }

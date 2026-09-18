@@ -16,6 +16,10 @@ import {
   transportReplySchema,
   type AuthenticatedTransport,
 } from '@workout/contracts/core';
+import {
+  bindPrivateBrowserStorageAccount,
+  clearPrivateBrowserStorage,
+} from './private-browser-storage';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),
@@ -47,7 +51,7 @@ export function createSessionTransport(
       }
       const path = apiPathSchema.parse(input.path);
       if (
-        !/^\/bff\/v1\/(?:plans|plan-scenarios|nutrition|supplementary|coaching-threads|coaching-runs|coaching-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
+        !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
           path,
         )
       )
@@ -150,6 +154,7 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'offline'>('loading');
   const [generation, setGeneration] = useState(0);
   const expired = useCallback(() => {
+    clearPrivateBrowserStorage();
     setSession(null);
     setState('loading');
     setGeneration((value) => value + 1);
@@ -168,6 +173,7 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         });
         if (controller.signal.aborted) return;
         if (response.status === 401) {
+          clearPrivateBrowserStorage();
           setSession(null);
           setState('ready');
           return;
@@ -175,7 +181,13 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         if (!response.ok) throw new Error('SESSION_UNAVAILABLE');
         const next = sessionSchema.parse(await response.json());
         if (controller.signal.aborted) return;
-        setSession(Date.parse(next.expiresAt) > Date.now() ? next : null);
+        if (Date.parse(next.expiresAt) > Date.now()) {
+          bindPrivateBrowserStorageAccount(next.athleteId);
+          setSession(next);
+        } else {
+          clearPrivateBrowserStorage();
+          setSession(null);
+        }
         setState('ready');
       } catch {
         if (!controller.signal.aborted) {

@@ -2,10 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import type { ManualPlanCommand } from '@workout/contracts/planning';
+import type { NutritionPlanDraft } from '@workout/contracts/nutrition-core';
 import { createDatabase, type Database } from '../src/database.js';
-import { migrate, grantOperations } from '../src/migrate.js';
+import {
+  migrate,
+  grantNutritionCore,
+  grantOperations,
+  grantSupplementaryCore,
+} from '../src/migrate.js';
 import { createPlanningRepository } from '../src/planning.js';
+import { createNutritionRepository } from '../src/nutrition-core.js';
 import { createOperationsRepository } from '../src/operations.js';
+import { createSupplementaryRepository } from '../src/supplementary-core.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
@@ -14,6 +22,8 @@ let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantNutritionCore(adminUrl, 'workout_runtime');
+  await grantSupplementaryCore(adminUrl, 'workout_runtime');
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON plan_snapshot,plan_head,plan_history,command_receipt,outbox TO workout_runtime',
@@ -54,6 +64,129 @@ function command(): ManualPlanCommand {
   };
 }
 describe('M1-02 manual plans real transaction invariants', () => {
+  it('freezes supplementary content with each approved plan version and copies it forward', async () => {
+    const athlete = randomUUID();
+    const supplementary = createSupplementaryRepository(database);
+    const exerciseVersionId = randomUUID();
+    await supplementary.saveExercise(athlete, {
+      definition: {
+        schemaVersion: 2,
+        exerciseId: randomUUID(),
+        versionId: exerciseVersionId,
+        name: 'Balance',
+        family: 'balance_stability',
+        equipment: ['bodyweight'],
+        tags: [],
+        countDefinitions: [],
+        mediaAssetIds: [],
+        resourceVersionIds: [],
+        reviewState: 'unreviewed',
+        description: 'User-defined',
+        safetyNotes: '',
+        supportedMetrics: ['duration'],
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      expectedVersionId: null,
+      idempotencyKey: randomUUID(),
+      confirmed: true,
+    });
+    const initial = command();
+    const root = initial.draft.periods[0];
+    if (!root) throw new Error('Missing period');
+    initial.draft.periods.push(
+      { ...root, id: 'wave', parentId: 'season', level: 'wave' },
+      { ...root, id: 'phase', parentId: 'wave', level: 'phase' },
+      { ...root, id: 'block', parentId: 'phase', level: 'block' },
+    );
+    initial.draft.sessions.push({
+      id: 'strength-1',
+      blockId: 'block',
+      date: '2026-01-02',
+      localStartTime: null,
+      title: 'Balance',
+      sport: 'strength',
+      durationSeconds: null,
+      distanceMeters: null,
+      targetRpe: null,
+      purpose: '',
+      notes: '',
+      priority: 'normal',
+      locks: { date: false, time: false, intensity: false },
+      steps: [],
+    });
+    const content = {
+      kind: 'embedded' as const,
+      spec: {
+        schemaVersion: 2 as const,
+        kind: 'supplementary' as const,
+        routineVersionId: null,
+        blocks: [
+          {
+            id: 'block-1',
+            mode: 'single' as const,
+            rounds: 1,
+            sets: [
+              {
+                id: 'set-1',
+                exerciseVersionId,
+                side: 'bilateral' as const,
+                count: null,
+                durationSeconds: {
+                  min: 30,
+                  max: 30,
+                  unit: 's' as const,
+                  basis: 'user_confirmed' as const,
+                  evidenceIds: [],
+                },
+                externalResistance: { kind: 'no_added_load' as const },
+                restAfterSeconds: null,
+                tempo: null,
+                effort: null,
+              },
+            ],
+            restBetweenRoundsSeconds: null,
+          },
+        ],
+      },
+    };
+    initial.supplementaryLinks = [{ plannedSessionId: 'strength-1', content }];
+    const planning = createPlanningRepository(database);
+    const first = await planning.save(athlete, initial);
+    expect(await supplementary.readSessionLink(athlete, first.id, 'strength-1')).toMatchObject({
+      planVersionId: first.id,
+      content,
+    });
+    const second = await planning.save(athlete, {
+      ...initial,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: { ...initial.draft, title: 'New title' },
+      supplementaryLinks: undefined,
+    });
+    expect(await supplementary.readSessionLink(athlete, second.id, 'strength-1')).toMatchObject({
+      planVersionId: second.id,
+      content,
+    });
+    await expect(
+      planning.save(athlete, {
+        ...initial,
+        expectedVersionId: second.id,
+        idempotencyKey: randomUUID(),
+        supplementaryLinks: [{ plannedSessionId: 'missing', content }],
+      }),
+    ).rejects.toMatchObject({ code: 'SESSION_LINK_INVALID' });
+    expect((await planning.read(athlete)).head?.id).toBe(second.id);
+    const third = await planning.save(athlete, {
+      ...initial,
+      expectedVersionId: second.id,
+      idempotencyKey: randomUUID(),
+      supplementaryLinks: [{ plannedSessionId: 'strength-1', content: null }],
+    });
+    expect(await supplementary.readSessionLink(athlete, third.id, 'strength-1')).toBeNull();
+    expect(await supplementary.readSessionLink(athlete, first.id, 'strength-1')).toMatchObject({
+      content,
+    });
+  });
   it('starts absent and saves immutable version/head/history/outbox and original receipt', async () => {
     const repository = createPlanningRepository(database);
     const athlete = randomUUID();
@@ -267,6 +400,69 @@ function intensityCommand(): ManualPlanCommand {
   ];
   return input;
 }
+
+describe('relative nutrition change gate', () => {
+  it('blocks a later session move even when the nutrition plan links an older unchanged training version', async () => {
+    const athlete = randomUUID();
+    const planning = createPlanningRepository(database);
+    const initial = intensityCommand();
+    const first = await planning.save(athlete, initial);
+    const nutritionDraft: NutritionPlanDraft = {
+      period: { from: '2026-01-01', toInclusive: '2026-01-31' },
+      timezone: 'UTC',
+      purpose: 'Before the run',
+      linkedTrainingPlanVersionId: first.id,
+      items: [
+        {
+          id: 'before-run',
+          category: 'before',
+          title: 'Meal before run',
+          anchor: {
+            kind: 'relative',
+            entity: 'session',
+            entityId: 'run',
+            point: 'start',
+            offsetMinutes: -60,
+          },
+          foods: [],
+          targets: [],
+          instructions: 'Prepare food',
+          evidenceIds: [],
+          source: 'user_confirmed',
+        },
+      ],
+    };
+    await createNutritionRepository(database).savePlan(athlete, {
+      kind: 'create',
+      idempotencyKey: randomUUID(),
+      confirmed: true,
+      draft: nutritionDraft,
+    });
+    const unchanged = await planning.save(athlete, {
+      ...initial,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: { ...initial.draft, title: 'Revised season' },
+    });
+    const move = {
+      ...initial,
+      expectedVersionId: unchanged.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...unchanged.draft,
+        sessions: unchanged.draft.sessions.map((session) => ({
+          ...session,
+          date: '2026-01-03',
+        })),
+      },
+    };
+    await expect(planning.save(athlete, move)).rejects.toMatchObject({
+      code: 'COMBINED_REVIEW_REQUIRED',
+    });
+    expect((await planning.read(athlete)).head?.id).toBe(unchanged.id);
+    expect((await planning.read(athlete)).history).toHaveLength(2);
+  });
+});
 
 describe('S06 intensity label snapshot compatibility', () => {
   it('preserves absent legacy fields and original receipts after a labeled version is saved', async () => {

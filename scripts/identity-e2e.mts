@@ -7,6 +7,9 @@ import { createSessionActualsRepository } from '../packages/server/persistence/s
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
 import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
 import { createPeriodSummaryRepository } from '../packages/server/persistence/src/period-summary.ts';
+import { createIntegratedPlannerRepository } from '../packages/server/persistence/src/integrated-planner.ts';
+import { createJointApprovalRepository } from '../packages/server/persistence/src/joint-approval.ts';
+import { createJointFixtureRepository } from '../packages/server/persistence/src/joint-fixture.ts';
 import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
@@ -151,6 +154,8 @@ try {
     await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
     await grantCoachingRuns(adminUrl, 'workout_runtime');
     await grantCoachingCandidates(adminUrl, 'workout_runtime');
+    // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
+    await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(
       'CREATE ROLE workout_coaching_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
@@ -224,6 +229,9 @@ try {
     clearInterval(timer);
     await workerRun;
   });
+  const jointApproval = createJointApprovalRepository(database, {
+    policy: { id: 'running-core-v3-joint', version: '1' },
+  });
   const api = createApi({
     auth: identity,
     identity,
@@ -251,6 +259,12 @@ try {
     sessionCompletions: createSessionCompletionRepository(database),
     sessionActuals: createSessionActualsRepository(database),
     periodSummary: createPeriodSummaryRepository(database),
+    integratedPlanner: createIntegratedPlannerRepository(database),
+    jointApproval,
+    jointFixture: createJointFixtureRepository(database, jointApproval, {
+      enabled: true,
+      environment: 'test',
+    }),
     activities: createActivityRepository(database),
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),

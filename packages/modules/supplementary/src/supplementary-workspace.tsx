@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { createSupplementaryApi } from './supplementary-api';
 import { ExerciseLibrary } from './exercise-library';
 import { RoutineWorkspace } from './routine-workspace';
 import { ExecutionWorkspace } from './execution-workspace';
+import { createOfflineSetQueue } from './offline-set-queue';
 import type { SupplementaryRoute } from './supplementary-route';
 import styles from './supplementary.module.css';
 
@@ -39,6 +40,33 @@ function Lifetime(props: SupplementaryWorkspaceProps) {
 
 function Workspace({ athleteId, sessionId, transport, route }: SupplementaryWorkspaceProps) {
   const api = useMemo(() => createSupplementaryApi(transport), [transport]);
+  const offlineSource = useMemo(() => {
+    let access: {
+      queue: ReturnType<typeof createOfflineSetQueue> | null;
+      unavailable: boolean;
+    } | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const queue = createOfflineSetQueue({ userId: athleteId, storage: window.localStorage });
+        queue.snapshot();
+        access = { queue, unavailable: false };
+      } catch {
+        access = { queue: null, unavailable: true };
+      }
+    }
+    return {
+      subscribe: () => () => {},
+      current: () => access,
+      server: () => null,
+    };
+  }, [athleteId]);
+  const offlineAccess = useSyncExternalStore(
+    offlineSource.subscribe,
+    offlineSource.current,
+    offlineSource.server,
+  );
+  const offlineQueue = offlineAccess?.queue ?? null;
+  const offlineStorageUnavailable = offlineAccess?.unavailable ?? false;
   const scope: SupplementaryScope = ['users', athleteId, 'sessions', sessionId, 'supplementary'];
   return (
     <section className={styles.workspace} aria-label="보강 운동 작업 공간">
@@ -63,11 +91,23 @@ function Workspace({ athleteId, sessionId, transport, route }: SupplementaryWork
       ) : route.kind === 'routine' ? (
         <RoutineWorkspace api={api} scope={scope} routineId={route.routineId} />
       ) : route.kind === 'execution' ? (
-        <ExecutionWorkspace api={api} scope={scope} executionId={route.executionId} />
+        <ExecutionWorkspace
+          api={api}
+          scope={scope}
+          executionId={route.executionId}
+          offlineQueue={offlineQueue}
+          offlineStorageUnavailable={offlineStorageUnavailable}
+        />
       ) : (
         <div className={styles.stack}>
           <RoutineWorkspace api={api} scope={scope} routineId={null} />
-          <ExecutionWorkspace api={api} scope={scope} executionId={null} />
+          <ExecutionWorkspace
+            api={api}
+            scope={scope}
+            executionId={null}
+            offlineQueue={offlineQueue}
+            offlineStorageUnavailable={offlineStorageUnavailable}
+          />
         </div>
       )}
     </section>

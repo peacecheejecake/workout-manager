@@ -25,12 +25,21 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--timezone", default=None)
     export.add_argument("--include-details", action="store_true")
+    export.add_argument(
+        "--include-bouts",
+        action="store_true",
+        help="Export explicit FIT lap boundaries as non-overlapping parent bouts (v4)",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         if args.command == "export-activity":
             export_activity(
-                args.source, args.output, args.timezone, include_details=args.include_details
+                args.source,
+                args.output,
+                args.timezone,
+                include_details=args.include_details,
+                include_bouts=args.include_bouts,
             )
             return 0
         return convert_batch(
