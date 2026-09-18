@@ -2,11 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   coachingRunCreateCommandV1Schema,
+  coachingRunOutputV1Schema,
   coachingRunListQuerySchema,
   coachingRunListSchema,
   coachingRunModelSourceSchema,
   coachingRunV1Schema,
   type CoachingRunCreateCommandV1,
+  type CoachingRunOutputV1,
   type CoachingRunList,
   type CoachingRunListQuery,
   type CoachingRunModelSource,
@@ -46,6 +48,7 @@ export interface CoachingRunRepository {
     command: CoachingRunCreateCommandV1,
   ): Promise<CoachingRunV1>;
   read(athleteId: string, id: string): Promise<CoachingRunV1 | null>;
+  readOutput(athleteId: string, id: string): Promise<CoachingRunOutputV1 | null>;
   list(
     athleteId: string,
     threadId: string,
@@ -61,6 +64,10 @@ export interface CoachingRunRepositoryOptions {
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const record = z.record(z.string(), z.unknown());
+const storedFixtureOutputSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  content: z.json(),
+});
 const iso = (value: unknown) => z.coerce.date().parse(value).toISOString();
 
 function decode(value: unknown): CoachingRunV1 {
@@ -199,6 +206,39 @@ export function createCoachingRunRepository(
   const source = coachingRunModelSourceSchema.parse(options.source);
   return {
     read: (athleteId, id) => database.tenant(athleteId, (tx) => read(tx, uuid.parse(id))),
+    readOutput(athleteId, id) {
+      const runId = uuid.parse(id);
+      return database.tenant(athleteId, async (tx) => {
+        // Serialize against redaction, then compare every current dependency and policy head.
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [athleteId]);
+        const result = await tx.query(
+          `SELECT r.*,o.id AS output_id,o.body AS output_body
+           FROM coaching_run r
+           JOIN coaching_analysis_output o ON o.athlete_id=r.athlete_id AND o.run_id=r.id
+           WHERE r.athlete_id=$1 AND r.id=$2
+            AND r.status->>'kind'='analysis_ready'
+            AND r.status->>'outputId'=o.id::text
+            AND r.source->>'kind'='deterministic_fixture'
+            AND r.source->>'fixtureId'='synthetic-v1'
+            AND o.body IS NOT NULL AND o.purged_reason IS NULL`,
+          [athleteId, runId],
+        );
+        const row = result.rows[0];
+        if (!row) return null;
+        const body = storedFixtureOutputSchema.safeParse(row['output_body']);
+        if (!body.success || !(await currentWorkerEvidence(tx, row, policy, source))) return null;
+        return coachingRunOutputV1Schema.parse({
+          schemaVersion: 1,
+          runId,
+          outputId: row['output_id'],
+          source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+          trust: 'untrusted_fixture',
+          validation: 'unvalidated',
+          content: body.data.content,
+        });
+      });
+    },
     list(athleteId, threadId, input = {}) {
       const id = uuid.parse(threadId);
       const query = coachingRunListQuerySchema.parse(input);

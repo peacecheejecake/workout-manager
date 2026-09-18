@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canTransitionCoachingRunStatus,
   coachingRunCreateCommandV1Schema,
+  coachingRunOutputV1Schema,
   coachingRunStatusSchema,
   coachingRunV1Schema,
   type CoachingRunStatus,
@@ -98,6 +99,28 @@ describe('coaching run lifecycle contract', () => {
       { kind: 'queued', provisionalText: 'approved' },
     ])
       expect(coachingRunStatusSchema.safeParse(status).success).toBe(false);
+  });
+
+  it('marks fixture analysis as untrusted and unvalidated without decision fields', () => {
+    const output = {
+      schemaVersion: 1,
+      runId,
+      outputId,
+      source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+      trust: 'untrusted_fixture',
+      validation: 'unvalidated',
+      content: { summary: 'Synthetic training analysis awaiting validation.' },
+    };
+    expect(coachingRunOutputV1Schema.parse(output)).toEqual(output);
+    for (const invalid of [
+      { ...output, trust: 'reviewed' },
+      { ...output, validation: 'validated' },
+      { ...output, source: { kind: 'provider', providerId: 'p', modelId: 'm' } },
+      { ...output, source: { kind: 'deterministic_fixture', fixtureId: 'other' } },
+      { ...output, decisionId },
+      { ...output, content: undefined },
+    ])
+      expect(coachingRunOutputV1Schema.safeParse(invalid).success).toBe(false);
   });
 
   it('requires bounded explicit question, failure reason and cancellation code', () => {

@@ -1,0 +1,20 @@
+{
+  "name": "@workout/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "coaching:fixture": "tsx src/start.ts"
+  },
+  "dependencies": {
+    "@workout/server-coaching": "workspace:*",
+    "@workout/server-persistence": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.23.13",
+    "vitest": "4.1.11"
+  }
+}

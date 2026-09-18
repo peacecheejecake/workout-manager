@@ -218,6 +218,22 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
 
+  apps/worker:
+    dependencies:
+      '@workout/server-coaching':
+        specifier: workspace:*
+        version: link:../../packages/server/coaching
+      '@workout/server-persistence':
+        specifier: workspace:*
+        version: link:../../packages/server/persistence
+    devDependencies:
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.13.4)(@vitest/coverage-v8@4.1.11)(jsdom@27.4.0)(msw@2.15.0(@types/node@24.13.4)(typescript@5.9.3))(vite@7.3.6(@types/node@24.13.4)(tsx@4.23.13))
+
   packages/api-client:
     dependencies:
       '@tanstack/react-query':

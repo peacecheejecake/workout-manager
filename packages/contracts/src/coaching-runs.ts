@@ -88,12 +88,27 @@ export const coachingRunListSchema = z
   })
   .refine((value) => value.total >= value.items.length, 'Invalid total');
 
+/** Fixture analysis is untrusted material, not a candidate, Decision, or approvable plan. */
+export const coachingRunOutputV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  runId: uuid,
+  outputId: uuid,
+  source: z.strictObject({
+    kind: z.literal('deterministic_fixture'),
+    fixtureId: z.literal('synthetic-v1'),
+  }),
+  trust: z.literal('untrusted_fixture'),
+  validation: z.literal('unvalidated'),
+  content: z.json(),
+});
+
 export type CoachingRunCreateCommandV1 = z.infer<typeof coachingRunCreateCommandV1Schema>;
 export type CoachingRunModelSource = z.infer<typeof coachingRunModelSourceSchema>;
 export type CoachingRunStatus = z.infer<typeof coachingRunStatusSchema>;
 export type CoachingRunV1 = z.infer<typeof coachingRunV1Schema>;
 export type CoachingRunListQuery = z.infer<typeof coachingRunListQuerySchema>;
 export type CoachingRunList = z.infer<typeof coachingRunListSchema>;
+export type CoachingRunOutputV1 = z.infer<typeof coachingRunOutputV1Schema>;
 
 /** A question or failure finishes this evidence-bound attempt; answering/retrying creates a new run. */
 export function canTransitionCoachingRunStatus(from: unknown, to: unknown): boolean {

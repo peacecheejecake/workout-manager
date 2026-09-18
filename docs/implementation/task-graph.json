@@ -781,40 +781,45 @@
       "title": "비프로덕션 fixture 연결·실행 E2E",
       "dependsOn": ["M1-05i2b2a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "개발·테스트 fixture 구성과 tenant dispatch·일반 서버 비활성 정책·API 결과/취소 복구·실DB E2E; 실제 provider 별도 검증"
+      "status": "completed",
+      "scope": "개발·테스트 fixture 구성과 tenant dispatch·일반 서버 비활성 정책·API 결과/취소 복구·실DB E2E; 실제 provider 별도 검증",
+      "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
       "id": "M1-05i2b2",
       "title": "결정론 실행 adapter·preflight·fixture 노출",
       "dependsOn": ["M1-05i2b2a", "M1-05i2b2b"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "실행 직전/직후 근거/동의/정책 재검사·tenant lease/중복 방지·결정론 adapter·미검증 분석/질문/실패/취소·비프로덕션 fixture 노출; 실제 provider 별도 검증"
+      "status": "completed",
+      "scope": "실행 직전/직후 근거/동의/정책 재검사·tenant lease/중복 방지·결정론 adapter·미검증 분석/질문/실패/취소·비프로덕션 fixture 노출; 실제 provider 별도 검증",
+      "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
       "id": "M1-05i2b",
       "title": "코치 실행 adapter·preflight·운영 수명주기",
       "dependsOn": ["M1-05i2b1", "M1-05i2b2"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "결정론 adapter·실행 직전/직후 근거/동의/정책 재검사·미검증 분석/실패/취소·lease/재시도·삭제/내보내기/복원·비프로덕션 fixture 노출; 실제 provider 별도 검증"
+      "status": "completed",
+      "scope": "결정론 adapter·실행 직전/직후 근거/동의/정책 재검사·미검증 분석/실패/취소·lease/재시도·삭제/내보내기/복원·비프로덕션 fixture 노출; 실제 provider 별도 검증",
+      "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
       "id": "M1-05i2",
       "title": "코치 실행 원장·preflight·adapter",
       "dependsOn": ["M1-05i2a", "M1-05i2b"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "실DB 실행/재시도 수명주기·동의/근거 최신성 직전 검사·결정론 adapter·미검증 분석/실패/취소·API; 실제 provider 별도 검증"
+      "status": "completed",
+      "scope": "실DB 실행/재시도 수명주기·동의/근거 최신성 직전 검사·결정론 adapter·미검증 분석/실패/취소·API; 실제 provider 별도 검증",
+      "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
       "id": "M1-05i",
       "title": "코치 실행 원장·adapter",
       "dependsOn": ["M1-05i1", "M1-05i2"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "동의 직전 검사·진행/질문/취소/실패 원장·결정론 adapter·재시도/수명주기; 실제 모델 연결은 별도 증거"
+      "status": "completed",
+      "scope": "동의 직전 검사·진행/질문/취소/실패 원장·결정론 adapter·재시도/수명주기; 실제 모델 연결은 별도 증거",
+      "evidence": "docs/implementation/progress/M1-05i2b2b.md"
     },
     {
       "id": "M1-05j",

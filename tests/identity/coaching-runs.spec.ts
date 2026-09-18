@@ -1,0 +1,238 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
+import { expect, test, type Page } from '@playwright/test';
+import { coachingMessageResultSchema } from '../../packages/contracts/src/coaching-threads';
+import {
+  coachingRunOutputV1Schema,
+  coachingRunV1Schema,
+} from '../../packages/contracts/src/coaching-runs';
+import { coreEvidenceSnapshotSchema } from '../../packages/contracts/src/evidence-snapshots';
+import {
+  planDraftSchema,
+  planReadSchema,
+  planSnapshotSchema,
+} from '../../packages/contracts/src/planning';
+import { consentSchema } from '../../apps/api/src/ports';
+import { coachingWorkerContextPath } from '../../scripts/fixtures/coaching-worker-context';
+
+const execFileAsync = promisify(execFile);
+type Headers = {
+  origin: string;
+  'x-workout-session-id': string;
+  'x-csrf-token': string;
+};
+const cleanupHeaders = new WeakMap<Page, Headers>();
+
+async function login(page: Page, name: 'Alice' | 'Bob') {
+  await page.goto('/account');
+  await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
+  await page.getByRole('link', { name: `Sign in as ${name}` }).click();
+  await expect(page.getByRole('button', { name: '로그아웃', exact: true })).toBeVisible();
+  const response = await page.request.get('/bff/v1/session');
+  expect(response.status()).toBe(200);
+  const session: unknown = await response.json();
+  assert.ok(
+    typeof session === 'object' &&
+      session !== null &&
+      'athleteId' in session &&
+      typeof session.athleteId === 'string' &&
+      'sessionId' in session &&
+      typeof session.sessionId === 'string' &&
+      'csrfToken' in session &&
+      typeof session.csrfToken === 'string',
+  );
+  const headers: Headers = {
+    origin: new URL(page.url()).origin,
+    'x-workout-session-id': session.sessionId,
+    'x-csrf-token': session.csrfToken,
+  };
+  cleanupHeaders.set(page, headers);
+  return { athleteId: session.athleteId, headers };
+}
+
+test.afterEach(async ({ page }) => {
+  const headers = cleanupHeaders.get(page);
+  if (!headers) return;
+  cleanupHeaders.delete(page);
+  const erased = await page.request.delete('/bff/v1/operations/account', {
+    headers,
+    data: { confirmation: 'DELETE MY ACCOUNT' },
+    timeout: 5000,
+  });
+  expect(erased.status()).toBe(200);
+});
+
+async function createQueuedRun(page: Page) {
+  const { athleteId, headers } = await login(page, 'Alice');
+  const get = async (path: string) => {
+    const response = await page.request.get(path, { headers });
+    expect(response.status()).toBe(200);
+    return response.json();
+  };
+  const post = (path: string, data: unknown, key = randomUUID()) =>
+    page.request.post(path, { headers: { ...headers, 'idempotency-key': key }, data });
+  const consent = consentSchema.parse(await get('/bff/v1/consents/ai'));
+  if (!consent.granted) {
+    const granted = await page.request.put('/bff/v1/consents/ai', {
+      headers: { ...headers, 'idempotency-key': randomUUID() },
+      data: { granted: true, expectedRevision: consent.revision },
+    });
+    expect(granted.status()).toBe(200);
+  }
+  const current = planReadSchema.parse(await get('/bff/v1/plans/current'));
+  const draft = planDraftSchema.parse({
+    title: 'Synthetic coaching run plan',
+    timezone: 'UTC',
+    sessions: [],
+    periods: (['season', 'wave', 'phase'] as const).map((level, index, levels) => ({
+      id: level,
+      parentId: index === 0 ? null : levels[index - 1],
+      level,
+      title: level,
+      startDate: '2026-09-01',
+      endDateExclusive: '2026-10-01',
+      timezone: 'UTC',
+      intent: '',
+      isPartial: false,
+    })),
+  });
+  const savedResponse = await page.request.put('/bff/v1/plans/current', {
+    headers: { ...headers, 'idempotency-key': randomUUID() },
+    data: { source: 'manual', confirmed: true, expectedVersionId: current.head?.id ?? null, draft },
+  });
+  expect(savedResponse.status()).toBe(200);
+  const plan = planSnapshotSchema.parse(await savedResponse.json());
+  const threadResponse = await post('/bff/v1/coaching-threads', {
+    planVersionId: plan.id,
+    title: 'Synthetic run consultation',
+    scope: { kind: 'phase', targetId: 'phase' },
+    message: 'Review my synthetic training schedule.',
+  });
+  expect(threadResponse.status()).toBe(200);
+  const { thread } = coachingMessageResultSchema.parse(await threadResponse.json());
+  const captureResponse = await post(`/bff/v1/coaching-threads/${thread.id}/evidence-snapshots`, {
+    expectedConversationRevision: thread.revision,
+    window: { from: '2026-09-01', toExclusive: '2026-09-30', timezone: 'UTC' },
+  });
+  expect(captureResponse.status()).toBe(200);
+  const snapshot = coreEvidenceSnapshotSchema.parse(await captureResponse.json());
+  expect(snapshot.status).toBe('available');
+  const path = `/bff/v1/coaching-threads/${thread.id}/runs`;
+  const command = {
+    schemaVersion: 1,
+    evidenceSnapshotId: snapshot.id,
+    expectedConversationRevision: thread.revision,
+  };
+  const key = randomUUID();
+  const queuedResponse = await post(path, command, key);
+  expect(queuedResponse.status()).toBe(200);
+  const run = coachingRunV1Schema.parse(await queuedResponse.json());
+  expect(run.status).toEqual({ kind: 'queued' });
+  expect(run.source).toEqual({ kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' });
+  return { athleteId, headers, post, path, command, key, run };
+}
+
+async function dispatchOne(athleteId: string) {
+  const context: unknown = JSON.parse(await readFile(coachingWorkerContextPath, 'utf8'));
+  assert.ok(
+    typeof context === 'object' &&
+      context !== null &&
+      'databaseUrl' in context &&
+      typeof context.databaseUrl === 'string' &&
+      'workerDatabaseUrl' in context &&
+      typeof context.workerDatabaseUrl === 'string',
+  );
+  await execFileAsync(
+    'pnpm',
+    ['--filter', '@workout/worker', 'coaching:fixture', '--athlete-id', athleteId],
+    {
+      cwd: process.cwd(),
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        COACHING_FIXTURE_ENABLED: 'true',
+        COACHING_FIXTURE_ID: 'synthetic-v1',
+        DATABASE_URL: context.databaseUrl,
+        COACHING_WORKER_DATABASE_URL: context.workerDatabaseUrl,
+      },
+    },
+  );
+}
+
+test('runs synthetic analysis through OIDC, API, tenant worker and PostgreSQL without approval', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await createQueuedRun(page);
+  const detail = `/bff/v1/coaching-runs/${fixture.run.id}`;
+  expect((await page.request.get(`${detail}/output`, { headers: fixture.headers })).status()).toBe(
+    404,
+  );
+  await dispatchOne(fixture.athleteId);
+  const read = await page.request.get(detail, { headers: fixture.headers });
+  expect(read.status()).toBe(200);
+  const updated = coachingRunV1Schema.parse(await read.json());
+  expect(updated.status.kind).toBe('analysis_ready');
+  const outputResponse = await page.request.get(`${detail}/output`, { headers: fixture.headers });
+  expect(outputResponse.status()).toBe(200);
+  const output = coachingRunOutputV1Schema.parse(await outputResponse.json());
+  expect(output).toMatchObject({
+    runId: fixture.run.id,
+    trust: 'untrusted_fixture',
+    validation: 'unvalidated',
+    content: { summary: 'Synthetic training analysis awaiting validation.' },
+  });
+  const replay = await fixture.post(fixture.path, fixture.command, fixture.key);
+  expect(replay.status()).toBe(200);
+  expect(coachingRunV1Schema.parse(await replay.json())).toEqual(updated);
+  const otherContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const otherPage = await otherContext.newPage();
+    const other = await login(otherPage, 'Bob');
+    expect((await otherPage.request.get(detail, { headers: other.headers })).status()).toBe(404);
+    expect(
+      (await otherPage.request.get(`${detail}/output`, { headers: other.headers })).status(),
+    ).toBe(404);
+  } finally {
+    await otherContext.close();
+  }
+  const consent = consentSchema.parse(
+    await (await page.request.get('/bff/v1/consents/ai', { headers: fixture.headers })).json(),
+  );
+  const withdrawn = await page.request.put('/bff/v1/consents/ai', {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+    data: { granted: false, expectedRevision: consent.revision },
+  });
+  expect(withdrawn.status()).toBe(200);
+  expect((await page.request.get(`${detail}/output`, { headers: fixture.headers })).status()).toBe(
+    404,
+  );
+});
+
+test('keeps a user-cancelled queued attempt cancelled when the worker later sees its event', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await createQueuedRun(page);
+  const detail = `/bff/v1/coaching-runs/${fixture.run.id}`;
+  const cancelled = await page.request.post(`${detail}/cancel`, { headers: fixture.headers });
+  expect(cancelled.status()).toBe(200);
+  expect(coachingRunV1Schema.parse(await cancelled.json()).status).toEqual({
+    kind: 'cancelled',
+    reason: 'user_requested',
+  });
+  await dispatchOne(fixture.athleteId);
+  const read = await page.request.get(detail, { headers: fixture.headers });
+  expect(coachingRunV1Schema.parse(await read.json()).status).toEqual({
+    kind: 'cancelled',
+    reason: 'user_requested',
+  });
+  expect((await page.request.get(`${detail}/output`, { headers: fixture.headers })).status()).toBe(
+    404,
+  );
+});

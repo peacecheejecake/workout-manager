@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoachingRunError } from '@workout/server-persistence/coaching-runs';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { createApi } from '../src/app.js';
+import { createConfiguredApi } from '../src/configured.js';
 
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const threadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -28,6 +29,16 @@ const headers = {
 };
 const collection = `/bff/v1/coaching-threads/${threadId}/runs`;
 const detail = `/bff/v1/coaching-runs/${id}`;
+const outputDetail = `${detail}/output`;
+const output = {
+  schemaVersion: 1 as const,
+  runId: id,
+  outputId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  source: { kind: 'deterministic_fixture' as const, fixtureId: 'synthetic-v1' as const },
+  trust: 'untrusted_fixture' as const,
+  validation: 'unvalidated' as const,
+  content: { summary: 'Synthetic training analysis awaiting validation.' },
+};
 const instances: ReturnType<typeof createApi>[] = [];
 
 function setup(authenticated = true) {
@@ -35,6 +46,7 @@ function setup(authenticated = true) {
     create: vi.fn().mockResolvedValue(run),
     list: vi.fn().mockResolvedValue({ items: [run], total: 1 }),
     read: vi.fn().mockResolvedValue(run),
+    readOutput: vi.fn().mockResolvedValue(output),
     cancel: vi.fn().mockResolvedValue({
       ...run,
       status: { kind: 'cancelled', reason: 'user_requested' },
@@ -182,6 +194,42 @@ describe('coaching run API boundary', () => {
     ).toBe(403);
     expect(repository.read).not.toHaveBeenCalled();
     expect(repository.cancel).not.toHaveBeenCalled();
+  });
+
+  it('returns only explicitly untrusted fixture output through the authenticated owner boundary', async () => {
+    const { app, repository } = setup();
+    const available = await app.inject({ url: outputDetail, headers });
+    expect(available.statusCode).toBe(200);
+    expect(available.json()).toEqual(output);
+    expect(repository.readOutput).toHaveBeenCalledWith('owner', id);
+
+    repository.readOutput.mockResolvedValue(null);
+    const unavailable = await app.inject({ url: outputDetail, headers });
+    expect(unavailable.statusCode).toBe(404);
+    expect(unavailable.json()).toMatchObject({ error: { code: 'OUTPUT_NOT_FOUND' } });
+    expect((await app.inject({ url: `${outputDetail}?extra=1`, headers })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ url: '/bff/v1/coaching-runs/not-a-uuid/output', headers })).statusCode,
+    ).toBe(400);
+    expect((await setup(false).app.inject({ url: outputDetail, headers })).statusCode).toBe(401);
+  });
+
+  it('fails closed on production fixture configuration before provider or database access', async () => {
+    const base = {
+      DATABASE_URL: 'postgres://runtime:secret@127.0.0.1/workout',
+      PUBLIC_ORIGIN: 'https://workout.example',
+      OIDC_ISSUER: 'https://oidc.example',
+      OIDC_CLIENT_ID: 'client',
+      OIDC_CLIENT_SECRET: 'secret',
+      COACHING_FIXTURE_ENABLED: 'true',
+      COACHING_FIXTURE_ID: 'synthetic-v1',
+    };
+    await expect(createConfiguredApi({ ...base, NODE_ENV: 'production' })).rejects.toThrow(
+      'Coaching fixture is unavailable in production',
+    );
+    await expect(
+      createConfiguredApi({ ...base, NODE_ENV: 'development', COACHING_FIXTURE_ID: 'other' }),
+    ).rejects.toThrow('Unsupported coaching fixture configuration');
   });
 
   it('maps owned missing, stale and receipt conflict without exposing private errors', async () => {

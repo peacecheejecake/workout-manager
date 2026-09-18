@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   coachingRunCreateCommandV1Schema,
+  coachingRunOutputV1Schema,
   coachingRunListQuerySchema,
   coachingRunListSchema,
   coachingRunV1Schema,
@@ -66,6 +67,14 @@ export function registerCoachingRunRoutes(
     const result = await execute(() => repository.read(principal(request).athleteId, runId));
     if (!result) throw new ProductRequestError(404, 'RUN_NOT_FOUND');
     return coachingRunV1Schema.parse(result);
+  });
+
+  routes.get('/coaching-runs/:runId/output', async (request) => {
+    input(emptyQuery, request.query);
+    const { runId } = input(runParams, request.params);
+    const result = await execute(() => repository.readOutput(principal(request).athleteId, runId));
+    if (!result) throw new ProductRequestError(404, 'OUTPUT_NOT_FOUND');
+    return coachingRunOutputV1Schema.parse(result);
   });
 
   routes.post('/coaching-runs/:runId/cancel', async (request) => {

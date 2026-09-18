@@ -183,4 +183,29 @@ receipt·outbox는 다운로드에 포함하지 않는다.
 
 복원 절차에서는 최신 삭제 원장과 AI 동의 상태를 적용한 뒤 runtime 접근을 열어야 한다.
 과거 백업의 미검증 출력이 철회된 동의나 삭제된 근거를 통해 다시 노출되어서는 안 된다.
-일반 서버의 실행 생성 경로와 결정론 runner는 M1-05i2b2가 끝나기 전까지 비활성이다.
+일반 서버의 실행 생성 경로는 아래의 명시적 비프로덕션 fixture 설정이 없으면 비활성이다.
+
+## 비프로덕션 코치 fixture 실행 (M1-05i2b2b)
+
+Migration 017 적용 후 API 역할에는 `grantCoachingRuns`, 별도의
+`workout_coaching_worker` 역할에는 `grantCoachingRunWorker`를 적용한다. 두 역할 모두
+schema 사용 권한이 필요하다. worker 역할에는 출력 삽입 권한만 있으며 출력 조회 권한은 없다.
+API와 worker는 각각 제한된 별도 DB 자격증명을 사용한다.
+
+개발·테스트에서만 `NODE_ENV`를 `development` 또는 `test`로 두고 `COACHING_FIXTURE_ENABLED=true`,
+`COACHING_FIXTURE_ID=synthetic-v1`를 함께 설정한다. API는 이때만 실행 route를 연결하며
+프로덕션에서 fixture 활성화를 요청하면 시작을 거부한다. worker는 별도의
+`COACHING_WORKER_DATABASE_URL`로 다음 one-shot 명령을 실행한다.
+URL의 사용자 이름은 `workout_coaching_worker`여야 하며, Unix socket용 `host` 이외의
+query parameter는 자격증명 재정의를 막기 위해 허용하지 않는다.
+
+```bash
+pnpm --filter @workout/worker coaching:fixture --athlete-id <athlete-uuid>
+```
+
+명령은 해당 tenant의 `coaching.run_queued` 이벤트 하나만 처리한다. 작업이 비어 있으면
+다른 tenant를 자동 탐색하지 않는다. lease 만료 후에는 같은 tenant를 다시 dispatch할 수
+있고, 여섯 번째 claim은 adapter 호출 없이 내부 오류 상태로 종결한다. 결과 본문을 로그에
+기록하지 않는다. API의 출력 조회는 현재 동의·근거·정책·의존성을 다시 확인하며 stale,
+회수·취소된 출력은 404로 숨긴다. fixture 분석은 미검증 출력이며 실제 모델이나
+Decision/Proposal·계획 승인의 근거가 아니다.

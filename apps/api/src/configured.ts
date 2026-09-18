@@ -1,6 +1,7 @@
 import { createCoachingConstraintRepository } from '@workout/server-persistence/coaching-constraints';
 import { createCoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { createCoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
+import { createCoachingRunRepository } from '@workout/server-persistence/coaching-runs';
 import { createSessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
 import { createSessionCompletionRepository } from '@workout/server-persistence/session-completions';
@@ -36,6 +37,8 @@ const environmentSchema = z.object({
   OIDC_CLIENT_ID: z.string().min(1),
   OIDC_CLIENT_SECRET: z.string().min(1),
   ALLOW_INSECURE_LOCALHOST: z.enum(['true', 'false']).default('false'),
+  COACHING_FIXTURE_ENABLED: z.enum(['true', 'false']).default('false'),
+  COACHING_FIXTURE_ID: z.string().optional(),
 });
 
 /** The supplied database role must be the restricted runtime role, never the migration owner. */
@@ -43,6 +46,10 @@ export async function createConfiguredApi(environment: unknown) {
   const env = environmentSchema.parse(environment);
   if (env.NODE_ENV === 'production' && env.ALLOW_INSECURE_LOCALHOST === 'true')
     throw new Error('Insecure production configuration');
+  if (env.NODE_ENV === 'production' && env.COACHING_FIXTURE_ENABLED === 'true')
+    throw new Error('Coaching fixture is unavailable in production');
+  if (env.COACHING_FIXTURE_ENABLED === 'true' && env.COACHING_FIXTURE_ID !== 'synthetic-v1')
+    throw new Error('Unsupported coaching fixture configuration');
   const allowInsecureLocalhost = env.ALLOW_INSECURE_LOCALHOST === 'true';
   const garminConfiguration = configuredGarmin(
     environment,
@@ -77,6 +84,14 @@ export async function createConfiguredApi(environment: unknown) {
       planScenarios: createPlanScenarioRepository(database),
       coachingConstraints: createCoachingConstraintRepository(database),
       coachingThreads: createCoachingThreadRepository(database),
+      ...(env.COACHING_FIXTURE_ENABLED === 'true'
+        ? {
+            coachingRuns: createCoachingRunRepository(database, {
+              policy: { id: 'running-core-v2-training', version: '1' },
+              source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+            }),
+          }
+        : {}),
       evidenceSnapshots: createCoreEvidenceSnapshotRepository(database),
       sessionCompletions: createSessionCompletionRepository(database),
       sessionActuals: createSessionActualsRepository(database),

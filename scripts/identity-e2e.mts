@@ -1,6 +1,7 @@
 import { createCoachingConstraintRepository } from '../packages/server/persistence/src/coaching-constraints.ts';
 import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.ts';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
+import { createCoachingRunRepository } from '../packages/server/persistence/src/coaching-runs.ts';
 import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
 import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
@@ -9,12 +10,13 @@ import { createActivityContextRepository } from '../packages/server/persistence/
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
 import { identityApiPort } from './fixtures/identity-api-port.ts';
+import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -30,6 +32,8 @@ import {
   grantPlanScenarios,
   grantCoachingConstraints,
   grantCoachingThreads,
+  grantCoachingRuns,
+  grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
   grantGarminWorker,
@@ -122,6 +126,7 @@ try {
   const endpoint = `localhost/postgres?host=${encodeURIComponent(directory)}`;
   const adminUrl = `postgresql://workout_admin@${endpoint}`;
   const runtimeUrl = `postgresql://workout_runtime@${endpoint}`;
+  const workerUrl = `postgresql://workout_coaching_worker@${endpoint}`;
   const admin = new Pool({ connectionString: adminUrl });
   try {
     await admin.query(
@@ -136,18 +141,31 @@ try {
     await grantCoachingConstraints(adminUrl, 'workout_runtime');
     await grantCoachingThreads(adminUrl, 'workout_runtime');
     await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
+    await grantCoachingRuns(adminUrl, 'workout_runtime');
+    await admin.query(
+      'CREATE ROLE workout_coaching_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
+    await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
     await grantGarmin(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
     await grantGarminWorker(adminUrl, 'workout_garmin_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
+    await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
     await admin.query(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
     );
   } finally {
     await admin.end();
   }
+  await rm(coachingWorkerContextPath, { force: true });
+  await writeFile(
+    coachingWorkerContextPath,
+    JSON.stringify({ databaseUrl: runtimeUrl, workerDatabaseUrl: workerUrl }),
+    { mode: 0o600 },
+  );
+  closers.push(() => rm(coachingWorkerContextPath, { force: true }));
   const providerServer = await startFixtureOidc();
   closers.push(() => providerServer.close());
   const garminServer = await startFixtureGarmin();
@@ -210,6 +228,10 @@ try {
     planScenarios: createPlanScenarioRepository(database),
     coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),
+    coachingRuns: createCoachingRunRepository(database, {
+      policy: { id: 'running-core-v2-training', version: '1' },
+      source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+    }),
     evidenceSnapshots: createCoreEvidenceSnapshotRepository(database),
     sessionCompletions: createSessionCompletionRepository(database),
     sessionActuals: createSessionActualsRepository(database),

@@ -485,6 +485,31 @@ it('claims only coaching jobs and persists one untrusted fixture output without 
       unrelated_pending: 1,
     }),
   ]);
+  expect(await repository().readOutput(athleteId, run.id)).toEqual({
+    schemaVersion: 1,
+    runId: run.id,
+    outputId,
+    source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+    trust: 'untrusted_fixture',
+    validation: 'unvalidated',
+    content: { summary: 'Synthetic training analysis awaiting validation.' },
+  });
+  expect(await repository().readOutput(randomUUID(), run.id)).toBeNull();
+  expect(await repository().readOutput(athleteId, randomUUID())).toBeNull();
+  expect(
+    await createCoachingRunRepository(database, {
+      policy: { id: 'running-core-v2-training', version: '2' },
+      source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+    }).readOutput(athleteId, run.id),
+  ).toBeNull();
+  await createCoachingThreadRepository(database).append(athleteId, thread.id, {
+    expectedRevision: 1,
+    message: 'Changed synthetic context after analysis',
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repository().readOutput(athleteId, run.id)).toBeNull();
+  await repository().cancel(athleteId, run.id);
+  expect(await repository().readOutput(athleteId, run.id)).toBeNull();
   expect(await workerStore().claim(athleteId)).toBeNull();
   await expect(
     workerDatabase.tenant(athleteId, (tx) =>
@@ -492,6 +517,54 @@ it('claims only coaching jobs and persists one untrusted fixture output without 
     ),
   ).rejects.toThrow();
 });
+
+it.each(['consent_withdrawn', 'source_deleted'] as const)(
+  'hides and scrubs completed fixture output after %s',
+  async (purgeReason) => {
+    const athleteId = randomUUID();
+    const { thread, evidence, command } = await seed(athleteId);
+    const repo = repository();
+    const run = await repo.create(athleteId, thread.id, command);
+    expect(
+      await runOneCoachingJob({
+        athleteId,
+        store: workerStore(),
+        adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+      }),
+    ).toBe('stored');
+    expect(await repo.readOutput(athleteId, run.id)).not.toBeNull();
+    if (purgeReason === 'consent_withdrawn') {
+      await createConsentRepository(database).setConsent(athleteId, {
+        kind: 'ai',
+        granted: false,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+      });
+    } else {
+      const owner = await admin.connect();
+      try {
+        await owner.query('BEGIN');
+        await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+        await owner.query(
+          `UPDATE core_evidence_snapshot SET body=NULL,purged_reason='source_deleted'
+           WHERE athlete_id=$1 AND id=$2`,
+          [athleteId, evidence.id],
+        );
+        await owner.query('COMMIT');
+      } catch (error) {
+        await owner.query('ROLLBACK');
+        throw error;
+      } finally {
+        owner.release();
+      }
+    }
+    expect(await repo.readOutput(athleteId, run.id)).toBeNull();
+    expect((await repo.read(athleteId, run.id))?.status).toEqual({
+      kind: 'cancelled',
+      reason: purgeReason,
+    });
+  },
+);
 
 it('does not claim another tenant’s event', async () => {
   const athleteId = randomUUID();
