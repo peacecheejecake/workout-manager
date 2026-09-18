@@ -19,6 +19,7 @@ import { createOperationsRepository } from '../packages/server/persistence/src/o
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
+import { createRoutineRepository } from '../packages/server/persistence/src/routine-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -170,6 +171,13 @@ try {
     await admin.query(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
     );
+    // Fixture-only permissions on a disposable cluster; production grants require separate review.
+    await admin.query(
+      'GRANT SELECT,INSERT ON routine_blueprint_version,routine_schedule_version,routine_occurrence,routine_run_revision,routine_checklist_confirmation,routine_command_receipt TO workout_runtime',
+    );
+    await admin.query(
+      'GRANT SELECT,INSERT,UPDATE ON routine_blueprint_head,routine_schedule_head,routine_run,routine_step_timer TO workout_runtime',
+    );
   } finally {
     await admin.end();
   }
@@ -244,6 +252,7 @@ try {
     planning: createPlanningRepository(database),
     nutrition: createNutritionRepository(database),
     supplementary: createSupplementaryRepository(database),
+    routines: createRoutineRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),

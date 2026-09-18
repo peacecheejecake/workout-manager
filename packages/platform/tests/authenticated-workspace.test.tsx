@@ -453,6 +453,46 @@ it('rejects adjacent nutrition namespaces', async () => {
 });
 
 it.each([
+  ['GET', '/bff/v1/routines'],
+  ['POST', '/bff/v1/routines'],
+  ['GET', '/bff/v1/routine-versions/version'],
+  ['POST', '/bff/v1/routine-schedule-previews'],
+  ['POST', '/bff/v1/routine-schedules'],
+  ['POST', '/bff/v1/routine-runs/run/steps'],
+] as const)('binds routine %s %s to the active session and CSRF token', async (method, path) => {
+  fetchMock.mockResolvedValue(json({ accepted: true }));
+  await createSessionTransport(session, vi.fn()).request({
+    method,
+    path,
+    body: method === 'GET' ? null : { confirmed: true },
+    idempotencyKey: method === 'GET' ? null : 'routine-key',
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({
+      credentials: 'same-origin',
+      headers: expect.objectContaining({
+        'x-workout-session-id': session.sessionId,
+        ...(method === 'GET'
+          ? {}
+          : { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'routine-key' }),
+      }),
+    }),
+  );
+});
+it('rejects adjacent routine namespaces', async () => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method: 'POST',
+      path: '/bff/v1/routines-admin',
+      body: {},
+      idempotencyKey: 'private',
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it.each([
   ['GET', '/bff/v1/coaching-constraints'],
   ['POST', '/bff/v1/coaching-constraints'],
   ['PUT', '/bff/v1/coaching-constraints/constraint'],

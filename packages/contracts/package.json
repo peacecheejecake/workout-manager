@@ -41,6 +41,10 @@
       "types": "./src/routines.ts",
       "default": "./dist/routines.js"
     },
+    "./routine-commands": {
+      "types": "./src/routine-commands.ts",
+      "default": "./dist/routine-commands.js"
+    },
     "./approval": {
       "types": "./src/approval.ts",
       "default": "./dist/approval.js"

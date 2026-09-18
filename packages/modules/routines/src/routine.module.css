@@ -1,0 +1,98 @@
+.workspace {
+  display: grid;
+  gap: var(--space-6, 1.5rem);
+  min-width: 0;
+}
+.header,
+.head,
+.nav,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+}
+.header,
+.head {
+  justify-content: space-between;
+}
+.header h1,
+.head h2 {
+  margin-block: 0.25rem;
+}
+.eyebrow {
+  color: var(--color-text-muted, #58677a);
+  font-weight: 700;
+}
+.nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.columns {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  min-width: 0;
+}
+.card,
+.step,
+.timer,
+.group {
+  border: 1px solid var(--color-border, #c7d1dc);
+  border-radius: var(--radius-md, 0.75rem);
+  padding: var(--space-4, 1rem);
+  min-width: 0;
+}
+.stack,
+.form,
+.steps,
+.list {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+.steps,
+.list {
+  padding-inline-start: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.field :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  color: inherit;
+  font: inherit;
+  border: 1px solid var(--color-border, #8899ac);
+  border-radius: 0.4rem;
+  background: var(--color-surface, #fff);
+  padding: 0.5rem;
+}
+.field textarea {
+  min-height: 6rem;
+}
+.field :is(input, select, textarea):focus-visible,
+.nav a:focus-visible,
+.card a:focus-visible {
+  outline: 3px solid var(--color-focus, #245fbb);
+  outline-offset: 2px;
+}
+.group legend {
+  font-weight: 700;
+}
+.group button {
+  margin-inline-end: 0.5rem;
+  margin-block-end: 0.5rem;
+}
+.group button[aria-pressed='true'] {
+  border-color: var(--color-focus, #245fbb);
+  box-shadow: inset 0 0 0 2px var(--color-focus, #245fbb);
+}
+.timer p {
+  margin-block: 0.5rem;
+}

@@ -993,8 +993,9 @@
       "title": "범용 루틴",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "routines/routine-kit; finite occurrence/run·actual link"
+      "status": "in_progress",
+      "scope": "routines/routine-kit; finite occurrence/run·actual link",
+      "evidence": "docs/implementation/progress/M1c-01.md"
     },
     {
       "id": "M1c-02",
