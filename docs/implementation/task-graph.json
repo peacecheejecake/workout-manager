@@ -750,11 +750,28 @@
       "evidence": "docs/implementation/progress/M1-05i1.md"
     },
     {
-      "id": "M1-05i2",
-      "title": "코치 실행 원장·preflight·adapter",
+      "id": "M1-05i2a",
+      "title": "코치 실행 원장·API 경계",
       "dependsOn": ["M1-05i1"],
       "kind": "task",
+      "status": "completed",
+      "scope": "실DB 실행 생성/조회/취소·멱등 원장·동일 시점 근거/대화/동의/의존성 검사·ID-only outbox·tenant/RLS·API 계약; runner 전 일반 서버 쓰기 비활성",
+      "evidence": "docs/implementation/progress/M1-05i2a.md"
+    },
+    {
+      "id": "M1-05i2b",
+      "title": "코치 실행 adapter·preflight·운영 수명주기",
+      "dependsOn": ["M1-05i2a"],
+      "kind": "task",
       "status": "not_started",
+      "scope": "결정론 adapter·실행 직전/직후 근거/동의/정책 재검사·미검증 출력/실패/취소·lease/재시도·삭제/내보내기/복원·비프로덕션 fixture 노출; 실제 provider 별도 검증"
+    },
+    {
+      "id": "M1-05i2",
+      "title": "코치 실행 원장·preflight·adapter",
+      "dependsOn": ["M1-05i2a", "M1-05i2b"],
+      "kind": "task",
+      "status": "in_progress",
       "scope": "실DB 실행/재시도 수명주기·동의/근거 최신성 직전 검사·결정론 adapter·미검증 분석/실패/취소·API; 실제 provider 별도 검증"
     },
     {

@@ -29,6 +29,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '014_coaching_constraints.sql',
       '015_evidence_constraints.sql',
       '016_plan_scenario_labels.sql',
+      '017_coaching_runs.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -227,6 +228,24 @@ export async function grantCoreEvidenceSnapshots(
     await pool.query(`GRANT SELECT,INSERT ON core_evidence_snapshot TO "${runtimeRole}"`);
     await pool.query(
       `GRANT SELECT ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Durable coaching attempts expose run metadata, not model output, to the API role. */
+export async function grantCoachingRuns(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT,INSERT ON coaching_run TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(status,updated_at) ON coaching_run TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.coaching_run_status_valid(jsonb) TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

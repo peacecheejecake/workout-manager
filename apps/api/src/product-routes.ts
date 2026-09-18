@@ -4,6 +4,8 @@ import type { CoreEvidenceSnapshotRepository } from '@workout/server-persistence
 import { registerCoreEvidenceSnapshotRoutes } from './evidence-snapshot-routes.js';
 import type { CoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
 import { registerCoachingThreadRoutes } from './coaching-thread-routes.js';
+import type { CoachingRunRepository } from '@workout/server-persistence/coaching-runs';
+import { registerCoachingRunRoutes } from './coaching-run-routes.js';
 import type { SessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { registerSessionActualsRoutes } from './session-actuals-routes.js';
 import type { PlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
@@ -32,6 +34,7 @@ export interface ProductRepositories {
   planning?: PlanningRepository;
   coachingConstraints?: CoachingConstraintRepository;
   coachingThreads?: CoachingThreadRepository;
+  coachingRuns?: CoachingRunRepository;
   evidenceSnapshots?: CoreEvidenceSnapshotRepository;
   sessionActuals?: SessionActualsRepository;
   planScenarios?: PlanScenarioRepository;
@@ -54,6 +57,8 @@ export function registerProductRoutes(
     registerCoreEvidenceSnapshotRoutes(routes, repositories.evidenceSnapshots, principal);
   if (repositories.coachingThreads)
     registerCoachingThreadRoutes(routes, repositories.coachingThreads, principal);
+  if (repositories.coachingRuns)
+    registerCoachingRunRoutes(routes, repositories.coachingRuns, principal);
   if (repositories.sessionActuals)
     registerSessionActualsRoutes(routes, repositories.sessionActuals, principal);
   if (repositories.planScenarios)

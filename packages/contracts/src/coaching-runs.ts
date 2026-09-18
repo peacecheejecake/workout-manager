@@ -76,10 +76,24 @@ export const coachingRunV1Schema = z
     path: ['updatedAt'],
   });
 
+const page = (max: number) => z.coerce.number().int().min(0).max(max);
+export const coachingRunListQuerySchema = z.strictObject({
+  limit: page(100).min(1).default(20),
+  offset: page(10000).default(0),
+});
+export const coachingRunListSchema = z
+  .strictObject({
+    items: z.array(coachingRunV1Schema).max(100),
+    total: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .refine((value) => value.total >= value.items.length, 'Invalid total');
+
 export type CoachingRunCreateCommandV1 = z.infer<typeof coachingRunCreateCommandV1Schema>;
 export type CoachingRunModelSource = z.infer<typeof coachingRunModelSourceSchema>;
 export type CoachingRunStatus = z.infer<typeof coachingRunStatusSchema>;
 export type CoachingRunV1 = z.infer<typeof coachingRunV1Schema>;
+export type CoachingRunListQuery = z.infer<typeof coachingRunListQuerySchema>;
+export type CoachingRunList = z.infer<typeof coachingRunListSchema>;
 
 /** A question or failure finishes this evidence-bound attempt; answering/retrying creates a new run. */
 export function canTransitionCoachingRunStatus(from: unknown, to: unknown): boolean {
