@@ -33,6 +33,7 @@
     "./evidence-dependencies": "./src/evidence-dependencies.ts",
     "./coaching-threads": "./src/coaching-threads.ts",
     "./coaching-runs": "./src/coaching-runs.ts",
+    "./coaching-candidates": "./src/coaching-candidates.ts",
     "./evidence-snapshots": "./src/evidence-snapshots.ts",
     "./coaching-constraints": "./src/coaching-constraints.ts"
   },

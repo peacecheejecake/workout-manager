@@ -835,8 +835,9 @@
       "title": "불변 후보 원장·digest·수명주기",
       "dependsOn": ["M1-05j1"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "tenant Decision/Proposal/Candidate 정본·서버 digest·멱등/회수·내보내기/삭제/복원; 계획 쓰기 없음"
+      "status": "completed",
+      "scope": "tenant Decision/Proposal/Candidate 정본·서버 digest·멱등/회수·내보내기/삭제/복원; 계획 쓰기 없음",
+      "evidence": "docs/implementation/progress/M1-05j2.md"
     },
     {
       "id": "M1-05j3",

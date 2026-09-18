@@ -56,6 +56,21 @@ const accountExportV7Schema = accountExportV6Schema.extend({
     coachingConstraintHeads: rows,
   }),
 });
+const accountExportV8Schema = accountExportV7Schema.extend({
+  schemaVersion: z.literal(8),
+  data: accountExportV7Schema.shape.data.extend({
+    coachingRuns: rows,
+    coachingAnalysisOutputs: rows,
+  }),
+});
+const accountExportV9Schema = accountExportV8Schema.extend({
+  schemaVersion: z.literal(9),
+  data: accountExportV8Schema.shape.data.extend({
+    coachingDecisions: rows,
+    coachingProposals: rows,
+    coachingCandidates: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -64,13 +79,8 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV5Schema,
   accountExportV6Schema,
   accountExportV7Schema,
-  accountExportV7Schema.extend({
-    schemaVersion: z.literal(8),
-    data: accountExportV7Schema.shape.data.extend({
-      coachingRuns: rows,
-      coachingAnalysisOutputs: rows,
-    }),
-  }),
+  accountExportV8Schema,
+  accountExportV9Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

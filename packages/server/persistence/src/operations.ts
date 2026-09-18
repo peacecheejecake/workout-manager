@@ -18,7 +18,51 @@ export interface OperationsRepository {
   eraseAccount(athleteId: string): Promise<{ erased: true }>;
   status(athleteId: string): Promise<OperationsStatus>;
 }
+/** Export projection must also guard legacy/partially restored rows whose purge trigger did not run. */
+function guardedCoachingBody(table: string, evidenceAvailable: string): string {
+  const available = `(${evidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
+    WHERE c.athlete_id=${table}.athlete_id AND c.kind='ai' AND c.granted))`;
+  return `CASE WHEN body IS NOT NULL AND ${available} THEN body ELSE NULL END AS body,
+    CASE WHEN body IS NOT NULL AND NOT ${available}
+      THEN 'consent_or_evidence_unavailable' ELSE purged_reason END AS purged_reason`;
+}
+const decisionEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_run r
+  JOIN core_evidence_snapshot e ON e.athlete_id=r.athlete_id AND e.id=r.evidence_snapshot_id
+  WHERE r.athlete_id=coaching_decision.athlete_id AND r.id=coaching_decision.run_id
+   AND e.body IS NOT NULL)`;
+const proposalEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
+  JOIN coaching_run r ON r.athlete_id=d.athlete_id AND r.id=d.run_id
+  JOIN core_evidence_snapshot e ON e.athlete_id=r.athlete_id AND e.id=r.evidence_snapshot_id
+  WHERE d.athlete_id=coaching_proposal.athlete_id AND d.id=coaching_proposal.decision_id
+   AND e.body IS NOT NULL)`;
+const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
+  JOIN coaching_run r ON r.athlete_id=d.athlete_id AND r.id=d.run_id
+  JOIN core_evidence_snapshot e ON e.athlete_id=r.athlete_id AND e.id=r.evidence_snapshot_id
+  WHERE d.athlete_id=coaching_candidate.athlete_id AND d.id=coaching_candidate.decision_id
+   AND e.body IS NOT NULL)`;
+const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
+  WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  [
+    'coachingDecisions',
+    'coaching_decision',
+    `id,run_id,${guardedCoachingBody('coaching_decision', decisionEvidenceAvailable)},created_at`,
+    'created_at,id',
+  ],
+  [
+    'coachingProposals',
+    'coaching_proposal',
+    `id,decision_id,${guardedCoachingBody('coaching_proposal', proposalEvidenceAvailable)},created_at`,
+    'created_at,id',
+  ],
+  [
+    'coachingCandidates',
+    'coaching_candidate',
+    `id,decision_id,proposal_id,parent_candidate_id,
+     CASE WHEN body IS NOT NULL AND ${candidateAvailable} THEN digest ELSE NULL END AS digest,
+     ${guardedCoachingBody('coaching_candidate', candidateEvidenceAvailable)},created_at`,
+    'created_at,id',
+  ],
   [
     'coachingRuns',
     'coaching_run',
@@ -141,6 +185,9 @@ export function createOperationsRepository(database: Database): OperationsReposi
   return {
     exportAccount(athleteId) {
       return database.tenant(athleteId, async (tx) => {
+        // Serialize export with AI-consent withdrawal and source redaction before reading bodies.
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [athleteId]);
         const result = await tx.query(exportSql, [athleteId]);
         const row = z
           .object({
@@ -151,7 +198,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 8,
+          schemaVersion: 9,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

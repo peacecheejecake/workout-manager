@@ -30,6 +30,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '015_evidence_constraints.sql',
       '016_plan_scenario_labels.sql',
       '017_coaching_runs.sql',
+      '018_coaching_candidates.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -111,7 +112,7 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head,coaching_run,coaching_analysis_output TO "${runtimeRole}"`,
+      `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head,coaching_run,coaching_analysis_output,coaching_decision,coaching_proposal,coaching_candidate TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
     await pool.query(
@@ -247,6 +248,23 @@ export async function grantCoachingRuns(
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.coaching_run_status_valid(jsonb) TO "${runtimeRole}"`,
     );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Validated coaching records are immutable; runtime can only append and read them. */
+export async function grantCoachingCandidates(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON coaching_decision,coaching_proposal,coaching_candidate TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT ON coaching_analysis_output TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

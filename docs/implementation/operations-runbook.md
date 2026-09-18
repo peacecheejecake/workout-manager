@@ -185,6 +185,26 @@ receipt·outbox는 다운로드에 포함하지 않는다.
 과거 백업의 미검증 출력이 철회된 동의나 삭제된 근거를 통해 다시 노출되어서는 안 된다.
 일반 서버의 실행 생성 경로는 아래의 명시적 비프로덕션 fixture 설정이 없으면 비활성이다.
 
+## 불변 코치 후보 원장 (M1-05j2)
+
+Migration 018과 `grantCoachingCandidates`를 적용한다. 검증된 Decision, Proposal,
+Candidate는 각각 `coaching_decision`, `coaching_proposal`, `coaching_candidate`에 저장하며
+계획 head를 바꾸거나 사용자의 승인으로 간주하지 않는다. 후보의 본문과 digest는 생성 후
+수정할 수 없다. 근거 원본 삭제 또는 AI 동의 철회 시 세 본문과 후보 digest를 같은 거래에서
+비우고 회수 사유를 남긴다. 계정 삭제는 후보→제안→결정→실행 순으로 제거한다.
+
+계정 내보내기 v9는 `coachingDecisions`, `coachingProposals`, `coachingCandidates`를 추가한다.
+현재 근거와 AI 동의가 유효한 소유자의 본문만 내보내며 회수된 행은 ID·연결·시각·회수 사유
+등 메타데이터만 남긴다. 과거 v8 artifact는 원래 모양대로 읽고 없었던 후보 행을 합성하지
+않는다. 컬렉션당 1,000행, 전체 8MiB 제한과 receipt·outbox 제외는 유지한다.
+
+합성 복구 drill은 백업 전 저장소 검증용 후보 행을 심고 source export v9 및 과거 v8 파서
+호환을 확인한다. 백업 복원 직후에는 철회 전 본문이 실제로 존재함을 확인하고, 최신 외부
+근거 회수·AI 동의 원장을 runtime 접근 전에 재생한 뒤 결정·제안·후보 본문과 후보 digest가
+모두 사라졌는지 검증한다. 원본 삭제와 계정 삭제도 같은 경로를 검사한다. 이 직접 삽입
+fixture는 복구·회수 동작만 검증하며 후보 생성의 freshness·검증·승인 권한 증거는 아니다.
+외부 최신 원장의 보관·전달과 운영 복구 목표도 이 로컬 drill의 범위 밖이다.
+
 ## 비프로덕션 코치 fixture 실행 (M1-05i2b2b)
 
 Migration 017 적용 후 API 역할에는 `grantCoachingRuns`, 별도의

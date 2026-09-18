@@ -230,3 +230,46 @@ it('requires coaching run and output collections in v8 while preserving historic
     ).toBe(false);
   }
 });
+
+it('requires immutable coaching collections in v9 while preserving historical v8', () => {
+  const previous = {
+    ...legacy,
+    schemaVersion: 8,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+    },
+  };
+  const artifact = {
+    ...previous,
+    schemaVersion: 9,
+    data: {
+      ...previous.data,
+      coachingDecisions: [{ id: 'synthetic-decision', body: null }],
+      coachingProposals: [{ id: 'synthetic-proposal', body: null }],
+      coachingCandidates: [{ id: 'synthetic-candidate', digest: null, body: null }],
+    },
+  };
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.parse(previous).data).not.toHaveProperty('coachingCandidates');
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 9 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 8 }).success).toBe(false);
+  for (const key of ['coachingDecisions', 'coachingProposals', 'coachingCandidates']) {
+    expect(
+      accountExportSchema.safeParse({ ...artifact, data: { ...artifact.data, [key]: undefined } })
+        .success,
+    ).toBe(false);
+  }
+});

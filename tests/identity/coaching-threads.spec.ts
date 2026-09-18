@@ -142,8 +142,8 @@ test('stores only user conversations with pinned scope, conflict recovery and ac
     const exportResponse = await page.request.post('/bff/v1/operations/export', { headers });
     expect(exportResponse.status()).toBe(200);
     const exported = accountExportSchema.parse(await exportResponse.json());
-    assert.equal(exported.schemaVersion, 8);
-    if (exported.schemaVersion !== 8) throw new Error('Expected conversation export v8');
+    assert.equal(exported.schemaVersion, 9);
+    if (exported.schemaVersion !== 9) throw new Error('Expected conversation export v9');
     expect(exported.data.coachingThreads).toHaveLength(1);
     expect(exported.data.coachingMessages.map((message) => message['content'])).toEqual([
       payload.message,

@@ -36,6 +36,7 @@ import {
   grantCoreEvidenceSnapshots,
   grantCoachingConstraints,
   grantCoachingRuns,
+  grantCoachingCandidates,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -48,6 +49,7 @@ import {
   SessionCompletionError,
 } from '../packages/server/persistence/src/session-completions.js';
 import { planDraftSchema } from '../packages/contracts/src/planning.js';
+import { accountExportSchema } from '../packages/contracts/src/operations.js';
 import type { SessionCompletionCommand } from '../packages/contracts/src/session-completion.js';
 
 // Separate current revocation facts, never a copy of private snapshot bodies or messages.
@@ -310,6 +312,99 @@ async function seedCoachingRunOutput(
   return { run, outputId, body };
 }
 
+async function seedCoachingCandidateRecords(owner: Pool, athleteId: string, runId: string) {
+  // Storage drill fixtures exercise archive/export/purge; repository validation is tested separately.
+  const decision = {
+    id: randomUUID(),
+    body: { synthetic: 'decision body to test purge-safe restore' },
+  };
+  const proposal = {
+    id: randomUUID(),
+    body: { synthetic: 'proposal body to test purge-safe restore' },
+  };
+  const candidateBody = { synthetic: 'candidate body to test purge-safe restore' };
+  const candidate = {
+    id: randomUUID(),
+    body: candidateBody,
+    digest: createHash('sha256').update(JSON.stringify(candidateBody)).digest('hex'),
+  };
+  const connection = await owner.connect();
+  try {
+    await connection.query('BEGIN');
+    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await connection.query(
+      'INSERT INTO coaching_decision(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
+      [athleteId, decision.id, runId, JSON.stringify(decision.body)],
+    );
+    await connection.query(
+      'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body) VALUES($1,$2,$3,$4::jsonb)',
+      [athleteId, proposal.id, decision.id, JSON.stringify(proposal.body)],
+    );
+    await connection.query(
+      'INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,digest,body) VALUES($1,$2,$3,$4,$5,$6::jsonb)',
+      [
+        athleteId,
+        candidate.id,
+        decision.id,
+        proposal.id,
+        candidate.digest,
+        JSON.stringify(candidate.body),
+      ],
+    );
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return { decision, proposal, candidate };
+}
+
+async function readCoachingCandidateRows(
+  owner: Pool,
+  athleteId: string,
+  records: Awaited<ReturnType<typeof seedCoachingCandidateRecords>>,
+) {
+  const decision = await owner.query(
+    'SELECT body,purged_reason FROM coaching_decision WHERE athlete_id=$1 AND id=$2',
+    [athleteId, records.decision.id],
+  );
+  const proposal = await owner.query(
+    'SELECT body,purged_reason FROM coaching_proposal WHERE athlete_id=$1 AND id=$2',
+    [athleteId, records.proposal.id],
+  );
+  const candidate = await owner.query(
+    'SELECT body,digest,purged_reason FROM coaching_candidate WHERE athlete_id=$1 AND id=$2',
+    [athleteId, records.candidate.id],
+  );
+  return {
+    decision: decision.rows,
+    proposal: proposal.rows,
+    candidate: candidate.rows,
+  };
+}
+
+function assertCoachingCandidateRowsAvailable(
+  rows: Awaited<ReturnType<typeof readCoachingCandidateRows>>,
+  records: Awaited<ReturnType<typeof seedCoachingCandidateRecords>>,
+) {
+  assert.deepEqual(rows.decision, [{ body: records.decision.body, purged_reason: null }]);
+  assert.deepEqual(rows.proposal, [{ body: records.proposal.body, purged_reason: null }]);
+  assert.deepEqual(rows.candidate, [
+    { body: records.candidate.body, digest: records.candidate.digest, purged_reason: null },
+  ]);
+}
+
+function assertCoachingCandidateRowsPurged(
+  rows: Awaited<ReturnType<typeof readCoachingCandidateRows>>,
+  reason: 'source_deleted' | 'consent_withdrawn',
+) {
+  assert.deepEqual(rows.decision, [{ body: null, purged_reason: reason }]);
+  assert.deepEqual(rows.proposal, [{ body: null, purged_reason: reason }]);
+  assert.deepEqual(rows.candidate, [{ body: null, digest: null, purged_reason: reason }]);
+}
+
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
 function run(bin: string, name: string, args: string[]): string {
@@ -438,6 +533,7 @@ async function execute() {
     await grantCoreEvidenceSnapshots(url('drill_source'), 'drill_runtime');
     await grantCoachingConstraints(url('drill_source'), 'drill_runtime');
     await grantCoachingRuns(url('drill_source'), 'drill_runtime');
+    await grantCoachingCandidates(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -478,6 +574,10 @@ async function execute() {
     >();
     const coachingExports = new Map<string, { threads: unknown[]; messages: unknown[] }>();
     const coachingRuns = new Map<string, Awaited<ReturnType<typeof seedCoachingRunOutput>>>();
+    const coachingCandidates = new Map<
+      string,
+      Awaited<ReturnType<typeof seedCoachingCandidateRecords>>
+    >();
     const completionTables = [
       'session_completion',
       'session_completion_revision',
@@ -495,6 +595,9 @@ async function execute() {
       'core_evidence_snapshot',
       'coaching_run',
       'coaching_analysis_output',
+      'coaching_decision',
+      'coaching_proposal',
+      'coaching_candidate',
       ...scenarioTables,
       ...coachingTables,
       'check_in',
@@ -557,7 +660,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 8);
+      assert.equal(before.schemaVersion, 9);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -612,14 +715,51 @@ async function execute() {
           thread.appended.thread.revision,
         ),
       );
+      const seededRun = coachingRuns.get(athleteId);
+      assert.ok(seededRun);
+      coachingCandidates.set(
+        athleteId,
+        await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
+      );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 8) throw new Error('Expected coaching export v8');
+      if (coachingExport.schemaVersion !== 9) throw new Error('Expected coaching export v9');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
       assert.deepEqual(
         coachingExport.data.coachingAnalysisOutputs[0]?.body,
         coachingRuns.get(athleteId)?.body,
+      );
+      const seededCandidate = coachingCandidates.get(athleteId);
+      assert.ok(seededCandidate);
+      assert.deepEqual(
+        coachingExport.data.coachingDecisions[0]?.body,
+        seededCandidate.decision.body,
+      );
+      assert.deepEqual(
+        coachingExport.data.coachingProposals[0]?.body,
+        seededCandidate.proposal.body,
+      );
+      assert.deepEqual(
+        coachingExport.data.coachingCandidates[0]?.body,
+        seededCandidate.candidate.body,
+      );
+      assert.equal(
+        coachingExport.data.coachingCandidates[0]?.digest,
+        seededCandidate.candidate.digest,
+      );
+      // A historical v8 download keeps its original shape and remains readable after v9 is added.
+      const {
+        coachingDecisions,
+        coachingProposals,
+        coachingCandidates: candidates,
+        ...v8Data
+      } = coachingExport.data;
+      assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
+      assert.equal(
+        accountExportSchema.parse({ ...coachingExport, schemaVersion: 8, data: v8Data })
+          .schemaVersion,
+        8,
       );
       coachingExports.set(athleteId, {
         threads: coachingExport.data.coachingThreads,
@@ -675,6 +815,7 @@ async function execute() {
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
+    checks.push('synthetic_candidate_bodies_in_source_export_v9_historical_v8_artifact_readable');
     // These extra tenants add no identity, provider connection or activity to the original checks.
     const withdrawnAthlete = randomUUID();
     const {
@@ -690,6 +831,11 @@ async function execute() {
       beforeWithdrawal.id,
       2,
     );
+    const withdrawnCandidate = await seedCoachingCandidateRecords(
+      source,
+      withdrawnAthlete,
+      withdrawnRun.run.id,
+    );
     const absentConsentAthlete = randomUUID();
     const beforeConsentDeletion = await seedEvidenceWithAiConsent(sourceDb, absentConsentAthlete);
     const absentConsentRun = await seedCoachingRunOutput(
@@ -700,12 +846,34 @@ async function execute() {
       beforeConsentDeletion.snapshot.id,
       2,
     );
+    const absentConsentCandidate = await seedCoachingCandidateRecords(
+      source,
+      absentConsentAthlete,
+      absentConsentRun.run.id,
+    );
+    for (const [athleteId, records] of [
+      [withdrawnAthlete, withdrawnCandidate],
+      [absentConsentAthlete, absentConsentCandidate],
+    ] as const) {
+      const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
+      if (candidateExport.schemaVersion !== 9) throw new Error('Expected candidate export v9');
+      assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
+      assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
+      assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
+      assert.equal(candidateExport.data.coachingCandidates[0]?.digest, records.candidate.digest);
+    }
     const constraintPlan = await seedCompletion(sourceDb, removedConstraintAthlete);
     const constraintThread = await seedCoachingThread(
       sourceDb,
       removedConstraintAthlete,
       constraintPlan.plan.id,
     );
+    await createConsentRepository(sourceDb).setConsent(removedConstraintAthlete, {
+      kind: 'ai',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
     const constraintCapture: CoreEvidenceCapture = {
       expectedConversationRevision: constraintThread.appended.thread.revision,
       window: { from: '2026-09-01', toExclusive: '2026-10-01', timezone: 'UTC' },
@@ -720,6 +888,23 @@ async function execute() {
       constraintSnapshot.status === 'available' && constraintSnapshot.body.schemaVersion === 2,
     );
     assert.equal(constraintSnapshot.body.userConstraints.items[0]?.id, removedConstraint.id);
+    const constraintRun = await seedCoachingRunOutput(
+      sourceDb,
+      source,
+      removedConstraintAthlete,
+      constraintThread.appended.thread.id,
+      constraintSnapshot.id,
+      constraintThread.appended.thread.revision,
+    );
+    const constraintCandidate = await seedCoachingCandidateRecords(
+      source,
+      removedConstraintAthlete,
+      constraintRun.run.id,
+    );
+    assertCoachingCandidateRowsAvailable(
+      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      constraintCandidate,
+    );
 
     // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
     // The private drill has no concurrent writers between this owner manifest and pg_dump.
@@ -730,7 +915,13 @@ async function execute() {
     ).rows.map((row) => row.athlete_id);
     assert.deepEqual(
       backupAiOwners,
-      [withdrawnAthlete, absentConsentAthlete, deletedAthlete, retainedAthlete].sort(),
+      [
+        withdrawnAthlete,
+        absentConsentAthlete,
+        deletedAthlete,
+        retainedAthlete,
+        removedConstraintAthlete,
+      ].sort(),
     );
     run(bin, 'pg_dump', [
       '-h',
@@ -763,6 +954,10 @@ async function execute() {
       confirmed: true,
       idempotencyKey: randomUUID(),
     });
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      'source_deleted',
+    );
     const revokedConsent = await createConsentRepository(sourceDb).setConsent(withdrawnAthlete, {
       kind: 'ai',
       granted: false,
@@ -791,6 +986,14 @@ async function execute() {
     assert.deepEqual(
       await createConsentRepository(sourceDb).getConsent(absentConsentAthlete, 'ai'),
       { kind: 'ai', granted: false, revision: 0 },
+    );
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(source, withdrawnAthlete, withdrawnCandidate),
+      'consent_withdrawn',
+    );
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(source, absentConsentAthlete, absentConsentCandidate),
+      'consent_withdrawn',
     );
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
     const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
@@ -879,7 +1082,7 @@ async function execute() {
         state:
           athlete_id === withdrawnAthlete
             ? { kind: 'exists', revision: revokedConsent.revision, granted: false }
-            : athlete_id === retainedAthlete
+            : athlete_id === retainedAthlete || athlete_id === removedConstraintAthlete
               ? { kind: 'exists', revision: 1, granted: true }
               : { kind: 'absent' },
       })),
@@ -976,6 +1179,10 @@ async function execute() {
       ).rows,
       [{ body: withdrawnRun.body, purged_reason: null }],
     );
+    assertCoachingCandidateRowsAvailable(
+      await readCoachingCandidateRows(restored, withdrawnAthlete, withdrawnCandidate),
+      withdrawnCandidate,
+    );
     assert.deepEqual(
       (
         await restored.query(
@@ -1003,6 +1210,14 @@ async function execute() {
       ).rows,
       [{ body: absentConsentRun.body, purged_reason: null }],
     );
+    assertCoachingCandidateRowsAvailable(
+      await readCoachingCandidateRows(restored, absentConsentAthlete, absentConsentCandidate),
+      absentConsentCandidate,
+    );
+    assertCoachingCandidateRowsAvailable(
+      await readCoachingCandidateRows(restored, removedConstraintAthlete, constraintCandidate),
+      constraintCandidate,
+    );
     assert.deepEqual(
       (
         await restored.query(
@@ -1012,7 +1227,7 @@ async function execute() {
       ).rows,
       [beforeConsentDeletion.consent],
     );
-    checks.push('trusted_archive_contains_pre_withdrawal_evidence_and_ai_consent');
+    checks.push('trusted_archive_contains_pre_withdrawal_evidence_ai_consent_and_candidate_bodies');
     assert.equal(
       (
         await restored.query(
@@ -1220,6 +1435,19 @@ async function execute() {
     }
     checks.push('latest_erasure_replayed_before_runtime_access');
     checks.push('latest_evidence_withdrawal_and_consent_replayed_before_runtime_access');
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(restored, withdrawnAthlete, withdrawnCandidate),
+      'consent_withdrawn',
+    );
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(restored, absentConsentAthlete, absentConsentCandidate),
+      'consent_withdrawn',
+    );
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(restored, removedConstraintAthlete, constraintCandidate),
+      'source_deleted',
+    );
+    checks.push('candidate_bodies_and_digest_purged_by_pre_runtime_withdrawal_and_deletion_replay');
     const tables = [
       'consent',
       'command_receipt',
@@ -1351,8 +1579,15 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 8);
+    assert.ok(constraintExport.schemaVersion === 9);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
+    assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
+    assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
+    assert.equal(constraintExport.data.coachingProposals[0]?.body, null);
+    assert.equal(constraintExport.data.coachingProposals[0]?.purged_reason, 'source_deleted');
+    assert.equal(constraintExport.data.coachingCandidates[0]?.body, null);
+    assert.equal(constraintExport.data.coachingCandidates[0]?.digest, null);
+    assert.equal(constraintExport.data.coachingCandidates[0]?.purged_reason, 'source_deleted');
     checks.push(
       'latest_constraint_deletion_purges_frozen_evidence_and_capture_receipt_before_runtime_access',
     );
@@ -1379,7 +1614,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 8) throw new Error('Expected evidence export v8');
+    if (withdrawnExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1391,7 +1626,24 @@ async function execute() {
       withdrawnExport.data.coachingAnalysisOutputs[0]?.purged_reason,
       'consent_withdrawn',
     );
+    assert.equal(withdrawnExport.data.coachingDecisions[0]?.id, withdrawnCandidate.decision.id);
+    assert.equal(withdrawnExport.data.coachingDecisions[0]?.body, null);
+    assert.equal(withdrawnExport.data.coachingDecisions[0]?.purged_reason, 'consent_withdrawn');
+    assert.equal(withdrawnExport.data.coachingProposals[0]?.id, withdrawnCandidate.proposal.id);
+    assert.equal(withdrawnExport.data.coachingProposals[0]?.body, null);
+    assert.equal(withdrawnExport.data.coachingProposals[0]?.purged_reason, 'consent_withdrawn');
+    assert.equal(withdrawnExport.data.coachingCandidates[0]?.id, withdrawnCandidate.candidate.id);
+    assert.equal(withdrawnExport.data.coachingCandidates[0]?.body, null);
+    assert.equal(withdrawnExport.data.coachingCandidates[0]?.digest, null);
+    assert.equal(withdrawnExport.data.coachingCandidates[0]?.purged_reason, 'consent_withdrawn');
     assert.ok(!JSON.stringify(withdrawnExport).includes(withdrawnRun.body.synthetic));
+    for (const body of [
+      withdrawnCandidate.decision.body,
+      withdrawnCandidate.proposal.body,
+      withdrawnCandidate.candidate.body,
+    ]) {
+      assert.ok(!JSON.stringify(withdrawnExport).includes(body.synthetic));
+    }
     assert.deepEqual(withdrawnExport.data.consents, [revokedConsent]);
     checks.push(
       'restored_withdrawn_evidence_and_model_output_stay_purged_in_read_export_and_receipt',
@@ -1414,7 +1666,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 8) throw new Error('Expected evidence export v8');
+    if (absentExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -1424,9 +1676,29 @@ async function execute() {
     assert.equal(absentExport.data.coachingAnalysisOutputs[0]?.id, absentConsentRun.outputId);
     assert.equal(absentExport.data.coachingAnalysisOutputs[0]?.body, null);
     assert.equal(absentExport.data.coachingAnalysisOutputs[0]?.purged_reason, 'consent_withdrawn');
+    assert.equal(absentExport.data.coachingDecisions[0]?.id, absentConsentCandidate.decision.id);
+    assert.equal(absentExport.data.coachingDecisions[0]?.body, null);
+    assert.equal(absentExport.data.coachingDecisions[0]?.purged_reason, 'consent_withdrawn');
+    assert.equal(absentExport.data.coachingProposals[0]?.id, absentConsentCandidate.proposal.id);
+    assert.equal(absentExport.data.coachingProposals[0]?.body, null);
+    assert.equal(absentExport.data.coachingProposals[0]?.purged_reason, 'consent_withdrawn');
+    assert.equal(absentExport.data.coachingCandidates[0]?.id, absentConsentCandidate.candidate.id);
+    assert.equal(absentExport.data.coachingCandidates[0]?.body, null);
+    assert.equal(absentExport.data.coachingCandidates[0]?.digest, null);
+    assert.equal(absentExport.data.coachingCandidates[0]?.purged_reason, 'consent_withdrawn');
     assert.ok(!JSON.stringify(absentExport).includes(absentConsentRun.body.synthetic));
+    for (const body of [
+      absentConsentCandidate.decision.body,
+      absentConsentCandidate.proposal.body,
+      absentConsentCandidate.candidate.body,
+    ]) {
+      assert.ok(!JSON.stringify(absentExport).includes(body.synthetic));
+    }
     checks.push(
       'restored_deleted_ai_consent_remains_absent_and_evidence_and_model_output_stay_purged',
+    );
+    checks.push(
+      'withdrawn_and_absent_ai_consent_candidate_bodies_and_digest_stay_purged_in_export',
     );
     assert.equal(
       (await createGarminStore(restoreDb).status(retainedAthlete)).state,
@@ -1455,7 +1727,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 8);
+    assert.equal(retainedExport.schemaVersion, 9);
     assert.equal(
       retainedExport.data.coachingRuns[0]?.id,
       coachingRuns.get(retainedAthlete)?.run.id,
@@ -1463,6 +1735,28 @@ async function execute() {
     assert.deepEqual(
       retainedExport.data.coachingAnalysisOutputs[0]?.body,
       coachingRuns.get(retainedAthlete)?.body,
+    );
+    const retainedCandidate = coachingCandidates.get(retainedAthlete);
+    assert.ok(retainedCandidate);
+    assertCoachingCandidateRowsAvailable(
+      await readCoachingCandidateRows(restored, retainedAthlete, retainedCandidate),
+      retainedCandidate,
+    );
+    assert.deepEqual(
+      retainedExport.data.coachingDecisions[0]?.body,
+      retainedCandidate.decision.body,
+    );
+    assert.deepEqual(
+      retainedExport.data.coachingProposals[0]?.body,
+      retainedCandidate.proposal.body,
+    );
+    assert.deepEqual(
+      retainedExport.data.coachingCandidates[0]?.body,
+      retainedCandidate.candidate.body,
+    );
+    assert.equal(
+      retainedExport.data.coachingCandidates[0]?.digest,
+      retainedCandidate.candidate.digest,
     );
     const manualHistory = retainedExport.data.overlayRevisions.filter(
       (row) => row.activity_id === manualId,
@@ -1483,6 +1777,7 @@ async function execute() {
       'manual_source_and_null_report_restored_with_original_zero_report_history_erased_tenant_absent',
     );
     checks.push('coaching_run_basis_and_output_restored_for_consented_owner_erased_tenant_absent');
+    checks.push('immutable_candidate_records_restored_for_consented_owner_erased_tenant_absent');
     const retainedCheckInId = checkInIds.get(retainedAthlete);
     assert.ok(retainedCheckInId);
     const retainedCheckIn = await createCheckInRepository(restoreDb).getCheckIn(
@@ -1544,7 +1839,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 8) throw new Error('Expected coaching export v8');
+    if (retainedExport.schemaVersion !== 9) throw new Error('Expected coaching export v9');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -1676,11 +1971,11 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 8) throw new Error('Expected coaching export v8');
+    if (coachingAfterReplay.schemaVersion !== 9) throw new Error('Expected coaching export v9');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
-      'coaching_scope_revision_and_immutable_user_messages_export_v8_restored_receipts_replayed_without_duplicates',
+      'coaching_scope_revision_and_immutable_user_messages_export_v9_restored_receipts_replayed_without_duplicates',
     );
     await assert.rejects(
       () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
@@ -1852,7 +2147,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 8) throw new Error('Expected evidence export v8');
+    if (scrubbedExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
@@ -1864,6 +2159,24 @@ async function execute() {
     );
     assert.equal(scrubbedExport.data.coachingAnalysisOutputs[0]?.body, null);
     assert.equal(scrubbedExport.data.coachingAnalysisOutputs[0]?.purged_reason, 'source_deleted');
+    assertCoachingCandidateRowsPurged(
+      await readCoachingCandidateRows(restored, retainedAthlete, retainedCandidate),
+      'source_deleted',
+    );
+    assert.equal(scrubbedExport.data.coachingDecisions[0]?.body, null);
+    assert.equal(scrubbedExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
+    assert.equal(scrubbedExport.data.coachingProposals[0]?.body, null);
+    assert.equal(scrubbedExport.data.coachingProposals[0]?.purged_reason, 'source_deleted');
+    assert.equal(scrubbedExport.data.coachingCandidates[0]?.body, null);
+    assert.equal(scrubbedExport.data.coachingCandidates[0]?.digest, null);
+    assert.equal(scrubbedExport.data.coachingCandidates[0]?.purged_reason, 'source_deleted');
+    for (const body of [
+      retainedCandidate.decision.body,
+      retainedCandidate.proposal.body,
+      retainedCandidate.candidate.body,
+    ]) {
+      assert.ok(!JSON.stringify(scrubbedExport).includes(body.synthetic));
+    }
     assert.ok(
       !JSON.stringify(scrubbedExport).includes(
         coachingRuns.get(retainedAthlete)?.body.synthetic ?? 'missing-output-fixture',
@@ -1872,6 +2185,7 @@ async function execute() {
     checks.push(
       'restored_source_deletion_scrubs_evidence_and_model_output_in_read_export_and_old_receipt',
     );
+    checks.push('restored_source_deletion_scrubs_candidate_bodies_and_digest_in_export');
     checks.push('erasure_gate_rejects_stale_runtime_write');
   } finally {
     process.removeListener('SIGINT', interrupt);

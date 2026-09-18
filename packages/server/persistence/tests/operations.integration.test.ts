@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { accountExportSchema } from '@workout/contracts/operations';
 import { createDatabase, type Database } from '../src/database.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createIdentityRepository } from '../src/identity.js';
-import { migrate, grantIdentityFunctions, grantOperations } from '../src/migrate.js';
+import {
+  migrate,
+  grantIdentityFunctions,
+  grantOperations,
+  grantCoachingCandidates,
+} from '../src/migrate.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run isolated real PostgreSQL integration harness');
@@ -17,6 +23,7 @@ beforeAll(async () => {
   await migrate(adminUrl);
   await grantIdentityFunctions(adminUrl, 'workout_runtime');
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCoachingCandidates(adminUrl, 'workout_runtime');
   await admin.query('GRANT SELECT ON tenant_erasure TO workout_runtime');
   await admin.query('GRANT SELECT,INSERT ON operations_audit TO workout_runtime');
   await admin.query('GRANT EXECUTE ON FUNCTION public.erase_account(text) TO workout_runtime');
@@ -78,8 +85,20 @@ async function waitForBlockedLogin() {
   }
   throw new Error('Expected login to wait on erasure lock');
 }
+async function waitForBlockedStatement(fragment: string) {
+  const until = Date.now() + 2000;
+  while (Date.now() < until) {
+    const result = await admin.query(
+      "SELECT 1 FROM pg_stat_activity WHERE wait_event='advisory' AND position($1 in query)>0 AND pid<>pg_backend_pid()",
+      [fragment],
+    );
+    if (result.rowCount) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`Expected advisory lock wait for ${fragment}`);
+}
 
-it('exports run basis and output only while evidence and AI consent remain available', async () => {
+it('exports coaching records only while evidence and AI consent remain available', async () => {
   const athlete = randomUUID();
   const other = randomUUID();
   await seed(athlete);
@@ -90,6 +109,9 @@ it('exports run basis and output only while evidence and AI consent remain avail
   const snapshotId = randomUUID();
   const runId = randomUUID();
   const outputId = randomUUID();
+  const decisionId = randomUUID();
+  const proposalId = randomUUID();
+  const candidateId = randomUUID();
   const privateText = 'Synthetic untrusted output body';
   const connection = await admin.connect();
   try {
@@ -116,6 +138,49 @@ it('exports run basis and output only while evidence and AI consent remain avail
       'INSERT INTO coaching_analysis_output(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athlete, outputId, runId, JSON.stringify({ text: privateText })],
     );
+    await connection.query(
+      'INSERT INTO coaching_decision(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
+      [athlete, decisionId, runId, JSON.stringify({ analysis: privateText })],
+    );
+    await connection.query(
+      'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body) VALUES($1,$2,$3,$4::jsonb)',
+      [athlete, proposalId, decisionId, JSON.stringify({ strategy: privateText })],
+    );
+    await connection.query(
+      `INSERT INTO coaching_candidate
+       (athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body)
+       VALUES($1,$2,$3,$4,NULL,$5,$6::jsonb)`,
+      [
+        athlete,
+        candidateId,
+        decisionId,
+        proposalId,
+        'a'.repeat(64),
+        JSON.stringify({ draft: privateText }),
+      ],
+    );
+    // The self-FKs alone would allow this two-row cycle in a single statement.
+    await connection.query('SAVEPOINT candidate_parent_cycle');
+    const firstCycleId = randomUUID();
+    const secondCycleId = randomUUID();
+    await expect(
+      connection.query(
+        `INSERT INTO coaching_candidate
+         (athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body)
+         VALUES($1,$2,$3,$4,$5,$6,$7::jsonb),($1,$5,$3,$4,$2,$8,$7::jsonb)`,
+        [
+          athlete,
+          firstCycleId,
+          decisionId,
+          proposalId,
+          secondCycleId,
+          'b'.repeat(64),
+          JSON.stringify({ draft: 'Synthetic cycle' }),
+          'c'.repeat(64),
+        ],
+      ),
+    ).rejects.toThrow('COACHING_CANDIDATE_PARENT_CYCLE');
+    await connection.query('ROLLBACK TO SAVEPOINT candidate_parent_cycle');
     await connection.query('COMMIT');
   } catch (error) {
     await connection.query('ROLLBACK');
@@ -124,28 +189,72 @@ it('exports run basis and output only while evidence and AI consent remain avail
     connection.release();
   }
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 8) throw new Error('Expected run export v8');
+  if (before.schemaVersion !== 9) throw new Error('Expected coaching export v9');
   expect(before.data.coachingRuns).toEqual([
     expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
   ]);
   expect(before.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, run_id: runId, body: { text: privateText } }),
   ]);
+  expect(before.data.coachingDecisions).toEqual([
+    expect.objectContaining({ id: decisionId, run_id: runId, body: { analysis: privateText } }),
+  ]);
+  expect(before.data.coachingProposals).toEqual([
+    expect.objectContaining({
+      id: proposalId,
+      decision_id: decisionId,
+      body: { strategy: privateText },
+    }),
+  ]);
+  expect(before.data.coachingCandidates).toEqual([
+    expect.objectContaining({
+      id: candidateId,
+      digest: 'a'.repeat(64),
+      body: { draft: privateText },
+    }),
+  ]);
   const otherExport = await operations.exportAccount(other);
-  if (otherExport.schemaVersion !== 8) throw new Error('Expected run export v8');
+  if (otherExport.schemaVersion !== 9) throw new Error('Expected coaching export v9');
   expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
-  await database.tenant(athlete, (tx) =>
-    tx.query(
-      "UPDATE consent SET granted=false,revision=revision+1 WHERE athlete_id=$1 AND kind='ai'",
-      [athlete],
-    ),
-  );
-  const withdrawn = await operations.exportAccount(athlete);
-  if (withdrawn.schemaVersion !== 8) throw new Error('Expected run export v8');
-  expect(withdrawn.data.coachingAnalysisOutputs).toEqual([
+  expect(otherExport.data.coachingCandidates).toEqual([]);
+  const blocker = await admin.connect();
+  let withdrawal: Promise<unknown> | undefined;
+  let exportAfterWithdrawal: Promise<unknown> | undefined;
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+    withdrawal = database.tenant(athlete, (tx) =>
+      tx.query(
+        "UPDATE consent SET granted=false,revision=revision+1 WHERE athlete_id=$1 AND kind='ai'",
+        [athlete],
+      ),
+    );
+    await waitForBlockedStatement('UPDATE consent SET granted=false');
+    exportAfterWithdrawal = operations.exportAccount(athlete);
+    await waitForBlockedStatement('SELECT pg_advisory_xact_lock(hashtextextended($1,0))');
+  } finally {
+    await blocker.query('COMMIT');
+    blocker.release();
+  }
+  await withdrawal;
+  const withdrawn = await exportAfterWithdrawal;
+  if (!withdrawn) throw new Error('Expected concurrent export');
+  const withdrawnArtifact = accountExportSchema.parse(withdrawn);
+  if (withdrawnArtifact.schemaVersion !== 9) throw new Error('Expected coaching export v9');
+  expect(withdrawnArtifact.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
   ]);
-  expect(JSON.stringify(withdrawn)).not.toContain(privateText);
+  for (const [collection, id] of [
+    [withdrawnArtifact.data.coachingDecisions, decisionId],
+    [withdrawnArtifact.data.coachingProposals, proposalId],
+    [withdrawnArtifact.data.coachingCandidates, candidateId],
+  ] as const) {
+    expect(collection).toEqual([
+      expect.objectContaining({ id, body: null, purged_reason: 'consent_withdrawn' }),
+    ]);
+  }
+  expect(withdrawnArtifact.data.coachingCandidates[0]?.['digest']).toBeNull();
+  expect(JSON.stringify(withdrawnArtifact)).not.toContain(privateText);
   // Simulate a legacy or malformed restored row to verify the export projection fails closed.
   const legacy = await admin.connect();
   try {
@@ -156,6 +265,18 @@ it('exports run basis and output only while evidence and AI consent remain avail
       'UPDATE coaching_analysis_output SET body=$3::jsonb,purged_reason=NULL WHERE athlete_id=$1 AND id=$2',
       [athlete, outputId, JSON.stringify({ text: privateText })],
     );
+    await legacy.query(
+      'UPDATE coaching_decision SET body=$3::jsonb,purged_reason=NULL WHERE athlete_id=$1 AND id=$2',
+      [athlete, decisionId, JSON.stringify({ analysis: privateText })],
+    );
+    await legacy.query(
+      'UPDATE coaching_proposal SET body=$3::jsonb,purged_reason=NULL WHERE athlete_id=$1 AND id=$2',
+      [athlete, proposalId, JSON.stringify({ strategy: privateText })],
+    );
+    await legacy.query(
+      'UPDATE coaching_candidate SET body=$3::jsonb,digest=$4,purged_reason=NULL WHERE athlete_id=$1 AND id=$2',
+      [athlete, candidateId, JSON.stringify({ draft: privateText }), 'a'.repeat(64)],
+    );
     await legacy.query('COMMIT');
   } catch (error) {
     await legacy.query('ROLLBACK');
@@ -164,7 +285,7 @@ it('exports run basis and output only while evidence and AI consent remain avail
     legacy.release();
   }
   const guarded = await operations.exportAccount(athlete);
-  if (guarded.schemaVersion !== 8) throw new Error('Expected run export v8');
+  if (guarded.schemaVersion !== 9) throw new Error('Expected coaching export v9');
   expect(guarded.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({
       id: outputId,
@@ -172,13 +293,30 @@ it('exports run basis and output only while evidence and AI consent remain avail
       purged_reason: 'consent_or_evidence_unavailable',
     }),
   ]);
+  for (const collection of [
+    guarded.data.coachingDecisions,
+    guarded.data.coachingProposals,
+    guarded.data.coachingCandidates,
+  ]) {
+    expect(collection[0]).toMatchObject({
+      body: null,
+      purged_reason: 'consent_or_evidence_unavailable',
+    });
+  }
+  expect(guarded.data.coachingCandidates[0]?.['digest']).toBeNull();
   expect(JSON.stringify(guarded)).not.toContain(privateText);
   await operations.eraseAccount(athlete);
   const auditor = await admin.connect();
   try {
     await auditor.query('BEGIN');
     await auditor.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
-    for (const table of ['coaching_run', 'coaching_analysis_output']) {
+    for (const table of [
+      'coaching_candidate',
+      'coaching_proposal',
+      'coaching_decision',
+      'coaching_run',
+      'coaching_analysis_output',
+    ]) {
       expect(
         (
           await auditor.query(`SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`, [
@@ -237,7 +375,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(8);
+    expect(before.schemaVersion).toBe(9);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);
