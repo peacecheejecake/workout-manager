@@ -993,7 +993,7 @@
       "title": "범용 루틴",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "routines/routine-kit; finite occurrence/run·actual link",
       "evidence": "docs/implementation/progress/M1c-01.md"
     },
@@ -1002,7 +1002,7 @@
       "title": "스트레칭",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "supplementary stretching; 기존 catalog·좌우/시간",
       "evidence": "docs/implementation/progress/M1c-02.md"
     },
@@ -1011,7 +1011,7 @@
       "title": "회복 전략",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "recovery; 비운동 원장·계획·재평가",
       "evidence": "docs/implementation/progress/M1c-03.md"
     },

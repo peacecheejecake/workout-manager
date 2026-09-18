@@ -79,6 +79,37 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 명령 receipt의 제한된 DML을 허용한다. `grantSessionCompletions`는 사용자 세션 완료 확인·철회
 원장과 revision·receipt·collection head의 제한된 DML을 허용한다. `grantPlanScenarios`는 시나리오 head의 SELECT/INSERT/UPDATE와 불변 수정·적용 이력의 SELECT/INSERT를 허용한다. `grantCoachingThreads`는 대화·메시지 SELECT/INSERT와 대화 revision/updated_at 열 UPDATE만 허용한다. `grantCoreEvidenceSnapshots`는 근거 snapshot SELECT/INSERT와 필수 사용자 제약·head의 SELECT를 허용한다. 본문 회수는 제한된 lifecycle trigger가 수행한다. `grantCoachingConstraints`는 사용자 제약과 head의 SELECT/INSERT/UPDATE만 허용한다. migration 001–016은 checksum으로 보호한다.
 
+### M1c 루틴·스트레칭·회복 운영 권한
+
+Migration 023–025를 적용한 뒤 migration owner로 아래 권한 함수를 실행한다. `grantOperations`를
+다시 실행해야 마지막 migration이 새로 만든 `erase_account(text)` wrapper에 runtime EXECUTE가
+부여된다. 앱 runtime URL로 migration이나 GRANT를 실행하지 않는다.
+
+```bash
+node --import tsx --input-type=module <<'JS'
+import {
+  migrate,
+  grantOperations,
+  grantRoutineCore,
+  grantStretchingCore,
+  grantRecoveryCore,
+} from './packages/server/persistence/src/migrate.ts';
+const admin = process.env.DEPLOY_DATABASE_URL;
+const role = process.env.RUNTIME_DB_ROLE;
+if (!admin || !role) throw new Error('Deployment DB configuration required');
+await migrate(admin);
+await grantOperations(admin, role);
+await grantRoutineCore(admin, role);
+await grantStretchingCore(admin, role);
+await grantRecoveryCore(admin, role);
+JS
+```
+
+세 함수는 새 원장 테이블의 SELECT·INSERT, 현재 head/log에 필요한 UPDATE만 부여하며 DELETE는
+부여하지 않는다. 새 테이블은 모두 tenant FORCE RLS를 유지하고, 계정 삭제는 권한을 제한한 최신
+함수를 통해 처리한다. [루틴](progress/M1c-01.md)·[스트레칭](progress/M1c-02.md)·
+[회복](progress/M1c-03.md)에 테이블별 최소 권한과 검증 범위를 기록한다.
+
 ## 요청 경계
 
 `GET /bff/v1/session`은 session ID·CSRF token·expiry를 반환하며 캐시하지 않는다.

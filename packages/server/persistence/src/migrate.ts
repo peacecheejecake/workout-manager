@@ -182,6 +182,61 @@ export async function grantSupplementaryCore(
   }
 }
 
+/** Routine versions and receipts are append-only; current heads, runs and timers use CAS. */
+export async function grantRoutineCore(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON routine_blueprint_version,routine_schedule_version,routine_occurrence,routine_run_revision,routine_checklist_confirmation,routine_command_receipt TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON routine_blueprint_head,routine_schedule_head,routine_run,routine_step_timer TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Stretching profiles and revisions are immutable; only the current log advances. */
+export async function grantStretchingCore(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON stretch_profile,stretching_log_revision TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT,UPDATE ON stretching_log TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Recovery method, strategy and action revisions stay append-only. */
+export async function grantRecoveryCore(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON recovery_method_head,recovery_strategy_head,recovery_action_log TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 /** Alternatives have independent heads; immutable revisions and applications are append-only. */
 export async function grantPlanScenarios(
   connectionString: string,

@@ -38,6 +38,9 @@ import {
   grantOperations,
   grantNutritionCore,
   grantSupplementaryCore,
+  grantRoutineCore,
+  grantStretchingCore,
+  grantRecoveryCore,
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
@@ -149,17 +152,9 @@ try {
     await grantOperations(adminUrl, 'workout_runtime');
     await grantNutritionCore(adminUrl, 'workout_runtime');
     await grantSupplementaryCore(adminUrl, 'workout_runtime');
-    // Disposable E2E cluster only; production runtime grants require separate review.
-    await admin.query('GRANT SELECT,INSERT ON stretch_profile TO workout_runtime');
-    await admin.query('GRANT SELECT,INSERT,UPDATE ON stretching_log TO workout_runtime');
-    await admin.query('GRANT SELECT,INSERT ON stretching_log_revision TO workout_runtime');
-    // This fixture role and cluster are deleted after the E2E run.
-    await admin.query(
-      'GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO workout_runtime',
-    );
-    await admin.query(
-      'GRANT SELECT,INSERT,UPDATE ON recovery_method_head,recovery_strategy_head,recovery_action_log TO workout_runtime',
-    );
+    await grantRoutineCore(adminUrl, 'workout_runtime');
+    await grantStretchingCore(adminUrl, 'workout_runtime');
+    await grantRecoveryCore(adminUrl, 'workout_runtime');
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
@@ -183,13 +178,6 @@ try {
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
     await admin.query(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
-    );
-    // Fixture-only permissions on a disposable cluster; production grants require separate review.
-    await admin.query(
-      'GRANT SELECT,INSERT ON routine_blueprint_version,routine_schedule_version,routine_occurrence,routine_run_revision,routine_checklist_confirmation,routine_command_receipt TO workout_runtime',
-    );
-    await admin.query(
-      'GRANT SELECT,INSERT,UPDATE ON routine_blueprint_head,routine_schedule_head,routine_run,routine_step_timer TO workout_runtime',
     );
   } finally {
     await admin.end();
