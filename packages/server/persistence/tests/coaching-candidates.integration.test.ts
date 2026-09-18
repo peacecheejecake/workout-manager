@@ -5,6 +5,7 @@ import type { PlanDraft } from '@workout/contracts/planning';
 import {
   runOneCoachingJob,
   createDeterministicFixtureAdapter,
+  type CoachingEvaluationAdapter,
 } from '@workout/server-coaching/runner';
 import { createDatabase, type Database } from '../src/database.js';
 import {
@@ -92,7 +93,7 @@ function plan(): PlanDraft {
         localStartTime: null,
         title: 'Synthetic run',
         sport: 'running',
-        durationSeconds: null,
+        durationSeconds: 1800,
         distanceMeters: 0,
         targetRpe: null,
         purpose: 'Endurance',
@@ -111,7 +112,10 @@ const strategy = {
   unconfirmedInformation: ['Current recovery is unknown'],
   revisitWhen: 'Review before the planned session',
 };
-async function seed(athleteId: string) {
+async function seed(
+  athleteId: string,
+  adapter: CoachingEvaluationAdapter = createDeterministicFixtureAdapter('synthetic-v1'),
+) {
   const savedPlan = await createPlanningRepository(database).save(athleteId, {
     source: 'manual',
     confirmed: true,
@@ -153,18 +157,30 @@ async function seed(athleteId: string) {
     await runOneCoachingJob({
       athleteId,
       store: createCoachingRunWorkerStore(workerDatabase, { policy, source }),
-      adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+      adapter,
     }),
   ).toBe('stored');
   expect((await runs().read(athleteId, run.id))?.status.kind).toBe('analysis_ready');
   return { savedPlan, thread, evidence, run };
+}
+
+async function candidateRowCounts(athleteId: string) {
+  return database.tenant(athleteId, async (tx) => {
+    const rows = await tx.query(
+      `SELECT (SELECT count(*)::integer FROM coaching_decision WHERE athlete_id=$1) AS decisions,
+        (SELECT count(*)::integer FROM coaching_proposal WHERE athlete_id=$1) AS proposals,
+        (SELECT count(*)::integer FROM coaching_candidate WHERE athlete_id=$1) AS candidates`,
+      [athleteId],
+    );
+    return rows.rows[0];
+  });
 }
 function command(runId: string) {
   const proposed = structuredClone(plan());
   proposed.title = 'Private proposed plan receipt marker';
   const session = proposed.sessions[0];
   if (!session) throw new Error('Fixture session missing');
-  session.durationSeconds = 1800;
+  session.durationSeconds = 2100;
   return { runId, proposed, strategy, idempotencyKey: randomUUID() };
 }
 
@@ -268,6 +284,178 @@ it('seals one tenant-owned candidate atomically and replays concurrent requests 
       ]),
     ),
   ).rejects.toThrow();
+});
+
+it('derives a sealed candidate from the stored fixture instruction with one scoped duration change', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const input = { runId: run.id, idempotencyKey: randomUUID() };
+  const injected = { ...input, proposed: plan(), strategy };
+  expect(() => repo.createFromFixture(athleteId, injected)).toThrowError('Unrecognized keys');
+  const [first, replay] = await Promise.all([
+    repo.createFromFixture(athleteId, input),
+    repo.createFromFixture(athleteId, input),
+  ]);
+  expect(replay).toEqual(first);
+  expect(first.candidate.before.id).toBe(savedPlan.id);
+  expect(first.candidate.proposed).toEqual({
+    ...savedPlan.draft,
+    sessions: savedPlan.draft.sessions.map((session) => ({
+      ...session,
+      durationSeconds: session.id === 'session' ? 2100 : session.durationSeconds,
+    })),
+  });
+  expect(first.candidate.diff.sessionChanges).toEqual([
+    expect.objectContaining({ id: 'session', kind: 'modified' }),
+  ]);
+  expect(first.candidate.validation).toMatchObject({ status: 'checked', errors: [] });
+  expect(await repo.read(athleteId, first.candidate.id)).toEqual(first);
+  expect(await repo.read(randomUUID(), first.candidate.id)).toBeNull();
+  expect(await repo.list(randomUUID(), run.id)).toEqual([]);
+  expect(await createPlanningRepository(database).read(athleteId)).toMatchObject({
+    head: { id: savedPlan.id, version: savedPlan.version },
+  });
+  await database.tenant(athleteId, async (tx) => {
+    const receipts = await tx.query(
+      "SELECT request,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'coaching:candidate:fixture:%'",
+      [athleteId],
+    );
+    expect(receipts.rows).toEqual([
+      {
+        request: { requestHash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        result: { candidateId: first.candidate.id },
+      },
+    ]);
+    expect(JSON.stringify(receipts.rows)).not.toContain('Synthetic duration alternative');
+    expect(JSON.stringify(receipts.rows)).not.toContain('Synthetic fixture duration proposal');
+  });
+  await expect(
+    repo.createFromFixture(athleteId, { ...input, runId: randomUUID() }),
+  ).rejects.toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 1,
+    proposals: 1,
+    candidates: 1,
+  });
+});
+
+it('rejects a malformed stored fixture before any decision or plan write', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId, {
+    async evaluate() {
+      return {
+        kind: 'analysis',
+        content: {
+          schemaVersion: 1,
+          scope: 'running-core-v2-training',
+          intent: {
+            kind: 'set_session_duration_seconds',
+            sessionId: 'missing',
+            durationSeconds: 2100,
+          },
+          strategy,
+          summary: 'Synthetic fixture duration proposal; not validated or approved.',
+          extra: 'untrusted output must be rejected',
+        },
+      };
+    },
+  });
+  await expect(
+    candidates().createFromFixture(athleteId, { runId: run.id, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'INVALID_FIXTURE_OUTPUT' });
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 0,
+    proposals: 0,
+    candidates: 0,
+  });
+  expect((await runs().read(athleteId, run.id))?.status.kind).toBe('analysis_ready');
+  expect((await createPlanningRepository(database).read(athleteId))?.head?.id).toBe(savedPlan.id);
+});
+
+it('rejects a well-shaped fixture instruction that names no pinned session', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId, {
+    async evaluate() {
+      return {
+        kind: 'analysis',
+        content: {
+          schemaVersion: 1,
+          scope: 'running-core-v2-training',
+          intent: {
+            kind: 'set_session_duration_seconds',
+            sessionId: 'missing',
+            durationSeconds: 2100,
+          },
+          strategy,
+          summary: 'Synthetic fixture duration proposal; not validated or approved.',
+        },
+      };
+    },
+  });
+  await expect(
+    candidates().createFromFixture(athleteId, { runId: run.id, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'INVALID_FIXTURE_OUTPUT' });
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 0,
+    proposals: 0,
+    candidates: 0,
+  });
+});
+
+it('rejects a fixture candidate when a non-plan head changes after analysis', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  await createCoachingConstraintRepository(database).create(athleteId, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Synthetic scheduling constraint after fixture analysis',
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    candidates().createFromFixture(athleteId, { runId: run.id, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'STALE_BASIS' });
+  expect(await candidateRowCounts(athleteId)).toEqual({
+    decisions: 0,
+    proposals: 0,
+    candidates: 0,
+  });
+});
+
+it('serializes fixture candidate creation with consent withdrawal and never leaves a readable body', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const outcomes = await Promise.allSettled([
+    candidates().createFromFixture(athleteId, { runId: run.id, idempotencyKey: randomUUID() }),
+    createConsentRepository(database).setConsent(athleteId, {
+      kind: 'ai',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    }),
+  ]);
+  expect(outcomes[1]?.status).toBe('fulfilled');
+  expect(await candidates().list(athleteId, run.id)).toEqual([]);
+  const created = outcomes[0];
+  if (created?.status === 'fulfilled') {
+    expect(await candidates().read(athleteId, created.value.candidate.id)).toBeNull();
+    await database.tenant(athleteId, async (tx) => {
+      const rows = await tx.query(
+        'SELECT body,digest,purged_reason FROM coaching_candidate WHERE athlete_id=$1 AND id=$2',
+        [athleteId, created.value.candidate.id],
+      );
+      expect(rows.rows).toEqual([{ body: null, digest: null, purged_reason: 'consent_withdrawn' }]);
+    });
+  } else {
+    expect(created?.reason).toMatchObject({ code: expect.any(String) });
+    expect(await candidateRowCounts(athleteId)).toEqual({
+      decisions: 0,
+      proposals: 0,
+      candidates: 0,
+    });
+  }
 });
 
 it('refuses stale context before sealing and leaves no partial decision, proposal or candidate', async () => {

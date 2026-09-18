@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { trainingCoachingPolicySchema } from './coaching-basis.js';
+import { trainingCandidateStrategyV1Schema } from './coaching-candidates.js';
 import { instantSchema } from './primitives.js';
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
@@ -88,6 +89,23 @@ export const coachingRunListSchema = z
   })
   .refine((value) => value.total >= value.items.length, 'Invalid total');
 
+/** A bounded instruction from the nonproduction fixture, never an approvable plan or actual. */
+export const coachingFixtureCandidateContentV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  scope: z.literal('running-core-v2-training'),
+  intent: z.strictObject({
+    kind: z.literal('set_session_duration_seconds'),
+    sessionId: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine((value) => value === value.trim() && !value.includes('\0')),
+    durationSeconds: z.number().finite().min(0).max(604800),
+  }),
+  strategy: trainingCandidateStrategyV1Schema,
+  summary: z.literal('Synthetic fixture duration proposal; not validated or approved.'),
+});
+
 /** Fixture analysis is untrusted material, not a candidate, Decision, or approvable plan. */
 export const coachingRunOutputV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -109,6 +127,9 @@ export type CoachingRunV1 = z.infer<typeof coachingRunV1Schema>;
 export type CoachingRunListQuery = z.infer<typeof coachingRunListQuerySchema>;
 export type CoachingRunList = z.infer<typeof coachingRunListSchema>;
 export type CoachingRunOutputV1 = z.infer<typeof coachingRunOutputV1Schema>;
+export type CoachingFixtureCandidateContentV1 = z.infer<
+  typeof coachingFixtureCandidateContentV1Schema
+>;
 
 /** A question or failure finishes this evidence-bound attempt; answering/retrying creates a new run. */
 export function canTransitionCoachingRunStatus(from: unknown, to: unknown): boolean {

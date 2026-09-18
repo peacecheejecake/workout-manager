@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
+import { coachingFixtureCandidateContentV1Schema } from '@workout/contracts/coaching-runs';
 import { createDatabase, TenantErasedError, type Database } from '../src/database.js';
 import {
   runOneCoachingJob,
@@ -100,7 +101,7 @@ async function seed(athleteId: string) {
         localStartTime: null,
         title: 'Run',
         sport: 'running',
-        durationSeconds: null,
+        durationSeconds: 1800,
         distanceMeters: 0,
         targetRpe: null,
         purpose: '',
@@ -464,6 +465,16 @@ it('claims only coaching jobs and persists one untrusted fixture output without 
   const updated = await repository().read(athleteId, run.id);
   expect(updated?.status.kind).toBe('analysis_ready');
   const outputId = updated?.status.kind === 'analysis_ready' ? updated.status.outputId : null;
+  const fixtureContent = expect.objectContaining({
+    schemaVersion: 1,
+    scope: 'running-core-v2-training',
+    intent: {
+      kind: 'set_session_duration_seconds',
+      sessionId: 'session',
+      durationSeconds: 2100,
+    },
+    summary: 'Synthetic fixture duration proposal; not validated or approved.',
+  });
   const result = await database.tenant(athleteId, (tx) =>
     tx.query(
       `SELECT o.id,o.body,r.status,
@@ -480,20 +491,22 @@ it('claims only coaching jobs and persists one untrusted fixture output without 
       id: outputId,
       body: {
         schemaVersion: 1,
-        content: { summary: 'Synthetic training analysis awaiting validation.' },
+        content: fixtureContent,
       },
       unrelated_pending: 1,
     }),
   ]);
-  expect(await repository().readOutput(athleteId, run.id)).toEqual({
+  const readOutput = await repository().readOutput(athleteId, run.id);
+  expect(readOutput).toMatchObject({
     schemaVersion: 1,
     runId: run.id,
     outputId,
     source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
     trust: 'untrusted_fixture',
     validation: 'unvalidated',
-    content: { summary: 'Synthetic training analysis awaiting validation.' },
+    content: fixtureContent,
   });
+  coachingFixtureCandidateContentV1Schema.parse(readOutput?.content);
   expect(await repository().readOutput(randomUUID(), run.id)).toBeNull();
   expect(await repository().readOutput(athleteId, randomUUID())).toBeNull();
   expect(

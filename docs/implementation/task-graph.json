@@ -840,11 +840,28 @@
       "evidence": "docs/implementation/progress/M1-05j2.md"
     },
     {
-      "id": "M1-05j3",
-      "title": "후보 서버 검증 API·fixture E2E",
+      "id": "M1-05j3a",
+      "title": "구조화 fixture·후보 서버 검증 API",
       "dependsOn": ["M1-05j2"],
       "kind": "task",
+      "status": "completed",
+      "scope": "비프로덕션 구조화 fixture 출력·서버 소유 후보 생성/조회 API·tenant/동의/계획 불변 E2E; 승인 아님",
+      "evidence": "docs/implementation/progress/M1-05j3a.md"
+    },
+    {
+      "id": "M1-05j3b",
+      "title": "부분 요청 새 후보·최신성 표시",
+      "dependsOn": ["M1-05j3a"],
+      "kind": "task",
       "status": "not_started",
+      "scope": "기존 후보의 일부 변경 선택을 새 후보로 재투영·검증하고 stale 메타데이터를 본문 없이 표시; tenant/철회 E2E"
+    },
+    {
+      "id": "M1-05j3",
+      "title": "후보 서버 검증 API·fixture E2E",
+      "dependsOn": ["M1-05j3a", "M1-05j3b"],
+      "kind": "task",
+      "status": "in_progress",
       "scope": "구조화 fixture와 서버 검증·조회·부분 요청 새 후보·최신성 표시·tenant/동의/계획 불변 E2E; 승인 아님"
     },
     {

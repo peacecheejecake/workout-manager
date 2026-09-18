@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canTransitionCoachingRunStatus,
+  coachingFixtureCandidateContentV1Schema,
   coachingRunCreateCommandV1Schema,
   coachingRunOutputV1Schema,
   coachingRunStatusSchema,
@@ -43,6 +44,39 @@ function run(status: CoachingRunStatus = queued) {
 }
 
 describe('coaching run lifecycle contract', () => {
+  it('requires a strict bounded synthetic duration instruction before candidate projection', () => {
+    const content = {
+      schemaVersion: 1,
+      scope: 'running-core-v2-training',
+      intent: {
+        kind: 'set_session_duration_seconds',
+        sessionId: 'session',
+        durationSeconds: 3900,
+      },
+      strategy: {
+        summary: 'Synthetic alternative',
+        preservedIntent: 'Preserve the original purpose',
+        rationale: 'Deterministic fixture only',
+        unconfirmedInformation: ['Recovery is unknown'],
+        revisitWhen: 'Review before approval',
+      },
+      summary: 'Synthetic fixture duration proposal; not validated or approved.',
+    };
+    expect(coachingFixtureCandidateContentV1Schema.parse(content)).toEqual(content);
+    for (const invalid of [
+      { ...content, schemaVersion: 2 },
+      { ...content, scope: 'running-core-v1-training' },
+      { ...content, summary: 'Approved plan' },
+      { ...content, proposedPlan: {} },
+      { ...content, intent: { ...content.intent, durationSeconds: 604801 } },
+      { ...content, intent: { ...content.intent, durationSeconds: -1 } },
+      { ...content, intent: { ...content.intent, sessionId: ' session ' } },
+      { ...content, intent: { ...content.intent, kind: 'delete_session' } },
+      { ...content, strategy: { ...content.strategy, authority: 'approve' } },
+    ])
+      expect(coachingFixtureCandidateContentV1Schema.safeParse(invalid).success).toBe(false);
+  });
+
   it('accepts only the route-scoped create fields and positive conversation revision', () => {
     const command = {
       schemaVersion: 1,

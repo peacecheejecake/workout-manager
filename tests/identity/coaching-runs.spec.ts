@@ -6,9 +6,11 @@ import { promisify } from 'node:util';
 import { expect, test, type Page } from '@playwright/test';
 import { coachingMessageResultSchema } from '../../packages/contracts/src/coaching-threads';
 import {
+  coachingFixtureCandidateContentV1Schema,
   coachingRunOutputV1Schema,
   coachingRunV1Schema,
 } from '../../packages/contracts/src/coaching-runs';
+import { trainingCandidateBundleV1Schema } from '../../packages/contracts/src/coaching-candidates';
 import { coreEvidenceSnapshotSchema } from '../../packages/contracts/src/evidence-snapshots';
 import {
   planDraftSchema,
@@ -86,14 +88,31 @@ async function createQueuedRun(page: Page) {
   const draft = planDraftSchema.parse({
     title: 'Synthetic coaching run plan',
     timezone: 'UTC',
-    sessions: [],
-    periods: (['season', 'wave', 'phase'] as const).map((level, index, levels) => ({
+    sessions: [
+      {
+        id: 'synthetic-session',
+        blockId: 'block',
+        date: '2080-01-02',
+        localStartTime: null,
+        title: 'Synthetic run',
+        sport: 'running',
+        durationSeconds: 1800,
+        distanceMeters: 0,
+        targetRpe: null,
+        purpose: 'Fixture validation only',
+        notes: '',
+        priority: 'normal',
+        locks: { date: false, time: false, intensity: false },
+        steps: [],
+      },
+    ],
+    periods: (['season', 'wave', 'phase', 'block'] as const).map((level, index, levels) => ({
       id: level,
       parentId: index === 0 ? null : levels[index - 1],
       level,
       title: level,
-      startDate: '2026-09-01',
-      endDateExclusive: '2026-10-01',
+      startDate: '2080-01-01',
+      endDateExclusive: '2080-02-01',
       timezone: 'UTC',
       intent: '',
       isPartial: false,
@@ -115,7 +134,7 @@ async function createQueuedRun(page: Page) {
   const { thread } = coachingMessageResultSchema.parse(await threadResponse.json());
   const captureResponse = await post(`/bff/v1/coaching-threads/${thread.id}/evidence-snapshots`, {
     expectedConversationRevision: thread.revision,
-    window: { from: '2026-09-01', toExclusive: '2026-09-30', timezone: 'UTC' },
+    window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
   });
   expect(captureResponse.status()).toBe(200);
   const snapshot = coreEvidenceSnapshotSchema.parse(await captureResponse.json());
@@ -132,7 +151,7 @@ async function createQueuedRun(page: Page) {
   const run = coachingRunV1Schema.parse(await queuedResponse.json());
   expect(run.status).toEqual({ kind: 'queued' });
   expect(run.source).toEqual({ kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' });
-  return { athleteId, headers, post, path, command, key, run };
+  return { athleteId, headers, post, path, command, key, run, plan };
 }
 
 async function dispatchOne(athleteId: string) {
@@ -185,7 +204,14 @@ test('runs synthetic analysis through OIDC, API, tenant worker and PostgreSQL wi
     runId: fixture.run.id,
     trust: 'untrusted_fixture',
     validation: 'unvalidated',
-    content: { summary: 'Synthetic training analysis awaiting validation.' },
+  });
+  const content = coachingFixtureCandidateContentV1Schema.parse(output.content);
+  expect(content).toMatchObject({
+    intent: {
+      kind: 'set_session_duration_seconds',
+      sessionId: 'synthetic-session',
+      durationSeconds: 2100,
+    },
   });
   const replay = await fixture.post(fixture.path, fixture.command, fixture.key);
   expect(replay.status()).toBe(200);
@@ -212,6 +238,90 @@ test('runs synthetic analysis through OIDC, API, tenant worker and PostgreSQL wi
   expect((await page.request.get(`${detail}/output`, { headers: fixture.headers })).status()).toBe(
     404,
   );
+});
+
+test('seals a server-validated fixture candidate without accepting a client plan or changing the plan head', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await createQueuedRun(page);
+  const collection = `/bff/v1/coaching-runs/${fixture.run.id}/candidates`;
+  const key = randomUUID();
+  expect(
+    (
+      await page.request.post(collection, {
+        headers: { ...fixture.headers, 'idempotency-key': key },
+      })
+    ).status(),
+  ).toBe(409);
+  await dispatchOne(fixture.athleteId);
+  expect(
+    (
+      await page.request.post(collection, {
+        headers: { ...fixture.headers, 'idempotency-key': key },
+        data: { proposed: { title: 'Client supplied plan' } },
+      })
+    ).status(),
+  ).toBe(400);
+  const response = await page.request.post(collection, {
+    headers: { ...fixture.headers, 'idempotency-key': key },
+  });
+  expect(response.status()).toBe(200);
+  const bundle = trainingCandidateBundleV1Schema.parse(await response.json());
+  expect(bundle.candidate).toMatchObject({
+    runId: fixture.run.id,
+    digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    before: { id: fixture.plan.id },
+  });
+  expect(bundle.candidate.proposed.sessions[0]?.durationSeconds).toBe(2100);
+  expect(bundle.candidate.diff.sessionChanges).toEqual([
+    expect.objectContaining({ id: 'synthetic-session', kind: 'modified' }),
+  ]);
+  const replay = await page.request.post(collection, {
+    headers: { ...fixture.headers, 'idempotency-key': key },
+  });
+  expect(trainingCandidateBundleV1Schema.parse(await replay.json())).toEqual(bundle);
+  const listing = await page.request.get(collection, { headers: fixture.headers });
+  const listed: unknown = await listing.json();
+  assert.ok(Array.isArray(listed));
+  expect(listed.map((item: unknown) => trainingCandidateBundleV1Schema.parse(item))).toEqual([
+    bundle,
+  ]);
+  const detail = `/bff/v1/coaching-candidates/${bundle.candidate.id}`;
+  const read = await page.request.get(detail, { headers: fixture.headers });
+  expect(trainingCandidateBundleV1Schema.parse(await read.json())).toEqual(bundle);
+  const planResponse = await page.request.get('/bff/v1/plans/current', {
+    headers: fixture.headers,
+  });
+  expect(planReadSchema.parse(await planResponse.json()).head?.id).toBe(fixture.plan.id);
+  const otherContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const otherPage = await otherContext.newPage();
+    const other = await login(otherPage, 'Bob');
+    expect((await otherPage.request.get(detail, { headers: other.headers })).status()).toBe(404);
+    expect(
+      (
+        await otherPage.request.post(collection, {
+          headers: { ...other.headers, 'idempotency-key': randomUUID() },
+        })
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await otherContext.close();
+  }
+  const consent = consentSchema.parse(
+    await (await page.request.get('/bff/v1/consents/ai', { headers: fixture.headers })).json(),
+  );
+  const withdrawn = await page.request.put('/bff/v1/consents/ai', {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+    data: { granted: false, expectedRevision: consent.revision },
+  });
+  expect(withdrawn.status()).toBe(200);
+  expect((await page.request.get(detail, { headers: fixture.headers })).status()).toBe(404);
+  await expect(
+    (await page.request.get(collection, { headers: fixture.headers })).json(),
+  ).resolves.toEqual([]);
 });
 
 test('keeps a user-cancelled queued attempt cancelled when the worker later sees its event', async ({

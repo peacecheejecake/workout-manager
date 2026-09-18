@@ -17,6 +17,7 @@ import {
   trainingCoachingPolicySchema,
 } from '@workout/contracts/coaching-basis';
 import {
+  coachingFixtureCandidateContentV1Schema,
   coachingRunModelSourceSchema,
   coachingRunStatusSchema,
 } from '@workout/contracts/coaching-runs';
@@ -39,9 +40,18 @@ const createCommandSchema = z.strictObject({
     .max(200)
     .refine((value) => value === value.trim()),
 });
+const createFromFixtureCommandSchema = createCommandSchema.pick({
+  runId: true,
+  idempotencyKey: true,
+});
+const storedFixtureOutputSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  content: z.json(),
+});
 const iso = (value: unknown) => z.coerce.date().parse(value).toISOString();
 
 export type TrainingCandidateCreateCommand = z.infer<typeof createCommandSchema>;
+export type TrainingCandidateFixtureCommand = z.infer<typeof createFromFixtureCommandSchema>;
 export interface TrainingCandidateBundle {
   decision: TrainingDecisionV1;
   proposal: TrainingProposalV1;
@@ -51,6 +61,10 @@ export interface TrainingCandidateRepository {
   create(
     athleteId: string,
     command: TrainingCandidateCreateCommand,
+  ): Promise<TrainingCandidateBundle>;
+  createFromFixture(
+    athleteId: string,
+    command: TrainingCandidateFixtureCommand,
   ): Promise<TrainingCandidateBundle>;
   read(athleteId: string, candidateId: string): Promise<TrainingCandidateBundle | null>;
   list(athleteId: string, runId: string): Promise<TrainingCandidateBundle[]>;
@@ -66,6 +80,7 @@ export class TrainingCandidateError extends Error {
       | 'POLICY_MISMATCH'
       | 'INVALID_COMPLETION_BASIS'
       | 'INVALID_PROJECTION'
+      | 'INVALID_FIXTURE_OUTPUT'
       | 'CANDIDATE_UNAVAILABLE'
       | 'CANDIDATE_TOO_LARGE',
   ) {
@@ -335,6 +350,169 @@ async function currentLocalDate(tx: Transaction, timezone: string): Promise<stri
     .parse(result.rows[0]?.['local_date']);
 }
 
+type CandidateContext = Awaited<ReturnType<typeof currentContext>>;
+type ReceiptRequest = { requestHash: string };
+
+function receiptKey(idempotencyKey: string, kind: 'prepared' | 'fixture'): string {
+  const digest = createHash('sha256').update(idempotencyKey).digest('hex');
+  return kind === 'fixture'
+    ? `coaching:candidate:fixture:${digest}`
+    : `coaching:candidate:${digest}`;
+}
+
+function receiptRequest(value: unknown): ReceiptRequest {
+  // Receipts survive deletion; they contain no source text, plan body, or model output.
+  return { requestHash: createHash('sha256').update(canonicalJson(value)).digest('hex') };
+}
+
+async function replayCandidate(
+  tx: Transaction,
+  key: string,
+  request: ReceiptRequest,
+  policy: z.infer<typeof trainingCoachingPolicySchema>,
+  source: z.infer<typeof coachingRunModelSourceSchema>,
+): Promise<TrainingCandidateBundle | null> {
+  const receipt = await tx.query(
+    'SELECT request=$3::jsonb AS matches,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+    [tx.athleteId, key, JSON.stringify(request)],
+  );
+  if (!receipt.rows[0]) return null;
+  if (receipt.rows[0]['matches'] !== true) throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+  const prior = z.strictObject({ candidateId: uuid }).parse(receipt.rows[0]['result']);
+  const bundle = await readBundle(tx, prior.candidateId);
+  if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  const context = await currentContext(tx, bundle.decision.runId, policy, source);
+  requireStatus(context.row, 'validated_final', bundle.decision.id);
+  if (bundle.candidate.asOfLocalDate !== (await currentLocalDate(tx, context.plan.draft.timezone)))
+    throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  return bundle;
+}
+
+async function deriveFixtureProposal(tx: Transaction, context: CandidateContext) {
+  const selected = await tx.query(
+    `SELECT body FROM coaching_analysis_output
+     WHERE athlete_id=$1 AND run_id=$2 AND id=$3 AND purged_reason IS NULL`,
+    [tx.athleteId, context.row['run_id'], context.row['output_id']],
+  );
+  const stored = storedFixtureOutputSchema.safeParse(selected.rows[0]?.['body']);
+  const output = stored.success
+    ? coachingFixtureCandidateContentV1Schema.safeParse(stored.data.content)
+    : null;
+  if (!output?.success) throw new TrainingCandidateError('INVALID_FIXTURE_OUTPUT');
+  const { sessionId, durationSeconds } = output.data.intent;
+  const target = context.plan.draft.sessions.find((session) => session.id === sessionId);
+  if (
+    !target ||
+    target.durationSeconds === null ||
+    target.durationRange != null ||
+    target.durationSeconds === durationSeconds
+  )
+    throw new TrainingCandidateError('INVALID_FIXTURE_OUTPUT');
+  const proposed = planDraftSchema.safeParse({
+    ...context.plan.draft,
+    sessions: context.plan.draft.sessions.map((session) =>
+      session.id === sessionId ? { ...session, durationSeconds } : session,
+    ),
+  });
+  if (!proposed.success) throw new TrainingCandidateError('INVALID_FIXTURE_OUTPUT');
+  return { proposed: proposed.data, strategy: output.data.strategy };
+}
+
+async function sealCandidate(
+  tx: Transaction,
+  context: CandidateContext,
+  command: Pick<TrainingCandidateCreateCommand, 'runId' | 'proposed' | 'strategy'>,
+  key: string,
+  request: ReceiptRequest,
+): Promise<TrainingCandidateBundle> {
+  const asOfLocalDate = await currentLocalDate(tx, context.plan.draft.timezone);
+  const projection = projectTrainingCandidateV1({
+    basis: context.basis,
+    before: context.plan,
+    proposed: command.proposed,
+    strategy: command.strategy,
+    asOfLocalDate,
+    completions: context.completions,
+  });
+  if (!projection.ok)
+    throw new TrainingCandidateError(
+      projection.reason === 'INVALID_COMPLETION_BASIS'
+        ? 'INVALID_COMPLETION_BASIS'
+        : 'INVALID_PROJECTION',
+    );
+  const decisionId = randomUUID();
+  const proposalId = randomUUID();
+  const candidateId = randomUUID();
+  const createdAt = iso(
+    (await tx.query('SELECT statement_timestamp() AS created_at')).rows[0]?.['created_at'],
+  );
+  const digest = digestTrainingCandidate({
+    runId: command.runId,
+    decisionId,
+    proposalId,
+    candidateId,
+    draft: projection.draft,
+  });
+  const decision = trainingDecisionV1Schema.parse({
+    schemaVersion: 1,
+    scope: 'running-core-v2-training',
+    id: decisionId,
+    runId: command.runId,
+    basis: context.basis,
+    strategy: command.strategy,
+    createdAt,
+  });
+  const proposal = trainingProposalV1Schema.parse({
+    schemaVersion: 1,
+    scope: 'running-core-v2-training',
+    id: proposalId,
+    runId: command.runId,
+    decisionId,
+    candidateIds: [candidateId],
+    createdAt,
+  });
+  const candidate = trainingCandidateV1Schema.parse({
+    ...projection.draft,
+    id: candidateId,
+    runId: command.runId,
+    decisionId,
+    proposalId,
+    createdAt,
+    digest,
+  });
+  const candidateBody = JSON.stringify(candidate);
+  // Leave room for JSONB's expanded representation under the 4 MiB table cap.
+  if (Buffer.byteLength(candidateBody) > 3 * 1024 * 1024)
+    throw new TrainingCandidateError('CANDIDATE_TOO_LARGE');
+  await tx.query(
+    'INSERT INTO coaching_decision(athlete_id,id,run_id,body,created_at) VALUES($1,$2,$3,$4::jsonb,$5)',
+    [tx.athleteId, decisionId, command.runId, JSON.stringify(decision), createdAt],
+  );
+  await tx.query(
+    'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body,created_at) VALUES($1,$2,$3,$4::jsonb,$5)',
+    [tx.athleteId, proposalId, decisionId, JSON.stringify(proposal), createdAt],
+  );
+  await tx.query(
+    `INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body,created_at)
+     VALUES($1,$2,$3,$4,NULL,$5,$6::jsonb,$7)`,
+    [tx.athleteId, candidateId, decisionId, proposalId, digest, candidateBody, createdAt],
+  );
+  await tx.query(
+    `UPDATE coaching_run SET status='{"kind":"running","stage":"validating_candidates"}'::jsonb,
+      updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2`,
+    [tx.athleteId, command.runId],
+  );
+  await tx.query(
+    'UPDATE coaching_run SET status=$3::jsonb,updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2',
+    [tx.athleteId, command.runId, JSON.stringify({ kind: 'validated_final', decisionId })],
+  );
+  await tx.query(
+    'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
+    [tx.athleteId, key, JSON.stringify(request), JSON.stringify({ candidateId })],
+  );
+  return { decision, proposal, candidate };
+}
+
 export function createTrainingCandidateRepository(
   database: Database,
   options: {
@@ -353,128 +531,38 @@ export function createTrainingCandidateRepository(
   return {
     create(athleteId, input) {
       const command = createCommandSchema.parse(input);
-      const key = `coaching:candidate:${createHash('sha256').update(command.idempotencyKey).digest('hex')}`;
-      // Receipts outlive evidence redaction. Persist only a one-way equality token.
-      const request = {
-        requestHash: createHash('sha256')
-          .update(
-            canonicalJson({
-              schemaVersion: 1,
-              runId: command.runId,
-              proposed: command.proposed,
-              strategy: command.strategy,
-            }),
-          )
-          .digest('hex'),
-      };
+      const key = receiptKey(command.idempotencyKey, 'prepared');
+      const request = receiptRequest({
+        schemaVersion: 1,
+        runId: command.runId,
+        proposed: command.proposed,
+        strategy: command.strategy,
+      });
       return guarded(athleteId, async (tx) => {
-        const receipt = await tx.query(
-          'SELECT request=$3::jsonb AS matches,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
-          [athleteId, key, JSON.stringify(request)],
-        );
-        if (receipt.rows[0]) {
-          if (receipt.rows[0]['matches'] !== true)
-            throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
-          const prior = z.strictObject({ candidateId: uuid }).parse(receipt.rows[0]['result']);
-          const bundle = await readBundle(tx, prior.candidateId);
-          if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
-          const context = await currentContext(tx, bundle.decision.runId, policy, source);
-          requireStatus(context.row, 'validated_final', bundle.decision.id);
-          if (
-            bundle.candidate.asOfLocalDate !==
-            (await currentLocalDate(tx, context.plan.draft.timezone))
-          )
-            throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
-          return bundle;
-        }
+        const replay = await replayCandidate(tx, key, request, policy, source);
+        if (replay) return replay;
         const context = await currentContext(tx, command.runId, policy, source);
         requireStatus(context.row, 'analysis_ready');
-        const asOfLocalDate = await currentLocalDate(tx, context.plan.draft.timezone);
-        const projection = projectTrainingCandidateV1({
-          basis: context.basis,
-          before: context.plan,
-          proposed: command.proposed,
-          strategy: command.strategy,
-          asOfLocalDate,
-          completions: context.completions,
-        });
-        if (!projection.ok)
-          throw new TrainingCandidateError(
-            projection.reason === 'INVALID_COMPLETION_BASIS'
-              ? 'INVALID_COMPLETION_BASIS'
-              : 'INVALID_PROJECTION',
-          );
-        const decisionId = randomUUID();
-        const proposalId = randomUUID();
-        const candidateId = randomUUID();
-        const createdAt = iso(
-          (await tx.query('SELECT statement_timestamp() AS created_at')).rows[0]?.['created_at'],
-        );
-        const digest = digestTrainingCandidate({
-          runId: command.runId,
-          decisionId,
-          proposalId,
-          candidateId,
-          draft: projection.draft,
-        });
-        const decision = trainingDecisionV1Schema.parse({
-          schemaVersion: 1,
-          scope: 'running-core-v2-training',
-          id: decisionId,
-          runId: command.runId,
-          basis: context.basis,
-          strategy: command.strategy,
-          createdAt,
-        });
-        const proposal = trainingProposalV1Schema.parse({
-          schemaVersion: 1,
-          scope: 'running-core-v2-training',
-          id: proposalId,
-          runId: command.runId,
-          decisionId,
-          candidateIds: [candidateId],
-          createdAt,
-        });
-        const candidate = trainingCandidateV1Schema.parse({
-          ...projection.draft,
-          id: candidateId,
-          runId: command.runId,
-          decisionId,
-          proposalId,
-          createdAt,
-          digest,
-        });
-        const candidateBody = JSON.stringify(candidate);
-        // Leave room for JSONB's expanded representation under the 4 MiB table cap.
-        if (Buffer.byteLength(candidateBody) > 3 * 1024 * 1024)
-          throw new TrainingCandidateError('CANDIDATE_TOO_LARGE');
-        await tx.query(
-          'INSERT INTO coaching_decision(athlete_id,id,run_id,body,created_at) VALUES($1,$2,$3,$4::jsonb,$5)',
-          [athleteId, decisionId, command.runId, JSON.stringify(decision), createdAt],
-        );
-        await tx.query(
-          'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body,created_at) VALUES($1,$2,$3,$4::jsonb,$5)',
-          [athleteId, proposalId, decisionId, JSON.stringify(proposal), createdAt],
-        );
-        await tx.query(
-          `INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,parent_candidate_id,digest,body,created_at)
-           VALUES($1,$2,$3,$4,NULL,$5,$6::jsonb,$7)`,
-          [athleteId, candidateId, decisionId, proposalId, digest, candidateBody, createdAt],
-        );
-        await tx.query(
-          `UPDATE coaching_run SET status='{"kind":"running","stage":"validating_candidates"}'::jsonb,
-            updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2`,
-          [athleteId, command.runId],
-        );
-        await tx.query(
-          'UPDATE coaching_run SET status=$3::jsonb,updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2',
-          [athleteId, command.runId, JSON.stringify({ kind: 'validated_final', decisionId })],
-        );
-        await tx.query(
-          'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
-          [athleteId, key, JSON.stringify(request), JSON.stringify({ candidateId })],
-        );
-        return { decision, proposal, candidate };
+        return sealCandidate(tx, context, command, key, request);
+      });
+    },
+    createFromFixture(athleteId, input) {
+      const command = createFromFixtureCommandSchema.parse(input);
+      const key = receiptKey(command.idempotencyKey, 'fixture');
+      const request = receiptRequest({
+        schemaVersion: 1,
+        kind: 'stored_deterministic_fixture',
+        runId: command.runId,
+      });
+      return guarded(athleteId, async (tx) => {
+        const replay = await replayCandidate(tx, key, request, policy, source);
+        if (replay) return replay;
+        const context = await currentContext(tx, command.runId, policy, source);
+        requireStatus(context.row, 'analysis_ready');
+        if (source.kind !== 'deterministic_fixture' || source.fixtureId !== 'synthetic-v1')
+          throw new TrainingCandidateError('INVALID_FIXTURE_OUTPUT');
+        const derived = await deriveFixtureProposal(tx, context);
+        return sealCandidate(tx, context, { runId: command.runId, ...derived }, key, request);
       });
     },
     read(athleteId, candidateId) {

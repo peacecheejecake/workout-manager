@@ -196,6 +196,23 @@ export const trainingProposalV1Schema = z.strictObject({
   createdAt: instantSchema,
 });
 
+export const trainingCandidateBundleV1Schema = z
+  .strictObject({
+    decision: trainingDecisionV1Schema,
+    proposal: trainingProposalV1Schema,
+    candidate: trainingCandidateV1Schema,
+  })
+  .refine(
+    ({ decision, proposal, candidate }) =>
+      proposal.decisionId === decision.id &&
+      candidate.decisionId === decision.id &&
+      candidate.proposalId === proposal.id &&
+      candidate.runId === decision.runId &&
+      proposal.runId === decision.runId &&
+      proposal.candidateIds.includes(candidate.id),
+    'Candidate bundle must bind one decision, proposal and candidate',
+  );
+
 export type TrainingCandidateStrategyV1 = z.infer<typeof trainingCandidateStrategyV1Schema>;
 export type TrainingCandidateIssueV1 = z.infer<typeof trainingCandidateIssueV1Schema>;
 export type TrainingCandidateValidationV1 = z.infer<typeof trainingCandidateValidationV1Schema>;
@@ -204,3 +221,4 @@ export type TrainingCandidateDraftV1 = z.infer<typeof trainingCandidateDraftV1Sc
 export type TrainingCandidateV1 = z.infer<typeof trainingCandidateV1Schema>;
 export type TrainingDecisionV1 = z.infer<typeof trainingDecisionV1Schema>;
 export type TrainingProposalV1 = z.infer<typeof trainingProposalV1Schema>;
+export type TrainingCandidateBundleV1 = z.infer<typeof trainingCandidateBundleV1Schema>;

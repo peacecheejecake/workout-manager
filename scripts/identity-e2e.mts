@@ -2,6 +2,7 @@ import { createCoachingConstraintRepository } from '../packages/server/persisten
 import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.ts';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
 import { createCoachingRunRepository } from '../packages/server/persistence/src/coaching-runs.ts';
+import { createTrainingCandidateRepository } from '../packages/server/persistence/src/coaching-candidates.ts';
 import { createSessionActualsRepository } from '../packages/server/persistence/src/session-actuals.js';
 import { createPlanScenarioRepository } from '../packages/server/persistence/src/plan-scenarios.ts';
 import { createSessionCompletionRepository } from '../packages/server/persistence/src/session-completions.ts';
@@ -33,6 +34,7 @@ import {
   grantCoachingConstraints,
   grantCoachingThreads,
   grantCoachingRuns,
+  grantCoachingCandidates,
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
@@ -142,6 +144,7 @@ try {
     await grantCoachingThreads(adminUrl, 'workout_runtime');
     await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
     await grantCoachingRuns(adminUrl, 'workout_runtime');
+    await grantCoachingCandidates(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_coaching_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
@@ -229,6 +232,10 @@ try {
     coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),
     coachingRuns: createCoachingRunRepository(database, {
+      policy: { id: 'running-core-v2-training', version: '1' },
+      source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+    }),
+    coachingCandidates: createTrainingCandidateRepository(database, {
       policy: { id: 'running-core-v2-training', version: '1' },
       source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
     }),

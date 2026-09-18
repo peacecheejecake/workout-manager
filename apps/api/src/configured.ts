@@ -2,6 +2,7 @@ import { createCoachingConstraintRepository } from '@workout/server-persistence/
 import { createCoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { createCoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
 import { createCoachingRunRepository } from '@workout/server-persistence/coaching-runs';
+import { createTrainingCandidateRepository } from '@workout/server-persistence/coaching-candidates';
 import { createSessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
 import { createSessionCompletionRepository } from '@workout/server-persistence/session-completions';
@@ -87,6 +88,10 @@ export async function createConfiguredApi(environment: unknown) {
       ...(env.COACHING_FIXTURE_ENABLED === 'true'
         ? {
             coachingRuns: createCoachingRunRepository(database, {
+              policy: { id: 'running-core-v2-training', version: '1' },
+              source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+            }),
+            coachingCandidates: createTrainingCandidateRepository(database, {
               policy: { id: 'running-core-v2-training', version: '1' },
               source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
             }),

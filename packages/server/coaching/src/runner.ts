@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type { CoreEvidenceBodyV2 } from '@workout/contracts/evidence-snapshots';
+import {
+  coachingFixtureCandidateContentV1Schema,
+  type CoachingFixtureCandidateContentV1,
+} from '@workout/contracts/coaching-runs';
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const boundedText = (max: number) =>
@@ -87,10 +91,38 @@ export function createDeterministicFixtureAdapter(
 ): CoachingEvaluationAdapter {
   if (fixtureId !== 'synthetic-v1') throw new Error('UNSUPPORTED_COACHING_FIXTURE');
   return {
-    async evaluate() {
+    async evaluate(evidence) {
+      const first = evidence.plan.draft.sessions[0];
+      if (!first || first.durationSeconds === null || first.durationRange) {
+        return {
+          kind: 'needs_question',
+          question: 'What exact duration should the first planned session use?',
+        };
+      }
+      // A technical fixture delta, not advice inferred from personal evidence.
+      const changedDuration =
+        first.durationSeconds <= 604500 ? first.durationSeconds + 300 : first.durationSeconds - 300;
+      const content: CoachingFixtureCandidateContentV1 =
+        coachingFixtureCandidateContentV1Schema.parse({
+          schemaVersion: 1,
+          scope: 'running-core-v2-training',
+          intent: {
+            kind: 'set_session_duration_seconds',
+            sessionId: first.id,
+            durationSeconds: changedDuration,
+          },
+          strategy: {
+            summary: 'Synthetic duration alternative',
+            preservedIntent: 'Preserve the existing session purpose and schedule',
+            rationale: 'Deterministic fixture change for testing only',
+            unconfirmedInformation: ['Current training context remains unconfirmed'],
+            revisitWhen: 'Review before explicitly approving a plan change',
+          },
+          summary: 'Synthetic fixture duration proposal; not validated or approved.',
+        });
       return {
         kind: 'analysis',
-        content: { summary: 'Synthetic training analysis awaiting validation.' },
+        content,
       };
     },
   };

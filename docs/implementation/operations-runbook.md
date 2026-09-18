@@ -227,5 +227,20 @@ pnpm --filter @workout/worker coaching:fixture --athlete-id <athlete-uuid>
 다른 tenant를 자동 탐색하지 않는다. lease 만료 후에는 같은 tenant를 다시 dispatch할 수
 있고, 여섯 번째 claim은 adapter 호출 없이 내부 오류 상태로 종결한다. 결과 본문을 로그에
 기록하지 않는다. API의 출력 조회는 현재 동의·근거·정책·의존성을 다시 확인하며 stale,
-회수·취소된 출력은 404로 숨긴다. fixture 분석은 미검증 출력이며 실제 모델이나
-Decision/Proposal·계획 승인의 근거가 아니다.
+회수·취소된 출력은 404로 숨긴다. fixture 분석 자체는 미검증 출력이며 별도 서버
+검증 전에는 Decision/Proposal이 아니다. 계획 승인은 후속 명시 transaction에 남는다.
+
+## 비프로덕션 구조화 후보 검증 (M1-05j3a)
+
+Migration 018 뒤 API runtime 역할에 `grantCoachingCandidates`도 적용한다. 위의
+비프로덕션 fixture 설정이 활성일 때만 `POST /bff/v1/coaching-runs/:runId/candidates`,
+`GET /bff/v1/coaching-runs/:runId/candidates`, `GET /bff/v1/coaching-candidates/:candidateId`를
+연결한다. POST는 본문을 받지 않고 `idempotency-key`를 요구한다. 클라이언트가 임의 계획
+초안이나 전략을 후보로 제출하는 API는 없다.
+
+Fixture worker는 정확한 시간이 있는 첫 세션에 한해 300초 변경 의도를 구조화 출력으로
+남긴다. 서버는 이 출력을 여전히 미검증 입력으로 취급하고, 소유한 실행·고정 근거·현재
+원장 의존성·동의·정책·계획·완료 보고와 출력 형식을 다시 확인한 뒤 변경 한 건만
+PlanDraft에 반영해 순수 diff/validation을 실행한다. 성공 시 불변 후보와 서버 digest를
+저장하지만 계획 head는 바꾸지 않는다. 현재 구조화 형식이 아닌 과거 요약 출력은
+후보 생성에서 거절한다. 이 fixture 경로는 실제 코치 모델의 품질이나 계획 승인 증거가 아니다.

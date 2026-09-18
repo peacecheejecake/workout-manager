@@ -12,7 +12,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'pnpm exec tsx scripts/identity-e2e.mts',
+      command: 'node --import tsx scripts/identity-e2e.mts',
       url: `http://127.0.0.1:${identityApiPort}/health`,
       timeout: 60000,
       reuseExistingServer: false,
