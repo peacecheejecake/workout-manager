@@ -25,6 +25,7 @@ import { ThreadList } from './thread-list';
 import { ScopeView } from './scope-view';
 import { coachingScopeLabels } from './scope-context';
 import { EvidencePanel } from './evidence-panel';
+import { CoachingRunPanel } from './run-panel';
 import { ConstraintsPanel } from './constraints-panel';
 import { createEvidenceDraftStore, type EvidenceDraftStore } from './evidence-store';
 import styles from './coaching.module.css';
@@ -282,8 +283,9 @@ function Workspace({
     <section className={styles.workspace} aria-label="상담 기록">
       <h1>상담 기록</h1>
       <p>
-        저장된 계획에 연결해 사용자 메시지를 기록합니다. AI 답변·제안·계획 변경은 실행하지 않습니다.
-        작성 중인 내용은 이 로그인 세션의 메모리에만 유지됩니다.
+        저장된 계획에 연결해 사용자 메시지를 기록합니다. 선택한 근거로 코칭 실행을 요청할 수 있지만,
+        후보 검증과 계획 반영에는 각각 별도의 명시적 행동이 필요합니다. 작성 중인 내용은 이 로그인
+        세션의 메모리에만 유지됩니다.
       </p>
       <ConstraintsPanel
         athleteId={athleteId}
@@ -566,6 +568,17 @@ function Workspace({
         store={evidenceStore}
         externalPending={pending !== null}
       />
+      {query?.thread ? (
+        <CoachingRunPanel
+          athleteId={athleteId}
+          sessionId={sessionId}
+          transport={transport}
+          threadId={query.thread}
+          snapshotId={query.snapshot}
+          observedRevision={evidenceRevision}
+          createId={createId}
+        />
+      ) : null}
     </section>
   );
 }

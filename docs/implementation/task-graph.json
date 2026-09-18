@@ -889,8 +889,9 @@
       "title": "코치·후보 검토 제품 UI",
       "dependsOn": ["M1-05i", "M1-05j", "M1-05k"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "S10/S11 두 shell·후보 전후 달력/표·미확인/오류/stale·명시 승인·새 계획 재조회·Aside/브라우저 검증"
+      "status": "completed",
+      "scope": "S10/S11 두 shell·후보 전후 달력/표·미확인/오류/stale·명시 승인·새 계획 재조회·Aside/브라우저 검증",
+      "evidence": "docs/implementation/progress/M1-05l.md"
     },
     {
       "id": "M1-05m",

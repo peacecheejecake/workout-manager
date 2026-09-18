@@ -24,5 +24,10 @@ export default defineConfig({
       url: 'http://127.0.0.1:3100',
       reuseExistingServer: false,
     },
+    {
+      command: 'API_ORIGIN=http://127.0.0.1:4300 pnpm --filter @workout/mobile-web preview',
+      url: 'http://127.0.0.1:4200',
+      reuseExistingServer: false,
+    },
   ],
 });

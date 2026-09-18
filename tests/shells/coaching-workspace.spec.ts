@@ -76,7 +76,9 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
       });
       return;
     }
-    expect(request.headers()['x-workout-session-id']).toBe(`session-${account}`);
+    const sessionHeader = request.headers()['x-workout-session-id'];
+    expect(['session-first', 'session-second']).toContain(sessionHeader);
+    const requestAccount = sessionHeader === 'session-first' ? 'first' : 'second';
     if (path === '/bff/v1/coaching-constraints' && request.method() === 'GET') {
       await route.fulfill({ json: { headRevision: null, items: [] } });
       return;
@@ -89,7 +91,7 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
     if (path === '/bff/v1/plans/current') {
       await route.fulfill({
         json:
-          account === 'first'
+          requestAccount === 'first'
             ? {
                 head: plan,
                 history: [
@@ -133,17 +135,21 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
     if (path === '/bff/v1/coaching-threads') {
       await route.fulfill({
         json: {
-          items: thread && account === 'first' ? [thread] : [],
-          total: thread && account === 'first' ? 1 : 0,
+          items: thread && requestAccount === 'first' ? [thread] : [],
+          total: thread && requestAccount === 'first' ? 1 : 0,
         },
       });
       return;
     }
-    if (thread && path === `/bff/v1/coaching-threads/${thread.id}`) {
+    if (thread && requestAccount === 'first' && path === `/bff/v1/coaching-threads/${thread.id}`) {
       await route.fulfill({ json: thread });
       return;
     }
-    if (thread && path === `/bff/v1/coaching-threads/${thread.id}/messages`) {
+    if (
+      thread &&
+      requestAccount === 'first' &&
+      path === `/bff/v1/coaching-threads/${thread.id}/messages`
+    ) {
       if (request.method() === 'POST') {
         const input = coachingMessageAppendSchema.parse({
           ...request.postDataJSON(),

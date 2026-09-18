@@ -1,5 +1,6 @@
 import { lazy, Suspense, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-candidates';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
 import './styles.css';
 
@@ -9,15 +10,41 @@ const SpikeWorkspace = lazy(() =>
 const CoachingPage = lazy(() =>
   import('./coaching-page').then((module) => ({ default: module.CoachingPage })),
 );
+const ProposalPage = lazy(() =>
+  import('./proposal-page').then((module) => ({ default: module.ProposalPage })),
+);
+const PlannerPage = lazy(() =>
+  import('./planner-page').then((module) => ({ default: module.PlannerPage })),
+);
 const AccountPage = lazy(() =>
   import('./account-page').then((module) => ({ default: module.AccountPage })),
 );
+const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
+const proposalCandidateId = proposalPath
+  ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
+  : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
     <main className="wm-page mobile-shell">
-      {location.pathname === '/coach' ? (
+      {proposalCandidateId?.success ? (
+        <Suspense fallback={<p role="status">후보 검토 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/coach">코치</a> · <a href="/account">계정</a>
+          </nav>
+          <ProposalPage candidateId={proposalCandidateId.data.toLowerCase()} />
+        </Suspense>
+      ) : proposalPath ? (
+        <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/planner' ? (
+        <Suspense fallback={<p role="status">훈련 계획 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/coach">코치</a> · <a href="/account">계정</a>
+          </nav>
+          <PlannerPage />
+        </Suspense>
+      ) : location.pathname === '/coach' ? (
         <Suspense fallback={<p role="status">상담 기록 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/account">계정</a>

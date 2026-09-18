@@ -135,6 +135,9 @@ importers:
       '@workout/modules-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
+      '@workout/modules-planning':
+        specifier: workspace:*
+        version: link:../../packages/modules/planning
       '@workout/platform':
         specifier: workspace:*
         version: link:../../packages/platform

@@ -1,0 +1,113 @@
+.workspace {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.workspace :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace button {
+  min-height: var(--target-primary);
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ink-muted);
+  border-radius: var(--radius-control);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.workspace button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.workspace a {
+  color: var(--accent);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+}
+.card {
+  min-width: 0;
+  margin-block: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.workspace fieldset {
+  min-width: 0;
+  margin-block: var(--space-4);
+  border: 1px solid var(--line);
+}
+.workspace label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-block: var(--space-2);
+}
+.workspace input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  accent-color: var(--accent);
+}
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.workspace table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.workspace th,
+.workspace td {
+  min-width: 8rem;
+  padding: var(--space-2);
+  border-block-end: 1px solid var(--line);
+  vertical-align: top;
+}
+.workspace th[scope='row'] {
+  min-width: 7rem;
+}
+.workspace ul {
+  padding-inline-start: var(--space-5);
+}
+.workspace li {
+  margin-block: var(--space-2);
+}
+.details {
+  margin-block-start: var(--space-2);
+}
+.details summary {
+  cursor: pointer;
+}
+.details dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, 9rem) minmax(10rem, 1fr);
+  gap: var(--space-2);
+}
+.details dt {
+  font-weight: 600;
+}
+.details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--ink-muted);
+}
+.nowrap {
+  white-space: nowrap;
+}

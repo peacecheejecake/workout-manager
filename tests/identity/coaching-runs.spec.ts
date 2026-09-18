@@ -543,6 +543,75 @@ test('applies a candidate only after explicit confirmation and returns one new p
   ).toBe('stale');
 });
 
+test('reviews a fixture run and approves a selected change through the product UI', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const fixture = await createQueuedRun(page);
+  await dispatchOne(fixture.athleteId);
+
+  await page.goto(
+    `/coach?thread=${fixture.run.threadId}&snapshot=${fixture.run.evidenceSnapshotId}`,
+  );
+  const runPanel = page.getByRole('region', { name: '코칭 실행' });
+  await expect(runPanel.getByText('분석 자료가 저장되었습니다.', { exact: false })).toBeVisible();
+  await runPanel.getByRole('button', { name: '테스트용 fixture 후보 검증' }).click();
+  await runPanel.getByRole('link', { name: /후보 제안 검토/ }).click();
+
+  const review = page.getByRole('region', { name: '제안 검토' });
+  await expect(review.getByRole('region', { name: '변경 전후 일정' })).toBeVisible();
+  await expect(review.getByRole('region', { name: '예상 영향' })).toBeVisible();
+  await expect(review.getByRole('region', { name: '후보 검증 결과' })).toBeVisible();
+  await expect(review.getByRole('button', { name: '확인하고 계획에 적용' })).toBeDisabled();
+  for (const width of [768, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+    ).toBe(false);
+  }
+  expect(
+    planReadSchema.parse(
+      await (await page.request.get('/bff/v1/plans/current', { headers: fixture.headers })).json(),
+    ).head?.id,
+  ).toBe(fixture.plan.id);
+
+  await review.getByRole('checkbox', { name: /세션 synthetic-session/ }).check();
+  await review.getByRole('button', { name: '선택한 변경으로 새 후보 만들기' }).click();
+  await review.getByRole('link', { name: '새로 검증한 후보 검토' }).click();
+  await expect(review.getByRole('link', { name: '부모 후보 검토' })).toBeVisible();
+  const childPath = new URL(page.url()).pathname;
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto(`http://127.0.0.1:4200${childPath}`);
+  await expect(review.getByRole('region', { name: '변경 전후 일정' })).toBeVisible();
+  await expect(review.getByRole('region', { name: '후보 검증 결과' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  );
+  const approvalConfirmation = review.getByRole('checkbox', {
+    name: '원안과 제안, 검증 결과를 확인했고 이 후보를 계획에 적용합니다.',
+  });
+  await approvalConfirmation.focus();
+  await page.keyboard.press('Space');
+  await expect(approvalConfirmation).toBeChecked();
+  await review.getByRole('button', { name: '확인하고 계획에 적용' }).click();
+  await expect(
+    review.getByText(`계획 버전 ${fixture.plan.version + 1} 적용을 서버에서 확인했습니다.`),
+  ).toBeVisible();
+  const head = planReadSchema.parse(
+    await (await page.request.get('/bff/v1/plans/current', { headers: fixture.headers })).json(),
+  ).head;
+  expect(head?.version).toBe(fixture.plan.version + 1);
+  expect(head?.draft.sessions[0]?.durationSeconds).toBe(2100);
+  await review.getByRole('link', { name: '저장된 계획 보기' }).click();
+  await expect(page).toHaveURL('http://127.0.0.1:4200/planner');
+  await expect(page.getByRole('region', { name: '훈련 계획' })).toContainText(
+    `현재 버전: ${fixture.plan.version + 1} · Synthetic coaching run plan`,
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  );
+});
+
 test('keeps a user-cancelled queued attempt cancelled when the worker later sees its event', async ({
   page,
 }) => {

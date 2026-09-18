@@ -15,6 +15,7 @@
     "zod": "4.6.5"
   },
   "exports": {
-    "./coaching-workspace": "./src/coaching-workspace.tsx"
+    "./coaching-workspace": "./src/coaching-workspace.tsx",
+    "./candidate-review-workspace": "./src/candidate-review-workspace.tsx"
   }
 }

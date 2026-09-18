@@ -403,6 +403,13 @@ it.each([
   ['GET', '/bff/v1/coaching-threads/thread/messages?afterRevision=1'],
   ['POST', '/bff/v1/coaching-threads'],
   ['POST', '/bff/v1/coaching-threads/thread/messages'],
+  ['GET', '/bff/v1/coaching-threads/thread/runs?limit=20&offset=0'],
+  ['POST', '/bff/v1/coaching-threads/thread/runs'],
+  ['GET', '/bff/v1/coaching-runs/run'],
+  ['POST', '/bff/v1/coaching-runs/run/candidates'],
+  ['GET', '/bff/v1/coaching-candidates/candidate/status'],
+  ['POST', '/bff/v1/coaching-candidates/candidate/partials'],
+  ['POST', '/bff/v1/coaching-candidates/candidate/approve'],
 ] as const)('uses the session-bound coaching namespace for %s %s', async (method, path) => {
   fetchMock.mockResolvedValue(json({ accepted: true }));
   const controller = new AbortController();
@@ -430,6 +437,8 @@ it.each([
 it.each([
   '/bff/v1/coaching-constraints-admin',
   '/bff/v1/coaching-threads-admin',
+  '/bff/v1/coaching-runs-admin',
+  '/bff/v1/coaching-candidates-admin',
   '/bff/v1/evidence-snapshots-admin',
 ])(
   'keeps similarly named non-coaching route %s outside the authenticated allowlist',
