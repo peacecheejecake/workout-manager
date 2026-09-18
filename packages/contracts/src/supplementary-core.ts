@@ -100,6 +100,12 @@ export const exerciseVersionSaveCommandSchema = z
         path: ['definition', 'reviewState'],
         message: 'User-created catalog versions cannot claim editorial review',
       });
+    if (command.definition.family === 'stretching')
+      context.addIssue({
+        code: 'custom',
+        path: ['definition', 'family'],
+        message: 'Stretching definitions need an atomic StretchProfile save',
+      });
     if (command.expectedVersionId === command.definition.versionId)
       context.addIssue({
         code: 'custom',

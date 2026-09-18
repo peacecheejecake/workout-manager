@@ -37,6 +37,10 @@
       "types": "./src/supplementary-core.ts",
       "default": "./dist/supplementary-core.js"
     },
+    "./stretching": {
+      "types": "./src/stretching.ts",
+      "default": "./dist/stretching.js"
+    },
     "./routines": {
       "types": "./src/routines.ts",
       "default": "./dist/routines.js"

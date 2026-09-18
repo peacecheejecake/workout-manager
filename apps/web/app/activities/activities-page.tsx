@@ -5,6 +5,7 @@ import {
   useAuthenticatedSession,
 } from '@workout/platform/authenticated-workspace';
 import { ActivityBrowser } from '@workout/modules-activities/activity-browser';
+import { StretchingActivityPanel } from '@workout/modules-supplementary/stretching-activity-panel';
 import { shiftDashboardDate } from '@workout/contracts/dashboard';
 function Activities() {
   const session = useAuthenticatedSession();
@@ -23,6 +24,9 @@ function Activities() {
       importHref="/activities/import"
       createHref="/activities/new"
       editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
+      renderActivityDetails={(activityId) => (
+        <StretchingActivityPanel {...session} activityId={activityId} />
+      )}
       linkedBlockHref={(linkedPlanVersionId, linkedBlockId) =>
         `/activities?${new URLSearchParams({ linkedPlanVersionId, linkedBlockId })}`
       }

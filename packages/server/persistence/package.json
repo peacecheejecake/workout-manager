@@ -17,6 +17,7 @@
     "./nutrition-core": "./src/nutrition-core.ts",
     "./supplementary-core": "./src/supplementary-core.ts",
     "./routine-core": "./src/routine-core.ts",
+    "./stretching": "./src/stretching.ts",
     "./routine-expansion": "./src/routine-expansion.ts",
     "./integrated-planner": "./src/integrated-planner.ts",
     "./joint-approval": "./src/joint-approval.ts",

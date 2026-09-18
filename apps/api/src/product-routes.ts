@@ -28,6 +28,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { NutritionRepository } from '@workout/server-persistence/nutrition-core';
 import type { SupplementaryRepository } from '@workout/server-persistence/supplementary-core';
+import type { StretchingRepository } from '@workout/server-persistence/stretching';
 import type { RoutineRepository } from '@workout/server-persistence/routine-core';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { CheckInRepository } from '@workout/server-persistence/check-ins';
@@ -38,6 +39,7 @@ import type { Principal } from './ports.js';
 import { registerPlanningRoutes } from './planning-routes.js';
 import { registerNutritionRoutes } from './nutrition-routes.js';
 import { registerSupplementaryRoutes } from './supplementary-routes.js';
+import { registerStretchingRoutes } from './stretching-routes.js';
 import { registerRoutineRoutes } from './routine-routes.js';
 import { registerActivityRoutes } from './activity-routes.js';
 import { registerOperationsRoutes } from './operations-routes.js';
@@ -48,6 +50,7 @@ export interface ProductRepositories {
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
   supplementary?: SupplementaryRepository;
+  stretching?: StretchingRepository;
   routines?: RoutineRepository;
   coachingConstraints?: CoachingConstraintRepository;
   coachingThreads?: CoachingThreadRepository;
@@ -102,6 +105,7 @@ export function registerProductRoutes(
   if (repositories.nutrition) registerNutritionRoutes(routes, repositories.nutrition, principal);
   if (repositories.supplementary)
     registerSupplementaryRoutes(routes, repositories.supplementary, principal);
+  if (repositories.stretching) registerStretchingRoutes(routes, repositories.stretching, principal);
   if (repositories.routines) registerRoutineRoutes(routes, repositories.routines, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);

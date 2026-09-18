@@ -2,7 +2,7 @@
 
 import { ActivityMetricSummary } from './activity-metric-summary';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useStore } from 'zustand';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
@@ -36,6 +36,7 @@ export interface ActivityBrowserProps {
   linkedBlockHref?: (versionId: string, blockId: string) => string;
   planDayHref?: (date: string) => string;
   editHref?: (id: string) => string;
+  renderActivityDetails?: (activityId: string) => ReactNode;
 }
 export function ActivityBrowser(props: ActivityBrowserProps) {
   return <Lifetime key={JSON.stringify([props.athleteId, props.sessionId])} {...props} />;
@@ -77,6 +78,7 @@ function Workspace({
   editHref,
   planDayHref,
   linkedBlockHref,
+  renderActivityDetails,
 }: ActivityBrowserProps) {
   const [batchStore] = useState(createBatchSelectionStore);
   const batchTargets = useStore(batchStore, (state) => state.targets);
@@ -543,6 +545,7 @@ function Workspace({
                             : { state: 'unavailable' }
                     }
                   />
+                  {renderActivityDetails?.(detail.data.activity.id)}
                 </>
               ) : null}
               <ActivityDetailTabs

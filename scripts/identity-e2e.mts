@@ -19,6 +19,7 @@ import { createOperationsRepository } from '../packages/server/persistence/src/o
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
+import { createStretchingRepository } from '../packages/server/persistence/src/stretching.ts';
 import { createRoutineRepository } from '../packages/server/persistence/src/routine-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
@@ -147,6 +148,10 @@ try {
     await grantOperations(adminUrl, 'workout_runtime');
     await grantNutritionCore(adminUrl, 'workout_runtime');
     await grantSupplementaryCore(adminUrl, 'workout_runtime');
+    // Disposable E2E cluster only; production runtime grants require separate review.
+    await admin.query('GRANT SELECT,INSERT ON stretch_profile TO workout_runtime');
+    await admin.query('GRANT SELECT,INSERT,UPDATE ON stretching_log TO workout_runtime');
+    await admin.query('GRANT SELECT,INSERT ON stretching_log_revision TO workout_runtime');
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
@@ -252,6 +257,7 @@ try {
     planning: createPlanningRepository(database),
     nutrition: createNutritionRepository(database),
     supplementary: createSupplementaryRepository(database),
+    stretching: createStretchingRepository(database),
     routines: createRoutineRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     coachingConstraints: createCoachingConstraintRepository(database),

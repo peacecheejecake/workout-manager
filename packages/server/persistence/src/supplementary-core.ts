@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { activityOverlaySchema, activityReportSchema } from '@workout/contracts/activity';
 import { activityDetailsV3Schema } from '@workout/contracts/activity-details';
+import { stretchProfileSchema } from '@workout/contracts/stretching';
 import {
   executionCreateCommandSchema,
   executionStatusCommandSchema,
@@ -11,6 +12,7 @@ import {
   restTimerCommandSchema,
   restTimerStateSchema,
   routineTemplateReadSchema,
+  routineTemplateVersionSchema,
   routineTemplateSaveCommandSchema,
   setLogCorrectCommandSchema,
   setLogCreateCommandSchema,
@@ -34,6 +36,7 @@ import {
   type SetLogRead,
   type SupplementaryExecution,
   type SupplementarySessionLink,
+  type SupplementarySpec,
 } from '@workout/contracts/supplementary-core';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -185,6 +188,65 @@ async function ownedExerciseVersions(tx: Transaction, ids: readonly string[]) {
       throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
   }
 }
+async function validateStretchTargets(
+  tx: Transaction,
+  sets: readonly SupplementarySpec['blocks'][number]['sets'][number][],
+) {
+  const ids = [...new Set(sets.map((set) => set.exerciseVersionId))];
+  if (ids.length === 0) return;
+  const result = await tx.query(
+    `SELECT v.version_id,v.record_json,latest.record_json AS latest
+     FROM supplementary_exercise_version v
+     JOIN supplementary_exercise_head h ON h.athlete_id=v.athlete_id AND h.exercise_id=v.exercise_id
+     JOIN supplementary_exercise_version latest ON latest.athlete_id=h.athlete_id AND latest.version_id=h.version_id
+     WHERE v.athlete_id=$1 AND v.version_id=ANY($2::uuid[])`,
+    [tx.athleteId, ids],
+  );
+  const byId = new Map(result.rows.map((row) => [uuid.parse(row['version_id']), row]));
+  const stretchIds = result.rows
+    .filter(
+      (row) => supplementaryExerciseVersionSchema.parse(row['record_json']).family === 'stretching',
+    )
+    .map((row) => uuid.parse(row['version_id']));
+  if (stretchIds.length === 0) return;
+  const profiles = await tx.query(
+    'SELECT exercise_version_id,profile_json FROM stretch_profile WHERE athlete_id=$1 AND exercise_version_id=ANY($2::uuid[])',
+    [tx.athleteId, stretchIds],
+  );
+  const byProfile = new Map(
+    profiles.rows.map((row) => [uuid.parse(row['exercise_version_id']), row['profile_json']]),
+  );
+  for (const set of sets) {
+    const row = byId.get(set.exerciseVersionId);
+    if (!row) throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    const exercise = supplementaryExerciseVersionSchema.parse(row['record_json']);
+    if (exercise.family !== 'stretching') continue;
+    const storedProfile = byProfile.get(set.exerciseVersionId);
+    if (!storedProfile) throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    const profile = stretchProfileSchema.parse(storedProfile);
+    const latest = supplementaryExerciseVersionSchema.parse(row['latest']);
+    if (
+      exercise.reviewState === 'withdrawn' ||
+      latest.reviewState === 'withdrawn' ||
+      latest.family !== 'stretching'
+    )
+      throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    if (profile.method === 'static_hold' && (set.durationSeconds === null || set.count !== null))
+      throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    if (
+      profile.method === 'dynamic_repetitions' &&
+      (set.count === null ||
+        set.durationSeconds !== null ||
+        set.count.definition.kind !== 'repetitions' ||
+        set.count.definition.basis !== profile.sideBasis)
+    )
+      throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    if (profile.sideBasis === 'per_side' && set.side !== 'left' && set.side !== 'right')
+      throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+    if (profile.sideBasis === 'total' && set.side !== 'bilateral')
+      throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
+  }
+}
 function specExerciseIds(link: SupplementarySessionLink) {
   return link.content.kind === 'embedded'
     ? link.content.spec.blocks.flatMap((block) => block.sets.map((set) => set.exerciseVersionId))
@@ -207,12 +269,21 @@ export async function insertSupplementarySessionLink(
   if (!plan.rowCount) throw new SupplementaryReferenceError('SESSION_LINK_INVALID');
   if (link.content.kind === 'routine_version') {
     const routine = await tx.query(
-      'SELECT 1 FROM supplementary_routine_version WHERE athlete_id=$1 AND version_id=$2',
+      'SELECT record_json FROM supplementary_routine_version WHERE athlete_id=$1 AND version_id=$2',
       [tx.athleteId, link.content.routineVersionId],
     );
     if (!routine.rowCount) throw new SupplementaryReferenceError('ROUTINE_NOT_FOUND');
+    const frozen = routineTemplateVersionSchema.parse(routine.rows[0]?.['record_json']);
+    await validateStretchTargets(
+      tx,
+      frozen.spec.blocks.flatMap((block) => block.sets),
+    );
   } else {
     await ownedExerciseVersions(tx, specExerciseIds(link));
+    await validateStretchTargets(
+      tx,
+      link.content.spec.blocks.flatMap((block) => block.sets),
+    );
   }
   await tx.query(
     `INSERT INTO supplementary_session_link
@@ -271,6 +342,23 @@ async function assertMatchingSession(tx: Transaction, link: SupplementarySession
           ],
         );
   if (!result.rowCount) throw new SupplementaryReferenceError('SESSION_LINK_INVALID');
+  if (link.content.kind === 'embedded') {
+    await validateStretchTargets(
+      tx,
+      link.content.spec.blocks.flatMap((block) => block.sets),
+    );
+  } else {
+    const routine = await tx.query(
+      'SELECT record_json FROM supplementary_routine_version WHERE athlete_id=$1 AND version_id=$2',
+      [tx.athleteId, link.content.routineVersionId],
+    );
+    if (!routine.rows[0]) throw new SupplementaryReferenceError('ROUTINE_NOT_FOUND');
+    const template = routineTemplateVersionSchema.parse(routine.rows[0]['record_json']);
+    await validateStretchTargets(
+      tx,
+      template.spec.blocks.flatMap((block) => block.sets),
+    );
+  }
 }
 async function execution(tx: Transaction, id: string, forUpdate = false) {
   const result = await tx.query(
@@ -496,6 +584,10 @@ export function createSupplementaryRepository(
           command.template.spec.blocks.flatMap((block) =>
             block.sets.map((set) => set.exerciseVersionId),
           ),
+        );
+        await validateStretchTargets(
+          tx,
+          command.template.spec.blocks.flatMap((block) => block.sets),
         );
         const version = (current?.version ?? 0) + 1;
         const saved = routineTemplateReadSchema.parse({ template: command.template, version });
@@ -1158,6 +1250,12 @@ async function validateSetLink(
   values: SetLogCreateCommand['values'],
 ) {
   await ownedExerciseVersions(tx, [values.exerciseVersionId]);
+  const stretch = await tx.query(
+    `SELECT 1 FROM supplementary_exercise_version WHERE athlete_id=$1 AND version_id=$2
+       AND record_json->>'family'='stretching'`,
+    [tx.athleteId, values.exerciseVersionId],
+  );
+  if (stretch.rowCount) throw new SupplementaryReferenceError('TARGET_LINK_INVALID');
   if (values.targetSetId === null && values.blockId === null && values.roundIndex === null) return;
   const linked = current.plannedSession;
   if (

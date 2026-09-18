@@ -155,6 +155,7 @@ export const exerciseFamilySchema = z.enum([
   'resistance',
   'plyometric',
   'mobility',
+  'stretching',
   'balance_stability',
   'activation',
   'other',

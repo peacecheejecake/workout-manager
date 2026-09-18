@@ -29,6 +29,9 @@ const NutritionPage = lazy(() =>
 const SupplementaryPage = lazy(() =>
   import('./supplementary-page').then((module) => ({ default: module.SupplementaryPage })),
 );
+const StretchingPage = lazy(() =>
+  import('./stretching-page').then((module) => ({ default: module.StretchingPage })),
+);
 const RoutinePage = lazy(() =>
   import('./routine-page').then((module) => ({ default: module.RoutinePage })),
 );
@@ -64,6 +67,14 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/stretching' || location.pathname.startsWith('/stretching/') ? (
+        <Suspense fallback={<p role="status">스트레칭 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/planner">훈련 계획</a> · <a href="/activities">활동</a> ·{' '}
+            <a href="/supplementary">보강 운동</a> · <a href="/account">계정</a>
+          </nav>
+          <StretchingPage path={location.pathname} query={location.search} />
+        </Suspense>
       ) : location.pathname === '/routines' ||
         location.pathname.startsWith('/routines/') ||
         location.pathname.startsWith('/routine-runs/') ? (
@@ -118,7 +129,8 @@ createRoot(root).render(
           <p>개발 기반 확인 화면 · 서버 저장 및 실제 로그인이 연결되지 않았습니다.</p>
           <nav aria-label="더보기">
             <a href="/nutrition">영양 계획·섭취 기록</a> · <a href="/supplementary">보강 운동</a> ·{' '}
-            <a href="/routines">루틴</a> · <a href="/account">계정</a>
+            <a href="/routines">루틴</a> · <a href="/stretching">스트레칭</a> ·{' '}
+            <a href="/account">계정</a>
           </nav>
           <DemoWorkspace />
         </>

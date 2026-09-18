@@ -1002,8 +1002,9 @@
       "title": "스트레칭",
       "dependsOn": ["M1b-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "supplementary stretching; 기존 catalog·좌우/시간"
+      "status": "in_progress",
+      "scope": "supplementary stretching; 기존 catalog·좌우/시간",
+      "evidence": "docs/implementation/progress/M1c-02.md"
     },
     {
       "id": "M1c-03",

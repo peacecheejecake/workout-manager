@@ -166,6 +166,25 @@ describe('session-bound authenticated transport', () => {
       }),
     );
   });
+  it('allows stretching actual writes through the current session only', async () => {
+    fetchMock.mockResolvedValue(json({ status: 'active' }));
+    await createSessionTransport(session, vi.fn()).request({
+      path: '/bff/v1/stretching/logs',
+      method: 'POST',
+      body: { confirmation: 'user_confirmed' },
+      idempotencyKey: 'stretch-log-0001',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/bff/v1/stretching/logs',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-workout-session-id': session.sessionId,
+          'x-csrf-token': session.csrfToken,
+          'idempotency-key': 'stretch-log-0001',
+        }),
+      }),
+    );
+  });
   it('keeps dashboard reads bound to the current session without write credentials', async () => {
     fetchMock.mockResolvedValue(json({ definitionVersion: 'dashboard-v1' }));
     const transport = createSessionTransport(session, vi.fn());
@@ -193,6 +212,8 @@ describe('session-bound authenticated transport', () => {
     '/bff/v1/dashboard/../consents/ai',
     '/bff/v1/supplementary-admin',
     '/bff/v1/supplementary/../consents/ai',
+    '/bff/v1/stretching-admin',
+    '/bff/v1/stretching/../consents/ai',
     '/bff/v1/check-ins/../consents/ai',
     'https://evil.example/bff/v1/activities',
     '/bff/v1/activities/../consents/ai',

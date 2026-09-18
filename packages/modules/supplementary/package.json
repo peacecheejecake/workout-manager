@@ -16,6 +16,9 @@
   },
   "exports": {
     "./supplementary-workspace": "./src/supplementary-workspace.tsx",
-    "./supplementary-route": "./src/supplementary-route.ts"
+    "./supplementary-route": "./src/supplementary-route.ts",
+    "./stretching-route": "./src/stretching-route.ts",
+    "./stretching-workspace": "./src/stretching-workspace.tsx",
+    "./stretching-activity-panel": "./src/stretching-activity-panel.tsx"
   }
 }
