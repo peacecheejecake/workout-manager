@@ -898,8 +898,9 @@
       "title": "러닝 코치·승인 통합 수용",
       "dependsOn": ["M1-05l"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "가상 활동→근거→결정론 후보→diff→명시 승인→새 계획 실DB E2E; 철회·삭제·실패·동시성 회귀, 실제 LLM은 별도 증거"
+      "status": "completed",
+      "scope": "가상 활동→근거→결정론 후보→diff→명시 승인→새 계획 실DB E2E; 철회·삭제·실패·동시성 회귀, 실제 LLM은 별도 증거",
+      "evidence": "docs/implementation/progress/M1-05m.md"
     },
     {
       "id": "M1-05",
@@ -921,8 +922,9 @@
         "M1-05m"
       ],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "training-only evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증"
+      "status": "completed",
+      "scope": "training-only evidence/coaching/approval; stale·동시성·원자성·실제 LLM 별도 검증",
+      "evidence": "docs/implementation/progress/M1-05m.md"
     },
     {
       "id": "M1-06a",
