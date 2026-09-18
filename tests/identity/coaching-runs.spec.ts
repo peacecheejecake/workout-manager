@@ -456,6 +456,93 @@ test('revalidates a selected change as a new candidate and shows stale or withdr
   ).toBe('withdrawn');
 });
 
+test('applies a candidate only after explicit confirmation and returns one new plan version', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await createQueuedRun(page);
+  await dispatchOne(fixture.athleteId);
+  const created = await page.request.post(`/bff/v1/coaching-runs/${fixture.run.id}/candidates`, {
+    headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+  });
+  expect(created.status()).toBe(200);
+  const bundle = trainingCandidateBundleV1Schema.parse(await created.json());
+  const approvalPath = `/bff/v1/coaching-candidates/${bundle.candidate.id}/approve`;
+  const approval = {
+    schemaVersion: 1,
+    expectedDigest: bundle.candidate.digest,
+    confirmed: true,
+  };
+  const headers = { ...fixture.headers, 'idempotency-key': randomUUID() };
+  expect(
+    (
+      await page.request.post(approvalPath, {
+        headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+        data: { ...approval, confirmed: false },
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await page.request.post(approvalPath, {
+        headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+        data: { ...approval, expectedDigest: '0'.repeat(64) },
+      })
+    ).status(),
+  ).toBe(409);
+  const otherContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const otherPage = await otherContext.newPage();
+    const other = await login(otherPage, 'Bob');
+    expect(
+      (
+        await otherPage.request.post(approvalPath, {
+          headers: { ...other.headers, 'idempotency-key': randomUUID() },
+          data: approval,
+        })
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await otherContext.close();
+  }
+  const before = planReadSchema.parse(
+    await (await page.request.get('/bff/v1/plans/current', { headers: fixture.headers })).json(),
+  );
+  expect(before.head?.id).toBe(fixture.plan.id);
+  const approvedResponse = await page.request.post(approvalPath, { headers, data: approval });
+  expect(approvedResponse.status()).toBe(200);
+  const approved = planSnapshotSchema.parse(await approvedResponse.json());
+  expect(approved.id).not.toBe(fixture.plan.id);
+  expect(approved.version).toBe(fixture.plan.version + 1);
+  expect(approved.draft.sessions[0]?.durationSeconds).toBe(2100);
+  const replay = await page.request.post(approvalPath, { headers, data: approval });
+  expect(replay.status()).toBe(200);
+  expect(planSnapshotSchema.parse(await replay.json())).toEqual(approved);
+  expect(
+    (
+      await page.request.post(approvalPath, {
+        headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
+        data: approval,
+      })
+    ).status(),
+  ).toBe(409);
+  const after = planReadSchema.parse(
+    await (await page.request.get('/bff/v1/plans/current', { headers: fixture.headers })).json(),
+  );
+  expect(after.head).toEqual(approved);
+  expect(after.history.filter((item) => item.id === approved.id)).toHaveLength(1);
+  expect(
+    trainingCandidateStatusV1Schema.parse(
+      await (
+        await page.request.get(`/bff/v1/coaching-candidates/${bundle.candidate.id}/status`, {
+          headers: fixture.headers,
+        })
+      ).json(),
+    ).kind,
+  ).toBe('stale');
+});
+
 test('keeps a user-cancelled queued attempt cancelled when the worker later sees its event', async ({
   page,
 }) => {

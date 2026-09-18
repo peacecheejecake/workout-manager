@@ -30,12 +30,14 @@ import {
   planDraftSchema,
   planSnapshotSchema,
   type PeriodDraft,
+  type PlanSnapshot,
   type PlannedSession,
 } from '@workout/contracts/planning';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { projectTrainingCandidateV1 } from '@workout/server-coaching/candidates';
 import type { Database, Transaction } from './database.js';
-import { PersistenceConflict } from './outbox.js';
+import { persistPlanVersion } from './planning.js';
+import { enqueue, PersistenceConflict } from './outbox.js';
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const createCommandSchema = z.strictObject({
@@ -63,6 +65,15 @@ const partialCommandSchema = z
     (value) => value.includeTitle || value.sessionIds.length > 0 || value.periodIds.length > 0,
     'Select at least one change',
   );
+const approveCommandSchema = z.strictObject({
+  expectedDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  confirmed: z.literal(true),
+  idempotencyKey: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine((value) => value === value.trim()),
+});
 const storedFixtureOutputSchema = z.strictObject({
   schemaVersion: z.literal(1),
   content: z.json(),
@@ -72,6 +83,7 @@ const iso = (value: unknown) => z.coerce.date().parse(value).toISOString();
 export type TrainingCandidateCreateCommand = z.infer<typeof createCommandSchema>;
 export type TrainingCandidateFixtureCommand = z.infer<typeof createFromFixtureCommandSchema>;
 export type TrainingCandidatePartialCommand = z.infer<typeof partialCommandSchema>;
+export type TrainingCandidateApproveCommand = z.infer<typeof approveCommandSchema>;
 export interface TrainingCandidateBundle {
   decision: TrainingDecisionV1;
   proposal: TrainingProposalV1;
@@ -94,6 +106,11 @@ export interface TrainingCandidateRepository {
   read(athleteId: string, candidateId: string): Promise<TrainingCandidateBundle | null>;
   list(athleteId: string, runId: string): Promise<TrainingCandidateBundle[]>;
   status(athleteId: string, candidateId: string): Promise<TrainingCandidateStatusV1 | null>;
+  approve(
+    athleteId: string,
+    candidateId: string,
+    command: TrainingCandidateApproveCommand,
+  ): Promise<PlanSnapshot>;
 }
 export class TrainingCandidateError extends Error {
   constructor(
@@ -110,7 +127,9 @@ export class TrainingCandidateError extends Error {
       | 'INVALID_PARTIAL_SELECTION'
       | 'CANDIDATE_LIMIT_REACHED'
       | 'CANDIDATE_UNAVAILABLE'
-      | 'CANDIDATE_TOO_LARGE',
+      | 'CANDIDATE_TOO_LARGE'
+      | 'CANDIDATE_DIGEST_MISMATCH'
+      | 'CANDIDATE_NOT_APPROVABLE',
   ) {
     super(code);
   }
@@ -390,7 +409,10 @@ async function currentLocalDate(tx: Transaction, timezone: string): Promise<stri
 type CandidateContext = Awaited<ReturnType<typeof currentContext>>;
 type ReceiptRequest = { requestHash: string };
 
-function receiptKey(idempotencyKey: string, kind: 'prepared' | 'fixture' | 'partial'): string {
+function receiptKey(
+  idempotencyKey: string,
+  kind: 'prepared' | 'fixture' | 'partial' | 'approve',
+): string {
   const digest = createHash('sha256').update(idempotencyKey).digest('hex');
   return kind === 'prepared'
     ? `coaching:candidate:${digest}`
@@ -420,6 +442,35 @@ async function replayCandidate(
   if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
   await currentCandidateContext(tx, bundle, policy, source);
   return bundle;
+}
+
+async function replayApproval(
+  tx: Transaction,
+  key: string,
+  request: ReceiptRequest,
+): Promise<PlanSnapshot | null> {
+  const receipt = await tx.query(
+    'SELECT request=$3::jsonb AS matches,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+    [tx.athleteId, key, JSON.stringify(request)],
+  );
+  if (!receipt.rows[0]) return null;
+  if (receipt.rows[0]['matches'] !== true) throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+  const prior = z.strictObject({ versionId: uuid }).safeParse(receipt.rows[0]['result']);
+  if (!prior.success) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  const version = await tx.query(
+    'SELECT id,version,created_at,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2',
+    [tx.athleteId, prior.data.versionId],
+  );
+  const row = version.rows[0];
+  if (!row) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  const saved = planSnapshotSchema.safeParse({
+    id: row['id'],
+    version: row['version'],
+    createdAt: iso(row['created_at']),
+    draft: row['draft'],
+  });
+  if (!saved.success) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+  return saved.data;
 }
 
 async function deriveFixtureProposal(tx: Transaction, context: CandidateContext) {
@@ -881,6 +932,74 @@ export function createTrainingCandidateRepository(
           }
         }
         return trainingCandidateStatusV1Schema.parse({ schemaVersion: 1, candidateId: id, kind });
+      });
+    },
+    approve(athleteId, candidateId, input) {
+      const id = uuid.parse(candidateId);
+      const command = approveCommandSchema.parse(input);
+      const key = receiptKey(command.idempotencyKey, 'approve');
+      const request = receiptRequest({
+        schemaVersion: 1,
+        operation: 'training_candidate_approve',
+        candidateId: id,
+        expectedDigest: command.expectedDigest,
+        confirmed: command.confirmed,
+      });
+      return guarded(athleteId, async (tx) => {
+        // A successful retry returns the committed version even after the candidate becomes stale.
+        const replay = await replayApproval(tx, key, request);
+        if (replay) return replay;
+        const bundle = await readBundle(tx, id);
+        if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        if (bundle.candidate.digest !== command.expectedDigest)
+          throw new TrainingCandidateError('CANDIDATE_DIGEST_MISMATCH');
+        let context: CandidateContext;
+        try {
+          context = await currentCandidateContext(tx, bundle, policy, source);
+        } catch (error) {
+          if (error instanceof TrainingCandidateError && error.code === 'CANDIDATE_UNAVAILABLE')
+            throw new TrainingCandidateError('STALE_BASIS');
+          throw error;
+        }
+        const projection = projectTrainingCandidateV1({
+          basis: context.basis,
+          before: context.plan,
+          proposed: bundle.candidate.proposed,
+          strategy: bundle.candidate.strategy,
+          asOfLocalDate: bundle.candidate.asOfLocalDate,
+          completions: context.completions,
+        });
+        if (!projection.ok) throw new TrainingCandidateError('CANDIDATE_NOT_APPROVABLE');
+        if (
+          canonicalJson(projection.draft) !== canonicalJson(unsealCandidate(bundle.candidate)) ||
+          canonicalJson(bundle.candidate.strategy) !== canonicalJson(bundle.decision.strategy)
+        )
+          throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        if (
+          projection.draft.validation.status !== 'checked' ||
+          projection.draft.validation.errors.length > 0 ||
+          projection.draft.validation.unknowns.length > 0
+        )
+          throw new TrainingCandidateError('CANDIDATE_NOT_APPROVABLE');
+        const saved = await persistPlanVersion(tx, {
+          expectedVersionId: bundle.candidate.before.id,
+          draft: projection.draft.proposed,
+        });
+        await tx.query(
+          "INSERT INTO plan_history(athlete_id,version_id,action) VALUES($1,$2,'candidate_approved')",
+          [athleteId, saved.id],
+        );
+        await enqueue(tx, {
+          id: randomUUID(),
+          idempotencyKey: key,
+          topic: 'plan.candidate_approved',
+          payload: { candidateId: id, versionId: saved.id, version: saved.version },
+        });
+        await tx.query(
+          'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
+          [athleteId, key, JSON.stringify(request), JSON.stringify({ versionId: saved.id })],
+        );
+        return saved;
       });
     },
   };

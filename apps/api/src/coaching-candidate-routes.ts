@@ -1,17 +1,21 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
+  trainingCandidateApprovalBodyV1Schema,
   trainingCandidateBundleV1Schema,
   trainingCandidatePartialBodyV1Schema,
   trainingCandidatePartialRequestV1Schema,
   trainingCandidateStatusV1Schema,
 } from '@workout/contracts/coaching-candidates';
+import { planSnapshotSchema } from '@workout/contracts/planning';
 import {
   TrainingCandidateError,
   type TrainingCandidateRepository,
 } from '@workout/server-persistence/coaching-candidates';
+import { PlanLockedError } from '@workout/server-persistence/planning';
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import { sessionCompletionRequestError } from './session-completion-routes.js';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const runParams = z.strictObject({ runId: uuid });
@@ -24,7 +28,8 @@ const idempotencyKey = z
 
 function execute<T>(operation: () => Promise<T>): Promise<T> {
   return command(operation, (error) => {
-    if (!(error instanceof TrainingCandidateError)) return undefined;
+    if (error instanceof PlanLockedError) return new ProductRequestError(409, 'PLAN_LOCKED');
+    if (!(error instanceof TrainingCandidateError)) return sessionCompletionRequestError(error);
     const statusCode = ['RUN_NOT_FOUND', 'CANDIDATE_UNAVAILABLE'].includes(error.code)
       ? 404
       : [
@@ -32,6 +37,7 @@ function execute<T>(operation: () => Promise<T>): Promise<T> {
             'INVALID_FIXTURE_OUTPUT',
             'CANDIDATE_TOO_LARGE',
             'INVALID_PARTIAL_SELECTION',
+            'CANDIDATE_NOT_APPROVABLE',
           ].includes(error.code)
         ? 422
         : 409;
@@ -113,5 +119,21 @@ export function registerCoachingCandidateRoutes(
     );
     if (!status) throw new ProductRequestError(404, 'CANDIDATE_UNAVAILABLE');
     return trainingCandidateStatusV1Schema.parse(status);
+  });
+
+  routes.post('/coaching-candidates/:candidateId/approve', { bodyLimit: 1024 }, async (request) => {
+    input(emptyQuery, request.query);
+    const { candidateId } = input(candidateParams, request.params);
+    const body = input(trainingCandidateApprovalBodyV1Schema, request.body);
+    const key = input(idempotencyKey, request.headers['idempotency-key']);
+    return planSnapshotSchema.parse(
+      await execute(() =>
+        repository.approve(principal(request).athleteId, candidateId, {
+          expectedDigest: body.expectedDigest,
+          confirmed: body.confirmed,
+          idempotencyKey: key,
+        }),
+      ),
+    );
   });
 }

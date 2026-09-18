@@ -1,6 +1,8 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrainingCandidateError } from '@workout/server-persistence/coaching-candidates';
+import { PlanLockedError } from '@workout/server-persistence/planning';
+import { SessionCompletionError } from '@workout/server-persistence/session-completions';
 import { createApi } from '../src/app.js';
 
 const candidateId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -13,6 +15,8 @@ const headers = {
 };
 const partialUrl = `/bff/v1/coaching-candidates/${candidateId}/partials`;
 const statusUrl = `/bff/v1/coaching-candidates/${candidateId}/status`;
+const approvalUrl = `/bff/v1/coaching-candidates/${candidateId}/approve`;
+const approval = { schemaVersion: 1, expectedDigest: 'a'.repeat(64), confirmed: true };
 const selection = {
   schemaVersion: 1,
   sessionIds: ['session'],
@@ -164,6 +168,7 @@ function setup(authenticated = true) {
     list: vi.fn(),
     derivePartial: vi.fn().mockRejectedValue(new TrainingCandidateError('CANDIDATE_UNAVAILABLE')),
     status: vi.fn().mockResolvedValue({ schemaVersion: 1, candidateId, kind: 'stale' }),
+    approve: vi.fn().mockRejectedValue(new TrainingCandidateError('CANDIDATE_UNAVAILABLE')),
   };
   const app = createApi({
     allowedOrigins: ['https://workout.example'],
@@ -348,5 +353,153 @@ describe('coaching candidate partial and status API boundary', () => {
     ).toBe(409);
     expect(repository.derivePartial).not.toHaveBeenCalled();
     expect(repository.status).not.toHaveBeenCalled();
+  });
+});
+
+describe('coaching candidate approval API boundary', () => {
+  it('returns the repository plan snapshot and derives owner and idempotency from the session', async () => {
+    const { app, repository } = setup();
+    const snapshot = partialBundle().candidate.before;
+    repository.approve.mockResolvedValueOnce(snapshot);
+    const response = await app.inject({
+      method: 'POST',
+      url: approvalUrl,
+      headers,
+      payload: approval,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(snapshot);
+    expect(repository.approve).toHaveBeenCalledExactlyOnceWith('owner', candidateId, {
+      expectedDigest: approval.expectedDigest,
+      confirmed: true,
+      idempotencyKey: headers['idempotency-key'],
+    });
+  });
+
+  it('rejects implicit confirmation, caller plan data, malformed digest and missing header', async () => {
+    const { app, repository } = setup();
+    for (const payload of [
+      { ...approval, schemaVersion: 2 },
+      { ...approval, confirmed: false },
+      { ...approval, confirmed: 'true' },
+      { ...approval, expectedDigest: 'A'.repeat(64) },
+      { ...approval, expectedDigest: 'a'.repeat(63) },
+      { ...approval, plan: { sessions: [] } },
+      { ...approval, athleteId: 'foreign' },
+      { ...approval, idempotencyKey: 'body-controlled' },
+    ]) {
+      const response = await app.inject({ method: 'POST', url: approvalUrl, headers, payload });
+      expect(response.statusCode).toBe(400);
+    }
+    const { 'idempotency-key': _key, ...withoutKey } = headers;
+    expect(_key).toBe(headers['idempotency-key']);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: approvalUrl,
+          headers: withoutKey,
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: approvalUrl,
+          headers: { ...headers, 'idempotency-key': ' bad ' },
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect((await app.inject({ method: 'POST', url: approvalUrl, headers })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ method: 'POST', url: approvalUrl, headers, payload: {} })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: approvalUrl,
+          headers,
+          payload: { ...approval, plan: { title: 'x'.repeat(1024) } },
+        })
+      ).statusCode,
+    ).toBe(413);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `${approvalUrl}?extra=1`,
+          headers,
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/bff/v1/coaching-candidates/wrong/approve',
+          headers,
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(repository.approve).not.toHaveBeenCalled();
+  });
+
+  it('requires authentication and CSRF before approval', async () => {
+    const anonymous = setup(false);
+    expect(
+      (await anonymous.app.inject({ method: 'POST', url: approvalUrl, headers, payload: approval }))
+        .statusCode,
+    ).toBe(401);
+    const { app, repository } = setup();
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: approvalUrl,
+          headers: { ...headers, 'x-csrf-token': 'bad' },
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: approvalUrl,
+          headers: { ...headers, 'x-workout-session-id': 'previous' },
+          payload: approval,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(repository.approve).not.toHaveBeenCalled();
+  });
+
+  it('maps missing/foreign, unapprovable, stale and locked candidates to stable errors', async () => {
+    const { app, repository } = setup();
+    const cases: Array<[Error, number, string]> = [
+      [new TrainingCandidateError('CANDIDATE_UNAVAILABLE'), 404, 'CANDIDATE_UNAVAILABLE'],
+      [new TrainingCandidateError('CANDIDATE_NOT_APPROVABLE'), 422, 'CANDIDATE_NOT_APPROVABLE'],
+      [new TrainingCandidateError('CANDIDATE_DIGEST_MISMATCH'), 409, 'CANDIDATE_DIGEST_MISMATCH'],
+      [new TrainingCandidateError('STALE_BASIS'), 409, 'STALE_BASIS'],
+      [new PlanLockedError(), 409, 'PLAN_LOCKED'],
+      [new SessionCompletionError('PLAN_COMPLETED_SESSION'), 409, 'PLAN_COMPLETED_SESSION'],
+    ];
+    for (const [error, statusCode, code] of cases) {
+      repository.approve.mockRejectedValueOnce(error);
+      const response = await app.inject({
+        method: 'POST',
+        url: approvalUrl,
+        headers,
+        payload: approval,
+      });
+      expect(response.statusCode).toBe(statusCode);
+      expect(response.json()).toMatchObject({ error: { code } });
+    }
   });
 });

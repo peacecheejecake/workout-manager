@@ -8,6 +8,7 @@ import {
   trainingCandidateValidationV1Schema,
   trainingCandidatePartialRequestV1Schema,
   trainingCandidateStatusV1Schema,
+  trainingCandidateApprovalBodyV1Schema,
 } from '../src/coaching-candidates.js';
 
 const planId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -92,7 +93,27 @@ const draft = {
   },
 };
 
-describe('M1-05j1 versioned candidate contracts', () => {
+describe('versioned training candidate contracts', () => {
+  it('requires an explicit confirmation and exact candidate digest without plan authority', () => {
+    const approval = {
+      schemaVersion: 1,
+      expectedDigest: 'a'.repeat(64),
+      confirmed: true,
+    };
+    expect(trainingCandidateApprovalBodyV1Schema.parse(approval)).toEqual(approval);
+    for (const invalid of [
+      { ...approval, schemaVersion: 2 },
+      { ...approval, expectedDigest: 'A'.repeat(64) },
+      { ...approval, expectedDigest: 'a'.repeat(63) },
+      { ...approval, confirmed: false },
+      { ...approval, confirmed: 'true' },
+      { ...approval, proposed: draft.proposed },
+      { ...approval, athleteId: 'another-athlete' },
+      { ...approval, idempotencyKey: 'body-controlled' },
+    ])
+      expect(trainingCandidateApprovalBodyV1Schema.safeParse(invalid).success).toBe(false);
+  });
+
   it('keeps partial selection bounded, unique and separate from a proposed plan', () => {
     const request = {
       schemaVersion: 1,

@@ -31,6 +31,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '016_plan_scenario_labels.sql',
       '017_coaching_runs.sql',
       '018_coaching_candidates.sql',
+      '019_coaching_candidate_approval.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');

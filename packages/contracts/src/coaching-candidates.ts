@@ -208,6 +208,13 @@ export const trainingCandidateStatusV1Schema = z.strictObject({
   kind: z.enum(['current', 'stale', 'withdrawn']),
 });
 
+/** Explicit approval binds the user's confirmation to one immutable candidate digest. */
+export const trainingCandidateApprovalBodyV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  expectedDigest: digest,
+  confirmed: z.literal(true),
+});
+
 export const trainingDecisionV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   scope: z.literal('running-core-v2-training'),
@@ -256,6 +263,7 @@ export type TrainingCandidatePartialRequestV1 = z.infer<
 >;
 export type TrainingCandidatePartialBodyV1 = z.infer<typeof trainingCandidatePartialBodyV1Schema>;
 export type TrainingCandidateStatusV1 = z.infer<typeof trainingCandidateStatusV1Schema>;
+export type TrainingCandidateApprovalBodyV1 = z.infer<typeof trainingCandidateApprovalBodyV1Schema>;
 export type TrainingDecisionV1 = z.infer<typeof trainingDecisionV1Schema>;
 export type TrainingProposalV1 = z.infer<typeof trainingProposalV1Schema>;
 export type TrainingCandidateBundleV1 = z.infer<typeof trainingCandidateBundleV1Schema>;

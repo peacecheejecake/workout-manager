@@ -262,3 +262,16 @@ head를 변경하지 않는다. 같은 키의 재시도는 같은 후보를 반�
 `stale`, `withdrawn` 중 하나와 후보 ID를 반환한다. 이 응답에는 계획·근거·후보 본문이
 없다. 계획이나 근거가 바뀐 후보와 철회된 후보는 상세 조회·부분 요청에서 본문을
 반환하지 않는다. 이 상태는 승인 권한이 아니며, 명시 승인 transaction은 M1-05k다.
+
+## 훈련 후보 명시 승인 (M1-05k)
+
+`POST /bff/v1/coaching-candidates/:candidateId/approve`는
+`{ "schemaVersion": 1, "expectedDigest": "…", "confirmed": true }` 본문과
+`idempotency-key` 헤더를 요구한다. 사용자가 방금 검토한 서버 후보의 digest와 명시 확인을
+함께 보낸다. 클라이언트 계획 초안은 허용하지 않는다. 서버는 현재 소유권·근거·동의·정책·
+원장 의존성·계획 버전·잠금·완료 보고·후보 무결성과 검증 결과를 거래 안에서 다시 확인한다.
+통과 시 새 PlanVersion, `candidate_approved` 계획 이력, outbox, 해시 기반 멱등
+receipt를 원자적으로 기록한다. 성공 키 재시도는 원래 버전을 반환하며 다른 키의
+오래된 승인은 충돌한다. fixture 후보 생성 API와 그 승인 호출은 현재 비프로덕션
+fixture 설정에서만 연결된다. 실제 모델의 후보 품질이나 프로덕션 배포 승인을 이
+경로의 테스트만으로 확정하지 않는다.

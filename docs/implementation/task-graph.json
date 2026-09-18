@@ -880,8 +880,9 @@
       "title": "훈련 계획 명시 승인 transaction",
       "dependsOn": ["M1-05j"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "소유권·digest·read basis·잠금 재검사 후 PlanVersion/history/outbox/receipt 원자 적용; stale·동시성·중복·rollback"
+      "status": "completed",
+      "scope": "소유권·digest·read basis·잠금 재검사 후 PlanVersion/history/outbox/receipt 원자 적용; stale·동시성·중복·rollback",
+      "evidence": "docs/implementation/progress/M1-05k.md"
     },
     {
       "id": "M1-05l",

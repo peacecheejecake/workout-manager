@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
@@ -17,6 +17,7 @@ import {
   grantCoachingThreads,
   grantCoreEvidenceSnapshots,
   grantOperations,
+  grantSessionCompletions,
   migrate,
 } from '../src/migrate.js';
 import {
@@ -28,7 +29,9 @@ import { createCoachingThreadRepository } from '../src/coaching-threads.js';
 import { createCoachingConstraintRepository } from '../src/coaching-constraints.js';
 import { createCoreEvidenceSnapshotRepository } from '../src/evidence-snapshots.js';
 import { createConsentRepository } from '../src/repositories.js';
+import { createOperationsRepository } from '../src/operations.js';
 import { createCoachingRunRepository, createCoachingRunWorkerStore } from '../src/coaching-runs.js';
+import { createSessionCompletionRepository } from '../src/session-completions.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -42,6 +45,7 @@ const source = { kind: 'deterministic_fixture' as const, fixtureId: 'synthetic-v
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantSessionCompletions(adminUrl, 'workout_runtime');
   await grantCoachingConstraints(adminUrl, 'workout_runtime');
   await grantCoachingThreads(adminUrl, 'workout_runtime');
   await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
@@ -116,13 +120,14 @@ const strategy = {
 async function seed(
   athleteId: string,
   adapter: CoachingEvaluationAdapter = createDeterministicFixtureAdapter('synthetic-v1'),
+  initialDraft: PlanDraft = plan(),
 ) {
   const savedPlan = await createPlanningRepository(database).save(athleteId, {
     source: 'manual',
     confirmed: true,
     expectedVersionId: null,
     idempotencyKey: randomUUID(),
-    draft: plan(),
+    draft: initialDraft,
   });
   const thread = (
     await createCoachingThreadRepository(database).create(athleteId, {
@@ -174,6 +179,20 @@ async function candidateRowCounts(athleteId: string) {
       [athleteId],
     );
     return rows.rows[0];
+  });
+}
+async function approvalState(athleteId: string) {
+  return database.tenant(athleteId, async (tx) => {
+    const result = await tx.query(
+      `SELECT
+        (SELECT count(*)::integer FROM plan_snapshot WHERE athlete_id=$1) AS versions,
+        (SELECT version_id FROM plan_head WHERE athlete_id=$1) AS head,
+        (SELECT count(*)::integer FROM plan_history WHERE athlete_id=$1 AND action='candidate_approved') AS histories,
+        (SELECT count(*)::integer FROM outbox WHERE athlete_id=$1 AND topic='plan.candidate_approved') AS events,
+        (SELECT count(*)::integer FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'coaching:candidate:approve:%') AS receipts`,
+      [athleteId],
+    );
+    return result.rows[0];
   });
 }
 function command(runId: string) {
@@ -743,6 +762,13 @@ it('returns stale metadata for a corrupt physical candidate link and rejects it 
   });
   expect(await repo.read(athleteId, forgedId)).toBeNull();
   await expect(
+    repo.approve(athleteId, forgedId, {
+      expectedDigest: parent.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
+  await expect(
     repo.derivePartial(athleteId, forgedId, {
       sessionIds: ['session'],
       periodIds: [],
@@ -850,4 +876,308 @@ it('scrubs source-derived bodies without leaving proposed text in the idempotenc
   await expect(candidates().create(athleteId, input)).rejects.toMatchObject({
     code: 'CANDIDATE_UNAVAILABLE',
   });
+});
+
+it('atomically approves one sealed candidate with plan, history, outbox and minimal receipt', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const sealed = await repo.create(athleteId, command(run.id));
+  const approval = {
+    expectedDigest: sealed.candidate.digest,
+    confirmed: true as const,
+    idempotencyKey: randomUUID(),
+  };
+  expect(await approvalState(athleteId)).toEqual({
+    versions: 1,
+    head: savedPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+  const [first, replay] = await Promise.all([
+    repo.approve(athleteId, sealed.candidate.id, approval),
+    repo.approve(athleteId, sealed.candidate.id, approval),
+  ]);
+  expect(replay).toEqual(first);
+  expect(first).toMatchObject({ version: savedPlan.version + 1, draft: sealed.candidate.proposed });
+  expect(first.id).not.toBe(savedPlan.id);
+  expect(await approvalState(athleteId)).toEqual({
+    versions: 2,
+    head: first.id,
+    histories: 1,
+    events: 1,
+    receipts: 1,
+  });
+  await database.tenant(athleteId, async (tx) => {
+    const history = await tx.query(
+      'SELECT version_id,action FROM plan_history WHERE athlete_id=$1 AND version_id=$2',
+      [athleteId, first.id],
+    );
+    expect(history.rows).toEqual([{ version_id: first.id, action: 'candidate_approved' }]);
+    const events = await tx.query(
+      "SELECT payload FROM outbox WHERE athlete_id=$1 AND topic='plan.candidate_approved'",
+      [athleteId],
+    );
+    expect(events.rows).toEqual([
+      {
+        payload: { candidateId: sealed.candidate.id, versionId: first.id, version: first.version },
+      },
+    ]);
+    const receipts = await tx.query(
+      "SELECT request,result FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'coaching:candidate:approve:%'",
+      [athleteId],
+    );
+    expect(receipts.rows).toEqual([
+      {
+        request: { requestHash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        result: { versionId: first.id },
+      },
+    ]);
+    expect(JSON.stringify(receipts.rows)).not.toContain('Private proposed plan receipt marker');
+  });
+  expect(await repo.approve(athleteId, sealed.candidate.id, approval)).toEqual(first);
+  await expect(
+    repo.approve(athleteId, sealed.candidate.id, { ...approval, expectedDigest: 'a'.repeat(64) }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  await expect(
+    repo.approve(athleteId, sealed.candidate.id, { ...approval, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'STALE_BASIS' });
+  expect(await approvalState(athleteId)).toMatchObject({
+    versions: 2,
+    histories: 1,
+    events: 1,
+    receipts: 1,
+  });
+});
+
+it('rejects foreign, wrong-digest and stale candidates without approval writes', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const sealed = await repo.create(athleteId, command(run.id));
+  const approval = {
+    expectedDigest: sealed.candidate.digest,
+    confirmed: true as const,
+    idempotencyKey: randomUUID(),
+  };
+  await expect(repo.approve(randomUUID(), sealed.candidate.id, approval)).rejects.toMatchObject({
+    code: 'CANDIDATE_UNAVAILABLE',
+  });
+  await expect(repo.approve(athleteId, randomUUID(), approval)).rejects.toMatchObject({
+    code: 'CANDIDATE_UNAVAILABLE',
+  });
+  await expect(
+    repo.approve(athleteId, sealed.candidate.id, { ...approval, expectedDigest: 'a'.repeat(64) }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_DIGEST_MISMATCH' });
+  await createCoachingConstraintRepository(database).create(athleteId, {
+    expectedHeadRevision: null,
+    confirmed: true,
+    text: 'Synthetic constraint changed after candidate sealing',
+    idempotencyKey: randomUUID(),
+  });
+  await expect(repo.approve(athleteId, sealed.candidate.id, approval)).rejects.toMatchObject({
+    code: 'STALE_BASIS',
+  });
+  expect(await approvalState(athleteId)).toEqual({
+    versions: 1,
+    head: savedPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+});
+
+it('allows only one of two concurrent approvals with distinct keys', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const repo = candidates();
+  const sealed = await repo.create(athleteId, command(run.id));
+  const request = { expectedDigest: sealed.candidate.digest, confirmed: true as const };
+  const attempts = await Promise.allSettled([
+    repo.approve(athleteId, sealed.candidate.id, {
+      ...request,
+      idempotencyKey: randomUUID(),
+    }),
+    repo.approve(athleteId, sealed.candidate.id, {
+      ...request,
+      idempotencyKey: randomUUID(),
+    }),
+  ]);
+  const applied = attempts.find((result) => result.status === 'fulfilled');
+  const rejected = attempts.find((result) => result.status === 'rejected');
+  expect(applied?.status).toBe('fulfilled');
+  expect(rejected?.status).toBe('rejected');
+  if (applied?.status !== 'fulfilled' || rejected?.status !== 'rejected')
+    throw new Error('Expected one approval and one stale rejection');
+  expect(rejected.reason).toMatchObject({ code: 'STALE_BASIS' });
+  expect(await approvalState(athleteId)).toMatchObject({
+    versions: 2,
+    head: applied.value.id,
+    histories: 1,
+    events: 1,
+    receipts: 1,
+  });
+});
+
+it('refuses unknown targets and completion changes instead of treating validation as approval', async () => {
+  const uncertainAthleteId = randomUUID();
+  const { savedPlan: uncertainPlan, run: uncertainRun } = await seed(uncertainAthleteId);
+  const repo = candidates();
+  const proposed = command(uncertainRun.id);
+  const session = proposed.proposed.sessions[0];
+  if (!session) throw new Error('Fixture session missing');
+  session.distanceMeters = null;
+  const uncertain = await repo.create(uncertainAthleteId, proposed);
+  expect(uncertain.candidate.validation.status).toBe('uncertain');
+  await expect(
+    repo.approve(uncertainAthleteId, uncertain.candidate.id, {
+      expectedDigest: uncertain.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_NOT_APPROVABLE' });
+  expect(await approvalState(uncertainAthleteId)).toMatchObject({
+    versions: 1,
+    head: uncertainPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+
+  const lockedAthleteId = randomUUID();
+  const lockedDraft = plan();
+  const lockedSession = lockedDraft.sessions[0];
+  if (!lockedSession) throw new Error('Fixture session missing');
+  lockedSession.locks.intensity = true;
+  const { savedPlan: lockedPlan, run: lockedRun } = await seed(
+    lockedAthleteId,
+    createDeterministicFixtureAdapter('synthetic-v1'),
+    lockedDraft,
+  );
+  const lockedProposed = command(lockedRun.id);
+  const changedSession = lockedProposed.proposed.sessions[0];
+  if (!changedSession) throw new Error('Fixture session missing');
+  changedSession.locks.intensity = true;
+  const lockedCandidate = await repo.create(lockedAthleteId, lockedProposed);
+  expect(lockedCandidate.candidate.validation.status).toBe('invalid');
+  await expect(
+    repo.approve(lockedAthleteId, lockedCandidate.candidate.id, {
+      expectedDigest: lockedCandidate.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_NOT_APPROVABLE' });
+  expect(await approvalState(lockedAthleteId)).toMatchObject({
+    versions: 1,
+    head: lockedPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+
+  const completedAthleteId = randomUUID();
+  const { savedPlan, run } = await seed(completedAthleteId);
+  const candidate = await repo.create(completedAthleteId, command(run.id));
+  await createSessionCompletionRepository(database).write(completedAthleteId, 'session', {
+    action: 'complete',
+    confirmed: true,
+    expectedPlanVersionId: savedPlan.id,
+    expectedRevision: null,
+    reason: null,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    repo.approve(completedAthleteId, candidate.candidate.id, {
+      expectedDigest: candidate.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_BASIS' });
+  expect(await approvalState(completedAthleteId)).toMatchObject({
+    versions: 1,
+    head: savedPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+});
+
+it('rolls back version and history when the approval outbox write conflicts', async () => {
+  const athleteId = randomUUID();
+  const { savedPlan, run } = await seed(athleteId);
+  const repo = candidates();
+  const candidate = await repo.create(athleteId, command(run.id));
+  const idempotencyKey = randomUUID();
+  const outboxKey = `coaching:candidate:approve:${createHash('sha256').update(idempotencyKey).digest('hex')}`;
+  await database.tenant(athleteId, async (tx) => {
+    await tx.query(
+      "INSERT INTO outbox(athlete_id,id,idempotency_key,topic,payload) VALUES($1,$2,$3,'test.poison','{}'::jsonb)",
+      [athleteId, randomUUID(), outboxKey],
+    );
+  });
+  await expect(
+    repo.approve(athleteId, candidate.candidate.id, {
+      expectedDigest: candidate.candidate.digest,
+      confirmed: true,
+      idempotencyKey,
+    }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(await approvalState(athleteId)).toEqual({
+    versions: 1,
+    head: savedPlan.id,
+    histories: 0,
+    events: 0,
+    receipts: 0,
+  });
+  const saved = await repo.approve(athleteId, candidate.candidate.id, {
+    expectedDigest: candidate.candidate.digest,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  expect(saved.version).toBe(2);
+  expect(await approvalState(athleteId)).toMatchObject({
+    versions: 2,
+    head: saved.id,
+    histories: 1,
+    events: 1,
+    receipts: 1,
+  });
+});
+
+it('keeps an approved plan replayable while withdrawal redacts candidates and erasure removes the account', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const repo = candidates();
+  const candidate = await repo.create(athleteId, command(run.id));
+  const approval = {
+    expectedDigest: candidate.candidate.digest,
+    confirmed: true as const,
+    idempotencyKey: randomUUID(),
+  };
+  const saved = await repo.approve(athleteId, candidate.candidate.id, approval);
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.status(athleteId, candidate.candidate.id)).toEqual({
+    schemaVersion: 1,
+    candidateId: candidate.candidate.id,
+    kind: 'withdrawn',
+  });
+  expect(await repo.read(athleteId, candidate.candidate.id)).toBeNull();
+  expect(await repo.approve(athleteId, candidate.candidate.id, approval)).toEqual(saved);
+  const operations = createOperationsRepository(database);
+  const exported = await operations.exportAccount(athleteId);
+  expect(exported.data.planHistory).toContainEqual({
+    version_id: saved.id,
+    action: 'candidate_approved',
+  });
+  expect(exported.data.coachingCandidates).toContainEqual(
+    expect.objectContaining({ id: candidate.candidate.id, body: null, digest: null }),
+  );
+  await expect(operations.eraseAccount(athleteId)).resolves.toEqual({ erased: true });
+  await expect(operations.exportAccount(athleteId)).rejects.toThrow();
 });
