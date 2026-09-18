@@ -83,6 +83,22 @@ const accountExportV10Schema = accountExportV9Schema.extend({
     intakeEntryRevisions: rows,
   }),
 });
+const accountExportV11Schema = accountExportV10Schema.extend({
+  schemaVersion: z.literal(11),
+  data: accountExportV10Schema.shape.data.extend({
+    supplementaryExerciseVersions: rows,
+    supplementaryExerciseHeads: rows,
+    supplementaryRoutineVersions: rows,
+    supplementaryRoutineHeads: rows,
+    supplementaryRoutineTargetRefs: rows,
+    supplementarySessionLinks: rows,
+    supplementarySessionTargetRefs: rows,
+    supplementaryExecutions: rows,
+    supplementarySetLogs: rows,
+    supplementarySetLogRevisions: rows,
+    supplementaryRestTimers: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -94,6 +110,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV8Schema,
   accountExportV9Schema,
   accountExportV10Schema,
+  accountExportV11Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

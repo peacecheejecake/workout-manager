@@ -323,3 +323,53 @@ it('requires nutrition collections in v10 while preserving v9 artifacts', () => 
   expect(accountExportSchema.safeParse({ ...historical, schemaVersion: 10 }).success).toBe(false);
   expect(accountExportSchema.parse(historical).data).not.toHaveProperty('intakeEntries');
 });
+
+it('requires supplementary collections in v11 while preserving v10 artifacts', () => {
+  const v10 = accountExportSchema.parse({
+    schemaVersion: 10,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+    },
+  });
+  const supplementary = {
+    supplementaryExerciseVersions: [],
+    supplementaryExerciseHeads: [],
+    supplementaryRoutineVersions: [],
+    supplementaryRoutineHeads: [],
+    supplementaryRoutineTargetRefs: [],
+    supplementarySessionLinks: [],
+    supplementarySessionTargetRefs: [],
+    supplementaryExecutions: [],
+    supplementarySetLogs: [],
+    supplementarySetLogRevisions: [],
+    supplementaryRestTimers: [],
+  };
+  const v11 = { ...v10, schemaVersion: 11, data: { ...v10.data, ...supplementary } };
+  expect(accountExportSchema.parse(v11)).toEqual(v11);
+  expect(accountExportSchema.safeParse({ ...v10, schemaVersion: 11 }).success).toBe(false);
+  expect(accountExportSchema.parse(v10).data).not.toHaveProperty('supplementaryExecutions');
+});

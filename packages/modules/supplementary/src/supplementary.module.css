@@ -1,0 +1,125 @@
+.workspace {
+  display: grid;
+  gap: var(--space-6, 1.5rem);
+  min-width: 0;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-4, 1rem);
+  flex-wrap: wrap;
+}
+.header h1 {
+  margin-block: 0.25rem;
+}
+.eyebrow {
+  color: var(--color-text-muted, #58677a);
+  font-weight: 700;
+}
+.nav,
+.actions,
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.columns {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.stack,
+.form {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+.card,
+.timer {
+  border: 1px solid var(--color-border, #c7d1dc);
+  border-radius: var(--radius-md, 0.75rem);
+  padding: var(--space-4, 1rem);
+  min-width: 0;
+}
+.card h2,
+.card h3,
+.timer h3 {
+  margin-block-start: 0;
+}
+.head {
+  justify-content: space-between;
+}
+.head h2 {
+  margin: 0;
+}
+.list {
+  display: grid;
+  gap: 0.5rem;
+  padding-inline-start: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.list li {
+  padding-block: 0.4rem;
+}
+.list p {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted, #58677a);
+}
+.form {
+  margin-block-start: 1rem;
+}
+.form label,
+.timer label {
+  display: grid;
+  gap: 0.25rem;
+}
+.form input,
+.form select,
+.form textarea,
+.timer input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-border, #8899ac);
+  border-radius: 0.4rem;
+  padding: 0.5rem;
+  color: inherit;
+  background: var(--color-surface, #fff);
+  font: inherit;
+}
+.form textarea {
+  min-height: 6rem;
+}
+.form :is(input, select, textarea):focus-visible,
+.nav a:focus-visible {
+  outline: 3px solid var(--color-focus, #365df5);
+  outline-offset: 2px;
+}
+.target {
+  border: 1px solid var(--color-border, #c7d1dc);
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.inputGroup {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .actions > * {
+    flex: 1 1 9rem;
+  }
+}

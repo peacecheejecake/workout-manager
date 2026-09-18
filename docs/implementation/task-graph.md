@@ -582,7 +582,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | G1 러닝 core 통합 | M1-05, M1-06a | mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님 |
 | M1b-01 영양 수동 core | G1 | nutrition; plan/intake/food·부분 기록 |
 | M1b-02 보강 수동 core | G1 | supplementary; exercise/set actual·timer |
-| M1b-03 영양·보강 통합 | M1b-01, M1b-02 | joint approval/Planner; V022 회귀·단일 Activity |
+| M1b-03 영양·보강 통합 | M1b-01, M1b-02 | joint approval/Planner; offline actual sync; V022 회귀·단일 Activity |
 | M1c-01 범용 루틴 | M1b-03 | routines/routine-kit; finite occurrence/run·actual link |
 | M1c-02 스트레칭 | M1b-03 | supplementary stretching; 기존 catalog·좌우/시간 |
 | M1c-03 회복 전략 | M1b-03 | recovery; 비운동 원장·계획·재평가 |

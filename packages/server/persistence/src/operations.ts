@@ -159,6 +159,72 @@ const collections = [
     'intake_id,revision,revision_id,status,occurred_at,recorded_at,deleted_at,deletion_reason,record_json',
     'intake_id,revision',
   ],
+  [
+    'supplementaryExerciseVersions',
+    'supplementary_exercise_version',
+    'exercise_id,version_id,version,previous_version_id,previous_version,created_at,record_json',
+    'exercise_id,version',
+  ],
+  [
+    'supplementaryExerciseHeads',
+    'supplementary_exercise_head',
+    'exercise_id,version,version_id',
+    'exercise_id',
+  ],
+  [
+    'supplementaryRoutineVersions',
+    'supplementary_routine_version',
+    'routine_id,version_id,version,previous_version_id,previous_version,created_at,record_json',
+    'routine_id,version',
+  ],
+  [
+    'supplementaryRoutineHeads',
+    'supplementary_routine_head',
+    'routine_id,version,version_id',
+    'routine_id',
+  ],
+  [
+    'supplementaryRoutineTargetRefs',
+    'supplementary_routine_target_ref',
+    'routine_version_id,block_id,target_set_id,exercise_version_id',
+    'routine_version_id,target_set_id',
+  ],
+  [
+    'supplementarySessionLinks',
+    'supplementary_session_link',
+    'plan_version_id,planned_session_id,content_kind,routine_version_id,embedded_spec_json',
+    'plan_version_id,planned_session_id',
+  ],
+  [
+    'supplementarySessionTargetRefs',
+    'supplementary_session_target_ref',
+    'plan_version_id,planned_session_id,block_id,target_set_id,exercise_version_id',
+    'plan_version_id,planned_session_id,target_set_id',
+  ],
+  [
+    'supplementaryExecutions',
+    'supplementary_execution',
+    'id,activity_id,plan_version_id,planned_session_id,revision,status,started_at,ended_at',
+    'id',
+  ],
+  [
+    'supplementarySetLogs',
+    'supplementary_set_log',
+    'id,execution_id,activity_id,current_revision,current_revision_id,status',
+    'id',
+  ],
+  [
+    'supplementarySetLogRevisions',
+    'supplementary_set_log_revision',
+    'log_id,execution_id,activity_id,revision,revision_id,status,state,occurred_at,recorded_at,deleted_at,deletion_reason,record_json',
+    'log_id,revision',
+  ],
+  [
+    'supplementaryRestTimers',
+    'supplementary_rest_timer',
+    'id,execution_id,revision,duration_seconds,status,started_at,deadline_at,paused_at,remaining_when_paused_seconds',
+    'id',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -225,7 +291,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 10,
+          schemaVersion: 11,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

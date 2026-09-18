@@ -205,8 +205,8 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
   const exported = await page.request.post('/bff/v1/operations/export', { headers });
   expect(exported.status()).toBe(200);
   const artifact = accountExportSchema.parse(await exported.json());
-  expect(artifact.schemaVersion).toBe(10);
-  if (artifact.schemaVersion !== 10) throw new Error('Expected nutrition export');
+  expect(artifact.schemaVersion).toBe(11);
+  if (artifact.schemaVersion !== 11) throw new Error('Expected nutrition export');
   expect(artifact.data.intakeEntries).toContainEqual(
     expect.objectContaining({ id, status: 'deleted' }),
   );

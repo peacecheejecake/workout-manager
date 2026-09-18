@@ -10,6 +10,7 @@ import { createPeriodSummaryRepository } from '@workout/server-persistence/perio
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
 import { createNutritionRepository } from '@workout/server-persistence/nutrition-core';
+import { createSupplementaryRepository } from '@workout/server-persistence/supplementary-core';
 import { createActivityRepository } from '@workout/server-persistence/activities';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
@@ -84,6 +85,7 @@ export async function createConfiguredApi(environment: unknown) {
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
       nutrition: createNutritionRepository(database),
+      supplementary: createSupplementaryRepository(database),
       planScenarios: createPlanScenarioRepository(database),
       coachingConstraints: createCoachingConstraintRepository(database),
       coachingThreads: createCoachingThreadRepository(database),

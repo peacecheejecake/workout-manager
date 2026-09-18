@@ -975,8 +975,9 @@
       "title": "보강 수동 core",
       "dependsOn": ["G1"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "supplementary; exercise/set actual·timer"
+      "status": "completed",
+      "scope": "supplementary; exercise/set actual·timer",
+      "evidence": "docs/implementation/progress/M1b-02.md"
     },
     {
       "id": "M1b-03",
@@ -984,7 +985,7 @@
       "dependsOn": ["M1b-01", "M1b-02"],
       "kind": "task",
       "status": "not_started",
-      "scope": "joint approval/Planner; V022 회귀·단일 Activity"
+      "scope": "joint approval/Planner; offline actual sync; V022 회귀·단일 Activity"
     },
     {
       "id": "M1c-01",

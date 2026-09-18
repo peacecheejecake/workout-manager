@@ -23,6 +23,7 @@
     "@workout/modules-wellbeing": "workspace:*",
     "@workout/modules-dashboard": "workspace:*",
     "@workout/modules-coaching": "workspace:*",
-    "@workout/modules-nutrition": "workspace:*"
+    "@workout/modules-nutrition": "workspace:*",
+    "@workout/modules-supplementary": "workspace:*"
   }
 }

@@ -47,7 +47,7 @@ export function createSessionTransport(
       }
       const path = apiPathSchema.parse(input.path);
       if (
-        !/^\/bff\/v1\/(?:plans|plan-scenarios|nutrition|coaching-threads|coaching-runs|coaching-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
+        !/^\/bff\/v1\/(?:plans|plan-scenarios|nutrition|supplementary|coaching-threads|coaching-runs|coaching-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
           path,
         )
       )

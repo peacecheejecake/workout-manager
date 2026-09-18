@@ -15,6 +15,7 @@
   },
   "exports": {
     "./nutrition-core": "./src/nutrition-core.ts",
+    "./supplementary-core": "./src/supplementary-core.ts",
     "./session-actuals": "./src/session-actuals.ts",
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",

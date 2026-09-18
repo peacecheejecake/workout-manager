@@ -20,6 +20,7 @@
     "@workout/modules-coaching": "workspace:*",
     "@workout/modules-identity": "workspace:*",
     "@workout/modules-planning": "workspace:*",
-    "@workout/modules-nutrition": "workspace:*"
+    "@workout/modules-nutrition": "workspace:*",
+    "@workout/modules-supplementary": "workspace:*"
   }
 }

@@ -11,7 +11,7 @@ export default function Page() {
       <p>
         <a href="/dashboard">대시보드</a> · <a href="/planner">훈련 계획</a> ·{' '}
         <a href="/activities">가져온 활동</a> · <a href="/wellbeing">체크인</a> ·{' '}
-        <a href="/nutrition">영양</a>
+        <a href="/nutrition">영양</a> · <a href="/supplementary">보강 운동</a>
       </p>
       <DemoWorkspace />
     </main>

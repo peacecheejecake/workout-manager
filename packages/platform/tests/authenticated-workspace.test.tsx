@@ -147,6 +147,25 @@ describe('session-bound authenticated transport', () => {
       }),
     );
   });
+  it('sends supplementary set writes with session, CSRF and idempotency credentials', async () => {
+    fetchMock.mockResolvedValue(json({ id: 'set-a' }));
+    await createSessionTransport(session, vi.fn()).request({
+      path: '/bff/v1/supplementary/executions/one/sets',
+      method: 'POST',
+      body: { state: 'performed' },
+      idempotencyKey: 'supplementary-set-0001',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/bff/v1/supplementary/executions/one/sets',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-csrf-token': session.csrfToken,
+          'x-workout-session-id': session.sessionId,
+          'idempotency-key': 'supplementary-set-0001',
+        }),
+      }),
+    );
+  });
   it('keeps dashboard reads bound to the current session without write credentials', async () => {
     fetchMock.mockResolvedValue(json({ definitionVersion: 'dashboard-v1' }));
     const transport = createSessionTransport(session, vi.fn());
@@ -172,6 +191,8 @@ describe('session-bound authenticated transport', () => {
     '/bff/v1/check-ins-admin',
     '/bff/v1/dashboard-admin',
     '/bff/v1/dashboard/../consents/ai',
+    '/bff/v1/supplementary-admin',
+    '/bff/v1/supplementary/../consents/ai',
     '/bff/v1/check-ins/../consents/ai',
     'https://evil.example/bff/v1/activities',
     '/bff/v1/activities/../consents/ai',

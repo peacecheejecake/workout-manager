@@ -33,6 +33,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '018_coaching_candidates.sql',
       '019_coaching_candidate_approval.sql',
       '020_nutrition_core.sql',
+      '021_supplementary_core.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -124,6 +125,9 @@ export async function grantOperations(
       `GRANT SELECT ON nutrition_plan_version,nutrition_plan_head,nutrition_plan_history,food_definition_version,food_definition_head,intake_entry,intake_entry_revision TO "${runtimeRole}"`,
     );
     await pool.query(
+      `GRANT SELECT ON supplementary_exercise_version,supplementary_exercise_head,supplementary_routine_version,supplementary_routine_head,supplementary_routine_target_ref,supplementary_session_link,supplementary_session_target_ref,supplementary_execution,supplementary_set_log,supplementary_set_log_revision,supplementary_rest_timer TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
     await pool.query(
@@ -148,6 +152,25 @@ export async function grantNutritionCore(
     );
     await pool.query(
       `GRANT SELECT,INSERT,UPDATE ON nutrition_plan_head,food_definition_head,intake_entry TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Frozen prescriptions are append-only; current pointers and actuals advance by CAS. */
+export async function grantSupplementaryCore(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON supplementary_exercise_version,supplementary_routine_version,supplementary_set_log_revision,supplementary_session_link TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON supplementary_exercise_head,supplementary_routine_head,supplementary_execution,supplementary_set_log,supplementary_rest_timer TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

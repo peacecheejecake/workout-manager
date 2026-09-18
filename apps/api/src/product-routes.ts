@@ -21,6 +21,7 @@ import { registerActivityContextRoutes } from './activity-context-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { NutritionRepository } from '@workout/server-persistence/nutrition-core';
+import type { SupplementaryRepository } from '@workout/server-persistence/supplementary-core';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { CheckInRepository } from '@workout/server-persistence/check-ins';
 import { registerCheckInRoutes } from './check-in-routes.js';
@@ -29,6 +30,7 @@ import { registerDashboardRoutes } from './dashboard-routes.js';
 import type { Principal } from './ports.js';
 import { registerPlanningRoutes } from './planning-routes.js';
 import { registerNutritionRoutes } from './nutrition-routes.js';
+import { registerSupplementaryRoutes } from './supplementary-routes.js';
 import { registerActivityRoutes } from './activity-routes.js';
 import { registerOperationsRoutes } from './operations-routes.js';
 import type { OperationsRepository } from '@workout/server-persistence/operations';
@@ -37,6 +39,7 @@ export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
+  supplementary?: SupplementaryRepository;
   coachingConstraints?: CoachingConstraintRepository;
   coachingThreads?: CoachingThreadRepository;
   coachingRuns?: CoachingRunRepository;
@@ -79,6 +82,8 @@ export function registerProductRoutes(
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
   if (repositories.nutrition) registerNutritionRoutes(routes, repositories.nutrition, principal);
+  if (repositories.supplementary)
+    registerSupplementaryRoutes(routes, repositories.supplementary, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);
   if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
