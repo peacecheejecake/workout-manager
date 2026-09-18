@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "executedAt": "2026-09-17T14:45:50.347Z",
+  "executedAt": "2026-09-18T11:48:50.988Z",
   "scope": "M0-06b manual low-rate public synthetic feasibility sample only",
   "executionContext": {
     "transport": "curl",
     "curlVersion": "8.7.1",
-    "nodeVersion": "v24.12.0",
+    "nodeVersion": "v18.19.0",
     "systemCaRequested": false,
     "additionalCaConfigured": true,
     "proxyConfigured": false,
@@ -56,7 +56,7 @@
         [126.982, 37.566]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-17T14:45:45.577Z",
+      "requestedAt": "2026-09-18T11:48:45.615Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": 200,
@@ -79,7 +79,7 @@
       "error": null,
       "errorName": null,
       "networkErrorCode": null,
-      "latencyMs": 885
+      "latencyMs": 1521
     },
     {
       "caseId": "KR-SYN-02",
@@ -100,7 +100,7 @@
         [126.932, 37.537]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-17T14:45:47.571Z",
+      "requestedAt": "2026-09-18T11:48:48.238Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": 400,
@@ -114,7 +114,7 @@
       "error": null,
       "errorName": null,
       "networkErrorCode": null,
-      "latencyMs": 843
+      "latencyMs": 822
     },
     {
       "caseId": "NEG-SYN-03",
@@ -135,7 +135,7 @@
         [0.011, 0.011]
       ],
       "requestedRadiusMeters": 100,
-      "requestedAt": "2026-09-17T14:45:49.517Z",
+      "requestedAt": "2026-09-18T11:48:50.163Z",
       "endpointOrigin": "https://routing.openstreetmap.de",
       "profile": "foot",
       "httpStatus": 400,
@@ -149,7 +149,7 @@
       "error": null,
       "errorName": null,
       "networkErrorCode": null,
-      "latencyMs": 831
+      "latencyMs": 825
     }
   ],
   "previousRuns": [
@@ -622,6 +622,307 @@
           "errorName": null,
           "networkErrorCode": null,
           "latencyMs": 810
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-17T14:45:50.347Z",
+      "scope": "M0-06b manual low-rate public synthetic feasibility sample only",
+      "executionContext": {
+        "transport": "curl",
+        "curlVersion": "8.7.1",
+        "nodeVersion": "v24.12.0",
+        "systemCaRequested": false,
+        "additionalCaConfigured": true,
+        "proxyConfigured": false,
+        "diagnosticLimitation": "Only bounded Error.name and Error.cause.code are retained. A pre-HTTP failure does not establish provider rejection or routing coverage."
+      },
+      "provenance": {
+        "operator": "FOSSGIS e.V.",
+        "profile": "foot",
+        "engine": "OSRM",
+        "engineVersion": null,
+        "graphDate": null,
+        "endpointConfiguration": "https://raw.githubusercontent.com/fossgis-routing-server/osrm-frontend/master/src/leaflet_options.js",
+        "operatorPolicySummary": "https://routing.openstreetmap.de/about.html",
+        "fullPolicy": "https://fossgis.de/arbeitsgruppen/osm-server/nutzungsbedingungen/",
+        "policyAccess": "Operator summary read directly; full policy indexed text read, direct page blocked by Anubis during M0-06a research.",
+        "attribution": "Data © OpenStreetMap contributors (ODbL). Routing service operated by FOSSGIS e.V.",
+        "dataLicense": "https://www.openstreetmap.org/copyright",
+        "reportMapError": "https://www.openstreetmap.org/fixthemap"
+      },
+      "limits": {
+        "maximumRequests": 3,
+        "requestCount": 3,
+        "parallelRequests": 1,
+        "minimumPauseBetweenRequestsMs": 1100,
+        "timeoutMs": 15000,
+        "maximumResponseBytes": 524288,
+        "retries": 0
+      },
+      "interpretation": "HTTP success and computed geometry are not Korea walking coverage or real access/safety approval. No production provider selected; full routes are not retained.",
+      "notExecutedCaseIds": [],
+      "results": [
+        {
+          "caseId": "KR-SYN-01",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "eaca4d9d25cd0067a858abdc5142d48e9bc813001e6613900f9ab694ce83e18c",
+          "diagnostic": "route_response",
+          "expectedVerdict": null,
+          "context": "Synthetic Seoul city probe; exact walkway not independently reviewed",
+          "requestedCoordinates": [
+            [126.978, 37.566],
+            [126.982, 37.566]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-17T14:45:45.577Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": 200,
+          "providerCode": "Ok",
+          "distanceMeters": 468.6,
+          "snappedWaypoints": [
+            {
+              "coordinates": [126.978005, 37.566011],
+              "distanceMeters": 1.298312779
+            },
+            {
+              "coordinates": [126.982001, 37.565971],
+              "distanceMeters": 3.219877032
+            }
+          ],
+          "geometryHash": "dcbd0ab5def03c3667905fb621cc2b5846e816f63ba224f535a55e978fb0cb2c",
+          "geometryCoordinateCount": 26,
+          "outcome": "computed_not_reviewed",
+          "coverageReview": "not_reviewed",
+          "error": null,
+          "errorName": null,
+          "networkErrorCode": null,
+          "latencyMs": 885
+        },
+        {
+          "caseId": "KR-SYN-02",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "1aeb1a1bb60f1317486e524e7c65b46489d9c9cac3ccaa60703a29c54cc22602",
+          "diagnostic": "snap_failure",
+          "expectedVerdict": null,
+          "context": "Synthetic Han River crossing probe; bridge/access suitability not independently reviewed",
+          "requestedCoordinates": [
+            [126.93, 37.525],
+            [126.932, 37.537]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-17T14:45:47.571Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": 400,
+          "providerCode": "NoSegment",
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "unreachable",
+          "coverageReview": "not_reviewed",
+          "error": null,
+          "errorName": null,
+          "networkErrorCode": null,
+          "latencyMs": 843
+        },
+        {
+          "caseId": "NEG-SYN-03",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "83891d033a4b91f2e874bb7aedc42546b031fadcfbcd028a0d2b9378e6dc4c69",
+          "diagnostic": "snap_failure",
+          "expectedVerdict": "observed_rejection",
+          "context": "Synthetic nonzero ocean coordinates near Null Island; no long-distance snap allowed",
+          "requestedCoordinates": [
+            [0.01, 0.01],
+            [0.011, 0.011]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-17T14:45:49.517Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": 400,
+          "providerCode": "NoSegment",
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "unreachable",
+          "coverageReview": "not_reviewed",
+          "error": null,
+          "errorName": null,
+          "networkErrorCode": null,
+          "latencyMs": 831
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-18T11:48:28.799Z",
+      "scope": "M0-06b manual low-rate public synthetic feasibility sample only",
+      "executionContext": {
+        "transport": "curl",
+        "curlVersion": "8.7.1",
+        "nodeVersion": "v18.19.0",
+        "systemCaRequested": false,
+        "additionalCaConfigured": true,
+        "proxyConfigured": false,
+        "diagnosticLimitation": "Only bounded Error.name and Error.cause.code are retained. A pre-HTTP failure does not establish provider rejection or routing coverage."
+      },
+      "provenance": {
+        "operator": "FOSSGIS e.V.",
+        "profile": "foot",
+        "engine": "OSRM",
+        "engineVersion": null,
+        "graphDate": null,
+        "endpointConfiguration": "https://raw.githubusercontent.com/fossgis-routing-server/osrm-frontend/master/src/leaflet_options.js",
+        "operatorPolicySummary": "https://routing.openstreetmap.de/about.html",
+        "fullPolicy": "https://fossgis.de/arbeitsgruppen/osm-server/nutzungsbedingungen/",
+        "policyAccess": "Operator summary read directly; full policy indexed text read, direct page blocked by Anubis during M0-06a research.",
+        "attribution": "Data © OpenStreetMap contributors (ODbL). Routing service operated by FOSSGIS e.V.",
+        "dataLicense": "https://www.openstreetmap.org/copyright",
+        "reportMapError": "https://www.openstreetmap.org/fixthemap"
+      },
+      "limits": {
+        "maximumRequests": 3,
+        "requestCount": 3,
+        "parallelRequests": 1,
+        "minimumPauseBetweenRequestsMs": 1100,
+        "timeoutMs": 15000,
+        "maximumResponseBytes": 524288,
+        "retries": 0
+      },
+      "interpretation": "HTTP success and computed geometry are not Korea walking coverage or real access/safety approval. No production provider selected; full routes are not retained.",
+      "notExecutedCaseIds": [],
+      "results": [
+        {
+          "caseId": "KR-SYN-01",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "eaca4d9d25cd0067a858abdc5142d48e9bc813001e6613900f9ab694ce83e18c",
+          "diagnostic": "request_failure",
+          "expectedVerdict": null,
+          "context": "Synthetic Seoul city probe; exact walkway not independently reviewed",
+          "requestedCoordinates": [
+            [126.978, 37.566],
+            [126.982, 37.566]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-18T11:48:26.548Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "CURL_REQUEST_FAILED",
+          "errorName": "Error",
+          "networkErrorCode": "CURL_EXIT_6",
+          "latencyMs": 11
+        },
+        {
+          "caseId": "KR-SYN-02",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "1aeb1a1bb60f1317486e524e7c65b46489d9c9cac3ccaa60703a29c54cc22602",
+          "diagnostic": "request_failure",
+          "expectedVerdict": null,
+          "context": "Synthetic Han River crossing probe; bridge/access suitability not independently reviewed",
+          "requestedCoordinates": [
+            [126.93, 37.525],
+            [126.932, 37.537]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-18T11:48:27.664Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "CURL_REQUEST_FAILED",
+          "errorName": "Error",
+          "networkErrorCode": "CURL_EXIT_6",
+          "latencyMs": 23
+        },
+        {
+          "caseId": "NEG-SYN-03",
+          "caseRevision": 1,
+          "requestedOptions": {
+            "radiuses": "100;100",
+            "overview": "full",
+            "geometries": "geojson",
+            "alternatives": "false",
+            "steps": "false"
+          },
+          "requestHash": "83891d033a4b91f2e874bb7aedc42546b031fadcfbcd028a0d2b9378e6dc4c69",
+          "diagnostic": "request_failure",
+          "expectedVerdict": "inconclusive",
+          "context": "Synthetic nonzero ocean coordinates near Null Island; no long-distance snap allowed",
+          "requestedCoordinates": [
+            [0.01, 0.01],
+            [0.011, 0.011]
+          ],
+          "requestedRadiusMeters": 100,
+          "requestedAt": "2026-09-18T11:48:28.789Z",
+          "endpointOrigin": "https://routing.openstreetmap.de",
+          "profile": "foot",
+          "httpStatus": null,
+          "providerCode": null,
+          "distanceMeters": null,
+          "snappedWaypoints": [],
+          "geometryHash": null,
+          "geometryCoordinateCount": null,
+          "outcome": "request_failed",
+          "coverageReview": "not_reviewed",
+          "error": "CURL_REQUEST_FAILED",
+          "errorName": "Error",
+          "networkErrorCode": "CURL_EXIT_6",
+          "latencyMs": 11
         }
       ]
     }
