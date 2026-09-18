@@ -768,11 +768,28 @@
       "evidence": "docs/implementation/progress/M1-05i2b1.md"
     },
     {
-      "id": "M1-05i2b2",
-      "title": "결정론 실행 adapter·preflight·fixture 노출",
+      "id": "M1-05i2b2a",
+      "title": "결정론 실행 runner·직전 검사",
       "dependsOn": ["M1-05i2b1"],
       "kind": "task",
+      "status": "completed",
+      "scope": "tenant topic lease·실행 직전/직후 근거/동의/정책 재검사·결정론 adapter·미검증 출력/질문/실패/취소·경합/재시도; API 노출 전",
+      "evidence": "docs/implementation/progress/M1-05i2b2a.md"
+    },
+    {
+      "id": "M1-05i2b2b",
+      "title": "비프로덕션 fixture 연결·실행 E2E",
+      "dependsOn": ["M1-05i2b2a"],
+      "kind": "task",
       "status": "not_started",
+      "scope": "개발·테스트 fixture 구성과 tenant dispatch·일반 서버 비활성 정책·API 결과/취소 복구·실DB E2E; 실제 provider 별도 검증"
+    },
+    {
+      "id": "M1-05i2b2",
+      "title": "결정론 실행 adapter·preflight·fixture 노출",
+      "dependsOn": ["M1-05i2b2a", "M1-05i2b2b"],
+      "kind": "task",
+      "status": "in_progress",
       "scope": "실행 직전/직후 근거/동의/정책 재검사·tenant lease/중복 방지·결정론 adapter·미검증 분석/질문/실패/취소·비프로덕션 fixture 노출; 실제 provider 별도 검증"
     },
     {

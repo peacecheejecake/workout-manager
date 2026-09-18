@@ -1,0 +1,17 @@
+{
+  "name": "@workout/server-coaching",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "exports": {
+    "./runner": "./src/runner.ts"
+  }
+}

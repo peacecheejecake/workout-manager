@@ -252,6 +252,33 @@ export async function grantCoachingRuns(
   }
 }
 
+/** Worker-only write grants; API composition must not call this with its general route role. */
+export async function grantCoachingRunWorker(
+  connectionString: string,
+  workerRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(workerRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT ON outbox,coaching_run TO "${workerRole}"`);
+    await pool.query(
+      `GRANT UPDATE(lease_token,lease_until,attempts,completed_at,available_at) ON outbox TO "${workerRole}"`,
+    );
+    await pool.query(`GRANT UPDATE(status,updated_at) ON coaching_run TO "${workerRole}"`);
+    await pool.query(`GRANT INSERT ON coaching_analysis_output TO "${workerRole}"`);
+    await pool.query(
+      `GRANT SELECT ON coaching_thread,core_evidence_snapshot,plan_head,activity_canonical,
+       check_in_collection_head,session_completion_collection_head,coaching_constraint_head,consent,tenant_erasure
+       TO "${workerRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.coaching_run_status_valid(jsonb) TO "${workerRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 /** User-confirmed statements allow correction and scrubbing, never runtime hard deletion. */
 export async function grantCoachingConstraints(
   connectionString: string,

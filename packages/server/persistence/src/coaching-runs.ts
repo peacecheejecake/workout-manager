@@ -18,9 +18,11 @@ import {
   trainingCoachingPolicySchema,
 } from '@workout/contracts/coaching-basis';
 import { coreEvidenceSnapshotSchema } from '@workout/contracts/evidence-snapshots';
+import type { CoreEvidenceBodyV2 } from '@workout/contracts/evidence-snapshots';
 import { coreEvidenceDependencyManifestV2Schema } from '@workout/contracts/evidence-dependencies';
+import type { CoachingJobLease, CoachingRunWorkerStore } from '@workout/server-coaching/runner';
 import type { Database, Transaction } from './database.js';
-import { enqueue, PersistenceConflict } from './outbox.js';
+import { claimTopic, complete, enqueue, PersistenceConflict } from './outbox.js';
 
 export class CoachingRunError extends Error {
   constructor(
@@ -99,6 +101,95 @@ const preflightSql = `SELECT t.revision AS conversation_revision,
  FROM coaching_thread t LEFT JOIN core_evidence_snapshot e
  ON e.athlete_id=t.athlete_id AND e.thread_id=t.id AND e.id=$3
  WHERE t.athlete_id=$1 AND t.id=$2`;
+
+async function currentWorkerEvidence(
+  tx: Transaction,
+  run: Record<string, unknown>,
+  policy: z.infer<typeof trainingCoachingPolicySchema>,
+  source: CoachingRunModelSource,
+): Promise<CoreEvidenceBodyV2 | null> {
+  const stored = decode(run);
+  if (
+    stored.policy.id !== policy.id ||
+    stored.policy.version !== policy.version ||
+    stored.source.kind !== 'deterministic_fixture' ||
+    source.kind !== 'deterministic_fixture' ||
+    stored.source.fixtureId !== source.fixtureId
+  )
+    return null;
+  const observed = await tx.query(preflightSql, [
+    tx.athleteId,
+    stored.threadId,
+    stored.evidenceSnapshotId,
+  ]);
+  const row = observed.rows[0];
+  if (!row || row['evidence_id'] !== stored.evidenceSnapshotId || row['body'] === null) return null;
+  const snapshot = coreEvidenceSnapshotSchema.safeParse({
+    id: row['evidence_id'],
+    threadId: stored.threadId,
+    createdAt: iso(row['evidence_created_at']),
+    status: 'available',
+    body: row['body'],
+  });
+  if (
+    !snapshot.success ||
+    snapshot.data.status !== 'available' ||
+    snapshot.data.body.schemaVersion !== 2
+  )
+    return null;
+  const dependencies = coreEvidenceDependencyManifestV2Schema.safeParse(row['dependencies']);
+  if (
+    !dependencies.success ||
+    dependencies.data.aiConsent.kind !== 'exists' ||
+    !dependencies.data.aiConsent.granted
+  )
+    return null;
+  const compared = compareTrainingCoachingBasis(run['basis'], {
+    schemaVersion: 1,
+    scope: 'running-core-v2-training',
+    athleteId: tx.athleteId,
+    evidence: {
+      id: stored.evidenceSnapshotId,
+      threadId: stored.threadId,
+      createdAt: snapshot.data.createdAt,
+      status: 'available',
+    },
+    conversationRevision: row['conversation_revision'],
+    dependencies: dependencies.data,
+    policy,
+    retrieval: { kind: 'none' },
+  });
+  if (compared.status !== 'fresh') return null;
+  return snapshot.data.body;
+}
+
+async function lockWorkerLease(tx: Transaction, lease: CoachingJobLease): Promise<boolean> {
+  const found = await tx.query(
+    `SELECT payload,attempts FROM outbox WHERE athlete_id=$1 AND id=$2 AND topic='coaching.run_queued'
+      AND lease_token=$3 AND lease_until>clock_timestamp() AND completed_at IS NULL FOR UPDATE`,
+    [tx.athleteId, lease.eventId, lease.leaseToken],
+  );
+  if (!found.rows[0]) return false;
+  const payload = z.strictObject({ runId: uuid }).parse(found.rows[0]['payload']);
+  return payload.runId === lease.runId && found.rows[0]['attempts'] === lease.attempts;
+}
+
+async function acknowledgeWorkerLease(tx: Transaction, lease: CoachingJobLease): Promise<void> {
+  if (!(await complete(tx, lease.eventId, lease.leaseToken)))
+    throw new Error('COACHING_WORKER_LEASE_LOST');
+}
+
+async function changeWorkerStatus(
+  tx: Transaction,
+  runId: string,
+  status: CoachingRunV1['status'],
+): Promise<void> {
+  const result = await tx.query(
+    'UPDATE coaching_run SET status=$3::jsonb,updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2',
+    [tx.athleteId, runId, JSON.stringify(status)],
+  );
+  if (result.rowCount !== 1) throw new Error('COACHING_WORKER_RUN_MISSING');
+}
 
 export function createCoachingRunRepository(
   database: Database,
@@ -252,6 +343,152 @@ export function createCoachingRunRepository(
           payload: { runId },
         });
         return run;
+      });
+    },
+  };
+}
+
+/** Fixture-only execution port; the caller explicitly supplies the tenant to dispatch. */
+export function createCoachingRunWorkerStore(
+  database: Database,
+  options: CoachingRunRepositoryOptions & {
+    leaseSeconds?: number;
+    currentPolicy?: () => z.input<typeof trainingCoachingPolicySchema>;
+  },
+): CoachingRunWorkerStore {
+  trainingCoachingPolicySchema.parse(options.policy);
+  const currentPolicy = () =>
+    trainingCoachingPolicySchema.parse(options.currentPolicy?.() ?? options.policy);
+  const source = coachingRunModelSourceSchema.parse(options.source);
+  if (source.kind !== 'deterministic_fixture' || source.fixtureId !== 'synthetic-v1')
+    throw new Error('COACHING_PROVIDER_NOT_CONFIGURED');
+  const leaseSeconds = z
+    .number()
+    .int()
+    .min(1)
+    .max(300)
+    .parse(options.leaseSeconds ?? 120);
+  return {
+    claim(athleteId) {
+      return database.tenant(athleteId, async (tx) => {
+        const leaseToken = randomUUID();
+        const event = await claimTopic(tx, 'coaching.run_queued', leaseToken, leaseSeconds);
+        if (!event) return null;
+        const payload = z.strictObject({ runId: uuid }).parse(event.payload);
+        return {
+          athleteId,
+          eventId: event.id,
+          runId: payload.runId,
+          leaseToken,
+          attempts: event.attempts,
+        };
+      });
+    },
+    prepare(lease) {
+      return database.tenant(lease.athleteId, async (tx) => {
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [tx.athleteId]);
+        if (!(await lockWorkerLease(tx, lease))) return { kind: 'skipped' };
+        const selected = await tx.query(
+          'SELECT * FROM coaching_run WHERE athlete_id=$1 AND id=$2 FOR UPDATE',
+          [tx.athleteId, lease.runId],
+        );
+        const row = selected.rows[0];
+        if (!row) {
+          await acknowledgeWorkerLease(tx, lease);
+          return { kind: 'skipped' };
+        }
+        const run = decode(row);
+        if (run.status.kind !== 'queued' && run.status.kind !== 'running') {
+          await acknowledgeWorkerLease(tx, lease);
+          return { kind: 'skipped' };
+        }
+        if (run.status.kind === 'running' && run.status.stage === 'validating_candidates') {
+          await acknowledgeWorkerLease(tx, lease);
+          return { kind: 'skipped' };
+        }
+        const evidence = await currentWorkerEvidence(tx, row, currentPolicy(), source);
+        if (!evidence) {
+          await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
+          await acknowledgeWorkerLease(tx, lease);
+          return { kind: 'skipped' };
+        }
+        // Five attempts are allowed; the sixth claim is terminal without calling the adapter.
+        if (lease.attempts > 5) {
+          await changeWorkerStatus(tx, lease.runId, {
+            kind: 'unable_to_evaluate',
+            code: 'internal_error',
+            reason: 'Evaluation could not be completed',
+          });
+          await acknowledgeWorkerLease(tx, lease);
+          return { kind: 'skipped' };
+        }
+        if (run.status.kind === 'queued')
+          await changeWorkerStatus(tx, lease.runId, {
+            kind: 'running',
+            stage: 'preparing_evidence',
+          });
+        if (run.status.kind === 'queued' || run.status.stage === 'preparing_evidence')
+          await changeWorkerStatus(tx, lease.runId, { kind: 'running', stage: 'evaluating' });
+        return { kind: 'ready', evidence };
+      });
+    },
+    finish(lease, outcome) {
+      return database.tenant(lease.athleteId, async (tx) => {
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [tx.athleteId]);
+        // Lease/CAS ownership is checked and locked before any output or status write.
+        if (!(await lockWorkerLease(tx, lease))) return 'skipped';
+        const selected = await tx.query(
+          'SELECT * FROM coaching_run WHERE athlete_id=$1 AND id=$2 FOR UPDATE',
+          [tx.athleteId, lease.runId],
+        );
+        const row = selected.rows[0];
+        if (!row) {
+          await acknowledgeWorkerLease(tx, lease);
+          return 'skipped';
+        }
+        const run = decode(row);
+        if (run.status.kind !== 'running' || run.status.stage !== 'evaluating') {
+          await acknowledgeWorkerLease(tx, lease);
+          return 'skipped';
+        }
+        if (!(await currentWorkerEvidence(tx, row, currentPolicy(), source))) {
+          await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
+          await acknowledgeWorkerLease(tx, lease);
+          return 'skipped';
+        }
+        if (outcome.kind === 'analysis') {
+          const outputId = randomUUID();
+          const body = JSON.stringify({ schemaVersion: 1, content: outcome.content });
+          const inserted =
+            Buffer.byteLength(body) <= 1_000_000
+              ? await tx.query(
+                  `INSERT INTO coaching_analysis_output(athlete_id,id,run_id,body)
+                   SELECT $1,$2,$3,$4::jsonb
+                   WHERE octet_length(($4::jsonb)::text)<=1048576`,
+                  [tx.athleteId, outputId, lease.runId, body],
+                )
+              : null;
+          await changeWorkerStatus(
+            tx,
+            lease.runId,
+            inserted?.rowCount === 1
+              ? { kind: 'analysis_ready', outputId }
+              : {
+                  kind: 'unable_to_evaluate',
+                  code: 'invalid_output',
+                  reason: 'Model output could not be used',
+                },
+          );
+        } else if (outcome.kind === 'needs_question') {
+          await changeWorkerStatus(tx, lease.runId, outcome);
+        } else {
+          await changeWorkerStatus(tx, lease.runId, outcome);
+        }
+        // Failure to acknowledge rolls back both output and status in this transaction.
+        await acknowledgeWorkerLease(tx, lease);
+        return 'stored';
       });
     },
   };

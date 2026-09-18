@@ -429,6 +429,15 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
 
+  packages/server/coaching:
+    dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   packages/server/identity:
     dependencies:
       '@workout/contracts':
@@ -446,6 +455,9 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@workout/server-coaching':
+        specifier: workspace:*
+        version: link:../coaching
       pg:
         specifier: 8.23.0
         version: 8.23.0

@@ -4,8 +4,13 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
 import { createDatabase, TenantErasedError, type Database } from '../src/database.js';
 import {
+  runOneCoachingJob,
+  createDeterministicFixtureAdapter,
+} from '@workout/server-coaching/runner';
+import {
   grantCoachingConstraints,
   grantCoachingRuns,
+  grantCoachingRunWorker,
   grantCoachingThreads,
   grantCoreEvidenceSnapshots,
   grantOperations,
@@ -15,7 +20,8 @@ import { createPlanningRepository } from '../src/planning.js';
 import { createCoachingThreadRepository } from '../src/coaching-threads.js';
 import { createCoreEvidenceSnapshotRepository } from '../src/evidence-snapshots.js';
 import { createConsentRepository } from '../src/repositories.js';
-import { createCoachingRunRepository } from '../src/coaching-runs.js';
+import { createCoachingRunRepository, createCoachingRunWorkerStore } from '../src/coaching-runs.js';
+import { enqueue } from '../src/outbox.js';
 import { createOperationsRepository } from '../src/operations.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
@@ -23,6 +29,7 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
+let workerDatabase: Database;
 
 beforeAll(async () => {
   await migrate(adminUrl);
@@ -31,6 +38,10 @@ beforeAll(async () => {
   await grantCoachingThreads(adminUrl, 'workout_runtime');
   await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
   await grantCoachingRuns(adminUrl, 'workout_runtime');
+  await admin.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='workout_coaching_worker')
+    THEN CREATE ROLE workout_coaching_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+    END IF; END $$`);
+  await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON consent,plan_head,plan_snapshot,plan_history,command_receipt,outbox TO workout_runtime',
   );
@@ -38,9 +49,14 @@ beforeAll(async () => {
     'GRANT SELECT ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,check_in,session_completion,session_completion_collection_head,check_in_collection_head TO workout_runtime',
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 8 });
+  const workerUrl = new URL(runtimeUrl);
+  workerUrl.username = 'workout_coaching_worker';
+  workerUrl.password = '';
+  workerDatabase = createDatabase({ connectionString: workerUrl.toString(), max: 8 });
 });
 afterAll(async () => {
   await database?.close();
+  await workerDatabase?.close();
   await admin.end();
 });
 
@@ -48,6 +64,17 @@ const repository = () =>
   createCoachingRunRepository(database, {
     policy: { id: 'running-core-v2-training', version: '1' },
     source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+  });
+const workerStore = (
+  sourceDatabase: Database = workerDatabase,
+  leaseSeconds = 120,
+  currentPolicy?: () => { id: string; version: string },
+) =>
+  createCoachingRunWorkerStore(sourceDatabase, {
+    policy: { id: 'running-core-v2-training', version: '1' },
+    source: { kind: 'deterministic_fixture', fixtureId: 'synthetic-v1' },
+    leaseSeconds,
+    ...(currentPolicy ? { currentPolicy } : {}),
   });
 
 async function seed(athleteId: string) {
@@ -413,4 +440,400 @@ it('erases attempts before evidence and blocks tenant resurrection', async () =>
   const run = await repo.create(athleteId, thread.id, command);
   await createOperationsRepository(database).eraseAccount(athleteId);
   await expect(repo.read(athleteId, run.id)).rejects.toBeInstanceOf(TenantErasedError);
+});
+
+it('claims only coaching jobs and persists one untrusted fixture output without a decision', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  await database.tenant(athleteId, (tx) =>
+    enqueue(tx, {
+      id: randomUUID(),
+      idempotencyKey: randomUUID(),
+      topic: 'unrelated.event',
+      payload: { kind: 'unrelated' },
+    }).then(() => undefined),
+  );
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+    }),
+  ).toBe('stored');
+  const updated = await repository().read(athleteId, run.id);
+  expect(updated?.status.kind).toBe('analysis_ready');
+  const outputId = updated?.status.kind === 'analysis_ready' ? updated.status.outputId : null;
+  const result = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      `SELECT o.id,o.body,r.status,
+       (SELECT count(*)::integer FROM outbox WHERE athlete_id=$1 AND topic='unrelated.event'
+        AND completed_at IS NULL) AS unrelated_pending
+       FROM coaching_analysis_output o JOIN coaching_run r
+        ON r.athlete_id=o.athlete_id AND r.id=o.run_id
+       WHERE o.athlete_id=$1 AND o.run_id=$2`,
+      [athleteId, run.id],
+    ),
+  );
+  expect(result.rows).toEqual([
+    expect.objectContaining({
+      id: outputId,
+      body: {
+        schemaVersion: 1,
+        content: { summary: 'Synthetic training analysis awaiting validation.' },
+      },
+      unrelated_pending: 1,
+    }),
+  ]);
+  expect(await workerStore().claim(athleteId)).toBeNull();
+  await expect(
+    workerDatabase.tenant(athleteId, (tx) =>
+      tx.query('SELECT body FROM coaching_analysis_output WHERE athlete_id=$1', [athleteId]),
+    ),
+  ).rejects.toThrow();
+});
+
+it('does not claim another tenant’s event', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  expect(await workerStore().claim(randomUUID())).toBeNull();
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({ kind: 'queued' });
+});
+
+it('acknowledges the sixth claim as a bounded terminal failure without calling the adapter', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  await database.tenant(athleteId, (tx) =>
+    tx
+      .query(
+        `UPDATE outbox SET attempts=5 WHERE athlete_id=$1 AND topic='coaching.run_queued'
+       AND payload->>'runId'=$2`,
+        [athleteId, run.id],
+      )
+      .then(() => undefined),
+  );
+  let called = false;
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: {
+        evaluate: async () => {
+          called = true;
+          return { kind: 'analysis', content: {} };
+        },
+      },
+    }),
+  ).toBe('skipped');
+  expect(called).toBe(false);
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'unable_to_evaluate',
+    code: 'internal_error',
+    reason: 'Evaluation could not be completed',
+  });
+  expect(await workerStore().claim(athleteId)).toBeNull();
+});
+
+it('rejects a policy version change before evaluation and after an in-flight evaluation', async () => {
+  const beforeAthlete = randomUUID();
+  const beforeSeed = await seed(beforeAthlete);
+  const beforeRun = await repository().create(
+    beforeAthlete,
+    beforeSeed.thread.id,
+    beforeSeed.command,
+  );
+  const changed = () => ({ id: 'running-core-v2-training', version: '2' });
+  expect(
+    await runOneCoachingJob({
+      athleteId: beforeAthlete,
+      store: workerStore(workerDatabase, 120, changed),
+      adapter: {
+        evaluate: async () => {
+          throw new Error('ADAPTER_MUST_NOT_RUN');
+        },
+      },
+    }),
+  ).toBe('skipped');
+  expect((await repository().read(beforeAthlete, beforeRun.id))?.status).toEqual({
+    kind: 'cancelled',
+    reason: 'stale_basis',
+  });
+
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  let version = '1';
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const pending = runOneCoachingJob({
+    athleteId,
+    store: workerStore(workerDatabase, 120, () => ({ id: 'running-core-v2-training', version })),
+    adapter: {
+      evaluate: async () => {
+        enter();
+        await held;
+        return { kind: 'analysis', content: { summary: 'Discard after policy change' } };
+      },
+    },
+  });
+  await entered;
+  version = '2';
+  release();
+  expect(await pending).toBe('skipped');
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'cancelled',
+    reason: 'stale_basis',
+  });
+});
+
+it.each(['throw', 'malformed', 'oversized', 'jsonb_expansion'] as const)(
+  'maps %s adapter output to a bounded terminal failure without saving output',
+  async (kind) => {
+    const athleteId = randomUUID();
+    const { thread, command } = await seed(athleteId);
+    const run = await repository().create(athleteId, thread.id, command);
+    expect(
+      await runOneCoachingJob({
+        athleteId,
+        store: workerStore(),
+        adapter: {
+          evaluate: async () => {
+            if (kind === 'throw') throw new Error('Synthetic secret that must not be persisted');
+            if (kind === 'malformed') return { kind: 'analysis', content: undefined };
+            if (kind === 'jsonb_expansion') {
+              const content = Array(400_000).fill(0);
+              expect(Buffer.byteLength(JSON.stringify({ schemaVersion: 1, content }))).toBeLessThan(
+                1_000_000,
+              );
+              return { kind: 'analysis', content };
+            }
+            return { kind: 'analysis', content: { text: 'x'.repeat(1_000_001) } };
+          },
+        },
+      }),
+    ).toBe('stored');
+    expect((await repository().read(athleteId, run.id))?.status).toEqual({
+      kind: 'unable_to_evaluate',
+      code: kind === 'throw' ? 'provider_unavailable' : 'invalid_output',
+      reason:
+        kind === 'throw' ? 'Evaluation could not be completed' : 'Model output could not be used',
+    });
+    const output = await database.tenant(athleteId, (tx) =>
+      tx.query(
+        'SELECT count(*)::integer AS n FROM coaching_analysis_output WHERE athlete_id=$1 AND run_id=$2',
+        [athleteId, run.id],
+      ),
+    );
+    expect(output.rows[0]?.['n']).toBe(0);
+  },
+);
+
+it('stores a bounded clarification question as terminal metadata without an analysis output', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: {
+        evaluate: async () => ({
+          kind: 'needs_question',
+          question: 'Please clarify the synthetic training goal.',
+        }),
+      },
+    }),
+  ).toBe('stored');
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'needs_question',
+    question: 'Please clarify the synthetic training goal.',
+  });
+  expect(await workerStore().claim(athleteId)).toBeNull();
+});
+
+it('fails the preflight before invoking an adapter when the conversation changed', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  await createCoachingThreadRepository(database).append(athleteId, thread.id, {
+    expectedRevision: 1,
+    message: 'Changed synthetic report',
+    idempotencyKey: randomUUID(),
+  });
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: {
+        evaluate: async () => {
+          throw new Error('ADAPTER_MUST_NOT_RUN');
+        },
+      },
+    }),
+  ).toBe('skipped');
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'cancelled',
+    reason: 'stale_basis',
+  });
+});
+
+it.each(['conversation', 'consent', 'cancel'] as const)(
+  'discards in-flight output after %s changes during evaluation',
+  async (change) => {
+    const athleteId = randomUUID();
+    const { thread, command } = await seed(athleteId);
+    const run = await repository().create(athleteId, thread.id, command);
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pending = runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: {
+        evaluate: async () => {
+          enter();
+          await held;
+          return { kind: 'analysis', content: { summary: 'Must be discarded' } };
+        },
+      },
+    });
+    await entered;
+    if (change === 'conversation') {
+      await createCoachingThreadRepository(database).append(athleteId, thread.id, {
+        expectedRevision: 1,
+        message: 'Updated synthetic report',
+        idempotencyKey: randomUUID(),
+      });
+    } else if (change === 'consent') {
+      await createConsentRepository(database).setConsent(athleteId, {
+        kind: 'ai',
+        granted: false,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+      });
+    } else {
+      await repository().cancel(athleteId, run.id);
+    }
+    release();
+    expect(await pending).toBe('skipped');
+    const current = await repository().read(athleteId, run.id);
+    expect(current?.status).toEqual({
+      kind: 'cancelled',
+      reason:
+        change === 'conversation'
+          ? 'stale_basis'
+          : change === 'consent'
+            ? 'consent_withdrawn'
+            : 'user_requested',
+    });
+    const output = await database.tenant(athleteId, (tx) =>
+      tx.query(
+        'SELECT count(*)::integer AS n FROM coaching_analysis_output WHERE athlete_id=$1 AND run_id=$2',
+        [athleteId, run.id],
+      ),
+    );
+    expect(output.rows[0]?.['n']).toBe(0);
+  },
+);
+
+it('reclaims an expired lease and prevents the losing worker from writing output', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const loser = runOneCoachingJob({
+    athleteId,
+    store: workerStore(),
+    adapter: {
+      evaluate: async () => {
+        enter();
+        await held;
+        return { kind: 'analysis', content: { worker: 'loser' } };
+      },
+    },
+  });
+  await entered;
+  await database.tenant(athleteId, (tx) =>
+    tx
+      .query(
+        `UPDATE outbox SET lease_until=clock_timestamp()-interval '1 second'
+      WHERE athlete_id=$1 AND topic='coaching.run_queued' AND payload->>'runId'=$2`,
+        [athleteId, run.id],
+      )
+      .then(() => undefined),
+  );
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: { evaluate: async () => ({ kind: 'analysis', content: { worker: 'winner' } }) },
+    }),
+  ).toBe('stored');
+  release();
+  expect(await loser).toBe('skipped');
+  const output = await database.tenant(athleteId, (tx) =>
+    tx.query('SELECT body FROM coaching_analysis_output WHERE athlete_id=$1 AND run_id=$2', [
+      athleteId,
+      run.id,
+    ]),
+  );
+  expect(output.rows).toEqual([{ body: { schemaVersion: 1, content: { worker: 'winner' } } }]);
+});
+
+it('rolls output and status back when the bound outbox acknowledgement fails', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  const brokenDatabase: Database = {
+    tenant: (owner, operation) =>
+      workerDatabase.tenant(owner, (tx) =>
+        operation({
+          ...tx,
+          query: (sql, values) =>
+            sql.startsWith('UPDATE outbox SET completed_at')
+              ? Promise.resolve({ rows: [], rowCount: 0 })
+              : tx.query(sql, values),
+        }),
+      ),
+    exclusiveTenant: workerDatabase.exclusiveTenant,
+    close: workerDatabase.close,
+  };
+  await expect(
+    runOneCoachingJob({
+      athleteId,
+      store: workerStore(brokenDatabase),
+      adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+    }),
+  ).rejects.toThrow('COACHING_WORKER_LEASE_LOST');
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'running',
+    stage: 'evaluating',
+  });
+  const output = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT count(*)::integer AS n FROM coaching_analysis_output WHERE athlete_id=$1 AND run_id=$2',
+      [athleteId, run.id],
+    ),
+  );
+  expect(output.rows[0]?.['n']).toBe(0);
 });

@@ -10,7 +10,8 @@
   "dependencies": {
     "pg": "8.23.0",
     "zod": "4.6.5",
-    "@workout/contracts": "workspace:*"
+    "@workout/contracts": "workspace:*",
+    "@workout/server-coaching": "workspace:*"
   },
   "exports": {
     "./session-actuals": "./src/session-actuals.ts",

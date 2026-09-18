@@ -68,6 +68,37 @@ export async function claim(
     leaseToken: row.lease_token,
   };
 }
+/** Claim only the named topic so a coaching worker cannot consume unrelated jobs. */
+export async function claimTopic(
+  transaction: Transaction,
+  topic: string,
+  leaseToken: string,
+  leaseSeconds = 30,
+): Promise<LeasedEvent | null> {
+  z.string().min(1).max(100).parse(topic);
+  z.uuid().parse(leaseToken);
+  z.number().int().min(1).max(300).parse(leaseSeconds);
+  const result = await transaction.query(
+    `WITH next AS (
+      SELECT id FROM outbox WHERE athlete_id=$1 AND topic=$2 AND completed_at IS NULL
+       AND available_at<=clock_timestamp() AND (lease_until IS NULL OR lease_until<=clock_timestamp())
+      ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
+    ) UPDATE outbox SET lease_token=$3,
+      lease_until=clock_timestamp()+make_interval(secs => $4),attempts=attempts+1
+    WHERE athlete_id=$1 AND id IN (SELECT id FROM next)
+    RETURNING id,topic,payload,attempts,lease_token`,
+    [transaction.athleteId, topic, leaseToken, leaseSeconds],
+  );
+  if (!result.rows[0]) return null;
+  const row = leasedSchema.parse(result.rows[0]);
+  return {
+    id: row.id,
+    topic: row.topic,
+    payload: row.payload,
+    attempts: row.attempts,
+    leaseToken: row.lease_token,
+  };
+}
 /** Acknowledge in the same transaction as consumer effects; expired or replaced leases cannot acknowledge. */
 export async function complete(
   transaction: Transaction,
