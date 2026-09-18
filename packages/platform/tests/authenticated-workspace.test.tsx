@@ -392,6 +392,46 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
 });
 
 it.each([
+  ['GET', '/bff/v1/nutrition/plans?from=2026-09-18&toInclusive=2026-09-20'],
+  ['POST', '/bff/v1/nutrition/plans'],
+  ['GET', '/bff/v1/nutrition/foods/food-1'],
+  ['POST', '/bff/v1/nutrition/intakes'],
+  ['PATCH', '/bff/v1/nutrition/intakes/intake-1'],
+  ['DELETE', '/bff/v1/nutrition/intakes/intake-1'],
+] as const)('binds nutrition %s %s to the active session and CSRF token', async (method, path) => {
+  fetchMock.mockResolvedValue(json({ accepted: true }));
+  await createSessionTransport(session, vi.fn()).request({
+    method,
+    path,
+    body: method === 'GET' ? null : { confirmed: true },
+    idempotencyKey: method === 'GET' ? null : 'nutrition-key',
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({
+      credentials: 'same-origin',
+      headers: expect.objectContaining({
+        'x-workout-session-id': session.sessionId,
+        ...(method === 'GET'
+          ? {}
+          : { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'nutrition-key' }),
+      }),
+    }),
+  );
+});
+it('rejects adjacent nutrition namespaces', async () => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method: 'POST',
+      path: '/bff/v1/nutrition-admin/intakes',
+      body: {},
+      idempotencyKey: 'private',
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it.each([
   ['GET', '/bff/v1/coaching-constraints'],
   ['POST', '/bff/v1/coaching-constraints'],
   ['PUT', '/bff/v1/coaching-constraints/constraint'],

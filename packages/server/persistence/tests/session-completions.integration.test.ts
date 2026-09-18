@@ -129,7 +129,7 @@ describe('user session completion ledger', () => {
       3, 2, 1,
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 9) throw new Error('Expected completion export v9');
+    if (exported.schemaVersion !== 10) throw new Error('Expected completion export v10');
     expect(exported.data.sessionCompletions).toHaveLength(1);
     expect(exported.data.sessionCompletionRevisions).toHaveLength(3);
     expect(
@@ -358,7 +358,7 @@ it('bounds history to the latest 100 reports and retains retracted history after
   expect(await repo.read(athlete, 'session')).toBeNull();
   expect((await repo.list(athlete)).items).toEqual([]);
   const artifact = await createOperationsRepository(database).exportAccount(athlete);
-  if (artifact.schemaVersion !== 9) throw new Error('Expected export v9');
+  if (artifact.schemaVersion !== 10) throw new Error('Expected export v10');
   expect(artifact.data.sessionCompletions).toHaveLength(1);
   expect(artifact.data.sessionCompletionRevisions).toHaveLength(102);
 });

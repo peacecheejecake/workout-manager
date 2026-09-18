@@ -14,6 +14,7 @@
     "@workout/server-coaching": "workspace:*"
   },
   "exports": {
+    "./nutrition-core": "./src/nutrition-core.ts",
     "./session-actuals": "./src/session-actuals.ts",
     "./database": "./src/database.ts",
     "./repositories": "./src/repositories.ts",

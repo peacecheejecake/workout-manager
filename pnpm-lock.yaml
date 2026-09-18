@@ -135,6 +135,9 @@ importers:
       '@workout/modules-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
+      '@workout/modules-nutrition':
+        specifier: workspace:*
+        version: link:../../packages/modules/nutrition
       '@workout/modules-planning':
         specifier: workspace:*
         version: link:../../packages/modules/planning
@@ -196,6 +199,9 @@ importers:
       '@workout/modules-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
+      '@workout/modules-nutrition':
+        specifier: workspace:*
+        version: link:../../packages/modules/nutrition
       '@workout/modules-planning':
         specifier: workspace:*
         version: link:../../packages/modules/planning
@@ -374,6 +380,24 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
+  packages/modules/nutrition:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@workout/ui-foundation':
+        specifier: workspace:*
+        version: link:../../ui/foundation
       react:
         specifier: 19.3.0
         version: 19.3.0

@@ -14,6 +14,7 @@ import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
+import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -28,6 +29,7 @@ import { createIdentityRepository } from '../packages/server/persistence/src/ide
 import {
   grantIdentityFunctions,
   grantOperations,
+  grantNutritionCore,
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
@@ -137,6 +139,7 @@ try {
     await migrate(adminUrl);
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantOperations(adminUrl, 'workout_runtime');
+    await grantNutritionCore(adminUrl, 'workout_runtime');
     await grantCheckIns(adminUrl, 'workout_runtime');
     await grantSessionCompletions(adminUrl, 'workout_runtime');
     await grantPlanScenarios(adminUrl, 'workout_runtime');
@@ -228,6 +231,7 @@ try {
     }),
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
+    nutrition: createNutritionRepository(database),
     planScenarios: createPlanScenarioRepository(database),
     coachingConstraints: createCoachingConstraintRepository(database),
     coachingThreads: createCoachingThreadRepository(database),

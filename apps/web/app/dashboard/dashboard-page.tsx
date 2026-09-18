@@ -56,21 +56,26 @@ function Dashboard() {
       links={links}
       onSearchChange={changeSearch}
       periodNavigation={
-        <PlanningPeriodNavigator
-          {...session}
-          search={search}
-          onSearchChange={changeSearch}
-          planHref={(id) => (id === null ? links.planning : links.planBlock(id))}
-          onCalendar={(period) => {
-            window.location.assign(
-              `/planner?${new URLSearchParams({
-                lens: 'period',
-                period: period.id,
-                plannedView: 'calendar',
-              })}`,
-            );
-          }}
-        />
+        <>
+          <nav aria-label="추가 기록">
+            <a href="/nutrition">영양 계획과 섭취</a>
+          </nav>
+          <PlanningPeriodNavigator
+            {...session}
+            search={search}
+            onSearchChange={changeSearch}
+            planHref={(id) => (id === null ? links.planning : links.planBlock(id))}
+            onCalendar={(period) => {
+              window.location.assign(
+                `/planner?${new URLSearchParams({
+                  lens: 'period',
+                  period: period.id,
+                  plannedView: 'calendar',
+                })}`,
+              );
+            }}
+          />
+        </>
       }
     />
   );

@@ -19,6 +19,9 @@ const PlannerPage = lazy(() =>
 const AccountPage = lazy(() =>
   import('./account-page').then((module) => ({ default: module.AccountPage })),
 );
+const NutritionPage = lazy(() =>
+  import('./nutrition-page').then((module) => ({ default: module.NutritionPage })),
+);
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
@@ -37,6 +40,13 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/nutrition' || location.pathname.startsWith('/nutrition/') ? (
+        <Suspense fallback={<p role="status">영양 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/planner">훈련 계획</a> · <a href="/account">계정</a>
+          </nav>
+          <NutritionPage path={location.pathname} />
+        </Suspense>
       ) : location.pathname === '/planner' ? (
         <Suspense fallback={<p role="status">훈련 계획 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
@@ -63,6 +73,9 @@ createRoot(root).render(
         <>
           <h1>Workout Manager · Mobile Web</h1>
           <p>개발 기반 확인 화면 · 서버 저장 및 실제 로그인이 연결되지 않았습니다.</p>
+          <nav aria-label="더보기">
+            <a href="/nutrition">영양 계획·섭취 기록</a> · <a href="/account">계정</a>
+          </nav>
           <DemoWorkspace />
         </>
       )}

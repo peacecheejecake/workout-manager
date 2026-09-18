@@ -966,8 +966,9 @@
       "title": "영양 수동 core",
       "dependsOn": ["G1"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "nutrition; plan/intake/food·부분 기록"
+      "status": "completed",
+      "scope": "nutrition; plan/intake/food·부분 기록",
+      "evidence": "docs/implementation/progress/M1b-01.md"
     },
     {
       "id": "M1b-02",

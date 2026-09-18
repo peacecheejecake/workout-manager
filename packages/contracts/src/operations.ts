@@ -71,6 +71,18 @@ const accountExportV9Schema = accountExportV8Schema.extend({
     coachingCandidates: rows,
   }),
 });
+const accountExportV10Schema = accountExportV9Schema.extend({
+  schemaVersion: z.literal(10),
+  data: accountExportV9Schema.shape.data.extend({
+    nutritionPlanVersions: rows,
+    nutritionPlanHeads: rows,
+    nutritionPlanHistory: rows,
+    foodDefinitionVersions: rows,
+    foodDefinitionHeads: rows,
+    intakeEntries: rows,
+    intakeEntryRevisions: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -81,6 +93,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV7Schema,
   accountExportV8Schema,
   accountExportV9Schema,
+  accountExportV10Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

@@ -22,6 +22,7 @@
     "@workout/ui-spike": "workspace:*",
     "@workout/modules-wellbeing": "workspace:*",
     "@workout/modules-dashboard": "workspace:*",
-    "@workout/modules-coaching": "workspace:*"
+    "@workout/modules-coaching": "workspace:*",
+    "@workout/modules-nutrition": "workspace:*"
   }
 }

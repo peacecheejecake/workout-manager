@@ -1171,7 +1171,7 @@ it('keeps an approved plan replayable while withdrawal redacts candidates and er
   expect(await repo.approve(athleteId, candidate.candidate.id, approval)).toEqual(saved);
   const operations = createOperationsRepository(database);
   const exported = await operations.exportAccount(athleteId);
-  if (exported.schemaVersion !== 9) throw new Error('Expected the latest account export');
+  if (exported.schemaVersion !== 10) throw new Error('Expected the latest account export');
   expect(exported.data.planHistory).toContainEqual({
     version_id: saved.id,
     action: 'candidate_approved',

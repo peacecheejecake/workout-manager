@@ -21,6 +21,10 @@
       "types": "./src/nutrition.ts",
       "default": "./dist/nutrition.js"
     },
+    "./nutrition-core": {
+      "types": "./src/nutrition-core.ts",
+      "default": "./dist/nutrition-core.js"
+    },
     "./routines": {
       "types": "./src/routines.ts",
       "default": "./dist/routines.js"

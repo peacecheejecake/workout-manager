@@ -273,3 +273,53 @@ it('requires immutable coaching collections in v9 while preserving historical v8
     ).toBe(false);
   }
 });
+
+it('requires nutrition collections in v10 while preserving v9 artifacts', () => {
+  const historical = accountExportSchema.parse({
+    schemaVersion: 9,
+    athleteId: 'athlete-1',
+    exportedAt: '2026-09-18T00:00:00.000Z',
+    data: {
+      consents: [],
+      planSnapshots: [],
+      planHead: [],
+      planHistory: [],
+      activities: [],
+      activitySources: [],
+      sourceRevisions: [],
+      overlays: [],
+      overlayRevisions: [],
+      suppressions: [],
+      checkIns: [],
+      checkInRevisions: [],
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+    },
+  });
+  const nutrition = {
+    nutritionPlanVersions: [],
+    nutritionPlanHeads: [],
+    nutritionPlanHistory: [],
+    foodDefinitionVersions: [],
+    foodDefinitionHeads: [],
+    intakeEntries: [],
+    intakeEntryRevisions: [],
+  };
+  const current = { ...historical, schemaVersion: 10, data: { ...historical.data, ...nutrition } };
+  expect(accountExportSchema.parse(current)).toEqual(current);
+  expect(accountExportSchema.safeParse({ ...historical, schemaVersion: 10 }).success).toBe(false);
+  expect(accountExportSchema.parse(historical).data).not.toHaveProperty('intakeEntries');
+});

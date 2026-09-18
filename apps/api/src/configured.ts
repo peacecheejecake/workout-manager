@@ -9,6 +9,7 @@ import { createSessionCompletionRepository } from '@workout/server-persistence/s
 import { createPeriodSummaryRepository } from '@workout/server-persistence/period-summary';
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
+import { createNutritionRepository } from '@workout/server-persistence/nutrition-core';
 import { createActivityRepository } from '@workout/server-persistence/activities';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
@@ -82,6 +83,7 @@ export async function createConfiguredApi(environment: unknown) {
           : createGarminService({ store: createGarminStore(database), ...garminConfiguration }),
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
+      nutrition: createNutritionRepository(database),
       planScenarios: createPlanScenarioRepository(database),
       coachingConstraints: createCoachingConstraintRepository(database),
       coachingThreads: createCoachingThreadRepository(database),

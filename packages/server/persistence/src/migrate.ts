@@ -32,6 +32,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '017_coaching_runs.sql',
       '018_coaching_candidates.sql',
       '019_coaching_candidate_approval.sql',
+      '020_nutrition_core.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -120,12 +121,34 @@ export async function grantOperations(
       `GRANT SELECT ON garmin_connection,check_in,check_in_revision,session_completion,session_completion_revision,session_completion_collection_head TO "${runtimeRole}"`,
     );
     await pool.query(
+      `GRANT SELECT ON nutrition_plan_version,nutrition_plan_head,nutrition_plan_history,food_definition_version,food_definition_head,intake_entry,intake_entry_revision TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_pending(timestamptz) TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Manual nutrition ledgers are tenant-scoped; historical versions remain append-only. */
+export async function grantNutritionCore(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON nutrition_plan_version,nutrition_plan_history,food_definition_version,intake_entry_revision TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON nutrition_plan_head,food_definition_head,intake_entry TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

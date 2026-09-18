@@ -39,6 +39,7 @@ const config: NextConfig = {
     '@workout/modules-planning',
     '@workout/modules-wellbeing',
     '@workout/modules-dashboard',
+    '@workout/modules-nutrition',
     '@workout/ui-spike',
   ],
 };

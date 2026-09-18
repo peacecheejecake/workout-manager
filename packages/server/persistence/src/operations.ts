@@ -132,6 +132,33 @@ const collections = [
     'version_id,scenario_id,scenario_revision,previous_version_id,completion_revision,created_at',
     'version_id',
   ],
+  [
+    'nutritionPlanVersions',
+    'nutrition_plan_version',
+    'plan_id,version_id,version,previous_version_id,period_from,period_to,linked_training_plan_version_id,approval_id,approved_at,record_json',
+    'plan_id,version',
+  ],
+  ['nutritionPlanHeads', 'nutrition_plan_head', 'plan_id,version,version_id', 'plan_id'],
+  [
+    'nutritionPlanHistory',
+    'nutrition_plan_history',
+    'plan_id,version_id,approval_id,action,created_at',
+    'plan_id,created_at',
+  ],
+  [
+    'foodDefinitionVersions',
+    'food_definition_version',
+    'food_id,version_id,version,previous_version_id,created_at,record_json',
+    'food_id,version',
+  ],
+  ['foodDefinitionHeads', 'food_definition_head', 'food_id,version,version_id', 'food_id'],
+  ['intakeEntries', 'intake_entry', 'id,current_revision,current_revision_id,status', 'id'],
+  [
+    'intakeEntryRevisions',
+    'intake_entry_revision',
+    'intake_id,revision,revision_id,status,occurred_at,recorded_at,deleted_at,deletion_reason,record_json',
+    'intake_id,revision',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -198,7 +225,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 9,
+          schemaVersion: 10,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,
