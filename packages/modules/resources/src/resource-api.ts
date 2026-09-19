@@ -2,16 +2,28 @@ import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import { transportReplySchema } from '@workout/contracts/core';
 import {
-  privateTextResourceDeleteResultSchema,
-  privateTextResourceListSchema,
-  privateTextResourceReadResultSchema,
+  privateResourceDeleteResultSchema,
+  privateResourceListSchema,
+  privateResourceReadResultSchema,
+  type PrivateFileResourceAppendVersionUploadMetadata,
+  type PrivateFileResourceCreateUploadMetadata,
+  type PrivateResourceListQuery,
+  type PrivateResourceSoftDelete,
   type PrivateTextResourceAppendVersion,
   type PrivateTextResourceCreate,
-  type PrivateTextResourceListQuery,
-  type PrivateTextResourceSoftDelete,
 } from '@workout/contracts/resources';
 
 const errorSchema = z.object({ error: z.object({ code: z.string() }) });
+const uploadReservationSchema = z.strictObject({
+  uploadId: z.uuid(),
+  resourceId: z.uuid(),
+  versionId: z.uuid(),
+  state: z.enum(['reserved', 'prepared', 'staged', 'finalized', 'failed']),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export type ResourceUploadReservation = z.infer<typeof uploadReservationSchema>;
 
 export class ResourceRequestError extends Error {
   constructor(
@@ -52,7 +64,7 @@ export function createResourceApi(transport: AuthenticatedTransport) {
   }
 
   return {
-    list(query: PrivateTextResourceListQuery, signal?: AbortSignal) {
+    list(query: PrivateResourceListQuery, signal?: AbortSignal) {
       const search = new URLSearchParams();
       if (query.query !== undefined) search.set('query', query.query);
       if (query.category !== undefined) search.set('category', query.category);
@@ -62,7 +74,7 @@ export function createResourceApi(transport: AuthenticatedTransport) {
       return request(
         `/bff/v1/resources?${search.toString()}`,
         'GET',
-        privateTextResourceListSchema,
+        privateResourceListSchema,
         null,
         null,
         signal,
@@ -73,38 +85,70 @@ export function createResourceApi(transport: AuthenticatedTransport) {
       return request(
         `/bff/v1/resources/${encodeURIComponent(resourceId)}${suffix}`,
         'GET',
-        privateTextResourceReadResultSchema,
+        privateResourceReadResultSchema,
         null,
         null,
         signal,
       );
     },
-    create(input: PrivateTextResourceCreate) {
+    createText(input: PrivateTextResourceCreate) {
       const { idempotencyKey, ...body } = input;
       return request(
         '/bff/v1/resources',
         'POST',
-        privateTextResourceReadResultSchema,
+        privateResourceReadResultSchema,
         body,
         idempotencyKey,
       );
     },
-    append(resourceId: string, input: PrivateTextResourceAppendVersion) {
+    appendText(resourceId: string, input: PrivateTextResourceAppendVersion) {
       const { idempotencyKey, ...body } = input;
       return request(
         `/bff/v1/resources/${encodeURIComponent(resourceId)}/versions`,
         'POST',
-        privateTextResourceReadResultSchema,
+        privateResourceReadResultSchema,
         body,
         idempotencyKey,
       );
     },
-    delete(resourceId: string, input: PrivateTextResourceSoftDelete) {
+    reserveCreateUpload(
+      input: PrivateFileResourceCreateUploadMetadata & { idempotencyKey: string },
+    ) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        '/bff/v1/resources/uploads',
+        'POST',
+        uploadReservationSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    reserveAppendUpload(
+      resourceId: string,
+      input: PrivateFileResourceAppendVersionUploadMetadata & { idempotencyKey: string },
+    ) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/uploads`,
+        'POST',
+        uploadReservationSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    finalizeUpload(uploadId: string) {
+      return request(
+        `/bff/v1/resources/uploads/${encodeURIComponent(uploadId)}/finalize`,
+        'POST',
+        privateResourceReadResultSchema,
+      );
+    },
+    delete(resourceId: string, input: PrivateResourceSoftDelete) {
       const { idempotencyKey, ...body } = input;
       return request(
         `/bff/v1/resources/${encodeURIComponent(resourceId)}`,
         'DELETE',
-        privateTextResourceDeleteResultSchema,
+        privateResourceDeleteResultSchema,
         body,
         idempotencyKey,
       );

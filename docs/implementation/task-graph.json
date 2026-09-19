@@ -1070,8 +1070,9 @@
       "title": "객체 저장 port·파일 upload",
       "dependsOn": ["M2-04a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "서버 전용 object storage port·허용 형식/크기·격리 key·atomic upload·raw 삭제"
+      "status": "completed",
+      "scope": "서버 전용 object storage port·허용 형식/크기·격리 key·atomic upload·raw 삭제",
+      "evidence": "docs/implementation/progress/M2-04b.md"
     },
     {
       "id": "M2-04c",

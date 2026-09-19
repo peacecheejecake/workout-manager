@@ -6,6 +6,9 @@ const KIBIBYTE = 1024;
 const MAX_RESOURCE_TEXT_BYTES = 64 * KIBIBYTE;
 const MAX_PARAGRAPHS = 1000;
 
+export const PRIVATE_RESOURCE_PDF_MAX_BYTES = 10 * 1024 * KIBIBYTE;
+export const PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES = 1024 * KIBIBYTE;
+
 const resourceUuidSchema = z.uuid().transform((value) => value.toLowerCase());
 const resourceIdempotencyKeySchema = z
   .string()
@@ -18,6 +21,21 @@ function hasUnsupportedStorageCharacter(value: string) {
     const code = value.charCodeAt(index);
     if (code <= 8 || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || code === 127)
       return true;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
+}
+
+function hasUnsupportedFileNameCharacter(value: string) {
+  if (value.includes('/') || value.includes('\\')) return true;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || (code >= 127 && code <= 159)) return true;
     if (code >= 0xd800 && code <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
       if (next < 0xdc00 || next > 0xdfff) return true;
@@ -40,6 +58,8 @@ export const privateTextResourceCategorySchema = z.enum([
   'note',
   'race_material',
 ]);
+
+export const privateResourceSourceKindSchema = z.enum(['text', 'file']);
 
 export const privateTextResourceTextSchema = z
   .string()
@@ -83,6 +103,88 @@ const privateTextResourceTagsSchema = z
     });
   });
 
+export const privateFileResourceExtensionSchema = z.enum(['pdf', 'md', 'markdown']);
+export const privateFileResourceMediaTypeSchema = z.enum(['application/pdf', 'text/markdown']);
+
+export const privateFileResourceNameSchema = z
+  .string()
+  .transform((value) => value.normalize('NFC'))
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .refine((value) => value.trim() === value, 'File name must not have outer whitespace.')
+      .refine((value) => value !== '.' && value !== '..', 'File name must be a basename.')
+      .refine(
+        (value) => !hasUnsupportedFileNameCharacter(value),
+        'File name must be a basename without control characters.',
+      )
+      .refine(
+        (value) => new TextEncoder().encode(value).byteLength <= 255,
+        'File name must not exceed 255 bytes when UTF-8 encoded.',
+      ),
+  );
+
+export const privateFileResourceDescriptorSchema = z
+  .strictObject({
+    originalFileName: privateFileResourceNameSchema,
+    extension: privateFileResourceExtensionSchema,
+    mediaType: privateFileResourceMediaTypeSchema,
+    byteSize: z.number().int().positive(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .superRefine((file, context) => {
+    const expectedMediaType = file.extension === 'pdf' ? 'application/pdf' : 'text/markdown';
+    if (file.mediaType !== expectedMediaType) {
+      context.addIssue({
+        code: 'custom',
+        message: 'File extension and media type must agree.',
+        path: ['mediaType'],
+      });
+    }
+
+    const expectedSuffix = `.${file.extension}`;
+    if (!file.originalFileName.toLocaleLowerCase('en-US').endsWith(expectedSuffix)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'File name extension must agree with extension.',
+        path: ['originalFileName'],
+      });
+    }
+
+    const maxBytes =
+      file.extension === 'pdf'
+        ? PRIVATE_RESOURCE_PDF_MAX_BYTES
+        : PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES;
+    if (file.byteSize > maxBytes) {
+      context.addIssue({
+        code: 'too_big',
+        origin: 'number',
+        maximum: maxBytes,
+        inclusive: true,
+        message: `File must not exceed ${maxBytes} bytes.`,
+        path: ['byteSize'],
+      });
+    }
+  });
+
+export const privateTextResourceVersionSourceSchema = z.strictObject({
+  kind: z.literal('text'),
+  text: privateTextResourceTextSchema,
+});
+
+export const privateFileResourceVersionSourceSchema = z.strictObject({
+  kind: z.literal('file'),
+  file: privateFileResourceDescriptorSchema,
+});
+
+export const privateResourceVersionSourceSchema = z.discriminatedUnion('kind', [
+  privateTextResourceVersionSourceSchema,
+  privateFileResourceVersionSourceSchema,
+]);
+
+export const privateResourceSourceSchema = privateResourceVersionSourceSchema;
+
 export const privateTextResourceCreateSchema = z.strictObject({
   sourceKind: z.literal('text'),
   title: storageSafeStringSchema.trim().min(1).max(200),
@@ -100,10 +202,56 @@ export const privateTextResourceAppendVersionSchema = z.strictObject({
   idempotencyKey: resourceIdempotencyKeySchema,
 });
 
+export const privateFileResourceCreateUploadMetadataSchema = z.strictObject({
+  sourceKind: z.literal('file'),
+  title: storageSafeStringSchema.trim().min(1).max(200),
+  category: privateTextResourceCategorySchema,
+  metadata: privateTextResourceMetadataSchema.default({}),
+  tags: privateTextResourceTagsSchema.default([]),
+  favorite: z.boolean().default(false),
+});
+
+export const privateFileResourceCreateSchema = privateFileResourceCreateUploadMetadataSchema.extend(
+  {
+    file: privateFileResourceDescriptorSchema,
+    idempotencyKey: resourceIdempotencyKeySchema,
+  },
+);
+
+export const privateFileResourceAppendVersionUploadMetadataSchema = z.strictObject({
+  expectedCurrentVersionId: resourceUuidSchema,
+});
+
+export const privateFileResourceAppendVersionSchema =
+  privateFileResourceAppendVersionUploadMetadataSchema.extend({
+    file: privateFileResourceDescriptorSchema,
+    idempotencyKey: resourceIdempotencyKeySchema,
+  });
+
+export const privateResourceCreateSchema = z.discriminatedUnion('sourceKind', [
+  privateTextResourceCreateSchema,
+  privateFileResourceCreateSchema,
+]);
+
+export const privateResourceAppendVersionSchema = z.union([
+  privateTextResourceAppendVersionSchema,
+  privateFileResourceAppendVersionSchema,
+]);
+
 export const privateTextResourceLifecycleSchema = z.strictObject({
   contentStatus: z.literal('parsed'),
   indexStatus: z.literal('not_indexed'),
 });
+
+export const privateFileResourceLifecycleSchema = z.strictObject({
+  contentStatus: z.literal('raw_stored'),
+  indexStatus: z.literal('not_indexed'),
+});
+
+export const privateResourceLifecycleSchema = z.discriminatedUnion('contentStatus', [
+  privateTextResourceLifecycleSchema,
+  privateFileResourceLifecycleSchema,
+]);
 
 export const privateTextResourceSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -124,6 +272,31 @@ export const privateTextResourceSchema = z.strictObject({
   createdAt: instantSchema,
   updatedAt: instantSchema,
 });
+
+export const privateFileResourceSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: resourceUuidSchema,
+  sourceKind: z.literal('file'),
+  title: storageSafeStringSchema.min(1).max(200),
+  category: privateTextResourceCategorySchema,
+  metadata: privateTextResourceMetadataSchema,
+  tags: privateTextResourceTagsSchema,
+  visibility: z.literal('private'),
+  favorite: z.boolean(),
+  includeForCoach: z.literal(false),
+  reviewedState: z.literal('unreviewed'),
+  lifecycle: privateFileResourceLifecycleSchema,
+  accessRevision: z.number().int().positive(),
+  currentVersionId: resourceUuidSchema,
+  deletedAt: instantSchema.nullable(),
+  createdAt: instantSchema,
+  updatedAt: instantSchema,
+});
+
+export const privateResourceSchema = z.discriminatedUnion('sourceKind', [
+  privateTextResourceSchema,
+  privateFileResourceSchema,
+]);
 
 export const privateTextParagraphLocatorSchema = z
   .strictObject({
@@ -156,7 +329,7 @@ export const privateTextResourceVersionSchema = z
     version: z.number().int().positive(),
     previousVersionId: resourceUuidSchema.nullable(),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
-    source: z.strictObject({ kind: z.literal('text'), text: privateTextResourceTextSchema }),
+    source: privateTextResourceVersionSourceSchema,
     paragraphs: z.array(privateTextParagraphSchema).min(1).max(MAX_PARAGRAPHS),
     lifecycle: privateTextResourceLifecycleSchema,
     createdAt: instantSchema,
@@ -206,6 +379,41 @@ export const privateTextResourceVersionSchema = z
     });
   });
 
+export const privateFileResourceVersionSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    id: resourceUuidSchema,
+    resourceId: resourceUuidSchema,
+    version: z.number().int().positive(),
+    previousVersionId: resourceUuidSchema.nullable(),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+    source: privateFileResourceVersionSourceSchema,
+    lifecycle: privateFileResourceLifecycleSchema,
+    createdAt: instantSchema,
+  })
+  .superRefine((version, context) => {
+    const isInitialVersion = version.version === 1;
+    if (isInitialVersion !== (version.previousVersionId === null)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Only version 1 may omit previousVersionId.',
+        path: ['previousVersionId'],
+      });
+    }
+    if (version.contentHash !== version.source.file.sha256) {
+      context.addIssue({
+        code: 'custom',
+        message: 'File version contentHash must match the file descriptor sha256.',
+        path: ['contentHash'],
+      });
+    }
+  });
+
+export const privateResourceVersionSchema = z.union([
+  privateTextResourceVersionSchema,
+  privateFileResourceVersionSchema,
+]);
+
 export const privateTextResourceListQuerySchema = z.strictObject({
   query: storageSafeStringSchema.trim().min(1).max(200).optional(),
   category: privateTextResourceCategorySchema.optional(),
@@ -227,9 +435,29 @@ export const privateTextResourceListSchema = z
   })
   .refine((list) => list.total >= list.items.length, 'List total cannot be smaller than items.');
 
+export const privateFileResourceListItemSchema = privateFileResourceSchema.extend({
+  deletedAt: z.null(),
+});
+
+export const privateResourceListQuerySchema = privateTextResourceListQuerySchema;
+
+export const privateResourceListItemSchema = z.discriminatedUnion('sourceKind', [
+  privateTextResourceListItemSchema,
+  privateFileResourceListItemSchema,
+]);
+
+export const privateResourceListSchema = z
+  .strictObject({
+    items: z.array(privateResourceListItemSchema).max(100),
+    total: z.number().int().min(0),
+  })
+  .refine((list) => list.total >= list.items.length, 'List total cannot be smaller than items.');
+
 export const privateTextResourceReadQuerySchema = z.strictObject({
   versionId: resourceUuidSchema.optional(),
 });
+
+export const privateResourceReadQuerySchema = privateTextResourceReadQuerySchema;
 
 export const privateTextResourceReaderSchema = z.strictObject({
   resourceId: resourceUuidSchema,
@@ -239,6 +467,15 @@ export const privateTextResourceReaderSchema = z.strictObject({
   lifecycle: privateTextResourceLifecycleSchema,
   originalText: privateTextResourceTextSchema,
   paragraphs: z.array(privateTextParagraphSchema).min(1).max(MAX_PARAGRAPHS),
+});
+
+export const privateFileResourceReaderSchema = z.strictObject({
+  resourceId: resourceUuidSchema,
+  resourceVersionId: resourceUuidSchema,
+  title: z.string().min(1).max(200),
+  sourceKind: z.literal('file'),
+  lifecycle: privateFileResourceLifecycleSchema,
+  file: privateFileResourceDescriptorSchema,
 });
 
 const privateTextResourceAvailableReadSchema = z
@@ -278,6 +515,40 @@ const privateTextResourceAvailableReadSchema = z
     }
   });
 
+const privateFileResourceAvailableReadSchema = z
+  .strictObject({
+    status: z.literal('available'),
+    resource: privateFileResourceSchema.extend({ deletedAt: z.null() }),
+    version: privateFileResourceVersionSchema,
+    reader: privateFileResourceReaderSchema,
+  })
+  .superRefine((read, context) => {
+    if (
+      read.version.resourceId !== read.resource.id ||
+      read.reader.resourceId !== read.resource.id
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Version and reader must belong to the returned resource.',
+        path: ['reader', 'resourceId'],
+      });
+    }
+    if (read.reader.resourceVersionId !== read.version.id) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Reader must pin the returned resource version.',
+        path: ['reader', 'resourceVersionId'],
+      });
+    }
+    if (JSON.stringify(read.reader.file) !== JSON.stringify(read.version.source.file)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Reader file must be derived from the pinned version.',
+        path: ['reader', 'file'],
+      });
+    }
+  });
+
 const privateTextResourceDeletedReadSchema = z.strictObject({
   status: z.literal('deleted'),
   resourceId: resourceUuidSchema,
@@ -295,6 +566,19 @@ export const privateTextResourceReadResultSchema = z.discriminatedUnion('status'
   privateTextResourceUnavailableReadSchema,
 ]);
 
+export const privateFileResourceReadResultSchema = z.union([
+  privateFileResourceAvailableReadSchema,
+  privateTextResourceDeletedReadSchema,
+  privateTextResourceUnavailableReadSchema,
+]);
+
+export const privateResourceReadResultSchema = z.union([
+  privateTextResourceAvailableReadSchema,
+  privateFileResourceAvailableReadSchema,
+  privateTextResourceDeletedReadSchema,
+  privateTextResourceUnavailableReadSchema,
+]);
+
 export const privateTextResourceSoftDeleteSchema = z.strictObject({
   expectedAccessRevision: z.number().int().positive(),
   expectedCurrentVersionId: resourceUuidSchema,
@@ -302,6 +586,9 @@ export const privateTextResourceSoftDeleteSchema = z.strictObject({
 });
 
 export const privateTextResourceDeleteResultSchema = privateTextResourceDeletedReadSchema;
+
+export const privateResourceSoftDeleteSchema = privateTextResourceSoftDeleteSchema;
+export const privateResourceDeleteResultSchema = privateTextResourceDeleteResultSchema;
 
 export type PrivateTextResourceCategory = z.infer<typeof privateTextResourceCategorySchema>;
 export type PrivateTextResourceCreate = z.infer<typeof privateTextResourceCreateSchema>;
@@ -321,3 +608,43 @@ export type PrivateTextResourceReader = z.infer<typeof privateTextResourceReader
 export type PrivateTextResourceReadResult = z.infer<typeof privateTextResourceReadResultSchema>;
 export type PrivateTextResourceSoftDelete = z.infer<typeof privateTextResourceSoftDeleteSchema>;
 export type PrivateTextResourceDeleteResult = z.infer<typeof privateTextResourceDeleteResultSchema>;
+export type PrivateResourceSourceKind = z.infer<typeof privateResourceSourceKindSchema>;
+export type PrivateFileResourceExtension = z.infer<typeof privateFileResourceExtensionSchema>;
+export type PrivateFileResourceMediaType = z.infer<typeof privateFileResourceMediaTypeSchema>;
+export type PrivateFileResourceDescriptor = z.infer<typeof privateFileResourceDescriptorSchema>;
+export type PrivateTextResourceVersionSource = z.infer<
+  typeof privateTextResourceVersionSourceSchema
+>;
+export type PrivateFileResourceVersionSource = z.infer<
+  typeof privateFileResourceVersionSourceSchema
+>;
+export type PrivateResourceVersionSource = z.infer<typeof privateResourceVersionSourceSchema>;
+export type PrivateResourceSource = z.infer<typeof privateResourceSourceSchema>;
+export type PrivateFileResourceCreateUploadMetadata = z.infer<
+  typeof privateFileResourceCreateUploadMetadataSchema
+>;
+export type PrivateFileResourceCreate = z.infer<typeof privateFileResourceCreateSchema>;
+export type PrivateFileResourceAppendVersionUploadMetadata = z.infer<
+  typeof privateFileResourceAppendVersionUploadMetadataSchema
+>;
+export type PrivateFileResourceAppendVersion = z.infer<
+  typeof privateFileResourceAppendVersionSchema
+>;
+export type PrivateResourceCreate = z.infer<typeof privateResourceCreateSchema>;
+export type PrivateResourceAppendVersion = z.infer<typeof privateResourceAppendVersionSchema>;
+export type PrivateFileResourceLifecycle = z.infer<typeof privateFileResourceLifecycleSchema>;
+export type PrivateResourceLifecycle = z.infer<typeof privateResourceLifecycleSchema>;
+export type PrivateFileResource = z.infer<typeof privateFileResourceSchema>;
+export type PrivateResource = z.infer<typeof privateResourceSchema>;
+export type PrivateFileResourceVersion = z.infer<typeof privateFileResourceVersionSchema>;
+export type PrivateResourceVersion = z.infer<typeof privateResourceVersionSchema>;
+export type PrivateFileResourceListItem = z.infer<typeof privateFileResourceListItemSchema>;
+export type PrivateResourceListQuery = z.infer<typeof privateResourceListQuerySchema>;
+export type PrivateResourceListItem = z.infer<typeof privateResourceListItemSchema>;
+export type PrivateResourceList = z.infer<typeof privateResourceListSchema>;
+export type PrivateResourceReadQuery = z.infer<typeof privateResourceReadQuerySchema>;
+export type PrivateFileResourceReader = z.infer<typeof privateFileResourceReaderSchema>;
+export type PrivateFileResourceReadResult = z.infer<typeof privateFileResourceReadResultSchema>;
+export type PrivateResourceReadResult = z.infer<typeof privateResourceReadResultSchema>;
+export type PrivateResourceSoftDelete = z.infer<typeof privateResourceSoftDeleteSchema>;
+export type PrivateResourceDeleteResult = z.infer<typeof privateResourceDeleteResultSchema>;

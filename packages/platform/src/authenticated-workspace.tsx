@@ -32,8 +32,130 @@ interface WorkspaceSession {
   athleteId: string;
   sessionId: string;
   transport: AuthenticatedTransport;
+  fileTransfer: SessionFileTransfer;
 }
 const SessionContext = createContext<WorkspaceSession | null>(null);
+
+interface SessionFileTransfer {
+  upload(input: {
+    uploadId: string;
+    file: File;
+    mediaType: 'application/pdf' | 'text/markdown';
+    signal: AbortSignal;
+    onProgress: (uploadedBytes: number, totalBytes: number) => void;
+  }): Promise<void>;
+  open(input: {
+    resourceId: string;
+    versionId: string;
+    fileName: string;
+    signal: AbortSignal;
+  }): Promise<void>;
+}
+
+function assertLiveSession(session: Session, expired: () => void, available: () => boolean): void {
+  if (!available()) throw new Error('SESSION_UNAVAILABLE');
+  if (Date.parse(session.expiresAt) <= Date.now()) {
+    expired();
+    throw new Error('SESSION_EXPIRED');
+  }
+}
+
+async function assertTransferResponse(
+  response: Response,
+  expired: () => void,
+  active: () => boolean,
+): Promise<void> {
+  if (!active()) throw new Error('SESSION_UNAVAILABLE');
+  if (response.status === 401) {
+    expired();
+    throw new Error('SESSION_EXPIRED');
+  }
+  if (response.status === 409) {
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    if (
+      z.object({ error: z.object({ code: z.literal('SESSION_CHANGED') }) }).safeParse(body).success
+    ) {
+      expired();
+      throw new Error('SESSION_EXPIRED');
+    }
+  }
+  if (!response.ok) {
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    const parsed = z.object({ error: z.object({ code: z.string() }) }).safeParse(body);
+    throw new Error(parsed.success ? parsed.data.error.code : 'RESOURCE_FILE_TRANSFER_FAILED');
+  }
+}
+
+export function createSessionFileTransfer(
+  session: Session,
+  expired: () => void,
+  available: () => boolean = () => true,
+  active: () => boolean = () => true,
+): SessionFileTransfer {
+  const resourceIdSchema = z.uuid().transform((value) => value.toLowerCase());
+  return {
+    async upload(input) {
+      assertLiveSession(session, expired, available);
+      const uploadId = resourceIdSchema.parse(input.uploadId);
+      input.onProgress(0, input.file.size);
+      const response = await fetch(
+        `/bff/v1/resources/uploads/${encodeURIComponent(uploadId)}/content`,
+        {
+          method: 'PUT',
+          headers: {
+            'content-type': input.mediaType,
+            'x-resource-file-name': encodeURIComponent(input.file.name),
+            'x-workout-session-id': session.sessionId,
+            'x-csrf-token': session.csrfToken,
+          },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          body: input.file,
+          signal: input.signal,
+        },
+      );
+      await assertTransferResponse(response, expired, active);
+      input.onProgress(input.file.size, input.file.size);
+    },
+    async open(input) {
+      assertLiveSession(session, expired, available);
+      const resourceId = resourceIdSchema.parse(input.resourceId);
+      const versionId = resourceIdSchema.parse(input.versionId);
+      const search = new URLSearchParams({ versionId });
+      const response = await fetch(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/content?${search.toString()}`,
+        {
+          method: 'GET',
+          headers: { 'x-workout-session-id': session.sessionId },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          signal: input.signal,
+        },
+      );
+      await assertTransferResponse(response, expired, active);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      try {
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = input.fileName;
+        anchor.rel = 'noopener';
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    },
+  };
+}
 
 /** The browser Host is bound to the session that created it, including across tabs. */
 export function createSessionTransport(
@@ -44,11 +166,7 @@ export function createSessionTransport(
 ): AuthenticatedTransport {
   return {
     async request(input) {
-      if (!available()) throw new Error('SESSION_UNAVAILABLE');
-      if (Date.parse(session.expiresAt) <= Date.now()) {
-        expired();
-        throw new Error('SESSION_EXPIRED');
-      }
+      assertLiveSession(session, expired, available);
       const path = apiPathSchema.parse(input.path);
       if (
         !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
@@ -136,6 +254,14 @@ function SessionLifetime({
       athleteId: session.athleteId,
       sessionId: session.sessionId,
       transport: createSessionTransport(
+        session,
+        () => {
+          if (lifetime.isActive()) expired();
+        },
+        lifetime.isAvailable,
+        lifetime.isActive,
+      ),
+      fileTransfer: createSessionFileTransfer(
         session,
         () => {
           if (lifetime.isActive()) expired();

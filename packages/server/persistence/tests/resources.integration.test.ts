@@ -109,8 +109,8 @@ describe('M2-04a private DB-backed text resources', () => {
       { version: 2, content: 'Updated direct text.' },
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(12);
-    if (exported.schemaVersion !== 12) throw new Error('Expected resource export');
+    expect(exported.schemaVersion).toBe(13);
+    if (exported.schemaVersion !== 13) throw new Error('Expected resource export');
     expect(exported.data.resources).toHaveLength(1);
     expect(exported.data.resourceVersions).toHaveLength(2);
   });
@@ -271,7 +271,7 @@ describe('M2-04a private DB-backed text resources', () => {
       .parse(receipts.rows);
     expect(receiptRows.every((row) => row.result.status === 'deleted')).toBe(true);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 12) throw new Error('Expected resource export');
+    if (exported.schemaVersion !== 13) throw new Error('Expected resource export');
     expect(exported.data.resources).toEqual([]);
     expect(exported.data.resourceVersions).toEqual([]);
     const event = await database.tenant(athlete, (tx) =>

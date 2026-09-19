@@ -221,6 +221,7 @@ describe('coaching run API boundary', () => {
       OIDC_ISSUER: 'https://oidc.example',
       OIDC_CLIENT_ID: 'client',
       OIDC_CLIENT_SECRET: 'secret',
+      PRIVATE_RESOURCE_STORAGE_ROOT: '/private/tmp/workout-manager-resource-test',
       COACHING_FIXTURE_ENABLED: 'true',
       COACHING_FIXTURE_ID: 'synthetic-v1',
     };

@@ -313,3 +313,45 @@ S11 `/proposals/:candidateId`는 두 웹 shell에서 원안·제안과 검증 �
 `pnpm exec playwright test --config playwright.identity.config.ts tests/identity/coaching-runs.spec.ts`
 로 검증한다. 이 harness는 3100(Next), 4200(mobile-web), 4300(API),
 4400(OIDC), 4500(Garmin fixture)을 사용하고 종료 시 임시 DB를 제거한다.
+
+## Private resource object storage와 삭제 worker (M2-04b)
+
+Migration 028과 `grantResources`를 적용한다. API에는 전용 absolute non-root
+`PRIVATE_RESOURCE_STORAGE_ROOT`를 설정하고, API 프로세스와 cleanup worker가 같은 private
+volume을 사용하도록 mount한다. 로컬 adapter는 root와 directory를 `0700`, object를 `0600`으로
+유지하며 symlink·경로 이탈을 거절한다. PDF는 10 MiB, Markdown은 1 MiB까지 허용하고
+확장자·MIME, PDF signature, Markdown UTF-8/제어문자를 streaming으로 검증한다.
+
+업로드는 intent 예약, raw byte 저장, finalize의 세 단계다. finalize 전 성공은 검색·파싱 완료가
+아니다. object key와 credential은 브라우저 응답과 계정 export v13에 포함하지 않는다. DB dump와
+object snapshot은 같은 쓰기 정지 구간에서 함께 생성하고 함께 복원해야 한다. 합성 drill은 local
+object archive와 PostgreSQL metadata를 함께 복원해 SHA-256 descriptor와 exact bytes를 확인한다.
+원격 object provider, 암호화 remote backup, 운영 RPO/RTO는 별도 검증 대상이다.
+
+Soft delete, 실패한 staged upload, 계정 말소는 `resource_object_cleanup`에 durable manifest를 남긴다.
+별도 `workout_resource_cleanup_worker` 역할을 만들고 `grantResourceObjectCleanupWorker`만 적용한다.
+이 역할에는 table 권한을 주지 않는다. worker에는 API DB URL과 분리된
+`RESOURCE_CLEANUP_DATABASE_URL`, API와 같은 `RESOURCE_STORAGE_ROOT`를 설정한다.
+
+```bash
+pnpm --filter @workout/worker resources:cleanup
+```
+
+명령은 한 번에 한 object만 lease하고 성공, 재시도 예약, lease 유실, 빈 queue를 JSON 결과로
+반환한다. 오류 로그는 generic code만 남긴다. scheduler는 이 one-shot 명령을 반복 실행할 수 있다.
+각 intent는 upload-scoped final key와 deterministic temporary key를 사용한다. API는 final publish 전에
+두 key와 descriptor를 `prepared` 상태로 기록한다. 30분 동안 finalize되지 않은 intent는 worker가 최대
+100건씩 실패 처리해 temp/final key를 queue에 넣는다. worker는 lease 뒤 live version과 active intent가
+없다는 DB authorization을 다시 받은 exact key만 삭제한다. prepare/finalize가 먼저 reference를 보호하면
+queue를 안전하게 완료하고, delete authorization이 먼저면 prepare/finalize를 거절해 외부 삭제와 경쟁하지
+않는다. expiry·lease·authorization·finish는 호출자가 보낸 절대 시각이 아니라 DB 시각으로 판정한다.
+tenant별 active intent는 20개, prepared/staged raw bytes는 50 MiB, active+failed history는 100개로
+제한한다. cleanup이 끝난 failed intent는 7일, 완료 cleanup 기록은 30일 뒤 worker가 각각 최대 100건씩
+정리하며 finalized idempotency receipt는 유지한다. 삭제가 100회 실패한 항목은 완료 처리하지 않고
+`attempts=100`, `completed_at=NULL`, `last_error_code=DEAD_LETTER:*`인 운영 개입 상태로 격리한다.
+worker는 이 항목을 다시 lease하지 않아 뒤 queue를 계속 처리한다. 운영자는 해당 행과 object provider를
+조사하고 삭제를 실제로 확인한 뒤에만 복구 절차로 상태를 변경해야 한다.
+
+raw PUT의 `UPLOAD_RESUME_REQUIRED`는 같은 upload ID와 동일 파일로 재전송한다.
+`UPLOAD_RETRY_REQUIRED` 또는 terminal failed reservation은 새 idempotency key로 intent부터 다시 만든다.
+두 경우 모두 파일 선택은 local React state에만 유지하며 storage ref는 브라우저 응답에 포함하지 않는다.

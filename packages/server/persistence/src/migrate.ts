@@ -40,6 +40,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '025_recovery_core.sql',
       '026_integrated_approval_v4.sql',
       '027_resource_lifecycle.sql',
+      '028_resource_file_upload.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -139,7 +140,9 @@ export async function grantOperations(
       `GRANT SELECT ON supplementary_exercise_version,supplementary_exercise_head,supplementary_routine_version,supplementary_routine_head,supplementary_routine_target_ref,supplementary_session_link,supplementary_session_target_ref,supplementary_execution,supplementary_set_log,supplementary_set_log_revision,supplementary_rest_timer TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT ON integrated_dependency_head TO "${runtimeRole}"`);
-    await pool.query(`GRANT SELECT ON resource,resource_version TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT ON resource,resource_version,resource_object TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -250,7 +253,9 @@ export async function grantResources(connectionString: string, runtimeRole: stri
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
-    await pool.query(`GRANT SELECT,INSERT ON resource,resource_version TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT,INSERT ON resource,resource_version,resource_object,resource_upload_intent TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at)
        ON resource TO "${runtimeRole}"`,
@@ -261,6 +266,38 @@ export async function grantResources(connectionString: string, runtimeRole: stri
        TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(storage_ref,original_filename,media_type,size_bytes,content_hash,state,
+       failure_code,updated_at,prepared_at,staged_at,finalized_at) ON resource_upload_intent TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.enqueue_resource_object_cleanup(uuid,text),
+       public.fail_resource_upload(uuid,text),public.expire_resource_uploads(timestamptz),
+       public.cancel_resource_uploads(uuid,text),public.protect_resource_upload_object(uuid),
+       public.compact_resource_upload_history(integer)
+       TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Cleanup workers see only leased opaque refs through bounded functions. */
+export async function grantResourceObjectCleanupWorker(
+  connectionString: string,
+  workerRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(workerRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.lease_resource_object_cleanup(uuid,timestamptz,timestamptz),
+       public.authorize_resource_object_cleanup(uuid,uuid,timestamptz),
+       public.finish_resource_object_cleanup(uuid,uuid,boolean,text,timestamptz),
+       public.reap_expired_resource_uploads(timestamptz,integer),
+       public.prune_resource_upload_history(integer),public.prune_resource_cleanup_history(integer)
+       TO "${workerRole}"`,
+    );
   } finally {
     await pool.end();
   }

@@ -205,6 +205,7 @@ describe('M1-01 browser authentication boundary', () => {
         OIDC_ISSUER: 'http://127.0.0.1:4302',
         OIDC_CLIENT_ID: 'client',
         OIDC_CLIENT_SECRET: 'secret',
+        PRIVATE_RESOURCE_STORAGE_ROOT: '/private/tmp/workout-manager-resource-test',
         ALLOW_INSECURE_LOCALHOST: 'true',
       }),
     ).rejects.toThrow('Insecure production configuration');

@@ -425,3 +425,52 @@ it('requires private resource collections in v12 while preserving v11 artifacts'
   expect(accountExportSchema.safeParse({ ...v11, schemaVersion: 12 }).success).toBe(false);
   expect(accountExportSchema.parse(v11).data).not.toHaveProperty('resources');
 });
+
+it('reads file-safe resource exports in v13 while preserving v12 artifacts', () => {
+  const v12 = accountExportSchema.parse({
+    schemaVersion: 12,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+      supplementaryExerciseVersions: [],
+      supplementaryExerciseHeads: [],
+      supplementaryRoutineVersions: [],
+      supplementaryRoutineHeads: [],
+      supplementaryRoutineTargetRefs: [],
+      supplementarySessionLinks: [],
+      supplementarySessionTargetRefs: [],
+      supplementaryExecutions: [],
+      supplementarySetLogs: [],
+      supplementarySetLogRevisions: [],
+      supplementaryRestTimers: [],
+      resources: [],
+      resourceVersions: [],
+    },
+  });
+  const v13 = { ...v12, schemaVersion: 13 };
+  expect(accountExportSchema.parse(v13)).toEqual(v13);
+  expect(accountExportSchema.parse(v12)).toEqual(v12);
+});

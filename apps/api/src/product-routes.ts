@@ -51,7 +51,10 @@ import { registerActivityRoutes } from './activity-routes.js';
 import { registerOperationsRoutes } from './operations-routes.js';
 import type { OperationsRepository } from '@workout/server-persistence/operations';
 import type { PrivateTextResourceRepository } from '@workout/server-persistence/resources';
+import type { ResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
+import type { ObjectStorage } from '@workout/server-media/object-storage';
 import { registerResourceRoutes } from './resources-routes.js';
+import { registerResourceFileRoutes } from './resource-file-routes.js';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
@@ -81,6 +84,10 @@ export interface ProductRepositories {
   dashboard?: DashboardRepository;
   operations?: OperationsRepository;
   resources?: PrivateTextResourceRepository;
+  resourceFiles?: {
+    uploads: ResourceFileUploadRepository;
+    storage: ObjectStorage;
+  };
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -129,4 +136,6 @@ export function registerProductRoutes(
   if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);
   if (repositories.resources) registerResourceRoutes(routes, repositories.resources, principal);
+  if (repositories.resourceFiles)
+    registerResourceFileRoutes(routes, repositories.resourceFiles, principal);
 }

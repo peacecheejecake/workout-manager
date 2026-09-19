@@ -7,10 +7,12 @@
     "typecheck": "tsc --project tsconfig.json",
     "build": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "coaching:fixture": "tsx src/start.ts"
+    "coaching:fixture": "tsx src/start.ts",
+    "resources:cleanup": "node --import tsx src/resource-cleanup.ts"
   },
   "dependencies": {
     "@workout/server-coaching": "workspace:*",
+    "@workout/server-media": "workspace:*",
     "@workout/server-persistence": "workspace:*"
   },
   "devDependencies": {

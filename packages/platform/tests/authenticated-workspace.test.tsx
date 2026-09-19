@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthenticatedWorkspace,
+  createSessionFileTransfer,
   createSessionTransport,
   useAuthenticatedSession,
 } from '../src/authenticated-workspace.js';
@@ -316,6 +317,80 @@ describe('session-bound authenticated transport', () => {
       }),
     ).rejects.toThrow('SESSION_EXPIRED');
     expect(expired).toHaveBeenCalledOnce();
+  });
+});
+
+describe('session-bound resource file transfer', () => {
+  const resourceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const uploadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const versionId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+  it('uploads exact bytes with session, CSRF, encoded filename and bounded progress', async () => {
+    fetchMock.mockResolvedValue(json({ state: 'staged' }));
+    const progress = vi.fn();
+    const file = new File(['# 달리기'], '달리기 메모.md', { type: 'text/markdown' });
+    const signal = new AbortController().signal;
+    await createSessionFileTransfer(session, vi.fn()).upload({
+      uploadId,
+      file,
+      mediaType: 'text/markdown',
+      signal,
+      onProgress: progress,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/bff/v1/resources/uploads/${uploadId}/content`,
+      expect.objectContaining({
+        method: 'PUT',
+        body: file,
+        signal,
+        credentials: 'same-origin',
+        headers: expect.objectContaining({
+          'content-type': 'text/markdown',
+          'x-resource-file-name': encodeURIComponent(file.name),
+          'x-workout-session-id': session.sessionId,
+          'x-csrf-token': session.csrfToken,
+        }),
+      }),
+    );
+    expect(progress.mock.calls).toEqual([
+      [0, file.size],
+      [file.size, file.size],
+    ]);
+  });
+
+  it('preserves the server retry contract for a failed raw upload', async () => {
+    fetchMock.mockResolvedValue(json({ error: { code: 'UPLOAD_RETRY_REQUIRED' } }, 503));
+    await expect(
+      createSessionFileTransfer(session, vi.fn()).upload({
+        uploadId,
+        file: new File(['# retry'], 'retry.md', { type: 'text/markdown' }),
+        mediaType: 'text/markdown',
+        signal: new AbortController().signal,
+        onProgress: vi.fn(),
+      }),
+    ).rejects.toThrow('UPLOAD_RETRY_REQUIRED');
+  });
+
+  it('downloads the exact version through a short-lived blob URL', async () => {
+    fetchMock.mockResolvedValue(new Response('synthetic', { status: 200 }));
+    const createObjectURL = vi.fn(() => 'blob:resource');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL }));
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    await createSessionFileTransfer(session, vi.fn()).open({
+      resourceId,
+      versionId,
+      fileName: 'guide.pdf',
+      signal: new AbortController().signal,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/bff/v1/resources/${resourceId}/content?versionId=${versionId}`,
+      expect.objectContaining({ method: 'GET', credentials: 'same-origin' }),
+    );
+    expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:resource');
   });
 });
 describe('AuthenticatedWorkspace private state lifetime', () => {

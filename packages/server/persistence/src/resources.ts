@@ -5,23 +5,26 @@ import {
   privateTextResourceAppendVersionSchema,
   privateTextResourceCreateSchema,
   privateTextResourceDeleteResultSchema,
-  privateTextResourceListQuerySchema,
-  privateTextResourceListSchema,
-  privateTextResourceReadQuerySchema,
   privateTextResourceReadResultSchema,
-  privateTextResourceSchema,
   privateTextResourceSoftDeleteSchema,
-  privateTextResourceVersionSchema,
+  privateResourceDeleteResultSchema,
+  privateResourceListQuerySchema,
+  privateResourceListSchema,
+  privateResourceReadQuerySchema,
+  privateResourceReadResultSchema,
+  privateResourceSchema,
+  privateResourceVersionSchema,
 } from '@workout/contracts/resources';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
 
 type CreateInput = z.infer<typeof privateTextResourceCreateSchema>;
 type AppendInput = z.infer<typeof privateTextResourceAppendVersionSchema>;
-type ListQuery = z.infer<typeof privateTextResourceListQuerySchema>;
-type ListResult = z.infer<typeof privateTextResourceListSchema>;
-type ReadQuery = z.infer<typeof privateTextResourceReadQuerySchema>;
-type ReadResult = z.infer<typeof privateTextResourceReadResultSchema>;
+type ListQuery = z.infer<typeof privateResourceListQuerySchema>;
+type ListResult = z.infer<typeof privateResourceListSchema>;
+type ReadQuery = z.infer<typeof privateResourceReadQuerySchema>;
+type ReadResult = z.infer<typeof privateResourceReadResultSchema>;
+type TextReadResult = z.infer<typeof privateTextResourceReadResultSchema>;
 type DeleteInput = z.infer<typeof privateTextResourceSoftDeleteSchema>;
 type DeleteResult = z.infer<typeof privateTextResourceDeleteResultSchema>;
 
@@ -30,6 +33,7 @@ const iso = (value: unknown) =>
   value instanceof Date ? value.toISOString() : new Date(z.string().parse(value)).toISOString();
 const resourceRowSchema = z.object({
   id: uuid,
+  source_kind: z.enum(['text', 'file']),
   title: z.string(),
   category: z.string(),
   metadata: z.record(z.string(), z.unknown()),
@@ -48,23 +52,24 @@ const versionRowSchema = z.object({
   resource_id: uuid,
   version: z.number().int(),
   previous_version_id: uuid.nullable(),
-  content: z.string(),
+  content: z.string().nullable(),
   content_hash: z.string(),
   paragraphs: z.array(z.unknown()),
   content_status: z.string(),
   index_status: z.string(),
+  storage_ref: z.string().nullable(),
+  original_filename: z.string().nullable(),
+  media_type: z.enum(['application/pdf', 'text/markdown']).nullable(),
+  size_bytes: z.coerce.number().int().nullable(),
   created_at: z.union([z.date(), z.string()]),
 });
 const availableReceiptSchema = z.strictObject({
   status: z.literal('available'),
   resourceId: uuid,
   versionId: uuid,
-  resource: privateTextResourceSchema.extend({ deletedAt: z.null() }),
+  resource: privateResourceSchema.and(z.object({ deletedAt: z.null() })),
 });
-const resourceReceiptSchema = z.union([
-  availableReceiptSchema,
-  privateTextResourceDeleteResultSchema,
-]);
+const resourceReceiptSchema = z.union([availableReceiptSchema, privateResourceDeleteResultSchema]);
 
 export class ResourceNotFoundError extends Error {
   readonly code = 'RESOURCE_NOT_FOUND';
@@ -82,8 +87,8 @@ export class ResourceValidationError extends Error {
 }
 
 export interface PrivateTextResourceRepository {
-  create(athleteId: string, input: CreateInput): Promise<ReadResult>;
-  appendVersion(athleteId: string, resourceId: string, input: AppendInput): Promise<ReadResult>;
+  create(athleteId: string, input: CreateInput): Promise<TextReadResult>;
+  appendVersion(athleteId: string, resourceId: string, input: AppendInput): Promise<TextReadResult>;
   list(athleteId: string, query?: Partial<ListQuery>): Promise<ListResult>;
   read(athleteId: string, resourceId: string, query?: Partial<ReadQuery>): Promise<ReadResult>;
   softDelete(athleteId: string, resourceId: string, input: DeleteInput): Promise<DeleteResult>;
@@ -106,7 +111,7 @@ async function replay(tx: Transaction, key: string, request: unknown) {
   return resourceReceiptSchema.parse(row['result']);
 }
 
-async function finish(
+export async function finishResourceCommand(
   tx: Transaction,
   key: string,
   request: unknown,
@@ -129,7 +134,7 @@ async function finish(
 
 async function replayRead(tx: Transaction, receipt: z.infer<typeof resourceReceiptSchema>) {
   if (receipt.status === 'deleted') return receipt;
-  const stored = await readStored(tx, receipt.resourceId, receipt.versionId);
+  const stored = await readPrivateResourceStored(tx, receipt.resourceId, receipt.versionId);
   if (stored.status !== 'available') return stored;
   return privateTextResourceReadResultSchema.parse({
     ...stored,
@@ -182,17 +187,20 @@ function paragraphRows(text: string, versionId: string) {
   return paragraphs;
 }
 
-async function assertResourceQuota(tx: Transaction) {
+export async function assertPrivateResourceQuota(tx: Transaction) {
   const row = (
     await tx.query(
       `SELECT
          count(DISTINCT r.id) FILTER (WHERE r.deleted_at IS NULL)::integer AS active_resources,
          count(v.version_id) FILTER (WHERE r.deleted_at IS NULL)::integer AS active_versions,
          coalesce(sum(octet_length(convert_to(v.content,'UTF8'))+octet_length(v.paragraphs::text))
-           FILTER (WHERE r.deleted_at IS NULL),0)::integer AS active_bytes,
+           FILTER (WHERE r.deleted_at IS NULL AND v.content IS NOT NULL),0)::integer AS active_text_bytes,
+         coalesce(sum(v.size_bytes) FILTER (WHERE r.deleted_at IS NULL AND v.storage_ref IS NOT NULL),0)::bigint
+           AS active_file_bytes,
          count(v.version_id)::integer AS total_versions,
-         coalesce(sum(octet_length(convert_to(v.content,'UTF8'))+octet_length(v.paragraphs::text)),0)::integer
-           AS total_bytes
+         coalesce(sum(octet_length(convert_to(v.content,'UTF8'))+octet_length(v.paragraphs::text))
+           FILTER (WHERE v.content IS NOT NULL),0)::integer AS total_text_bytes,
+         coalesce(sum(v.size_bytes) FILTER (WHERE v.storage_ref IS NOT NULL),0)::bigint AS total_file_bytes
        FROM resource r LEFT JOIN resource_version v
          ON v.athlete_id=r.athlete_id AND v.resource_id=r.id
        WHERE r.athlete_id=$1`,
@@ -203,26 +211,30 @@ async function assertResourceQuota(tx: Transaction) {
     .object({
       active_resources: z.number().int(),
       active_versions: z.number().int(),
-      active_bytes: z.number().int(),
+      active_text_bytes: z.number().int(),
+      active_file_bytes: z.coerce.number().int(),
       total_versions: z.number().int(),
-      total_bytes: z.number().int(),
+      total_text_bytes: z.number().int(),
+      total_file_bytes: z.coerce.number().int(),
     })
     .parse(row);
   if (
     quota.active_resources > 100 ||
     quota.active_versions > 1000 ||
-    quota.active_bytes > 4 * 1024 * 1024 ||
+    quota.active_text_bytes > 4 * 1024 * 1024 ||
+    quota.active_file_bytes > 100 * 1024 * 1024 ||
     quota.total_versions > 2000 ||
-    quota.total_bytes > 16 * 1024 * 1024
+    quota.total_text_bytes > 16 * 1024 * 1024 ||
+    quota.total_file_bytes > 500 * 1024 * 1024
   )
     throw new ResourceValidationError('RESOURCE_QUOTA_EXCEEDED');
 }
 
 function resource(row: z.infer<typeof resourceRowSchema>) {
-  return privateTextResourceSchema.parse({
+  return privateResourceSchema.parse({
     schemaVersion: 1,
     id: row.id,
-    sourceKind: 'text',
+    sourceKind: row.source_kind,
     title: row.title,
     category: row.category,
     metadata: row.metadata,
@@ -231,7 +243,10 @@ function resource(row: z.infer<typeof resourceRowSchema>) {
     favorite: row.favorite,
     includeForCoach: row.include_for_coach,
     reviewedState: row.reviewed_state,
-    lifecycle: { contentStatus: 'parsed', indexStatus: 'not_indexed' },
+    lifecycle: {
+      contentStatus: row.source_kind === 'text' ? 'parsed' : 'raw_stored',
+      indexStatus: 'not_indexed',
+    },
     accessRevision: row.access_revision,
     currentVersionId: row.current_version_id,
     deletedAt: row.deleted_at === null ? null : iso(row.deleted_at),
@@ -241,21 +256,39 @@ function resource(row: z.infer<typeof resourceRowSchema>) {
 }
 
 function version(row: z.infer<typeof versionRowSchema>) {
-  return privateTextResourceVersionSchema.parse({
+  const source =
+    row.content === null
+      ? {
+          kind: 'file' as const,
+          file: {
+            originalFileName: row.original_filename,
+            extension:
+              row.media_type === 'application/pdf'
+                ? ('pdf' as const)
+                : row.original_filename?.toLocaleLowerCase('en-US').endsWith('.markdown')
+                  ? ('markdown' as const)
+                  : ('md' as const),
+            mediaType: row.media_type,
+            byteSize: row.size_bytes,
+            sha256: row.content_hash,
+          },
+        }
+      : { kind: 'text' as const, text: row.content };
+  return privateResourceVersionSchema.parse({
     schemaVersion: 1,
     id: row.version_id,
     resourceId: row.resource_id,
     version: row.version,
     previousVersionId: row.previous_version_id,
     contentHash: row.content_hash,
-    source: { kind: 'text', text: row.content },
-    paragraphs: row.paragraphs,
+    source,
+    ...(row.content === null ? {} : { paragraphs: row.paragraphs }),
     lifecycle: { contentStatus: row.content_status, indexStatus: row.index_status },
     createdAt: iso(row.created_at),
   });
 }
 
-async function readStored(
+export async function readPrivateResourceStored(
   tx: Transaction,
   resourceId: string,
   versionId?: string,
@@ -264,10 +297,10 @@ async function readStored(
     tx.athleteId,
     resourceId,
   ]);
-  if (!found.rows[0]) return privateTextResourceReadResultSchema.parse({ status: 'unavailable' });
+  if (!found.rows[0]) return privateResourceReadResultSchema.parse({ status: 'unavailable' });
   const resourceRow = resourceRowSchema.parse(found.rows[0]);
   if (resourceRow.deleted_at !== null)
-    return privateTextResourceReadResultSchema.parse({
+    return privateResourceReadResultSchema.parse({
       status: 'deleted',
       resourceId,
       deletedAt: iso(resourceRow.deleted_at),
@@ -280,22 +313,33 @@ async function readStored(
     [tx.athleteId, resourceId, selectedVersionId],
   );
   if (!storedVersion.rows[0])
-    return privateTextResourceReadResultSchema.parse({ status: 'unavailable' });
+    return privateResourceReadResultSchema.parse({ status: 'unavailable' });
   const projectedResource = resource(resourceRow);
   const projectedVersion = version(versionRowSchema.parse(storedVersion.rows[0]));
-  return privateTextResourceReadResultSchema.parse({
+  const reader =
+    'paragraphs' in projectedVersion
+      ? {
+          resourceId,
+          resourceVersionId: projectedVersion.id,
+          title: projectedResource.title,
+          sourceKind: 'text' as const,
+          lifecycle: projectedVersion.lifecycle,
+          originalText: projectedVersion.source.text,
+          paragraphs: projectedVersion.paragraphs,
+        }
+      : {
+          resourceId,
+          resourceVersionId: projectedVersion.id,
+          title: projectedResource.title,
+          sourceKind: 'file' as const,
+          lifecycle: projectedVersion.lifecycle,
+          file: projectedVersion.source.file,
+        };
+  return privateResourceReadResultSchema.parse({
     status: 'available',
     resource: projectedResource,
     version: projectedVersion,
-    reader: {
-      resourceId,
-      resourceVersionId: projectedVersion.id,
-      title: projectedResource.title,
-      sourceKind: 'text',
-      lifecycle: projectedVersion.lifecycle,
-      originalText: projectedVersion.source.text,
-      paragraphs: projectedVersion.paragraphs,
-    },
+    reader,
   });
 }
 
@@ -349,10 +393,10 @@ export function createPrivateTextResourceRepository(
             createdAt,
           ],
         );
-        await assertResourceQuota(tx);
-        const result = await readStored(tx, resourceId, versionId);
+        await assertPrivateResourceQuota(tx);
+        const result = await readPrivateResourceStored(tx, resourceId, versionId);
         if (result.status !== 'available') throw new ResourceNotFoundError();
-        await finish(
+        await finishResourceCommand(
           tx,
           key,
           request,
@@ -360,7 +404,7 @@ export function createPrivateTextResourceRepository(
           { resourceId, versionId },
           'resource.created',
         );
-        return result;
+        return privateTextResourceReadResultSchema.parse(result);
       });
     },
     appendVersion(athleteId, resourceId, raw) {
@@ -375,7 +419,7 @@ export function createPrivateTextResourceRepository(
         const head = (
           await tx.query(
             `SELECT current_version,current_version_id FROM resource
-             WHERE athlete_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
+             WHERE athlete_id=$1 AND id=$2 AND source_kind='text' AND deleted_at IS NULL FOR UPDATE`,
             [athleteId, id],
           )
         ).rows[0];
@@ -412,10 +456,10 @@ export function createPrivateTextResourceRepository(
            WHERE athlete_id=$1 AND id=$2`,
           [athleteId, id, nextVersion, versionId, createdAt],
         );
-        await assertResourceQuota(tx);
-        const result = await readStored(tx, id, versionId);
+        await assertPrivateResourceQuota(tx);
+        const result = await readPrivateResourceStored(tx, id, versionId);
         if (result.status !== 'available') throw new ResourceNotFoundError();
-        await finish(
+        await finishResourceCommand(
           tx,
           key,
           request,
@@ -423,11 +467,11 @@ export function createPrivateTextResourceRepository(
           { resourceId: id, versionId },
           'resource.version_appended',
         );
-        return result;
+        return privateTextResourceReadResultSchema.parse(result);
       });
     },
     list(athleteId, raw = {}) {
-      const query = privateTextResourceListQuerySchema.parse(raw);
+      const query = privateResourceListQuerySchema.parse(raw);
       return database.tenant(athleteId, async (tx) => {
         const result = await tx.query(
           `WITH filtered AS MATERIALIZED (
@@ -448,7 +492,7 @@ export function createPrivateTextResourceRepository(
             query.offset,
           ],
         );
-        return privateTextResourceListSchema.parse({
+        return privateResourceListSchema.parse({
           items: z
             .array(resourceRowSchema)
             .parse(result.rows[0]?.['items'])
@@ -459,8 +503,8 @@ export function createPrivateTextResourceRepository(
     },
     read(athleteId, resourceId, raw = {}) {
       const id = uuid.parse(resourceId);
-      const query = privateTextResourceReadQuerySchema.parse(raw);
-      return database.tenant(athleteId, (tx) => readStored(tx, id, query.versionId));
+      const query = privateResourceReadQuerySchema.parse(raw);
+      return database.tenant(athleteId, (tx) => readPrivateResourceStored(tx, id, query.versionId));
     },
     softDelete(athleteId, resourceId, raw) {
       const id = uuid.parse(resourceId);
@@ -503,7 +547,11 @@ export function createPrivateTextResourceRepository(
           accessRevision,
         });
         await tx.query('SELECT public.tombstone_resource_receipts($1)', [id]);
-        await finish(
+        await tx.query("SELECT public.cancel_resource_uploads($1,'RESOURCE_DELETED')", [id]);
+        await tx.query("SELECT public.enqueue_resource_object_cleanup($1,'resource_deleted')", [
+          id,
+        ]);
+        await finishResourceCommand(
           tx,
           key,
           request,

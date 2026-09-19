@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -45,6 +45,9 @@ import { createActivityRepository } from '../packages/server/persistence/src/act
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.js';
+import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
+import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.js';
+import { storeValidatedUpload } from '../packages/server/media/src/upload.js';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.js';
 import {
   createSessionCompletionRepository,
@@ -457,6 +460,9 @@ async function execute() {
   const directory = await mkdtemp(join(tmpdir(), 'workout-restore-drill-'));
   const data = join(directory, 'data');
   const archive = join(directory, 'synthetic.dump');
+  const sourceObjectRoot = join(directory, 'source-objects');
+  const objectArchive = join(directory, 'object-archive');
+  const restoredObjectRoot = join(directory, 'restored-objects');
   const ledgerFile = join(directory, 'post-backup-erasure-ledger.json');
   const cleanupLedgerFile = join(directory, 'post-backup-encrypted-cleanup-ledger.json');
   const evidenceWithdrawalLedgerFile = join(
@@ -564,6 +570,50 @@ async function execute() {
       },
     );
     if (retainedResourceV2.status !== 'available') throw new Error('RESOURCE_SEED_FAILED');
+    const resourceFiles = createResourceFileUploadRepository(sourceDb);
+    const sourceObjectStorage = await createLocalFilesystemObjectStorage(sourceObjectRoot);
+    const fileReservation = await resourceFiles.reserveCreate(
+      retainedAthlete,
+      {
+        sourceKind: 'file',
+        title: 'Synthetic restored Markdown file',
+        category: 'guide',
+        metadata: { language: 'en' },
+        tags: ['restore'],
+        favorite: false,
+      },
+      randomUUID(),
+    );
+    const fileBytes = Buffer.from('# Restore guide\n\nSynthetic private file.');
+    const storedFile = await storeValidatedUpload({
+      storage: sourceObjectStorage,
+      tenantId: retainedAthlete,
+      resourceId: fileReservation.resourceId,
+      uploadId: fileReservation.uploadId,
+      fileName: 'restore-guide.markdown',
+      declaredMimeType: 'text/markdown',
+      body: (async function* () {
+        yield fileBytes;
+      })(),
+      onPrepared: async (prepared) => {
+        await resourceFiles.prepareObject(retainedAthlete, fileReservation.uploadId, {
+          storageRef: prepared.finalKey,
+          file: {
+            originalFileName: 'restore-guide.markdown',
+            extension: 'markdown',
+            mediaType: prepared.mimeType,
+            byteSize: prepared.sizeBytes,
+            sha256: prepared.sha256,
+          },
+        });
+      },
+    });
+    await resourceFiles.markStaged(retainedAthlete, fileReservation.uploadId);
+    const retainedFileResource = await resourceFiles.finalize(
+      retainedAthlete,
+      fileReservation.uploadId,
+    );
+    if (retainedFileResource.status !== 'available') throw new Error('RESOURCE_FILE_SEED_FAILED');
     const deletedResource = await resourceRepo.create(deletedAthlete, {
       sourceKind: 'text',
       title: 'Synthetic erased private text',
@@ -697,7 +747,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 12);
+      assert.equal(before.schemaVersion, 13);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -759,7 +809,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 12) throw new Error('Expected coaching export v12');
+      if (coachingExport.schemaVersion !== 13) throw new Error('Expected coaching export v13');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -785,7 +835,7 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v12 is added.
+      // A historical v8 download keeps its original shape and remains readable after v13 is added.
       const {
         coachingDecisions,
         coachingProposals,
@@ -872,7 +922,7 @@ async function execute() {
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
-    checks.push('synthetic_candidate_bodies_in_source_export_v12_historical_v8_artifact_readable');
+    checks.push('synthetic_candidate_bodies_in_source_export_v13_historical_v8_artifact_readable');
     // These extra tenants add no identity, provider connection or activity to the original checks.
     const withdrawnAthlete = randomUUID();
     const {
@@ -913,7 +963,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 12) throw new Error('Expected candidate export v12');
+      if (candidateExport.schemaVersion !== 13) throw new Error('Expected candidate export v13');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -991,6 +1041,7 @@ async function execute() {
       '--file',
       archive,
     ]);
+    await cp(sourceObjectRoot, objectArchive, { recursive: true, errorOnExist: true });
     await constraintRepo.update(retainedAthlete, oldConstraint.id, {
       expectedHeadRevision: 1,
       expectedRevision: 1,
@@ -1215,6 +1266,7 @@ async function execute() {
       '--no-owner',
       archive,
     ]);
+    await cp(objectArchive, restoredObjectRoot, { recursive: true, errorOnExist: true });
     const restored = pool('drill_restore');
     // Admin inspection only: the runtime has not connected to the restored database yet.
     const restoredOldEvidence = await restored.query<{ body: unknown; purged_reason: unknown }>(
@@ -1638,7 +1690,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 12);
+    assert.ok(constraintExport.schemaVersion === 13);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -1673,7 +1725,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
+    if (withdrawnExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1725,7 +1777,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
+    if (absentExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -1789,6 +1841,21 @@ async function execute() {
       TenantErasedError,
     );
     checks.push('private_resource_current_and_pinned_versions_restored_through_runtime_rls');
+    const restoredFileRepository = createResourceFileUploadRepository(restoreDb);
+    const restoredFile = await restoredFileRepository.resolveObject(
+      retainedAthlete,
+      retainedFileResource.resource.id,
+      retainedFileResource.version.id,
+    );
+    assert.ok(restoredFile);
+    assert.equal(restoredFile.file.extension, 'markdown');
+    const restoredObjectStorage = await createLocalFilesystemObjectStorage(restoredObjectRoot);
+    const restoredObject = await restoredObjectStorage.open(storedFile.key);
+    assert.ok(restoredObject);
+    const restoredChunks: Uint8Array[] = [];
+    for await (const chunk of restoredObject.body) restoredChunks.push(chunk);
+    assert.deepEqual(Buffer.concat(restoredChunks), fileBytes);
+    checks.push('private_resource_file_metadata_and_raw_object_archive_restored_together');
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
     const manualId = manualIds.get(retainedAthlete);
     assert.ok(manualId);
@@ -1804,9 +1871,10 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 12) throw new Error('Expected resource export v12');
-    assert.equal(retainedExport.data.resources.length, 1);
-    assert.equal(retainedExport.data.resourceVersions.length, 2);
+    if (retainedExport.schemaVersion !== 13) throw new Error('Expected resource export v13');
+    assert.equal(retainedExport.data.resources.length, 2);
+    assert.equal(retainedExport.data.resourceVersions.length, 3);
+    assert.ok(!JSON.stringify(retainedExport).includes(storedFile.key));
     assert.equal(
       retainedExport.data.coachingRuns[0]?.id,
       coachingRuns.get(retainedAthlete)?.run.id,
@@ -1918,7 +1986,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 12) throw new Error('Expected coaching export v12');
+    if (retainedExport.schemaVersion !== 13) throw new Error('Expected coaching export v13');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -2050,11 +2118,11 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 12) throw new Error('Expected coaching export v12');
+    if (coachingAfterReplay.schemaVersion !== 13) throw new Error('Expected coaching export v13');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
-      'coaching_scope_revision_and_immutable_user_messages_export_v12_restored_receipts_replayed_without_duplicates',
+      'coaching_scope_revision_and_immutable_user_messages_export_v13_restored_receipts_replayed_without_duplicates',
     );
     await assert.rejects(
       () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
@@ -2226,7 +2294,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
+    if (scrubbedExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
@@ -2309,7 +2377,7 @@ async function execute() {
       'Requires an independently retained, complete and current evidence withdrawal ledger with explicit exists/absent AI consent states covering backup owners, current consent owners and snapshot owners captured together; a missing, incomplete or stale ledger cannot authorize production restoration.',
       'Model output is untrusted and capped at 1 MiB per row; account export remains capped at 8 MiB. The restore replay uses the evidence withdrawal trigger to purge output before runtime access.',
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
-      'External provider copies, encrypted remote backup storage, disaster recovery infrastructure, media, and production recovery objectives were not exercised.',
+      'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
     ],
     sources: [
       'https://www.postgresql.org/docs/15/app-pgdump.html',

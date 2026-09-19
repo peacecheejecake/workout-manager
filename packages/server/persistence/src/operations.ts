@@ -228,7 +228,7 @@ const collections = [
   [
     'resources',
     '(SELECT * FROM resource WHERE deleted_at IS NULL) resource',
-    'id,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
+    'id,source_kind,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
     'created_at,id',
   ],
   [
@@ -236,7 +236,7 @@ const collections = [
     `(SELECT v.* FROM resource_version v JOIN resource active
       ON active.athlete_id=v.athlete_id AND active.id=v.resource_id
       WHERE active.deleted_at IS NULL) resource_version`,
-    'resource_id,version_id,version,previous_version,previous_version_id,content,content_hash,paragraphs,content_status,index_status,created_at',
+    'resource_id,version_id,version,previous_version,previous_version_id,content,content_hash,paragraphs,content_status,index_status,original_filename,media_type,size_bytes,created_at',
     'resource_id,version',
   ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
@@ -305,7 +305,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 12,
+          schemaVersion: 13,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

@@ -1,0 +1,19 @@
+{
+  "name": "@workout/server-media",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./keys": "./src/keys.ts",
+    "./object-storage": "./src/object-storage.ts",
+    "./upload": "./src/upload.ts",
+    "./validation": "./src/validation.ts",
+    "./local-filesystem": "./src/local-filesystem.ts"
+  }
+}

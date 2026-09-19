@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFixtureWorkerConfig } from '../src/config.js';
+import { parseFixtureWorkerConfig, parseResourceCleanupWorkerConfig } from '../src/config.js';
 
 const athleteId = 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa';
 const args = ['--athlete-id', athleteId];
@@ -91,4 +91,63 @@ describe('coaching fixture worker configuration', () => {
       }),
     ).not.toThrow();
   });
+});
+
+describe('resource object cleanup worker configuration', () => {
+  const cleanup = {
+    RESOURCE_CLEANUP_DATABASE_URL:
+      'postgres://workout_resource_cleanup_worker:secret@127.0.0.1/workout',
+    DATABASE_URL: enabled.DATABASE_URL,
+    RESOURCE_STORAGE_ROOT: '/var/lib/workout/resources',
+  };
+
+  it('uses a dedicated function-only role and an explicit absolute storage root', () => {
+    expect(parseResourceCleanupWorkerConfig([], cleanup)).toEqual({
+      connectionString: cleanup.RESOURCE_CLEANUP_DATABASE_URL,
+      storageRoot: cleanup.RESOURCE_STORAGE_ROOT,
+    });
+    expect(() => parseResourceCleanupWorkerConfig(['--all'], cleanup)).toThrow(
+      'INVALID_RESOURCE_CLEANUP_WORKER_ARGUMENTS',
+    );
+    expect(() =>
+      parseResourceCleanupWorkerConfig([], {
+        ...cleanup,
+        RESOURCE_CLEANUP_DATABASE_URL: cleanup.DATABASE_URL,
+      }),
+    ).toThrow('INVALID_RESOURCE_CLEANUP_DATABASE_ROLE');
+    expect(() =>
+      parseResourceCleanupWorkerConfig([], {
+        ...cleanup,
+        DATABASE_URL: cleanup.RESOURCE_CLEANUP_DATABASE_URL,
+      }),
+    ).toThrow('RESOURCE_CLEANUP_DATABASE_ROLE_NOT_SEPARATE');
+    expect(() =>
+      parseResourceCleanupWorkerConfig([], {
+        ...cleanup,
+        RESOURCE_CLEANUP_DATABASE_URL: 'not-a-url',
+      }),
+    ).toThrow('INVALID_RESOURCE_CLEANUP_DATABASE_URL');
+    expect(() =>
+      parseResourceCleanupWorkerConfig([], {
+        ...cleanup,
+        DATABASE_URL: 'not-a-url',
+      }),
+    ).toThrow('INVALID_RESOURCE_CLEANUP_API_DATABASE_URL');
+    expect(() =>
+      parseResourceCleanupWorkerConfig([], {
+        ...cleanup,
+        RESOURCE_CLEANUP_DATABASE_URL:
+          'postgres://workout_resource_cleanup_worker@127.0.0.1/workout?user=workout_runtime',
+      }),
+    ).toThrow('INVALID_RESOURCE_CLEANUP_DATABASE_URL');
+  });
+
+  it.each([undefined, '', '.', '/', '/var/..', 'relative/resources', '/var/lib/\0resources'])(
+    'rejects unsafe storage root %s',
+    (RESOURCE_STORAGE_ROOT) => {
+      expect(() =>
+        parseResourceCleanupWorkerConfig([], { ...cleanup, RESOURCE_STORAGE_ROOT }),
+      ).toThrow('INVALID_RESOURCE_STORAGE_ROOT');
+    },
+  );
 });

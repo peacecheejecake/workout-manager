@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES,
+  PRIVATE_RESOURCE_PDF_MAX_BYTES,
+  privateFileResourceAppendVersionSchema,
+  privateFileResourceAppendVersionUploadMetadataSchema,
+  privateFileResourceCreateSchema,
+  privateFileResourceCreateUploadMetadataSchema,
+  privateFileResourceDescriptorSchema,
+  privateFileResourceVersionSchema,
+  privateResourceListSchema,
+  privateResourceReadResultSchema,
+  privateResourceSchema,
+  privateResourceVersionSourceSchema,
   privateTextResourceAppendVersionSchema,
   privateTextResourceCreateSchema,
   privateTextResourceDeleteResultSchema,
@@ -21,6 +33,15 @@ const updatedAt = '2026-09-19T00:01:00.000Z';
 const text = 'First.\n\nSecond.';
 
 const lifecycle = { contentStatus: 'parsed', indexStatus: 'not_indexed' } as const;
+const fileLifecycle = { contentStatus: 'raw_stored', indexStatus: 'not_indexed' } as const;
+const pdfSha256 = 'b'.repeat(64);
+const pdfFile = {
+  originalFileName: '레이스 전략.pdf',
+  extension: 'pdf',
+  mediaType: 'application/pdf',
+  byteSize: 2048,
+  sha256: pdfSha256,
+} as const;
 
 const paragraphs = [
   {
@@ -88,6 +109,33 @@ const reader = {
   lifecycle,
   originalText: text,
   paragraphs,
+} as const;
+
+const fileResource = {
+  ...resource,
+  sourceKind: 'file',
+  lifecycle: fileLifecycle,
+} as const;
+
+const fileVersion = {
+  schemaVersion: 1,
+  id: versionOneId,
+  resourceId,
+  version: 1,
+  previousVersionId: null,
+  contentHash: pdfSha256,
+  source: { kind: 'file', file: pdfFile },
+  lifecycle: fileLifecycle,
+  createdAt,
+} as const;
+
+const fileReader = {
+  resourceId,
+  resourceVersionId: versionOneId,
+  title: resource.title,
+  sourceKind: 'file',
+  lifecycle: fileLifecycle,
+  file: pdfFile,
 } as const;
 
 describe('private text resource contracts', () => {
@@ -362,5 +410,185 @@ describe('private text resource contracts', () => {
         version,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('private file resource contracts', () => {
+  it('parses bounded PDF and Markdown descriptors without exposing storage internals', () => {
+    expect(privateFileResourceDescriptorSchema.parse(pdfFile)).toEqual(pdfFile);
+    expect(
+      privateFileResourceDescriptorSchema.parse({
+        originalFileName: 'Cafe\u0301.md',
+        extension: 'md',
+        mediaType: 'text/markdown',
+        byteSize: PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES,
+        sha256: 'c'.repeat(64),
+      }).originalFileName,
+    ).toBe('Café.md');
+    expect(
+      privateFileResourceDescriptorSchema.safeParse({ ...pdfFile, storageKey: 'tenant/raw/key' })
+        .success,
+    ).toBe(false);
+    expect(
+      privateFileResourceDescriptorSchema.safeParse({
+        ...pdfFile,
+        byteSize: PRIVATE_RESOURCE_PDF_MAX_BYTES,
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { originalFileName: '../race.pdf' },
+    { originalFileName: ' race.pdf' },
+    { originalFileName: 'race.pdf ' },
+    { originalFileName: 'folder/race.pdf' },
+    { originalFileName: 'folder\\race.pdf' },
+    { originalFileName: 'race\u0000.pdf' },
+    { originalFileName: `race${String.fromCharCode(0x85)}.pdf` },
+    { originalFileName: `race${String.fromCharCode(0xd800)}.pdf` },
+    { originalFileName: `${'a'.repeat(252)}.pdf` },
+    { originalFileName: 'race.md' },
+    { mediaType: 'text/markdown' },
+    { byteSize: PRIVATE_RESOURCE_PDF_MAX_BYTES + 1 },
+    { byteSize: 0 },
+    { sha256: 'A'.repeat(64) },
+  ])('rejects unsafe or inconsistent PDF descriptor %#', (override) => {
+    expect(privateFileResourceDescriptorSchema.safeParse({ ...pdfFile, ...override }).success).toBe(
+      false,
+    );
+  });
+
+  it('enforces the Markdown size limit for both supported extensions', () => {
+    for (const extension of ['md', 'markdown'] as const) {
+      const originalFileName = `notes.${extension}`;
+      expect(
+        privateFileResourceDescriptorSchema.safeParse({
+          ...pdfFile,
+          originalFileName,
+          extension,
+          mediaType: 'text/markdown',
+          byteSize: PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES,
+        }).success,
+      ).toBe(true);
+      expect(
+        privateFileResourceDescriptorSchema.safeParse({
+          ...pdfFile,
+          originalFileName,
+          extension,
+          mediaType: 'text/markdown',
+          byteSize: PRIVATE_RESOURCE_MARKDOWN_MAX_BYTES + 1,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('keeps upload metadata separate so idempotency can come only from a header', () => {
+    const createMetadata = {
+      sourceKind: 'file',
+      title: 'Private PDF',
+      category: 'paper',
+    } as const;
+    expect(privateFileResourceCreateUploadMetadataSchema.parse(createMetadata)).toMatchObject({
+      metadata: {},
+      tags: [],
+      favorite: false,
+    });
+    expect(
+      privateFileResourceCreateUploadMetadataSchema.safeParse({
+        ...createMetadata,
+        idempotencyKey: 'resource:file:create:1',
+      }).success,
+    ).toBe(false);
+    expect(
+      privateFileResourceCreateSchema.parse({
+        ...createMetadata,
+        file: pdfFile,
+        idempotencyKey: 'resource:file:create:1',
+      }).file.sha256,
+    ).toBe(pdfSha256);
+
+    expect(
+      privateFileResourceAppendVersionUploadMetadataSchema.parse({
+        expectedCurrentVersionId: versionOneId,
+      }),
+    ).toEqual({ expectedCurrentVersionId: versionOneId });
+    expect(
+      privateFileResourceAppendVersionUploadMetadataSchema.safeParse({
+        expectedCurrentVersionId: versionOneId,
+        idempotencyKey: 'resource:file:append:1',
+      }).success,
+    ).toBe(false);
+    expect(
+      privateFileResourceAppendVersionSchema.parse({
+        expectedCurrentVersionId: versionOneId,
+        file: pdfFile,
+        idempotencyKey: 'resource:file:append:1',
+      }).file.originalFileName,
+    ).toBe(pdfFile.originalFileName);
+  });
+
+  it('parses file source, resource, version, list, and pinned read through common schemas', () => {
+    expect(privateResourceVersionSourceSchema.parse(fileVersion.source)).toEqual(
+      fileVersion.source,
+    );
+    expect(privateResourceSchema.parse(fileResource).sourceKind).toBe('file');
+    expect(privateFileResourceVersionSchema.parse(fileVersion)).toEqual(fileVersion);
+    expect(
+      privateResourceListSchema.parse({ items: [resource, fileResource], total: 2 }).total,
+    ).toBe(2);
+
+    const read = privateResourceReadResultSchema.parse({
+      status: 'available',
+      resource: fileResource,
+      version: fileVersion,
+      reader: fileReader,
+    });
+    expect(read.status).toBe('available');
+    if (read.status === 'available' && read.resource.sourceKind === 'file') {
+      expect(read.reader.sourceKind).toBe('file');
+    }
+  });
+
+  it('rejects parsed text fields, page locators, mismatched hashes, and reader drift for raw files', () => {
+    expect(
+      privateFileResourceVersionSchema.safeParse({ ...fileVersion, paragraphs: [] }).success,
+    ).toBe(false);
+    expect(
+      privateFileResourceVersionSchema.safeParse({
+        ...fileVersion,
+        source: { ...fileVersion.source, originalText: 'not parsed' },
+      }).success,
+    ).toBe(false);
+    expect(
+      privateFileResourceVersionSchema.safeParse({
+        ...fileVersion,
+        contentHash: 'd'.repeat(64),
+      }).success,
+    ).toBe(false);
+    expect(
+      privateResourceReadResultSchema.safeParse({
+        status: 'available',
+        resource: fileResource,
+        version: fileVersion,
+        reader: { ...fileReader, pageLocator: { page: 1 } },
+      }).success,
+    ).toBe(false);
+    expect(
+      privateResourceReadResultSchema.safeParse({
+        status: 'available',
+        resource: fileResource,
+        version: fileVersion,
+        reader: { ...fileReader, file: { ...pdfFile, byteSize: 4096 } },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('preserves legacy text-only schemas and common-schema compatibility', () => {
+    expect(privateTextResourceVersionSchema.parse(version)).toEqual(version);
+    expect(privateResourceVersionSourceSchema.parse(version.source)).toEqual(version.source);
+    expect(privateResourceSchema.parse(resource)).toEqual(resource);
+    expect(
+      privateResourceReadResultSchema.parse({ status: 'available', resource, version, reader }),
+    ).toEqual({ status: 'available', resource, version, reader });
   });
 });

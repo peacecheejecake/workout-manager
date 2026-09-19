@@ -24,6 +24,9 @@ import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
+import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
+import { createLocalFilesystemObjectStorage } from '@workout/server-media/local-filesystem';
+import { isAbsolute, parse, resolve } from 'node:path';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
@@ -51,6 +54,10 @@ const environmentSchema = z.object({
   ALLOW_INSECURE_LOCALHOST: z.enum(['true', 'false']).default('false'),
   COACHING_FIXTURE_ENABLED: z.enum(['true', 'false']).default('false'),
   COACHING_FIXTURE_ID: z.string().optional(),
+  PRIVATE_RESOURCE_STORAGE_ROOT: z
+    .string()
+    .min(1)
+    .refine((value) => isAbsolute(value) && resolve(value) !== parse(value).root),
 });
 
 /** The supplied database role must be the restricted runtime role, never the migration owner. */
@@ -78,6 +85,9 @@ export async function createConfiguredApi(environment: unknown) {
   const database = createDatabase({ connectionString: env.DATABASE_URL });
   const store = createIdentityRepository({ connectionString: env.DATABASE_URL });
   try {
+    const resourceStorage = await createLocalFilesystemObjectStorage(
+      env.PRIVATE_RESOURCE_STORAGE_ROOT,
+    );
     const jointApproval = createJointApprovalRepository(database, {
       policy: { id: 'running-core-v3-joint', version: '1' },
     });
@@ -145,6 +155,10 @@ export async function createConfiguredApi(environment: unknown) {
       dashboard: createDashboardRepository(database),
       operations: createOperationsRepository(database),
       resources: createPrivateTextResourceRepository(database),
+      resourceFiles: {
+        uploads: createResourceFileUploadRepository(database),
+        storage: resourceStorage,
+      },
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
         await Promise.all([store.close(), database.close()]);

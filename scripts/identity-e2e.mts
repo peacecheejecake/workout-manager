@@ -26,6 +26,8 @@ import { createRoutineRepository } from '../packages/server/persistence/src/rout
 import { createRecoveryRepository } from '../packages/server/persistence/src/recovery-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.ts';
+import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
+import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -252,6 +254,7 @@ try {
   const integratedApprovalV4 = createIntegratedApprovalV4Repository(database, {
     policyVersion: 'running-core-v4-integrated:1',
   });
+  const resourceStorage = await createLocalFilesystemObjectStorage(join(directory, 'resources'));
   const api = createApi({
     auth: identity,
     identity,
@@ -297,6 +300,10 @@ try {
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),
     resources: createPrivateTextResourceRepository(database),
+    resourceFiles: {
+      uploads: createResourceFileUploadRepository(database),
+      storage: resourceStorage,
+    },
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

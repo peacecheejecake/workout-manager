@@ -4,10 +4,10 @@ import {
   privateTextResourceAppendVersionSchema,
   privateTextResourceCreateSchema,
   privateTextResourceDeleteResultSchema,
-  privateTextResourceListQuerySchema,
-  privateTextResourceListSchema,
-  privateTextResourceReadQuerySchema,
-  privateTextResourceReadResultSchema,
+  privateResourceListQuerySchema,
+  privateResourceListSchema,
+  privateResourceReadQuerySchema,
+  privateResourceReadResultSchema,
   privateTextResourceSoftDeleteSchema,
 } from '@workout/contracts/resources';
 import {
@@ -32,7 +32,7 @@ function execute<T>(operation: () => Promise<T>) {
 }
 
 function readable(result: unknown, expected?: { resourceId: string; versionId?: string }) {
-  const parsed = privateTextResourceReadResultSchema.parse(result);
+  const parsed = privateResourceReadResultSchema.parse(result);
   if (parsed.status === 'unavailable') throw new ProductRequestError(404, 'RESOURCE_NOT_FOUND');
   if (expected !== undefined) {
     const returnedResourceId =
@@ -50,11 +50,11 @@ export function registerResourceRoutes(
   principal: (request: FastifyRequest) => Principal,
 ) {
   routes.get('/resources', async (request) =>
-    privateTextResourceListSchema.parse(
+    privateResourceListSchema.parse(
       await execute(() =>
         repository.list(
           principal(request).athleteId,
-          input(privateTextResourceListQuerySchema, request.query),
+          input(privateResourceListQuerySchema, request.query),
         ),
       ),
     ),
@@ -62,7 +62,7 @@ export function registerResourceRoutes(
 
   routes.get('/resources/:resourceId', async (request) => {
     const { resourceId } = input(resourceParams, request.params);
-    const query = input(privateTextResourceReadQuerySchema, request.query);
+    const query = input(privateResourceReadQuerySchema, request.query);
     return readable(
       await execute(() => repository.read(principal(request).athleteId, resourceId, query)),
       {

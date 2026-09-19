@@ -12,6 +12,7 @@
     "fastify": "5.12.4",
     "zod": "4.6.5",
     "@workout/server-persistence": "workspace:*",
+    "@workout/server-media": "workspace:*",
     "@workout/contracts": "workspace:*",
     "@workout/server-identity": "workspace:*"
   },

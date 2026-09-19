@@ -13,6 +13,7 @@ export default defineConfig({
             'apps/api/tests/**/*.test.ts',
             'packages/server/identity/tests/**/*.test.ts',
             'packages/server/coaching/tests/**/*.test.ts',
+            'packages/server/media/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],
         },
