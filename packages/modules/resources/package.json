@@ -1,0 +1,19 @@
+{
+  "name": "@workout/modules-resources",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.102.8",
+    "@workout/contracts": "workspace:*",
+    "@workout/ui-foundation": "workspace:*",
+    "react": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "exports": {
+    "./resource-workspace": "./src/resource-workspace.tsx"
+  }
+}

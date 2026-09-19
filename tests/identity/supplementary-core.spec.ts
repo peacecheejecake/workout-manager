@@ -355,8 +355,8 @@ test('versioned exercise and routine feed one Activity execution with confirmed 
   });
   expect(exportResponse.status()).toBe(200);
   const artifact = accountExportSchema.parse(await exportResponse.json());
-  expect(artifact.schemaVersion).toBe(11);
-  if (artifact.schemaVersion !== 11) throw new Error('Expected supplementary export');
+  expect(artifact.schemaVersion).toBe(12);
+  if (artifact.schemaVersion !== 12) throw new Error('Expected supplementary export');
   expect(artifact.data.supplementaryExerciseVersions).toHaveLength(2);
   expect(artifact.data.supplementaryRoutineVersions).toHaveLength(2);
   expect(artifact.data.supplementaryExecutions).toContainEqual(

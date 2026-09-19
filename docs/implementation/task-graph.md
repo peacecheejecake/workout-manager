@@ -8,8 +8,10 @@
 
 M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/M1c-runtime-grants.md),
 [M1c-04 다영역 통합 승인](progress/M1c-04.md)은 완료했다. 훈련·영양·회복·루틴
-일정의 schema v4 승인과 통합 Planner를 실DB 및 두 shell에서 검증했다. 이제
-M2-03 갤러리·media와 M2-04 자료 생명주기가 준비됐다. 지도 coverage·Native
+일정의 schema v4 승인과 통합 Planner를 실DB 및 두 shell에서 검증했다.
+[M2-04a private text 자료](progress/M2-04a.md)는 완료했고 M2-04 전체는 진행 중이다.
+파일/object storage, URL/parser, 공유·coach 접근 경계는 M2-04b~d에 남는다. M2-03
+갤러리·media도 ready 상태다. 지도 coverage·Native
 실기기·공식 Garmin의 독립 gate는 유지한다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
@@ -430,6 +432,10 @@ flowchart TD
     task27["M2-02 대회·기록"]
     task28["M2-03 갤러리·media"]
     task29["M2-04 자료 생명주기"]
+    task29a["M2-04a private text·reader"]
+    task29b["M2-04b object storage·upload"]
+    task29c["M2-04c URL·parser"]
+    task29d["M2-04d 접근·coach 경계"]
     task30["M2-05 RAG·검토 자료·코치"]
     task31["M2-06 전체 화면·내부 통합 검증"]
     task32["M2-07 공식 연동 출시 검증"]
@@ -448,6 +454,11 @@ flowchart TD
     task7 --> task26
     task26 --> task27
     task25 --> task28
+    task25 --> task29a
+    task29a --> task29b
+    task29b --> task29c
+    task29b --> task29d
+    task29c --> task29d
     task25 --> task29
     task29 --> task30
     task28 --> task30
@@ -596,7 +607,11 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01 코스·도로 routing | M1c-04, M0-06b | courses/geo-kit; provider coverage·실제 route |
 | M2-02 대회·기록 | M2-01 | competitions; 코스 참조·결과 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
-| M2-04 자료 생명주기 | M1c-04 | resources; version/ACL/삭제·reader. 공용 객체 저장 port는 M0-05 계약 사용 |
+| M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |
+| M2-04a private text 자료·버전 고정 reader | M1c-04 | 완료; private direct text·불변 version/문단 locator·삭제 tombstone·계정 lifecycle·두 shell |
+| M2-04b 객체 저장 port·파일 upload | M2-04a | M0-05에 실제 port가 없어 여기서 서버 전용 port·격리 upload/raw 삭제 추가 |
+| M2-04c URL 수집·parser lifecycle | M2-04b | SSRF/redirect 방어·bounded parser·출처/실패·파생물 삭제 |
+| M2-04d 자료 접근·공유·coach 사용 경계 | M2-04b, M2-04c | ACL revision·명시 공유/철회·reviewed/coach 전환·index/cache/citation 삭제 manifest |
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
 | M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b | S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정 |
 | M2-07 공식 연동 출시 검증 | M2-06, M1-06b | 실제 Garmin 수집을 전체 앱과 통합 검증; 동의·실패 복구·공급자 회귀 |

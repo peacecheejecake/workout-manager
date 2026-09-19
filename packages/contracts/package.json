@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./resources": {
+      "types": "./src/resources.ts",
+      "default": "./dist/resources.js"
+    },
     "./recovery-core": {
       "types": "./src/recovery-core.ts",
       "default": "./dist/recovery-core.js"

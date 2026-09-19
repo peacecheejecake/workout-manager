@@ -373,3 +373,55 @@ it('requires supplementary collections in v11 while preserving v10 artifacts', (
   expect(accountExportSchema.safeParse({ ...v10, schemaVersion: 11 }).success).toBe(false);
   expect(accountExportSchema.parse(v10).data).not.toHaveProperty('supplementaryExecutions');
 });
+
+it('requires private resource collections in v12 while preserving v11 artifacts', () => {
+  const v11 = accountExportSchema.parse({
+    schemaVersion: 11,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+      supplementaryExerciseVersions: [],
+      supplementaryExerciseHeads: [],
+      supplementaryRoutineVersions: [],
+      supplementaryRoutineHeads: [],
+      supplementaryRoutineTargetRefs: [],
+      supplementarySessionLinks: [],
+      supplementarySessionTargetRefs: [],
+      supplementaryExecutions: [],
+      supplementarySetLogs: [],
+      supplementarySetLogRevisions: [],
+      supplementaryRestTimers: [],
+    },
+  });
+  const v12 = {
+    ...v11,
+    schemaVersion: 12,
+    data: { ...v11.data, resources: [], resourceVersions: [] },
+  };
+  expect(accountExportSchema.parse(v12)).toEqual(v12);
+  expect(accountExportSchema.safeParse({ ...v11, schemaVersion: 12 }).success).toBe(false);
+  expect(accountExportSchema.parse(v11).data).not.toHaveProperty('resources');
+});

@@ -39,6 +39,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '024_stretching.sql',
       '025_recovery_core.sql',
       '026_integrated_approval_v4.sql',
+      '027_resource_lifecycle.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -120,6 +121,11 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
+      `GRANT SELECT ON consent,plan_snapshot,plan_head,plan_history,
+       activity_canonical,activity_source_head,activity_source_revision,
+       activity_overlay,activity_overlay_revision,activity_suppression TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT SELECT ON plan_scenario,plan_scenario_revision,plan_scenario_application,coaching_thread,coaching_message,core_evidence_snapshot,coaching_constraint,coaching_constraint_head,coaching_run,coaching_analysis_output,coaching_decision,coaching_proposal,coaching_candidate TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON operations_audit TO "${runtimeRole}"`);
@@ -133,6 +139,7 @@ export async function grantOperations(
       `GRANT SELECT ON supplementary_exercise_version,supplementary_exercise_head,supplementary_routine_version,supplementary_routine_head,supplementary_routine_target_ref,supplementary_session_link,supplementary_session_target_ref,supplementary_execution,supplementary_set_log,supplementary_set_log_revision,supplementary_rest_timer TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT ON integrated_dependency_head TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON resource,resource_version TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -233,6 +240,27 @@ export async function grantRecoveryCore(
     await pool.query(
       `GRANT SELECT,INSERT,UPDATE ON recovery_method_head,recovery_strategy_head,recovery_action_log TO "${runtimeRole}"`,
     );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Private resource metadata is mutable by CAS; text versions are append-only. */
+export async function grantResources(connectionString: string, runtimeRole: string): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT SELECT,INSERT ON resource,resource_version TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at)
+       ON resource TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.tombstone_resource_receipts(uuid)
+       TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

@@ -189,7 +189,7 @@ it('exports coaching records only while evidence and AI consent remain available
     connection.release();
   }
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 11) throw new Error('Expected coaching export v11');
+  if (before.schemaVersion !== 12) throw new Error('Expected coaching export v12');
   expect(before.data.coachingRuns).toEqual([
     expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
   ]);
@@ -214,7 +214,7 @@ it('exports coaching records only while evidence and AI consent remain available
     }),
   ]);
   const otherExport = await operations.exportAccount(other);
-  if (otherExport.schemaVersion !== 11) throw new Error('Expected coaching export v11');
+  if (otherExport.schemaVersion !== 12) throw new Error('Expected coaching export v12');
   expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
   expect(otherExport.data.coachingCandidates).toEqual([]);
   const blocker = await admin.connect();
@@ -240,7 +240,7 @@ it('exports coaching records only while evidence and AI consent remain available
   const withdrawn = await exportAfterWithdrawal;
   if (!withdrawn) throw new Error('Expected concurrent export');
   const withdrawnArtifact = accountExportSchema.parse(withdrawn);
-  if (withdrawnArtifact.schemaVersion !== 11) throw new Error('Expected coaching export v11');
+  if (withdrawnArtifact.schemaVersion !== 12) throw new Error('Expected coaching export v12');
   expect(withdrawnArtifact.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
   ]);
@@ -285,7 +285,7 @@ it('exports coaching records only while evidence and AI consent remain available
     legacy.release();
   }
   const guarded = await operations.exportAccount(athlete);
-  if (guarded.schemaVersion !== 11) throw new Error('Expected coaching export v11');
+  if (guarded.schemaVersion !== 12) throw new Error('Expected coaching export v12');
   expect(guarded.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({
       id: outputId,
@@ -375,7 +375,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(11);
+    expect(before.schemaVersion).toBe(12);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);

@@ -1053,8 +1053,41 @@
       "title": "자료 생명주기",
       "dependsOn": ["M1c-04"],
       "kind": "task",
+      "status": "in_progress",
+      "scope": "resources; version/ACL/삭제·reader. M0-05에는 실제 공용 객체 저장 port가 없어 M2-04b에서 추가"
+    },
+    {
+      "id": "M2-04a",
+      "title": "private text 자료·버전 고정 reader",
+      "dependsOn": ["M1c-04"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "직접 입력 text·private tenant ACL·불변 version/문단 locator·삭제 tombstone·계정 lifecycle·두 shell",
+      "evidence": "docs/implementation/progress/M2-04a.md"
+    },
+    {
+      "id": "M2-04b",
+      "title": "객체 저장 port·파일 upload",
+      "dependsOn": ["M2-04a"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "resources; version/ACL/삭제·reader. 공용 객체 저장 port는 M0-05 계약 사용"
+      "scope": "서버 전용 object storage port·허용 형식/크기·격리 key·atomic upload·raw 삭제"
+    },
+    {
+      "id": "M2-04c",
+      "title": "URL 수집·parser lifecycle",
+      "dependsOn": ["M2-04b"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "URL/redirect allowlist·SSRF 방어·bounded parser·출처/실패·파생물 삭제"
+    },
+    {
+      "id": "M2-04d",
+      "title": "자료 접근·공유·coach 사용 경계",
+      "dependsOn": ["M2-04b", "M2-04c"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "ACL revision·명시 공유/철회·reviewed/includeForCoach 전환·cache/index/citation 삭제 manifest"
     },
     {
       "id": "M2-05",

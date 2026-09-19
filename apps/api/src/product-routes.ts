@@ -50,6 +50,8 @@ import { registerRecoveryRoutes } from './recovery-routes.js';
 import { registerActivityRoutes } from './activity-routes.js';
 import { registerOperationsRoutes } from './operations-routes.js';
 import type { OperationsRepository } from '@workout/server-persistence/operations';
+import type { PrivateTextResourceRepository } from '@workout/server-persistence/resources';
+import { registerResourceRoutes } from './resources-routes.js';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
@@ -78,6 +80,7 @@ export interface ProductRepositories {
   checkIns?: CheckInRepository;
   dashboard?: DashboardRepository;
   operations?: OperationsRepository;
+  resources?: PrivateTextResourceRepository;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -125,4 +128,5 @@ export function registerProductRoutes(
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);
   if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);
+  if (repositories.resources) registerResourceRoutes(routes, repositories.resources, principal);
 }

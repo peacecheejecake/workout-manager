@@ -23,6 +23,7 @@ import { createActivityRepository } from '@workout/server-persistence/activities
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
+import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
@@ -143,6 +144,7 @@ export async function createConfiguredApi(environment: unknown) {
       checkIns: createCheckInRepository(database),
       dashboard: createDashboardRepository(database),
       operations: createOperationsRepository(database),
+      resources: createPrivateTextResourceRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
         await Promise.all([store.close(), database.close()]);

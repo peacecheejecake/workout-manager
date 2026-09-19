@@ -44,6 +44,9 @@ const RoutinePage = lazy(() =>
 const RecoveryPage = lazy(() =>
   import('./recovery-page').then((module) => ({ default: module.RecoveryPage })),
 );
+const ResourcePage = lazy(() =>
+  import('./resource-page').then((module) => ({ default: module.ResourcePage })),
+);
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
@@ -90,6 +93,13 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/resources' || location.pathname.startsWith('/resources/') ? (
+        <Suspense fallback={<p role="status">자료실 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/coach">코치</a> · <a href="/account">계정</a>
+          </nav>
+          <ResourcePage path={location.pathname} query={location.search} />
+        </Suspense>
       ) : location.pathname === '/recovery' || location.pathname.startsWith('/recovery/') ? (
         <Suspense fallback={<p role="status">회복 전략 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
@@ -112,7 +122,8 @@ createRoot(root).render(
         <Suspense fallback={<p role="status">루틴 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/planner">훈련 계획</a> · <a href="/supplementary">보강 운동</a> ·{' '}
-            <a href="/recovery">회복 전략</a> · <a href="/account">계정</a>
+            <a href="/recovery">회복 전략</a> · <a href="/resources">자료실</a> ·{' '}
+            <a href="/account">계정</a>
           </nav>
           <RoutinePage path={location.pathname} />
         </Suspense>

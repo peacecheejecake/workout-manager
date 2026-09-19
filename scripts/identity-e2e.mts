@@ -25,6 +25,7 @@ import { createStretchingRepository } from '../packages/server/persistence/src/s
 import { createRoutineRepository } from '../packages/server/persistence/src/routine-core.ts';
 import { createRecoveryRepository } from '../packages/server/persistence/src/recovery-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
+import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -51,6 +52,7 @@ import {
   grantCoachingRuns,
   grantCoachingCandidates,
   grantIntegratedApprovalV4,
+  grantResources,
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
@@ -75,6 +77,7 @@ import { createGarminProvider } from '../packages/server/identity/src/garmin-pro
 // Never read inherited database URLs: this harness creates and destroys its own cluster.
 const detectedBin = [
   process.env['PG_BIN'],
+  '/opt/homebrew/opt/postgresql@14/bin',
   '/opt/homebrew/opt/postgresql@15/bin',
   '/opt/homebrew/opt/postgresql@17/bin',
   '/usr/lib/postgresql/17/bin',
@@ -167,6 +170,7 @@ try {
     await grantCoachingRuns(adminUrl, 'workout_runtime');
     await grantCoachingCandidates(adminUrl, 'workout_runtime');
     await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
+    await grantResources(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(
@@ -292,6 +296,7 @@ try {
     activities: createActivityRepository(database),
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),
+    resources: createPrivateTextResourceRepository(database),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

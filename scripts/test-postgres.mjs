@@ -20,6 +20,7 @@ if (process.env.TEST_DATABASE_URL && process.env.TEST_DATABASE_ADMIN_URL) {
 } else {
   const candidates = [
     process.env.PG_BIN,
+    '/opt/homebrew/opt/postgresql@14/bin',
     '/opt/homebrew/opt/postgresql@15/bin',
     '/opt/homebrew/opt/postgresql@17/bin',
     '/usr/lib/postgresql/17/bin',

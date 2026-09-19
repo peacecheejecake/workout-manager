@@ -1,0 +1,108 @@
+.workspace {
+  display: grid;
+  gap: var(--space-5, 1.25rem);
+  min-width: 0;
+}
+
+.header,
+.panel,
+.card {
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-lg, 1rem);
+  background: var(--color-surface, #fff);
+}
+
+.header,
+.panel {
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.header h1,
+.panel h2,
+.card h3 {
+  margin-block: 0 0.5rem;
+}
+
+.eyebrow,
+.meta,
+.status {
+  color: var(--color-text-muted, #52615a);
+}
+
+.stack,
+.form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.form input,
+.form select,
+.form textarea,
+.form button,
+.actions button {
+  font: inherit;
+}
+
+.form input,
+.form select,
+.form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border, #aebbb4);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  background: var(--color-surface, #fff);
+  color: inherit;
+}
+
+.form textarea {
+  min-height: 10rem;
+  resize: vertical;
+}
+
+.card {
+  padding: 1rem;
+}
+
+.card[aria-current='page'] {
+  border-color: var(--color-accent, #167857);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent, #167857) 24%, transparent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.paragraphs {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.paragraph {
+  scroll-margin-block: 5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notice {
+  padding: 0.75rem;
+  border-inline-start: 0.25rem solid var(--color-accent, #167857);
+  background: var(--color-surface-subtle, #f3f7f4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paragraph {
+    scroll-behavior: auto;
+  }
+}

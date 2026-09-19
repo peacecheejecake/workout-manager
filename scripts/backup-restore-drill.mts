@@ -37,12 +37,14 @@ import {
   grantCoachingConstraints,
   grantCoachingRuns,
   grantCoachingCandidates,
+  grantResources,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.js';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
+import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.js';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.js';
 import {
   createSessionCompletionRepository,
@@ -441,6 +443,7 @@ async function execute() {
   }
   const candidates = [
     process.env.PG_BIN,
+    '/opt/homebrew/opt/postgresql@14/bin',
     '/opt/homebrew/opt/postgresql@15/bin',
     '/opt/homebrew/opt/postgresql@17/bin',
     '/usr/lib/postgresql/15/bin',
@@ -534,10 +537,44 @@ async function execute() {
     await grantCoachingConstraints(url('drill_source'), 'drill_runtime');
     await grantCoachingRuns(url('drill_source'), 'drill_runtime');
     await grantCoachingCandidates(url('drill_source'), 'drill_runtime');
+    await grantResources(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
     const removedConstraintAthlete = randomUUID();
+    const resourceRepo = createPrivateTextResourceRepository(sourceDb);
+    const retainedResourceV1 = await resourceRepo.create(retainedAthlete, {
+      sourceKind: 'text',
+      title: 'Synthetic restored private text',
+      category: 'note',
+      metadata: {},
+      tags: ['restore'],
+      favorite: false,
+      text: 'Version one restore body.',
+      idempotencyKey: randomUUID(),
+    });
+    if (retainedResourceV1.status !== 'available') throw new Error('RESOURCE_SEED_FAILED');
+    const retainedResourceV2 = await resourceRepo.appendVersion(
+      retainedAthlete,
+      retainedResourceV1.resource.id,
+      {
+        expectedCurrentVersionId: retainedResourceV1.version.id,
+        text: 'Version two restore body.',
+        idempotencyKey: randomUUID(),
+      },
+    );
+    if (retainedResourceV2.status !== 'available') throw new Error('RESOURCE_SEED_FAILED');
+    const deletedResource = await resourceRepo.create(deletedAthlete, {
+      sourceKind: 'text',
+      title: 'Synthetic erased private text',
+      category: 'note',
+      metadata: {},
+      tags: [],
+      favorite: false,
+      text: 'This body must not survive erasure replay.',
+      idempotencyKey: randomUUID(),
+    });
+    if (deletedResource.status !== 'available') throw new Error('RESOURCE_SEED_FAILED');
     const constraintRepo = createCoachingConstraintRepository(sourceDb);
     const oldConstraintCommand = {
       expectedHeadRevision: null,
@@ -660,7 +697,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 9);
+      assert.equal(before.schemaVersion, 12);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -722,7 +759,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 9) throw new Error('Expected coaching export v9');
+      if (coachingExport.schemaVersion !== 12) throw new Error('Expected coaching export v12');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -748,11 +785,31 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v9 is added.
+      // A historical v8 download keeps its original shape and remains readable after v12 is added.
       const {
         coachingDecisions,
         coachingProposals,
         coachingCandidates: candidates,
+        nutritionPlanVersions: _nutritionPlanVersions,
+        nutritionPlanHeads: _nutritionPlanHeads,
+        nutritionPlanHistory: _nutritionPlanHistory,
+        foodDefinitionVersions: _foodDefinitionVersions,
+        foodDefinitionHeads: _foodDefinitionHeads,
+        intakeEntries: _intakeEntries,
+        intakeEntryRevisions: _intakeEntryRevisions,
+        supplementaryExerciseVersions: _supplementaryExerciseVersions,
+        supplementaryExerciseHeads: _supplementaryExerciseHeads,
+        supplementaryRoutineVersions: _supplementaryRoutineVersions,
+        supplementaryRoutineHeads: _supplementaryRoutineHeads,
+        supplementaryRoutineTargetRefs: _supplementaryRoutineTargetRefs,
+        supplementarySessionLinks: _supplementarySessionLinks,
+        supplementarySessionTargetRefs: _supplementarySessionTargetRefs,
+        supplementaryExecutions: _supplementaryExecutions,
+        supplementarySetLogs: _supplementarySetLogs,
+        supplementarySetLogRevisions: _supplementarySetLogRevisions,
+        supplementaryRestTimers: _supplementaryRestTimers,
+        resources: _resources,
+        resourceVersions: _resourceVersions,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -815,7 +872,7 @@ async function execute() {
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
-    checks.push('synthetic_candidate_bodies_in_source_export_v9_historical_v8_artifact_readable');
+    checks.push('synthetic_candidate_bodies_in_source_export_v12_historical_v8_artifact_readable');
     // These extra tenants add no identity, provider connection or activity to the original checks.
     const withdrawnAthlete = randomUUID();
     const {
@@ -856,7 +913,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 9) throw new Error('Expected candidate export v9');
+      if (candidateExport.schemaVersion !== 12) throw new Error('Expected candidate export v12');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1462,6 +1519,8 @@ async function execute() {
       'activity_overlay_revision',
       'activity_suppression',
       'activity_import_receipt',
+      'resource',
+      'resource_version',
     ];
     for (const table of tables) {
       assert.equal(
@@ -1579,7 +1638,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 9);
+    assert.ok(constraintExport.schemaVersion === 12);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -1614,7 +1673,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
+    if (withdrawnExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1666,7 +1725,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
+    if (absentExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -1712,6 +1771,24 @@ async function execute() {
       (await createActivityRepository(restoreDb).listActivities(retainedAthlete)).total,
       2,
     );
+    const restoredResourceRepo = createPrivateTextResourceRepository(restoreDb);
+    assert.deepEqual(
+      await restoredResourceRepo.read(retainedAthlete, retainedResourceV2.resource.id),
+      retainedResourceV2,
+    );
+    const restoredHistorical = await restoredResourceRepo.read(
+      retainedAthlete,
+      retainedResourceV1.resource.id,
+      { versionId: retainedResourceV1.version.id },
+    );
+    assert.equal(restoredHistorical.status, 'available');
+    if (restoredHistorical.status !== 'available') throw new Error('RESOURCE_RESTORE_FAILED');
+    assert.equal(restoredHistorical.reader.originalText, 'Version one restore body.');
+    await assert.rejects(
+      () => restoredResourceRepo.read(deletedAthlete, deletedResource.resource.id),
+      TenantErasedError,
+    );
+    checks.push('private_resource_current_and_pinned_versions_restored_through_runtime_rls');
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
     const manualId = manualIds.get(retainedAthlete);
     assert.ok(manualId);
@@ -1727,7 +1804,9 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    assert.equal(retainedExport.schemaVersion, 9);
+    if (retainedExport.schemaVersion !== 12) throw new Error('Expected resource export v12');
+    assert.equal(retainedExport.data.resources.length, 1);
+    assert.equal(retainedExport.data.resourceVersions.length, 2);
     assert.equal(
       retainedExport.data.coachingRuns[0]?.id,
       coachingRuns.get(retainedAthlete)?.run.id,
@@ -1839,7 +1918,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 9) throw new Error('Expected coaching export v9');
+    if (retainedExport.schemaVersion !== 12) throw new Error('Expected coaching export v12');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -1971,11 +2050,11 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 9) throw new Error('Expected coaching export v9');
+    if (coachingAfterReplay.schemaVersion !== 12) throw new Error('Expected coaching export v12');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
-      'coaching_scope_revision_and_immutable_user_messages_export_v9_restored_receipts_replayed_without_duplicates',
+      'coaching_scope_revision_and_immutable_user_messages_export_v12_restored_receipts_replayed_without_duplicates',
     );
     await assert.rejects(
       () => coachingRepository.create(deletedAthlete, deletedCoaching.createCommand),
@@ -2147,7 +2226,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 9) throw new Error('Expected evidence export v9');
+    if (scrubbedExport.schemaVersion !== 12) throw new Error('Expected evidence export v12');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
