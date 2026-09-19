@@ -38,6 +38,42 @@ describe('manual recovery boundaries', () => {
     expect(draft.planRefs).toEqual([]);
   });
 
+  it('keeps stable training aggregate identity separate from its frozen head version', () => {
+    const aggregateId = '20000000-0000-4000-8000-000000000001';
+    const headVersionId = '20000000-0000-4000-8000-000000000002';
+    const draft = recoveryStrategyDraftSchema.parse({
+      title: 'Stable training reference',
+      goal: '',
+      startDate: '2026-09-19',
+      endDateExclusive: '2026-09-20',
+      timezone: 'UTC',
+      knownFacts: [],
+      missingInformation: [],
+      priority: 'normal',
+      observations: [],
+      planRefs: [{ kind: 'training', aggregateId, headVersionId }],
+      options: [
+        {
+          id: '20000000-0000-4000-8000-000000000003',
+          title: 'Rest',
+          kind: 'full_rest',
+          methodVersionId: null,
+          explanation: '',
+        },
+      ],
+      reassessment: [
+        {
+          id: '20000000-0000-4000-8000-000000000004',
+          trigger: 'plan_changed',
+          plannedAt: null,
+          description: 'Review the updated plan head.',
+          policyVersion: null,
+        },
+      ],
+    });
+    expect(draft.planRefs).toEqual([{ kind: 'training', aggregateId, headVersionId }]);
+  });
+
   it('rejects client assertions that a user-recorded method is reviewed', () => {
     const method = {
       schemaVersion: 1,

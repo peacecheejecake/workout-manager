@@ -17,6 +17,7 @@
   "exports": {
     "./coaching-workspace": "./src/coaching-workspace.tsx",
     "./candidate-review-workspace": "./src/candidate-review-workspace.tsx",
-    "./joint-candidate-review-workspace": "./src/joint-candidate-review-workspace.tsx"
+    "./joint-candidate-review-workspace": "./src/joint-candidate-review-workspace.tsx",
+    "./integrated-candidate-review-workspace": "./src/integrated-candidate-review-workspace.tsx"
   }
 }

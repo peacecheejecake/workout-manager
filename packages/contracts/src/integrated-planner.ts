@@ -128,3 +128,52 @@ export const integratedPlannerReadSchema = z.strictObject({
   summary: integratedPlannerSummarySchema,
 });
 export type IntegratedPlannerRead = z.infer<typeof integratedPlannerReadSchema>;
+
+export const integratedRecoveryPlanSchema = z.strictObject({
+  strategyId: z.uuid(),
+  versionId: z.uuid(),
+  title: z.string().min(1),
+  selectedOptionId: z.uuid(),
+});
+export const integratedRecoveryActionSchema = z.strictObject({
+  actionId: z.uuid(),
+  revision: z.number().int().positive(),
+  occurredAt: instantSchema,
+  state: z.enum(['performed', 'partial', 'confirmed_skipped', 'stopped', 'unconfirmed']),
+  methodVersionId: z.uuid(),
+});
+export const integratedRoutineOccurrenceSchema = z.strictObject({
+  occurrenceId: z.uuid(),
+  scheduleId: z.uuid(),
+  scheduleVersionId: z.uuid(),
+  blueprintVersionId: z.uuid(),
+  scheduledAt: instantSchema,
+});
+export const integratedRoutineRunSchema = z.strictObject({
+  runId: z.uuid(),
+  revision: z.number().int().nonnegative(),
+  state: z.enum(['in_progress', 'paused', 'ended', 'stopped']),
+  occurrenceId: z.uuid().nullable(),
+});
+export const integratedPlannerDayV4Schema = integratedPlannerDaySchema.extend({
+  recoveryPlans: z.array(integratedRecoveryPlanSchema),
+  recoveryActions: z.array(integratedRecoveryActionSchema),
+  routineOccurrences: z.array(integratedRoutineOccurrenceSchema),
+  routineRuns: z.array(integratedRoutineRunSchema),
+  stretchingActivityIds: z.array(z.uuid()),
+});
+export const integratedPlannerSummaryV4Schema = integratedPlannerSummarySchema.extend({
+  recovery: z.strictObject({ plannedStrategyCount: count, actualActionCount: count }),
+  routines: z.strictObject({ occurrenceCount: count, runCount: count }),
+  stretchingActivityCount: count,
+});
+export const integratedPlannerReadV4Schema = integratedPlannerReadSchema
+  .omit({ schemaVersion: true, days: true, summary: true })
+  .extend({
+    schemaVersion: z.literal(4),
+    recoveryStrategyVersionIds: z.array(z.uuid()),
+    routineScheduleVersionIds: z.array(z.uuid()),
+    days: z.array(integratedPlannerDayV4Schema).min(1).max(93),
+    summary: integratedPlannerSummaryV4Schema,
+  });
+export type IntegratedPlannerReadV4 = z.infer<typeof integratedPlannerReadV4Schema>;

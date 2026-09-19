@@ -1020,8 +1020,9 @@
       "title": "다영역 통합 승인",
       "dependsOn": ["M1c-01", "M1c-02", "M1c-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "approval/Planner; schema v4·V023 회귀·중단·실제 링크"
+      "status": "completed",
+      "scope": "approval/Planner; schema v4·V023 회귀·중단·실제 링크",
+      "evidence": "docs/implementation/progress/M1c-04.md"
     },
     {
       "id": "M2-01",

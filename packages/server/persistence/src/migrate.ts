@@ -38,6 +38,7 @@ export async function migrate(connectionString: string): Promise<void> {
       '023_routine_core.sql',
       '024_stretching.sql',
       '025_recovery_core.sql',
+      '026_integrated_approval_v4.sql',
     ].entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
@@ -372,6 +373,22 @@ export async function grantCoachingCandidates(
       `GRANT SELECT,INSERT ON coaching_decision,coaching_proposal,coaching_candidate TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT ON coaching_analysis_output TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Schema v4 approval audit rows are append-only and tenant scoped. */
+export async function grantIntegratedApprovalV4(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON integrated_candidate_v4,integrated_approval_v4,recovery_strategy_history,routine_schedule_history TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

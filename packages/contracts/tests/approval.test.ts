@@ -33,6 +33,8 @@ const v3 = {
 const v4 = {
   ...common,
   schemaVersion: 4,
+  confirmed: true,
+  proposalDigest: 'b'.repeat(64),
   writeDomains: ['routine_schedule'],
   expectedBasis: {
     ...commonBasis,

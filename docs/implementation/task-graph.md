@@ -6,10 +6,11 @@
 [G1 기록](progress/G1.md)은 실제 OIDC·격리 DB 회귀를 대조하며, 공식 Garmin·실제 LLM·
 지도·Native·출시 gate를 완료로 바꾸지 않는다.
 
-M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/M1c-runtime-grants.md)는 완료했다. 새 테이블의
-nonowner/FORCE RLS·계정 말소·OIDC E2E를 검증했으며 실제 운영 DB 적용은 배포 단계다.
-다음 제품 작업은 M1c-04 다영역 통합 승인이다. 지도 coverage·Native 실기기·공식
-Garmin의 독립 gate는 유지한다.
+M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/M1c-runtime-grants.md),
+[M1c-04 다영역 통합 승인](progress/M1c-04.md)은 완료했다. 훈련·영양·회복·루틴
+일정의 schema v4 승인과 통합 Planner를 실DB 및 두 shell에서 검증했다. 이제
+M2-03 갤러리·media와 M2-04 자료 생명주기가 준비됐다. 지도 coverage·Native
+실기기·공식 Garmin의 독립 gate는 유지한다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속

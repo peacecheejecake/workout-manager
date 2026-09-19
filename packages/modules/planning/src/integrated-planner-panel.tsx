@@ -8,9 +8,8 @@ import {
 } from '@workout/contracts/core';
 import {
   integratedPlannerQuerySchema,
-  integratedPlannerReadSchema,
-  type IntegratedPlannerDay,
-  type IntegratedPlannerRead,
+  integratedPlannerReadV4Schema,
+  type IntegratedPlannerReadV4,
   type UnresolvedNutritionItem,
 } from '@workout/contracts/integrated-planner';
 import type { PlanSnapshot } from '@workout/contracts/planning';
@@ -31,8 +30,30 @@ type Props = {
   activityHref?: (id: string) => string;
 };
 type Range = { from: string; toExclusive: string; timezone: string };
-type Read = IntegratedPlannerRead;
+type Read = IntegratedPlannerReadV4;
+type Day = Read['days'][number];
 const maximumWindowDays = 93;
+
+class IntegratedPlannerRequestError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+  }
+}
+
+function responseErrorCode(body: unknown) {
+  if (typeof body !== 'object' || body === null) return 'INTEGRATED_READ_FAILED';
+  if (
+    'error' in body &&
+    typeof body.error === 'object' &&
+    body.error !== null &&
+    'code' in body.error &&
+    typeof body.error.code === 'string'
+  )
+    return body.error.code;
+  return 'message' in body && typeof body.message === 'string'
+    ? body.message
+    : 'INTEGRATED_READ_FAILED';
+}
 
 function rangeForLens(head: PlanSnapshot | null | undefined, lens: PlanningLens): Range | null {
   if (head === undefined) return null;
@@ -64,6 +85,7 @@ async function fetchIntegrated(
 ): Promise<Read> {
   const input = integratedPlannerQuerySchema.parse(range);
   const query = new URLSearchParams(input);
+  query.set('maxSchemaVersion', '4');
   const response = transportReplySchema.parse(
     await transport.request({
       path: `/bff/v1/planner/integrated?${query}`,
@@ -73,8 +95,11 @@ async function fetchIntegrated(
       signal,
     }),
   );
-  if (signal.aborted || response.status !== 200) throw new Error('INTEGRATED_READ_FAILED');
-  const read = integratedPlannerReadSchema.parse(response.body);
+  if (signal.aborted) throw new Error('INTEGRATED_READ_ABORTED');
+  if (response.status !== 200) {
+    throw new IntegratedPlannerRequestError(responseErrorCode(response.body));
+  }
+  const read = integratedPlannerReadV4Schema.parse(response.body);
   if (read.from !== range.from || read.toExclusive !== range.toExclusive)
     throw new Error('INTEGRATED_RANGE_MISMATCH');
   return read;
@@ -94,7 +119,7 @@ export function IntegratedPlannerPanel({
   const range = invalidLens ? null : rangeForLens(head, lens);
   const validRange = range !== null && readRange(range);
   const read = useQuery({
-    queryKey: ['integrated-planner', athleteId, sessionId, head?.id ?? null, range],
+    queryKey: ['integrated-planner', athleteId, sessionId, 'schema-v4', head?.id ?? null, range],
     enabled: validRange,
     retry: false,
     queryFn: ({ signal }) => {
@@ -102,6 +127,9 @@ export function IntegratedPlannerPanel({
       return fetchIntegrated(transport, range, signal);
     },
   });
+  const unsupported =
+    read.error instanceof IntegratedPlannerRequestError &&
+    read.error.code === 'UNSUPPORTED_SCHEMA_VERSION';
   return (
     <section aria-label="통합 Planner" className={styles.panel}>
       <h2>훈련·영양 통합 조회</h2>
@@ -129,10 +157,15 @@ export function IntegratedPlannerPanel({
             disabled={read.isFetching}
             onClick={() => void read.refetch()}
           >
-            통합 기록 다시 확인
+            {unsupported ? '앱 업데이트 후 다시 확인' : '통합 기록 다시 확인'}
           </Button>
           {read.isFetching ? <p role="status">훈련·영양 기록을 확인하는 중입니다.</p> : null}
-          {read.isError ? (
+          {unsupported ? (
+            <p role="alert">
+              이 통합 Planner 형식은 현재 앱에서 지원하지 않습니다. 앱을 업데이트한 뒤 다시 확인해
+              주세요.
+            </p>
+          ) : read.isError ? (
             <p role="alert">
               통합 기록을 확인하지 못했습니다. 이전 결과는 표시하지 않습니다. 다시 확인해 주세요.
             </p>
@@ -162,7 +195,7 @@ function dateTime(instant: string, timezone: string) {
     hourCycle: 'h23',
   }).format(new Date(instant));
 }
-const categoryLabel: Record<IntegratedPlannerDay['nutritionItems'][number]['category'], string> = {
+const categoryLabel: Record<Day['nutritionItems'][number]['category'], string> = {
   meal: '식사',
   snack: '간식',
   before: '운동 전',
@@ -192,7 +225,12 @@ function IntegratedRead({
       day.plannedSessions.length +
         day.nutritionItems.length +
         day.activities.length +
-        day.intakes.length >
+        day.intakes.length +
+        day.recoveryPlans.length +
+        day.recoveryActions.length +
+        day.routineOccurrences.length +
+        day.routineRuns.length +
+        day.stretchingActivityIds.length >
       0,
   );
   const plannedCount = activeDays.reduce((total, day) => total + day.plannedSessions.length, 0);
@@ -212,6 +250,16 @@ function IntegratedRead({
       <p>
         훈련 계획 {plannedCount}건 · 실제 Activity {activityCount}건 (세트 상세 연결{' '}
         {supplementaryCount}건) · 영양 계획 {nutritionCount}건 · 실제 섭취 {intakeCount}건
+      </p>
+      <p>
+        회복 계획 {read.summary.recovery.plannedStrategyCount}건 · 회복 실제{' '}
+        {read.summary.recovery.actualActionCount}건 · 루틴 발생분{' '}
+        {read.summary.routines.occurrenceCount}건 · RoutineRun {read.summary.routines.runCount}건 ·
+        스트레칭 Activity 상세 {read.summary.stretchingActivityCount}건
+      </p>
+      <p>
+        RoutineRun은 실제 기록을 연결하는 wrapper이고 스트레칭 ID는 Activity의 detail입니다. 실제
+        Activity 시간과 건수에는 다시 더하지 않습니다.
       </p>
       <p>섭취 기록 완전성은 미확인입니다. 기록이 없다는 뜻은 먹지 않았다는 뜻이 아닙니다.</p>
       {activeDays.length === 0 ? (
@@ -303,6 +351,9 @@ function IntegratedRead({
                     )}
                   </p>
                 </section>
+                <RecoverySection day={day} timezone={read.timezone} />
+                <RoutineSection day={day} timezone={read.timezone} />
+                <StretchingSection day={day} {...(activityHref ? { activityHref } : {})} />
               </div>
             </li>
           ))}
@@ -321,5 +372,72 @@ function IntegratedRead({
         </section>
       ) : null}
     </div>
+  );
+}
+
+function RecoverySection({ day, timezone }: { day: Day; timezone: string }) {
+  return (
+    <section aria-label={`${day.date} 회복 계획과 실제`}>
+      <h4>회복 계획 {day.recoveryPlans.length}건</h4>
+      <ul>
+        {day.recoveryPlans.map((plan) => (
+          <li key={plan.versionId}>
+            {plan.title} · 선택안 {plan.selectedOptionId}
+          </li>
+        ))}
+      </ul>
+      <h4>회복 실제 {day.recoveryActions.length}건</h4>
+      <ul>
+        {day.recoveryActions.map((action) => (
+          <li key={action.actionId}>
+            {action.state} · {dateTime(action.occurredAt, timezone)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RoutineSection({ day, timezone }: { day: Day; timezone: string }) {
+  return (
+    <section aria-label={`${day.date} 루틴 발생분과 실행`}>
+      <h4>루틴 발생분 {day.routineOccurrences.length}건</h4>
+      <ul>
+        {day.routineOccurrences.map((occurrence) => (
+          <li key={occurrence.occurrenceId}>
+            {dateTime(occurrence.scheduledAt, timezone)} · schedule {occurrence.scheduleId}
+          </li>
+        ))}
+      </ul>
+      <h4>RoutineRun {day.routineRuns.length}건</h4>
+      <ul>
+        {day.routineRuns.map((run) => (
+          <li key={run.runId}>
+            {run.state} · 발생분 {run.occurrenceId ?? '연결 없음'}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function StretchingSection({
+  day,
+  activityHref,
+}: {
+  day: Day;
+  activityHref?: (id: string) => string;
+}) {
+  return (
+    <section aria-label={`${day.date} 스트레칭 Activity 상세`}>
+      <h4>스트레칭 Activity 상세 {day.stretchingActivityIds.length}건</h4>
+      <ul>
+        {day.stretchingActivityIds.map((activityId) => (
+          <li key={activityId}>
+            {activityHref ? <a href={activityHref(activityId)}>{activityId}</a> : activityId}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

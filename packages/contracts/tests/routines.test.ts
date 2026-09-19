@@ -128,9 +128,10 @@ const basis = {
 };
 const approval = {
   schemaVersion: 4,
+  confirmed: true,
   proposalId: 'proposal',
   candidateId: 'candidate',
-  proposalDigest: 'digest',
+  proposalDigest: 'a'.repeat(64),
   writeDomains: ['routine_schedule'],
   expectedBasis: basis,
   idempotencyKey: 'request',

@@ -22,8 +22,12 @@ import type { IntegratedPlannerRepository } from '@workout/server-persistence/in
 import { registerIntegratedPlannerRoutes } from './integrated-planner-routes.js';
 import type { JointApprovalRepository } from '@workout/server-persistence/joint-approval';
 import { registerJointApprovalRoutes } from './joint-approval-routes.js';
+import type { IntegratedApprovalV4Repository } from '@workout/server-persistence/integrated-approval-v4';
+import { registerIntegratedApprovalV4Routes } from './integrated-approval-v4-routes.js';
 import type { JointFixtureRepository } from '@workout/server-persistence/joint-fixture';
 import { registerJointFixtureRoutes } from './joint-fixture-routes.js';
+import type { IntegratedFixtureV4Repository } from '@workout/server-persistence/integrated-fixture-v4';
+import { registerIntegratedFixtureV4Routes } from './integrated-fixture-v4-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
 import type { NutritionRepository } from '@workout/server-persistence/nutrition-core';
@@ -66,7 +70,9 @@ export interface ProductRepositories {
   periodSummary?: PeriodSummaryRepository;
   integratedPlanner?: IntegratedPlannerRepository;
   jointApproval?: JointApprovalRepository;
+  integratedApprovalV4?: IntegratedApprovalV4Repository;
   jointFixture?: JointFixtureRepository;
+  integratedFixtureV4?: IntegratedFixtureV4Repository;
   activities?: ActivityRepository;
   activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
@@ -100,8 +106,12 @@ export function registerProductRoutes(
     registerIntegratedPlannerRoutes(routes, repositories.integratedPlanner, principal);
   if (repositories.jointApproval)
     registerJointApprovalRoutes(routes, repositories.jointApproval, principal);
+  if (repositories.integratedApprovalV4)
+    registerIntegratedApprovalV4Routes(routes, repositories.integratedApprovalV4, principal);
   if (repositories.jointFixture)
     registerJointFixtureRoutes(routes, repositories.jointFixture, principal);
+  if (repositories.integratedFixtureV4)
+    registerIntegratedFixtureV4Routes(routes, repositories.integratedFixtureV4, principal);
   if (repositories.activityContext)
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);

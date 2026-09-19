@@ -22,6 +22,8 @@
     "./routine-expansion": "./src/routine-expansion.ts",
     "./integrated-planner": "./src/integrated-planner.ts",
     "./joint-approval": "./src/joint-approval.ts",
+    "./integrated-approval-v4": "./src/integrated-approval-v4.ts",
+    "./integrated-fixture-v4": "./src/integrated-fixture-v4.ts",
     "./joint-fixture": "./src/joint-fixture.ts",
     "./session-actuals": "./src/session-actuals.ts",
     "./database": "./src/database.ts",

@@ -9,6 +9,8 @@ import { createSessionCompletionRepository } from '../packages/server/persistenc
 import { createPeriodSummaryRepository } from '../packages/server/persistence/src/period-summary.ts';
 import { createIntegratedPlannerRepository } from '../packages/server/persistence/src/integrated-planner.ts';
 import { createJointApprovalRepository } from '../packages/server/persistence/src/joint-approval.ts';
+import { createIntegratedApprovalV4Repository } from '../packages/server/persistence/src/integrated-approval-v4.ts';
+import { createIntegratedFixtureV4Repository } from '../packages/server/persistence/src/integrated-fixture-v4.ts';
 import { createJointFixtureRepository } from '../packages/server/persistence/src/joint-fixture.ts';
 import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
@@ -48,6 +50,7 @@ import {
   grantCoachingThreads,
   grantCoachingRuns,
   grantCoachingCandidates,
+  grantIntegratedApprovalV4,
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
@@ -163,6 +166,7 @@ try {
     await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
     await grantCoachingRuns(adminUrl, 'workout_runtime');
     await grantCoachingCandidates(adminUrl, 'workout_runtime');
+    await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(
@@ -241,6 +245,9 @@ try {
   const jointApproval = createJointApprovalRepository(database, {
     policy: { id: 'running-core-v3-joint', version: '1' },
   });
+  const integratedApprovalV4 = createIntegratedApprovalV4Repository(database, {
+    policyVersion: 'running-core-v4-integrated:1',
+  });
   const api = createApi({
     auth: identity,
     identity,
@@ -273,7 +280,12 @@ try {
     periodSummary: createPeriodSummaryRepository(database),
     integratedPlanner: createIntegratedPlannerRepository(database),
     jointApproval,
+    integratedApprovalV4,
     jointFixture: createJointFixtureRepository(database, jointApproval, {
+      enabled: true,
+      environment: 'test',
+    }),
+    integratedFixtureV4: createIntegratedFixtureV4Repository(database, integratedApprovalV4, {
       enabled: true,
       environment: 'test',
     }),

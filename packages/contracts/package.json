@@ -57,6 +57,10 @@
       "types": "./src/approval.ts",
       "default": "./dist/approval.js"
     },
+    "./integrated-coaching": {
+      "types": "./src/integrated-coaching.ts",
+      "default": "./dist/integrated-coaching.js"
+    },
     "./planning": {
       "types": "./src/planning.ts",
       "default": "./dist/planning.js"

@@ -9,6 +9,8 @@ import { createSessionCompletionRepository } from '@workout/server-persistence/s
 import { createPeriodSummaryRepository } from '@workout/server-persistence/period-summary';
 import { createIntegratedPlannerRepository } from '@workout/server-persistence/integrated-planner';
 import { createJointApprovalRepository } from '@workout/server-persistence/joint-approval';
+import { createIntegratedApprovalV4Repository } from '@workout/server-persistence/integrated-approval-v4';
+import { createIntegratedFixtureV4Repository } from '@workout/server-persistence/integrated-fixture-v4';
 import { createJointFixtureRepository } from '@workout/server-persistence/joint-fixture';
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
@@ -78,6 +80,9 @@ export async function createConfiguredApi(environment: unknown) {
     const jointApproval = createJointApprovalRepository(database, {
       policy: { id: 'running-core-v3-joint', version: '1' },
     });
+    const integratedApprovalV4 = createIntegratedApprovalV4Repository(database, {
+      policyVersion: 'running-core-v4-integrated:1',
+    });
     const identity = createIdentityService({
       store,
       provider,
@@ -119,12 +124,18 @@ export async function createConfiguredApi(environment: unknown) {
       periodSummary: createPeriodSummaryRepository(database),
       integratedPlanner: createIntegratedPlannerRepository(database),
       jointApproval,
+      integratedApprovalV4,
       ...(env.COACHING_FIXTURE_ENABLED === 'true'
         ? {
             jointFixture: createJointFixtureRepository(database, jointApproval, {
               enabled: true,
               environment: env.NODE_ENV,
             }),
+            integratedFixtureV4: createIntegratedFixtureV4Repository(
+              database,
+              integratedApprovalV4,
+              { enabled: true, environment: env.NODE_ENV },
+            ),
           }
         : {}),
       activities: createActivityRepository(database),

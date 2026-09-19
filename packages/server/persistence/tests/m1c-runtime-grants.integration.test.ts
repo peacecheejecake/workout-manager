@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, type Database } from '../src/database.js';
 import {
   grantOperations,
+  grantIntegratedApprovalV4,
   grantRecoveryCore,
   grantRoutineCore,
   grantStretchingCore,
@@ -26,6 +27,10 @@ const appendOnly = [
   'recovery_method_version',
   'recovery_strategy_version',
   'recovery_action_revision',
+  'integrated_candidate_v4',
+  'integrated_approval_v4',
+  'recovery_strategy_history',
+  'routine_schedule_history',
 ];
 const mutableHeads = [
   'routine_blueprint_head',
@@ -48,6 +53,7 @@ beforeAll(async () => {
   await grantRoutineCore(adminUrl, 'workout_runtime');
   await grantStretchingCore(adminUrl, 'workout_runtime');
   await grantRecoveryCore(adminUrl, 'workout_runtime');
+  await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
   database = createDatabase({ connectionString: runtimeUrl });
 });
 
@@ -95,6 +101,7 @@ describe('M1c production runtime grants', () => {
   it('permits the latest erasure wrapper but not its previous entry points', async () => {
     const signatures = [
       'erase_account(text)',
+      'erase_account_before_integrated_approval_v4(text)',
       'erase_account_before_recovery_core(text)',
       'erase_account_before_stretching(text)',
       'erase_account_before_routine_core(text)',

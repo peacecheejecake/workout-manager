@@ -8,6 +8,9 @@ import { createIntegratedPlannerRepository } from '../src/integrated-planner.js'
 import {
   grantNutritionCore,
   grantOperations,
+  grantRecoveryCore,
+  grantRoutineCore,
+  grantStretchingCore,
   grantSupplementaryCore,
   migrate,
 } from '../src/migrate.js';
@@ -24,6 +27,9 @@ beforeAll(async () => {
   await grantOperations(adminUrl, 'workout_runtime');
   await grantNutritionCore(adminUrl, 'workout_runtime');
   await grantSupplementaryCore(adminUrl, 'workout_runtime');
+  await grantRoutineCore(adminUrl, 'workout_runtime');
+  await grantStretchingCore(adminUrl, 'workout_runtime');
+  await grantRecoveryCore(adminUrl, 'workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt,plan_snapshot,plan_head,plan_history TO workout_runtime',
   );
@@ -408,5 +414,436 @@ describe('integrated Planner read under tenant RLS', () => {
     expect(read.unresolvedNutritionItems).toEqual([
       expect.objectContaining({ id: 'oversized-offset', reason: 'offset_out_of_range' }),
     ]);
+  });
+
+  it('reads v4 layers in one snapshot without recounting routine or stretching wrappers', async () => {
+    const athlete = randomUUID();
+    const plan = await seedPlan(athlete);
+    const activity = await createActivityRepository(database).createManualActivity(athlete, {
+      confirmed: true,
+      activity: {
+        title: 'Mobility',
+        kind: 'strength',
+        startedAt: '2026-09-18T08:00:00.000Z',
+        timezone: 'UTC',
+        durationSeconds: 600,
+        durationKind: 'timer',
+        distanceMeters: null,
+      },
+      report: { sessionRpe: null, note: null, planLink: null },
+      idempotencyKey: randomUUID(),
+    });
+    const methodId = randomUUID();
+    const methodVersionId = randomUUID();
+    const strategyId = randomUUID();
+    const strategyVersionId = randomUUID();
+    const optionId = randomUUID();
+    const actionId = randomUUID();
+    const actionRevisionId = randomUUID();
+    const blueprintId = randomUUID();
+    const blueprintVersionId = randomUUID();
+    const scheduleId = randomUUID();
+    const scheduleVersionId = randomUUID();
+    const occurrenceId = randomUUID();
+    const unresolvedOccurrenceId = randomUUID();
+    const runId = randomUUID();
+    const unplannedRunId = randomUUID();
+    const historicalScheduleId = randomUUID();
+    const historicalScheduleVersionId = randomUUID();
+    const historicalOccurrenceId = randomUUID();
+    const historicalRunId = randomUUID();
+    const exerciseId = randomUUID();
+    const exerciseVersionId = randomUUID();
+    const stretchLogId = randomUUID();
+    const stretchRevisionId = randomUUID();
+    await database.tenant(athlete, async (tx) => {
+      const method = {
+        schemaVersion: 1,
+        methodId,
+        versionId: methodVersionId,
+        version: 1,
+        title: 'User stretch recovery',
+        category: 'manual_method',
+        intendedUse: 'Personal record',
+        applicability: [],
+        cautions: [],
+        sourceDescription: 'User input',
+        evidenceLimitations: 'Not reviewed',
+        reviewState: 'unreviewed',
+        reviewedAt: null,
+        source: 'user_recorded',
+        createdAt: '2026-09-17T00:00:00.000Z',
+      };
+      await tx.query(
+        `INSERT INTO recovery_method_version
+         (athlete_id,method_id,version_id,version,record_json) VALUES($1,$2,$3,1,$4::jsonb)`,
+        [athlete, methodId, methodVersionId, JSON.stringify(method)],
+      );
+      await tx.query(
+        'INSERT INTO recovery_method_head(athlete_id,method_id,version,version_id) VALUES($1,$2,1,$3)',
+        [athlete, methodId, methodVersionId],
+      );
+      const strategy = {
+        schemaVersion: 1,
+        strategyId,
+        versionId: strategyVersionId,
+        version: 1,
+        previousVersionId: null,
+        status: 'user_confirmed',
+        selectedOptionId: optionId,
+        createdAt: '2026-09-17T00:00:00.000Z',
+        draft: {
+          title: 'Recovery window',
+          goal: 'Keep actions separate',
+          startDate: '2026-09-18',
+          endDateExclusive: '2026-09-20',
+          timezone: 'UTC',
+          knownFacts: [],
+          missingInformation: [],
+          priority: 'normal',
+          observations: [],
+          planRefs: [{ kind: 'training', aggregateId: plan.id, headVersionId: plan.id }],
+          options: [
+            {
+              id: optionId,
+              title: 'Manual recovery',
+              kind: 'nonexercise_action',
+              methodVersionId,
+              explanation: 'Record only after performance',
+            },
+          ],
+          reassessment: [
+            {
+              id: randomUUID(),
+              trigger: 'plan_changed',
+              plannedAt: null,
+              description: 'Review changes',
+              policyVersion: null,
+            },
+          ],
+        },
+      };
+      await tx.query(
+        `INSERT INTO recovery_strategy_version
+         (athlete_id,strategy_id,version_id,version,previous_version_id,previous_version,record_json)
+         VALUES($1,$2,$3,1,NULL,NULL,$4::jsonb)`,
+        [athlete, strategyId, strategyVersionId, JSON.stringify(strategy)],
+      );
+      await tx.query(
+        'INSERT INTO recovery_strategy_head(athlete_id,strategy_id,version,version_id) VALUES($1,$2,1,$3)',
+        [athlete, strategyId, strategyVersionId],
+      );
+      const action = {
+        schemaVersion: 1,
+        actionId,
+        revisionId: actionRevisionId,
+        revision: 1,
+        status: 'active',
+        recordedAt: '2026-09-18T10:05:00.000Z',
+        methodVersionId,
+        strategyVersionId,
+        plannedOptionId: optionId,
+        occurredAt: '2026-09-18T10:00:00.000Z',
+        timezone: 'UTC',
+        state: 'performed',
+        durationSeconds: null,
+        actualConditions: '',
+        beforeCheckIn: null,
+        afterCheckIn: null,
+        discomfort: '',
+        userNotes: '',
+        source: 'user_confirmed',
+      };
+      await tx.query(
+        `INSERT INTO recovery_action_log(athlete_id,action_id,revision,revision_id,status)
+         VALUES($1,$2,1,$3,'active')`,
+        [athlete, actionId, actionRevisionId],
+      );
+      await tx.query(
+        `INSERT INTO recovery_action_revision
+         (athlete_id,action_id,revision,revision_id,status,record_json)
+         VALUES($1,$2,1,$3,'active',$4::jsonb)`,
+        [athlete, actionId, actionRevisionId, JSON.stringify(action)],
+      );
+      const blueprint = {
+        schemaVersion: 4,
+        routineId: blueprintId,
+        versionId: blueprintVersionId,
+        title: 'Recovery routine',
+        intent: 'Group existing ledgers',
+        status: 'published',
+        tags: [],
+        steps: [],
+        choiceGroups: [],
+        estimatedDurationSeconds: 600,
+        createdAt: '2026-09-17T00:00:00.000Z',
+      };
+      await tx.query(
+        `INSERT INTO routine_blueprint_version
+         (athlete_id,routine_id,version_id,version,previous_version_id,record_json,created_at)
+         VALUES($1,$2,$3,1,NULL,$4::jsonb,$5)`,
+        [athlete, blueprintId, blueprintVersionId, JSON.stringify(blueprint), blueprint.createdAt],
+      );
+      await tx.query(
+        `INSERT INTO routine_blueprint_head
+         (athlete_id,routine_id,version_id,version,visibility) VALUES($1,$2,$3,1,'active')`,
+        [athlete, blueprintId, blueprintVersionId],
+      );
+      const schedule = {
+        schemaVersion: 4,
+        id: scheduleId,
+        versionId: scheduleVersionId,
+        blueprint: { id: blueprintId, versionId: blueprintVersionId },
+        window: {
+          startDate: '2026-09-18',
+          endDateExclusive: '2026-09-20',
+          timezone: 'UTC',
+          maxOccurrences: 2,
+        },
+        rule: { kind: 'dates', dates: ['2026-09-18'], localTime: '11:00' },
+        state: 'active',
+      };
+      await tx.query(
+        `INSERT INTO routine_schedule_version
+         (athlete_id,schedule_id,version_id,blueprint_routine_id,blueprint_version_id,
+          source_plan_version_id,record_json) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+        [
+          athlete,
+          scheduleId,
+          scheduleVersionId,
+          blueprintId,
+          blueprintVersionId,
+          plan.id,
+          JSON.stringify(schedule),
+        ],
+      );
+      await tx.query(
+        'INSERT INTO routine_schedule_head(athlete_id,schedule_id,version_id) VALUES($1,$2,$3)',
+        [athlete, scheduleId, scheduleVersionId],
+      );
+      const occurrence = (id: string, scheduledAt: string | null) => ({
+        id,
+        schedule: { id: scheduleId, versionId: scheduleVersionId },
+        blueprint: { id: blueprintId, versionId: blueprintVersionId },
+        anchorKey: scheduledAt === null ? 'unresolved' : 'resolved',
+        scheduledAt,
+        timingStatus: scheduledAt === null ? 'unresolved' : 'resolved',
+        stepBindings: [],
+        selectedChoices: {},
+      });
+      for (const item of [
+        occurrence(occurrenceId, '2026-09-18T11:00:00.000Z'),
+        occurrence(unresolvedOccurrenceId, null),
+      ])
+        await tx.query(
+          `INSERT INTO routine_occurrence
+           (athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,
+            blueprint_version_id,anchor_key,scheduled_at,record_json)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+          [
+            athlete,
+            item.id,
+            scheduleId,
+            scheduleVersionId,
+            blueprintId,
+            blueprintVersionId,
+            item.anchorKey,
+            item.scheduledAt,
+            JSON.stringify(item),
+          ],
+        );
+      const run = {
+        id: runId,
+        revision: 0,
+        blueprint: { id: blueprintId, versionId: blueprintVersionId },
+        origin: { kind: 'planned', occurrenceId },
+        state: 'ended',
+        progress: [],
+        selectedChoices: {},
+        startedAt: '2026-09-18T11:00:00.000Z',
+        endedAt: '2026-09-18T11:10:00.000Z',
+      };
+      await tx.query(
+        `INSERT INTO routine_run
+         (athlete_id,id,blueprint_routine_id,blueprint_version_id,occurrence_id,revision,state,record_json)
+         VALUES($1,$2,$3,$4,$5,0,'ended',$6::jsonb)`,
+        [athlete, runId, blueprintId, blueprintVersionId, occurrenceId, JSON.stringify(run)],
+      );
+      const unplannedRun = {
+        ...run,
+        id: unplannedRunId,
+        origin: { kind: 'unplanned' },
+        startedAt: '2026-09-18T12:00:00.000Z',
+        endedAt: '2026-09-18T12:10:00.000Z',
+      };
+      await tx.query(
+        `INSERT INTO routine_run
+         (athlete_id,id,blueprint_routine_id,blueprint_version_id,occurrence_id,revision,state,record_json)
+         VALUES($1,$2,$3,$4,NULL,0,'ended',$5::jsonb)`,
+        [athlete, unplannedRunId, blueprintId, blueprintVersionId, JSON.stringify(unplannedRun)],
+      );
+      const historicalSchedule = {
+        ...schedule,
+        id: historicalScheduleId,
+        versionId: historicalScheduleVersionId,
+      };
+      await tx.query(
+        `INSERT INTO routine_schedule_version
+         (athlete_id,schedule_id,version_id,blueprint_routine_id,blueprint_version_id,
+          source_plan_version_id,record_json) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+        [
+          athlete,
+          historicalScheduleId,
+          historicalScheduleVersionId,
+          blueprintId,
+          blueprintVersionId,
+          plan.id,
+          JSON.stringify(historicalSchedule),
+        ],
+      );
+      const historicalOccurrence = {
+        ...occurrence(historicalOccurrenceId, '2026-09-18T13:00:00.000Z'),
+        schedule: { id: historicalScheduleId, versionId: historicalScheduleVersionId },
+      };
+      await tx.query(
+        `INSERT INTO routine_occurrence
+         (athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,
+          blueprint_version_id,anchor_key,scheduled_at,record_json)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+        [
+          athlete,
+          historicalOccurrenceId,
+          historicalScheduleId,
+          historicalScheduleVersionId,
+          blueprintId,
+          blueprintVersionId,
+          historicalOccurrence.anchorKey,
+          historicalOccurrence.scheduledAt,
+          JSON.stringify(historicalOccurrence),
+        ],
+      );
+      const historicalRun = {
+        ...run,
+        id: historicalRunId,
+        origin: { kind: 'planned', occurrenceId: historicalOccurrenceId },
+        startedAt: '2026-09-18T13:00:00.000Z',
+        endedAt: '2026-09-18T13:10:00.000Z',
+      };
+      await tx.query(
+        `INSERT INTO routine_run
+         (athlete_id,id,blueprint_routine_id,blueprint_version_id,occurrence_id,revision,state,record_json)
+         VALUES($1,$2,$3,$4,$5,0,'ended',$6::jsonb)`,
+        [
+          athlete,
+          historicalRunId,
+          blueprintId,
+          blueprintVersionId,
+          historicalOccurrenceId,
+          JSON.stringify(historicalRun),
+        ],
+      );
+      const exercise = {
+        schemaVersion: 2,
+        exerciseId,
+        versionId: exerciseVersionId,
+        family: 'stretching',
+        reviewState: 'unreviewed',
+      };
+      await tx.query(
+        `INSERT INTO supplementary_exercise_version
+         (athlete_id,exercise_id,version_id,version,previous_version_id,previous_version,created_at,record_json)
+         VALUES($1,$2,$3,1,NULL,NULL,'2026-09-17T00:00:00Z',$4::jsonb)`,
+        [athlete, exerciseId, exerciseVersionId, JSON.stringify(exercise)],
+      );
+      await tx.query(
+        'INSERT INTO supplementary_exercise_head(athlete_id,exercise_id,version,version_id) VALUES($1,$2,1,$3)',
+        [athlete, exerciseId, exerciseVersionId],
+      );
+      await tx.query(
+        'INSERT INTO stretch_profile(athlete_id,exercise_version_id,profile_json) VALUES($1,$2,$3::jsonb)',
+        [athlete, exerciseVersionId, JSON.stringify({ method: 'static_hold' })],
+      );
+      await tx.query(
+        `INSERT INTO stretching_log
+         (athlete_id,id,activity_id,exercise_version_id,current_revision,current_revision_id,status)
+         VALUES($1,$2,$3,$4,1,$5,'active')`,
+        [athlete, stretchLogId, activity.activityId, exerciseVersionId, stretchRevisionId],
+      );
+      await tx.query(
+        `INSERT INTO stretching_log_revision
+         (athlete_id,log_id,activity_id,exercise_version_id,revision,revision_id,status,recorded_at,record_json)
+         VALUES($1,$2,$3,$4,1,$5,'active','2026-09-18T08:05:00Z',$6::jsonb)`,
+        [
+          athlete,
+          stretchLogId,
+          activity.activityId,
+          exerciseVersionId,
+          stretchRevisionId,
+          JSON.stringify({
+            logId: stretchLogId,
+            activityId: activity.activityId,
+            exerciseVersionId,
+            revisionId: stretchRevisionId,
+            revision: 1,
+          }),
+        ],
+      );
+    });
+
+    const query = { from: '2026-09-18', toExclusive: '2026-09-20', timezone: 'UTC' };
+    const planner = createIntegratedPlannerRepository(database);
+    const legacyBefore = await planner.read(athlete, query);
+    let statements = 0;
+    const snapshotDatabase: Database = {
+      tenant: (athleteId, operation) =>
+        database.tenant(athleteId, (tx) =>
+          operation({
+            athleteId: tx.athleteId,
+            query: (statement, values) => {
+              statements += 1;
+              return tx.query(statement, values);
+            },
+          }),
+        ),
+      exclusiveTenant: (athleteId, operation) => database.exclusiveTenant(athleteId, operation),
+      close: () => database.close(),
+    };
+    const read = await createIntegratedPlannerRepository(snapshotDatabase).readV4(athlete, query);
+    expect(statements).toBe(1);
+    expect(await planner.read(athlete, query)).toEqual(legacyBefore);
+    expect(read.schemaVersion).toBe(4);
+    expect(read.recoveryStrategyVersionIds).toEqual([strategyVersionId]);
+    expect(read.routineScheduleVersionIds).toEqual([scheduleVersionId]);
+    expect(read.days[0]).toMatchObject({
+      recoveryPlans: [{ strategyId, versionId: strategyVersionId }],
+      recoveryActions: [{ actionId, revision: 1, methodVersionId }],
+      routineOccurrences: [{ occurrenceId, scheduleId, scheduleVersionId }],
+      stretchingActivityIds: [activity.activityId],
+      summary: {
+        training: { actualActivityCount: 1 },
+      },
+    });
+    expect(read.days[0]?.routineRuns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runId, occurrenceId }),
+        expect.objectContaining({ runId: unplannedRunId, occurrenceId: null }),
+        expect.objectContaining({ runId: historicalRunId, occurrenceId: historicalOccurrenceId }),
+      ]),
+    );
+    expect(read.days[0]?.routineRuns).toHaveLength(3);
+    expect(read.summary).toMatchObject({
+      training: { actualActivityCount: 1 },
+      recovery: { plannedStrategyCount: 1, actualActionCount: 1 },
+      routines: { occurrenceCount: 1, runCount: 3 },
+      stretchingActivityCount: 1,
+    });
+    expect(read.days.flatMap((day) => day.routineOccurrences)).toHaveLength(1);
+    const foreign = await planner.readV4(randomUUID(), query);
+    expect(foreign.summary).toMatchObject({
+      training: { actualActivityCount: 0 },
+      recovery: { plannedStrategyCount: 0, actualActionCount: 0 },
+      routines: { occurrenceCount: 0, runCount: 0 },
+      stretchingActivityCount: 0,
+    });
   });
 });

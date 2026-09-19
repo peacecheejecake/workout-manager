@@ -468,9 +468,10 @@ export const integratedCoachingBasisV023Schema = z.strictObject({
 export const integratedApprovalV023Schema = z
   .strictObject({
     schemaVersion: z.literal(4),
+    confirmed: z.literal(true),
     proposalId: idSchema,
     candidateId: idSchema,
-    proposalDigest: nonEmptyStringSchema,
+    proposalDigest: z.string().regex(/^[a-f0-9]{64}$/),
     writeDomains: z
       .tuple([planDomainSchema], planDomainSchema)
       .refine((domains) => new Set(domains).size === domains.length, 'Duplicate write domain'),

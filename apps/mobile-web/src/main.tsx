@@ -2,6 +2,7 @@ import { lazy, Suspense, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-candidates';
 import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
+import { integratedCandidateV4Schema } from '@workout/contracts/integrated-coaching';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
 import './styles.css';
 
@@ -16,6 +17,11 @@ const ProposalPage = lazy(() =>
 );
 const JointProposalPage = lazy(() =>
   import('./joint-proposal-page').then((module) => ({ default: module.JointProposalPage })),
+);
+const IntegratedProposalPage = lazy(() =>
+  import('./integrated-proposal-page').then((module) => ({
+    default: module.IntegratedProposalPage,
+  })),
 );
 const PlannerPage = lazy(() =>
   import('./planner-page').then((module) => ({ default: module.PlannerPage })),
@@ -46,12 +52,26 @@ const jointProposalPath = location.pathname.match(/^\/joint-proposals\/([^/]+)\/
 const jointProposalCandidateId = jointProposalPath
   ? jointCandidateV3Schema.shape.id.safeParse(jointProposalPath)
   : null;
+const integratedProposalPath = location.pathname.match(/^\/integrated-proposals\/([^/]+)\/?$/)?.[1];
+const integratedProposalCandidateId = integratedProposalPath
+  ? integratedCandidateV4Schema.shape.id.safeParse(integratedProposalPath)
+  : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
     <main className="wm-page mobile-shell">
-      {jointProposalCandidateId?.success ? (
+      {integratedProposalCandidateId?.success ? (
+        <Suspense fallback={<p role="status">통합 후보 검토 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/coach">코치</a> · <a href="/planner">통합 계획</a> ·{' '}
+            <a href="/recovery">회복</a>
+          </nav>
+          <IntegratedProposalPage candidateId={integratedProposalCandidateId.data.toLowerCase()} />
+        </Suspense>
+      ) : integratedProposalPath ? (
+        <p role="alert">통합 후보 주소가 올바르지 않습니다.</p>
+      ) : jointProposalCandidateId?.success ? (
         <Suspense fallback={<p role="status">공동 후보 검토 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/coach">코치</a> · <a href="/planner">훈련 계획</a> ·{' '}

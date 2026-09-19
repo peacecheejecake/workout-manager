@@ -99,10 +99,13 @@ export async function persistPlanVersion(
   transaction: Transaction,
   {
     expectedVersionId,
+    aggregateId,
     draft,
     reviewedRelativeNutritionPlanIds = [],
   }: {
     expectedVersionId: string | null;
+    /** Stable plan identity. Schema-v4 callers provide it; legacy callers preserve or allocate one. */
+    aggregateId?: string;
     draft: PlanDraft;
     /** Joint approval only: exact set of current nutrition heads reviewed for changed relative anchors. */
     reviewedRelativeNutritionPlanIds?: readonly string[];
@@ -144,8 +147,10 @@ export async function persistPlanVersion(
   );
   const saved = snapshot(inserted.rows[0] ?? {});
   await transaction.query(
-    'INSERT INTO plan_head(athlete_id,version_id) VALUES($1,$2) ON CONFLICT(athlete_id) DO UPDATE SET version_id=EXCLUDED.version_id',
-    [transaction.athleteId, id],
+    `INSERT INTO plan_head(athlete_id,aggregate_id,version_id)
+     VALUES($1,coalesce($3::uuid,gen_random_uuid()),$2)
+     ON CONFLICT(athlete_id) DO UPDATE SET version_id=EXCLUDED.version_id`,
+    [transaction.athleteId, id, aggregateId ?? null],
   );
   return saved;
 }

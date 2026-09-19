@@ -16,21 +16,11 @@ export const recoveryObservationRefSchema = z.strictObject({
   revision: z.number().int().positive(),
 });
 export type RecoveryObservationRef = z.infer<typeof recoveryObservationRefSchema>;
-export const recoveryPlanRefSchema = z
-  .strictObject({
-    kind: z.enum(['training', 'nutrition']),
-    aggregateId: uuid,
-    headVersionId: uuid,
-  })
-  .superRefine((reference, context) => {
-    if (reference.kind === 'training' && reference.aggregateId !== reference.headVersionId) {
-      context.addIssue({
-        code: 'custom',
-        path: ['aggregateId'],
-        message: 'Training uses the frozen head as its reference',
-      });
-    }
-  });
+export const recoveryPlanRefSchema = z.strictObject({
+  kind: z.enum(['training', 'nutrition']),
+  aggregateId: uuid,
+  headVersionId: uuid,
+});
 export type RecoveryPlanRef = z.infer<typeof recoveryPlanRefSchema>;
 
 export const recoveryMethodCategorySchema = z.enum([

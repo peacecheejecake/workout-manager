@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,12 +9,22 @@ import {
   type AuthenticatedTransport,
   type TransportRequest,
 } from '@workout/contracts/core';
-import { integratedPlannerReadSchema } from '@workout/contracts/integrated-planner';
+import { integratedPlannerReadV4Schema } from '@workout/contracts/integrated-planner';
 import { addDays } from '../src/lens';
 import { IntegratedPlannerPanel } from '../src/integrated-planner-panel';
 
 const nutritionVersionId = '11111111-1111-4111-8111-111111111111';
 const activityId = '22222222-2222-4222-8222-222222222222';
+const recoveryStrategyId = '33333333-3333-4333-8333-333333333333';
+const recoveryVersionId = '44444444-4444-4444-8444-444444444444';
+const recoveryOptionId = '55555555-5555-4555-8555-555555555555';
+const recoveryActionId = '66666666-6666-4666-8666-666666666666';
+const recoveryMethodId = '77777777-7777-4777-8777-777777777777';
+const scheduleId = '88888888-8888-4888-8888-888888888888';
+const scheduleVersionId = '99999999-9999-4999-8999-999999999999';
+const blueprintVersionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const occurrenceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const runId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const known = (unit: 'kcal' | 'g' | 'mL' | 'mg', value: number) => ({
   unit,
   value,
@@ -63,6 +73,12 @@ const emptySummary = {
     intakeCoverage: 'unknown' as const,
   },
 };
+const emptySummaryV4 = {
+  ...emptySummary,
+  recovery: { plannedStrategyCount: 0, actualActionCount: 0 },
+  routines: { occurrenceCount: 0, runCount: 0 },
+  stretchingActivityCount: 0,
+};
 function emptyRead(from: string, toExclusive: string) {
   const days = [];
   for (let date = from; date < toExclusive; date = addDays(date, 1))
@@ -72,19 +88,26 @@ function emptyRead(from: string, toExclusive: string) {
       nutritionItems: [],
       activities: [],
       intakes: [],
+      recoveryPlans: [],
+      recoveryActions: [],
+      routineOccurrences: [],
+      routineRuns: [],
+      stretchingActivityIds: [],
       summary: emptySummary,
     });
-  return integratedPlannerReadSchema.parse({
-    schemaVersion: 1,
+  return integratedPlannerReadV4Schema.parse({
+    schemaVersion: 4,
     from,
     toExclusive,
     timezone: 'UTC',
     trainingPlanVersionId: null,
     nutritionPlanVersionIds: [],
+    recoveryStrategyVersionIds: [],
+    routineScheduleVersionIds: [],
     days,
     unresolvedNutritionItems: [],
     unplacedActivityCount: 0,
-    summary: emptySummary,
+    summary: emptySummaryV4,
   });
 }
 const session = {
@@ -105,9 +128,11 @@ const session = {
 };
 function populatedRead() {
   const read = emptyRead('2026-09-18', '2026-09-20');
-  return integratedPlannerReadSchema.parse({
+  return integratedPlannerReadV4Schema.parse({
     ...read,
     nutritionPlanVersionIds: [nutritionVersionId],
+    recoveryStrategyVersionIds: [recoveryVersionId],
+    routineScheduleVersionIds: [scheduleVersionId],
     days: [
       {
         ...read.days[0],
@@ -137,6 +162,34 @@ function populatedRead() {
         intakes: [
           { intakeId: 'intake-1', revision: 1, occurredAt: '2026-09-18T09:00:00Z', nutrientTotal },
         ],
+        recoveryPlans: [
+          {
+            strategyId: recoveryStrategyId,
+            versionId: recoveryVersionId,
+            title: '휴식 중심 회복',
+            selectedOptionId: recoveryOptionId,
+          },
+        ],
+        recoveryActions: [
+          {
+            actionId: recoveryActionId,
+            revision: 1,
+            occurredAt: '2026-09-18T10:00:00Z',
+            state: 'performed',
+            methodVersionId: recoveryMethodId,
+          },
+        ],
+        routineOccurrences: [
+          {
+            occurrenceId,
+            scheduleId,
+            scheduleVersionId,
+            blueprintVersionId,
+            scheduledAt: '2026-09-18T07:00:00Z',
+          },
+        ],
+        routineRuns: [{ runId, revision: 0, state: 'ended', occurrenceId }],
+        stretchingActivityIds: [activityId],
       },
       read.days[1],
     ],
@@ -150,6 +203,23 @@ function populatedRead() {
         reason: 'missing_session_duration',
       },
     ],
+    summary: {
+      ...emptySummaryV4,
+      training: {
+        ...emptySummaryV4.training,
+        plannedSessionCount: 1,
+        actualActivityCount: 1,
+        supplementaryActivityCount: 1,
+      },
+      nutrition: {
+        ...emptySummaryV4.nutrition,
+        plannedItemCount: 1,
+        intakeCount: 1,
+      },
+      recovery: { plannedStrategyCount: 1, actualActionCount: 1 },
+      routines: { occurrenceCount: 1, runCount: 1 },
+      stretchingActivityCount: 1,
+    },
   });
 }
 function mount(
@@ -205,6 +275,25 @@ describe('integrated Planner panel', () => {
     expect(within(panel).getByRole('region', { name: '2026-09-18 섭취 실제' })).toHaveTextContent(
       '0 kcal',
     );
+    expect(
+      within(panel).getByRole('region', { name: '2026-09-18 회복 계획과 실제' }),
+    ).toHaveTextContent('회복 계획 1건');
+    expect(
+      within(panel).getByRole('region', { name: '2026-09-18 회복 계획과 실제' }),
+    ).toHaveTextContent('회복 실제 1건');
+    expect(
+      within(panel).getByRole('region', { name: '2026-09-18 루틴 발생분과 실행' }),
+    ).toHaveTextContent('루틴 발생분 1건');
+    expect(
+      within(panel).getByRole('region', { name: '2026-09-18 루틴 발생분과 실행' }),
+    ).toHaveTextContent('RoutineRun 1건');
+    expect(
+      within(panel).getByRole('region', { name: '2026-09-18 스트레칭 Activity 상세' }),
+    ).toHaveTextContent('스트레칭 Activity 상세 1건');
+    expect(within(panel).getByText(/회복 계획 1건 · 회복 실제 1건/)).toBeVisible();
+    expect(within(panel).getByText(/RoutineRun은 실제 기록을 연결하는 wrapper/)).toHaveTextContent(
+      '실제 Activity 시간과 건수에는 다시 더하지 않습니다',
+    );
     expect(within(panel).getByRole('region', { name: '날짜 미해결 영양 계획' })).toHaveTextContent(
       '세션 종료 시각 미정',
     );
@@ -216,7 +305,7 @@ describe('integrated Planner panel', () => {
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: '/bff/v1/planner/integrated?from=2026-09-18&toExclusive=2026-09-20&timezone=UTC',
+        path: '/bff/v1/planner/integrated?from=2026-09-18&toExclusive=2026-09-20&timezone=UTC&maxSchemaVersion=4',
         method: 'GET',
       }),
     );
@@ -243,7 +332,7 @@ describe('integrated Planner panel', () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: `/bff/v1/planner/integrated?from=${start}&toExclusive=${end}&timezone=UTC`,
+        path: `/bff/v1/planner/integrated?from=${start}&toExclusive=${end}&timezone=UTC&maxSchemaVersion=4`,
       }),
     );
   });
@@ -278,5 +367,63 @@ describe('integrated Planner panel', () => {
     });
     expect(screen.getByText(/최대 93일/)).toBeVisible();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes an unsupported schema response and offers an update retry', async () => {
+    const user = userEvent.setup();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 409,
+        body: { message: 'UNSUPPORTED_SCHEMA_VERSION' },
+        traceId: null,
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        body: emptyRead('2026-09-18', '2026-09-20'),
+        traceId: null,
+      });
+    mount(request);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('앱을 업데이트');
+    const retry = screen.getByRole('button', { name: '앱 업데이트 후 다시 확인' });
+    await user.click(retry);
+
+    expect(
+      await screen.findByText('선택한 기간에 배치된 계획이나 실제 기록이 없습니다.'),
+    ).toBeVisible();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the loading state and explicit refetch behavior for the v4 request', async () => {
+    const user = userEvent.setup();
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce({
+        status: 200,
+        body: emptyRead('2026-09-18', '2026-09-20'),
+        traceId: null,
+      });
+    mount(request);
+
+    expect(await screen.findByText('훈련·영양 기록을 확인하는 중입니다.')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(screen.getByRole('button', { name: '통합 기록 다시 확인' })).toBeDisabled();
+    resolveFirst?.({
+      status: 200,
+      body: emptyRead('2026-09-18', '2026-09-20'),
+      traceId: null,
+    });
+    await screen.findByText('선택한 기간에 배치된 계획이나 실제 기록이 없습니다.');
+
+    await user.click(screen.getByRole('button', { name: '통합 기록 다시 확인' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
   });
 });
