@@ -1102,6 +1102,16 @@ describe('private URL resource contracts', () => {
         reader: urlReader,
       }).status,
     ).toBe('available');
+    // M2-04d widened review and coach use into explicit states; an unknown
+    // review state is still refused, and neither is implied by parsing.
+    expect(
+      privateUrlResourceReadResultSchema.safeParse({
+        status: 'available',
+        resource: { ...urlResource, reviewedState: 'curated' },
+        version: urlVersion,
+        reader: urlReader,
+      }).success,
+    ).toBe(false);
     expect(
       privateUrlResourceReadResultSchema.safeParse({
         status: 'available',
@@ -1109,7 +1119,7 @@ describe('private URL resource contracts', () => {
         version: urlVersion,
         reader: urlReader,
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       privateUrlResourceReadResultSchema.safeParse({
         status: 'available',

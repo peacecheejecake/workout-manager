@@ -725,7 +725,8 @@ export function createPrivateTextResourceRepository(
         );
         const accessRevision = input.expectedAccessRevision + 1;
         await tx.query(
-          `UPDATE resource SET access_revision=$3,updated_at=$4,deleted_at=$4
+          `UPDATE resource SET access_revision=$3,updated_at=$4,deleted_at=$4,
+             include_for_coach=false,coach_use_enabled_at=NULL
            WHERE athlete_id=$1 AND id=$2`,
           [athleteId, id, accessRevision, deletedAt],
         );
@@ -735,6 +736,17 @@ export function createPrivateTextResourceRepository(
           deletedAt,
           accessRevision,
         });
+        await tx.query(
+          `INSERT INTO resource_access_audit
+            (athlete_id,event_id,resource_id,action,access_revision,share_id,grantee_kind,
+             grantee_principal_id,occurred_at)
+           VALUES($1,$2,$3,'resource_deleted',$4,NULL,NULL,NULL,$5)`,
+          [athleteId, randomUUID(), id, accessRevision, deletedAt],
+        );
+        await tx.query("SELECT public.revoke_resource_shares($1,'RESOURCE_DELETED')", [id]);
+        await tx.query("SELECT public.enqueue_resource_derived_cleanup($1,'resource_deleted')", [
+          id,
+        ]);
         await tx.query('SELECT public.tombstone_resource_receipts($1)', [id]);
         await tx.query("SELECT public.cancel_resource_uploads($1,'RESOURCE_DELETED')", [id]);
         await tx.query("SELECT public.enqueue_resource_object_cleanup($1,'resource_deleted')", [

@@ -422,7 +422,7 @@ describe('private text resource API boundaries', () => {
   it('fails closed when a repository response violates the public schema', async () => {
     const { app, repository } = setup();
     repository.list.mockResolvedValue({
-      items: [{ ...resource, includeForCoach: true }],
+      items: [{ ...resource, reviewedState: 'curated' }],
       total: 1,
     });
     const response = await app.inject({ url: collection, headers });

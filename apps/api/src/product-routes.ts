@@ -53,7 +53,9 @@ import type { OperationsRepository } from '@workout/server-persistence/operation
 import type { PrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import type { ResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
+import type { ResourceAccessRepository } from '@workout/server-persistence/resource-access';
 import { registerResourceRoutes } from './resources-routes.js';
+import { registerResourceAccessRoutes } from './resource-access-routes.js';
 import { registerResourceFileRoutes } from './resource-file-routes.js';
 import {
   registerResourceUrlRoutes,
@@ -93,6 +95,7 @@ export interface ProductRepositories {
     storage: ObjectStorage;
   };
   resourceUrls?: ResourceUrlIngestionRouteRepository;
+  resourceAccess?: ResourceAccessRepository;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -142,7 +145,16 @@ export function registerProductRoutes(
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);
   if (repositories.resources) registerResourceRoutes(routes, repositories.resources, principal);
   if (repositories.resourceFiles)
-    registerResourceFileRoutes(routes, repositories.resourceFiles, principal);
+    registerResourceFileRoutes(
+      routes,
+      {
+        ...repositories.resourceFiles,
+        ...(repositories.resourceAccess ? { sharedAccess: repositories.resourceAccess } : {}),
+      },
+      principal,
+    );
   if (repositories.resourceUrls)
     registerResourceUrlRoutes(routes, repositories.resourceUrls, principal);
+  if (repositories.resourceAccess)
+    registerResourceAccessRoutes(routes, repositories.resourceAccess, principal);
 }

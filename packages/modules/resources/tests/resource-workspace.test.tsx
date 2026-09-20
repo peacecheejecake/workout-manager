@@ -865,5 +865,5 @@ it('renders finalized URL fragments with version-pinned locators', async () => {
   );
   expect(screen.getByText(/HTML 블록 · 훈련 · UTF-16 0–/)).not.toBeNull();
   expect(screen.getAllByText(displayUrl)).not.toHaveLength(0);
-  expect(screen.getAllByText(/private · 미검토 · 검색 색인 안 됨/)).not.toHaveLength(0);
+  expect(screen.getAllByText(/private · 검색 색인 안 됨 · 코치 사용 안 함/)).not.toHaveLength(0);
 });

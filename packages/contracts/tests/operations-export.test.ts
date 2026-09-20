@@ -532,3 +532,159 @@ it('requires URL ingestion collections in v14 while preserving v13 artifacts', (
   expect(accountExportSchema.safeParse({ ...v13, schemaVersion: 14 }).success).toBe(false);
   expect(accountExportSchema.parse(v13).data).not.toHaveProperty('resourceUrlIngestions');
 });
+
+it('requires resource access collections in v15 while preserving v14 artifacts', () => {
+  const v14 = accountExportSchema.parse({
+    schemaVersion: 14,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+      supplementaryExerciseVersions: [],
+      supplementaryExerciseHeads: [],
+      supplementaryRoutineVersions: [],
+      supplementaryRoutineHeads: [],
+      supplementaryRoutineTargetRefs: [],
+      supplementarySessionLinks: [],
+      supplementarySessionTargetRefs: [],
+      supplementaryExecutions: [],
+      supplementarySetLogs: [],
+      supplementarySetLogRevisions: [],
+      supplementaryRestTimers: [],
+      resources: [],
+      resourceVersions: [],
+      resourceUrlIngestions: [],
+      resourceUrlAttempts: [],
+      resourceUrlFetchHops: [],
+      resourceUrlArtifacts: [],
+      resourceUrlProvenance: [],
+      resourceUrlLocators: [],
+    },
+  });
+  const accessCollections = {
+    resourceShares: [
+      {
+        share_id: '11111111-1111-4111-8111-111111111111',
+        resource_id: '22222222-2222-4222-8222-222222222222',
+        grantee_kind: 'coach',
+        grantee_principal_id: 'coach-1',
+        state: 'active',
+        granted_access_revision: 2,
+        revoked_access_revision: null,
+        granted_at: '2026-09-20T00:00:00.000Z',
+        revoked_at: null,
+        updated_at: '2026-09-20T00:00:00.000Z',
+      },
+    ],
+    resourceAccessAudit: [
+      {
+        event_id: '33333333-3333-4333-8333-333333333333',
+        resource_id: '22222222-2222-4222-8222-222222222222',
+        action: 'share_granted',
+        access_revision: 2,
+        share_id: '11111111-1111-4111-8111-111111111111',
+        grantee_kind: 'coach',
+        grantee_principal_id: 'coach-1',
+        occurred_at: '2026-09-20T00:00:00.000Z',
+      },
+    ],
+  };
+  const v15 = { ...v14, schemaVersion: 15, data: { ...v14.data, ...accessCollections } };
+  expect(accountExportSchema.parse(v15)).toEqual(v15);
+  // v15 requires both new collections and never manufactures them for v14.
+  expect(accountExportSchema.safeParse({ ...v14, schemaVersion: 15 }).success).toBe(false);
+  expect(
+    accountExportSchema.safeParse({
+      ...v14,
+      schemaVersion: 15,
+      data: { ...v14.data, resourceShares: [] },
+    }).success,
+  ).toBe(false);
+  expect(accountExportSchema.parse(v14).data).not.toHaveProperty('resourceShares');
+  // Every collection v14 carried is still required by v15.
+  expect(
+    accountExportSchema.safeParse({
+      ...v15,
+      data: { ...v15.data, resourceUrlLocators: undefined },
+    }).success,
+  ).toBe(false);
+});
+
+it('parses the currently integrated export version without dropping access facts', () => {
+  const current = accountExportSchema.parse({
+    schemaVersion: 15,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+      supplementaryExerciseVersions: [],
+      supplementaryExerciseHeads: [],
+      supplementaryRoutineVersions: [],
+      supplementaryRoutineHeads: [],
+      supplementaryRoutineTargetRefs: [],
+      supplementarySessionLinks: [],
+      supplementarySessionTargetRefs: [],
+      supplementaryExecutions: [],
+      supplementarySetLogs: [],
+      supplementarySetLogRevisions: [],
+      supplementaryRestTimers: [],
+      resources: [],
+      resourceVersions: [],
+      resourceUrlIngestions: [],
+      resourceUrlAttempts: [],
+      resourceUrlFetchHops: [],
+      resourceUrlArtifacts: [],
+      resourceUrlProvenance: [],
+      resourceUrlLocators: [],
+      resourceShares: [],
+      resourceAccessAudit: [],
+    },
+  });
+  if (current.schemaVersion !== 15) throw new Error('Expected the integrated export version');
+  expect(current.data.resourceShares).toEqual([]);
+  expect(current.data.resourceAccessAudit).toEqual([]);
+});

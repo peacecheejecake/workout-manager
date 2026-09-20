@@ -3,8 +3,13 @@ import type {
   ResourceObjectCleanupLease,
   ResourceObjectCleanupRepository,
 } from '@workout/server-persistence/resource-object-cleanup';
+import type {
+  ResourceDerivedCleanupManifest,
+  ResourceDerivedCleanupRepository,
+} from '@workout/server-persistence/resource-derived-cleanup';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  noConfiguredDerivedStorePurge,
   runResourceCleanupWorker,
   type ResourceCleanupWorkerDependencies,
 } from '../src/resource-cleanup-worker.js';
@@ -25,6 +30,8 @@ function setup(input: {
   deleteFailure?: Error;
   finishResult?: boolean;
   reapFailure?: Error;
+  derivedManifest?: ResourceDerivedCleanupManifest | null;
+  derivedReleaseResult?: boolean;
   now?: () => Date;
 }) {
   const deleteObject = input.deleteFailure
@@ -53,12 +60,20 @@ function setup(input: {
     stat: notUsed,
     delete: deleteObject,
   };
+  const derivedRepository: ResourceDerivedCleanupRepository = {
+    pruneHistory: vi.fn(async () => 0),
+    lease: vi.fn(async () => input.derivedManifest ?? null),
+    finish: vi.fn(async () => true),
+    release: vi.fn(async () => input.derivedReleaseResult ?? true),
+    close: vi.fn(async () => undefined),
+  };
   const dependencies: ResourceCleanupWorkerDependencies = {
     createStorage: vi.fn(async () => storage),
     createRepository: vi.fn(() => repository),
+    createDerivedRepository: vi.fn(() => derivedRepository),
     now: input.now ?? vi.fn(() => new Date('2026-09-19T00:00:00.000Z')),
   };
-  return { dependencies, repository, deleteObject };
+  return { dependencies, repository, derivedRepository, deleteObject };
 }
 
 describe('resource object cleanup worker', () => {
@@ -67,7 +82,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('completed');
+    ).resolves.toMatchObject({ objects: 'completed' });
 
     expect(dependencies.createStorage).toHaveBeenCalledWith(storageRoot);
     expect(dependencies.createRepository).toHaveBeenCalledWith({ connectionString, max: 1 });
@@ -86,7 +101,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('empty');
+    ).resolves.toMatchObject({ objects: 'empty' });
 
     expect(deleteObject).not.toHaveBeenCalled();
     expect(repository.finish).not.toHaveBeenCalled();
@@ -118,7 +133,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('completed');
+    ).resolves.toMatchObject({ objects: 'completed' });
 
     expect(deleteObject).toHaveBeenCalledWith(temporaryLease.storageRef);
     expect(repository.finish).toHaveBeenCalledWith(temporaryLease, { ok: true }, expect.any(Date));
@@ -132,7 +147,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('completed');
+    ).resolves.toMatchObject({ objects: 'completed' });
 
     expect(repository.authorize).toHaveBeenCalledWith(lease, expect.any(Date));
     expect(deleteObject).not.toHaveBeenCalled();
@@ -149,7 +164,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('completed');
+    ).resolves.toMatchObject({ objects: 'completed' });
 
     expect(arbitraryFuture).toHaveBeenCalled();
     expect(repository.authorize).toHaveBeenCalledWith(lease, expect.any(Date));
@@ -165,7 +180,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('retry_scheduled');
+    ).resolves.toMatchObject({ objects: 'retry_scheduled' });
 
     expect(repository.finish).toHaveBeenCalledWith(
       lease,
@@ -181,7 +196,7 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('retry_scheduled');
+    ).resolves.toMatchObject({ objects: 'retry_scheduled' });
 
     expect(deleteObject).not.toHaveBeenCalled();
     expect(repository.finish).toHaveBeenCalledWith(
@@ -197,8 +212,122 @@ describe('resource object cleanup worker', () => {
 
     await expect(
       runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
-    ).resolves.toBe('lease_lost');
+    ).resolves.toMatchObject({ objects: 'lease_lost' });
 
     expect(repository.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('never completes a derived manifest while no store executor is installed', async () => {
+    const manifest: ResourceDerivedCleanupManifest = {
+      id: '0b2a4f0c-0f7f-4a0f-9d1d-5b0a5a8e6a11',
+      athleteId: 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa',
+      resourceId: '4d6cc1ce-0643-4c53-b055-9df458fec594',
+      reason: 'share_revoked',
+      accessRevision: 4,
+      targets: { derivedData: true, searchIndex: true, cache: true, citations: true },
+      attempts: 1,
+    };
+    const { dependencies, derivedRepository } = setup({ derivedManifest: manifest });
+
+    // The shipped default map is empty: no retrieval index, cache or citation
+    // store exists yet, so the manifest must stay open and fail closed. The
+    // queue is not even leased, so no attempt budget is spent.
+    await expect(
+      runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+    ).resolves.toMatchObject({ objects: 'empty', derived: 'unsupported_target' });
+
+    expect(noConfiguredDerivedStorePurge).toEqual({});
+    expect(derivedRepository.pruneHistory).toHaveBeenCalledWith(100);
+    expect(derivedRepository.lease).not.toHaveBeenCalled();
+    expect(derivedRepository.finish).not.toHaveBeenCalled();
+    expect(derivedRepository.release).not.toHaveBeenCalled();
+    expect(derivedRepository.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases rather than fails a manifest when one target executor is missing', async () => {
+    const manifest: ResourceDerivedCleanupManifest = {
+      id: '0b2a4f0c-0f7f-4a0f-9d1d-5b0a5a8e6a14',
+      athleteId: 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa',
+      resourceId: '4d6cc1ce-0643-4c53-b055-9df458fec594',
+      reason: 'coach_use_withdrawn',
+      accessRevision: 5,
+      targets: { derivedData: true, searchIndex: true, cache: true, citations: true },
+      attempts: 1,
+    };
+    const { dependencies, derivedRepository } = setup({ derivedManifest: manifest });
+
+    await expect(
+      runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        { ...dependencies, derivedPurge: { derivedData: async () => undefined } },
+      ),
+    ).resolves.toMatchObject({ derived: 'unsupported_target' });
+
+    // A released lease returns the attempt budget instead of spending it.
+    expect(derivedRepository.release).toHaveBeenCalledWith(manifest, 'DERIVED_TARGET_UNSUPPORTED');
+    expect(derivedRepository.finish).not.toHaveBeenCalled();
+  });
+
+  it('reports lease loss when the expired lease can no longer be released', async () => {
+    const manifest: ResourceDerivedCleanupManifest = {
+      id: '0b2a4f0c-0f7f-4a0f-9d1d-5b0a5a8e6a15',
+      athleteId: 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa',
+      resourceId: '4d6cc1ce-0643-4c53-b055-9df458fec594',
+      reason: 'share_revoked',
+      accessRevision: 6,
+      targets: { derivedData: true, searchIndex: true, cache: true, citations: true },
+      attempts: 1,
+    };
+    const { dependencies, derivedRepository } = setup({
+      derivedManifest: manifest,
+      derivedReleaseResult: false,
+    });
+
+    // A refused release means the 60s lease already expired, so the attempt was
+    // not restored and this worker must not claim an unsupported-target cycle.
+    await expect(
+      runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        { ...dependencies, derivedPurge: { derivedData: async () => undefined } },
+      ),
+    ).resolves.toMatchObject({ derived: 'lease_lost' });
+
+    expect(derivedRepository.release).toHaveBeenCalledTimes(1);
+    expect(derivedRepository.finish).not.toHaveBeenCalled();
+  });
+
+  it('completes a derived manifest only when every target has a real executor', async () => {
+    const manifest: ResourceDerivedCleanupManifest = {
+      id: '0b2a4f0c-0f7f-4a0f-9d1d-5b0a5a8e6a13',
+      athleteId: 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa',
+      resourceId: '4d6cc1ce-0643-4c53-b055-9df458fec594',
+      reason: 'review_withdrawn',
+      accessRevision: 9,
+      targets: { derivedData: true, searchIndex: true, cache: true, citations: true },
+      attempts: 1,
+    };
+    const { dependencies, derivedRepository } = setup({ derivedManifest: manifest });
+    const purged: string[] = [];
+    const record = (name: string) => async () => {
+      purged.push(name);
+    };
+
+    await expect(
+      runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        {
+          ...dependencies,
+          derivedPurge: {
+            derivedData: record('derivedData'),
+            searchIndex: record('searchIndex'),
+            cache: record('cache'),
+            citations: record('citations'),
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ derived: 'completed' });
+
+    expect(purged).toEqual(['derivedData', 'searchIndex', 'cache', 'citations']);
+    expect(derivedRepository.finish).toHaveBeenCalledWith(manifest, { ok: true });
   });
 });

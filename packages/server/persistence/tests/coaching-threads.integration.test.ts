@@ -221,8 +221,8 @@ it('rejects foreign or mismatched scope, pages owned threads including past-end 
     ),
   ).rejects.toMatchObject({ code: '42501' });
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(14);
-  if (exported.schemaVersion !== 14) throw new Error('Expected current export schema');
+  expect(exported.schemaVersion).toBe(15);
+  if (exported.schemaVersion !== 15) throw new Error('Expected current export schema');
   expect(exported.data.coachingThreads).toHaveLength(3);
   expect(exported.data.coachingMessages).toHaveLength(3);
   expect(JSON.stringify(exported.data.coachingMessages)).toContain('Synthetic user message');

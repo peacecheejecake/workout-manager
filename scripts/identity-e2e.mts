@@ -26,6 +26,7 @@ import { createRoutineRepository } from '../packages/server/persistence/src/rout
 import { createRecoveryRepository } from '../packages/server/persistence/src/recovery-core.ts';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.ts';
+import { createResourceAccessRepository } from '../packages/server/persistence/src/resource-access.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { spawnSync } from 'node:child_process';
@@ -300,6 +301,7 @@ try {
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),
     resources: createPrivateTextResourceRepository(database),
+    resourceAccess: createResourceAccessRepository(database),
     resourceFiles: {
       uploads: createResourceFileUploadRepository(database),
       storage: resourceStorage,

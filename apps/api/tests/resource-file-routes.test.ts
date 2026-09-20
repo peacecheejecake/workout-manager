@@ -93,6 +93,21 @@ function storageFixture(): ObjectStorage {
   };
 }
 
+function sharedAccessFixture() {
+  return {
+    readAccess: vi.fn(),
+    grantShare: vi.fn(),
+    revokeShare: vi.fn(),
+    setReviewed: vi.fn(),
+    setCoachUse: vi.fn(),
+    listSharedWithMe: vi.fn(),
+    readSharedWithMe: vi.fn(),
+    resolveSharedObject: vi.fn().mockResolvedValue(null),
+    captureCoachUseManifest: vi.fn(),
+    revalidateCoachUseManifest: vi.fn(),
+  };
+}
+
 function setup() {
   const bytes = Buffer.from('# 계획\n');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -146,6 +161,7 @@ function setup() {
     },
   };
   const storage = storageFixture();
+  const sharedAccess = sharedAccessFixture();
   const uploads: ResourceFileUploadRepository = {
     get: vi.fn().mockResolvedValue(reservation),
     reserveCreate: vi.fn().mockResolvedValue(reservation),
@@ -168,6 +184,7 @@ function setup() {
     },
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     resourceFiles: { uploads, storage },
+    resourceAccess: sharedAccess,
     logStream: new Writable({
       write(_chunk, _encoding, callback) {
         callback();
@@ -175,7 +192,7 @@ function setup() {
     }),
   });
   instances.push(app);
-  return { app, uploads, storage, bytes, file, available };
+  return { app, uploads, storage, sharedAccess, bytes, file, available };
 }
 
 afterEach(async () => {
@@ -512,5 +529,77 @@ describe('private file resource API boundaries', () => {
     });
     expect(missing.statusCode).toBe(404);
     expect(missing.json()).toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('streams a shared file to the grantee and stops as soon as the grant is gone', async () => {
+    const { app, storage, sharedAccess, bytes, file } = setup();
+    const ownerId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const finalKey = createFinalObjectKey({
+      tenantId: ownerId,
+      resourceId,
+      uploadId,
+      sha256: file.sha256,
+      extension: 'md',
+    });
+    const temporaryKey = createTemporaryObjectKey({ tenantId: ownerId, resourceId, uploadId });
+    await storage.writeTemporary(temporaryKey, Readable.from([bytes]));
+    await storage.publishTemporary(temporaryKey, finalKey, {
+      sizeBytes: bytes.byteLength,
+      sha256: file.sha256,
+    });
+    sharedAccess.resolveSharedObject.mockResolvedValue({
+      ownerPrincipalId: ownerId,
+      resourceId,
+      versionId,
+      storageRef: finalKey,
+      file,
+    });
+
+    const url = `/bff/v1/resources/shared-with-me/${ownerId}/${resourceId}/content`;
+    const response = await app.inject({ url, headers: baseHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload).toEqual(bytes);
+    expect(response.headers['content-type']).toContain('text/markdown');
+    // The grantee identity comes from authentication, never from the path.
+    expect(sharedAccess.resolveSharedObject).toHaveBeenCalledWith(athleteId, ownerId, resourceId);
+    expect(response.body).not.toContain('private/v1/tenants');
+
+    // Revocation is re-checked on every request, with no cached authorization.
+    sharedAccess.resolveSharedObject.mockResolvedValue(null);
+    const revoked = await app.inject({ url, headers: baseHeaders });
+    expect(revoked.statusCode).toBe(404);
+    expect(revoked.json()).toMatchObject({ error: { code: 'SHARED_RESOURCE_NOT_FOUND' } });
+  });
+
+  it('refuses a shared file object whose key does not belong to the resolved owner', async () => {
+    const { app, storage, sharedAccess, bytes, file } = setup();
+    const ownerId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const foreignKey = createFinalObjectKey({
+      tenantId: athleteId,
+      resourceId,
+      uploadId,
+      sha256: file.sha256,
+      extension: 'md',
+    });
+    const temporaryKey = createTemporaryObjectKey({ tenantId: athleteId, resourceId, uploadId });
+    await storage.writeTemporary(temporaryKey, Readable.from([bytes]));
+    await storage.publishTemporary(temporaryKey, foreignKey, {
+      sizeBytes: bytes.byteLength,
+      sha256: file.sha256,
+    });
+    sharedAccess.resolveSharedObject.mockResolvedValue({
+      ownerPrincipalId: ownerId,
+      resourceId,
+      versionId,
+      storageRef: foreignKey,
+      file,
+    });
+
+    const response = await app.inject({
+      url: `/bff/v1/resources/shared-with-me/${ownerId}/${resourceId}/content`,
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(500);
+    expect(response.body).not.toContain('private/v1/tenants');
   });
 });

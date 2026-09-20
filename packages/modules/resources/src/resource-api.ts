@@ -5,6 +5,7 @@ import {
   privateResourceDeleteResultSchema,
   privateResourceListSchema,
   privateResourceReadResultSchema,
+  privateResourceAccessStateSchema,
   privateUrlResourceIngestionRecordSchema,
   type PrivateFileResourceAppendVersionUploadMetadata,
   type PrivateFileResourceCreateUploadMetadata,
@@ -12,6 +13,10 @@ import {
   type PrivateResourceSoftDelete,
   type PrivateTextResourceAppendVersion,
   type PrivateTextResourceCreate,
+  type PrivateResourceCoachUseTransition,
+  type PrivateResourceReviewedTransition,
+  type PrivateResourceShareGrant,
+  type PrivateResourceShareRevoke,
   type PrivateUrlResourceCreate,
 } from '@workout/contracts/resources';
 
@@ -170,6 +175,56 @@ export function createResourceApi(transport: AuthenticatedTransport) {
         `/bff/v1/resources/url-ingestions/${encodeURIComponent(ingestionId)}`,
         'DELETE',
         privateUrlResourceIngestionRecordSchema,
+      );
+    },
+    readAccess(resourceId: string, signal?: AbortSignal) {
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/access`,
+        'GET',
+        privateResourceAccessStateSchema,
+        null,
+        null,
+        signal,
+      );
+    },
+    grantShare(resourceId: string, input: PrivateResourceShareGrant) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/shares`,
+        'POST',
+        privateResourceAccessStateSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    revokeShare(resourceId: string, shareId: string, input: PrivateResourceShareRevoke) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/shares/${encodeURIComponent(shareId)}`,
+        'DELETE',
+        privateResourceAccessStateSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    setReviewed(resourceId: string, input: PrivateResourceReviewedTransition) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/reviewed`,
+        'POST',
+        privateResourceAccessStateSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    setCoachUse(resourceId: string, input: PrivateResourceCoachUseTransition) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        `/bff/v1/resources/${encodeURIComponent(resourceId)}/coach-use`,
+        'POST',
+        privateResourceAccessStateSchema,
+        body,
+        idempotencyKey,
       );
     },
     delete(resourceId: string, input: PrivateResourceSoftDelete) {

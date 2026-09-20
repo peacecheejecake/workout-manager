@@ -19,6 +19,7 @@ import {
   ResourceFileUploadStateError,
   type ResourceFileUploadRepository,
 } from '@workout/server-persistence/resource-file-uploads';
+import type { ResourceAccessRepository } from '@workout/server-persistence/resource-access';
 import { ResourceNotFoundError } from '@workout/server-persistence/resources';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -30,6 +31,10 @@ const uploadParamsSchema = z.strictObject({
   uploadId: z.uuid().transform((value) => value.toLowerCase()),
 });
 const resourceParamsSchema = z.strictObject({
+  resourceId: z.uuid().transform((value) => value.toLowerCase()),
+});
+const sharedContentParamsSchema = z.strictObject({
+  ownerPrincipalId: z.string().min(1).max(200),
   resourceId: z.uuid().transform((value) => value.toLowerCase()),
 });
 const contentQuerySchema = z.strictObject({
@@ -60,6 +65,8 @@ const uploadReservationSchema = z.strictObject({
 export interface ResourceFileServices {
   uploads: ResourceFileUploadRepository;
   storage: ObjectStorage;
+  /** Present when explicit sharing is configured; enables grantee file reads. */
+  sharedAccess?: ResourceAccessRepository;
 }
 
 function fileError(error: unknown): ProductRequestError | undefined {
@@ -300,5 +307,46 @@ export function registerResourceFileRoutes(
         .header('content-disposition', contentDisposition(resolved.file.originalFileName))
         .send(Readable.from(object.body));
     });
+
+    // Grantee file reads stream through the server. The active share is
+    // re-validated at the start of every request and no storage reference,
+    // owner key or signed URL ever reaches the client. Authorization is
+    // request-start only: revocation blocks every subsequent request but does
+    // not abort a transfer already in flight. Shared files are bounded at
+    // 10 MiB and the object is opened immediately after authorization, so the
+    // window stays one bounded response body.
+    const sharedAccess = services.sharedAccess;
+    if (sharedAccess)
+      fileRoutes.get(
+        '/resources/shared-with-me/:ownerPrincipalId/:resourceId/content',
+        async (request, reply) => {
+          input(emptyQuery, request.query);
+          const granteeId = principal(request).athleteId;
+          const { ownerPrincipalId, resourceId } = input(sharedContentParamsSchema, request.params);
+          const resolved = await execute(() =>
+            sharedAccess.resolveSharedObject(granteeId, ownerPrincipalId, resourceId),
+          );
+          if (resolved === null) throw new ProductRequestError(404, 'SHARED_RESOURCE_NOT_FOUND');
+          const objectKey = validateObjectKey(resolved.storageRef);
+          const parsedKey = parseObjectKey(objectKey);
+          const expectedExtension = resolved.file.mediaType === 'application/pdf' ? 'pdf' : 'md';
+          if (
+            parsedKey.kind !== 'final' ||
+            parsedKey.tenantId !== resolved.ownerPrincipalId ||
+            parsedKey.resourceId !== resolved.resourceId ||
+            parsedKey.sha256 !== resolved.file.sha256 ||
+            parsedKey.extension !== expectedExtension
+          )
+            throw new Error('INVALID_RESOURCE_STORAGE_REF');
+          const object = await services.storage.open(objectKey);
+          if (object === null || object.sizeBytes !== resolved.file.byteSize)
+            throw new ProductRequestError(503, 'RESOURCE_CONTENT_UNAVAILABLE');
+          return reply
+            .header('content-type', resolved.file.mediaType)
+            .header('content-length', object.sizeBytes)
+            .header('content-disposition', contentDisposition(resolved.file.originalFileName))
+            .send(Readable.from(object.body));
+        },
+      );
   });
 }

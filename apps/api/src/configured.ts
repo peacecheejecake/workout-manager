@@ -26,6 +26,7 @@ import { createOperationsRepository } from '@workout/server-persistence/operatio
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
+import { createResourceAccessRepository } from '@workout/server-persistence/resource-access';
 import { createLocalFilesystemObjectStorage } from '@workout/server-media/local-filesystem';
 import { isAbsolute, parse, resolve } from 'node:path';
 import { z } from 'zod';
@@ -161,6 +162,7 @@ export async function createConfiguredApi(environment: unknown) {
         storage: resourceStorage,
       },
       resourceUrls: createResourceUrlIngestionRepository(database),
+      resourceAccess: createResourceAccessRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
         await Promise.all([store.close(), database.close()]);

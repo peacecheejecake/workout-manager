@@ -32,6 +32,7 @@ const migrationFiles = [
   '027_resource_lifecycle.sql',
   '028_resource_file_upload.sql',
   '029_resource_url_ingestion.sql',
+  '030_resource_access_sharing.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -183,7 +184,8 @@ export async function grantOperations(
     );
     await pool.query(`GRANT SELECT ON integrated_dependency_head TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON resource,resource_version,resource_object TO "${runtimeRole}"`,
+      `GRANT SELECT ON resource,resource_version,resource_object,resource_share,
+       resource_access_audit TO "${runtimeRole}"`,
     );
     await grantSafeResourceUrlReadColumns(pool, runtimeRole);
     await pool.query(
@@ -302,8 +304,17 @@ export async function grantResources(connectionString: string, runtimeRole: stri
     await pool.query(`GRANT INSERT ON resource_url_ingestion TO "${runtimeRole}"`);
     await grantSafeResourceUrlReadColumns(pool, runtimeRole);
     await pool.query(
-      `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at)
+      `GRANT SELECT,INSERT ON resource_share,resource_access_audit TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT ON consent TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at,
+       include_for_coach,reviewed_state,reviewed_at,coach_use_enabled_at)
        ON resource TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(state,revoked_at,revoked_access_revision,updated_at)
+       ON resource_share TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
     await pool.query(
@@ -325,6 +336,12 @@ export async function grantResources(connectionString: string, runtimeRole: stri
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.cancel_resource_url_ingestion(uuid,text),
        public.resource_url_request_by_key(text),public.current_resource_url_request(uuid)
+       TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.enqueue_resource_derived_cleanup(uuid,text),
+       public.resource_coach_use_authorized(uuid),public.resource_derived_cleanup_pending(uuid),
+       public.revoke_resource_shares(uuid,text)
        TO "${runtimeRole}"`,
     );
   } finally {
@@ -372,7 +389,11 @@ export async function grantResourceObjectCleanupWorker(
        public.authorize_resource_object_cleanup(uuid,uuid,timestamptz),
        public.finish_resource_object_cleanup(uuid,uuid,boolean,text,timestamptz),
        public.reap_expired_resource_uploads(timestamptz,integer),
-       public.prune_resource_upload_history(integer),public.prune_resource_cleanup_history(integer)
+       public.prune_resource_upload_history(integer),public.prune_resource_cleanup_history(integer),
+       public.lease_resource_derived_cleanup(uuid,timestamptz,timestamptz),
+       public.finish_resource_derived_cleanup(uuid,uuid,boolean,text),
+       public.release_resource_derived_cleanup(uuid,uuid,text),
+       public.prune_resource_derived_cleanup_history(integer)
        TO "${workerRole}"`,
     );
   } finally {

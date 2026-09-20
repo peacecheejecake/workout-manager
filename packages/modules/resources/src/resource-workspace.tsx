@@ -15,6 +15,7 @@ import {
   type PrivateFileResourceMediaType,
   type PrivateFileResourceReadResult,
   type PrivateResourceListItem,
+  type PrivateResourceAccessState,
   type PrivateResourceReadResult,
   type PrivateTextResourceCategory,
   type PrivateTextResourceCreate,
@@ -215,12 +216,17 @@ function Workspace({
               <button onClick={() => void detail.refetch()}>다시 시도</button>
             </div>
           ) : detail.data ? (
-            <Reader
-              read={detail.data}
-              api={api}
-              fileTransfer={fileTransfer}
-              requestedVersionId={versionId}
-            />
+            <>
+              <Reader
+                read={detail.data}
+                api={api}
+                fileTransfer={fileTransfer}
+                requestedVersionId={versionId}
+              />
+              {detail.data.status === 'available' ? (
+                <AccessPanel resourceId={detail.data.resource.id} api={api} scope={scope} />
+              ) : null}
+            </>
           ) : null}
         </section>
       </AdaptiveWorkspace>
@@ -657,6 +663,203 @@ function UrlStateMessage({
   );
 }
 
+function AccessPanel({
+  resourceId,
+  api,
+  scope,
+}: {
+  resourceId: string;
+  api: ResourceApi;
+  scope: readonly string[];
+}) {
+  const queryClient = useQueryClient();
+  const keys = useIdempotencyKeys();
+  const accessQueryKey = useMemo(
+    () => [...scope, 'access', resourceId] as const,
+    [scope, resourceId],
+  );
+  const access = useQuery({
+    queryKey: accessQueryKey,
+    queryFn: ({ signal }) => api.readAccess(resourceId, signal),
+  });
+  const [failure, setFailure] = useState<string | null>(null);
+
+  function apply(run: (state: PrivateResourceAccessState) => Promise<PrivateResourceAccessState>) {
+    const current = access.data;
+    if (!current) return;
+    setFailure(null);
+    void run(current)
+      .then((next) => {
+        queryClient.setQueryData(accessQueryKey, next);
+        void queryClient.invalidateQueries({ queryKey: [...scope, 'list'] });
+        void queryClient.invalidateQueries({ queryKey: [...scope, 'detail'] });
+      })
+      .catch((error: unknown) => setFailure(accessError(error)));
+  }
+
+  if (access.isPending) return <p role="status">접근 설정을 불러오는 중</p>;
+  if (access.isError || !access.data) {
+    return (
+      <div role="alert" className={styles.notice}>
+        <p>접근 설정을 불러오지 못했습니다.</p>
+        <button onClick={() => void access.refetch()}>다시 시도</button>
+      </div>
+    );
+  }
+
+  const state = access.data;
+  const activeShares = state.shares;
+  const coachUseBlocked = !state.reviewedState.startsWith('reviewed') || !state.aiConsentGranted;
+
+  return (
+    <section className={styles.notice} aria-labelledby="resource-access-title">
+      <h4 id="resource-access-title">접근·검토·코치 사용</h4>
+      <p className={styles.status}>
+        접근 revision {state.accessRevision} · {accessLabel(state)}
+      </p>
+      <p>
+        검토 표시와 코치 사용은 서로 다른 전환입니다. 저장·파싱 성공이나 공유 요청만으로 자동
+        활성화되지 않습니다.
+      </p>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          disabled={state.reviewedState === 'reviewed' && state.includeForCoach}
+          onClick={() =>
+            apply((current) => {
+              const payload = {
+                reviewed: current.reviewedState !== 'reviewed',
+                expectedAccessRevision: current.accessRevision,
+                expectedCurrentVersionId: current.currentVersionId,
+              };
+              return api.setReviewed(resourceId, {
+                ...payload,
+                idempotencyKey: keys.get(payload),
+              });
+            })
+          }
+        >
+          {state.reviewedState === 'reviewed' ? '검토 표시 해제' : '검토됨으로 표시'}
+        </button>
+        <button
+          type="button"
+          disabled={!state.includeForCoach && coachUseBlocked}
+          onClick={() =>
+            apply((current) => {
+              const payload = {
+                includeForCoach: !current.includeForCoach,
+                expectedAccessRevision: current.accessRevision,
+                expectedCurrentVersionId: current.currentVersionId,
+              };
+              return api.setCoachUse(resourceId, {
+                ...payload,
+                idempotencyKey: keys.get(payload),
+              });
+            })
+          }
+        >
+          {state.includeForCoach ? '코치 사용 중지' : '코치 사용 허용'}
+        </button>
+      </div>
+      {state.reviewedState === 'reviewed' && state.includeForCoach ? (
+        <p>검토 표시를 해제하려면 먼저 코치 사용을 중지하세요.</p>
+      ) : null}
+      {!state.includeForCoach && coachUseBlocked ? (
+        <p>
+          코치 사용은 검토 표시와 AI 전송 동의가 모두 있어야 켤 수 있고, 사용할 때마다 다시
+          확인합니다.
+        </p>
+      ) : null}
+      {state.pendingCleanup ? (
+        <p role="status">
+          파생 데이터·검색 색인·cache·인용 삭제가 진행 중입니다. 완료 전까지 코치 사용이 차단됩니다.
+        </p>
+      ) : null}
+      <h5>명시적 공유</h5>
+      {activeShares.length === 0 ? (
+        <p>공유한 대상이 없습니다.</p>
+      ) : (
+        <ul>
+          {activeShares.map((share) => (
+            <li key={share.shareId}>
+              코치 {share.granteePrincipalId} · revision {share.grantedAccessRevision}에 공유{' '}
+              <button
+                type="button"
+                onClick={() =>
+                  apply((current) => {
+                    const payload = { expectedAccessRevision: current.accessRevision };
+                    return api.revokeShare(resourceId, share.shareId, {
+                      ...payload,
+                      idempotencyKey: keys.get({ ...payload, shareId: share.shareId }),
+                    });
+                  })
+                }
+              >
+                공유 철회
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className={styles.form}
+        aria-label="코치에게 자료 공유"
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const granteePrincipalId = String(new FormData(form).get('granteePrincipalId') ?? '');
+          apply((current) => {
+            const payload = {
+              granteeKind: 'coach' as const,
+              granteePrincipalId,
+              expectedAccessRevision: current.accessRevision,
+            };
+            return api
+              .grantShare(resourceId, { ...payload, idempotencyKey: keys.get(payload) })
+              .then((next) => {
+                form.reset();
+                return next;
+              });
+          });
+        }}
+      >
+        <label htmlFor="resource-share-grantee">
+          코치 계정 식별자
+          <input id="resource-share-grantee" name="granteePrincipalId" required maxLength={200} />
+        </label>
+        <button type="submit">코치에게 공유</button>
+      </form>
+      {failure ? <p role="alert">{failure}</p> : null}
+    </section>
+  );
+}
+
+function accessError(error: unknown) {
+  if (!(error instanceof ResourceRequestError)) return '요청을 처리하지 못했습니다.';
+  switch (error.code) {
+    case 'COACH_USE_REVIEW_REQUIRED':
+      return '먼저 검토됨으로 표시해야 코치 사용을 켤 수 있습니다.';
+    case 'COACH_USE_CONSENT_REQUIRED':
+      return 'AI 전송 동의가 없어 코치 사용을 켤 수 없습니다.';
+    case 'REVIEW_WITHDRAWAL_BLOCKED':
+      return '먼저 코치 사용을 중지해야 검토 표시를 해제할 수 있습니다.';
+    case 'COACH_USE_MANIFEST_TOO_LARGE':
+      return '코치 사용 자료가 허용된 의존성 범위를 넘었습니다.';
+    case 'SHARE_GRANTEE_INVALID':
+      return '본인 계정에는 공유할 수 없습니다.';
+    case 'SHARE_LIMIT_EXCEEDED':
+      return '이 자료에 허용된 공유 수를 넘었습니다.';
+    case 'SHARE_NOT_FOUND':
+      return '이미 철회되었거나 존재하지 않는 공유입니다.';
+    case 'REVISION_CONFLICT':
+      return '다른 변경이 먼저 반영되었습니다. 최신 상태를 다시 불러오세요.';
+    case 'RESOURCE_NOT_FOUND':
+      return '자료를 찾을 수 없거나 접근 권한이 없습니다.';
+    default:
+      return '요청을 처리하지 못했습니다.';
+  }
+}
+
 function ResourceMetadataFields({ idPrefix }: { idPrefix: string }) {
   return (
     <>
@@ -826,7 +1029,7 @@ function UrlReader({
   return (
     <article>
       <ReaderHeader read={read} requestedVersionId={requestedVersionId} />
-      <p className={styles.meta}>private · 미검토 · 검색 색인 안 됨 · 코치 사용 안 함</p>
+      <p className={styles.meta}>private · 검색 색인 안 됨 · {accessLabel(read.resource)}</p>
       <p className={styles.safeUrl}>{lifecycle.displayUrl}</p>
       <UrlReaderContent read={read} />
       <DeleteForm read={read} api={api} />
@@ -1090,7 +1293,10 @@ function DeleteForm({ read, api }: { read: AvailableRead; api: ResourceApi }) {
   return (
     <section className={styles.notice} aria-labelledby="resource-delete-title">
       <h4 id="resource-delete-title">자료 삭제</h4>
-      <p>삭제하면 현재 원문과 모든 과거 버전 reader가 즉시 차단됩니다.</p>
+      <p>
+        삭제하면 이후의 모든 열람 요청이 현재 원문과 과거 버전 모두에서 즉시 차단됩니다. 이미 시작된
+        파일 전송은 중단되지 않습니다.
+      </p>
       <div className={styles.actions}>
         <label>
           <input
@@ -1189,42 +1395,49 @@ function urlLocatorLabel(kind: 'html_block' | 'markdown_paragraph' | 'plain_para
   }
 }
 
+/** Review and coach use are distinct states, and neither follows from storage success. */
+function accessLabel(access: { reviewedState: string; includeForCoach: boolean }) {
+  if (access.includeForCoach) return '검토됨 · 코치 사용 함';
+  if (access.reviewedState === 'reviewed') return '검토됨 · 코치 사용 안 함';
+  return '코치 사용 안 함';
+}
+
 function lifecycleLabel(resource: PrivateResourceListItem) {
   switch (resource.sourceKind) {
     case 'text':
-      return '파싱 완료 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `파싱 완료 · 검색 색인 안 됨 · ${accessLabel(resource)}`;
     case 'file':
-      return '원본 파일 저장됨 · 본문 파싱 안 됨 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `원본 파일 저장됨 · 본문 파싱 안 됨 · 검색 색인 안 됨 · ${accessLabel(resource)}`;
     case 'url':
-      return urlLifecycleLabel(resource.lifecycle);
+      return urlLifecycleLabel(resource.lifecycle, accessLabel(resource));
   }
 }
 
 function versionLifecycleLabel(read: AvailableRead) {
-  if (isTextRead(read)) return '파싱 완료 · 검색 색인 안 됨 · 코치 사용 안 함';
-  if (isFileRead(read))
-    return '원본 파일 저장됨 · 본문 파싱 안 됨 · 검색 색인 안 됨 · 코치 사용 안 함';
-  if (isUrlRead(read)) return urlLifecycleLabel(read.version.lifecycle);
+  const access = accessLabel(read.resource);
+  if (isTextRead(read)) return `파싱 완료 · 검색 색인 안 됨 · ${access}`;
+  if (isFileRead(read)) return `원본 파일 저장됨 · 본문 파싱 안 됨 · 검색 색인 안 됨 · ${access}`;
+  if (isUrlRead(read)) return urlLifecycleLabel(read.version.lifecycle, access);
 }
 
-function urlLifecycleLabel(lifecycle: PrivateUrlResourceIngestion) {
+function urlLifecycleLabel(lifecycle: PrivateUrlResourceIngestion, access = '코치 사용 안 함') {
   switch (lifecycle.contentStatus) {
     case 'queued':
-      return '가져오기 대기 중 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `가져오기 대기 중 · 검색 색인 안 됨 · ${access}`;
     case 'fetching':
-      return 'URL 원문 확인 중 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `URL 원문 확인 중 · 검색 색인 안 됨 · ${access}`;
     case 'parsing':
-      return '본문 파싱 중 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `본문 파싱 중 · 검색 색인 안 됨 · ${access}`;
     case 'finalized':
-      return '본문 파싱 완료 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `본문 파싱 완료 · 검색 색인 안 됨 · ${access}`;
     case 'bookmark_only':
-      return '북마크만 저장됨 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `북마크만 저장됨 · 검색 색인 안 됨 · ${access}`;
     case 'failed':
       if (lifecycle.failure.retryable)
         return `자동 재시도 대기 중 · ${urlFailureLabel(lifecycle.failure)}`;
       return `가져오기 실패 · ${urlFailureLabel(lifecycle.failure)}`;
     case 'cancelled':
-      return '가져오기 취소됨 · 검색 색인 안 됨 · 코치 사용 안 함';
+      return `가져오기 취소됨 · 검색 색인 안 됨 · ${access}`;
   }
 }
 

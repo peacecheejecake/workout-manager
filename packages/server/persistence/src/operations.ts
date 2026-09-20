@@ -228,8 +228,24 @@ const collections = [
   [
     'resources',
     '(SELECT * FROM resource WHERE deleted_at IS NULL) resource',
-    'id,source_kind,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
+    'id,source_kind,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,reviewed_at,coach_use_enabled_at,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
     'created_at,id',
+  ],
+  [
+    'resourceShares',
+    `(SELECT s.* FROM resource_share s JOIN resource active
+      ON active.athlete_id=s.athlete_id AND active.id=s.resource_id
+      WHERE active.deleted_at IS NULL) resource_share`,
+    'share_id,resource_id,grantee_kind,grantee_principal_id,state,granted_access_revision,revoked_access_revision,granted_at,revoked_at,updated_at',
+    'granted_at,share_id',
+  ],
+  [
+    'resourceAccessAudit',
+    `(SELECT a.* FROM resource_access_audit a JOIN resource active
+      ON active.athlete_id=a.athlete_id AND active.id=a.resource_id
+      WHERE active.deleted_at IS NULL) resource_access_audit`,
+    'event_id,resource_id,action,access_revision,share_id,grantee_kind,grantee_principal_id,occurred_at',
+    'occurred_at,event_id',
   ],
   [
     'resourceVersions',
@@ -370,7 +386,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 14,
+          schemaVersion: 15,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

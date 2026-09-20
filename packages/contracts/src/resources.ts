@@ -93,6 +93,15 @@ export const privateTextResourceCategorySchema = z.enum([
 
 export const privateResourceSourceKindSchema = z.enum(['text', 'file', 'url']);
 
+export const privateResourceReviewedStateSchema = z.enum(['unreviewed', 'reviewed']);
+
+export const privateResourceGranteeKindSchema = z.enum(['coach']);
+
+export const privateResourceGranteePrincipalIdSchema = storageSafeStringSchema
+  .trim()
+  .min(1)
+  .max(200);
+
 export const privateUrlResourceInputUrlSchema = z
   .string()
   .min(1)
@@ -581,8 +590,8 @@ export const privateTextResourceSchema = z.strictObject({
   tags: privateTextResourceTagsSchema,
   visibility: z.literal('private'),
   favorite: z.boolean(),
-  includeForCoach: z.literal(false),
-  reviewedState: z.literal('unreviewed'),
+  includeForCoach: z.boolean(),
+  reviewedState: privateResourceReviewedStateSchema,
   lifecycle: privateTextResourceLifecycleSchema,
   accessRevision: z.number().int().positive(),
   currentVersionId: resourceUuidSchema,
@@ -601,8 +610,8 @@ export const privateFileResourceSchema = z.strictObject({
   tags: privateTextResourceTagsSchema,
   visibility: z.literal('private'),
   favorite: z.boolean(),
-  includeForCoach: z.literal(false),
-  reviewedState: z.literal('unreviewed'),
+  includeForCoach: z.boolean(),
+  reviewedState: privateResourceReviewedStateSchema,
   lifecycle: privateFileResourceLifecycleSchema,
   accessRevision: z.number().int().positive(),
   currentVersionId: resourceUuidSchema,
@@ -621,8 +630,8 @@ export const privateUrlResourceSchema = z.strictObject({
   tags: privateTextResourceTagsSchema,
   visibility: z.literal('private'),
   favorite: z.boolean(),
-  includeForCoach: z.literal(false),
-  reviewedState: z.literal('unreviewed'),
+  includeForCoach: z.boolean(),
+  reviewedState: privateResourceReviewedStateSchema,
   lifecycle: privateUrlResourceIngestionSchema,
   accessRevision: z.number().int().positive(),
   currentVersionId: resourceUuidSchema,
@@ -1120,6 +1129,208 @@ export const privateTextResourceDeleteResultSchema = privateTextResourceDeletedR
 export const privateResourceSoftDeleteSchema = privateTextResourceSoftDeleteSchema;
 export const privateResourceDeleteResultSchema = privateTextResourceDeleteResultSchema;
 
+export const privateResourceShareSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  shareId: resourceUuidSchema,
+  resourceId: resourceUuidSchema,
+  granteeKind: privateResourceGranteeKindSchema,
+  granteePrincipalId: privateResourceGranteePrincipalIdSchema,
+  state: z.enum(['active', 'revoked']),
+  grantedAccessRevision: z.number().int().positive(),
+  revokedAccessRevision: z.number().int().positive().nullable(),
+  grantedAt: instantSchema,
+  revokedAt: instantSchema.nullable(),
+});
+
+export const privateResourceShareGrantSchema = z.strictObject({
+  granteeKind: privateResourceGranteeKindSchema,
+  granteePrincipalId: privateResourceGranteePrincipalIdSchema,
+  expectedAccessRevision: z.number().int().positive(),
+  idempotencyKey: resourceIdempotencyKeySchema,
+});
+
+export const privateResourceShareRevokeSchema = z.strictObject({
+  expectedAccessRevision: z.number().int().positive(),
+  idempotencyKey: resourceIdempotencyKeySchema,
+});
+
+/** Review curation is explicit and never implied by fetch, parse or upload success. */
+export const privateResourceReviewedTransitionSchema = z.strictObject({
+  reviewed: z.boolean(),
+  expectedAccessRevision: z.number().int().positive(),
+  expectedCurrentVersionId: resourceUuidSchema,
+  idempotencyKey: resourceIdempotencyKeySchema,
+});
+
+/** Coach use is a separate explicit transition with its own preconditions. */
+export const privateResourceCoachUseTransitionSchema = z.strictObject({
+  includeForCoach: z.boolean(),
+  expectedAccessRevision: z.number().int().positive(),
+  expectedCurrentVersionId: resourceUuidSchema,
+  idempotencyKey: resourceIdempotencyKeySchema,
+});
+
+export const privateResourceCleanupTargetsSchema = z.strictObject({
+  derivedData: z.literal(true),
+  searchIndex: z.literal(true),
+  cache: z.literal(true),
+  citations: z.literal(true),
+});
+
+export const privateResourceCleanupReasonSchema = z.enum([
+  'resource_deleted',
+  'share_revoked',
+  'consent_withdrawn',
+  'review_withdrawn',
+  'coach_use_withdrawn',
+  'account_erased',
+]);
+
+export const privateResourceAccessStateSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  resourceId: resourceUuidSchema,
+  accessRevision: z.number().int().positive(),
+  currentVersionId: resourceUuidSchema,
+  reviewedState: privateResourceReviewedStateSchema,
+  reviewedAt: instantSchema.nullable(),
+  includeForCoach: z.boolean(),
+  coachUseEnabledAt: instantSchema.nullable(),
+  aiConsentGranted: z.boolean(),
+  coachUseAuthorized: z.boolean(),
+  pendingCleanup: z.boolean(),
+  /** Every active grant, so no grant can become unrevocable through history. */
+  shares: z.array(privateResourceShareSchema).max(20),
+  /** Bounded page of revoked grants, newest first. */
+  revokedShares: z.array(privateResourceShareSchema).max(50),
+  revokedShareHistoryTruncated: z.boolean(),
+});
+
+/** Access facts the coaching evidence manifest pins and re-checks at use time. */
+export const privateResourceCoachUseManifestEntrySchema = z.strictObject({
+  resourceId: resourceUuidSchema,
+  accessRevision: z.number().int().positive(),
+  currentVersionId: resourceUuidSchema,
+});
+
+/**
+ * Digest of the whole authorized set, the consent head it was captured under
+ * and the tenant it belongs to. Use-time revalidation compares this, not only
+ * the pinned entries, so a resource that became coach-eligible after capture
+ * cannot stay invisible and another tenant's manifest cannot validate here.
+ */
+export const privateResourceCoachUseSetDigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+export const MAX_COACH_USE_MANIFEST_ENTRIES = 100;
+
+/**
+ * The manifest is always complete for the tenant it pins. A capture that would
+ * exceed the bound fails instead of returning a truncated dependency snapshot.
+ */
+export const privateResourceCoachUseManifestSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    scope: z.literal('resource-access-v1'),
+    /** The tenant this dependency set belongs to; never a client-supplied id. */
+    athleteId: z.string().min(1).max(200),
+    capturedAt: instantSchema,
+    aiConsentRevision: z.number().int().nonnegative(),
+    aiConsentGranted: z.boolean(),
+    complete: z.literal(true),
+    entriesDigest: privateResourceCoachUseSetDigestSchema,
+    entries: z
+      .array(privateResourceCoachUseManifestEntrySchema)
+      .max(MAX_COACH_USE_MANIFEST_ENTRIES),
+  })
+  .superRefine((manifest, context) => {
+    // A resource may be pinned once. A duplicate would make the set identity
+    // ambiguous and could hide a second, different revision for the same id.
+    const seen = new Set<string>();
+    manifest.entries.forEach((entry, index) => {
+      if (seen.has(entry.resourceId)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Manifest entries must pin each resource at most once.',
+          path: ['entries', index, 'resourceId'],
+        });
+      }
+      seen.add(entry.resourceId);
+    });
+  });
+
+export const privateResourceCoachUseCheckSchema = z.strictObject({
+  resourceId: resourceUuidSchema,
+  /** `added` is a resource authorized after capture and therefore not pinned. */
+  status: z.enum(['authorized', 'revision_changed', 'blocked', 'added']),
+});
+
+export const privateResourceCoachUseRevalidationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  checkedAt: instantSchema,
+  stale: z.boolean(),
+  capturedEntriesDigest: privateResourceCoachUseSetDigestSchema,
+  currentEntriesDigest: privateResourceCoachUseSetDigestSchema,
+  results: z.array(privateResourceCoachUseCheckSchema).max(2 * MAX_COACH_USE_MANIFEST_ENTRIES),
+});
+
+export const privateSharedResourceSummarySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  ownerPrincipalId: privateResourceGranteePrincipalIdSchema,
+  resourceId: resourceUuidSchema,
+  shareId: resourceUuidSchema,
+  sourceKind: privateResourceSourceKindSchema,
+  title: storageSafeStringSchema.min(1).max(200),
+  category: privateTextResourceCategorySchema,
+  reviewedState: privateResourceReviewedStateSchema,
+  currentVersionId: resourceUuidSchema,
+  sharedAt: instantSchema,
+  updatedAt: instantSchema,
+});
+
+export const MAX_SHARED_RESOURCE_LIST_OFFSET = 10_000;
+
+/**
+ * Offset pagination over the grants held by one principal. The reachable range
+ * is bounded: `offset` may not exceed {@link MAX_SHARED_RESOURCE_LIST_OFFSET},
+ * so at most that many grants plus one page can be walked. `total` still
+ * reports the real count, so a principal past the bound can see that more
+ * grants exist even though this endpoint cannot page to them; the per-resource
+ * access state, which returns every active grant, remains the complete view an
+ * owner revokes from.
+ */
+export const privateSharedResourceListQuerySchema = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(MAX_SHARED_RESOURCE_LIST_OFFSET).default(0),
+});
+
+export const privateSharedResourceListSchema = z
+  .strictObject({
+    items: z.array(privateSharedResourceSummarySchema).max(100),
+    /** Real count of live grants for this principal, not the page length. */
+    total: z.number().int().min(0),
+    hasMore: z.boolean(),
+  })
+  .refine((list) => list.total >= list.items.length, 'List total cannot be smaller than items.');
+
+export const privateSharedResourceReadSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('available'),
+    summary: privateSharedResourceSummarySchema,
+    reader: z.discriminatedUnion('sourceKind', [
+      z.strictObject({
+        sourceKind: z.literal('text'),
+        originalText: privateTextResourceTextSchema,
+      }),
+      z.strictObject({ sourceKind: z.literal('file'), file: privateFileResourceDescriptorSchema }),
+      z.strictObject({
+        sourceKind: z.literal('url'),
+        displayUrl: privateUrlResourceDisplayUrlSchema,
+        parsedText: z.string().nullable(),
+      }),
+    ]),
+  }),
+  z.strictObject({ status: z.literal('unavailable') }),
+]);
+
 export type PrivateTextResourceCategory = z.infer<typeof privateTextResourceCategorySchema>;
 export type PrivateTextResourceCreate = z.infer<typeof privateTextResourceCreateSchema>;
 export type PrivateTextResourceAppendVersion = z.infer<
@@ -1195,3 +1406,25 @@ export type PrivateUrlResourceReadResult = z.infer<typeof privateUrlResourceRead
 export type PrivateResourceReadResult = z.infer<typeof privateResourceReadResultSchema>;
 export type PrivateResourceSoftDelete = z.infer<typeof privateResourceSoftDeleteSchema>;
 export type PrivateResourceDeleteResult = z.infer<typeof privateResourceDeleteResultSchema>;
+export type PrivateResourceReviewedState = z.infer<typeof privateResourceReviewedStateSchema>;
+export type PrivateResourceGranteeKind = z.infer<typeof privateResourceGranteeKindSchema>;
+export type PrivateResourceShare = z.infer<typeof privateResourceShareSchema>;
+export type PrivateResourceShareGrant = z.infer<typeof privateResourceShareGrantSchema>;
+export type PrivateResourceShareRevoke = z.infer<typeof privateResourceShareRevokeSchema>;
+export type PrivateResourceReviewedTransition = z.infer<
+  typeof privateResourceReviewedTransitionSchema
+>;
+export type PrivateResourceCoachUseTransition = z.infer<
+  typeof privateResourceCoachUseTransitionSchema
+>;
+export type PrivateResourceCleanupTargets = z.infer<typeof privateResourceCleanupTargetsSchema>;
+export type PrivateResourceCleanupReason = z.infer<typeof privateResourceCleanupReasonSchema>;
+export type PrivateResourceAccessState = z.infer<typeof privateResourceAccessStateSchema>;
+export type PrivateResourceCoachUseManifest = z.infer<typeof privateResourceCoachUseManifestSchema>;
+export type PrivateResourceCoachUseRevalidation = z.infer<
+  typeof privateResourceCoachUseRevalidationSchema
+>;
+export type PrivateSharedResourceSummary = z.infer<typeof privateSharedResourceSummarySchema>;
+export type PrivateSharedResourceListQuery = z.infer<typeof privateSharedResourceListQuerySchema>;
+export type PrivateSharedResourceList = z.infer<typeof privateSharedResourceListSchema>;
+export type PrivateSharedResourceRead = z.infer<typeof privateSharedResourceReadSchema>;
