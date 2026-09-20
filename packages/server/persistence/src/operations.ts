@@ -239,6 +239,71 @@ const collections = [
     'resource_id,version_id,version,previous_version,previous_version_id,content,content_hash,paragraphs,content_status,index_status,original_filename,media_type,size_bytes,created_at',
     'resource_id,version',
   ],
+  [
+    'resourceUrlIngestions',
+    `(SELECT i.athlete_id,i.request_id,i.operation,i.resource_id,i.version_id,
+      i.expected_current_version_id,i.display_url,i.title,i.category,i.metadata,i.tags,i.favorite,
+      i.state,i.failure_phase,i.failure_code,i.failure_retryable,i.attempt_count,i.retry_at,
+      i.created_at,i.updated_at,i.finalized_at
+      FROM resource_url_ingestion i LEFT JOIN resource active
+      ON active.athlete_id=i.athlete_id AND active.id=i.resource_id
+      WHERE active.deleted_at IS NULL AND (active.id IS NOT NULL OR i.operation='create')) resource_url_ingestion`,
+    'request_id,operation,resource_id,version_id,expected_current_version_id,display_url,title,category,metadata,tags,favorite,state,failure_phase,failure_code,failure_retryable,attempt_count,retry_at,created_at,updated_at,finalized_at',
+    'created_at,request_id',
+  ],
+  [
+    'resourceUrlAttempts',
+    `(SELECT a.athlete_id,a.request_id,a.attempt_no,a.phase,a.status,a.failure_code,a.started_at,
+      a.completed_at
+      FROM resource_url_ingestion_attempt a JOIN resource_url_ingestion i
+      ON i.athlete_id=a.athlete_id AND i.request_id=a.request_id LEFT JOIN resource active
+      ON active.athlete_id=i.athlete_id AND active.id=i.resource_id
+      WHERE active.deleted_at IS NULL AND (active.id IS NOT NULL OR i.operation='create')) resource_url_ingestion_attempt`,
+    'request_id,attempt_no,phase,status,failure_code,started_at,completed_at',
+    'request_id,attempt_no',
+  ],
+  [
+    'resourceUrlFetchHops',
+    `(SELECT h.athlete_id,h.request_id,h.attempt_no,h.hop_index,h.display_url,h.response_status,
+      h.policy_version,h.observed_at
+      FROM resource_url_fetch_hop h JOIN resource_url_ingestion i
+      ON i.athlete_id=h.athlete_id AND i.request_id=h.request_id LEFT JOIN resource active
+      ON active.athlete_id=i.athlete_id AND active.id=i.resource_id
+      WHERE active.deleted_at IS NULL AND (active.id IS NOT NULL OR i.operation='create')) resource_url_fetch_hop`,
+    'request_id,attempt_no,hop_index,display_url,response_status,policy_version,observed_at',
+    'request_id,attempt_no,hop_index',
+  ],
+  [
+    'resourceUrlArtifacts',
+    `(SELECT a.athlete_id,a.artifact_id,a.resource_id,a.version_id,a.request_id,a.kind,
+      a.size_bytes,a.media_type,a.derived_from_artifact_id,a.created_at
+      FROM resource_url_artifact a JOIN resource active
+      ON active.athlete_id=a.athlete_id AND active.id=a.resource_id
+      WHERE active.deleted_at IS NULL) resource_url_artifact`,
+    'artifact_id,resource_id,version_id,request_id,kind,size_bytes,media_type,derived_from_artifact_id,created_at',
+    'resource_id,version_id,kind',
+  ],
+  [
+    'resourceUrlProvenance',
+    `(SELECT p.athlete_id,p.resource_id,p.version_id,p.request_id,p.successful_attempt_no,
+      p.display_url,p.final_display_url,p.fetch_policy_version,p.fetched_at
+      FROM resource_url_provenance p JOIN resource active
+      ON active.athlete_id=p.athlete_id AND active.id=p.resource_id
+      WHERE active.deleted_at IS NULL) resource_url_provenance`,
+    'resource_id,version_id,request_id,successful_attempt_no,display_url,final_display_url,fetch_policy_version,fetched_at',
+    'resource_id,version_id',
+  ],
+  [
+    'resourceUrlLocators',
+    `(SELECT l.athlete_id,l.version_id,l.ordinal,l.kind,l.heading_path,l.paragraph_index,
+      l.page_number,l.start_offset,l.end_offset,l.text
+      FROM resource_url_locator l JOIN resource_version v
+      ON v.athlete_id=l.athlete_id AND v.version_id=l.version_id JOIN resource active
+      ON active.athlete_id=v.athlete_id AND active.id=v.resource_id
+      WHERE active.deleted_at IS NULL) resource_url_locator`,
+    'version_id,ordinal,kind,heading_path,paragraph_index,page_number,start_offset,end_offset,text',
+    'version_id,ordinal',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -305,7 +370,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 13,
+          schemaVersion: 14,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

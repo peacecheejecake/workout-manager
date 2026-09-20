@@ -170,7 +170,7 @@ describe('M2-04b private file resource persistence', () => {
     ).rejects.toBeTruthy();
 
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(13);
+    expect(exported.schemaVersion).toBe(14);
     const serialized = JSON.stringify(exported);
     expect(serialized).toContain('notes.markdown');
     expect(serialized).not.toContain(storageRef);
@@ -834,6 +834,13 @@ describe('M2-04b private file resource persistence', () => {
        delete_authorized_at=NULL
        WHERE completed_at IS NULL`,
     );
+    const erasureRefs = (
+      await admin.query(
+        `SELECT temporary_ref,storage_ref FROM resource_upload_intent
+         WHERE athlete_id=$1 ORDER BY upload_id`,
+        [athlete],
+      )
+    ).rows.flatMap((row) => [String(row['temporary_ref']), String(row['storage_ref'])]);
     // A later deletion event must open a fresh cleanup cycle for these refs.
     await createOperationsRepository(database).eraseAccount(athlete);
     const secondCycle = await admin.query(
@@ -869,14 +876,14 @@ describe('M2-04b private file resource persistence', () => {
     const leaseNow = new Date();
     const leaseUntil = new Date(leaseNow.getTime() + 60_000);
     const leasedRefs = [] as string[];
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < erasureRefs.length; index += 1) {
       const leased = await admin.query(
         'SELECT * FROM public.lease_resource_object_cleanup($1,$2,$3)',
         [cleanupWorker, leaseNow.toISOString(), leaseUntil.toISOString()],
       );
       leasedRefs.push(String(leased.rows[0]?.['storage_ref']));
     }
-    expect(new Set(leasedRefs)).toEqual(new Set([created.storageRef, appendedStorageRef]));
+    expect(new Set(leasedRefs)).toEqual(new Set(erasureRefs));
 
     const erasedAthlete = randomUUID();
     const erased = await createFile(erasedAthlete, descriptor({ sha256: '9'.repeat(64) }));

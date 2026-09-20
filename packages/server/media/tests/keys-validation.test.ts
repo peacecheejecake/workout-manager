@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createFinalObjectKey,
   createTemporaryObjectKey,
+  createUrlFinalObjectKey,
+  createUrlTemporaryObjectKey,
   InvalidObjectKeyError,
   parseObjectKey,
   validateObjectKey,
@@ -62,6 +64,44 @@ describe('private object keys', () => {
   ])('rejects unbranded traversal or malformed runtime keys: %s', (value) => {
     expect(() => parseObjectKey(value)).toThrow(InvalidObjectKeyError);
     expect(() => validateObjectKey(value)).toThrow(InvalidObjectKeyError);
+  });
+
+  it('builds isolated raw and parsed URL-ingestion artifact keys', () => {
+    const rawTemporary = createUrlTemporaryObjectKey({
+      tenantId,
+      resourceId,
+      ingestionId: uploadId,
+      artifactKind: 'raw',
+    });
+    expect(parseObjectKey(rawTemporary)).toMatchObject({
+      kind: 'url_temporary',
+      ingestionId: uploadId,
+      artifactKind: 'raw',
+    });
+    const parsed = createUrlFinalObjectKey({
+      tenantId,
+      resourceId,
+      ingestionId: uploadId,
+      artifactKind: 'parsed',
+      sha256: 'e'.repeat(64),
+      extension: 'json',
+    });
+    expect(parseObjectKey(parsed)).toMatchObject({
+      kind: 'url_final',
+      ingestionId: uploadId,
+      artifactKind: 'parsed',
+      extension: 'json',
+    });
+    expect(() =>
+      createUrlFinalObjectKey({
+        tenantId,
+        resourceId,
+        ingestionId: uploadId,
+        artifactKind: 'raw',
+        sha256: 'e'.repeat(64),
+        extension: 'json',
+      }),
+    ).toThrow(InvalidObjectKeyError);
   });
 });
 

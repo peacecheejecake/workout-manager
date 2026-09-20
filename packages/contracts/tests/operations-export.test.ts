@@ -474,3 +474,61 @@ it('reads file-safe resource exports in v13 while preserving v12 artifacts', () 
   expect(accountExportSchema.parse(v13)).toEqual(v13);
   expect(accountExportSchema.parse(v12)).toEqual(v12);
 });
+
+it('requires URL ingestion collections in v14 while preserving v13 artifacts', () => {
+  const v13 = accountExportSchema.parse({
+    schemaVersion: 13,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {
+      ...legacy.data,
+      sessionCompletions: [],
+      sessionCompletionRevisions: [],
+      planScenarios: [],
+      planScenarioRevisions: [],
+      planScenarioApplications: [],
+      coachingThreads: [],
+      coachingMessages: [],
+      evidenceSnapshots: [],
+      coachingConstraints: [],
+      coachingConstraintHeads: [],
+      coachingRuns: [],
+      coachingAnalysisOutputs: [],
+      coachingDecisions: [],
+      coachingProposals: [],
+      coachingCandidates: [],
+      nutritionPlanVersions: [],
+      nutritionPlanHeads: [],
+      nutritionPlanHistory: [],
+      foodDefinitionVersions: [],
+      foodDefinitionHeads: [],
+      intakeEntries: [],
+      intakeEntryRevisions: [],
+      supplementaryExerciseVersions: [],
+      supplementaryExerciseHeads: [],
+      supplementaryRoutineVersions: [],
+      supplementaryRoutineHeads: [],
+      supplementaryRoutineTargetRefs: [],
+      supplementarySessionLinks: [],
+      supplementarySessionTargetRefs: [],
+      supplementaryExecutions: [],
+      supplementarySetLogs: [],
+      supplementarySetLogRevisions: [],
+      supplementaryRestTimers: [],
+      resources: [],
+      resourceVersions: [],
+    },
+  });
+  const urlCollections = {
+    resourceUrlIngestions: [],
+    resourceUrlAttempts: [],
+    resourceUrlFetchHops: [],
+    resourceUrlArtifacts: [],
+    resourceUrlProvenance: [],
+    resourceUrlLocators: [],
+  };
+  const v14 = { ...v13, schemaVersion: 14, data: { ...v13.data, ...urlCollections } };
+  expect(accountExportSchema.parse(v14)).toEqual(v14);
+  expect(accountExportSchema.safeParse({ ...v13, schemaVersion: 14 }).success).toBe(false);
+  expect(accountExportSchema.parse(v13).data).not.toHaveProperty('resourceUrlIngestions');
+});

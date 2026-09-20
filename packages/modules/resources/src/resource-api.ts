@@ -5,12 +5,14 @@ import {
   privateResourceDeleteResultSchema,
   privateResourceListSchema,
   privateResourceReadResultSchema,
+  privateUrlResourceIngestionRecordSchema,
   type PrivateFileResourceAppendVersionUploadMetadata,
   type PrivateFileResourceCreateUploadMetadata,
   type PrivateResourceListQuery,
   type PrivateResourceSoftDelete,
   type PrivateTextResourceAppendVersion,
   type PrivateTextResourceCreate,
+  type PrivateUrlResourceCreate,
 } from '@workout/contracts/resources';
 
 const errorSchema = z.object({ error: z.object({ code: z.string() }) });
@@ -141,6 +143,33 @@ export function createResourceApi(transport: AuthenticatedTransport) {
         `/bff/v1/resources/uploads/${encodeURIComponent(uploadId)}/finalize`,
         'POST',
         privateResourceReadResultSchema,
+      );
+    },
+    createUrlIngestion(input: PrivateUrlResourceCreate) {
+      const { idempotencyKey, ...body } = input;
+      return request(
+        '/bff/v1/resources/url-ingestions',
+        'POST',
+        privateUrlResourceIngestionRecordSchema,
+        body,
+        idempotencyKey,
+      );
+    },
+    getUrlIngestion(ingestionId: string, signal?: AbortSignal) {
+      return request(
+        `/bff/v1/resources/url-ingestions/${encodeURIComponent(ingestionId)}`,
+        'GET',
+        privateUrlResourceIngestionRecordSchema,
+        null,
+        null,
+        signal,
+      );
+    },
+    cancelUrlIngestion(ingestionId: string) {
+      return request(
+        `/bff/v1/resources/url-ingestions/${encodeURIComponent(ingestionId)}`,
+        'DELETE',
+        privateUrlResourceIngestionRecordSchema,
       );
     },
     delete(resourceId: string, input: PrivateResourceSoftDelete) {

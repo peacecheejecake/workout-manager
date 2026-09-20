@@ -46,7 +46,15 @@ import { createCheckInRepository } from '../packages/server/persistence/src/chec
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.js';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
+import {
+  createResourceUrlIngestionRepository,
+  createResourceUrlIngestionWorkerRepository,
+} from '../packages/server/persistence/src/resource-url-ingestions.js';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.js';
+import {
+  createUrlFinalObjectKey,
+  createUrlTemporaryObjectKey,
+} from '../packages/server/media/src/keys.js';
 import { storeValidatedUpload } from '../packages/server/media/src/upload.js';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.js';
 import {
@@ -614,6 +622,128 @@ async function execute() {
       fileReservation.uploadId,
     );
     if (retainedFileResource.status !== 'available') throw new Error('RESOURCE_FILE_SEED_FAILED');
+    const resourceUrls = createResourceUrlIngestionRepository(sourceDb);
+    const urlReservation = await resourceUrls.reserveCreate(
+      retainedAthlete,
+      {
+        title: 'Synthetic restored URL capture',
+        category: 'guide',
+        metadata: { language: 'en' },
+        tags: ['restore'],
+        favorite: false,
+        url: 'https://example.com/restore?private=server-only',
+      },
+      randomUUID(),
+    );
+    const urlWorker = createResourceUrlIngestionWorkerRepository({
+      connectionString: url('drill_source'),
+    });
+    const urlFetchLease = await urlWorker.lease();
+    if (!urlFetchLease || urlFetchLease.requestId !== urlReservation.requestId)
+      throw new Error('RESOURCE_URL_FETCH_LEASE_FAILED');
+    await urlWorker.recordHop(urlFetchLease, {
+      index: 0,
+      displayUrl: 'https://example.com/restore',
+      urlDigest: createHash('sha256').update(urlFetchLease.requestedUrl).digest('hex'),
+      responseStatus: 200,
+      resolvedAddresses: ['93.184.216.34'],
+      policyVersion: 'restore-drill-v1',
+    });
+    const urlRawBytes = Buffer.from('<article><p>Synthetic restored URL body.</p></article>');
+    const urlRawSha = createHash('sha256').update(urlRawBytes).digest('hex');
+    const urlRawTemporaryKey = createUrlTemporaryObjectKey({
+      tenantId: retainedAthlete,
+      resourceId: urlReservation.resourceId,
+      ingestionId: urlReservation.requestId,
+      artifactKind: 'raw',
+    });
+    const storedUrlRawKey = createUrlFinalObjectKey({
+      tenantId: retainedAthlete,
+      resourceId: urlReservation.resourceId,
+      ingestionId: urlReservation.requestId,
+      artifactKind: 'raw',
+      sha256: urlRawSha,
+      extension: 'html',
+    });
+    await sourceObjectStorage.writeTemporary(
+      urlRawTemporaryKey,
+      (async function* () {
+        yield urlRawBytes;
+      })(),
+    );
+    assert.equal(
+      await urlWorker.prepareRaw(urlFetchLease, {
+        storageRef: storedUrlRawKey,
+        sha256: urlRawSha,
+        sizeBytes: urlRawBytes.byteLength,
+        mediaType: 'text/html',
+      }),
+      true,
+    );
+    await sourceObjectStorage.publishTemporary(urlRawTemporaryKey, storedUrlRawKey, {
+      sha256: urlRawSha,
+      sizeBytes: urlRawBytes.byteLength,
+    });
+    assert.equal(await urlWorker.markRawPublished(urlFetchLease), true);
+    const urlParseLease = await urlWorker.lease();
+    if (!urlParseLease || urlParseLease.requestId !== urlReservation.requestId)
+      throw new Error('RESOURCE_URL_PARSE_LEASE_FAILED');
+    const urlParsedText = 'Synthetic restored URL body.';
+    const urlFragments = [
+      {
+        ordinal: 0,
+        kind: 'html_block' as const,
+        headingPath: [],
+        text: urlParsedText,
+        startOffset: 0,
+        endOffset: urlParsedText.length,
+      },
+    ];
+    const urlParsedBytes = Buffer.from(
+      JSON.stringify({ schemaVersion: 1, text: urlParsedText, fragments: urlFragments }),
+    );
+    const urlParsedSha = createHash('sha256').update(urlParsedBytes).digest('hex');
+    const urlParsedTemporaryKey = createUrlTemporaryObjectKey({
+      tenantId: retainedAthlete,
+      resourceId: urlReservation.resourceId,
+      ingestionId: urlReservation.requestId,
+      artifactKind: 'parsed',
+    });
+    const storedUrlParsedKey = createUrlFinalObjectKey({
+      tenantId: retainedAthlete,
+      resourceId: urlReservation.resourceId,
+      ingestionId: urlReservation.requestId,
+      artifactKind: 'parsed',
+      sha256: urlParsedSha,
+      extension: 'json',
+    });
+    await sourceObjectStorage.writeTemporary(
+      urlParsedTemporaryKey,
+      (async function* () {
+        yield urlParsedBytes;
+      })(),
+    );
+    assert.equal(
+      await urlWorker.prepareParsed(urlParseLease, {
+        storageRef: storedUrlParsedKey,
+        sha256: urlParsedSha,
+        sizeBytes: urlParsedBytes.byteLength,
+        text: urlParsedText,
+        fragments: urlFragments,
+        parserName: 'restore-drill-parser',
+        parserVersion: '1',
+      }),
+      true,
+    );
+    await sourceObjectStorage.publishTemporary(urlParsedTemporaryKey, storedUrlParsedKey, {
+      sha256: urlParsedSha,
+      sizeBytes: urlParsedBytes.byteLength,
+    });
+    assert.equal(await urlWorker.markParsedPublished(urlParseLease), true);
+    assert.ok(await urlWorker.finalize(urlParseLease));
+    await urlWorker.close();
+    const retainedUrlResource = await resourceRepo.read(retainedAthlete, urlReservation.resourceId);
+    if (retainedUrlResource.status !== 'available') throw new Error('RESOURCE_URL_SEED_FAILED');
     const deletedResource = await resourceRepo.create(deletedAthlete, {
       sourceKind: 'text',
       title: 'Synthetic erased private text',
@@ -625,6 +755,18 @@ async function execute() {
       idempotencyKey: randomUUID(),
     });
     if (deletedResource.status !== 'available') throw new Error('RESOURCE_SEED_FAILED');
+    await resourceUrls.reserveCreate(
+      deletedAthlete,
+      {
+        title: 'Synthetic erased URL request',
+        category: 'note',
+        metadata: {},
+        tags: [],
+        favorite: false,
+        url: 'https://example.com/erased?private=must-not-survive',
+      },
+      randomUUID(),
+    );
     const constraintRepo = createCoachingConstraintRepository(sourceDb);
     const oldConstraintCommand = {
       expectedHeadRevision: null,
@@ -747,7 +889,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 13);
+      assert.equal(before.schemaVersion, 14);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -809,7 +951,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+      if (coachingExport.schemaVersion !== 14) throw new Error('Expected coaching export v14');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -835,7 +977,7 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v13 is added.
+      // A historical v8 download keeps its original shape and remains readable after v14 is added.
       const {
         coachingDecisions,
         coachingProposals,
@@ -860,6 +1002,12 @@ async function execute() {
         supplementaryRestTimers: _supplementaryRestTimers,
         resources: _resources,
         resourceVersions: _resourceVersions,
+        resourceUrlIngestions: _resourceUrlIngestions,
+        resourceUrlAttempts: _resourceUrlAttempts,
+        resourceUrlFetchHops: _resourceUrlFetchHops,
+        resourceUrlArtifacts: _resourceUrlArtifacts,
+        resourceUrlProvenance: _resourceUrlProvenance,
+        resourceUrlLocators: _resourceUrlLocators,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -963,7 +1111,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 13) throw new Error('Expected candidate export v13');
+      if (candidateExport.schemaVersion !== 14) throw new Error('Expected candidate export v14');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1573,6 +1721,12 @@ async function execute() {
       'activity_import_receipt',
       'resource',
       'resource_version',
+      'resource_url_ingestion',
+      'resource_url_ingestion_attempt',
+      'resource_url_fetch_hop',
+      'resource_url_artifact',
+      'resource_url_provenance',
+      'resource_url_locator',
     ];
     for (const table of tables) {
       assert.equal(
@@ -1690,7 +1844,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 13);
+    assert.ok(constraintExport.schemaVersion === 14);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -1725,7 +1879,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
+    if (withdrawnExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1777,7 +1931,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
+    if (absentExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -1856,6 +2010,20 @@ async function execute() {
     for await (const chunk of restoredObject.body) restoredChunks.push(chunk);
     assert.deepEqual(Buffer.concat(restoredChunks), fileBytes);
     checks.push('private_resource_file_metadata_and_raw_object_archive_restored_together');
+    assert.deepEqual(
+      await restoredResourceRepo.read(retainedAthlete, retainedUrlResource.resource.id),
+      retainedUrlResource,
+    );
+    const restoredUrlRaw = await restoredObjectStorage.open(storedUrlRawKey);
+    const restoredUrlParsed = await restoredObjectStorage.open(storedUrlParsedKey);
+    assert.ok(restoredUrlRaw && restoredUrlParsed);
+    const restoredUrlRawChunks: Uint8Array[] = [];
+    const restoredUrlParsedChunks: Uint8Array[] = [];
+    for await (const chunk of restoredUrlRaw.body) restoredUrlRawChunks.push(chunk);
+    for await (const chunk of restoredUrlParsed.body) restoredUrlParsedChunks.push(chunk);
+    assert.deepEqual(Buffer.concat(restoredUrlRawChunks), urlRawBytes);
+    assert.deepEqual(Buffer.concat(restoredUrlParsedChunks), urlParsedBytes);
+    checks.push('private_resource_url_raw_parsed_provenance_and_objects_restored_together');
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
     const manualId = manualIds.get(retainedAthlete);
     assert.ok(manualId);
@@ -1871,10 +2039,13 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 13) throw new Error('Expected resource export v13');
-    assert.equal(retainedExport.data.resources.length, 2);
-    assert.equal(retainedExport.data.resourceVersions.length, 3);
+    if (retainedExport.schemaVersion !== 14) throw new Error('Expected resource export v14');
+    assert.equal(retainedExport.data.resources.length, 3);
+    assert.equal(retainedExport.data.resourceVersions.length, 4);
     assert.ok(!JSON.stringify(retainedExport).includes(storedFile.key));
+    assert.ok(!JSON.stringify(retainedExport).includes(storedUrlRawKey));
+    assert.ok(!JSON.stringify(retainedExport).includes(storedUrlParsedKey));
+    assert.ok(!JSON.stringify(retainedExport).includes('private=server-only'));
     assert.equal(
       retainedExport.data.coachingRuns[0]?.id,
       coachingRuns.get(retainedAthlete)?.run.id,
@@ -1986,7 +2157,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+    if (retainedExport.schemaVersion !== 14) throw new Error('Expected coaching export v14');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -2118,7 +2289,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+    if (coachingAfterReplay.schemaVersion !== 14) throw new Error('Expected coaching export v14');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -2294,7 +2465,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 13) throw new Error('Expected evidence export v13');
+    if (scrubbedExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

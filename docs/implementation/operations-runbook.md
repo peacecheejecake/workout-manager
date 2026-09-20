@@ -355,3 +355,31 @@ worker는 이 항목을 다시 lease하지 않아 뒤 queue를 계속 처리한�
 raw PUT의 `UPLOAD_RESUME_REQUIRED`는 같은 upload ID와 동일 파일로 재전송한다.
 `UPLOAD_RETRY_REQUIRED` 또는 terminal failed reservation은 새 idempotency key로 intent부터 다시 만든다.
 두 경우 모두 파일 선택은 local React state에만 유지하며 storage ref는 브라우저 응답에 포함하지 않는다.
+
+## Private HTTPS URL ingestion worker (M2-04c)
+
+Migration 029와 `grantResources`를 적용한다. 별도 `workout_resource_ingestion_worker` 역할을 만들고
+`grantResourceUrlIngestionWorker`만 적용한다. API와 worker는 자격증명을 공유하지 않는다. worker에는
+`RESOURCE_URL_INGESTION_DATABASE_URL`, API와 cleanup worker가 사용하는 private volume의 같은 absolute
+`RESOURCE_STORAGE_ROOT`, 쉼표로 구분한 exact HTTPS host 목록 `RESOURCE_URL_ALLOWED_HOSTS`를 설정한다.
+wildcard, port, path, credential이 포함된 allowlist 항목은 시작 시 거절한다.
+
+```bash
+pnpm --filter @workout/worker resources:url-ingest
+```
+
+명령은 한 번에 한 ingestion의 한 phase만 처리하고 종료한다. scheduler는 raw fetch와 parse가 각각
+별도 lease/transaction으로 진행되도록 one-shot 명령을 반복한다. fetch는 hop마다 exact host, DNS의
+모든 주소와 실제 TLS socket 주소를 검증한다. redirect는 5회, raw decoded body는 1 MiB, parsed snapshot은
+64 KiB로 제한한다. proxy, cookie, auth header와 자동 redirect는 사용하지 않는다. 운영 로그에는 URL,
+query, 주소, headers, object key, 본문과 parser exception을 남기지 않는다.
+
+retryable failure는 DB 시각의 `retry_at` 이후 다시 claim하며 최대 5회다. permanent failure와 5회 소진은
+닫힌 상태로 유지한다. raw capture 이후 parser가 실패하면 bookmark-only 상태로 원문을 보존한다.
+soft delete와 계정 말소는 active lease를 취소하고 temporary/raw/parsed key를 durable cleanup manifest에
+추가한다. 계정 말소 cleanup receipt는 30일간 완료되지 않은 deletion fence로 남아 매시간 같은 key를
+다시 삭제한다. 이미 authorization을 받은 cleanup과 늦은 publication이 겹치거나 worker가 publish 직후
+중단돼도 fence 기간의 다음 실행이 object를 제거한다. 계정 export v14는 safe display URL과 상태·parser
+metadata만 포함하며 requested URL query,
+DNS/socket 주소, storage ref와 content digest를 포함하지 않는다. DB dump와 object snapshot은 같은 쓰기
+정지 구간에서 함께 백업·복원한다.

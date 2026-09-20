@@ -14,6 +14,9 @@ import {
   privateResourceReadResultSchema,
   privateResourceSchema,
   privateResourceVersionSchema,
+  privateFileResourceVersionSchema,
+  privateTextResourceVersionSchema,
+  privateUrlResourceVersionSchema,
 } from '@workout/contracts/resources';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -33,7 +36,7 @@ const iso = (value: unknown) =>
   value instanceof Date ? value.toISOString() : new Date(z.string().parse(value)).toISOString();
 const resourceRowSchema = z.object({
   id: uuid,
-  source_kind: z.enum(['text', 'file']),
+  source_kind: z.enum(['text', 'file', 'url']),
   title: z.string(),
   category: z.string(),
   metadata: z.record(z.string(), z.unknown()),
@@ -46,6 +49,29 @@ const resourceRowSchema = z.object({
   created_at: z.union([z.date(), z.string()]),
   updated_at: z.union([z.date(), z.string()]),
   deleted_at: z.union([z.date(), z.string()]).nullable(),
+});
+const urlProjectionRowSchema = z.object({
+  version_id: uuid,
+  state: z.enum(['finalized', 'bookmark_only']),
+  display_url: z.string(),
+  attempt_count: z.number().int().min(0).max(5),
+  parser_name: z.string().min(1).max(100),
+  parser_version: z.string().min(1).max(100),
+  final_display_url: z.string(),
+  fetched_at: z.union([z.date(), z.string()]),
+  media_type: z.enum(['text/html', 'application/xhtml+xml', 'text/plain', 'text/markdown']),
+  size_bytes: z.coerce.number().int().positive(),
+  content_hash: z.string().regex(/^[a-f0-9]{64}$/),
+  redirect_count: z.coerce.number().int().min(0).max(5),
+});
+const urlLocatorRowSchema = z.object({
+  ordinal: z.number().int().min(0),
+  kind: z.enum(['html_block', 'markdown_paragraph', 'plain_paragraph']),
+  heading_path: z.array(z.string()),
+  paragraph_index: z.number().int().nullable(),
+  start_offset: z.number().int().min(0),
+  end_offset: z.number().int().positive(),
+  text: z.string(),
 });
 const versionRowSchema = z.object({
   version_id: uuid,
@@ -195,12 +221,16 @@ export async function assertPrivateResourceQuota(tx: Transaction) {
          count(v.version_id) FILTER (WHERE r.deleted_at IS NULL)::integer AS active_versions,
          coalesce(sum(octet_length(convert_to(v.content,'UTF8'))+octet_length(v.paragraphs::text))
            FILTER (WHERE r.deleted_at IS NULL AND v.content IS NOT NULL),0)::integer AS active_text_bytes,
-         coalesce(sum(v.size_bytes) FILTER (WHERE r.deleted_at IS NULL AND v.storage_ref IS NOT NULL),0)::bigint
-           AS active_file_bytes,
+         (coalesce(sum(v.size_bytes) FILTER (WHERE r.deleted_at IS NULL AND v.storage_ref IS NOT NULL),0)
+           +coalesce((SELECT sum(a.size_bytes) FROM resource_url_artifact a
+             JOIN resource ar ON ar.athlete_id=a.athlete_id AND ar.id=a.resource_id
+             WHERE a.athlete_id=$1 AND ar.deleted_at IS NULL),0))::bigint AS active_file_bytes,
          count(v.version_id)::integer AS total_versions,
          coalesce(sum(octet_length(convert_to(v.content,'UTF8'))+octet_length(v.paragraphs::text))
            FILTER (WHERE v.content IS NOT NULL),0)::integer AS total_text_bytes,
-         coalesce(sum(v.size_bytes) FILTER (WHERE v.storage_ref IS NOT NULL),0)::bigint AS total_file_bytes
+         (coalesce(sum(v.size_bytes) FILTER (WHERE v.storage_ref IS NOT NULL),0)
+           +coalesce((SELECT sum(a.size_bytes) FROM resource_url_artifact a
+             WHERE a.athlete_id=$1),0))::bigint AS total_file_bytes
        FROM resource r LEFT JOIN resource_version v
          ON v.athlete_id=r.athlete_id AND v.resource_id=r.id
        WHERE r.athlete_id=$1`,
@@ -230,7 +260,73 @@ export async function assertPrivateResourceQuota(tx: Transaction) {
     throw new ResourceValidationError('RESOURCE_QUOTA_EXCEEDED');
 }
 
-function resource(row: z.infer<typeof resourceRowSchema>) {
+type UrlProjection = z.infer<typeof urlProjectionRowSchema>;
+
+function urlLifecycle(row: UrlProjection) {
+  return {
+    contentStatus: row.state,
+    displayUrl: row.display_url,
+    attempt: row.attempt_count,
+    retryAt: null,
+    indexStatus: 'not_indexed' as const,
+  };
+}
+
+function urlProvenance(row: UrlProjection) {
+  return {
+    requestedDisplayUrl: row.display_url,
+    finalDisplayUrl: row.final_display_url,
+    fetchedAt: iso(row.fetched_at),
+    mediaType: row.media_type,
+    byteSize: row.size_bytes,
+    sha256: row.content_hash,
+    redirectCount: row.redirect_count,
+    parser: { name: row.parser_name, version: row.parser_version },
+  };
+}
+
+async function loadUrlProjections(tx: Transaction, versionIds: string[]) {
+  if (versionIds.length === 0) return new Map<string, UrlProjection>();
+  const result = await tx.query(
+    `SELECT i.version_id,i.state,i.display_url,i.attempt_count,i.parser_name,i.parser_version,
+       p.final_display_url,p.fetched_at,a.media_type,a.size_bytes,a.content_hash,
+       greatest((SELECT count(*) FROM resource_url_fetch_hop h
+         WHERE h.athlete_id=i.athlete_id AND h.request_id=i.request_id
+           AND h.attempt_no=p.successful_attempt_no)-1,0)::integer AS redirect_count
+     FROM resource_url_ingestion i
+     JOIN resource_url_provenance p
+       ON p.athlete_id=i.athlete_id AND p.request_id=i.request_id AND p.version_id=i.version_id
+     JOIN resource_url_artifact a
+       ON a.athlete_id=i.athlete_id AND a.request_id=i.request_id
+       AND a.version_id=i.version_id AND a.kind='raw'
+     WHERE i.athlete_id=$1 AND i.version_id=ANY($2::uuid[])
+       AND i.state IN ('finalized','bookmark_only')`,
+    [tx.athleteId, versionIds],
+  );
+  return new Map(
+    z
+      .array(urlProjectionRowSchema)
+      .parse(result.rows)
+      .map((projection) => [projection.version_id, projection]),
+  );
+}
+
+async function loadUrlProjection(tx: Transaction, versionId: string) {
+  return (await loadUrlProjections(tx, [versionId])).get(versionId) ?? null;
+}
+
+function resource(row: z.infer<typeof resourceRowSchema>, url: UrlProjection | null = null) {
+  const lifecycle =
+    row.source_kind === 'text'
+      ? { contentStatus: 'parsed' as const, indexStatus: 'not_indexed' as const }
+      : row.source_kind === 'file'
+        ? { contentStatus: 'raw_stored' as const, indexStatus: 'not_indexed' as const }
+        : urlLifecycle(
+            url ??
+              (() => {
+                throw new Error('MISSING_URL_PROJECTION');
+              })(),
+          );
   return privateResourceSchema.parse({
     schemaVersion: 1,
     id: row.id,
@@ -243,10 +339,7 @@ function resource(row: z.infer<typeof resourceRowSchema>) {
     favorite: row.favorite,
     includeForCoach: row.include_for_coach,
     reviewedState: row.reviewed_state,
-    lifecycle: {
-      contentStatus: row.source_kind === 'text' ? 'parsed' : 'raw_stored',
-      indexStatus: 'not_indexed',
-    },
+    lifecycle,
     accessRevision: row.access_revision,
     currentVersionId: row.current_version_id,
     deletedAt: row.deleted_at === null ? null : iso(row.deleted_at),
@@ -255,7 +348,32 @@ function resource(row: z.infer<typeof resourceRowSchema>) {
   });
 }
 
-function version(row: z.infer<typeof versionRowSchema>) {
+function version(
+  row: z.infer<typeof versionRowSchema>,
+  sourceKind: z.infer<typeof resourceRowSchema>['source_kind'],
+  url: UrlProjection | null = null,
+  parsedSnapshot?: { resourceVersionId: string; text: string; fragments: unknown[] },
+) {
+  if (sourceKind === 'url') {
+    const projection =
+      url ??
+      (() => {
+        throw new Error('MISSING_URL_PROJECTION');
+      })();
+    return privateResourceVersionSchema.parse({
+      schemaVersion: 1,
+      id: row.version_id,
+      resourceId: row.resource_id,
+      version: row.version,
+      previousVersionId: row.previous_version_id,
+      contentHash: row.content_hash,
+      source: { kind: 'url', displayUrl: projection.display_url },
+      lifecycle: urlLifecycle(projection),
+      provenance: urlProvenance(projection),
+      ...(projection.state === 'finalized' ? { parsedSnapshot } : {}),
+      createdAt: iso(row.created_at),
+    });
+  }
   const source =
     row.content === null
       ? {
@@ -314,27 +432,94 @@ export async function readPrivateResourceStored(
   );
   if (!storedVersion.rows[0])
     return privateResourceReadResultSchema.parse({ status: 'unavailable' });
-  const projectedResource = resource(resourceRow);
-  const projectedVersion = version(versionRowSchema.parse(storedVersion.rows[0]));
-  const reader =
-    'paragraphs' in projectedVersion
-      ? {
-          resourceId,
-          resourceVersionId: projectedVersion.id,
-          title: projectedResource.title,
-          sourceKind: 'text' as const,
-          lifecycle: projectedVersion.lifecycle,
-          originalText: projectedVersion.source.text,
-          paragraphs: projectedVersion.paragraphs,
-        }
-      : {
-          resourceId,
-          resourceVersionId: projectedVersion.id,
-          title: projectedResource.title,
-          sourceKind: 'file' as const,
-          lifecycle: projectedVersion.lifecycle,
-          file: projectedVersion.source.file,
-        };
+  const storedVersionRow = versionRowSchema.parse(storedVersion.rows[0]);
+  const currentUrl =
+    resourceRow.source_kind === 'url'
+      ? await loadUrlProjection(tx, resourceRow.current_version_id)
+      : null;
+  const selectedUrl =
+    resourceRow.source_kind === 'url'
+      ? selectedVersionId === resourceRow.current_version_id
+        ? currentUrl
+        : await loadUrlProjection(tx, selectedVersionId)
+      : null;
+  if (resourceRow.source_kind === 'url' && (!currentUrl || !selectedUrl))
+    return privateResourceReadResultSchema.parse({ status: 'unavailable' });
+  let parsedSnapshot: { resourceVersionId: string; text: string; fragments: unknown[] } | undefined;
+  if (resourceRow.source_kind === 'url' && selectedUrl?.state === 'finalized') {
+    const locators = await tx.query(
+      `SELECT ordinal,kind,heading_path,paragraph_index,start_offset,end_offset,text
+       FROM resource_url_locator WHERE athlete_id=$1 AND version_id=$2 ORDER BY ordinal`,
+      [tx.athleteId, selectedVersionId],
+    );
+    const fragments = z
+      .array(urlLocatorRowSchema)
+      .parse(locators.rows)
+      .map((locator) => ({
+        locator: {
+          kind: locator.kind,
+          resourceVersionId: selectedVersionId,
+          index: locator.ordinal,
+          startOffset: locator.start_offset,
+          endOffset: locator.end_offset,
+          offsetUnit: 'utf16_code_unit' as const,
+          ...(locator.kind === 'html_block' || locator.kind === 'markdown_paragraph'
+            ? { headingPath: locator.heading_path }
+            : {}),
+          ...(locator.kind === 'markdown_paragraph' || locator.kind === 'plain_paragraph'
+            ? { paragraphIndex: locator.paragraph_index }
+            : {}),
+        },
+        text: locator.text,
+      }));
+    parsedSnapshot = {
+      resourceVersionId: selectedVersionId,
+      text: z.string().parse(storedVersionRow.content),
+      fragments,
+    };
+  }
+  const projectedResource = resource(resourceRow, currentUrl);
+  const projectedVersion = version(
+    storedVersionRow,
+    resourceRow.source_kind,
+    selectedUrl,
+    parsedSnapshot,
+  );
+  const reader = (() => {
+    if (resourceRow.source_kind === 'text') {
+      const textVersion = privateTextResourceVersionSchema.parse(projectedVersion);
+      return {
+        resourceId,
+        resourceVersionId: textVersion.id,
+        title: projectedResource.title,
+        sourceKind: 'text' as const,
+        lifecycle: textVersion.lifecycle,
+        originalText: textVersion.source.text,
+        paragraphs: textVersion.paragraphs,
+      };
+    }
+    if (resourceRow.source_kind === 'file') {
+      const fileVersion = privateFileResourceVersionSchema.parse(projectedVersion);
+      return {
+        resourceId,
+        resourceVersionId: fileVersion.id,
+        title: projectedResource.title,
+        sourceKind: 'file' as const,
+        lifecycle: fileVersion.lifecycle,
+        file: fileVersion.source.file,
+      };
+    }
+    const urlVersion = privateUrlResourceVersionSchema.parse(projectedVersion);
+    return {
+      resourceId,
+      resourceVersionId: urlVersion.id,
+      title: projectedResource.title,
+      sourceKind: 'url' as const,
+      lifecycle: urlVersion.lifecycle,
+      provenance: urlVersion.provenance,
+      ...(urlVersion.parsedSnapshot ? { parsedSnapshot: urlVersion.parsedSnapshot } : {}),
+    };
+  })();
   return privateResourceReadResultSchema.parse({
     status: 'available',
     resource: projectedResource,
@@ -492,11 +677,15 @@ export function createPrivateTextResourceRepository(
             query.offset,
           ],
         );
+        const rows = z.array(resourceRowSchema).parse(result.rows[0]?.['items']);
+        const urlProjections = await loadUrlProjections(
+          tx,
+          rows.filter((row) => row.source_kind === 'url').map((row) => row.current_version_id),
+        );
         return privateResourceListSchema.parse({
-          items: z
-            .array(resourceRowSchema)
-            .parse(result.rows[0]?.['items'])
-            .map((row) => resource(row)),
+          items: rows.map((row) =>
+            resource(row, urlProjections.get(row.current_version_id) ?? null),
+          ),
           total: z.number().int().parse(result.rows[0]?.['total']),
         });
       });

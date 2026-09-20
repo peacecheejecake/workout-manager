@@ -5,7 +5,13 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createFinalObjectKey, createTemporaryObjectKey, type ObjectKey } from '../src/keys.js';
+import {
+  createFinalObjectKey,
+  createTemporaryObjectKey,
+  createUrlFinalObjectKey,
+  createUrlTemporaryObjectKey,
+  type ObjectKey,
+} from '../src/keys.js';
 import {
   createLocalFilesystemObjectStorage,
   ObjectStorageConflictError,
@@ -79,6 +85,31 @@ describe('private local filesystem object storage', () => {
     await storage.delete(result.key);
     await storage.delete(result.key);
     await expect(storage.open(result.key)).resolves.toBeNull();
+  });
+
+  it('publishes a URL-ingestion artifact only to its matching request and kind', async () => {
+    const storage = await createLocalFilesystemObjectStorage(await newRoot());
+    const body = Buffer.from('{"text":"bounded"}');
+    const sha256 = createHash('sha256').update(body).digest('hex');
+    const temporary = createUrlTemporaryObjectKey({
+      tenantId,
+      resourceId,
+      ingestionId: temporaryUploadId,
+      artifactKind: 'parsed',
+    });
+    const final = createUrlFinalObjectKey({
+      tenantId,
+      resourceId,
+      ingestionId: temporaryUploadId,
+      artifactKind: 'parsed',
+      sha256,
+      extension: 'json',
+    });
+    await storage.writeTemporary(temporary, chunks(body.toString('utf8')));
+    await expect(
+      storage.publishTemporary(temporary, final, { sizeBytes: body.byteLength, sha256 }),
+    ).resolves.toMatchObject({ outcome: 'published', key: final });
+    await expect(storage.open(final)).resolves.not.toBeNull();
   });
 
   it('reuses one upload key idempotently but isolates identical bytes across upload intents', async () => {

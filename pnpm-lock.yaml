@@ -265,6 +265,9 @@ importers:
       '@workout/server-persistence':
         specifier: workspace:*
         version: link:../../packages/server/persistence
+      '@workout/server-resource-ingestion':
+        specifier: workspace:*
+        version: link:../../packages/server/resource-ingestion
     devDependencies:
       tsx:
         specifier: 4.23.13
@@ -624,6 +627,8 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+
+  packages/server/resource-ingestion: {}
 
   packages/tooling:
     dependencies:

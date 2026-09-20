@@ -189,7 +189,7 @@ it('exports coaching records only while evidence and AI consent remain available
     connection.release();
   }
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+  if (before.schemaVersion !== 14) throw new Error('Expected coaching export v14');
   expect(before.data.coachingRuns).toEqual([
     expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
   ]);
@@ -214,7 +214,7 @@ it('exports coaching records only while evidence and AI consent remain available
     }),
   ]);
   const otherExport = await operations.exportAccount(other);
-  if (otherExport.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+  if (otherExport.schemaVersion !== 14) throw new Error('Expected coaching export v14');
   expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
   expect(otherExport.data.coachingCandidates).toEqual([]);
   const blocker = await admin.connect();
@@ -240,7 +240,7 @@ it('exports coaching records only while evidence and AI consent remain available
   const withdrawn = await exportAfterWithdrawal;
   if (!withdrawn) throw new Error('Expected concurrent export');
   const withdrawnArtifact = accountExportSchema.parse(withdrawn);
-  if (withdrawnArtifact.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+  if (withdrawnArtifact.schemaVersion !== 14) throw new Error('Expected coaching export v14');
   expect(withdrawnArtifact.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
   ]);
@@ -285,7 +285,7 @@ it('exports coaching records only while evidence and AI consent remain available
     legacy.release();
   }
   const guarded = await operations.exportAccount(athlete);
-  if (guarded.schemaVersion !== 13) throw new Error('Expected coaching export v13');
+  if (guarded.schemaVersion !== 14) throw new Error('Expected coaching export v14');
   expect(guarded.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({
       id: outputId,
@@ -375,7 +375,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(13);
+    expect(before.schemaVersion).toBe(14);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);
@@ -720,4 +720,196 @@ it('counts source detail bytes toward the export ceiling before writing an expor
     code: 'EXPORT_TOO_LARGE',
   });
   expect((await operations.status(athlete)).audit).toEqual([]);
+});
+
+it('exports pending create URL ingestion history before a resource row exists', async () => {
+  const athlete = randomUUID();
+  const createdAt = new Date();
+  const states = ['queued', 'failed', 'cancelled'] as const;
+  const requestIds = new Map<(typeof states)[number], string>();
+  for (const state of states) {
+    const requestId = randomUUID();
+    requestIds.set(state, requestId);
+    await admin.query(
+      `INSERT INTO resource_url_ingestion
+       (athlete_id,request_id,idempotency_key,request_digest,operation,resource_id,version_id,
+        expected_current_version_id,requested_url,display_url,title,category,metadata,tags,favorite,
+        state,failure_code,failure_phase,failure_retryable,failed_at,retry_at,attempt_count,
+        raw_temporary_ref,parsed_temporary_ref,created_at,updated_at,expires_at)
+       VALUES($1,$2,$3,repeat('a',64),'create',$4,$5,NULL,'https://example.com/pending',
+        'https://example.com/pending','Pending URL','note','{}','[]',false,$6,$7,$8,$9,$10,$11,
+        CASE WHEN $6='queued' THEN 5 ELSE 1 END,
+        $12,$13,$14::timestamptz,$14::timestamptz,$14::timestamptz+interval '10 minutes')`,
+      [
+        athlete,
+        requestId,
+        `pending-${state}-${requestId}`,
+        randomUUID(),
+        randomUUID(),
+        state,
+        state === 'queued' ? null : state === 'failed' ? 'FETCH_TIMEOUT' : 'USER_CANCELLED',
+        state === 'failed' ? 'fetch' : null,
+        state === 'failed',
+        state === 'failed' ? createdAt : null,
+        state === 'failed' ? new Date(createdAt.getTime() + 300_000) : null,
+        `private/temp/${requestId}/raw`,
+        `private/temp/${requestId}/parsed`,
+        createdAt,
+      ],
+    );
+  }
+  const failedRequestId = requestIds.get('failed');
+  if (!failedRequestId) throw new Error('Expected failed pending URL fixture.');
+  const leaseToken = randomUUID();
+  await admin.query(
+    `INSERT INTO resource_url_ingestion_attempt
+     (athlete_id,request_id,attempt_no,phase,lease_token,status,failure_code,started_at,completed_at)
+     VALUES($1,$2,1,'fetch',$3,'failed','FETCH_TIMEOUT',$4,$4)`,
+    [athlete, failedRequestId, leaseToken, createdAt],
+  );
+  await admin.query(
+    `INSERT INTO resource_url_fetch_hop
+     (athlete_id,request_id,attempt_no,hop_index,display_url,url_digest,response_status,
+      resolved_addresses,policy_version,observed_at)
+     VALUES($1,$2,1,0,'https://example.com/pending',repeat('b',64),503,
+      ARRAY['93.184.216.34'::inet],'url-fetch-v1',$3)`,
+    [athlete, failedRequestId, createdAt],
+  );
+
+  const exported = await operations.exportAccount(athlete);
+  if (exported.schemaVersion !== 14) throw new Error('Expected the current account export schema.');
+  expect(exported.data.resourceUrlIngestions.map((item) => item.state).sort()).toEqual([
+    'cancelled',
+    'failed',
+    'queued',
+  ]);
+  expect(exported.data.resourceUrlAttempts).toHaveLength(1);
+  expect(exported.data.resourceUrlFetchHops).toHaveLength(1);
+  expect(exported.data.resources).toEqual([]);
+});
+
+it('removes every URL-derived collection from export after the resource is soft deleted', async () => {
+  const athlete = randomUUID();
+  const resourceId = randomUUID();
+  const versionId = randomUUID();
+  const requestId = randomUUID();
+  const attemptToken = randomUUID();
+  const rawArtifactId = randomUUID();
+  const parsedArtifactId = randomUUID();
+  const storageSecret = 'private/v1/tenants/hidden/url-object';
+  const requestedSecret = 'https://example.com/article?token=private';
+  const createdAt = new Date('2026-09-20T00:00:00.000Z');
+  const connection = await admin.connect();
+  try {
+    await connection.query('BEGIN');
+    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await connection.query('SET CONSTRAINTS ALL DEFERRED');
+    await connection.query(
+      `INSERT INTO resource
+       (athlete_id,id,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,
+        access_revision,current_version,current_version_id,created_at,updated_at,source_kind)
+       VALUES($1,$2,'URL export fixture','note','{}','[]',false,false,'unreviewed',1,1,$3,$4,$4,'url')`,
+      [athlete, resourceId, versionId, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_version
+       (athlete_id,resource_id,version_id,version,previous_version,previous_version_id,content,
+        content_hash,paragraphs,content_status,index_status,created_at)
+       VALUES($1,$2,$3,1,NULL,NULL,'A😀B',repeat('a',64),'[{"text":"A😀B"}]','parsed','not_indexed',$4)`,
+      [athlete, resourceId, versionId, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_ingestion
+       (athlete_id,request_id,idempotency_key,request_digest,operation,resource_id,version_id,
+        expected_current_version_id,requested_url,display_url,title,category,metadata,tags,favorite,
+        state,failure_retryable,attempt_count,raw_temporary_ref,parsed_temporary_ref,created_at,
+        updated_at,expires_at,finalized_at)
+       VALUES($1,$2,'export-fixture-key',repeat('b',64),'create',$3,$4,NULL,$5,
+        'https://example.com/article','URL export fixture','note','{}','[]',false,'finalized',false,1,
+        'private/temp/raw','private/temp/parsed',$6::timestamptz,$6::timestamptz,
+        $6::timestamptz+interval '10 minutes',$6::timestamptz)`,
+      [athlete, requestId, resourceId, versionId, requestedSecret, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_ingestion_attempt
+       (athlete_id,request_id,attempt_no,phase,lease_token,status,started_at,completed_at)
+       VALUES($1,$2,1,'parse',$3,'succeeded',$4,$4)`,
+      [athlete, requestId, attemptToken, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_fetch_hop
+       (athlete_id,request_id,attempt_no,hop_index,display_url,url_digest,response_status,
+        resolved_addresses,policy_version,observed_at)
+       VALUES($1,$2,1,0,'https://example.com/article',repeat('c',64),200,
+        ARRAY['93.184.216.34'::inet],'url-fetch-v1',$3)`,
+      [athlete, requestId, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_artifact
+       (athlete_id,artifact_id,resource_id,version_id,request_id,kind,storage_ref,content_hash,
+        size_bytes,media_type,derived_from_artifact_id,created_at)
+       VALUES($1,$2,$3,$4,$5,'raw',$6,repeat('d',64),4,'text/plain',NULL,$8),
+             ($1,$7,$3,$4,$5,'parsed',$6||'/parsed',repeat('e',64),32,'application/json',$2,$8)`,
+      [
+        athlete,
+        rawArtifactId,
+        resourceId,
+        versionId,
+        requestId,
+        storageSecret,
+        parsedArtifactId,
+        createdAt,
+      ],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_provenance
+       (athlete_id,resource_id,version_id,request_id,successful_attempt_no,requested_url,display_url,
+        final_display_url,fetch_policy_version,fetched_at)
+       VALUES($1,$2,$3,$4,1,$5,'https://example.com/article','https://example.com/article',
+        'url-fetch-v1',$6)`,
+      [athlete, resourceId, versionId, requestId, requestedSecret, createdAt],
+    );
+    await connection.query(
+      `INSERT INTO resource_url_locator
+       (athlete_id,version_id,ordinal,kind,heading_path,paragraph_index,page_number,start_offset,
+        end_offset,text)
+       VALUES($1,$2,0,'html_block','[]',NULL,NULL,1,3,'😀')`,
+      [athlete, versionId],
+    );
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const before = await operations.exportAccount(athlete);
+  if (before.schemaVersion !== 14) throw new Error('Expected the current account export schema.');
+  expect(before.data.resourceUrlIngestions).toHaveLength(1);
+  expect(before.data.resourceUrlAttempts).toHaveLength(1);
+  expect(before.data.resourceUrlFetchHops).toHaveLength(1);
+  expect(before.data.resourceUrlArtifacts).toHaveLength(2);
+  expect(before.data.resourceUrlProvenance).toHaveLength(1);
+  expect(before.data.resourceUrlLocators).toHaveLength(1);
+  expect(JSON.stringify(before)).not.toContain('token=private');
+  expect(JSON.stringify(before)).not.toContain(storageSecret);
+  expect(before.data.resourceUrlArtifacts[0]).not.toHaveProperty('content_hash');
+
+  await admin.query(
+    `UPDATE resource SET access_revision=access_revision+1,updated_at=statement_timestamp(),
+     deleted_at=statement_timestamp() WHERE athlete_id=$1 AND id=$2`,
+    [athlete, resourceId],
+  );
+  const deleted = await operations.exportAccount(athlete);
+  if (deleted.schemaVersion !== 14) throw new Error('Expected the current account export schema.');
+  expect(deleted.data.resources).toEqual([]);
+  expect(deleted.data.resourceVersions).toEqual([]);
+  expect(deleted.data.resourceUrlIngestions).toEqual([]);
+  expect(deleted.data.resourceUrlAttempts).toEqual([]);
+  expect(deleted.data.resourceUrlFetchHops).toEqual([]);
+  expect(deleted.data.resourceUrlArtifacts).toEqual([]);
+  expect(deleted.data.resourceUrlProvenance).toEqual([]);
+  expect(deleted.data.resourceUrlLocators).toEqual([]);
+  expect(JSON.stringify(deleted)).not.toContain('A😀B');
 });

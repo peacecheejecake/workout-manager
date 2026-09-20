@@ -133,7 +133,9 @@ export async function createLocalFilesystemObjectStorage(
 
   return {
     async writeTemporary(key, body) {
-      if (parseObjectKey(key).kind !== 'temporary') throw new UnsafeStoragePathError();
+      const parsedKey = parseObjectKey(key);
+      if (parsedKey.kind !== 'temporary' && parsedKey.kind !== 'url_temporary')
+        throw new UnsafeStoragePathError();
       const path = keyPath(key);
       await prepareParents(path);
       const handle = await open(
@@ -174,11 +176,23 @@ export async function createLocalFilesystemObjectStorage(
       const parsedTemporaryKey = parseObjectKey(temporaryKey);
       const parsedFinalKey = parseObjectKey(finalKey);
       if (
-        parsedTemporaryKey.kind !== 'temporary' ||
-        parsedFinalKey.kind !== 'final' ||
+        (parsedTemporaryKey.kind !== 'temporary' && parsedTemporaryKey.kind !== 'url_temporary') ||
+        (parsedFinalKey.kind !== 'final' && parsedFinalKey.kind !== 'url_final')
+      )
+        throw new ObjectStorageConflictError();
+      const uploadPair =
+        parsedTemporaryKey.kind === 'temporary' &&
+        parsedFinalKey.kind === 'final' &&
+        parsedTemporaryKey.uploadId === parsedFinalKey.uploadId;
+      const urlPair =
+        parsedTemporaryKey.kind === 'url_temporary' &&
+        parsedFinalKey.kind === 'url_final' &&
+        parsedTemporaryKey.ingestionId === parsedFinalKey.ingestionId &&
+        parsedTemporaryKey.artifactKind === parsedFinalKey.artifactKind;
+      if (
+        (!uploadPair && !urlPair) ||
         parsedTemporaryKey.tenantId !== parsedFinalKey.tenantId ||
         parsedTemporaryKey.resourceId !== parsedFinalKey.resourceId ||
-        parsedTemporaryKey.uploadId !== parsedFinalKey.uploadId ||
         parsedFinalKey.sha256 !== expectation.sha256
       ) {
         throw new ObjectStorageConflictError();
@@ -196,9 +210,12 @@ export async function createLocalFilesystemObjectStorage(
       }
       await prepareParents(finalPath);
       try {
+        await chmod(temporaryPath, 0o600);
         await link(temporaryPath, finalPath);
-        await chmod(finalPath, 0o600);
-        await unlink(temporaryPath);
+        // Once the hard link is visible, publication is committed. A failed temporary unlink must
+        // not turn a successful publish into an ambiguous error that a caller cannot compensate
+        // without risking deletion of another worker's content-addressed object.
+        await unlink(temporaryPath).catch(() => undefined);
         return { key: finalKey, outcome: 'published', ...expectation };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
@@ -210,7 +227,7 @@ export async function createLocalFilesystemObjectStorage(
         ) {
           throw new ObjectStorageConflictError();
         }
-        await unlink(temporaryPath);
+        await unlink(temporaryPath).catch(() => undefined);
         return { key: finalKey, outcome: 'already_present', ...expectation };
       }
     },

@@ -55,6 +55,10 @@ import type { ResourceFileUploadRepository } from '@workout/server-persistence/r
 import type { ObjectStorage } from '@workout/server-media/object-storage';
 import { registerResourceRoutes } from './resources-routes.js';
 import { registerResourceFileRoutes } from './resource-file-routes.js';
+import {
+  registerResourceUrlRoutes,
+  type ResourceUrlIngestionRouteRepository,
+} from './resource-url-routes.js';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
@@ -88,6 +92,7 @@ export interface ProductRepositories {
     uploads: ResourceFileUploadRepository;
     storage: ObjectStorage;
   };
+  resourceUrls?: ResourceUrlIngestionRouteRepository;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -138,4 +143,6 @@ export function registerProductRoutes(
   if (repositories.resources) registerResourceRoutes(routes, repositories.resources, principal);
   if (repositories.resourceFiles)
     registerResourceFileRoutes(routes, repositories.resourceFiles, principal);
+  if (repositories.resourceUrls)
+    registerResourceUrlRoutes(routes, repositories.resourceUrls, principal);
 }

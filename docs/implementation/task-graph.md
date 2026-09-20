@@ -9,8 +9,9 @@
 M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/M1c-runtime-grants.md),
 [M1c-04 다영역 통합 승인](progress/M1c-04.md)은 완료했다. 훈련·영양·회복·루틴
 일정의 schema v4 승인과 통합 Planner를 실DB 및 두 shell에서 검증했다.
-[M2-04b 객체 저장·파일 upload](progress/M2-04b.md)는 완료했고 M2-04 전체는 진행 중이다.
-URL/parser, 공유·coach 접근 경계는 M2-04c~d에 남는다. M2-03
+[M2-04b 객체 저장·파일 upload](progress/M2-04b.md)와
+[M2-04c URL 수집·parser lifecycle](progress/M2-04c.md)은 완료했고 M2-04 전체는 진행 중이다.
+공유·coach 접근 경계 M2-04d가 다음 직렬 작업이다. M2-03
 갤러리·media도 ready 상태다. 지도 coverage·Native
 실기기·공식 Garmin의 독립 gate는 유지한다.
 
@@ -610,7 +611,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |
 | M2-04a private text 자료·버전 고정 reader | M1c-04 | 완료; private direct text·불변 version/문단 locator·삭제 tombstone·계정 lifecycle·두 shell |
 | M2-04b 객체 저장 port·파일 upload | M2-04a | 완료; 서버 전용 port·PDF/Markdown 격리 upload·인증 download·durable raw 삭제 worker |
-| M2-04c URL 수집·parser lifecycle | M2-04b | SSRF/redirect 방어·bounded parser·출처/실패·파생물 삭제 |
+| M2-04c URL 수집·parser lifecycle | M2-04b | 완료; SSRF/redirect 방어·bounded parser·출처/실패·파생물 삭제 |
 | M2-04d 자료 접근·공유·coach 사용 경계 | M2-04b, M2-04c | ACL revision·명시 공유/철회·reviewed/coach 전환·index/cache/citation 삭제 manifest |
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
 | M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b | S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정 |

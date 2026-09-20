@@ -47,6 +47,19 @@
   border-radius: var(--radius-md, 0.75rem);
 }
 
+.urlPanel {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-md, 0.75rem);
+}
+
+.urlPanel > .form {
+  padding: 0;
+}
+
 .form label {
   display: grid;
   gap: 0.35rem;
@@ -87,6 +100,27 @@
   margin: 0;
   color: var(--color-text-muted, #52615a);
   font-size: 0.875rem;
+}
+
+.ingestionStatus {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.safeUrl,
+.fragmentMeta {
+  overflow-wrap: anywhere;
+}
+
+.safeUrl {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+.fragmentMeta {
+  margin-block: 0.5rem 0;
+  color: var(--color-text-muted, #52615a);
+  font-size: 0.8125rem;
 }
 
 .card {

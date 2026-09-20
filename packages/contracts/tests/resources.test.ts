@@ -23,11 +23,22 @@ import {
   privateTextResourceSoftDeleteSchema,
   privateTextResourceTextSchema,
   privateTextResourceVersionSchema,
+  privateUrlParsedSnapshotSchema,
+  privateUrlResourceAppendVersionSchema,
+  privateUrlResourceCreateSchema,
+  privateUrlResourceDisplayUrlSchema,
+  privateUrlResourceIngestionRecordSchema,
+  privateUrlResourceIngestionSchema,
+  privateUrlResourceProvenanceSchema,
+  privateUrlResourceReaderSchema,
+  privateUrlResourceReadResultSchema,
+  privateUrlResourceVersionSchema,
 } from '../src/resources.js';
 
 const resourceId = '11111111-1111-4111-8111-111111111111';
 const versionOneId = '22222222-2222-4222-8222-222222222222';
 const versionTwoId = '33333333-3333-4333-8333-333333333333';
+const ingestionId = '44444444-4444-4444-8444-444444444444';
 const createdAt = '2026-09-19T00:00:00.000Z';
 const updatedAt = '2026-09-19T00:01:00.000Z';
 const text = 'First.\n\nSecond.';
@@ -136,6 +147,89 @@ const fileReader = {
   sourceKind: 'file',
   lifecycle: fileLifecycle,
   file: pdfFile,
+} as const;
+
+const urlDisplayUrl = 'https://example.com/training/article';
+const urlContentHash = 'c'.repeat(64);
+const urlLifecycle = {
+  contentStatus: 'finalized',
+  displayUrl: urlDisplayUrl,
+  attempt: 1,
+  retryAt: null,
+  indexStatus: 'not_indexed',
+} as const;
+const urlProvenance = {
+  requestedDisplayUrl: urlDisplayUrl,
+  finalDisplayUrl: 'https://www.example.com/training/article',
+  fetchedAt: createdAt,
+  mediaType: 'text/html',
+  byteSize: 4096,
+  sha256: urlContentHash,
+  redirectCount: 1,
+  parser: { name: 'isolated-html', version: '1.0.0' },
+} as const;
+const firstParsedFragment = 'Training guide';
+const secondParsedFragment = 'Build gradually.';
+const parsedText = `${firstParsedFragment}\n\n${secondParsedFragment}`;
+const secondParsedStart = parsedText.indexOf(secondParsedFragment);
+const urlParsedSnapshot = {
+  resourceVersionId: versionOneId,
+  text: parsedText,
+  fragments: [
+    {
+      locator: {
+        kind: 'html_block',
+        resourceVersionId: versionOneId,
+        index: 0,
+        startOffset: 0,
+        endOffset: firstParsedFragment.length,
+        offsetUnit: 'utf16_code_unit',
+        headingPath: [],
+      },
+      text: firstParsedFragment,
+    },
+    {
+      locator: {
+        kind: 'markdown_paragraph',
+        resourceVersionId: versionOneId,
+        index: 1,
+        startOffset: secondParsedStart,
+        endOffset: secondParsedStart + secondParsedFragment.length,
+        offsetUnit: 'utf16_code_unit',
+        headingPath: ['Training'],
+        paragraphIndex: 0,
+      },
+      text: secondParsedFragment,
+    },
+  ],
+} as const;
+const urlResource = {
+  ...resource,
+  sourceKind: 'url',
+  lifecycle: urlLifecycle,
+  currentVersionId: versionOneId,
+} as const;
+const urlVersion = {
+  schemaVersion: 1,
+  id: versionOneId,
+  resourceId,
+  version: 1,
+  previousVersionId: null,
+  contentHash: urlContentHash,
+  source: { kind: 'url', displayUrl: urlDisplayUrl },
+  lifecycle: urlLifecycle,
+  provenance: urlProvenance,
+  parsedSnapshot: urlParsedSnapshot,
+  createdAt,
+} as const;
+const urlReader = {
+  resourceId,
+  resourceVersionId: versionOneId,
+  title: resource.title,
+  sourceKind: 'url',
+  lifecycle: urlLifecycle,
+  provenance: urlProvenance,
+  parsedSnapshot: urlParsedSnapshot,
 } as const;
 
 describe('private text resource contracts', () => {
@@ -590,5 +684,450 @@ describe('private file resource contracts', () => {
     expect(
       privateResourceReadResultSchema.parse({ status: 'available', resource, version, reader }),
     ).toEqual({ status: 'available', resource, version, reader });
+  });
+});
+
+describe('private URL resource contracts', () => {
+  it('accepts HTTPS create and refresh inputs while keeping SSRF checks server-side', () => {
+    const created = privateUrlResourceCreateSchema.parse({
+      sourceKind: 'url',
+      title: 'Training article',
+      category: 'guide',
+      url: 'https://example.com/training/article?token=private',
+      idempotencyKey: 'resource:url:create:1',
+    });
+    expect(created).toMatchObject({ metadata: {}, tags: [], favorite: false });
+    expect(created.url).toBe('https://example.com/training/article?token=private');
+    expect(
+      privateUrlResourceDisplayUrlSchema.parse(
+        'https://example.com/training/article?token=private',
+      ),
+    ).toBe(urlDisplayUrl);
+
+    expect(
+      privateUrlResourceAppendVersionSchema.parse({
+        expectedCurrentVersionId: versionOneId,
+        idempotencyKey: 'resource:url:refresh:1',
+      }),
+    ).toEqual({
+      expectedCurrentVersionId: versionOneId,
+      idempotencyKey: 'resource:url:refresh:1',
+    });
+    expect(
+      privateUrlResourceAppendVersionSchema.parse({
+        expectedCurrentVersionId: versionOneId,
+        url: 'https://example.com/new-location',
+        idempotencyKey: 'resource:url:refresh:2',
+      }).url,
+    ).toBe('https://example.com/new-location');
+
+    // URL syntax validation is not an SSRF decision. The server fetch policy
+    // must resolve and reject private targets before every request and redirect.
+    expect(
+      privateUrlResourceCreateSchema.safeParse({
+        sourceKind: 'url',
+        title: 'Private target syntax',
+        category: 'note',
+        url: 'https://127.0.0.1/private',
+        idempotencyKey: 'resource:url:create:2',
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    'http://example.com/article',
+    'ftp://example.com/article',
+    'file:///etc/passwd',
+    'javascript:alert(1)',
+    '/relative/article',
+    'https://user@example.com/article',
+    'https://user:secret@example.com/article',
+    'https://@example.com/article',
+    'https://example.com/article#section',
+    'https://example.com/article#',
+    'https://example.com/before\u0000after',
+    `https://example.com/${String.fromCharCode(0xd800)}`,
+    `https://example.com/${'a'.repeat(2030)}`,
+  ])('rejects unsafe URL input %s', (url) => {
+    expect(
+      privateUrlResourceCreateSchema.safeParse({
+        sourceKind: 'url',
+        title: 'Invalid URL',
+        category: 'note',
+        url,
+        idempotencyKey: 'resource:url:invalid:1',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps ingestion states strict and failure codes scoped to their stage', () => {
+    const base = {
+      displayUrl: 'https://example.com/article?secret=value',
+      attempt: 2,
+      retryAt: null,
+      indexStatus: 'not_indexed',
+    } as const;
+    expect(
+      privateUrlResourceIngestionSchema.parse({ contentStatus: 'queued', ...base }).displayUrl,
+    ).toBe('https://example.com/article');
+    expect(
+      privateUrlResourceIngestionSchema.parse({ contentStatus: 'fetching', ...base }).contentStatus,
+    ).toBe('fetching');
+    expect(
+      privateUrlResourceIngestionSchema.parse({ contentStatus: 'parsing', ...base }).contentStatus,
+    ).toBe('parsing');
+    expect(
+      privateUrlResourceIngestionSchema.parse({ contentStatus: 'bookmark_only', ...base })
+        .contentStatus,
+    ).toBe('bookmark_only');
+    expect(
+      privateUrlResourceIngestionSchema.parse({ contentStatus: 'cancelled', ...base })
+        .contentStatus,
+    ).toBe('cancelled');
+
+    const fetchFailure = {
+      stage: 'fetch',
+      code: 'blocked_address',
+      retryable: false,
+      failedAt: updatedAt,
+    } as const;
+    expect(
+      privateUrlResourceIngestionSchema.parse({
+        contentStatus: 'failed',
+        ...base,
+        failure: fetchFailure,
+      }).contentStatus,
+    ).toBe('failed');
+    expect(
+      privateUrlResourceIngestionSchema.safeParse({
+        contentStatus: 'failed',
+        ...base,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceIngestionSchema.safeParse({
+        contentStatus: 'failed',
+        ...base,
+        failure: { ...fetchFailure, code: 'malformed' },
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceIngestionSchema.safeParse({
+        contentStatus: 'failed',
+        ...base,
+        failure: { ...fetchFailure, stage: 'parse', code: 'blocked_address' },
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceIngestionSchema.safeParse({
+        contentStatus: 'queued',
+        ...base,
+        failure: fetchFailure,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceIngestionSchema.safeParse({
+        contentStatus: 'finalized',
+        ...base,
+        retryAt: updatedAt,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('wraps public ingestion state with strict stable identifiers and no internal fetch data', () => {
+    const record = {
+      schemaVersion: 1,
+      ingestionId,
+      operation: 'create',
+      resourceId,
+      versionId: versionOneId,
+      lifecycle: {
+        contentStatus: 'queued',
+        displayUrl: `${urlDisplayUrl}?token=private`,
+        attempt: 1,
+        retryAt: null,
+        indexStatus: 'not_indexed',
+      },
+      createdAt,
+      updatedAt,
+    } as const;
+    expect(privateUrlResourceIngestionRecordSchema.parse(record)).toEqual({
+      ...record,
+      lifecycle: { ...record.lifecycle, displayUrl: urlDisplayUrl },
+    });
+    expect(
+      privateUrlResourceIngestionRecordSchema.parse({ ...record, operation: 'append' }).operation,
+    ).toBe('append');
+
+    for (const invalid of [
+      { ingestionId: 'not-a-uuid' },
+      { resourceId: 'not-a-uuid' },
+      { versionId: 'not-a-uuid' },
+      { operation: 'refresh' },
+      { schemaVersion: 2 },
+    ]) {
+      expect(
+        privateUrlResourceIngestionRecordSchema.safeParse({ ...record, ...invalid }).success,
+      ).toBe(false);
+    }
+    for (const internalField of [
+      'requestedUrl',
+      'storageRef',
+      'rawTemporaryRef',
+      'leaseToken',
+      'token',
+    ]) {
+      expect(
+        privateUrlResourceIngestionRecordSchema.safeParse({
+          ...record,
+          [internalField]: 'private',
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('exposes only bounded, query-free capture provenance', () => {
+    expect(
+      privateUrlResourceProvenanceSchema.parse({
+        ...urlProvenance,
+        requestedDisplayUrl: `${urlDisplayUrl}?token=private`,
+        finalDisplayUrl: `${urlProvenance.finalDisplayUrl}?signed=secret`,
+      }),
+    ).toEqual(urlProvenance);
+    for (const privateField of ['storageRef', 'resolvedIp', 'headers', 'cookie']) {
+      expect(
+        privateUrlResourceProvenanceSchema.safeParse({
+          ...urlProvenance,
+          [privateField]: 'private',
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      privateUrlResourceProvenanceSchema.safeParse({
+        ...urlProvenance,
+        redirectCount: 6,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceProvenanceSchema.safeParse({
+        ...urlProvenance,
+        mediaType: 'application/octet-stream',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates finalized parsed text and exact version-pinned UTF-16 locators', () => {
+    expect(privateUrlParsedSnapshotSchema.parse(urlParsedSnapshot)).toEqual(urlParsedSnapshot);
+    expect(privateUrlResourceVersionSchema.parse(urlVersion)).toEqual(urlVersion);
+
+    expect(
+      privateUrlParsedSnapshotSchema.safeParse({
+        ...urlParsedSnapshot,
+        fragments: [
+          {
+            ...urlParsedSnapshot.fragments[0],
+            locator: {
+              ...urlParsedSnapshot.fragments[0].locator,
+              resourceVersionId: versionTwoId,
+            },
+          },
+          urlParsedSnapshot.fragments[1],
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlParsedSnapshotSchema.safeParse({
+        ...urlParsedSnapshot,
+        fragments: [
+          urlParsedSnapshot.fragments[0],
+          {
+            ...urlParsedSnapshot.fragments[1],
+            locator: { ...urlParsedSnapshot.fragments[1].locator, index: 2 },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlParsedSnapshotSchema.safeParse({
+        ...urlParsedSnapshot,
+        fragments: [
+          urlParsedSnapshot.fragments[0],
+          { ...urlParsedSnapshot.fragments[1], text: 'Changed.' },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlParsedSnapshotSchema.safeParse({
+        ...urlParsedSnapshot,
+        text: 'a'.repeat(64 * 1024 + 1),
+        fragments: [
+          {
+            locator: {
+              ...urlParsedSnapshot.fragments[0].locator,
+              startOffset: 0,
+              endOffset: 1,
+            },
+            text: 'a',
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('forbids parsed content before finalization and keeps fetch/parse failure provenance distinct', () => {
+    const queuedLifecycle = {
+      contentStatus: 'queued',
+      displayUrl: urlDisplayUrl,
+      attempt: 1,
+      retryAt: null,
+      indexStatus: 'not_indexed',
+    } as const;
+    const queuedVersion = {
+      ...urlVersion,
+      contentHash: null,
+      lifecycle: queuedLifecycle,
+      provenance: undefined,
+      parsedSnapshot: undefined,
+    };
+    expect(privateUrlResourceVersionSchema.parse(queuedVersion).lifecycle.contentStatus).toBe(
+      'queued',
+    );
+    expect(
+      privateUrlResourceVersionSchema.safeParse({
+        ...queuedVersion,
+        parsedSnapshot: urlParsedSnapshot,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceReaderSchema.safeParse({
+        ...urlReader,
+        lifecycle: queuedLifecycle,
+        provenance: undefined,
+        parsedSnapshot: urlParsedSnapshot,
+      }).success,
+    ).toBe(false);
+
+    const bookmarkVersion = {
+      ...urlVersion,
+      lifecycle: { ...urlLifecycle, contentStatus: 'bookmark_only' as const },
+      parsedSnapshot: undefined,
+    };
+    expect(privateUrlResourceVersionSchema.parse(bookmarkVersion).lifecycle.contentStatus).toBe(
+      'bookmark_only',
+    );
+    expect(
+      privateUrlResourceVersionSchema.safeParse({
+        ...bookmarkVersion,
+        parsedSnapshot: urlParsedSnapshot,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceReaderSchema.safeParse({
+        ...urlReader,
+        lifecycle: bookmarkVersion.lifecycle,
+        parsedSnapshot: urlParsedSnapshot,
+      }).success,
+    ).toBe(false);
+
+    const fetchFailedLifecycle = {
+      ...queuedLifecycle,
+      contentStatus: 'failed',
+      failure: {
+        stage: 'fetch',
+        code: 'network_error',
+        retryable: true,
+        failedAt: updatedAt,
+      },
+    } as const;
+    expect(
+      privateUrlResourceVersionSchema.parse({
+        ...queuedVersion,
+        lifecycle: fetchFailedLifecycle,
+      }).lifecycle.contentStatus,
+    ).toBe('failed');
+    expect(
+      privateUrlResourceVersionSchema.safeParse({
+        ...queuedVersion,
+        lifecycle: fetchFailedLifecycle,
+        provenance: urlProvenance,
+        contentHash: urlContentHash,
+      }).success,
+    ).toBe(false);
+
+    const parseFailedLifecycle = {
+      ...queuedLifecycle,
+      contentStatus: 'failed',
+      failure: {
+        stage: 'parse',
+        code: 'malformed',
+        retryable: false,
+        failedAt: updatedAt,
+      },
+    } as const;
+    expect(
+      privateUrlResourceVersionSchema.safeParse({
+        ...queuedVersion,
+        lifecycle: parseFailedLifecycle,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceVersionSchema.parse({
+        ...queuedVersion,
+        lifecycle: parseFailedLifecycle,
+        provenance: urlProvenance,
+        contentHash: urlContentHash,
+      }).lifecycle.contentStatus,
+    ).toBe('failed');
+  });
+
+  it('parses a finalized private URL read without granting review, coach use, or indexing', () => {
+    const available = privateUrlResourceReadResultSchema.parse({
+      status: 'available',
+      resource: urlResource,
+      version: urlVersion,
+      reader: urlReader,
+    });
+    expect(available.status).toBe('available');
+    if (available.status === 'available') {
+      expect(available.resource.visibility).toBe('private');
+      expect(available.resource.reviewedState).toBe('unreviewed');
+      expect(available.resource.includeForCoach).toBe(false);
+      expect(available.reader.lifecycle.indexStatus).toBe('not_indexed');
+    }
+    expect(
+      privateResourceReadResultSchema.parse({
+        status: 'available',
+        resource: urlResource,
+        version: urlVersion,
+        reader: urlReader,
+      }).status,
+    ).toBe('available');
+    expect(
+      privateUrlResourceReadResultSchema.safeParse({
+        status: 'available',
+        resource: { ...urlResource, reviewedState: 'reviewed', includeForCoach: true },
+        version: urlVersion,
+        reader: urlReader,
+      }).success,
+    ).toBe(false);
+    expect(
+      privateUrlResourceReadResultSchema.safeParse({
+        status: 'available',
+        resource: urlResource,
+        version: urlVersion,
+        reader: { ...urlReader, parsedSnapshot: { ...urlParsedSnapshot, text: 'Drift' } },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('preserves the exact legacy text and raw-file schemas', () => {
+    expect(privateTextResourceVersionSchema.parse(version)).toEqual(version);
+    expect(privateFileResourceVersionSchema.parse(fileVersion)).toEqual(fileVersion);
+    expect(privateResourceSchema.parse(resource)).toEqual(resource);
+    expect(privateResourceSchema.parse(fileResource)).toEqual(fileResource);
+    expect(privateResourceVersionSourceSchema.parse(version.source)).toEqual(version.source);
+    expect(privateResourceVersionSourceSchema.parse(fileVersion.source)).toEqual(
+      fileVersion.source,
+    );
   });
 });

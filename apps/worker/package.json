@@ -8,12 +8,14 @@
     "build": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "coaching:fixture": "tsx src/start.ts",
-    "resources:cleanup": "node --import tsx src/resource-cleanup.ts"
+    "resources:cleanup": "node --import tsx src/resource-cleanup.ts",
+    "resources:url-ingest": "node --import tsx src/url-ingestion.ts"
   },
   "dependencies": {
     "@workout/server-coaching": "workspace:*",
     "@workout/server-media": "workspace:*",
-    "@workout/server-persistence": "workspace:*"
+    "@workout/server-persistence": "workspace:*",
+    "@workout/server-resource-ingestion": "workspace:*"
   },
   "devDependencies": {
     "tsx": "4.23.13",

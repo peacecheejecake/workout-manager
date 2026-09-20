@@ -109,6 +109,17 @@ const accountExportV12Schema = accountExportV11Schema.extend({
 const accountExportV13Schema = accountExportV12Schema.extend({
   schemaVersion: z.literal(13),
 });
+const accountExportV14Schema = accountExportV13Schema.extend({
+  schemaVersion: z.literal(14),
+  data: accountExportV13Schema.shape.data.extend({
+    resourceUrlIngestions: rows,
+    resourceUrlAttempts: rows,
+    resourceUrlFetchHops: rows,
+    resourceUrlArtifacts: rows,
+    resourceUrlProvenance: rows,
+    resourceUrlLocators: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -123,6 +134,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV11Schema,
   accountExportV12Schema,
   accountExportV13Schema,
+  accountExportV14Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

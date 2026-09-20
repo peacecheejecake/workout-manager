@@ -27,6 +27,7 @@ export interface ObjectStorage {
     key: TemporaryObjectKey,
     body: AsyncIterable<Uint8Array>,
   ): Promise<StoredObjectStat>;
+  /** Implementations must not reject after making the final key visible. */
   publishTemporary(
     temporaryKey: TemporaryObjectKey,
     finalKey: FinalObjectKey,

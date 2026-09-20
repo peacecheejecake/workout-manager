@@ -10,13 +10,40 @@ function run(command, args, options = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
 }
+function runIntegrationTests(env) {
+  run(
+    'pnpm',
+    [
+      'exec',
+      'vitest',
+      'run',
+      '--config',
+      'vitest.integration.config.ts',
+      'packages/server/persistence/tests/resource-url-ingestion-upgrade.integration.test.ts',
+    ],
+    { env },
+  );
+  run(
+    'pnpm',
+    [
+      'exec',
+      'vitest',
+      'run',
+      '--config',
+      'vitest.integration.config.ts',
+      '--exclude',
+      'packages/server/persistence/tests/resource-url-ingestion-upgrade.integration.test.ts',
+    ],
+    { env },
+  );
+}
 if (Boolean(process.env.TEST_DATABASE_URL) !== Boolean(process.env.TEST_DATABASE_ADMIN_URL)) {
   throw new Error(
     'Supply both isolated test database URLs, or neither for a local ephemeral cluster.',
   );
 }
 if (process.env.TEST_DATABASE_URL && process.env.TEST_DATABASE_ADMIN_URL) {
-  run('pnpm', ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.ts']);
+  runIntegrationTests(process.env);
 } else {
   const candidates = [
     process.env.PG_BIN,
@@ -70,12 +97,10 @@ if (process.env.TEST_DATABASE_URL && process.env.TEST_DATABASE_ADMIN_URL) {
       'CREATE ROLE workout_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     ]);
     const endpoint = `localhost/postgres?host=${encodeURIComponent(directory)}`;
-    run('pnpm', ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.ts'], {
-      env: {
-        ...process.env,
-        TEST_DATABASE_ADMIN_URL: `postgresql://workout_admin@${endpoint}`,
-        TEST_DATABASE_URL: `postgresql://workout_runtime@${endpoint}`,
-      },
+    runIntegrationTests({
+      ...process.env,
+      TEST_DATABASE_ADMIN_URL: `postgresql://workout_admin@${endpoint}`,
+      TEST_DATABASE_URL: `postgresql://workout_runtime@${endpoint}`,
     });
   } finally {
     if (started) run(join(bin, 'pg_ctl'), ['-D', data, '-m', 'immediate', '-w', 'stop']);

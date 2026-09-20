@@ -5,7 +5,13 @@ const temporaryKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/temporary/(${UUID_PATTERN})$`,
 );
 const finalKeyPattern = new RegExp(
-  `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/objects/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})\\.(pdf|md)$`,
+  `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/objects/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](pdf|md)$`,
+);
+const urlTemporaryKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/url-ingestions/(${UUID_PATTERN})/temporary/(raw|parsed)$`,
+);
+const urlFinalKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/url-ingestions/(${UUID_PATTERN})/(raw|parsed)/sha256/(${SHA256_PATTERN})[.](html|xhtml|txt|md|json)$`,
 );
 
 declare const temporaryObjectKeyBrand: unique symbol;
@@ -15,6 +21,8 @@ export type TemporaryObjectKey = string & { readonly [temporaryObjectKeyBrand]: 
 export type FinalObjectKey = string & { readonly [finalObjectKeyBrand]: true };
 export type ObjectKey = TemporaryObjectKey | FinalObjectKey;
 export type StoredFileExtension = 'pdf' | 'md';
+export type UrlArtifactKind = 'raw' | 'parsed';
+export type UrlArtifactExtension = 'html' | 'xhtml' | 'txt' | 'md' | 'json';
 
 export class InvalidObjectKeyError extends Error {
   readonly code = 'INVALID_OBJECT_KEY';
@@ -57,6 +65,37 @@ export function createFinalObjectKey(input: {
   return `private/v1/tenants/${tenantId}/resources/${resourceId}/objects/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
 }
 
+export function createUrlTemporaryObjectKey(input: {
+  tenantId: string;
+  resourceId: string;
+  ingestionId: string;
+  artifactKind: UrlArtifactKind;
+}): TemporaryObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const resourceId = normalizeUuid(input.resourceId);
+  const ingestionId = normalizeUuid(input.ingestionId);
+  return `private/v1/tenants/${tenantId}/resources/${resourceId}/url-ingestions/${ingestionId}/temporary/${input.artifactKind}` as TemporaryObjectKey;
+}
+
+export function createUrlFinalObjectKey(input: {
+  tenantId: string;
+  resourceId: string;
+  ingestionId: string;
+  artifactKind: UrlArtifactKind;
+  sha256: string;
+  extension: UrlArtifactExtension;
+}): FinalObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const resourceId = normalizeUuid(input.resourceId);
+  const ingestionId = normalizeUuid(input.ingestionId);
+  const sha256 = input.sha256.toLowerCase();
+  if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
+  if (input.artifactKind === 'parsed' && input.extension !== 'json')
+    throw new InvalidObjectKeyError();
+  if (input.artifactKind === 'raw' && input.extension === 'json') throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}/resources/${resourceId}/url-ingestions/${ingestionId}/${input.artifactKind}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
+}
+
 export type ParsedObjectKey =
   | {
       kind: 'temporary';
@@ -71,6 +110,22 @@ export type ParsedObjectKey =
       uploadId: string;
       sha256: string;
       extension: StoredFileExtension;
+    }
+  | {
+      kind: 'url_temporary';
+      tenantId: string;
+      resourceId: string;
+      ingestionId: string;
+      artifactKind: UrlArtifactKind;
+    }
+  | {
+      kind: 'url_final';
+      tenantId: string;
+      resourceId: string;
+      ingestionId: string;
+      artifactKind: UrlArtifactKind;
+      sha256: string;
+      extension: UrlArtifactExtension;
     };
 
 export function parseObjectKey(value: string): ParsedObjectKey {
@@ -106,6 +161,43 @@ export function parseObjectKey(value: string): ParsedObjectKey {
       uploadId,
       sha256,
       extension,
+    };
+  }
+  const urlTemporaryMatch = urlTemporaryKeyPattern.exec(value);
+  if (urlTemporaryMatch) {
+    const [, tenantId, resourceId, ingestionId, artifactKind] = urlTemporaryMatch;
+    if (
+      !tenantId ||
+      !resourceId ||
+      !ingestionId ||
+      (artifactKind !== 'raw' && artifactKind !== 'parsed')
+    )
+      throw new InvalidObjectKeyError();
+    return { kind: 'url_temporary', tenantId, resourceId, ingestionId, artifactKind };
+  }
+  const urlFinalMatch = urlFinalKeyPattern.exec(value);
+  if (urlFinalMatch) {
+    const [, tenantId, resourceId, ingestionId, artifactKind, sha256, extension] = urlFinalMatch;
+    if (
+      !tenantId ||
+      !resourceId ||
+      !ingestionId ||
+      !sha256 ||
+      (artifactKind !== 'raw' && artifactKind !== 'parsed') ||
+      !extension ||
+      !['html', 'xhtml', 'txt', 'md', 'json'].includes(extension) ||
+      (artifactKind === 'parsed' && extension !== 'json') ||
+      (artifactKind === 'raw' && extension === 'json')
+    )
+      throw new InvalidObjectKeyError();
+    return {
+      kind: 'url_final',
+      tenantId,
+      resourceId,
+      ingestionId,
+      artifactKind,
+      sha256,
+      extension: extension as UrlArtifactExtension,
     };
   }
   throw new InvalidObjectKeyError();

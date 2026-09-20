@@ -17,6 +17,7 @@
     "./resources": "./src/resources.ts",
     "./resource-file-uploads": "./src/resource-file-uploads.ts",
     "./resource-object-cleanup": "./src/resource-object-cleanup.ts",
+    "./resource-url-ingestions": "./src/resource-url-ingestions.ts",
     "./recovery-core": "./src/recovery-core.ts",
     "./nutrition-core": "./src/nutrition-core.ts",
     "./supplementary-core": "./src/supplementary-core.ts",

@@ -1079,8 +1079,9 @@
       "title": "URL 수집·parser lifecycle",
       "dependsOn": ["M2-04b"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "URL/redirect allowlist·SSRF 방어·bounded parser·출처/실패·파생물 삭제"
+      "status": "completed",
+      "scope": "URL/redirect allowlist·SSRF 방어·bounded parser·출처/실패·파생물 삭제",
+      "evidence": "docs/implementation/progress/M2-04c.md"
     },
     {
       "id": "M2-04d",

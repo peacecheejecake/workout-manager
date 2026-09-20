@@ -50,7 +50,298 @@ function available<T extends { status: string }>(
   expect(value.status).toBe('available');
 }
 
+async function insertUrlResourceFixture(athleteId: string) {
+  const resourceId = randomUUID();
+  const finalizedVersionId = randomUUID();
+  const bookmarkVersionId = randomUUID();
+  const finalizedRequestId = randomUUID();
+  const bookmarkRequestId = randomUUID();
+  const finalizedLease = randomUUID();
+  const bookmarkLease = randomUUID();
+  const rawFinalizedHash = 'a'.repeat(64);
+  const rawBookmarkHash = 'b'.repeat(64);
+  const finalizedRawStorageRef = `private/final/${finalizedRequestId}/raw-secret`;
+  const bookmarkRawStorageRef = `private/final/${bookmarkRequestId}/raw-secret`;
+  const parsedStorageRef = `private/final/${finalizedRequestId}/parsed-secret`;
+  const parsedText = 'Parsed body.';
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET CONSTRAINTS ALL DEFERRED');
+    await client.query(
+      `INSERT INTO resource_url_ingestion
+       (athlete_id,request_id,idempotency_key,request_digest,operation,resource_id,version_id,
+        expected_current_version_id,requested_url,display_url,title,category,metadata,tags,favorite,state,
+        attempt_count,raw_temporary_ref,raw_storage_ref,raw_sha256,raw_size_bytes,raw_media_type,
+        raw_published_at,parsed_temporary_ref,parsed_storage_ref,parsed_sha256,parsed_size_bytes,
+        parsed_text,fragments,parser_name,parser_version,parsed_published_at,created_at,updated_at,
+        expires_at,finalized_at)
+       VALUES
+       ($1,$2,$3,$4,'create',$5,$6,NULL,$7,$8,'URL resource','guide','{}','[]',false,'finalized',
+        1,$9,$10,$11,128,'text/html',$12,$13,$14,$15,256,$16,$17::jsonb,
+        'bounded-html','1',$12,$12,$12,$18,$12),
+       ($1,$19,$20,$21,'append',$5,$22,$6,$23,$24,NULL,NULL,'{}','[]',false,'bookmark_only',
+        1,$25,$26,$27,96,'text/markdown',$12,$28,NULL,NULL,NULL,NULL,NULL,
+        'bounded-markdown','1',NULL,$12,$12,$18,$12)`,
+      [
+        athleteId,
+        finalizedRequestId,
+        `fixture-${finalizedRequestId}`,
+        'c'.repeat(64),
+        resourceId,
+        finalizedVersionId,
+        'https://example.com/article?secret=first',
+        'https://example.com/article',
+        `private/temporary/${finalizedRequestId}/raw-secret`,
+        finalizedRawStorageRef,
+        rawFinalizedHash,
+        now,
+        `private/temporary/${finalizedRequestId}/parsed-secret`,
+        parsedStorageRef,
+        'd'.repeat(64),
+        parsedText,
+        JSON.stringify([
+          {
+            ordinal: 0,
+            kind: 'plain_paragraph',
+            headingPath: [],
+            paragraphIndex: 0,
+            text: parsedText,
+            startOffset: 0,
+            endOffset: parsedText.length,
+          },
+        ]),
+        expiresAt,
+        bookmarkRequestId,
+        `fixture-${bookmarkRequestId}`,
+        'e'.repeat(64),
+        bookmarkVersionId,
+        'https://example.com/updated?secret=second',
+        'https://example.com/updated',
+        `private/temporary/${bookmarkRequestId}/raw-secret`,
+        bookmarkRawStorageRef,
+        rawBookmarkHash,
+        `private/temporary/${bookmarkRequestId}/parsed-secret`,
+      ],
+    );
+    await client.query(
+      `INSERT INTO resource_url_ingestion_attempt
+       (athlete_id,request_id,attempt_no,phase,lease_token,status,started_at,completed_at)
+       VALUES($1,$2,1,'parse',$3,'succeeded',$4,$4),($1,$5,1,'parse',$6,'succeeded',$4,$4)`,
+      [athleteId, finalizedRequestId, finalizedLease, now, bookmarkRequestId, bookmarkLease],
+    );
+    await client.query(
+      `INSERT INTO resource_url_fetch_hop
+       (athlete_id,request_id,attempt_no,hop_index,display_url,url_digest,response_status,
+        resolved_addresses,policy_version,observed_at)
+       VALUES
+       ($1,$2,1,0,'https://example.com/article',$3,302,ARRAY['93.184.216.34']::inet[],'ssrf-v1',$4),
+       ($1,$2,1,1,'https://cdn.example.com/article',$5,200,ARRAY['93.184.216.35']::inet[],'ssrf-v1',$4),
+       ($1,$6,1,0,'https://example.com/updated',$7,200,ARRAY['93.184.216.36']::inet[],'ssrf-v1',$4)`,
+      [
+        athleteId,
+        finalizedRequestId,
+        'f'.repeat(64),
+        now,
+        '0'.repeat(64),
+        bookmarkRequestId,
+        '1'.repeat(64),
+      ],
+    );
+    await client.query(
+      `INSERT INTO resource
+       (athlete_id,id,source_kind,title,category,metadata,tags,favorite,include_for_coach,
+        reviewed_state,access_revision,current_version,current_version_id,created_at,updated_at)
+       VALUES($1,$2,'url','URL resource','guide','{}','[]',false,false,'unreviewed',2,2,$3,$4,$4)`,
+      [athleteId, resourceId, bookmarkVersionId, now],
+    );
+    await client.query(
+      `INSERT INTO resource_version
+       (athlete_id,resource_id,version_id,version,previous_version,previous_version_id,content,
+        content_hash,paragraphs,content_status,index_status,created_at)
+       VALUES($1,$2,$3,1,NULL,NULL,$4,$5,$6::jsonb,'parsed','not_indexed',$7),
+       ($1,$2,$8,2,1,$3,NULL,$9,'[]','bookmark_only','not_indexed',$7)`,
+      [
+        athleteId,
+        resourceId,
+        finalizedVersionId,
+        parsedText,
+        rawFinalizedHash,
+        JSON.stringify([{ locator: true }]),
+        now,
+        bookmarkVersionId,
+        rawBookmarkHash,
+      ],
+    );
+    await client.query(
+      `INSERT INTO resource_url_artifact
+       (athlete_id,artifact_id,resource_id,version_id,request_id,kind,storage_ref,content_hash,
+        size_bytes,media_type,created_at)
+       VALUES
+       ($1,$2,$3,$4,$5,'raw',$6,$7,128,'text/html',$8),
+       ($1,$9,$3,$10,$11,'raw',$12,$13,96,'text/markdown',$8)`,
+      [
+        athleteId,
+        randomUUID(),
+        resourceId,
+        finalizedVersionId,
+        finalizedRequestId,
+        finalizedRawStorageRef,
+        rawFinalizedHash,
+        now,
+        randomUUID(),
+        bookmarkVersionId,
+        bookmarkRequestId,
+        bookmarkRawStorageRef,
+        rawBookmarkHash,
+      ],
+    );
+    await client.query(
+      `INSERT INTO resource_url_provenance
+       (athlete_id,resource_id,version_id,request_id,successful_attempt_no,requested_url,
+        display_url,final_display_url,fetch_policy_version,fetched_at)
+       VALUES
+       ($1,$2,$3,$4,1,'https://example.com/article?secret=first','https://example.com/article',
+        'https://cdn.example.com/article','ssrf-v1',$5),
+       ($1,$2,$6,$7,1,'https://example.com/updated?secret=second','https://example.com/updated',
+        'https://example.com/updated','ssrf-v1',$5)`,
+      [
+        athleteId,
+        resourceId,
+        finalizedVersionId,
+        finalizedRequestId,
+        now,
+        bookmarkVersionId,
+        bookmarkRequestId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO resource_url_locator
+       (athlete_id,version_id,ordinal,kind,heading_path,paragraph_index,page_number,start_offset,end_offset,text)
+       VALUES($1,$2,0,'plain_paragraph','[]',0,NULL,0,$3,$4)`,
+      [athleteId, finalizedVersionId, parsedText.length, parsedText],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  return {
+    resourceId,
+    finalizedVersionId,
+    bookmarkVersionId,
+    parsedText,
+    storageRefs: [bookmarkRawStorageRef, finalizedRawStorageRef, parsedStorageRef].sort(),
+  };
+}
+
 describe('M2-04a private DB-backed text resources', () => {
+  it('projects finalized and bookmark URL versions without exposing fetch secrets', async () => {
+    const athlete = randomUUID();
+    const other = randomUUID();
+    const fixture = await insertUrlResourceFixture(athlete);
+    const repo = createPrivateTextResourceRepository(database);
+
+    const list = await repo.list(athlete);
+    expect(list).toMatchObject({
+      total: 1,
+      items: [
+        {
+          id: fixture.resourceId,
+          sourceKind: 'url',
+          lifecycle: {
+            contentStatus: 'bookmark_only',
+            displayUrl: 'https://example.com/updated',
+            attempt: 1,
+            retryAt: null,
+          },
+        },
+      ],
+    });
+    expect(await repo.list(other)).toEqual({ items: [], total: 0 });
+    expect(await repo.read(other, fixture.resourceId)).toEqual({ status: 'unavailable' });
+
+    const current = await repo.read(athlete, fixture.resourceId);
+    expect(current).toMatchObject({
+      status: 'available',
+      version: {
+        id: fixture.bookmarkVersionId,
+        contentHash: 'b'.repeat(64),
+        source: { kind: 'url', displayUrl: 'https://example.com/updated' },
+        lifecycle: { contentStatus: 'bookmark_only' },
+        provenance: {
+          requestedDisplayUrl: 'https://example.com/updated',
+          finalDisplayUrl: 'https://example.com/updated',
+          mediaType: 'text/markdown',
+          byteSize: 96,
+          redirectCount: 0,
+          parser: { name: 'bounded-markdown', version: '1' },
+        },
+      },
+      reader: { sourceKind: 'url', lifecycle: { contentStatus: 'bookmark_only' } },
+    });
+    expect(current.status === 'available' && 'parsedSnapshot' in current.version).toBe(false);
+
+    const historical = await repo.read(athlete, fixture.resourceId, {
+      versionId: fixture.finalizedVersionId,
+    });
+    expect(historical).toMatchObject({
+      status: 'available',
+      resource: { currentVersionId: fixture.bookmarkVersionId },
+      version: {
+        id: fixture.finalizedVersionId,
+        contentHash: 'a'.repeat(64),
+        lifecycle: { contentStatus: 'finalized' },
+        provenance: {
+          requestedDisplayUrl: 'https://example.com/article',
+          finalDisplayUrl: 'https://cdn.example.com/article',
+          redirectCount: 1,
+        },
+        parsedSnapshot: {
+          resourceVersionId: fixture.finalizedVersionId,
+          text: fixture.parsedText,
+          fragments: [
+            {
+              locator: {
+                kind: 'plain_paragraph',
+                resourceVersionId: fixture.finalizedVersionId,
+                index: 0,
+                paragraphIndex: 0,
+                startOffset: 0,
+                endOffset: fixture.parsedText.length,
+              },
+              text: fixture.parsedText,
+            },
+          ],
+        },
+      },
+    });
+    const publicJson = JSON.stringify({ list, current, historical });
+    expect(publicJson).not.toContain('secret=');
+    expect(publicJson).not.toContain('private/');
+    expect(publicJson).not.toContain('93.184.216.');
+
+    if (current.status !== 'available') throw new Error('Expected URL resource');
+    const deleted = await repo.softDelete(athlete, fixture.resourceId, {
+      expectedAccessRevision: current.resource.accessRevision,
+      expectedCurrentVersionId: fixture.bookmarkVersionId,
+      idempotencyKey: randomUUID(),
+    });
+    expect(deleted.status).toBe('deleted');
+    expect(await repo.list(athlete)).toEqual({ items: [], total: 0 });
+    expect(await repo.read(athlete, fixture.resourceId)).toEqual(deleted);
+    const cleanup = await admin.query(
+      'SELECT storage_ref FROM resource_object_cleanup WHERE storage_ref=ANY($1::text[]) ORDER BY storage_ref',
+      [fixture.storageRefs],
+    );
+    expect(cleanup.rows.map((row) => row.storage_ref)).toEqual(
+      expect.arrayContaining(fixture.storageRefs),
+    );
+  });
   it('creates, lists and reads current and immutable exact versions', async () => {
     const athlete = randomUUID();
     const repo = createPrivateTextResourceRepository(database);
@@ -109,8 +400,8 @@ describe('M2-04a private DB-backed text resources', () => {
       { version: 2, content: 'Updated direct text.' },
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(13);
-    if (exported.schemaVersion !== 13) throw new Error('Expected resource export');
+    expect(exported.schemaVersion).toBe(14);
+    if (exported.schemaVersion !== 14) throw new Error('Expected resource export');
     expect(exported.data.resources).toHaveLength(1);
     expect(exported.data.resourceVersions).toHaveLength(2);
   });
@@ -271,7 +562,7 @@ describe('M2-04a private DB-backed text resources', () => {
       .parse(receipts.rows);
     expect(receiptRows.every((row) => row.result.status === 'deleted')).toBe(true);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 13) throw new Error('Expected resource export');
+    if (exported.schemaVersion !== 14) throw new Error('Expected resource export');
     expect(exported.data.resources).toEqual([]);
     expect(exported.data.resourceVersions).toEqual([]);
     const event = await database.tenant(athlete, (tx) =>

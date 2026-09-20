@@ -2,8 +2,79 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 
+const migrationFiles = [
+  '001_foundation.sql',
+  '002_identity.sql',
+  '003_plan.sql',
+  '004_activities.sql',
+  '005_operations.sql',
+  '006_garmin.sql',
+  '007_check_ins.sql',
+  '008_manual_activities.sql',
+  '009_activity_details.sql',
+  '010_session_completion.sql',
+  '011_plan_scenarios.sql',
+  '012_coaching_threads.sql',
+  '013_evidence_snapshots.sql',
+  '014_coaching_constraints.sql',
+  '015_evidence_constraints.sql',
+  '016_plan_scenario_labels.sql',
+  '017_coaching_runs.sql',
+  '018_coaching_candidates.sql',
+  '019_coaching_candidate_approval.sql',
+  '020_nutrition_core.sql',
+  '021_supplementary_core.sql',
+  '022_integrated_dependency_heads.sql',
+  '023_routine_core.sql',
+  '024_stretching.sql',
+  '025_recovery_core.sql',
+  '026_integrated_approval_v4.sql',
+  '027_resource_lifecycle.sql',
+  '028_resource_file_upload.sql',
+  '029_resource_url_ingestion.sql',
+] as const;
+
+async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
+  await pool.query(
+    `REVOKE SELECT ON resource_url_ingestion,resource_url_ingestion_attempt,resource_url_fetch_hop,
+     resource_url_artifact,resource_url_provenance,resource_url_locator FROM "${runtimeRole}"`,
+  );
+  await pool.query(
+    `GRANT SELECT(athlete_id,request_id,idempotency_key,request_digest,operation,resource_id,version_id,
+       expected_current_version_id,display_url,title,category,metadata,tags,favorite,state,failure_code,
+       failure_phase,failure_retryable,failed_at,retry_at,attempt_count,parser_name,parser_version,
+       created_at,updated_at,expires_at,finalized_at) ON resource_url_ingestion TO "${runtimeRole}"`,
+  );
+  await pool.query(
+    `GRANT SELECT(athlete_id,request_id,attempt_no,phase,status,failure_code,started_at,completed_at)
+       ON resource_url_ingestion_attempt TO "${runtimeRole}"`,
+  );
+  await pool.query(
+    `GRANT SELECT(athlete_id,request_id,attempt_no,hop_index,display_url,response_status,policy_version,observed_at)
+       ON resource_url_fetch_hop TO "${runtimeRole}"`,
+  );
+  await pool.query(
+    `GRANT SELECT(athlete_id,artifact_id,resource_id,version_id,request_id,kind,content_hash,size_bytes,
+       media_type,derived_from_artifact_id,created_at) ON resource_url_artifact TO "${runtimeRole}"`,
+  );
+  await pool.query(
+    `GRANT SELECT(athlete_id,resource_id,version_id,request_id,successful_attempt_no,display_url,
+       final_display_url,fetch_policy_version,fetched_at) ON resource_url_provenance TO "${runtimeRole}"`,
+  );
+  await pool.query(`GRANT SELECT ON resource_url_locator TO "${runtimeRole}"`);
+}
+
 /** Run with deployment credentials; runtime credentials receive only table DML grants. */
-export async function migrate(connectionString: string): Promise<void> {
+export async function migrate(
+  connectionString: string,
+  throughVersion: number = migrationFiles.length,
+): Promise<void> {
+  if (
+    !Number.isInteger(throughVersion) ||
+    throughVersion < 1 ||
+    throughVersion > migrationFiles.length
+  )
+    throw new Error('INVALID_MIGRATION_VERSION');
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   const client = await pool.connect();
   try {
@@ -12,36 +83,7 @@ export async function migrate(connectionString: string): Promise<void> {
     await client.query(
       'CREATE TABLE IF NOT EXISTS schema_migrations (version integer PRIMARY KEY, checksum text NOT NULL)',
     );
-    for (const [index, file] of [
-      '001_foundation.sql',
-      '002_identity.sql',
-      '003_plan.sql',
-      '004_activities.sql',
-      '005_operations.sql',
-      '006_garmin.sql',
-      '007_check_ins.sql',
-      '008_manual_activities.sql',
-      '009_activity_details.sql',
-      '010_session_completion.sql',
-      '011_plan_scenarios.sql',
-      '012_coaching_threads.sql',
-      '013_evidence_snapshots.sql',
-      '014_coaching_constraints.sql',
-      '015_evidence_constraints.sql',
-      '016_plan_scenario_labels.sql',
-      '017_coaching_runs.sql',
-      '018_coaching_candidates.sql',
-      '019_coaching_candidate_approval.sql',
-      '020_nutrition_core.sql',
-      '021_supplementary_core.sql',
-      '022_integrated_dependency_heads.sql',
-      '023_routine_core.sql',
-      '024_stretching.sql',
-      '025_recovery_core.sql',
-      '026_integrated_approval_v4.sql',
-      '027_resource_lifecycle.sql',
-      '028_resource_file_upload.sql',
-    ].entries()) {
+    for (const [index, file] of migrationFiles.slice(0, throughVersion).entries()) {
       const version = index + 1;
       const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8');
       const checksum = createHash('sha256').update(sql).digest('hex');
@@ -143,6 +185,7 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON resource,resource_version,resource_object TO "${runtimeRole}"`,
     );
+    await grantSafeResourceUrlReadColumns(pool, runtimeRole);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -256,6 +299,8 @@ export async function grantResources(connectionString: string, runtimeRole: stri
     await pool.query(
       `GRANT SELECT,INSERT ON resource,resource_version,resource_object,resource_upload_intent TO "${runtimeRole}"`,
     );
+    await pool.query(`GRANT INSERT ON resource_url_ingestion TO "${runtimeRole}"`);
+    await grantSafeResourceUrlReadColumns(pool, runtimeRole);
     await pool.query(
       `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at)
        ON resource TO "${runtimeRole}"`,
@@ -276,6 +321,38 @@ export async function grantResources(connectionString: string, runtimeRole: stri
        public.cancel_resource_uploads(uuid,text),public.protect_resource_upload_object(uuid),
        public.compact_resource_upload_history(integer)
        TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.cancel_resource_url_ingestion(uuid,text),
+       public.resource_url_request_by_key(text),public.current_resource_url_request(uuid)
+       TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** URL ingestion workers receive only bounded, token-fenced function access. */
+export async function grantResourceUrlIngestionWorker(
+  connectionString: string,
+  workerRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(workerRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.lease_resource_url_ingestion(uuid,interval),
+       public.record_resource_url_hop(uuid,uuid,integer,text,text,integer,inet[],text),
+       public.prepare_resource_url_raw(uuid,uuid,text,text,bigint,text),
+       public.mark_resource_url_raw_published(uuid,uuid),
+       public.prepare_resource_url_parsed(uuid,uuid,text,text,bigint,text,jsonb,text,text),
+       public.mark_resource_url_parsed_published(uuid,uuid),
+       public.enqueue_abandoned_resource_url_object(text,uuid,uuid,text),
+       public.finalize_resource_url_ingestion(uuid,uuid),
+       public.mark_resource_url_bookmark_only(uuid,uuid,text,text),
+       public.fail_resource_url_ingestion(uuid,uuid,text,boolean,interval),
+       public.reap_resource_url_ingestions(integer)
+       TO "${workerRole}"`,
     );
   } finally {
     await pool.end();
