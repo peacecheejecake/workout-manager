@@ -34,6 +34,7 @@ const migrationFiles = [
   '029_resource_url_ingestion.sql',
   '030_resource_access_sharing.sql',
   '031_gallery_media.sql',
+  '032_resource_retrieval.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -156,6 +157,25 @@ export async function grantGarminWorker(
   }
 }
 
+/**
+ * Reads the coaching path needs once retrieval exists. The gate function stays
+ * the only authorization source, so it is granted alongside the derived stores
+ * rather than replaced by direct table predicates.
+ */
+async function grantResourceRetrievalReads(pool: Pool, role: string) {
+  await pool.query(
+    `GRANT SELECT ON resource_passage,resource_retrieval_cache,resource_grounding,
+     resource_grounding_excerpt,resource_citation TO "${role}"`,
+  );
+  // The resource RLS policy itself reads resource_share, so reading a resource
+  // row requires SELECT on the share ledger as well.
+  await pool.query(`GRANT SELECT ON resource,resource_version,resource_share,consent TO "${role}"`);
+  await pool.query(
+    `GRANT EXECUTE ON FUNCTION public.resource_coach_use_authorized(uuid),
+     public.resource_derived_cleanup_pending(uuid) TO "${role}"`,
+  );
+}
+
 /** Narrow runtime grants for the lifecycle gate and audited account operations. */
 export async function grantOperations(
   connectionString: string,
@@ -191,6 +211,10 @@ export async function grantOperations(
     await grantSafeResourceUrlReadColumns(pool, runtimeRole);
     await pool.query(
       `GRANT SELECT ON gallery_media_item,gallery_media_derivative TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT ON resource_passage,resource_grounding,resource_grounding_excerpt,
+       resource_citation TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
@@ -313,7 +337,7 @@ export async function grantResources(connectionString: string, runtimeRole: stri
     await pool.query(`GRANT SELECT ON consent TO "${runtimeRole}"`);
     await pool.query(
       `GRANT UPDATE(current_version,current_version_id,access_revision,updated_at,deleted_at,
-       include_for_coach,reviewed_state,reviewed_at,coach_use_enabled_at)
+       include_for_coach,reviewed_state,reviewed_at,reviewed_version_id,coach_use_enabled_at)
        ON resource TO "${runtimeRole}"`,
     );
     await pool.query(
@@ -348,6 +372,29 @@ export async function grantResources(connectionString: string, runtimeRole: stri
        public.revoke_resource_shares(uuid,text)
        TO "${runtimeRole}"`,
     );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Retrieval reads and writes only derived stores; the gate stays a function call. */
+export async function grantResourceRetrieval(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT INSERT,DELETE ON resource_passage,resource_retrieval_cache,
+       resource_grounding,resource_grounding_excerpt,resource_citation TO "${runtimeRole}"`,
+    );
+    // A cache entry is replaced in place when the same key is retrieved again.
+    await pool.query(
+      `GRANT UPDATE(corpus_version,authorization_digest,passage_ids,created_at,expires_at)
+       ON resource_retrieval_cache TO "${runtimeRole}"`,
+    );
+    await grantResourceRetrievalReads(pool, runtimeRole);
   } finally {
     await pool.end();
   }
@@ -397,7 +444,9 @@ export async function grantResourceObjectCleanupWorker(
        public.lease_resource_derived_cleanup(uuid,timestamptz,timestamptz),
        public.finish_resource_derived_cleanup(uuid,uuid,boolean,text),
        public.release_resource_derived_cleanup(uuid,uuid,text),
-       public.prune_resource_derived_cleanup_history(integer)
+       public.prune_resource_derived_cleanup_history(integer),
+       public.purge_resource_derived_store(uuid,uuid,text),
+       public.prune_resource_retrieval_cache(integer)
        TO "${workerRole}"`,
     );
   } finally {
@@ -523,6 +572,17 @@ export async function grantCoachingRuns(
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.coaching_run_status_valid(jsonb) TO "${runtimeRole}"`,
     );
+    // A run may be grounded on reviewed resources, so the run path reads and
+    // pins the derived stores as well.
+    await pool.query(
+      `GRANT INSERT,DELETE ON resource_passage,resource_retrieval_cache,resource_grounding,
+       resource_grounding_excerpt,resource_citation TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(corpus_version,authorization_digest,passage_ids,created_at,expires_at)
+       ON resource_retrieval_cache TO "${runtimeRole}"`,
+    );
+    await grantResourceRetrievalReads(pool, runtimeRole);
   } finally {
     await pool.end();
   }
@@ -540,6 +600,8 @@ export async function grantCoachingCandidates(
       `GRANT SELECT,INSERT ON coaching_decision,coaching_proposal,coaching_candidate TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT ON coaching_analysis_output TO "${runtimeRole}"`);
+    // Approval revalidates the resource-access half of the dependency manifest.
+    await grantResourceRetrievalReads(pool, runtimeRole);
   } finally {
     await pool.end();
   }
@@ -575,6 +637,9 @@ export async function grantCoachingRunWorker(
     );
     await pool.query(`GRANT UPDATE(status,updated_at) ON coaching_run TO "${workerRole}"`);
     await pool.query(`GRANT INSERT ON coaching_analysis_output TO "${workerRole}"`);
+    // The worker re-authorizes pinned excerpts and writes validated citations.
+    await pool.query(`GRANT INSERT ON resource_citation TO "${workerRole}"`);
+    await grantResourceRetrievalReads(pool, workerRole);
     await pool.query(
       `GRANT SELECT ON coaching_thread,core_evidence_snapshot,plan_head,activity_canonical,
        check_in_collection_head,session_completion_collection_head,coaching_constraint_head,consent,tenant_erasure

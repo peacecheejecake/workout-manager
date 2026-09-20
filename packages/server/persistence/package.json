@@ -11,7 +11,8 @@
     "pg": "8.23.0",
     "zod": "4.6.5",
     "@workout/contracts": "workspace:*",
-    "@workout/server-coaching": "workspace:*"
+    "@workout/server-coaching": "workspace:*",
+    "@workout/server-resource-ingestion": "workspace:*"
   },
   "exports": {
     "./gallery-media": "./src/gallery-media.ts",
@@ -53,7 +54,8 @@
     "./coaching-runs": "./src/coaching-runs.ts",
     "./coaching-candidates": "./src/coaching-candidates.ts",
     "./evidence-snapshots": "./src/evidence-snapshots.ts",
-    "./coaching-constraints": "./src/coaching-constraints.ts"
+    "./coaching-constraints": "./src/coaching-constraints.ts",
+    "./resource-retrieval": "./src/resource-retrieval.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

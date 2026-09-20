@@ -73,6 +73,7 @@ const headRowSchema = z.object({
   current_version_id: uuid,
   reviewed_state: z.enum(['unreviewed', 'reviewed']),
   reviewed_at: z.union([z.date(), z.string()]).nullable(),
+  reviewed_version_id: uuid.nullable(),
   include_for_coach: z.boolean(),
   coach_use_enabled_at: z.union([z.date(), z.string()]).nullable(),
 });
@@ -151,8 +152,8 @@ async function finishAccessCommand(
 async function liveHead(tx: Transaction, resourceId: string) {
   const row = (
     await tx.query(
-      `SELECT access_revision,current_version_id,reviewed_state,reviewed_at,include_for_coach,
-        coach_use_enabled_at FROM resource
+      `SELECT access_revision,current_version_id,reviewed_state,reviewed_at,reviewed_version_id,
+        include_for_coach,coach_use_enabled_at FROM resource
        WHERE athlete_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`,
       [tx.athleteId, resourceId],
     )
@@ -174,8 +175,8 @@ export async function readResourceAccessState(
 ): Promise<PrivateResourceAccessState> {
   const found = (
     await tx.query(
-      `SELECT access_revision,current_version_id,reviewed_state,reviewed_at,include_for_coach,
-        coach_use_enabled_at FROM resource
+      `SELECT access_revision,current_version_id,reviewed_state,reviewed_at,reviewed_version_id,
+        include_for_coach,coach_use_enabled_at FROM resource
        WHERE athlete_id=$1 AND id=$2 AND deleted_at IS NULL`,
       [tx.athleteId, resourceId],
     )
@@ -223,6 +224,7 @@ export async function readResourceAccessState(
     currentVersionId: head.current_version_id,
     reviewedState: head.reviewed_state,
     reviewedAt: head.reviewed_at === null ? null : iso(head.reviewed_at),
+    reviewedVersionId: head.reviewed_version_id,
     includeForCoach: head.include_for_coach,
     coachUseEnabledAt: head.coach_use_enabled_at === null ? null : iso(head.coach_use_enabled_at),
     aiConsentGranted: consent,
@@ -270,8 +272,18 @@ async function bumpAccessRevision(
   const result = await tx.query(
     `UPDATE resource SET access_revision=access_revision+1,updated_at=statement_timestamp(),
        reviewed_state=coalesce($3::text,reviewed_state),
+       -- The reported review instant belongs to the review that is in force.
+       -- Re-reviewing a replaced body is a new review, so it advances the
+       -- timestamp along with the pinned version rather than reporting the
+       -- instant of a review of different content.
        reviewed_at=CASE WHEN $3::text IS NULL THEN reviewed_at
-         WHEN $3::text='reviewed' THEN coalesce(reviewed_at,statement_timestamp()) ELSE NULL END,
+         WHEN $3::text='reviewed' THEN
+           CASE WHEN reviewed_version_id IS DISTINCT FROM current_version_id
+             THEN statement_timestamp() ELSE coalesce(reviewed_at,statement_timestamp()) END
+         ELSE NULL END,
+       -- Review always pins the version that was actually reviewed.
+       reviewed_version_id=CASE WHEN $3::text IS NULL THEN reviewed_version_id
+         WHEN $3::text='reviewed' THEN current_version_id ELSE NULL END,
        include_for_coach=coalesce($4::boolean,include_for_coach),
        coach_use_enabled_at=CASE WHEN $4::boolean IS NULL THEN coach_use_enabled_at
          WHEN $4::boolean THEN coalesce(coach_use_enabled_at,statement_timestamp())
@@ -363,9 +375,11 @@ export interface ResourceAccessRepository {
  * authorized set and capture instant all come from one statement, so its MVCC
  * snapshot cannot mix two states even under READ COMMITTED. The tenant command
  * advisory lock is taken as well, which serializes this capture against the
- * application's own access and consent commands; it does NOT serialize against
- * the derived-cleanup lifecycle functions or against direct SQL updates, since
- * neither takes that lock. The authorized set uses exactly the use-time gate
+ * application's own access and consent commands and, since M2-05, against
+ * `finish_resource_derived_cleanup` — the one lifecycle function that widens
+ * the authorized set. It still does NOT serialize against direct SQL updates
+ * or the other cleanup lifecycle functions, since those take no such lock.
+ * The authorized set uses exactly the use-time gate
  * predicate, and the digest pins the whole set — including its absence — rather
  * than only the listed entries, so an unserialized concurrent change surfaces
  * as a digest mismatch instead of a silently mixed snapshot.
@@ -379,7 +393,7 @@ const coachUseSetSql = `SELECT
       SELECT jsonb_build_array(r.id::text,r.access_revision,r.current_version_id::text) AS entry
       FROM resource r
       WHERE r.athlete_id=$1 AND r.deleted_at IS NULL AND r.include_for_coach
-        AND r.reviewed_state='reviewed'
+        AND r.reviewed_state='reviewed' AND r.reviewed_version_id=r.current_version_id
         AND EXISTS(SELECT 1 FROM consent c
           WHERE c.athlete_id=r.athlete_id AND c.kind='ai' AND c.granted)
         AND NOT public.resource_derived_cleanup_pending(r.id)
@@ -676,14 +690,22 @@ export function createResourceAccessRepository(database: Database): ResourceAcce
           reviewedInput.expectedCurrentVersionId,
         );
         const target = reviewedInput.reviewed ? 'reviewed' : 'unreviewed';
-        if (head.reviewed_state === target) {
+        // Re-reviewing the current body of an already-reviewed resource is a
+        // real transition: the review is pinned to a version, and a replaced
+        // body is unreviewed content until this moves the pin forward.
+        const alreadyPinned =
+          head.reviewed_state === target &&
+          (target === 'unreviewed' || head.reviewed_version_id === head.current_version_id);
+        if (alreadyPinned) {
           const state = await readResourceAccessState(tx, id);
           await finishAccessCommand(tx, key, request, state, 'resource.access_unchanged');
           return state;
         }
         // Review withdrawal is not allowed to silently carry a coach-use
         // withdrawal; the owner must stop coach use as its own transition.
-        if (head.include_for_coach) throw new ResourceAccessError('REVIEW_WITHDRAWAL_BLOCKED');
+        // Re-reviewing the current body is not a withdrawal and stays allowed.
+        if (!reviewedInput.reviewed && head.include_for_coach)
+          throw new ResourceAccessError('REVIEW_WITHDRAWAL_BLOCKED');
         const accessRevision = await bumpAccessRevision(tx, id, { reviewedState: target });
         await auditAccess(
           tx,
@@ -717,7 +739,13 @@ export function createResourceAccessRepository(database: Database): ResourceAcce
           coachInput.expectedCurrentVersionId,
         );
         if (coachInput.includeForCoach) {
-          if (head.reviewed_state !== 'reviewed')
+          // The review has to be the review of the current body. A stale or
+          // absent pin would otherwise let the owner turn coach use back on
+          // while the query-time gate stays shut — a contradictory state.
+          if (
+            head.reviewed_state !== 'reviewed' ||
+            head.reviewed_version_id !== head.current_version_id
+          )
             throw new ResourceAccessError('COACH_USE_REVIEW_REQUIRED');
           if (!(await aiConsentGranted(tx)))
             throw new ResourceAccessError('COACH_USE_CONSENT_REQUIRED');

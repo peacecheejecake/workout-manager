@@ -323,7 +323,7 @@ volume을 사용하도록 mount한다. 로컬 adapter는 root와 directory를 `0
 확장자·MIME, PDF signature, Markdown UTF-8/제어문자를 streaming으로 검증한다.
 
 업로드는 intent 예약, raw byte 저장, finalize의 세 단계다. finalize 전 성공은 검색·파싱 완료가
-아니다. object key와 credential은 브라우저 응답과 계정 export v13에 포함하지 않는다. DB dump와
+아니다. object key와 credential은 브라우저 응답과 계정 export(현재 v17)에 포함하지 않는다. DB dump와
 object snapshot은 같은 쓰기 정지 구간에서 함께 생성하고 함께 복원해야 한다. 합성 drill은 local
 object archive와 PostgreSQL metadata를 함께 복원해 SHA-256 descriptor와 exact bytes를 확인한다.
 원격 object provider, 암호화 remote backup, 운영 RPO/RTO는 별도 검증 대상이다.
@@ -379,7 +379,29 @@ retryable failure는 DB 시각의 `retry_at` 이후 다시 claim하며 최대 5�
 soft delete와 계정 말소는 active lease를 취소하고 temporary/raw/parsed key를 durable cleanup manifest에
 추가한다. 계정 말소 cleanup receipt는 30일간 완료되지 않은 deletion fence로 남아 매시간 같은 key를
 다시 삭제한다. 이미 authorization을 받은 cleanup과 늦은 publication이 겹치거나 worker가 publish 직후
-중단돼도 fence 기간의 다음 실행이 object를 제거한다. 계정 export v14는 safe display URL과 상태·parser
+중단돼도 fence 기간의 다음 실행이 object를 제거한다. 계정 export(현재 v17)는 safe display URL과 상태·parser
 metadata만 포함하며 requested URL query,
 DNS/socket 주소, storage ref와 content digest를 포함하지 않는다. DB dump와 object snapshot은 같은 쓰기
 정지 구간에서 함께 백업·복원한다.
+
+## 검토 자료 retrieval과 파생 저장소 (M2-05)
+
+검색 색인 `resource_passage`, retrieval cache `resource_retrieval_cache`, 코치 실행에 고정된 발췌
+사본 `resource_grounding`/`resource_grounding_excerpt`, 저장된 인용 `resource_citation`은 모두
+검토된 자료의 파생물이다. 네 저장소는 M2-04b/M2-04d의 `resource_derived_cleanup` manifest가 지우며
+별도 queue가 없다. 실행기는 `public.purge_resource_derived_store(manifest,worker,target)`이고 해당
+manifest에 유효한 lease를 가진 worker만 호출할 수 있다. 실행기가 없는 target은 완료로 기록하지 않고
+attempt 예산도 쓰지 않는다.
+
+권한 판정은 언제나 `public.resource_coach_use_authorized()` 한 곳이다. 삭제, AI 동의 철회, 공유 철회,
+검토 해제, coach 사용 중지, 미완료 cleanup manifest는 다음 statement부터 retrieval과 인용 본문을
+차단한다. 색인 행이 아직 남아 있어도 차단은 즉시 적용되므로 비동기 purge 지연이 노출 창을 만들지
+않는다. 새 버전을 추가하면 검토는 이전 버전에 고정된 채로 남아 gate가 닫히고, 소유자가 현재 버전을
+다시 검토 표시해야 코치가 사용할 수 있다.
+
+retrieval cache는 TTL(10분)과 tenant당 50개 상한을 질의 시점에 실제로 회수하며, cleanup worker가
+매 주기 `public.prune_resource_retrieval_cache(500)`으로 만료 행을 전역 회수한다.
+
+백업·복원: DB dump는 이 네 테이블과 열린 cleanup manifest를 함께 담는다. 복원본에서는 gate가 이미
+닫혀 있으므로 삭제·철회된 자료의 발췌가 노출되지 않고, 운영 재개 전에 cleanup worker를 돌려 남은
+manifest를 소진해야 행 자체가 사라진다. 합성 drill이 이 순서를 그대로 검증한다.

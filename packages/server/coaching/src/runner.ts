@@ -21,9 +21,40 @@ const leaseSchema = z.strictObject({
 });
 export type CoachingJobLease = z.infer<typeof leaseSchema>;
 
+/**
+ * Excerpts retrieved for this run. They are untrusted document text: an
+ * instruction inside a passage is data, never a command, and the adapter may
+ * only cite what it was given here.
+ */
+export interface CoachingGroundingExcerpt {
+  ordinal: number;
+  passageId: string;
+  resourceId: string;
+  versionId: string;
+  title: string;
+  headingPath: string[];
+  text: string;
+}
+export interface CoachingGrounding {
+  query: string;
+  excerpts: CoachingGroundingExcerpt[];
+}
+
+/** A claim-to-excerpt link. Offsets are into the cited passage, not the answer. */
+const citationSchema = z.strictObject({
+  claimIndex: z.number().int().min(0).max(49),
+  passageId: uuid,
+  quoteStart: z.number().int().min(0),
+  quoteEnd: z.number().int().positive(),
+});
+
 /** Adapter results remain untrusted until the persistence postflight succeeds. */
 const adapterOutcomeSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('analysis'), content: z.json() }),
+  z.strictObject({
+    kind: z.literal('analysis'),
+    content: z.json(),
+    citations: z.array(citationSchema).max(50).default([]),
+  }),
   z.strictObject({
     kind: z.literal('needs_question'),
     question: boundedText(2000),
@@ -41,17 +72,34 @@ const adapterOutcomeSchema = z.discriminatedUnion('kind', [
 ]);
 export type CoachingAdapterOutcome = z.infer<typeof adapterOutcomeSchema>;
 export interface CoachingEvaluationAdapter {
-  evaluate(evidence: CoreEvidenceBodyV2): Promise<unknown>;
+  evaluate(evidence: CoreEvidenceBodyV2, grounding: CoachingGrounding | null): Promise<unknown>;
 }
 export interface CoachingRunWorkerStore {
   claim(athleteId: string): Promise<CoachingJobLease | null>;
   prepare(
     lease: CoachingJobLease,
-  ): Promise<{ kind: 'ready'; evidence: CoreEvidenceBodyV2 } | { kind: 'skipped' }>;
+  ): Promise<
+    | { kind: 'ready'; evidence: CoreEvidenceBodyV2; grounding: CoachingGrounding | null }
+    | { kind: 'skipped' }
+  >;
   finish(lease: CoachingJobLease, outcome: CoachingAdapterOutcome): Promise<'stored' | 'skipped'>;
 }
 
-/** One explicitly dispatched tenant/job; no model call runs inside a persistence transaction. */
+/**
+ * One explicitly dispatched tenant/job; no model call runs inside a persistence
+ * transaction.
+ *
+ * Authorization boundary: grounding excerpts are re-authorized inside the
+ * `prepare` transaction, which commits before `evaluate` is called. A
+ * revocation that happens while the adapter call is in flight therefore cannot
+ * recall content that was already handed over — exactly the boundary the shared
+ * file streaming path documents. Today the only configured adapter is an
+ * in-process deterministic fixture, so nothing leaves the server. Before a
+ * provider adapter lands, the call has to carry a cancellation signal that is
+ * aborted when the tenant's authorized set changes, and the postflight in
+ * `finish` — which re-validates every citation against the live gate — must
+ * stay the only path that stores anything.
+ */
 export async function runOneCoachingJob(input: {
   athleteId: string;
   store: CoachingRunWorkerStore;
@@ -64,7 +112,7 @@ export async function runOneCoachingJob(input: {
   if (prepared.kind === 'skipped') return 'skipped';
   let outcome: CoachingAdapterOutcome;
   try {
-    const candidate = await input.adapter.evaluate(prepared.evidence);
+    const candidate = await input.adapter.evaluate(prepared.evidence, prepared.grounding);
     const parsed = adapterOutcomeSchema.safeParse(candidate);
     const serialized = parsed.success ? JSON.stringify(parsed.data) : '';
     outcome =
@@ -91,7 +139,7 @@ export function createDeterministicFixtureAdapter(
 ): CoachingEvaluationAdapter {
   if (fixtureId !== 'synthetic-v1') throw new Error('UNSUPPORTED_COACHING_FIXTURE');
   return {
-    async evaluate(evidence) {
+    async evaluate(evidence, grounding) {
       const first = evidence.plan.draft.sessions[0];
       if (!first || first.durationSeconds === null || first.durationRange) {
         return {
@@ -120,9 +168,24 @@ export function createDeterministicFixtureAdapter(
           },
           summary: 'Synthetic fixture duration proposal; not validated or approved.',
         });
+      // A deterministic, bounded citation of the first retrieved excerpt. The
+      // excerpt text is never copied into the fixture output: only the passage
+      // identity and the quoted span are recorded, and the reader resolves the
+      // quote through the query-time gate.
+      const cited = grounding?.excerpts[0];
       return {
         kind: 'analysis',
         content,
+        citations: cited
+          ? [
+              {
+                claimIndex: 0,
+                passageId: cited.passageId,
+                quoteStart: 0,
+                quoteEnd: Math.min(cited.text.length, 200),
+              },
+            ]
+          : [],
       };
     },
   };

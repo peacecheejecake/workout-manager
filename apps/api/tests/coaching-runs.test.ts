@@ -93,8 +93,10 @@ describe('coaching run API boundary', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(run);
     }
+    // The route normalizes the omitted retrieval request to "read no resource".
     expect(repository.create).toHaveBeenNthCalledWith(2, 'owner', threadId, {
       ...payload,
+      retrieval: { kind: 'none' },
       idempotencyKey: headers['idempotency-key'],
     });
     expect((await app.inject({ url: `${collection}?limit=3&offset=2`, headers })).statusCode).toBe(

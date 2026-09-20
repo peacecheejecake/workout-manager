@@ -101,7 +101,7 @@ function evidence(durationSeconds: number | null, includeSession = true, range =
 describe('M1-05j3a nonproduction structured fixture', () => {
   it('proposes exactly one bounded duration change with explicit synthetic provenance', async () => {
     const adapter = createDeterministicFixtureAdapter('synthetic-v1');
-    const result = await adapter.evaluate(evidence(3600));
+    const result = await adapter.evaluate(evidence(3600), null);
     expect(result).toMatchObject({
       kind: 'analysis',
       content: {
@@ -124,12 +124,12 @@ describe('M1-05j3a nonproduction structured fixture', () => {
 
   it('subtracts at the upper bound and asks a question when exact duration is absent', async () => {
     const adapter = createDeterministicFixtureAdapter('synthetic-v1');
-    expect(await adapter.evaluate(evidence(604800))).toMatchObject({
+    expect(await adapter.evaluate(evidence(604800), null)).toMatchObject({
       kind: 'analysis',
       content: { intent: { durationSeconds: 604500 } },
     });
     for (const input of [evidence(null), evidence(null, true, true), evidence(null, false)]) {
-      expect(await adapter.evaluate(input)).toEqual({
+      expect(await adapter.evaluate(input, null)).toEqual({
         kind: 'needs_question',
         question: 'What exact duration should the first planned session use?',
       });
@@ -150,7 +150,7 @@ describe('M1-05j3a nonproduction structured fixture', () => {
         return lease;
       },
       async prepare() {
-        return { kind: 'ready', evidence: evidence(600) };
+        return { kind: 'ready', evidence: evidence(600), grounding: null };
       },
       async finish(_lease, outcome) {
         stored = outcome;

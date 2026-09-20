@@ -62,6 +62,8 @@ import {
   type ResourceUrlIngestionRouteRepository,
 } from './resource-url-routes.js';
 import { registerGalleryMediaRoutes, type GalleryMediaServices } from './gallery-media-routes.js';
+import { registerResourceRetrievalRoutes } from './resource-retrieval-routes.js';
+import type { ResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
@@ -97,6 +99,7 @@ export interface ProductRepositories {
   };
   resourceUrls?: ResourceUrlIngestionRouteRepository;
   resourceAccess?: ResourceAccessRepository;
+  resourceRetrieval?: ResourceRetrievalRepository;
   galleryMedia?: GalleryMediaServices;
 }
 export function registerProductRoutes(
@@ -159,6 +162,8 @@ export function registerProductRoutes(
     registerResourceUrlRoutes(routes, repositories.resourceUrls, principal);
   if (repositories.resourceAccess)
     registerResourceAccessRoutes(routes, repositories.resourceAccess, principal);
+  if (repositories.resourceRetrieval)
+    registerResourceRetrievalRoutes(routes, repositories.resourceRetrieval, principal);
   if (repositories.galleryMedia)
     registerGalleryMediaRoutes(routes, repositories.galleryMedia, principal);
 }

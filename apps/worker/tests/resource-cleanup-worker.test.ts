@@ -9,7 +9,7 @@ import type {
 } from '@workout/server-persistence/resource-derived-cleanup';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  noConfiguredDerivedStorePurge,
+  configuredDerivedStorePurge,
   runResourceCleanupWorker,
   type ResourceCleanupWorkerDependencies,
 } from '../src/resource-cleanup-worker.js';
@@ -62,9 +62,11 @@ function setup(input: {
   };
   const derivedRepository: ResourceDerivedCleanupRepository = {
     pruneHistory: vi.fn(async () => 0),
+    pruneRetrievalCache: vi.fn(async () => 0),
     lease: vi.fn(async () => input.derivedManifest ?? null),
     finish: vi.fn(async () => true),
     release: vi.fn(async () => input.derivedReleaseResult ?? true),
+    purgeTarget: vi.fn(async () => 1),
     close: vi.fn(async () => undefined),
   };
   const dependencies: ResourceCleanupWorkerDependencies = {
@@ -229,15 +231,18 @@ describe('resource object cleanup worker', () => {
     };
     const { dependencies, derivedRepository } = setup({ derivedManifest: manifest });
 
-    // The shipped default map is empty: no retrieval index, cache or citation
-    // store exists yet, so the manifest must stay open and fail closed. The
-    // queue is not even leased, so no attempt budget is spent.
+    // With no executor at all the manifest must stay open and fail closed, and
+    // the queue must not even be leased, so no attempt budget is spent.
     await expect(
-      runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        { ...dependencies, derivedPurge: () => ({}) },
+      ),
     ).resolves.toMatchObject({ objects: 'empty', derived: 'unsupported_target' });
 
-    expect(noConfiguredDerivedStorePurge).toEqual({});
     expect(derivedRepository.pruneHistory).toHaveBeenCalledWith(100);
+    // The retrieval cache is reclaimed on every cycle, not only on deletion.
+    expect(derivedRepository.pruneRetrievalCache).toHaveBeenCalledWith(500);
     expect(derivedRepository.lease).not.toHaveBeenCalled();
     expect(derivedRepository.finish).not.toHaveBeenCalled();
     expect(derivedRepository.release).not.toHaveBeenCalled();
@@ -259,7 +264,7 @@ describe('resource object cleanup worker', () => {
     await expect(
       runResourceCleanupWorker(
         { connectionString, storageRoot },
-        { ...dependencies, derivedPurge: { derivedData: async () => undefined } },
+        { ...dependencies, derivedPurge: () => ({ derivedData: async () => undefined }) },
       ),
     ).resolves.toMatchObject({ derived: 'unsupported_target' });
 
@@ -288,7 +293,7 @@ describe('resource object cleanup worker', () => {
     await expect(
       runResourceCleanupWorker(
         { connectionString, storageRoot },
-        { ...dependencies, derivedPurge: { derivedData: async () => undefined } },
+        { ...dependencies, derivedPurge: () => ({ derivedData: async () => undefined }) },
       ),
     ).resolves.toMatchObject({ derived: 'lease_lost' });
 
@@ -317,17 +322,47 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         {
           ...dependencies,
-          derivedPurge: {
+          derivedPurge: () => ({
             derivedData: record('derivedData'),
             searchIndex: record('searchIndex'),
             cache: record('cache'),
             citations: record('citations'),
-          },
+          }),
         },
       ),
     ).resolves.toMatchObject({ derived: 'completed' });
 
     expect(purged).toEqual(['derivedData', 'searchIndex', 'cache', 'citations']);
+    expect(derivedRepository.finish).toHaveBeenCalledWith(manifest, { ok: true });
+  });
+
+  it('installs a real executor for every declared target by default', async () => {
+    const manifest: ResourceDerivedCleanupManifest = {
+      id: '0b2a4f0c-0f7f-4a0f-9d1d-5b0a5a8e6a16',
+      athleteId: 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa',
+      resourceId: '4d6cc1ce-0643-4c53-b055-9df458fec594',
+      reason: 'resource_deleted',
+      accessRevision: 11,
+      targets: { derivedData: true, searchIndex: true, cache: true, citations: true },
+      attempts: 1,
+    };
+    const { dependencies, derivedRepository } = setup({ derivedManifest: manifest });
+
+    // The default map is the configured one, so the manifest completes only
+    // because every target was really purged through the leased function.
+    await expect(
+      runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+    ).resolves.toMatchObject({ derived: 'completed' });
+
+    expect(Object.keys(configuredDerivedStorePurge(derivedRepository)).sort()).toEqual([
+      'cache',
+      'citations',
+      'derivedData',
+      'searchIndex',
+    ]);
+    expect(derivedRepository.purgeTarget).toHaveBeenCalledTimes(4);
+    for (const target of ['derivedData', 'searchIndex', 'cache', 'citations'])
+      expect(derivedRepository.purgeTarget).toHaveBeenCalledWith(manifest, target);
     expect(derivedRepository.finish).toHaveBeenCalledWith(manifest, { ok: true });
   });
 });

@@ -17,7 +17,15 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 삭제 실행기는 아직 없어 derived cleanup manifest가 열린 채 유지되며, 해당 실행기는 M2-05
 범위다. 지도 coverage·Native 실기기·공식 Garmin의 독립 gate는 유지한다.
 
-M2-05 RAG·검토 자료·코치가 다음 직렬 작업이다.
+[M2-05 RAG·검토 자료·코치](progress/M2-05.md)도 완료했다. M2-04d가 남긴 색인·cache·인용
+실행기를 실제로 구현해 파생 cleanup manifest가 닫히고, retrieval은 검토·동의·공유·삭제
+gate를 조회 시점에 다시 통과한 자료만 반환한다. 검토 pin이 현재 version을 가리킬 때만
+색인하므로 본문을 교체하면 재검토 전까지 코치 경로에 들어가지 않는다. 실제 LLM 호출과
+인용의 의미 정확도는 검증하지 않았고 not_executed로 남는다.
+
+남은 노드는 모두 EXT-G 공식 Garmin 권한, M0-06b 지도 coverage·운영 provider,
+M0-06c 실기기 HealthKit이라는 외부 증거에 막혀 있다. mock이나 합성 데이터로는 완료로
+바꾸지 않는다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속

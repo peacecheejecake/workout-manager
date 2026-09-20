@@ -47,6 +47,7 @@ describe('coaching run API boundary', () => {
         schemaVersion: 1,
         evidenceSnapshotId: evidenceId,
         expectedConversationRevision: 1,
+        retrieval: { kind: 'none' },
       },
       idempotencyKey: 'stable-key',
       signal,

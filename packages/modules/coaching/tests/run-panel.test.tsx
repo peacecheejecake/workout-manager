@@ -28,7 +28,7 @@ const run: CoachingRunV1 = {
   updatedAt: '2026-09-18T00:00:00Z',
   status: { kind: 'queued' },
 };
-function fixture(initial: CoachingRunV1 | null = null) {
+function fixture(initial: CoachingRunV1 | null = null, grounding: unknown = { status: 'none' }) {
   let current = initial;
   let createFailure: 'unknown' | null = null;
   let fixtureFailure = false;
@@ -53,6 +53,8 @@ function fixture(initial: CoachingRunV1 | null = null) {
     }
     if (input.path.includes('/candidates'))
       return transportReplySchema.parse({ status: 200, traceId: null, body: [] });
+    if (input.path.includes('/grounding'))
+      return transportReplySchema.parse({ status: 200, traceId: null, body: grounding });
     if (input.path.includes('/runs?'))
       return transportReplySchema.parse({
         status: 200,
@@ -97,7 +99,89 @@ function Harness({
   );
 }
 
+const passageId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const resourceId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+const versionId = '11111111-1111-4111-8111-111111111111';
+const groundingId = '22222222-2222-4222-8222-222222222222';
+const citationId = '33333333-3333-4333-8333-333333333333';
+const withdrawnCitationId = '44444444-4444-4444-8444-444444444444';
+
 describe('coaching run panel', () => {
+  it('asks for a retrieval query only when the user types one', async () => {
+    const f = fixture();
+    render(<Harness transport={f.transport} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('region', { name: '선택한 실행' });
+    expect(f.requests.find((request) => request.method === 'POST')?.body).toMatchObject({
+      retrieval: { kind: 'none' },
+    });
+    expect(screen.getByText('이 실행은 자료를 읽지 않았습니다.')).toBeVisible();
+  });
+
+  it('sends the typed retrieval query and shows only currently authorized citations', async () => {
+    const f = fixture(null, {
+      status: 'available',
+      schemaVersion: 1,
+      scope: 'resource-grounding-v1',
+      groundingId,
+      runId,
+      query: '회복',
+      capturedAt: '2026-09-20T00:00:00Z',
+      pinnedResourceCount: 2,
+      excerpts: [
+        {
+          ordinal: 0,
+          resourceId,
+          versionId,
+          passageId,
+          accessRevision: 3,
+          title: '회복 주간 지침',
+          headingPath: [],
+          text: '회복 주간에는 강도를 낮춘다.',
+        },
+      ],
+      withdrawnExcerptCount: 1,
+      citations: [
+        {
+          status: 'available',
+          citationId,
+          claimIndex: 0,
+          resourceId,
+          versionId,
+          passageId,
+          accessRevision: 3,
+          title: '회복 주간 지침',
+          headingPath: [],
+          quoteStart: 0,
+          quoteEnd: 9,
+          quote: '회복 주간에는',
+        },
+        {
+          status: 'unavailable',
+          citationId: withdrawnCitationId,
+          claimIndex: 1,
+          reason: 'not_authorized',
+        },
+      ],
+    });
+    render(<Harness transport={f.transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('region', { name: '검토 자료 인용' });
+    expect(f.requests.find((request) => request.method === 'POST')?.body).toMatchObject({
+      retrieval: { kind: 'resource-access-v1', query: '회복' },
+    });
+    expect(await screen.findByText(/검색어 “회복”/)).toBeVisible();
+    expect(screen.getByText('회복 주간에는')).toBeVisible();
+    // A withdrawn citation is named as blocked and carries no quoted text.
+    expect(screen.getByText('권한이 철회되어 이 인용을 표시할 수 없습니다.')).toBeVisible();
+    expect(
+      screen.getByText(/삭제·동의 철회·검토 해제로 권한이 사라진 발췌는 표시하지 않습니다/),
+    ).toBeVisible();
+  });
+
   it('requires selected evidence and a fully observed conversation; sends no plan write', async () => {
     const f = fixture();
     const rendered = render(<Harness transport={f.transport} snapshotId={null} />);

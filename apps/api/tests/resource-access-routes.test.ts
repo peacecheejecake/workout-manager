@@ -25,6 +25,7 @@ const accessState = {
   currentVersionId: versionId,
   reviewedState: 'reviewed' as const,
   reviewedAt: at,
+  reviewedVersionId: versionId,
   includeForCoach: false,
   coachUseEnabledAt: null,
   aiConsentGranted: true,

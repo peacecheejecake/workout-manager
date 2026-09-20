@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 16,
+    schemaVersion: 17,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -684,9 +684,46 @@ it('parses the currently integrated export version without dropping access facts
       resourceAccessAudit: [],
       galleryMediaItems: [],
       galleryMediaDerivatives: [],
+      resourcePassages: [],
+      resourceGroundings: [],
+      resourceGroundingExcerpts: [],
+      resourceCitations: [],
     },
   });
-  if (current.schemaVersion !== 16) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 17) throw new Error('Expected the integrated export version');
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
+  expect(current.data.resourcePassages).toEqual([]);
+  expect(current.data.resourceCitations).toEqual([]);
+  // v17 requires every retrieval collection: an absent one is not an empty one.
+  for (const missing of [
+    'resourcePassages',
+    'resourceGroundings',
+    'resourceGroundingExcerpts',
+    'resourceCitations',
+  ] as const)
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: { ...current.data, [missing]: undefined },
+      }).success,
+    ).toBe(false);
+  // A v16 artifact is still read unchanged and never gains manufactured rows.
+  const previous = accountExportSchema.parse({
+    ...current,
+    schemaVersion: 16,
+    data: Object.fromEntries(
+      Object.entries(current.data).filter(
+        ([key]) =>
+          ![
+            'resourcePassages',
+            'resourceGroundings',
+            'resourceGroundingExcerpts',
+            'resourceCitations',
+          ].includes(key),
+      ),
+    ),
+  });
+  expect(previous.schemaVersion).toBe(16);
+  expect(previous.data).not.toHaveProperty('resourcePassages');
 });

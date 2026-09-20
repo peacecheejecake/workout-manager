@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import { privateTextResourceReadResultSchema } from '@workout/contracts/resources';
@@ -76,6 +76,7 @@ const accessState = {
   currentVersionId: versionId,
   reviewedState: 'unreviewed' as const,
   reviewedAt: null,
+  reviewedVersionId: null,
   includeForCoach: false,
   coachUseEnabledAt: null,
   aiConsentGranted: true,
@@ -103,6 +104,7 @@ function accessTransport(state: Record<string, unknown>) {
         ...current,
         reviewedState: 'reviewed',
         reviewedAt: createdAt,
+        reviewedVersionId: versionId,
         accessRevision: 2,
       };
       return transportReplySchema.parse({ status: 200, body: current, traceId: null });
@@ -203,6 +205,7 @@ it('disables coach use when AI consent is missing and reports pending derived cl
     ...accessState,
     reviewedState: 'reviewed',
     reviewedAt: createdAt,
+    reviewedVersionId: versionId,
     aiConsentGranted: false,
     pendingCleanup: true,
   });
@@ -224,12 +227,58 @@ it('disables coach use when AI consent is missing and reports pending derived cl
   ).toBeTruthy();
 });
 
+it('tells the owner a replaced body needs its own review before coach use', async () => {
+  const transport = accessTransport({
+    ...accessState,
+    accessRevision: 5,
+    reviewedState: 'reviewed',
+    reviewedAt: createdAt,
+    // The review is pinned to the previous version, so the current body is
+    // unreviewed content and the gate reports it as unauthorized.
+    reviewedVersionId: '99999999-9999-4999-8999-999999999999',
+    includeForCoach: true,
+    coachUseEnabledAt: createdAt,
+    coachUseAuthorized: false,
+  });
+  render(
+    <ResourceWorkspace
+      athleteId="owner"
+      sessionId="owner-session"
+      transport={{ request: transport.request }}
+      resourceId={resourceId}
+    />,
+  );
+  const panel = await screen.findByRole('region', { name: '접근·검토·코치 사용' });
+  expect(
+    within(panel).getByText(
+      /현재 버전을 다시 검토해 표시하기 전까지 코치가 이 자료를 사용하지 않습니다/,
+    ),
+  ).toBeTruthy();
+  // Coach use cannot be re-enabled while the review is stale, and the
+  // re-review is reachable even though coach use is still on.
+  const reReview = within(panel).getByRole('button', { name: '현재 버전 검토됨으로 표시' });
+  expect(reReview.hasAttribute('disabled')).toBe(false);
+  await userEvent.setup().click(reReview);
+  await waitFor(() =>
+    expect(
+      transport.calls.some(
+        (call) =>
+          call.path === `/bff/v1/resources/${resourceId}/reviewed` &&
+          typeof call.body === 'object' &&
+          call.body !== null &&
+          (call.body as { reviewed?: unknown }).reviewed === true,
+      ),
+    ).toBe(true),
+  );
+});
+
 it('blocks review withdrawal until coach use is explicitly stopped', async () => {
   const transport = accessTransport({
     ...accessState,
     accessRevision: 4,
     reviewedState: 'reviewed',
     reviewedAt: createdAt,
+    reviewedVersionId: versionId,
     includeForCoach: true,
     coachUseEnabledAt: createdAt,
     coachUseAuthorized: true,

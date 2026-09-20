@@ -11,6 +11,8 @@ import {
   CoachingRunError,
   type CoachingRunRepository,
 } from '@workout/server-persistence/coaching-runs';
+import { ResourceRetrievalError } from '@workout/server-persistence/resource-retrieval';
+import { ResourceAccessError } from '@workout/server-persistence/resource-access';
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 
@@ -20,6 +22,10 @@ const runParams = z.strictObject({ runId: uuid });
 
 function execute<T>(operation: () => Promise<T>): Promise<T> {
   return command(operation, (error) => {
+    // Creating a grounded run reads the resource ledger, so its access and
+    // retrieval failures must map to a stable client code, not a 500.
+    if (error instanceof ResourceAccessError) return new ProductRequestError(409, error.code);
+    if (error instanceof ResourceRetrievalError) return new ProductRequestError(409, error.code);
     if (!(error instanceof CoachingRunError)) return undefined;
     const statusCode = ['THREAD_NOT_FOUND', 'RUN_NOT_FOUND'].includes(error.code)
       ? 404

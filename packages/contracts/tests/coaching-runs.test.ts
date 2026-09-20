@@ -84,8 +84,22 @@ describe('coaching run lifecycle contract', () => {
       expectedConversationRevision: 1,
       idempotencyKey: 'request-1',
     };
-    expect(coachingRunCreateCommandV1Schema.parse(command)).toEqual(command);
+    // `retrieval` is optional on the wire and defaults to reading no resource.
+    expect(coachingRunCreateCommandV1Schema.parse(command)).toEqual({
+      ...command,
+      retrieval: { kind: 'none' },
+    });
+    expect(
+      coachingRunCreateCommandV1Schema.parse({
+        ...command,
+        retrieval: { kind: 'resource-access-v1', query: '회복 주간' },
+      }).retrieval,
+    ).toEqual({ kind: 'resource-access-v1', query: '회복 주간' });
     for (const invalid of [
+      { ...command, retrieval: { kind: 'resource-access-v1' } },
+      { ...command, retrieval: { kind: 'resource-access-v1', query: '' } },
+      { ...command, retrieval: { kind: 'resource-access-v1', query: 'x'.repeat(501) } },
+      { ...command, retrieval: { kind: 'all-resources' } },
       { ...command, expectedConversationRevision: 0 },
       { ...command, expectedConversationRevision: null },
       { ...command, expectedConversationRevision: 1.5 },

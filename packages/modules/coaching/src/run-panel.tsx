@@ -94,6 +94,7 @@ function Panel({
   const [operation, setOperation] = useState<Operation | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [pollingSince, setPollingSince] = useState(() => Date.now());
+  const [retrievalQuery, setRetrievalQuery] = useState('');
   const life = useRef<AbortController | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -144,6 +145,19 @@ function Panel({
     refetchOnReconnect: 'always',
   });
   const visibleCandidates = candidates.isSuccess && !candidates.isFetching ? candidates.data : null;
+  const grounding = useQuery({
+    queryKey: [...prefix, 'grounding', runId],
+    enabled: runId !== null,
+    queryFn: ({ signal }) => api.grounding(runId ?? '', signal),
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  });
+  // Never render a cached citation body while freshness is unknown: an excerpt
+  // may have been withdrawn since the last successful read.
+  const visibleGrounding = grounding.isSuccess && !grounding.isFetching ? grounding.data : null;
   const busy = operation !== null;
   const canStart =
     snapshotId !== null &&
@@ -218,15 +232,35 @@ function Panel({
           같은 요청 재확인
         </button>
       ) : null}
+      <div className={styles.field}>
+        <label htmlFor="coaching-retrieval-query">검토 자료 검색어(선택)</label>
+        <input
+          id="coaching-retrieval-query"
+          type="search"
+          value={retrievalQuery}
+          maxLength={500}
+          disabled={busy}
+          onChange={(event) => setRetrievalQuery(event.target.value)}
+        />
+        <p>
+          검색어를 비워 두면 자료를 읽지 않습니다. 검토됨으로 표시하고 코치 사용을 허용한 본인
+          자료만 검색하며, 자료의 내용은 지시가 아니라 참고 자료입니다.
+        </p>
+      </div>
       <div className={styles.actions}>
         <button
           type="button"
           disabled={!canStart}
           onClick={() => {
+            const trimmedQuery = retrievalQuery.trim();
             const parsed = coachingRunCreateCommandV1Schema.safeParse({
               schemaVersion: 1,
               evidenceSnapshotId: snapshotId,
               expectedConversationRevision: observedRevision,
+              retrieval:
+                trimmedQuery.length > 0
+                  ? { kind: 'resource-access-v1', query: trimmedQuery }
+                  : { kind: 'none' },
               idempotencyKey: createId(),
             });
             if (parsed.success) void send({ kind: 'create', command: parsed.data });
@@ -351,6 +385,54 @@ function Panel({
           visibleRun.source.kind !== 'deterministic_fixture' ? (
             <p>이 실행의 후보 검증은 이 화면에서 제공되지 않습니다.</p>
           ) : null}
+          <section aria-label="검토 자료 인용">
+            <h4>검토 자료 인용</h4>
+            <div className={styles.actions}>
+              <button type="button" disabled={busy} onClick={() => void grounding.refetch()}>
+                인용 다시 확인
+              </button>
+            </div>
+            <p>
+              인용은 조회할 때마다 현재 권한으로 다시 확인합니다. 삭제·철회된 자료의 발췌는 저장된
+              답변을 다시 열어도 표시하지 않습니다.
+            </p>
+            {grounding.isFetching ? <p role="status">인용 자료 조회 중</p> : null}
+            {grounding.isError ? <p role="alert">인용 자료를 확인할 수 없습니다.</p> : null}
+            {visibleGrounding?.status === 'none' ? <p>이 실행은 자료를 읽지 않았습니다.</p> : null}
+            {visibleGrounding?.status === 'available' ? (
+              <div>
+                <p>
+                  검색어 “{visibleGrounding.query}” · 고정한 자료{' '}
+                  {visibleGrounding.pinnedResourceCount}건 · 현재 볼 수 없는 발췌{' '}
+                  {visibleGrounding.withdrawnExcerptCount}건
+                </p>
+                {visibleGrounding.withdrawnExcerptCount > 0 ? (
+                  <p role="status">
+                    삭제·동의 철회·검토 해제로 권한이 사라진 발췌는 표시하지 않습니다.
+                  </p>
+                ) : null}
+                {visibleGrounding.citations.length === 0 ? (
+                  <p>저장된 인용이 없습니다.</p>
+                ) : (
+                  <ul>
+                    {visibleGrounding.citations.map((citation) => (
+                      <li key={citation.citationId}>
+                        {citation.status === 'available' ? (
+                          <span>
+                            {citation.title} · 발췌 위치 {citation.quoteStart}–{citation.quoteEnd} ·
+                            자료 버전 {citation.versionId}
+                            <q>{citation.quote}</q>
+                          </span>
+                        ) : (
+                          <span>권한이 철회되어 이 인용을 표시할 수 없습니다.</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+          </section>
           {candidates.isFetching ? <p role="status">검증된 후보 조회 중</p> : null}
           {candidates.isError ? (
             <p role="alert">

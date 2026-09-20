@@ -18,7 +18,9 @@ import {
   compareTrainingCoachingBasis,
   trainingCoachingBasisV1Schema,
   trainingCoachingPolicySchema,
+  type TrainingCoachingBasisV1,
 } from '@workout/contracts/coaching-basis';
+import type { CoachingRetrievalBasis } from '@workout/contracts/resource-retrieval';
 import {
   coachingFixtureCandidateContentV1Schema,
   coachingRunModelSourceSchema,
@@ -39,6 +41,7 @@ import type { Database, Transaction } from './database.js';
 import { persistPlanVersion } from './planning.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
 import { persistSupplementarySessionLinks } from './supplementary-plan-links.js';
+import { captureResourceCoachUseManifest } from './resource-access.js';
 
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const createCommandSchema = z.strictObject({
@@ -223,6 +226,23 @@ const currentSql = `SELECT r.id AS run_id,r.thread_id,r.evidence_snapshot_id,r.c
  LEFT JOIN plan_snapshot p ON p.athlete_id=h.athlete_id AND p.id=h.version_id
  WHERE r.athlete_id=$1 AND r.id=$2`;
 
+/**
+ * Recaptures the `resource-access-v1` manifest for a candidate whose basis
+ * pinned one. Capture happens inside the caller's transaction, so an approval
+ * validates the resource dependency in the same atomic write as the rest.
+ */
+async function observeCandidateRetrieval(
+  tx: Transaction,
+  basis: TrainingCoachingBasisV1,
+): Promise<CoachingRetrievalBasis> {
+  if (basis.retrieval.kind === 'none') return { kind: 'none' };
+  return {
+    kind: 'resource-access-v1',
+    query: basis.retrieval.query,
+    manifest: await captureResourceCoachUseManifest(tx),
+  };
+}
+
 async function currentContext(
   tx: Transaction,
   runId: string,
@@ -290,7 +310,10 @@ async function currentContext(
     conversationRevision: row['current_conversation_revision'],
     dependencies: dependencies.data,
     policy,
-    retrieval: { kind: 'none' },
+    // The second half of the dependency manifest. A candidate produced from
+    // retrieved excerpts is only approvable while the complete authorized
+    // resource set it was grounded on is still the current one.
+    retrieval: await observeCandidateRetrieval(tx, basis.data),
   });
   if (comparison.status !== 'fresh') throw new TrainingCandidateError('STALE_BASIS');
   const completions = await tx.query(

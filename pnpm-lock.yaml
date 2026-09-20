@@ -641,6 +641,9 @@ importers:
       '@workout/server-coaching':
         specifier: workspace:*
         version: link:../coaching
+      '@workout/server-resource-ingestion':
+        specifier: workspace:*
+        version: link:../resource-ingestion
       pg:
         specifier: 8.23.0
         version: 8.23.0

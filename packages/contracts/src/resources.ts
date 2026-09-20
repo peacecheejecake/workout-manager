@@ -1193,6 +1193,12 @@ export const privateResourceAccessStateSchema = z.strictObject({
   currentVersionId: resourceUuidSchema,
   reviewedState: privateResourceReviewedStateSchema,
   reviewedAt: instantSchema.nullable(),
+  /**
+   * The version that was actually reviewed. A new version is unreviewed content
+   * by definition, so coach use stays inert until this is the current version
+   * again; the owner must review the new body explicitly.
+   */
+  reviewedVersionId: resourceUuidSchema.nullable(),
   includeForCoach: z.boolean(),
   coachUseEnabledAt: instantSchema.nullable(),
   aiConsentGranted: z.boolean(),

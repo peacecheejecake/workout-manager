@@ -366,14 +366,14 @@ describe('gallery media lifecycle on real PostgreSQL', () => {
     expect(afterPreview.item.accessRevision).toBe(3);
   });
 
-  it('exports gallery facts at schema version 16 without any storage reference', async () => {
+  it('exports gallery facts at schema version 17 without any storage reference', async () => {
     const athleteId = randomUUID();
     const repository = createGalleryMediaRepository(database);
     const stored = await storeImage(repository, athleteId);
     await attachPreview(repository, athleteId, stored.item.id, 1);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athleteId);
-    expect(exported.schemaVersion).toBe(16);
+    expect(exported.schemaVersion).toBe(17);
     const data = exported.data as Record<string, Record<string, unknown>[]>;
     expect(data['galleryMediaItems']).toHaveLength(1);
     expect(data['galleryMediaItems']?.[0]).toMatchObject({

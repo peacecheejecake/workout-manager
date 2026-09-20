@@ -14,6 +14,11 @@ export default defineConfig({
             'packages/server/identity/tests/**/*.test.ts',
             'packages/server/coaching/tests/**/*.test.ts',
             'packages/server/media/tests/**/*.test.ts',
+            // These two packages ship their own vitest config, so their tests
+            // never reached the default suite or CI. Retrieval chunking and the
+            // derived-store cleanup worker are covered here instead.
+            'packages/server/resource-ingestion/tests/**/*.test.ts',
+            'apps/worker/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],
         },

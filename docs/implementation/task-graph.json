@@ -1098,8 +1098,9 @@
       "title": "RAG·검토 자료·코치",
       "dependsOn": ["M2-04", "M2-03"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠"
+      "status": "completed",
+      "scope": "retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠",
+      "evidence": "docs/implementation/progress/M2-05.md"
     },
     {
       "id": "M2-06",

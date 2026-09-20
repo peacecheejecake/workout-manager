@@ -152,6 +152,10 @@
     "./coaching-constraints": {
       "types": "./src/coaching-constraints.ts",
       "default": "./dist/coaching-constraints.js"
+    },
+    "./resource-retrieval": {
+      "types": "./src/resource-retrieval.ts",
+      "default": "./dist/resource-retrieval.js"
     }
   },
   "scripts": {

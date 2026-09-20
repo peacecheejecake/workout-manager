@@ -9,10 +9,11 @@ import {
   coachingRunListQuerySchema,
   coachingRunListSchema,
   coachingRunV1Schema,
-  type CoachingRunCreateCommandV1,
+  type CoachingRunCreateCommandV1Input,
   type CoachingRunListQuery,
 } from '@workout/contracts/coaching-runs';
 import { trainingCandidateBundleV1Schema } from '@workout/contracts/coaching-candidates';
+import { coachingRunGroundingSchema } from '@workout/contracts/resource-retrieval';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const knownErrors = new Set([
@@ -105,7 +106,7 @@ export function createCoachingRunApi(transport: AuthenticatedTransport) {
         throw new Error('COACHING_RUN_RESPONSE_MISMATCH');
       return result;
     },
-    async create(threadId: string, input: CoachingRunCreateCommandV1, signal?: AbortSignal) {
+    async create(threadId: string, input: CoachingRunCreateCommandV1Input, signal?: AbortSignal) {
       const thread = uuid.parse(threadId);
       const { idempotencyKey, ...body } = coachingRunCreateCommandV1Schema.parse(input);
       const result = await request(
@@ -121,6 +122,18 @@ export function createCoachingRunApi(transport: AuthenticatedTransport) {
         result.evidenceSnapshotId !== body.evidenceSnapshotId ||
         result.conversationRevision !== body.expectedConversationRevision
       )
+        throw new Error('COACHING_RUN_RESPONSE_MISMATCH');
+      return result;
+    },
+    async grounding(runId: string, signal?: AbortSignal) {
+      const id = uuid.parse(runId);
+      const result = await request(
+        `/bff/v1/coaching-runs/${encodeURIComponent(id)}/grounding`,
+        'GET',
+        coachingRunGroundingSchema,
+        signal,
+      );
+      if (result.status === 'available' && result.runId !== id)
         throw new Error('COACHING_RUN_RESPONSE_MISMATCH');
       return result;
     },

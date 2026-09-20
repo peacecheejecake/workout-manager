@@ -27,6 +27,7 @@ import { createRecoveryRepository } from '../packages/server/persistence/src/rec
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.ts';
 import { createResourceAccessRepository } from '../packages/server/persistence/src/resource-access.ts';
+import { createResourceRetrievalRepository } from '../packages/server/persistence/src/resource-retrieval.ts';
 import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
@@ -58,6 +59,7 @@ import {
   grantIntegratedApprovalV4,
   grantGalleryMedia,
   grantResources,
+  grantResourceRetrieval,
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
@@ -176,6 +178,7 @@ try {
     await grantCoachingCandidates(adminUrl, 'workout_runtime');
     await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
     await grantResources(adminUrl, 'workout_runtime');
+    await grantResourceRetrieval(adminUrl, 'workout_runtime');
     await grantGalleryMedia(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
@@ -305,6 +308,7 @@ try {
     operations: createOperationsRepository(database),
     resources: createPrivateTextResourceRepository(database),
     resourceAccess: createResourceAccessRepository(database),
+    resourceRetrieval: createResourceRetrievalRepository(database),
     resourceFiles: {
       uploads: createResourceFileUploadRepository(database),
       storage: resourceStorage,

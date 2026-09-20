@@ -10,6 +10,7 @@ import {
 } from '@workout/server-persistence/resource-object-cleanup';
 import {
   createResourceDerivedCleanupRepository,
+  createResourceDerivedStorePurge,
   processOneResourceDerivedCleanup,
   type ResourceDerivedCleanupRepository,
   type ResourceDerivedPurge,
@@ -32,31 +33,28 @@ export interface ResourceCleanupWorkerDependencies {
     max: number;
   }): ResourceDerivedCleanupRepository;
   /**
-   * Executors for each derived store named by the manifest. M2-04d ships no
-   * retrieval index, retrieval cache or stored citation yet, so the default map
-   * stays empty and every manifest entry is retried as
-   * `DERIVED_TARGET_UNSUPPORTED` instead of being reported as purged. M2-05
-   * registers the real executors here.
+   * Executors for each derived store named by the manifest. M2-05 installs the
+   * real deletions, built from the leased repository itself. A store without an
+   * executor is still never reported as purged: the manifest is released with
+   * `DERIVED_TARGET_UNSUPPORTED` and the coach-use gate stays closed.
    */
-  derivedPurge?: ResourceDerivedPurge;
+  derivedPurge?: (repository: ResourceDerivedCleanupRepository) => ResourceDerivedPurge;
   now?: () => Date;
 }
 
 /**
- * This build has no retrieval index, no retrieval cache and no stored citation
- * store, so no executor exists for any manifest target. The map is deliberately
- * empty: a manifest must stay incomplete, and the coach-use gate must stay
- * closed, until M2-05 installs real store deletions here. Registering a no-op
- * would complete manifests that were never purged and would silently reopen the
- * gate, so never widen this default without an executor that really deletes.
+ * Never register a no-op here. An executor that does not really delete would
+ * complete a manifest that was never purged and would silently reopen the
+ * coach-use gate on data that still exists. Every entry below performs a real,
+ * lease-checked deletion of its store.
  */
-export const noConfiguredDerivedStorePurge: ResourceDerivedPurge = {};
+export const configuredDerivedStorePurge = createResourceDerivedStorePurge;
 
 const defaultDependencies: ResourceCleanupWorkerDependencies = {
   createStorage: createLocalFilesystemObjectStorage,
   createRepository: createResourceObjectCleanupRepository,
   createDerivedRepository: createResourceDerivedCleanupRepository,
-  derivedPurge: noConfiguredDerivedStorePurge,
+  derivedPurge: configuredDerivedStorePurge,
 };
 
 /** Runs exactly one bounded queue attempt and always releases the database pool. */
@@ -76,9 +74,6 @@ export async function runResourceCleanupWorker(
   try {
     const now = dependencies.now ?? (() => new Date());
     await repository.reapExpired(now(), 100);
-    await repository.pruneUploadHistory(100);
-    await repository.pruneCleanupHistory(100);
-    await derivedRepository.pruneHistory(100);
     const objects = await processOneResourceObjectCleanup(
       repository,
       (storageRef) => storage.delete(validateObjectKey(storageRef)),
@@ -86,9 +81,16 @@ export async function runResourceCleanupWorker(
     );
     const derived = await processOneResourceDerivedCleanup(
       derivedRepository,
-      dependencies.derivedPurge ?? noConfiguredDerivedStorePurge,
+      (dependencies.derivedPurge ?? configuredDerivedStorePurge)(derivedRepository),
       now,
     );
+    // Housekeeping runs last. Deleting what a user withdrew is the point of
+    // this worker; reclaiming history and expired cache entries must never
+    // delay it, even when a prune has to wait for its own bounded timeout.
+    await repository.pruneUploadHistory(100);
+    await repository.pruneCleanupHistory(100);
+    await derivedRepository.pruneHistory(100);
+    await derivedRepository.pruneRetrievalCache(500);
     return { objects, derived };
   } finally {
     await Promise.all([repository.close(), derivedRepository.close()]);

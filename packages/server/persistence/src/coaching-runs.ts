@@ -7,7 +7,7 @@ import {
   coachingRunListSchema,
   coachingRunModelSourceSchema,
   coachingRunV1Schema,
-  type CoachingRunCreateCommandV1,
+  type CoachingRunCreateCommandV1Input,
   type CoachingRunOutputV1,
   type CoachingRunList,
   type CoachingRunListQuery,
@@ -17,12 +17,25 @@ import {
 import {
   buildTrainingCoachingBasis,
   compareTrainingCoachingBasis,
+  trainingCoachingBasisV1Schema,
   trainingCoachingPolicySchema,
 } from '@workout/contracts/coaching-basis';
+import type { CoachingRetrievalBasis } from '@workout/contracts/resource-retrieval';
 import { coreEvidenceSnapshotSchema } from '@workout/contracts/evidence-snapshots';
 import type { CoreEvidenceBodyV2 } from '@workout/contracts/evidence-snapshots';
 import { coreEvidenceDependencyManifestV2Schema } from '@workout/contracts/evidence-dependencies';
-import type { CoachingJobLease, CoachingRunWorkerStore } from '@workout/server-coaching/runner';
+import type {
+  CoachingGrounding,
+  CoachingJobLease,
+  CoachingRunWorkerStore,
+} from '@workout/server-coaching/runner';
+import { captureResourceCoachUseManifest } from './resource-access.js';
+import {
+  prepareRunGrounding,
+  recordRunCitations,
+  ResourceRetrievalError,
+  writeRunGrounding,
+} from './resource-retrieval.js';
 import type { Database, Transaction } from './database.js';
 import { claimTopic, complete, enqueue, PersistenceConflict } from './outbox.js';
 
@@ -45,7 +58,7 @@ export interface CoachingRunRepository {
   create(
     athleteId: string,
     threadId: string,
-    command: CoachingRunCreateCommandV1,
+    command: CoachingRunCreateCommandV1Input,
   ): Promise<CoachingRunV1>;
   read(athleteId: string, id: string): Promise<CoachingRunV1 | null>;
   readOutput(athleteId: string, id: string): Promise<CoachingRunOutputV1 | null>;
@@ -84,6 +97,25 @@ function decode(value: unknown): CoachingRunV1 {
     createdAt: iso(row['created_at']),
     updatedAt: iso(row['updated_at']),
   });
+}
+
+/**
+ * The retrieval half of the dependency manifest, observed now. A run that
+ * pinned no retrieval has no resource dependency, so enabling a resource later
+ * does not invalidate it; a run that did pin one is compared against the whole
+ * current authorized set.
+ */
+async function observeRetrieval(
+  tx: Transaction,
+  storedBasis: unknown,
+): Promise<CoachingRetrievalBasis> {
+  const parsed = trainingCoachingBasisV1Schema.safeParse(storedBasis);
+  if (!parsed.success || parsed.data.retrieval.kind === 'none') return { kind: 'none' };
+  return {
+    kind: 'resource-access-v1',
+    query: parsed.data.retrieval.query,
+    manifest: await captureResourceCoachUseManifest(tx),
+  };
 }
 
 async function read(tx: Transaction, id: string): Promise<CoachingRunV1 | null> {
@@ -164,10 +196,68 @@ async function currentWorkerEvidence(
     conversationRevision: row['conversation_revision'],
     dependencies: dependencies.data,
     policy,
-    retrieval: { kind: 'none' },
+    retrieval: await observeRetrieval(tx, run['basis']),
   });
   if (compared.status !== 'fresh') return null;
   return snapshot.data.body;
+}
+
+/**
+ * The pinned excerpts, re-authorized now. The stored copy is never handed to an
+ * adapter on its own: a resource blocked since the pin simply has no row here.
+ *
+ * This read commits with the rest of `prepare`, so authorization is as of the
+ * start of the adapter call. A revocation during the call cannot recall what
+ * was already handed over; `finish` re-validates every citation against the
+ * live gate before storing anything, so a revocation still prevents the answer
+ * from being persisted with resolvable sources.
+ */
+async function readWorkerGrounding(
+  tx: Transaction,
+  runId: string,
+): Promise<CoachingGrounding | null> {
+  const grounding = (
+    await tx.query(
+      'SELECT grounding_id,query_text FROM resource_grounding WHERE athlete_id=$1 AND run_id=$2',
+      [tx.athleteId, runId],
+    )
+  ).rows[0];
+  if (!grounding) return null;
+  const rows = await tx.query(
+    `SELECT e.ordinal,e.passage_id,e.resource_id,e.version_id,r.title,p.heading_path,p.content
+     FROM resource_grounding_excerpt e
+     JOIN resource_passage p ON p.athlete_id=e.athlete_id AND p.passage_id=e.passage_id
+     JOIN resource r ON r.athlete_id=p.athlete_id AND r.id=p.resource_id
+     WHERE e.athlete_id=$1 AND e.grounding_id=$2 AND r.deleted_at IS NULL
+       AND r.current_version_id=p.version_id AND public.resource_coach_use_authorized(r.id)
+     ORDER BY e.ordinal`,
+    [tx.athleteId, grounding['grounding_id']],
+  );
+  const parsed = z
+    .array(
+      z.object({
+        ordinal: z.number().int().min(0).max(19),
+        passage_id: uuid,
+        resource_id: uuid,
+        version_id: uuid,
+        title: z.string().min(1).max(200),
+        heading_path: z.array(z.string().min(1).max(200)).max(8),
+        content: z.string().min(1),
+      }),
+    )
+    .parse(rows.rows);
+  return {
+    query: z.string().min(1).max(500).parse(grounding['query_text']),
+    excerpts: parsed.map((row) => ({
+      ordinal: row.ordinal,
+      passageId: row.passage_id,
+      resourceId: row.resource_id,
+      versionId: row.version_id,
+      title: row.title,
+      headingPath: row.heading_path,
+      text: row.content,
+    })),
+  };
 }
 
 async function lockWorkerLease(tx: Transaction, lease: CoachingJobLease): Promise<boolean> {
@@ -266,6 +356,7 @@ export function createCoachingRunRepository(
         threadId: id,
         evidenceSnapshotId: command.evidenceSnapshotId,
         expectedConversationRevision: command.expectedConversationRevision,
+        retrieval: command.retrieval,
       };
       return database.tenant(athleteId, async (tx) => {
         // Same order as evidence capture and thread writes; source/consent deletion takes lock 0.
@@ -298,7 +389,26 @@ export function createCoachingRunRepository(
           body: current['body'],
         });
         if (!snapshot.success) throw new CoachingRunError('UNSUPPORTED_EVIDENCE_VERSION');
-        const built = buildTrainingCoachingBasis({ athleteId, snapshot: snapshot.data, policy });
+        // Retrieval runs before the basis is built so the pinned manifest and
+        // the stored excerpts come from the same observation. It reads only
+        // resources the query-time gate authorizes and calls no provider.
+        const prepared =
+          command.retrieval.kind === 'resource-access-v1'
+            ? await prepareRunGrounding(tx, command.retrieval.query)
+            : null;
+        const retrieval: CoachingRetrievalBasis = prepared
+          ? {
+              kind: 'resource-access-v1',
+              query: prepared.query,
+              manifest: prepared.manifest,
+            }
+          : { kind: 'none' };
+        const built = buildTrainingCoachingBasis({
+          athleteId,
+          snapshot: snapshot.data,
+          policy,
+          retrieval,
+        });
         if (!built.ok) {
           if (built.reason === 'AI_CONSENT_REQUIRED')
             throw new CoachingRunError('AI_CONSENT_REQUIRED');
@@ -320,8 +430,10 @@ export function createCoachingRunRepository(
           },
           conversationRevision: current['conversation_revision'],
           dependencies,
+          // The pin was captured in this same transaction, so it is by
+          // construction the current observation; later reads recapture it.
           policy,
-          retrieval: { kind: 'none' },
+          retrieval,
         });
         if (compared.status !== 'fresh') throw new CoachingRunError('STALE_BASIS');
         const inserted = await tx.query(
@@ -339,6 +451,7 @@ export function createCoachingRunRepository(
           ],
         );
         const run = decode(inserted.rows[0]);
+        if (prepared) await writeRunGrounding(tx, run.id, prepared);
         await enqueue(tx, {
           id: randomUUID(),
           idempotencyKey: key,
@@ -470,7 +583,11 @@ export function createCoachingRunWorkerStore(
           });
         if (run.status.kind === 'queued' || run.status.stage === 'preparing_evidence')
           await changeWorkerStatus(tx, lease.runId, { kind: 'running', stage: 'evaluating' });
-        return { kind: 'ready', evidence };
+        // Excerpts are re-read through the query-time gate here, not taken from
+        // the pinned copy, so a withdrawal between run creation and evaluation
+        // removes them from what the adapter ever sees.
+        const grounding = await readWorkerGrounding(tx, lease.runId);
+        return { kind: 'ready', evidence, grounding };
       });
     },
     finish(lease, outcome) {
@@ -499,6 +616,22 @@ export function createCoachingRunWorkerStore(
           return 'skipped';
         }
         if (outcome.kind === 'analysis') {
+          // Citations are validated against the pinned grounding and the live
+          // gate before anything is written. An ungrounded, out-of-range or no
+          // longer authorized citation makes the whole output unusable rather
+          // than storing an answer whose sources cannot be resolved.
+          try {
+            await recordRunCitations(tx, lease.runId, outcome.citations);
+          } catch (error) {
+            if (!(error instanceof ResourceRetrievalError)) throw error;
+            await changeWorkerStatus(tx, lease.runId, {
+              kind: 'unable_to_evaluate',
+              code: 'invalid_output',
+              reason: 'Model output could not be used',
+            });
+            await acknowledgeWorkerLease(tx, lease);
+            return 'stored';
+          }
           const outputId = randomUUID();
           const body = JSON.stringify({ schemaVersion: 1, content: outcome.content });
           const inserted =

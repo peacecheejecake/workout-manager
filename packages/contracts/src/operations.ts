@@ -134,6 +134,22 @@ const accountExportV16Schema = accountExportV15Schema.extend({
     galleryMediaDerivatives: rows,
   }),
 });
+/**
+ * v17 adds the retrieval derived stores. Passage and excerpt bodies are not
+ * exported: they are verbatim copies of resource versions that the export
+ * already carries, and citations reference them by identifier and offset. The
+ * retrieval cache is not exported at all — it is a rebuildable cache and is
+ * dropped on erasure.
+ */
+const accountExportV17Schema = accountExportV16Schema.extend({
+  schemaVersion: z.literal(17),
+  data: accountExportV16Schema.shape.data.extend({
+    resourcePassages: rows,
+    resourceGroundings: rows,
+    resourceGroundingExcerpts: rows,
+    resourceCitations: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -151,6 +167,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV14Schema,
   accountExportV15Schema,
   accountExportV16Schema,
+  accountExportV17Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

@@ -17,42 +17,41 @@
 
 ## 완료된 최신 작업
 
-[M2-04d](progress/M2-04d.md)와 [M2-03](progress/M2-03.md)을 병렬로 구현하고 각각 커밋했다.
-M2-04d로 M2-04 자료 생명주기 전체를 마쳤다.
+[M2-05](progress/M2-05.md)를 완료했다. M2-04d가 의도적으로 비워 둔 색인·retrieval cache·
+grounding·인용 실행기를 실제로 구현해 파생 cleanup manifest가 기존 lease/재시도 규율
+그대로 닫히고, 모든 target에 실행기가 생긴 뒤에만 coach 사용 gate가 다시 열린다.
 
-M2-04d는 access revision, 명시 공유/철회, reviewed와 `includeForCoach`의 분리 전환,
-derived cleanup manifest를 구현한다. Migration 030은 tenant RLS 공유 원장과 audit,
-head trigger, derived cleanup queue를 추가한다. 철회는 RLS policy 자체가 강제하고,
-coach 사용 manifest는 tenant에 묶인 digest로 고정되며 초과 시 잘리지 않고 실패한다.
-실행기가 없는 cleanup target은 manifest를 완료하지도 attempt 예산을 쓰지도 않으므로
-coach 사용이 fail-closed로 유지된다. 공유 파일은 요청마다 공유를 재검증하는 서버
-streaming 경로로 읽는다. 이미 시작된 전송은 중단하지 않으며 계약·route·UI 문구가 그
-경계를 명시한다.
+Retrieval은 술어를 복제하지 않고 `resource_coach_use_authorized()` gate 함수 자체를 조인해
+조회 시점에 재검증하며, 순위 계산 전에 필터를 적용하고 현재 version만 대상으로 한다.
+검토 pin `reviewed_version_id`가 현재 version과 일치할 때만 색인하므로 본문을 교체하면
+명시적 재검토 전까지 색인·retrieval·인용이 모두 차단된다. cache key에 인가 집합 digest가
+들어가고 검색 후 manifest를 재수집해 동일성을 확인한 뒤에만 cache에 쓴다. 인용은 본문을
+저장하지 않고 offset과 SHA만 보관하며 발췌에 cascade로 묶여 더 오래 살 수 없다.
 
-M2-03은 tenant 소유 갤러리 원장, 기존 media object port를 재사용하는 upload lifecycle,
-사진·동영상 allowlist와 magic byte 검증, tombstone 삭제와 기존 durable cleanup manifest
-재사용을 구현한다. preview finalize는 예약 시 관측한 access revision을 transaction 안에서
-CAS 재확인한다. 목록·상세는 query가 성공 상태가 아니면 미디어를 렌더하지 않는다.
+삭제·AI 동의 철회·coach 사용 중지·검토 하향·공유 철회 다섯 전환을 각각 색인 → cache →
+인용 → 실패한 purge 재시도 → drain → cleanup replay → coaching job replay까지 실제
+PostgreSQL로 검증했다. `resource-access-v1`을 `evidence-dependencies.ts`에 통합해 승인
+transaction 안에서 인가 집합 전체를 재비교한다.
 
-검증은 typecheck 28/28, unit 207 files/2,198 tests, 실제 PostgreSQL integration
-40 files/357 tests, build 11 tasks, gallery Playwright 3/3을 통과했다. 각 task는 독립
-peer review를 5라운드까지 반복해 차단 findings을 모두 해소한 뒤 커밋했다. 계정 export는
-v15(공유·audit)를 거쳐 v16(갤러리)으로 올렸다.
+Migration 032는 채워진 031 DB 업그레이드 경로를 포함한다. 기존 reviewed 행은 본문이 하나뿐
+(`current_version = 1`)이거나 검토 시각이 version 생성보다 명확히 이후일 때만 pin하며,
+동률처럼 순서를 증명할 수 없으면 pin하지 않는다.
 
-미구현으로 남은 범위: 검색 색인·retrieval cache·인용 저장소의 실제 삭제 실행기(M2-05),
-S17의 viewer·앨범 관리·filter·EXIF 위치 제거·서버 thumbnail/transcoding, 안정 cursor
-pagination 계약, 원격 object provider와 운영 scheduler 검증.
+검증은 typecheck 28/28, unit 219 files/2,332 tests, 실제 PostgreSQL integration
+42 files/373 tests, build 11 tasks, Playwright 10/10, backup/restore drill 44 checks를
+통과했다. drill은 export가 v14에서 v17로 오르는 동안 갱신되지 않아 red였던 것을 고치고
+v15·v16·v17 collection 복원과 삭제·동의 철회 자료의 미부활까지 검증하도록 확장했다.
+
+**검증하지 않은 것**: 실제 LLM 호출이 없어 모델의 인용 생성과 의미 정확도, claim-citation
+entailment, retrieval recall, latency/cost 평가는 not_executed다. 검색은 `simple` FTS
+lexical만 있고 vector·rerank·한국어 형태소는 없다. 색인은 retrieval 시점 지연 색인이며
+운영 재색인 scheduler는 없다.
 
 ## 다음 ready 작업
 
-**M2-05 RAG·검토 자료·코치**가 다음 직렬 작업이다. M2-04와 M2-03이 모두 완료되어 ready다.
-M2-04d가 남긴 derived cleanup 실행기(색인·cache·인용)를 실제로 구현해야 하며, 열린
-manifest가 있는 동안 coach 사용이 차단된다는 fail-closed 경계를 유지해야 한다. 검토된
-콘텐츠만 retrieval에 사용하고, 삭제된 발췌가 재시도나 retrieval로 부활하지 않아야 한다.
-`packages/contracts/src/evidence-dependencies.ts`에 `resource-access-v1` manifest를
-통합하는 작업도 M2-05에서 함께 처리한다.
-
-M2-01 코스·도로 routing은 M0-06b 지도 spike에 막혀 있고, M3-01은 M0-06c에 막혀 있다.
+**내부 구현으로 진행할 수 있는 task는 없다.** 남은 15개 노드는 모두 아래 외부 gate에
+막혀 있다. task-graph의 semantics대로 외부 노드는 실제 외부 증거가 있어야 하며 mock이나
+합성 데이터 준비는 완료가 아니다.
 
 ## 남은 외부·실환경 gate
 

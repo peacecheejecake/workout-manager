@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import {
   compareCoreEvidenceDependencies,
+  compareResourceAccessDependencies,
   coreEvidenceDependencyManifestV2Schema,
   type CoreEvidenceDependencyField,
+  type ResourceAccessDependencyField,
 } from './evidence-dependencies.js';
+import { coachingRetrievalBasisSchema, type CoachingRetrievalBasis } from './resource-retrieval.js';
 import {
   coreEvidenceSnapshotMetadataSchema,
   coreEvidenceSnapshotSchema,
@@ -13,7 +16,6 @@ import { idSchema } from './primitives.js';
 const uuid = z.uuid().refine((value) => value === value.toLowerCase());
 const athleteId = coreEvidenceDependencyManifestV2Schema.shape.athleteId;
 const revision = z.number().int().min(1).max(2147483646);
-const retrievalNoneSchema = z.strictObject({ kind: z.literal('none') });
 
 /** Server-owned policy identity. A client-provided value does not establish policy authority. */
 export const trainingCoachingPolicySchema = z.strictObject({
@@ -33,11 +35,19 @@ export const trainingCoachingBasisV1Schema = z
     planVersionId: uuid,
     dependencies: coreEvidenceDependencyManifestV2Schema,
     policy: trainingCoachingPolicySchema,
-    retrieval: retrievalNoneSchema,
+    retrieval: coachingRetrievalBasisSchema,
   })
   .superRefine((value, context) => {
     if (value.dependencies.athleteId !== value.athleteId)
       context.addIssue({ code: 'custom', message: 'Dependency owner mismatch' });
+    if (value.retrieval.kind === 'resource-access-v1') {
+      // Retrieval is only ever pinned for the same tenant, and only while AI
+      // consent is granted; a withdrawn consent authorizes no excerpt at all.
+      if (value.retrieval.manifest.athleteId !== value.athleteId)
+        context.addIssue({ code: 'custom', message: 'Retrieval owner mismatch' });
+      if (!value.retrieval.manifest.aiConsentGranted)
+        context.addIssue({ code: 'custom', message: 'Granted AI consent is required' });
+    }
     if (
       value.dependencies.trainingPlan.kind !== 'exists' ||
       value.dependencies.trainingPlan.versionId !== value.planVersionId
@@ -57,7 +67,7 @@ export const trainingCoachingBasisObservationV1Schema = z
     conversationRevision: revision,
     dependencies: coreEvidenceDependencyManifestV2Schema,
     policy: trainingCoachingPolicySchema,
-    retrieval: retrievalNoneSchema,
+    retrieval: coachingRetrievalBasisSchema,
   })
   .superRefine((value, context) => {
     if (value.dependencies.athleteId !== value.athleteId)
@@ -85,6 +95,8 @@ const buildInputSchema = z.strictObject({
   athleteId,
   snapshot: coreEvidenceSnapshotSchema,
   policy: trainingCoachingPolicySchema,
+  /** Omitted for a run that reads no resource at all. */
+  retrieval: coachingRetrievalBasisSchema.default({ kind: 'none' }),
 });
 
 /** Derives a candidate read basis; it does not send data to a model or permit plan writes. */
@@ -114,13 +126,18 @@ export function buildTrainingCoachingBasis(input: unknown): TrainingCoachingBasi
     planVersionId: body.plan.id,
     dependencies: body.dependencies,
     policy,
-    retrieval: { kind: 'none' },
+    retrieval: result.data.retrieval,
   });
   return basis.success ? { ok: true, basis: basis.data } : { ok: false, reason: 'INVALID_INPUT' };
 }
 
 export type TrainingCoachingBasisChange =
-  'evidence' | 'conversation' | 'policy' | `dependencies.${CoreEvidenceDependencyField}`;
+  | 'evidence'
+  | 'conversation'
+  | 'policy'
+  | 'retrieval'
+  | `dependencies.${CoreEvidenceDependencyField}`
+  | `retrieval.${ResourceAccessDependencyField}`;
 export type TrainingCoachingBasisComparison =
   | { status: 'fresh'; changed: [] }
   | { status: 'stale'; changed: TrainingCoachingBasisChange[] }
@@ -157,5 +174,24 @@ export function compareTrainingCoachingBasis(
     changed.push('policy');
   if (dependencies.status === 'stale')
     changed.push(...dependencies.changed.map((field) => `dependencies.${field}` as const));
+  changed.push(...compareRetrieval(basis.retrieval, observed.retrieval));
   return changed.length ? { status: 'stale', changed } : { status: 'fresh', changed: [] };
+}
+
+/**
+ * A basis that pinned no retrieval has no resource dependency, so a resource
+ * enabled afterwards does not make it stale. A basis that did pin retrieval is
+ * stale unless the same query still resolves against the same complete
+ * authorized set.
+ */
+function compareRetrieval(
+  pinned: CoachingRetrievalBasis,
+  observed: CoachingRetrievalBasis,
+): TrainingCoachingBasisChange[] {
+  if (pinned.kind === 'none') return [];
+  if (observed.kind !== 'resource-access-v1' || observed.query !== pinned.query)
+    return ['retrieval'];
+  const comparison = compareResourceAccessDependencies(pinned.manifest, observed.manifest);
+  if (comparison.status === 'unsupported') return ['retrieval'];
+  return comparison.changed.map((field) => `retrieval.${field}` as const);
 }

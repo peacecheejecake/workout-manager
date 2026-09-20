@@ -38,6 +38,8 @@ import {
   grantCoachingRuns,
   grantCoachingCandidates,
   grantResources,
+  grantResourceRetrieval,
+  grantGalleryMedia,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -45,6 +47,19 @@ import { createActivityRepository } from '../packages/server/persistence/src/act
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.js';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.js';
+import { createResourceAccessRepository } from '../packages/server/persistence/src/resource-access.js';
+import {
+  createResourceRetrievalRepository,
+  prepareRunGrounding,
+  recordRunCitations,
+  writeRunGrounding,
+} from '../packages/server/persistence/src/resource-retrieval.js';
+import {
+  createResourceDerivedCleanupRepository,
+  createResourceDerivedStorePurge,
+  processOneResourceDerivedCleanup,
+} from '../packages/server/persistence/src/resource-derived-cleanup.js';
+import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.js';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
 import {
   createResourceUrlIngestionRepository,
@@ -52,6 +67,7 @@ import {
 } from '../packages/server/persistence/src/resource-url-ingestions.js';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.js';
 import {
+  createGalleryFinalObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
 } from '../packages/server/media/src/keys.js';
@@ -552,6 +568,8 @@ async function execute() {
     await grantCoachingRuns(url('drill_source'), 'drill_runtime');
     await grantCoachingCandidates(url('drill_source'), 'drill_runtime');
     await grantResources(url('drill_source'), 'drill_runtime');
+    await grantResourceRetrieval(url('drill_source'), 'drill_runtime');
+    await grantGalleryMedia(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -889,7 +907,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 14);
+      assert.equal(before.schemaVersion, 17);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -951,7 +969,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 14) throw new Error('Expected coaching export v14');
+      if (coachingExport.schemaVersion !== 17) throw new Error('Expected coaching export v17');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -977,7 +995,7 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v14 is added.
+      // A historical v8 download keeps its original shape and remains readable after v17 is added.
       const {
         coachingDecisions,
         coachingProposals,
@@ -1008,6 +1026,14 @@ async function execute() {
         resourceUrlArtifacts: _resourceUrlArtifacts,
         resourceUrlProvenance: _resourceUrlProvenance,
         resourceUrlLocators: _resourceUrlLocators,
+        resourceShares: _resourceShares,
+        resourceAccessAudit: _resourceAccessAudit,
+        galleryMediaItems: _galleryMediaItems,
+        galleryMediaDerivatives: _galleryMediaDerivatives,
+        resourcePassages: _resourcePassages,
+        resourceGroundings: _resourceGroundings,
+        resourceGroundingExcerpts: _resourceGroundingExcerpts,
+        resourceCitations: _resourceCitations,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1111,7 +1137,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 14) throw new Error('Expected candidate export v14');
+      if (candidateExport.schemaVersion !== 17) throw new Error('Expected candidate export v17');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1159,6 +1185,203 @@ async function execute() {
     assertCoachingCandidateRowsAvailable(
       await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
       constraintCandidate,
+    );
+
+    // ---------------------------------------------------------------------
+    // Access sharing (v15), gallery media (v16) and the retrieval derived
+    // stores (v17) are seeded before the backup so the restore has to
+    // reproduce them, and so a resource deleted before the backup can be
+    // proved not to come back with its passages, cache, grounding or
+    // citations.
+    // ---------------------------------------------------------------------
+    const accessRepo = createResourceAccessRepository(sourceDb);
+
+    const galleryRepo = createGalleryMediaRepository(sourceDb);
+    const galleryReservation = await galleryRepo.reserveCreate(
+      retainedAthlete,
+      {
+        mediaKind: 'image',
+        album: 'Restore drill',
+        caption: 'Synthetic finish photo',
+        activityId: null,
+        capturedAt: null,
+        capturedLocalDate: null,
+      },
+      `gallery-${randomUUID()}`,
+    );
+    const gallerySha = createHash('sha256').update('synthetic-gallery-image').digest('hex');
+    await galleryRepo.prepareObject(retainedAthlete, galleryReservation.uploadId, {
+      storageRef: createGalleryFinalObjectKey({
+        tenantId: retainedAthlete,
+        mediaItemId: galleryReservation.mediaItemId,
+        uploadId: galleryReservation.uploadId,
+        sha256: gallerySha,
+        extension: 'png',
+      }),
+      file: {
+        originalFileName: 'finish.png',
+        mediaType: 'image/png',
+        byteSize: 2048,
+        sha256: gallerySha,
+      },
+    });
+    await galleryRepo.markStaged(retainedAthlete, galleryReservation.uploadId);
+    const galleryFinalized = await galleryRepo.finalize(
+      retainedAthlete,
+      galleryReservation.uploadId,
+    );
+    if (galleryFinalized.status !== 'available') throw new Error('GALLERY_SEED_FAILED');
+    const previewReservation = await galleryRepo.reservePreview(
+      retainedAthlete,
+      galleryReservation.mediaItemId,
+      { expectedAccessRevision: galleryFinalized.item.accessRevision },
+      `gallery-${randomUUID()}`,
+    );
+    const previewSha = createHash('sha256').update('synthetic-gallery-preview').digest('hex');
+    await galleryRepo.prepareObject(retainedAthlete, previewReservation.uploadId, {
+      storageRef: createGalleryFinalObjectKey({
+        tenantId: retainedAthlete,
+        mediaItemId: galleryReservation.mediaItemId,
+        uploadId: previewReservation.uploadId,
+        sha256: previewSha,
+        extension: 'jpg',
+      }),
+      file: {
+        originalFileName: 'finish-preview.jpg',
+        mediaType: 'image/jpeg',
+        byteSize: 512,
+        sha256: previewSha,
+      },
+    });
+    await galleryRepo.markStaged(retainedAthlete, previewReservation.uploadId);
+    await galleryRepo.finalize(retainedAthlete, previewReservation.uploadId);
+
+    // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
+    // single lexical token so the 'simple' text search matches both bodies.
+    const coachResourceText =
+      'RESTOREDRILLTOKEN recovery guidance.\n\nSecond paragraph of the reviewed guidance.';
+    const seedCoachResource = async (owner: string, title: string) => {
+      const created = await resourceRepo.create(owner, {
+        sourceKind: 'text',
+        title,
+        category: 'guide',
+        metadata: {},
+        tags: [],
+        favorite: false,
+        text: coachResourceText,
+        idempotencyKey: randomUUID(),
+      });
+      if (created.status !== 'available') throw new Error('COACH_RESOURCE_SEED_FAILED');
+      const reviewed = await accessRepo.setReviewed(owner, created.resource.id, {
+        reviewed: true,
+        expectedAccessRevision: created.resource.accessRevision,
+        expectedCurrentVersionId: created.version.id,
+        idempotencyKey: randomUUID(),
+      });
+      const enabled = await accessRepo.setCoachUse(owner, created.resource.id, {
+        includeForCoach: true,
+        expectedAccessRevision: reviewed.accessRevision,
+        expectedCurrentVersionId: created.version.id,
+        idempotencyKey: randomUUID(),
+      });
+      assert.equal(enabled.coachUseAuthorized, true);
+      return { resourceId: created.resource.id, versionId: created.version.id, state: enabled };
+    };
+    const retrievalRepo = createResourceRetrievalRepository(sourceDb);
+    const retrievalQuery = { schemaVersion: 1 as const, query: 'RESTOREDRILLTOKEN', limit: 6 };
+    const retainedCoachResource = await seedCoachResource(
+      retainedAthlete,
+      'Synthetic reviewed coach source',
+    );
+    // Sharing bumps the access revision, so it is granted on the source this
+    // drill does not compare field by field against its pre-backup value.
+    const sharedAccess = await accessRepo.grantShare(
+      retainedAthlete,
+      retainedCoachResource.resourceId,
+      {
+        granteeKind: 'coach',
+        granteePrincipalId: `coach-${randomUUID()}`,
+        expectedAccessRevision: retainedCoachResource.state.accessRevision,
+        idempotencyKey: randomUUID(),
+      },
+    );
+    assert.equal(sharedAccess.shares.length, 1);
+    const sharedShareId = sharedAccess.shares[0]?.shareId;
+    assert.ok(sharedShareId);
+    const deletedCoachResource = await seedCoachResource(
+      retainedAthlete,
+      'Synthetic reviewed source deleted before backup',
+    );
+    const seededRetrieval = await retrievalRepo.retrieve(retainedAthlete, retrievalQuery);
+    assert.equal(seededRetrieval.excerpts.length, 2);
+    const retainedRunId = coachingRuns.get(retainedAthlete)?.run.id;
+    assert.ok(retainedRunId);
+    const retainedGrounding = await sourceDb.tenant(retainedAthlete, async (tx) => {
+      const prepared = await prepareRunGrounding(tx, retrievalQuery.query);
+      assert.equal(prepared.excerpts.length, 2);
+      const groundingId = await writeRunGrounding(tx, retainedRunId, prepared);
+      await recordRunCitations(
+        tx,
+        retainedRunId,
+        prepared.excerpts.map((excerpt, claimIndex) => ({
+          claimIndex,
+          passageId: excerpt.passageId,
+          quoteStart: 0,
+          quoteEnd: Math.min(excerpt.text.length, 40),
+        })),
+      );
+      return { groundingId, excerpts: prepared.excerpts };
+    });
+    assert.equal(retainedGrounding.excerpts.length, 2);
+    const citedDeletedPassage = retainedGrounding.excerpts.find(
+      (excerpt) => excerpt.resourceId === deletedCoachResource.resourceId,
+    );
+    assert.ok(citedDeletedPassage);
+
+    // The same derived stores for an owner whose AI consent is withdrawn after
+    // the backup: the restored cluster must not expose them once the withdrawal
+    // ledger is replayed before runtime access.
+    const withdrawnCoachResource = await seedCoachResource(
+      withdrawnAthlete,
+      'Synthetic reviewed source for withdrawn consent',
+    );
+    const withdrawnRetrieval = await retrievalRepo.retrieve(withdrawnAthlete, retrievalQuery);
+    assert.equal(withdrawnRetrieval.excerpts.length, 1);
+    await sourceDb.tenant(withdrawnAthlete, async (tx) => {
+      const prepared = await prepareRunGrounding(tx, retrievalQuery.query);
+      const only = prepared.excerpts[0];
+      assert.ok(only);
+      await writeRunGrounding(tx, withdrawnRun.run.id, prepared);
+      await recordRunCitations(tx, withdrawnRun.run.id, [
+        { claimIndex: 0, passageId: only.passageId, quoteStart: 0, quoteEnd: 20 },
+      ]);
+    });
+
+    // Deleted before the backup: the access gate is already closed and a
+    // derived cleanup manifest is open, while the index rows are still in the
+    // dump. Restoration must not turn that into a resurrected excerpt.
+    await resourceRepo.softDelete(retainedAthlete, deletedCoachResource.resourceId, {
+      expectedAccessRevision: deletedCoachResource.state.accessRevision,
+      expectedCurrentVersionId: deletedCoachResource.versionId,
+      idempotencyKey: randomUUID(),
+    });
+    const afterDeleteRetrieval = await retrievalRepo.retrieve(retainedAthlete, retrievalQuery);
+    assert.deepEqual(
+      afterDeleteRetrieval.excerpts.map((excerpt) => excerpt.resourceId),
+      [retainedCoachResource.resourceId],
+    );
+    assert.equal(
+      (
+        await source.query(
+          'SELECT count(*)::int AS count FROM resource_passage WHERE athlete_id=$1 AND resource_id=$2',
+          [retainedAthlete, deletedCoachResource.resourceId],
+        )
+      ).rows[0].count,
+      1,
+    );
+    checks.push('access_shares_gallery_media_and_retrieval_derived_stores_seeded_before_backup');
+    checks.push(
+      'resource_deleted_before_backup_keeps_index_rows_but_is_already_gate_blocked_in_source',
     );
 
     // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
@@ -1844,7 +2067,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 14);
+    assert.ok(constraintExport.schemaVersion === 17);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -1879,7 +2102,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
+    if (withdrawnExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -1931,7 +2154,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
+    if (absentExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -2039,13 +2262,209 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 14) throw new Error('Expected resource export v14');
-    assert.equal(retainedExport.data.resources.length, 3);
-    assert.equal(retainedExport.data.resourceVersions.length, 4);
+    if (retainedExport.schemaVersion !== 17) throw new Error('Expected resource export v17');
+    // Text, file, URL and the reviewed coach source; the source deleted before
+    // the backup stays out of the export exactly as it did before restoration.
+    assert.equal(retainedExport.data.resources.length, 4);
+    assert.equal(retainedExport.data.resourceVersions.length, 5);
+    assert.ok(
+      !retainedExport.data.resources.some((row) => row['id'] === deletedCoachResource.resourceId),
+    );
     assert.ok(!JSON.stringify(retainedExport).includes(storedFile.key));
     assert.ok(!JSON.stringify(retainedExport).includes(storedUrlRawKey));
     assert.ok(!JSON.stringify(retainedExport).includes(storedUrlParsedKey));
     assert.ok(!JSON.stringify(retainedExport).includes('private=server-only'));
+    // v15 sharing, v16 gallery and v17 retrieval collections are reproduced by
+    // the restored cluster rather than silently dropped.
+    assert.equal(retainedExport.data.resourceShares.length, 1);
+    assert.equal(retainedExport.data.resourceShares[0]?.['share_id'], sharedShareId);
+    assert.ok(
+      retainedExport.data.resourceAccessAudit.some(
+        (row) => row['action'] === 'share_granted' && row['share_id'] === sharedShareId,
+      ),
+    );
+    assert.ok(
+      retainedExport.data.resourceAccessAudit.some(
+        (row) =>
+          row['action'] === 'resource_deleted' &&
+          row['resource_id'] === deletedCoachResource.resourceId,
+      ) === false,
+      'audit rows of a deleted resource are removed with it',
+    );
+    assert.equal(retainedExport.data.galleryMediaItems.length, 1);
+    assert.equal(retainedExport.data.galleryMediaItems[0]?.['id'], galleryReservation.mediaItemId);
+    assert.equal(retainedExport.data.galleryMediaDerivatives.length, 1);
+    assert.ok(
+      !JSON.stringify(retainedExport.data.galleryMediaItems).includes('private/v1/tenants'),
+    );
+    assert.deepEqual(
+      retainedExport.data.resourcePassages.map((row) => row['resource_id']),
+      [retainedCoachResource.resourceId],
+    );
+    assert.equal(retainedExport.data.resourceGroundings.length, 1);
+    assert.equal(retainedExport.data.resourceGroundings[0]?.['run_id'], retainedRunId);
+    // The export carries passage identity and offsets, never passage bodies.
+    assert.ok(!JSON.stringify(retainedExport.data.resourcePassages).includes('RESTOREDRILLTOKEN'));
+    assert.ok(!JSON.stringify(retainedExport.data.resourceCitations).includes('RESTOREDRILLTOKEN'));
+    checks.push('restored_access_shares_audit_and_gallery_media_reproduced_in_export');
+    checks.push('restored_retrieval_passages_grounding_and_citations_reproduced_without_bodies');
+
+    // ---------------------------------------------------------------------
+    // Deletion and consent withdrawal must survive a restore. The dump still
+    // contains the index rows of the resource deleted before the backup, so
+    // this is the case where a restored cluster could resurrect an excerpt.
+    // ---------------------------------------------------------------------
+    const restoredPassageCount = async (owner: string, resourceId: string) =>
+      (
+        await restored.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM resource_passage WHERE athlete_id=$1 AND resource_id=$2',
+          [owner, resourceId],
+        )
+      ).rows[0]?.count;
+    // The physical rows really are in the restored snapshot: the block below is
+    // not passing because the backup happened to be empty.
+    assert.equal(await restoredPassageCount(retainedAthlete, deletedCoachResource.resourceId), 1);
+    assert.equal(
+      (
+        await restored.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM resource_derived_cleanup
+           WHERE athlete_id=$1 AND resource_id=$2 AND completed_at IS NULL`,
+          [retainedAthlete, deletedCoachResource.resourceId],
+        )
+      ).rows[0]?.count,
+      1,
+    );
+    const restoredRetrieval = createResourceRetrievalRepository(restoreDb);
+    const restoredRetrievalResult = await restoredRetrieval.retrieve(
+      retainedAthlete,
+      retrievalQuery,
+    );
+    assert.deepEqual(
+      restoredRetrievalResult.excerpts.map((excerpt) => excerpt.resourceId),
+      [retainedCoachResource.resourceId],
+    );
+    const restoredGrounding = await restoredRetrieval.readGrounding(retainedAthlete, retainedRunId);
+    assert.equal(restoredGrounding.status, 'available');
+    if (restoredGrounding.status !== 'available') throw new Error('GROUNDING_RESTORE_FAILED');
+    assert.deepEqual(
+      restoredGrounding.excerpts.map((excerpt) => excerpt.resourceId),
+      [retainedCoachResource.resourceId],
+    );
+    assert.equal(restoredGrounding.withdrawnExcerptCount, 1);
+    assert.equal(restoredGrounding.citations.length, 2);
+    assert.equal(
+      restoredGrounding.citations.filter((citation) => citation.status === 'unavailable').length,
+      1,
+    );
+    const restoredAvailableCitation = restoredGrounding.citations.find(
+      (citation) => citation.status === 'available',
+    );
+    assert.ok(restoredAvailableCitation && restoredAvailableCitation.status === 'available');
+    assert.equal(restoredAvailableCitation.resourceId, retainedCoachResource.resourceId);
+    assert.equal(restoredAvailableCitation.versionId, retainedCoachResource.versionId);
+    // The withdrawn owner's consent was replayed before runtime access, so its
+    // reviewed source is no longer retrievable and its citation cannot resolve.
+    assert.deepEqual(
+      (await restoredRetrieval.retrieve(withdrawnAthlete, retrievalQuery)).excerpts,
+      [],
+    );
+    const withdrawnRestoredGrounding = await restoredRetrieval.readGrounding(
+      withdrawnAthlete,
+      withdrawnRun.run.id,
+    );
+    assert.equal(withdrawnRestoredGrounding.status, 'available');
+    if (withdrawnRestoredGrounding.status !== 'available')
+      throw new Error('WITHDRAWN_GROUNDING_RESTORE_FAILED');
+    assert.deepEqual(withdrawnRestoredGrounding.excerpts, []);
+    assert.deepEqual(
+      withdrawnRestoredGrounding.citations.map((citation) => citation.status),
+      ['unavailable'],
+    );
+    checks.push(
+      'restored_deleted_and_consent_withdrawn_sources_stay_gate_blocked_in_retrieval_and_citations',
+    );
+
+    // Operational recovery: the restored cluster's own cleanup worker drains
+    // the manifests the backup carried, with the real store executors.
+    const restoredCleanup = createResourceDerivedCleanupRepository({
+      connectionString: url('drill_restore'),
+      max: 1,
+    });
+    const restoredPurge = createResourceDerivedStorePurge(restoredCleanup);
+    const openManifests = async () =>
+      (
+        await restored.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM resource_derived_cleanup WHERE completed_at IS NULL',
+        )
+      ).rows[0]?.count ?? 0;
+    try {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if ((await openManifests()) === 0) break;
+        await restored.query(
+          `UPDATE resource_derived_cleanup SET available_at=clock_timestamp(),
+             lease_owner=NULL,lease_until=NULL WHERE completed_at IS NULL`,
+        );
+        await processOneResourceDerivedCleanup(restoredCleanup, restoredPurge);
+      }
+      assert.equal(await openManifests(), 0);
+      // A replayed drain finds nothing left and writes nothing back.
+      assert.equal(await processOneResourceDerivedCleanup(restoredCleanup, restoredPurge), 'empty');
+    } finally {
+      await restoredCleanup.close();
+    }
+    assert.equal(await restoredPassageCount(retainedAthlete, deletedCoachResource.resourceId), 0);
+    assert.equal(
+      await restoredPassageCount(withdrawnAthlete, withdrawnCoachResource.resourceId),
+      0,
+    );
+    for (const [table, owner, resourceId] of [
+      ['resource_grounding_excerpt', retainedAthlete, deletedCoachResource.resourceId],
+      ['resource_citation', retainedAthlete, deletedCoachResource.resourceId],
+      ['resource_grounding_excerpt', withdrawnAthlete, withdrawnCoachResource.resourceId],
+      ['resource_citation', withdrawnAthlete, withdrawnCoachResource.resourceId],
+    ] as const) {
+      assert.equal(
+        (
+          await restored.query<{ count: number }>(
+            `SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1 AND resource_id=$2`,
+            [owner, resourceId],
+          )
+        ).rows[0]?.count,
+        0,
+        `${table} must not survive the purge`,
+      );
+    }
+    assert.equal(
+      (
+        await restored.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM resource_retrieval_cache WHERE athlete_id=$1',
+          [retainedAthlete],
+        )
+      ).rows[0]?.count,
+      0,
+    );
+    // The still-authorized source keeps its excerpt and its citation.
+    assert.equal(await restoredPassageCount(retainedAthlete, retainedCoachResource.resourceId), 1);
+    const afterPurgeGrounding = await restoredRetrieval.readGrounding(
+      retainedAthlete,
+      retainedRunId,
+    );
+    assert.equal(afterPurgeGrounding.status, 'available');
+    if (afterPurgeGrounding.status !== 'available') throw new Error('GROUNDING_PURGE_FAILED');
+    assert.deepEqual(
+      afterPurgeGrounding.citations.map((citation) => citation.status),
+      ['available'],
+    );
+    assert.deepEqual(
+      (await restoredRetrieval.retrieve(retainedAthlete, retrievalQuery)).excerpts.map(
+        (excerpt) => excerpt.resourceId,
+      ),
+      [retainedCoachResource.resourceId],
+    );
+    checks.push(
+      'restored_derived_cleanup_purges_deleted_and_withdrawn_passages_cache_groundings_and_citations',
+    );
+    checks.push('replayed_restored_derived_cleanup_adds_nothing_back');
     assert.equal(
       retainedExport.data.coachingRuns[0]?.id,
       coachingRuns.get(retainedAthlete)?.run.id,
@@ -2157,7 +2576,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 14) throw new Error('Expected coaching export v14');
+    if (retainedExport.schemaVersion !== 17) throw new Error('Expected coaching export v17');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -2289,7 +2708,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 14) throw new Error('Expected coaching export v14');
+    if (coachingAfterReplay.schemaVersion !== 17) throw new Error('Expected coaching export v17');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -2465,7 +2884,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 14) throw new Error('Expected evidence export v14');
+    if (scrubbedExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

@@ -27,6 +27,8 @@ export interface ResourceDerivedCleanupManifest {
 
 export interface ResourceDerivedCleanupRepository {
   pruneHistory(limit?: number): Promise<number>;
+  /** Reclaims expired retrieval cache rows; the TTL is not only a read filter. */
+  pruneRetrievalCache(limit?: number): Promise<number>;
   lease(now: Date, leaseUntil: Date): Promise<ResourceDerivedCleanupManifest | null>;
   finish(
     manifest: ResourceDerivedCleanupManifest,
@@ -34,8 +36,20 @@ export interface ResourceDerivedCleanupRepository {
   ): Promise<boolean>;
   /** Returns the lease without charging the attempt or dead-letter budget. */
   release(manifest: ResourceDerivedCleanupManifest, errorCode: string): Promise<boolean>;
+  /**
+   * Deletes one derived store for the leased manifest and returns the number of
+   * rows removed. The database function refuses unless this worker still holds
+   * a valid lease on that entry, and it reads the tenant and resource from the
+   * manifest row rather than from the caller.
+   */
+  purgeTarget(
+    manifest: ResourceDerivedCleanupManifest,
+    target: keyof ResourceDerivedCleanupManifest['targets'],
+  ): Promise<number>;
   close(): Promise<void>;
 }
+
+const derivedTargetSchema = z.enum(['derivedData', 'searchIndex', 'cache', 'citations']);
 
 const targetsSchema = z.strictObject({
   derivedData: z.literal(true),
@@ -66,19 +80,34 @@ export function createResourceDerivedCleanupRepository(options: {
   connectionString: string;
   workerId?: string;
   max?: number;
+  statementTimeoutMillis?: number;
+  lockTimeoutMillis?: number;
 }): ResourceDerivedCleanupRepository {
   const workerId = z.uuid().parse(options.workerId ?? randomUUID());
+  // The privacy cleanup worker must never wait indefinitely: a statement that
+  // blocks on another transaction's lock fails fast and is retried on the next
+  // cycle instead of stalling deletion for every tenant.
   const pool = new Pool({
     connectionString: options.connectionString,
     max: options.max ?? 2,
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
+    statement_timeout: options.statementTimeoutMillis ?? 15000,
+    lock_timeout: options.lockTimeoutMillis ?? 5000,
   });
   return {
     async pruneHistory(limit = 100) {
       const boundedLimit = z.number().int().min(1).max(100).parse(limit);
       const result = await pool.query(
         'SELECT public.prune_resource_derived_cleanup_history($1) AS affected',
+        [boundedLimit],
+      );
+      return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
+    },
+    async pruneRetrievalCache(limit = 500) {
+      const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
+      const result = await pool.query(
+        'SELECT public.prune_resource_retrieval_cache($1) AS affected',
         [boundedLimit],
       );
       return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
@@ -128,6 +157,13 @@ export function createResourceDerivedCleanupRepository(options: {
       );
       return result.rows[0]?.['released'] === true;
     },
+    async purgeTarget(manifest, target) {
+      const result = await pool.query(
+        'SELECT public.purge_resource_derived_store($1,$2,$3) AS purged',
+        [z.uuid().parse(manifest.id), workerId, derivedTargetSchema.parse(target)],
+      );
+      return z.number().int().nonnegative().parse(result.rows[0]?.['purged']);
+    },
     close: () => pool.end(),
   };
 }
@@ -143,6 +179,29 @@ export type ResourceDerivedPurge = Partial<
     (manifest: ResourceDerivedCleanupManifest) => Promise<void>
   >
 >;
+
+/**
+ * The real executors. Each one deletes its store through the leased-only
+ * database function, so a manifest completes only after every declared target
+ * has actually been purged. Ordering does not matter: the foreign keys from
+ * grounding excerpts and citations to the index row cascade, so a store can
+ * never be left holding a copy of a purged excerpt.
+ */
+export function createResourceDerivedStorePurge(
+  repository: ResourceDerivedCleanupRepository,
+): ResourceDerivedPurge {
+  const purge =
+    (target: keyof ResourceDerivedCleanupManifest['targets']) =>
+    async (manifest: ResourceDerivedCleanupManifest) => {
+      await repository.purgeTarget(manifest, target);
+    };
+  return {
+    derivedData: purge('derivedData'),
+    searchIndex: purge('searchIndex'),
+    cache: purge('cache'),
+    citations: purge('citations'),
+  };
+}
 
 export async function processOneResourceDerivedCleanup(
   repository: ResourceDerivedCleanupRepository,

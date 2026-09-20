@@ -2,6 +2,7 @@ import { createCoachingConstraintRepository } from '@workout/server-persistence/
 import { createCoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { createCoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
 import { createCoachingRunRepository } from '@workout/server-persistence/coaching-runs';
+import { createResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
 import { createTrainingCandidateRepository } from '@workout/server-persistence/coaching-candidates';
 import { createSessionActualsRepository } from '@workout/server-persistence/session-actuals';
 import { createPlanScenarioRepository } from '@workout/server-persistence/plan-scenarios';
@@ -168,6 +169,7 @@ export async function createConfiguredApi(environment: unknown) {
         storage: resourceStorage,
       },
       resourceAccess: createResourceAccessRepository(database),
+      resourceRetrieval: createResourceRetrievalRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
         await Promise.all([store.close(), database.close()]);

@@ -463,10 +463,10 @@ describe('M2-04d resource access, sharing and coach-use boundary', () => {
         await client.query(
           `INSERT INTO resource
             (athlete_id,id,source_kind,title,category,metadata,tags,favorite,include_for_coach,
-             reviewed_state,reviewed_at,coach_use_enabled_at,access_revision,current_version,
-             current_version_id,created_at,updated_at)
+             reviewed_state,reviewed_at,reviewed_version_id,coach_use_enabled_at,access_revision,
+             current_version,current_version_id,created_at,updated_at)
            VALUES($1,$2,'text',$3,'note','{}'::jsonb,'[]'::jsonb,false,true,'reviewed',
-             now(),now(),1,1,$4,now(),now())`,
+             now(),$4,now(),1,1,$4,now(),now())`,
           [athlete, id, `자료 ${index}`, versionId],
         );
         await client.query(

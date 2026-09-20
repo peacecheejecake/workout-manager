@@ -228,7 +228,7 @@ const collections = [
   [
     'resources',
     '(SELECT * FROM resource WHERE deleted_at IS NULL) resource',
-    'id,source_kind,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,reviewed_at,coach_use_enabled_at,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
+    'id,source_kind,title,category,metadata,tags,favorite,include_for_coach,reviewed_state,reviewed_at,reviewed_version_id,coach_use_enabled_at,access_revision,current_version,current_version_id,created_at,updated_at,deleted_at',
     'created_at,id',
   ],
   [
@@ -321,6 +321,35 @@ const collections = [
     'version_id,ordinal',
   ],
   [
+    'resourcePassages',
+    `(SELECT p.* FROM resource_passage p JOIN resource active
+      ON active.athlete_id=p.athlete_id AND active.id=p.resource_id
+      WHERE active.deleted_at IS NULL) resource_passage`,
+    `passage_id,resource_id,version_id,ordinal,first_paragraph_index,last_paragraph_index,
+     start_offset,end_offset,heading_path,content_hash,indexed_access_revision,created_at`,
+    'resource_id,version_id,ordinal',
+  ],
+  [
+    'resourceGroundings',
+    'resource_grounding',
+    `grounding_id,run_id,query_text,excerpt_count,manifest->>'entriesDigest' AS entries_digest,
+     captured_at`,
+    'captured_at,grounding_id',
+  ],
+  [
+    'resourceGroundingExcerpts',
+    'resource_grounding_excerpt',
+    'grounding_id,ordinal,passage_id,resource_id,version_id,access_revision',
+    'grounding_id,ordinal',
+  ],
+  [
+    'resourceCitations',
+    'resource_citation',
+    `citation_id,grounding_id,passage_id,resource_id,version_id,claim_index,quote_start,
+     quote_end,quote_hash,created_at`,
+    'created_at,citation_id',
+  ],
+  [
     'galleryMediaItems',
     `(SELECT m.athlete_id,m.id,m.media_kind,m.visibility,m.include_for_coach,m.album,m.caption,
       m.activity_id,m.captured_at,m.captured_local_date,m.original_filename,m.media_type,
@@ -406,7 +435,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 16,
+          schemaVersion: 17,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

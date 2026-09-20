@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { coachingRetrievalRequestSchema } from './resource-retrieval.js';
 import { trainingCoachingPolicySchema } from './coaching-basis.js';
 import { trainingCandidateStrategyV1Schema } from './coaching-candidates.js';
 import { instantSchema } from './primitives.js';
@@ -17,6 +18,11 @@ export const coachingRunCreateCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   evidenceSnapshotId: uuid,
   expectedConversationRevision: revision,
+  /**
+   * Whether this run may read reviewed resources. Omitted means no retrieval at
+   * all; the server, not the client, decides which resources are authorized.
+   */
+  retrieval: coachingRetrievalRequestSchema.default({ kind: 'none' }),
   idempotencyKey: boundedText(200),
 });
 
@@ -121,6 +127,8 @@ export const coachingRunOutputV1Schema = z.strictObject({
 });
 
 export type CoachingRunCreateCommandV1 = z.infer<typeof coachingRunCreateCommandV1Schema>;
+/** Accepted shape: `retrieval` may be omitted and defaults to no retrieval. */
+export type CoachingRunCreateCommandV1Input = z.input<typeof coachingRunCreateCommandV1Schema>;
 export type CoachingRunModelSource = z.infer<typeof coachingRunModelSourceSchema>;
 export type CoachingRunStatus = z.infer<typeof coachingRunStatusSchema>;
 export type CoachingRunV1 = z.infer<typeof coachingRunV1Schema>;

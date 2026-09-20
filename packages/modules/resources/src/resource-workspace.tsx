@@ -709,7 +709,14 @@ function AccessPanel({
 
   const state = access.data;
   const activeShares = state.shares;
-  const coachUseBlocked = !state.reviewedState.startsWith('reviewed') || !state.aiConsentGranted;
+  const coachUseBlocked =
+    !state.reviewedState.startsWith('reviewed') ||
+    !state.aiConsentGranted ||
+    state.reviewedVersionId !== state.currentVersionId;
+  // A new version replaces the content a reviewer approved, so the review stays
+  // pinned to the version it was given for and the new body needs its own.
+  const needsReReview =
+    state.reviewedState === 'reviewed' && state.reviewedVersionId !== state.currentVersionId;
 
   return (
     <section className={styles.notice} aria-labelledby="resource-access-title">
@@ -724,11 +731,15 @@ function AccessPanel({
       <div className={styles.actions}>
         <button
           type="button"
-          disabled={state.reviewedState === 'reviewed' && state.includeForCoach}
+          // Re-reviewing the current body is not a withdrawal, so it stays
+          // available while coach use is on; only clearing the review needs
+          // coach use stopped first.
+          disabled={state.reviewedState === 'reviewed' && state.includeForCoach && !needsReReview}
           onClick={() =>
             apply((current) => {
+              const reReview = current.reviewedVersionId !== current.currentVersionId;
               const payload = {
-                reviewed: current.reviewedState !== 'reviewed',
+                reviewed: reReview || current.reviewedState !== 'reviewed',
                 expectedAccessRevision: current.accessRevision,
                 expectedCurrentVersionId: current.currentVersionId,
               };
@@ -739,7 +750,11 @@ function AccessPanel({
             })
           }
         >
-          {state.reviewedState === 'reviewed' ? '검토 표시 해제' : '검토됨으로 표시'}
+          {needsReReview
+            ? '현재 버전 검토됨으로 표시'
+            : state.reviewedState === 'reviewed'
+              ? '검토 표시 해제'
+              : '검토됨으로 표시'}
         </button>
         <button
           type="button"
@@ -761,13 +776,19 @@ function AccessPanel({
           {state.includeForCoach ? '코치 사용 중지' : '코치 사용 허용'}
         </button>
       </div>
-      {state.reviewedState === 'reviewed' && state.includeForCoach ? (
+      {state.reviewedState === 'reviewed' && state.includeForCoach && !needsReReview ? (
         <p>검토 표시를 해제하려면 먼저 코치 사용을 중지하세요.</p>
       ) : null}
       {!state.includeForCoach && coachUseBlocked ? (
         <p>
           코치 사용은 검토 표시와 AI 전송 동의가 모두 있어야 켤 수 있고, 사용할 때마다 다시
           확인합니다.
+        </p>
+      ) : null}
+      {needsReReview ? (
+        <p role="status">
+          새 버전을 추가해 본문이 바뀌었습니다. 현재 버전을 다시 검토해 표시하기 전까지 코치가 이
+          자료를 사용하지 않습니다.
         </p>
       ) : null}
       {state.pendingCleanup ? (
