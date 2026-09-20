@@ -9,11 +9,15 @@
 M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/M1c-runtime-grants.md),
 [M1c-04 다영역 통합 승인](progress/M1c-04.md)은 완료했다. 훈련·영양·회복·루틴
 일정의 schema v4 승인과 통합 Planner를 실DB 및 두 shell에서 검증했다.
-[M2-04b 객체 저장·파일 upload](progress/M2-04b.md)와
-[M2-04c URL 수집·parser lifecycle](progress/M2-04c.md)은 완료했고 M2-04 전체는 진행 중이다.
-공유·coach 접근 경계 M2-04d가 다음 직렬 작업이다. M2-03
-갤러리·media도 ready 상태다. 지도 coverage·Native
-실기기·공식 Garmin의 독립 gate는 유지한다.
+[M2-04b 객체 저장·파일 upload](progress/M2-04b.md),
+[M2-04c URL 수집·parser lifecycle](progress/M2-04c.md),
+[M2-04d 접근·공유·coach 사용 경계](progress/M2-04d.md)를 완료해 M2-04 자료 생명주기 전체를
+마쳤다. [M2-03 갤러리·media](progress/M2-03.md)도 완료했다. 두 task는 병렬로 구현하고
+독립 peer review를 반복한 뒤 각각 커밋했다. 검색 색인·retrieval cache·인용 저장소의 실제
+삭제 실행기는 아직 없어 derived cleanup manifest가 열린 채 유지되며, 해당 실행기는 M2-05
+범위다. 지도 coverage·Native 실기기·공식 Garmin의 독립 gate는 유지한다.
+
+M2-05 RAG·검토 자료·코치가 다음 직렬 작업이다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속

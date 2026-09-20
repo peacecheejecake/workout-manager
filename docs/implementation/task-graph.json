@@ -1045,15 +1045,16 @@
       "title": "갤러리·media",
       "dependsOn": ["M1c-04"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "gallery/media; 객체 권한·upload·video·삭제"
+      "status": "completed",
+      "scope": "gallery/media; 객체 권한·upload·video·삭제",
+      "evidence": "docs/implementation/progress/M2-03.md"
     },
     {
       "id": "M2-04",
       "title": "자료 생명주기",
       "dependsOn": ["M1c-04"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "resources; version/ACL/삭제·reader. M0-05에는 실제 공용 객체 저장 port가 없어 M2-04b에서 추가"
     },
     {
@@ -1088,8 +1089,9 @@
       "title": "자료 접근·공유·coach 사용 경계",
       "dependsOn": ["M2-04b", "M2-04c"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "ACL revision·명시 공유/철회·reviewed/includeForCoach 전환·cache/index/citation 삭제 manifest"
+      "status": "completed",
+      "scope": "ACL revision·명시 공유/철회·reviewed/includeForCoach 전환·cache/index/citation 삭제 manifest",
+      "evidence": "docs/implementation/progress/M2-04d.md"
     },
     {
       "id": "M2-05",

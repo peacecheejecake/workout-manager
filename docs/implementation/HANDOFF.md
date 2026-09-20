@@ -17,33 +17,42 @@
 
 ## 완료된 최신 작업
 
-[M2-04c](progress/M2-04c.md)는 private HTTPS URL 예약부터 raw capture, bounded parse, immutable
-provenance/locator, failure/bookmark, 삭제·계정 말소까지 구현했다. Migration 029는 tenant RLS URL 원장,
-DB-clock lease/retry/CAS, object lifecycle와 outbox를 추가한다. 전용 worker는 exact-host allowlist,
-hop별 DNS와 실제 TLS socket 주소 검증, redirect·body·parser 상한을 적용한다. API와 계정 export v14는
-query, storage ref, 주소, credential과 내부 오류를 노출하지 않는다.
+[M2-04d](progress/M2-04d.md)와 [M2-03](progress/M2-03.md)을 병렬로 구현하고 각각 커밋했다.
+M2-04d로 M2-04 자료 생명주기 전체를 마쳤다.
 
-자료실은 URL 생성, 진행 상태 polling, 취소, finalized/bookmark/failure 상태와 URL reader를 제공한다.
-fetch·parse 성공은 reviewed, 검색 색인 또는 coach 사용으로 승격하지 않는다. URL raw/parsed object는
-resource quota와 기존 durable cleanup manifest에 포함한다.
+M2-04d는 access revision, 명시 공유/철회, reviewed와 `includeForCoach`의 분리 전환,
+derived cleanup manifest를 구현한다. Migration 030은 tenant RLS 공유 원장과 audit,
+head trigger, derived cleanup queue를 추가한다. 철회는 RLS policy 자체가 강제하고,
+coach 사용 manifest는 tenant에 묶인 digest로 고정되며 초과 시 잘리지 않고 실패한다.
+실행기가 없는 cleanup target은 manifest를 완료하지도 attempt 예산을 쓰지도 않으므로
+coach 사용이 fail-closed로 유지된다. 공유 파일은 요청마다 공유를 재검증하는 서버
+streaming 경로로 읽는다. 이미 시작된 전송은 중단하지 않으며 계약·route·UI 문구가 그
+경계를 명시한다.
 
-검증은 typecheck 27/27, unit 202 files/2,146 tests, 실제 PostgreSQL integration 39 files/325 tests,
-backup/restore 37 checks를 통과했다. Aside session `1jIg55RE9pcqbeme`에서 1440px와 320px label/focus/reflow,
-query 포함 URL의 `parsing → finalized`, 목록 갱신과 query 비노출을 확인했다. 허가된 운영 외부 host에
-대한 실제 TLS fetch, 원격 object provider와 운영 scheduler/RPO/RTO는 별도 배포 검증 대상이다.
+M2-03은 tenant 소유 갤러리 원장, 기존 media object port를 재사용하는 upload lifecycle,
+사진·동영상 allowlist와 magic byte 검증, tombstone 삭제와 기존 durable cleanup manifest
+재사용을 구현한다. preview finalize는 예약 시 관측한 access revision을 transaction 안에서
+CAS 재확인한다. 목록·상세는 query가 성공 상태가 아니면 미디어를 렌더하지 않는다.
 
-M2-04 전체와 FUT-06은 아직 미완료다. 공유·reviewed/coach ACL과 index/cache/citation 삭제 manifest는
-구현하지 않았다.
+검증은 typecheck 28/28, unit 207 files/2,198 tests, 실제 PostgreSQL integration
+40 files/357 tests, build 11 tasks, gallery Playwright 3/3을 통과했다. 각 task는 독립
+peer review를 5라운드까지 반복해 차단 findings을 모두 해소한 뒤 커밋했다. 계정 export는
+v15(공유·audit)를 거쳐 v16(갤러리)으로 올렸다.
+
+미구현으로 남은 범위: 검색 색인·retrieval cache·인용 저장소의 실제 삭제 실행기(M2-05),
+S17의 viewer·앨범 관리·filter·EXIF 위치 제거·서버 thumbnail/transcoding, 안정 cursor
+pagination 계약, 원격 object provider와 운영 scheduler 검증.
 
 ## 다음 ready 작업
 
-**M2-04d 자료 접근·공유·coach 사용 경계**가 다음 직렬 작업이다. M2-04b/c의 object와 URL lifecycle을
-재사용해 ACL revision, 명시 공유/철회, reviewed 전환과 `includeForCoach` 활성화 조건을 구현한다.
-access/consent/policy 변화는 cache/index/citation dependency manifest를 통해 삭제·재생성 경계를
-보장해야 한다. parse 성공이나 공유 요청만으로 reviewed 또는 coach 사용을 자동 활성화하지 않는다.
+**M2-05 RAG·검토 자료·코치**가 다음 직렬 작업이다. M2-04와 M2-03이 모두 완료되어 ready다.
+M2-04d가 남긴 derived cleanup 실행기(색인·cache·인용)를 실제로 구현해야 하며, 열린
+manifest가 있는 동안 coach 사용이 차단된다는 fail-closed 경계를 유지해야 한다. 검토된
+콘텐츠만 retrieval에 사용하고, 삭제된 발췌가 재시도나 retrieval로 부활하지 않아야 한다.
+`packages/contracts/src/evidence-dependencies.ts`에 `resource-access-v1` manifest를
+통합하는 작업도 M2-05에서 함께 처리한다.
 
-M2-03 갤러리·media도 ready지만 object storage port를 중복 구현하지 않는다. M2-05 RAG는 M2-04 전체와
-M2-03이 완료될 때까지 ready가 아니다.
+M2-01 코스·도로 routing은 M0-06b 지도 spike에 막혀 있고, M3-01은 M0-06c에 막혀 있다.
 
 ## 남은 외부·실환경 gate
 
