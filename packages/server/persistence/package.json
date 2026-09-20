@@ -14,6 +14,7 @@
     "@workout/server-coaching": "workspace:*"
   },
   "exports": {
+    "./gallery-media": "./src/gallery-media.ts",
     "./resources": "./src/resources.ts",
     "./resource-access": "./src/resource-access.ts",
     "./resource-file-uploads": "./src/resource-file-uploads.ts",
@@ -55,6 +56,7 @@
     "./coaching-constraints": "./src/coaching-constraints.ts"
   },
   "devDependencies": {
-    "@types/pg": "8.23.1"
+    "@types/pg": "8.23.1",
+    "@workout/server-media": "workspace:*"
   }
 }

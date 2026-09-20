@@ -50,6 +50,19 @@ interface SessionFileTransfer {
     fileName: string;
     signal: AbortSignal;
   }): Promise<void>;
+  uploadGalleryMedia(input: {
+    uploadId: string;
+    file: File;
+    mediaType: string;
+    signal: AbortSignal;
+    onProgress: (uploadedBytes: number, totalBytes: number) => void;
+  }): Promise<void>;
+  /** Returns a blob URL the caller owns and must revoke. */
+  openGalleryMedia(input: {
+    mediaItemId: string;
+    variant: 'original' | 'preview';
+    signal: AbortSignal;
+  }): Promise<string>;
 }
 
 function assertLiveSession(session: Session, expired: () => void, available: () => boolean): void {
@@ -124,6 +137,48 @@ export function createSessionFileTransfer(
       await assertTransferResponse(response, expired, active);
       input.onProgress(input.file.size, input.file.size);
     },
+    async uploadGalleryMedia(input) {
+      assertLiveSession(session, expired, available);
+      const uploadId = resourceIdSchema.parse(input.uploadId);
+      input.onProgress(0, input.file.size);
+      const response = await fetch(
+        `/bff/v1/gallery/media/uploads/${encodeURIComponent(uploadId)}/content`,
+        {
+          method: 'PUT',
+          headers: {
+            'content-type': input.mediaType,
+            'x-gallery-file-name': encodeURIComponent(input.file.name),
+            'x-workout-session-id': session.sessionId,
+            'x-csrf-token': session.csrfToken,
+          },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          body: input.file,
+          signal: input.signal,
+        },
+      );
+      await assertTransferResponse(response, expired, active);
+      input.onProgress(input.file.size, input.file.size);
+    },
+    async openGalleryMedia(input) {
+      assertLiveSession(session, expired, available);
+      const mediaItemId = resourceIdSchema.parse(input.mediaItemId);
+      const search = new URLSearchParams({ variant: input.variant });
+      const response = await fetch(
+        `/bff/v1/gallery/media/${encodeURIComponent(mediaItemId)}/content?${search.toString()}`,
+        {
+          method: 'GET',
+          headers: { 'x-workout-session-id': session.sessionId },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          signal: input.signal,
+        },
+      );
+      await assertTransferResponse(response, expired, active);
+      return URL.createObjectURL(await response.blob());
+    },
     async open(input) {
       assertLiveSession(session, expired, available);
       const resourceId = resourceIdSchema.parse(input.resourceId);
@@ -169,7 +224,7 @@ export function createSessionTransport(
       assertLiveSession(session, expired, available);
       const path = apiPathSchema.parse(input.path);
       if (
-        !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard)(?:\/|\?|$)/.test(
+        !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard|gallery)(?:\/|\?|$)/.test(
           path,
         )
       )

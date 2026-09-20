@@ -27,6 +27,7 @@ import { createRecoveryRepository } from '../packages/server/persistence/src/rec
 import { createActivityRepository } from '../packages/server/persistence/src/activities.ts';
 import { createPrivateTextResourceRepository } from '../packages/server/persistence/src/resources.ts';
 import { createResourceAccessRepository } from '../packages/server/persistence/src/resource-access.ts';
+import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { spawnSync } from 'node:child_process';
@@ -55,6 +56,7 @@ import {
   grantCoachingRuns,
   grantCoachingCandidates,
   grantIntegratedApprovalV4,
+  grantGalleryMedia,
   grantResources,
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
@@ -174,6 +176,7 @@ try {
     await grantCoachingCandidates(adminUrl, 'workout_runtime');
     await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
     await grantResources(adminUrl, 'workout_runtime');
+    await grantGalleryMedia(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(
@@ -304,6 +307,10 @@ try {
     resourceAccess: createResourceAccessRepository(database),
     resourceFiles: {
       uploads: createResourceFileUploadRepository(database),
+      storage: resourceStorage,
+    },
+    galleryMedia: {
+      media: createGalleryMediaRepository(database),
       storage: resourceStorage,
     },
     checkIns: createCheckInRepository(database),

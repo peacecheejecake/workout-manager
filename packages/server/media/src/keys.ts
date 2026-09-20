@@ -7,6 +7,12 @@ const temporaryKeyPattern = new RegExp(
 const finalKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/objects/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](pdf|md)$`,
 );
+const galleryTemporaryKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/gallery/(${UUID_PATTERN})/temporary/(${UUID_PATTERN})$`,
+);
+const galleryFinalKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/gallery/(${UUID_PATTERN})/objects/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](jpg|png|webp|mp4|webm)$`,
+);
 const urlTemporaryKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/url-ingestions/(${UUID_PATTERN})/temporary/(raw|parsed)$`,
 );
@@ -21,6 +27,8 @@ export type TemporaryObjectKey = string & { readonly [temporaryObjectKeyBrand]: 
 export type FinalObjectKey = string & { readonly [finalObjectKeyBrand]: true };
 export type ObjectKey = TemporaryObjectKey | FinalObjectKey;
 export type StoredFileExtension = 'pdf' | 'md';
+export type GalleryMediaExtension = 'jpg' | 'png' | 'webp' | 'mp4' | 'webm';
+const GALLERY_MEDIA_EXTENSIONS: readonly string[] = ['jpg', 'png', 'webp', 'mp4', 'webm'];
 export type UrlArtifactKind = 'raw' | 'parsed';
 export type UrlArtifactExtension = 'html' | 'xhtml' | 'txt' | 'md' | 'json';
 
@@ -63,6 +71,33 @@ export function createFinalObjectKey(input: {
   const sha256 = input.sha256.toLowerCase();
   if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
   return `private/v1/tenants/${tenantId}/resources/${resourceId}/objects/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
+}
+
+export function createGalleryTemporaryObjectKey(input: {
+  tenantId: string;
+  mediaItemId: string;
+  uploadId: string;
+}): TemporaryObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const mediaItemId = normalizeUuid(input.mediaItemId);
+  const uploadId = normalizeUuid(input.uploadId);
+  return `private/v1/tenants/${tenantId}/gallery/${mediaItemId}/temporary/${uploadId}` as TemporaryObjectKey;
+}
+
+export function createGalleryFinalObjectKey(input: {
+  tenantId: string;
+  mediaItemId: string;
+  uploadId: string;
+  sha256: string;
+  extension: GalleryMediaExtension;
+}): FinalObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const mediaItemId = normalizeUuid(input.mediaItemId);
+  const uploadId = normalizeUuid(input.uploadId);
+  const sha256 = input.sha256.toLowerCase();
+  if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
+  if (!GALLERY_MEDIA_EXTENSIONS.includes(input.extension)) throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}/gallery/${mediaItemId}/objects/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
 }
 
 export function createUrlTemporaryObjectKey(input: {
@@ -110,6 +145,20 @@ export type ParsedObjectKey =
       uploadId: string;
       sha256: string;
       extension: StoredFileExtension;
+    }
+  | {
+      kind: 'gallery_temporary';
+      tenantId: string;
+      mediaItemId: string;
+      uploadId: string;
+    }
+  | {
+      kind: 'gallery_final';
+      tenantId: string;
+      mediaItemId: string;
+      uploadId: string;
+      sha256: string;
+      extension: GalleryMediaExtension;
     }
   | {
       kind: 'url_temporary';
@@ -161,6 +210,33 @@ export function parseObjectKey(value: string): ParsedObjectKey {
       uploadId,
       sha256,
       extension,
+    };
+  }
+  const galleryTemporaryMatch = galleryTemporaryKeyPattern.exec(value);
+  if (galleryTemporaryMatch) {
+    const [, tenantId, mediaItemId, uploadId] = galleryTemporaryMatch;
+    if (!tenantId || !mediaItemId || !uploadId) throw new InvalidObjectKeyError();
+    return { kind: 'gallery_temporary', tenantId, mediaItemId, uploadId };
+  }
+  const galleryFinalMatch = galleryFinalKeyPattern.exec(value);
+  if (galleryFinalMatch) {
+    const [, tenantId, mediaItemId, uploadId, sha256, extension] = galleryFinalMatch;
+    if (
+      !tenantId ||
+      !mediaItemId ||
+      !uploadId ||
+      !sha256 ||
+      !extension ||
+      !GALLERY_MEDIA_EXTENSIONS.includes(extension)
+    )
+      throw new InvalidObjectKeyError();
+    return {
+      kind: 'gallery_final',
+      tenantId,
+      mediaItemId,
+      uploadId,
+      sha256,
+      extension: extension as GalleryMediaExtension,
     };
   }
   const urlTemporaryMatch = urlTemporaryKeyPattern.exec(value);

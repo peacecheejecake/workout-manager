@@ -61,6 +61,7 @@ import {
   registerResourceUrlRoutes,
   type ResourceUrlIngestionRouteRepository,
 } from './resource-url-routes.js';
+import { registerGalleryMediaRoutes, type GalleryMediaServices } from './gallery-media-routes.js';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
@@ -96,6 +97,7 @@ export interface ProductRepositories {
   };
   resourceUrls?: ResourceUrlIngestionRouteRepository;
   resourceAccess?: ResourceAccessRepository;
+  galleryMedia?: GalleryMediaServices;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -157,4 +159,6 @@ export function registerProductRoutes(
     registerResourceUrlRoutes(routes, repositories.resourceUrls, principal);
   if (repositories.resourceAccess)
     registerResourceAccessRoutes(routes, repositories.resourceAccess, principal);
+  if (repositories.galleryMedia)
+    registerGalleryMediaRoutes(routes, repositories.galleryMedia, principal);
 }

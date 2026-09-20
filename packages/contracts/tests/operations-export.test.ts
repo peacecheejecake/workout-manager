@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 15,
+    schemaVersion: 16,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -682,9 +682,11 @@ it('parses the currently integrated export version without dropping access facts
       resourceUrlLocators: [],
       resourceShares: [],
       resourceAccessAudit: [],
+      galleryMediaItems: [],
+      galleryMediaDerivatives: [],
     },
   });
-  if (current.schemaVersion !== 15) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 16) throw new Error('Expected the integrated export version');
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
 });

@@ -47,6 +47,9 @@ const RecoveryPage = lazy(() =>
 const ResourcePage = lazy(() =>
   import('./resource-page').then((module) => ({ default: module.ResourcePage })),
 );
+const GalleryPage = lazy(() =>
+  import('./gallery-page').then((module) => ({ default: module.GalleryPage })),
+);
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
@@ -93,6 +96,13 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/gallery' || location.pathname.startsWith('/gallery/') ? (
+        <Suspense fallback={<p role="status">갤러리 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/resources">자료실</a> · <a href="/account">계정</a>
+          </nav>
+          <GalleryPage path={location.pathname} query={location.search} />
+        </Suspense>
       ) : location.pathname === '/resources' || location.pathname.startsWith('/resources/') ? (
         <Suspense fallback={<p role="status">자료실 화면 준비 중</p>}>
           <nav aria-label="주요 화면">

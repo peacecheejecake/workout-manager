@@ -27,6 +27,7 @@
     "@workout/modules-supplementary": "workspace:*",
     "@workout/modules-routines": "workspace:*",
     "@workout/modules-recovery": "workspace:*",
+    "@workout/modules-gallery": "workspace:*",
     "@workout/modules-resources": "workspace:*"
   }
 }

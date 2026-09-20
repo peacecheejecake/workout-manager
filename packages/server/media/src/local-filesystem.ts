@@ -134,7 +134,11 @@ export async function createLocalFilesystemObjectStorage(
   return {
     async writeTemporary(key, body) {
       const parsedKey = parseObjectKey(key);
-      if (parsedKey.kind !== 'temporary' && parsedKey.kind !== 'url_temporary')
+      if (
+        parsedKey.kind !== 'temporary' &&
+        parsedKey.kind !== 'url_temporary' &&
+        parsedKey.kind !== 'gallery_temporary'
+      )
         throw new UnsafeStoragePathError();
       const path = keyPath(key);
       await prepareParents(path);
@@ -176,8 +180,12 @@ export async function createLocalFilesystemObjectStorage(
       const parsedTemporaryKey = parseObjectKey(temporaryKey);
       const parsedFinalKey = parseObjectKey(finalKey);
       if (
-        (parsedTemporaryKey.kind !== 'temporary' && parsedTemporaryKey.kind !== 'url_temporary') ||
-        (parsedFinalKey.kind !== 'final' && parsedFinalKey.kind !== 'url_final')
+        (parsedTemporaryKey.kind !== 'temporary' &&
+          parsedTemporaryKey.kind !== 'url_temporary' &&
+          parsedTemporaryKey.kind !== 'gallery_temporary') ||
+        (parsedFinalKey.kind !== 'final' &&
+          parsedFinalKey.kind !== 'url_final' &&
+          parsedFinalKey.kind !== 'gallery_final')
       )
         throw new ObjectStorageConflictError();
       const uploadPair =
@@ -189,10 +197,22 @@ export async function createLocalFilesystemObjectStorage(
         parsedFinalKey.kind === 'url_final' &&
         parsedTemporaryKey.ingestionId === parsedFinalKey.ingestionId &&
         parsedTemporaryKey.artifactKind === parsedFinalKey.artifactKind;
+      const galleryPair =
+        parsedTemporaryKey.kind === 'gallery_temporary' &&
+        parsedFinalKey.kind === 'gallery_final' &&
+        parsedTemporaryKey.uploadId === parsedFinalKey.uploadId;
+      const temporaryOwnerId =
+        parsedTemporaryKey.kind === 'gallery_temporary'
+          ? parsedTemporaryKey.mediaItemId
+          : parsedTemporaryKey.resourceId;
+      const finalOwnerId =
+        parsedFinalKey.kind === 'gallery_final'
+          ? parsedFinalKey.mediaItemId
+          : parsedFinalKey.resourceId;
       if (
-        (!uploadPair && !urlPair) ||
+        (!uploadPair && !urlPair && !galleryPair) ||
         parsedTemporaryKey.tenantId !== parsedFinalKey.tenantId ||
-        parsedTemporaryKey.resourceId !== parsedFinalKey.resourceId ||
+        temporaryOwnerId !== finalOwnerId ||
         parsedFinalKey.sha256 !== expectation.sha256
       ) {
         throw new ObjectStorageConflictError();

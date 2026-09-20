@@ -1,0 +1,161 @@
+.workspace {
+  display: grid;
+  gap: var(--space-5, 1.25rem);
+  min-width: 0;
+}
+
+.header,
+.panel,
+.card {
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-lg, 1rem);
+  background: var(--color-surface, #fff);
+}
+
+.header,
+.panel {
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.header h1,
+.panel h2,
+.card h3 {
+  margin-block: 0 0.5rem;
+}
+
+.eyebrow,
+.meta,
+.status {
+  color: var(--color-text-muted, #52615a);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-block-start: 0.75rem;
+}
+
+.filters a {
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.filters a[aria-current='page'] {
+  background: var(--color-surface-subtle, #f3f7f4);
+  font-weight: 600;
+}
+
+.form {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.form label {
+  font-weight: 600;
+}
+
+.form input,
+.form button,
+.actions button {
+  font: inherit;
+}
+
+.form input {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.form input[type='file'] {
+  width: 100%;
+}
+
+.form input[type='text'] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border, #aebbb4);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  background: var(--color-surface, #fff);
+  color: inherit;
+}
+
+.form progress {
+  width: 100%;
+  accent-color: var(--color-accent, #167857);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted, #52615a);
+  font-size: 0.875rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.card {
+  padding: 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.card[aria-current='page'] {
+  border-color: var(--color-accent, #167857);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent, #167857) 24%, transparent);
+}
+
+.media {
+  display: grid;
+  place-items: center;
+  min-height: 6rem;
+  margin-block: 0.5rem;
+  border-radius: var(--radius-md, 0.75rem);
+  background: var(--color-surface-subtle, #f3f7f4);
+  overflow: hidden;
+}
+
+.media img,
+.media video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.factList {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.factList div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.factList dt {
+  color: var(--color-text-muted, #52615a);
+  font-weight: 600;
+}
+
+.factList dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}

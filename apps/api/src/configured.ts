@@ -23,6 +23,7 @@ import { createActivityRepository } from '@workout/server-persistence/activities
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
+import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
@@ -162,6 +163,10 @@ export async function createConfiguredApi(environment: unknown) {
         storage: resourceStorage,
       },
       resourceUrls: createResourceUrlIngestionRepository(database),
+      galleryMedia: {
+        media: createGalleryMediaRepository(database),
+        storage: resourceStorage,
+      },
       resourceAccess: createResourceAccessRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {

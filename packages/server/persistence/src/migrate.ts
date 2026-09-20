@@ -33,6 +33,7 @@ const migrationFiles = [
   '028_resource_file_upload.sql',
   '029_resource_url_ingestion.sql',
   '030_resource_access_sharing.sql',
+  '031_gallery_media.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -188,6 +189,9 @@ export async function grantOperations(
        resource_access_audit TO "${runtimeRole}"`,
     );
     await grantSafeResourceUrlReadColumns(pool, runtimeRole);
+    await pool.query(
+      `GRANT SELECT ON gallery_media_item,gallery_media_derivative TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -594,6 +598,44 @@ export async function grantCoachingConstraints(
   try {
     await pool.query(
       `GRANT SELECT,INSERT,UPDATE ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Gallery media metadata is tenant scoped; objects stay behind opaque refs. */
+export async function grantGalleryMedia(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON gallery_media_item,gallery_media_derivative,gallery_media_object,
+       gallery_upload_intent TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(album,caption,activity_id,access_revision,updated_at,deleted_at)
+       ON gallery_media_item TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(storage_ref,original_filename,media_type,size_bytes,content_hash,state,
+       failure_code,updated_at,prepared_at,staged_at,finalized_at)
+       ON gallery_upload_intent TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT ON activity_canonical TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.expire_gallery_uploads(timestamptz),
+       public.fail_gallery_upload(uuid,text),public.cancel_gallery_uploads(uuid,text),
+       public.protect_gallery_upload_object(uuid),
+       public.enqueue_gallery_media_cleanup(uuid,text),
+       public.compact_gallery_upload_history(integer),
+       public.tombstone_gallery_media_receipts(uuid)
+       TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

@@ -127,6 +127,13 @@ const accountExportV15Schema = accountExportV14Schema.extend({
     resourceAccessAudit: rows,
   }),
 });
+const accountExportV16Schema = accountExportV15Schema.extend({
+  schemaVersion: z.literal(16),
+  data: accountExportV15Schema.shape.data.extend({
+    galleryMediaItems: rows,
+    galleryMediaDerivatives: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -143,6 +150,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV13Schema,
   accountExportV14Schema,
   accountExportV15Schema,
+  accountExportV16Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

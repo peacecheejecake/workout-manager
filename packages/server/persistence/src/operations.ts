@@ -320,6 +320,26 @@ const collections = [
     'version_id,ordinal,kind,heading_path,paragraph_index,page_number,start_offset,end_offset,text',
     'version_id,ordinal',
   ],
+  [
+    'galleryMediaItems',
+    `(SELECT m.athlete_id,m.id,m.media_kind,m.visibility,m.include_for_coach,m.album,m.caption,
+      m.activity_id,m.captured_at,m.captured_local_date,m.original_filename,m.media_type,
+      m.size_bytes,m.content_hash,m.access_revision,m.created_at,m.updated_at
+      FROM gallery_media_item m WHERE m.deleted_at IS NULL) gallery_media_item`,
+    `id,media_kind,visibility,include_for_coach,album,caption,activity_id,captured_at,
+     captured_local_date,original_filename,media_type,size_bytes,content_hash,access_revision,
+     created_at,updated_at`,
+    'created_at,id',
+  ],
+  [
+    'galleryMediaDerivatives',
+    `(SELECT d.athlete_id,d.media_item_id,d.kind,d.media_type,d.size_bytes,d.content_hash,d.created_at
+      FROM gallery_media_derivative d JOIN gallery_media_item m
+        ON m.athlete_id=d.athlete_id AND m.id=d.media_item_id
+      WHERE m.deleted_at IS NULL) gallery_media_derivative`,
+    'media_item_id,kind,media_type,size_bytes,content_hash,created_at',
+    'media_item_id,kind',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -386,7 +406,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 15,
+          schemaVersion: 16,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,
