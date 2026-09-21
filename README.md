@@ -70,7 +70,44 @@ manifest를 만들며 원본 FIT를 변경하지 않습니다. 기본값은 기�
 재생성하려면 `--resume --overwrite`를 명시합니다. 하나라도 실패하면 종료 코드 1, 설정 오류는 2입니다.
 호환 entry point `uv run python scripts/fitparse.py /path/to/activity.fit`도 실제 Parquet를 생성합니다.
 
-이 명령은 로컬 변환만 수행합니다. 아래 활동 JSON 가져오기는 별도 명령이며 Garmin 자동 다운로드는 아직 없습니다.
+이 명령은 로컬 변환만 수행합니다. 아래 활동 JSON 가져오기는 별도 명령이며 공식 Garmin 자동 수집은 아직 없습니다.
+
+## 비공식 개인 Garmin 다운로드 (`fetch`)
+
+`workout-manager fetch`는 **공식 Garmin 연동이 아닙니다.** 사용자가 자기 계정의 자기 활동을 ORIGINAL FIT로
+내려받아 위 `convert`에 넣기 위한 비공식 보조 경로이며, 문서화되지 않은 Garmin Connect endpoint를 사용합니다.
+Garmin 약관 위반 가능성, 계정 조치, Garmin의 endpoint 변경 시 즉시 중단을 전제로 합니다. 로그인은 라이브러리
+소스에 하드코딩된 Garmin 자체 앱 client 식별자(`GCM_ANDROID_DARK`, `GCM_IOS_DARK`, `GarminConnect`)를 쓰고,
+`curl_cffi`의 `impersonate="chrome"`으로 브라우저와 유사한 TLS 지문을 제시해 봇 차단을 통과합니다.
+타인 계정에 사용하지 않습니다.
+
+이 경로는 선택 의존성입니다. `convert`/`export-activity`는 이것 없이 그대로 동작하며, 기본 `uv sync`는
+스크래핑 라이브러리와 `curl_cffi`를 설치하지 않습니다.
+
+```bash
+uv sync --extra garmin   # 이 명령에만 필요합니다. 미설치 시 설치 방법을 안내하고 종료합니다.
+export GARMIN_EMAIL=...   # 자격 증명은 CLI 인자로 받지 않습니다. 미설정 시 대화형으로 입력합니다.
+uv run workout-manager fetch --output-dir /path/to/fit-input --start 2026-09-01 --end 2026-09-21 --limit 20 --execute
+```
+
+`--start`/`--end`/`--limit`은 필수이며 최대 366일·200건입니다. 경계는 자격 증명을 읽기 전에 검증합니다.
+`--execute` 없이는 네트워크에 접근하지 않고 CI에서는 거부합니다. 요청은 직렬이며 최소 간격 기본 2초
+(유한한 값이어야 하며 `nan`은 거부합니다). **목록·다운로드**에서 429를 만나면 재시도 없이 중단합니다.
+**로그인은 예외입니다**: `garminconnect` 0.3.16은 429 뒤에도 다음 impersonation과 전략으로 계속 시도하며,
+이는 라이브러리 내부 동작이라 이 명령이 막지 못합니다.
+
+token 파일은 로그인 전에 0600으로 미리 만들고 로그인 성공·실패·중단 모두에서 다시 확인하며, 0600을
+보장할 수 없으면 파일을 지우고 실행을 거부합니다(지우지 못하면 그 사실을 그대로 알립니다). token 경로는
+상위 경로까지 symlink를 거부합니다. 다른 host로의 redirect는 따라가지 않고 거부하며, 응답은 chunk 단위로
+64 MiB까지만 읽습니다. 이 정책은 장수명 API 세션 두 개와 DI token 교환에 적용되며, **로그인 전략이 내부에서
+만드는 세션에는 적용되지 않습니다.** 오류 문구와 라이브러리 자체 로그 모두 scrubbing을 거치지만 **best effort이며 보장이 아닙니다**
+(키워드 없는 짧은 토큰이나 변형된 값은 잡지 못합니다). 비밀번호는 8자 이상이어야 합니다(그보다 짧으면 provider 오류에서 안전하게 지울 수 없어
+거부합니다). 다운로드는 CRC까지 검증한 뒤에만 성공으로 기록하고, 실패는 활동별로
+격리해 `download-manifest.json`에 남기며 재실행 시 검증된 파일은 건너뜁니다. provider 접근은 두 개의 읽기
+호출만 노출하는 wrapper를 거칩니다 — **실수 방지 장치이며 보안 경계가 아닙니다.** 같은 프로세스의 코드는
+모듈 전역과 예외 traceback으로 provider에 접근할 수 있습니다. 자세한 내용과 검증 한계는
+[구현 기록](docs/implementation/progress/garmin-unofficial-fetch.md), 공식 전환 설계는
+[전환 문서](docs/implementation/research/garmin-official-transition.md)를 참고합니다.
 
 ## API·DB 기반
 

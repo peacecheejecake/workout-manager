@@ -19,4 +19,8 @@ __pycache__/
 *.FIT
 *.parquet
 downloads/
+# Unofficial personal Garmin fetch: token cache and download output.
+garmin-tokens/
+.garmin-tokens/
+garmin-downloads/
 apps/web/next-env.d.ts

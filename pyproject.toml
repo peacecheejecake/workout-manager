@@ -10,6 +10,17 @@ dependencies = [
     "pyarrow>=25.0.1",
 ]
 
+[project.optional-dependencies]
+# UNOFFICIAL personal Garmin download path only. `convert` and `export-activity`
+# never import it, so local conversion and CI do not pull a scraping library or
+# curl_cffi. Install with: uv sync --extra garmin
+# Pinned exactly: the transport policy attaches to private session attributes and the
+# token file name of this library, so an unreviewed release must not be used. Review
+# the session layout and token handling before moving the pin.
+garmin = [
+    "garminconnect==0.3.16",
+]
+
 [project.scripts]
 workout-manager = "workout_manager:main"
 

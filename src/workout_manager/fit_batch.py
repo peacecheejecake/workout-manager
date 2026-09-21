@@ -82,6 +82,32 @@ def parse_fit_streams(source: Path) -> list[dict[str, list[dict[str, object]]]]:
     return streams
 
 
+def validate_fit_bytes(data: bytes) -> None:
+    """Apply the same size, framing, message-count and CRC checks as conversion.
+
+    `fit_streams` only frames the stream; real CRC verification needs the parser, so
+    downloads reuse this instead of trusting header/length alone.
+    """
+    if len(data) > MAX_SOURCE_BYTES:
+        raise ValueError("FIT exceeds the 64 MiB local conversion limit")
+    message_count = 0
+    streams = 0
+    for stream in fit_streams(data):
+        streams += 1
+        fit = FitFile(stream, check_crc=True)
+        try:
+            for _ in fit.get_messages(with_definitions=True):
+                message_count += 1
+                if message_count > MAX_MESSAGES:
+                    raise ValueError("FIT exceeds the local message limit")
+        except (KeyError, IndexError, RecursionError) as error:
+            raise FitParseError("Invalid FIT message structure") from error
+        finally:
+            fit.close()
+    if streams == 0:
+        raise ValueError("Empty FIT input")
+
+
 def parse_fit(source: Path) -> dict[str, pd.DataFrame]:
     """Preserve the historical merged conversion frames across chained streams."""
     rows: dict[str, list[dict[str, object]]] = {name: [] for name in MESSAGE_TYPES}
@@ -109,9 +135,9 @@ def atomic_json(path: Path, value: dict[str, object]) -> None:
 
 
 @contextmanager
-def output_lock(output: Path) -> Iterator[None]:
+def output_lock(output: Path, lock_name: str = ".conversion.lock") -> Iterator[None]:
     output.mkdir(parents=True, exist_ok=True)
-    lock = output / ".conversion.lock"
+    lock = output / lock_name
     if lock.is_symlink():
         raise ValueError("Output lock cannot be a symlink")
     with lock.open("a") as stream:
