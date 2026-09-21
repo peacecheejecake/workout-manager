@@ -11,16 +11,16 @@
  * selecting a vertex does not rebuild the map and a resize only resizes.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BasemapDescriptor } from './basemap.js';
-import type { MapAdapterFactory, MapAdapterFailure, MapAdapterHandle } from './map-adapter.js';
+import type { BasemapDescriptor } from './basemap';
+import type { MapAdapterFactory, MapAdapterFailure, MapAdapterHandle } from './map-adapter';
 import {
   computeBounds,
   findNearestVertex,
   selectedPosition,
   toFeatureCollection,
   validateMapPath,
-} from './map-path.js';
-import type { GeoPosition, MapPath, MapSelection } from './map-path.js';
+} from './map-path';
+import type { GeoPosition, MapPath, MapSelection } from './map-path';
 import styles from './map-view.module.css';
 
 export type MapViewStatus = 'preparing' | 'ready' | 'unavailable' | 'invalid' | 'empty';
@@ -54,7 +54,7 @@ export interface MapViewProps {
 async function defaultAdapterFactory(
   ...args: Parameters<MapAdapterFactory>
 ): ReturnType<MapAdapterFactory> {
-  const module = await import('./maplibre-adapter.js');
+  const module = await import('./maplibre-adapter');
   return module.createMapLibreAdapter(...args);
 }
 

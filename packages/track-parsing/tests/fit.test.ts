@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { TrackIngestionError } from '../src/limits.js';
-import { parseTrackFile } from '../src/parse.js';
-import { detectTrackFormat } from '../src/sanitize.js';
-import { fitCrc } from '../src/fit.js';
+import { TrackIngestionError } from '../src/limits';
+import { parseTrackFile } from './sync-parse';
+import { detectTrackFormat } from '../src/sanitize';
+import { fitCrc } from '../src/fit';
 import {
   compressedRecordMessage,
   fitFile,
@@ -11,7 +11,7 @@ import {
   recordMessage,
   sessionMessage,
   timerStopMessage,
-} from './fit-fixture.js';
+} from './fit-fixture';
 
 const code = (run: () => unknown): string => {
   try {

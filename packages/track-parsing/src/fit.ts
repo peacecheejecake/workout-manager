@@ -4,8 +4,8 @@ import {
   TrackIngestionError,
   type ParseBudget,
   type TrackParseLimits,
-} from './limits.js';
-import type { RawSample, RawTrack, RawTrackFile } from './raw.js';
+} from './limits';
+import type { RawSample, RawTrack, RawTrackFile } from './raw';
 
 /** FIT `date_time` counts seconds from 1989-12-31T00:00:00Z. */
 const FIT_EPOCH_MILLISECONDS = 631_065_600_000;

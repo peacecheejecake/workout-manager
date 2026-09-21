@@ -1,4 +1,4 @@
-import { TrackIngestionError, type ParseBudget, type TrackParseLimits } from './limits.js';
+import { TrackIngestionError, type ParseBudget, type TrackParseLimits } from './limits';
 
 export type XmlEvent =
   | {

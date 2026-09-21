@@ -26,9 +26,9 @@ import {
   resolveSameOriginPath,
   selfHostedPrefix,
   selfHostedScheme,
-} from './basemap.js';
-import type { MapAdapterFactory, MapAdapterHandle, MapAdapterOptions } from './map-adapter.js';
-import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path.js';
+} from './basemap';
+import type { MapAdapterFactory, MapAdapterHandle, MapAdapterOptions } from './map-adapter';
+import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
 
 const pathSourceId = 'geo-kit-paths';
 const selectionSourceId = 'geo-kit-selection';

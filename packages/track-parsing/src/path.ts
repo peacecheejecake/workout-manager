@@ -4,9 +4,9 @@ import {
   type RecordedTrack,
   type TrackPosition,
 } from '@workout/contracts/tracks';
-import { haversineMeters, outsideDisplayLatitude } from './geo.js';
-import { TrackIngestionError } from './limits.js';
-import { simplifyIndices } from './simplify.js';
+import { haversineMeters, outsideDisplayLatitude } from './geo';
+import { TrackIngestionError } from './limits';
+import { simplifyIndices } from './simplify';
 
 export interface MapPathOptions {
   readonly role?: 'recorded' | 'planned' | 'candidate';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TrackIngestionError } from '../src/limits.js';
-import { parseTrackFile } from '../src/parse.js';
+import { TrackIngestionError } from '../src/limits';
+import { parseTrackFile } from './sync-parse';
 
 const GPX11 = 'http://www.topografix.com/GPX/1/1';
 const encode = (xml: string): Uint8Array => new TextEncoder().encode(xml);

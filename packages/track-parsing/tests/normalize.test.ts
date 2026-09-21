@@ -1,10 +1,10 @@
 import { trackAggregatesSchema, type RecordedTrack } from '@workout/contracts/tracks';
 import { describe, expect, it } from 'vitest';
-import { trackAggregates } from '../src/aggregate.js';
-import { MAX_DISPLAY_LATITUDE } from '../src/geo.js';
-import { parseTrackFile } from '../src/parse.js';
-import { buildMapPath } from '../src/path.js';
-import { fitFile, recordMessage, sessionMessage } from './fit-fixture.js';
+import { trackAggregates } from '../src/aggregate';
+import { MAX_DISPLAY_LATITUDE } from '../src/geo';
+import { parseTrackFile } from './sync-parse';
+import { buildMapPath } from '../src/path';
+import { fitFile, recordMessage, sessionMessage } from './fit-fixture';
 
 const GPX11 = 'http://www.topografix.com/GPX/1/1';
 const wrap = (body: string): Uint8Array =>

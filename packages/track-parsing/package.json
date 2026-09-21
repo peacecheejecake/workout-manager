@@ -1,5 +1,5 @@
 {
-  "name": "@workout/server-track-ingestion",
+  "name": "@workout/track-parsing",
   "version": "0.0.0",
   "private": true,
   "type": "module",

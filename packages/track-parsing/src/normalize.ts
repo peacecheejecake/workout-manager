@@ -8,15 +8,15 @@ import {
   type TrackSegment,
   type TrackSegmentBreak,
 } from '@workout/contracts/tracks';
-import { crossesAntimeridian, haversineMeters } from './geo.js';
+import { crossesAntimeridian, haversineMeters } from './geo';
 import {
   ESTIMATED_SAMPLE_BYTES,
   TrackIngestionError,
   type ParseBudget,
   type TrackParseLimits,
-} from './limits.js';
-import type { RawSample, RawTrack, RawTrackFile } from './raw.js';
-import { sanitizeMetadataText } from './sanitize.js';
+} from './limits';
+import type { RawSample, RawTrack, RawTrackFile } from './raw';
+import { sanitizeMetadataText } from './sanitize';
 
 export interface SegmentPolicy {
   readonly version: 1;

@@ -1,4 +1,4 @@
-import { TrackIngestionError } from './limits.js';
+import { TrackIngestionError } from './limits';
 
 /** Control, C1 and bidirectional-override code points, checked without a control regex. */
 function isUnsafeCode(code: number): boolean {

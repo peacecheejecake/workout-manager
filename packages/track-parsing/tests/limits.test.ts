@@ -5,9 +5,9 @@ import {
   resolveTrackParseLimits,
   TrackIngestionError,
   type TrackParseLimits,
-} from '../src/limits.js';
-import { parseTrackFile } from '../src/parse.js';
-import { fitFile, recordMessage, sessionMessage } from './fit-fixture.js';
+} from '../src/limits';
+import { parseTrackFile } from './sync-parse';
+import { fitFile, recordMessage, sessionMessage } from './fit-fixture';
 
 const GPX11 = 'http://www.topografix.com/GPX/1/1';
 const gpx = (body: string): string => `<gpx version="1.1" xmlns="${GPX11}">${body}</gpx>`;

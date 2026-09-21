@@ -1,5 +1,5 @@
 {
-  "extends": "../../tooling/tsconfig/node.json",
+  "extends": "../tooling/tsconfig/bundler.json",
   "compilerOptions": {
     "types": ["node"]
   },

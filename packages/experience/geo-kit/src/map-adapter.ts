@@ -5,8 +5,8 @@
  * into modules or into tests. The MapLibre implementation lives in `maplibre-adapter.ts`
  * and is loaded lazily, keeping the renderer out of the initial bundle.
  */
-import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path.js';
-import type { BasemapDescriptor } from './basemap.js';
+import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
+import type { BasemapDescriptor } from './basemap';
 
 export type MapAdapterFailure =
   'RENDERER_UNAVAILABLE' | 'CONTEXT_LOST' | 'STYLE_LOAD_FAILED' | 'BASEMAP_REJECTED';

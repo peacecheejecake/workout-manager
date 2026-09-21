@@ -1,5 +1,5 @@
 /** Synthetic FIT bytes. No personal or provider data, and no real device output. */
-import { fitCrc } from '../src/fit.js';
+import { fitCrc } from '../src/fit';
 
 export const FIT_EPOCH_MILLISECONDS = 631_065_600_000;
 export const SEMICIRCLE = 180 / 2 ** 31;

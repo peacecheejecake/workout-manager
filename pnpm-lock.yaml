@@ -362,9 +362,15 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@workout/geo-kit':
+        specifier: workspace:*
+        version: link:../../experience/geo-kit
       '@workout/platform':
         specifier: workspace:*
         version: link:../../platform
+      '@workout/track-parsing':
+        specifier: workspace:*
+        version: link:../../track-parsing
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation
@@ -669,15 +675,6 @@ importers:
 
   packages/server/resource-ingestion: {}
 
-  packages/server/track-ingestion:
-    dependencies:
-      '@workout/contracts':
-        specifier: workspace:*
-        version: link:../../contracts
-      zod:
-        specifier: 4.6.5
-        version: 4.6.5
-
   packages/tooling:
     dependencies:
       react:
@@ -686,6 +683,15 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+
+  packages/track-parsing:
+    dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/ui/foundation:
     dependencies:

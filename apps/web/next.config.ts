@@ -43,6 +43,7 @@ const config: NextConfig = {
     '@workout/modules-supplementary',
     '@workout/modules-recovery',
     '@workout/ui-spike',
+    '@workout/geo-kit',
   ],
 };
 export default config;

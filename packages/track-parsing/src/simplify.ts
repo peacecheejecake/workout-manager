@@ -1,5 +1,5 @@
 import type { TrackPosition } from '@workout/contracts/tracks';
-import { localMeters } from './geo.js';
+import { localMeters } from './geo';
 
 function perpendicularMeters(
   point: [number, number],

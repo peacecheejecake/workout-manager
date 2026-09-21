@@ -25,7 +25,8 @@ export type TrackIngestionErrorCode =
   | 'TRACK_PARSER_BUSY'
   | 'TRACK_SESSION_ASSIGNMENT_AMBIGUOUS'
   | 'TRACK_NO_TRACK_DATA'
-  | 'TRACK_NORMALIZATION_INVALID';
+  | 'TRACK_NORMALIZATION_INVALID'
+  | 'TRACK_DIGEST_UNAVAILABLE';
 
 /** Every bound has exactly one error code; callers never see a raw parser exception. */
 export class TrackIngestionError extends Error {

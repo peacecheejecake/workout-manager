@@ -4,7 +4,7 @@ import {
   TrackIngestionError,
   type ParseBudget,
   type TrackParseLimits,
-} from './limits.js';
+} from './limits';
 import {
   type RawRoute,
   type RawRoutePoint,
@@ -12,9 +12,9 @@ import {
   type RawTrack,
   type RawTrackFile,
   isInstant,
-} from './raw.js';
-import { sanitizeMetadataText } from './sanitize.js';
-import { localName, scanXml } from './xml.js';
+} from './raw';
+import { sanitizeMetadataText } from './sanitize';
+import { localName, scanXml } from './xml';
 
 const GPX_NAMESPACES = new Set([
   'http://www.topografix.com/GPX/1/1',

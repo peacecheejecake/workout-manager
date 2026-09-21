@@ -1,5 +1,5 @@
 import type { RecordedTrack, TrackAggregates } from '@workout/contracts/tracks';
-import { haversineMeters } from './geo.js';
+import { haversineMeters } from './geo';
 
 /**
  * Aggregates read from the samples, never from display geometry. Pace uses the

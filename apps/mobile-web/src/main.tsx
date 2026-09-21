@@ -47,6 +47,9 @@ const RecoveryPage = lazy(() =>
 const ResourcePage = lazy(() =>
   import('./resource-page').then((module) => ({ default: module.ResourcePage })),
 );
+const TrackPreviewPage = lazy(() =>
+  import('./track-preview-page').then((module) => ({ default: module.TrackPreviewPage })),
+);
 const GalleryPage = lazy(() =>
   import('./gallery-page').then((module) => ({ default: module.GalleryPage })),
 );
@@ -96,6 +99,13 @@ createRoot(root).render(
         </Suspense>
       ) : proposalPath ? (
         <p role="alert">후보 주소가 올바르지 않습니다.</p>
+      ) : location.pathname === '/activities/track-preview' ? (
+        <Suspense fallback={<p role="status">기록 파일 미리보기 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/planner">훈련 계획</a> · <a href="/account">계정</a>
+          </nav>
+          <TrackPreviewPage />
+        </Suspense>
       ) : location.pathname === '/gallery' || location.pathname.startsWith('/gallery/') ? (
         <Suspense fallback={<p role="status">갤러리 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
