@@ -17,52 +17,44 @@
 
 ## 완료된 최신 작업
 
-[M2-05](progress/M2-05.md)를 완료했다. M2-04d가 의도적으로 비워 둔 색인·retrieval cache·
-grounding·인용 실행기를 실제로 구현해 파생 cleanup manifest가 기존 lease/재시도 규율
-그대로 닫히고, 모든 target에 실행기가 생긴 뒤에만 coach 사용 gate가 다시 열린다.
+[지도 구현 계획](map-implementation-plan.md)의 첫 두 노드를 병렬로 구현하고 각각 커밋했다.
 
-Retrieval은 술어를 복제하지 않고 `resource_coach_use_authorized()` gate 함수 자체를 조인해
-조회 시점에 재검증하며, 순위 계산 전에 필터를 적용하고 현재 version만 대상으로 한다.
-검토 pin `reviewed_version_id`가 현재 version과 일치할 때만 색인하므로 본문을 교체하면
-명시적 재검토 전까지 색인·retrieval·인용이 모두 차단된다. cache key에 인가 집합 digest가
-들어가고 검색 후 manifest를 재수집해 동일성을 확인한 뒤에만 cache에 쓴다. 인용은 본문을
-저장하지 않고 offset과 SHA만 보관하며 발췌에 cascade로 묶여 더 오래 살 수 없다.
+[M2-01a](progress/M2-01a.md)는 버전 있는 track 계약과 의존성 없는 FIT/GPX parser를 추가한다.
+상세 v1~v3 payload와 hash는 그대로 두고 단방향으로만 연결한다. provenance union으로 로컬
+preview가 Activity ID를 만들 수 없게 했다. 결손은 0으로 채우지 않으며, 빈 좌표는 거절하고
+좌표 없는 sample도 측정 관계를 유지한다. segment는 GPX trkseg와 FIT stop을 **message 순서**로
+분할해 같은 초의 stop도 선을 끊는다. 기기 보고 거리·GPS 재계산 거리·표시 선 길이·routing
+예상은 네 값으로 분리했고, 단순화가 집계를 바꾸지 않음을 시험으로 고정했다. 각 한도에 경계·
+초과 시험이 있다. **예산은 작업량 상한이며 계획 §7의 실제 메모리 상한은 충족하지 않는다** —
+재파싱 시 새 revision 강제와 함께 M2-01b/c 배선으로 이월한다.
 
-삭제·AI 동의 철회·coach 사용 중지·검토 하향·공유 철회 다섯 전환을 각각 색인 → cache →
-인용 → 실패한 purge 재시도 → drain → cleanup replay → coaching job replay까지 실제
-PostgreSQL로 검증했다. `resource-access-v1`을 `evidence-dependencies.ts`에 통합해 승인
-transaction 안에서 인가 집합 전체를 재비교한다.
+[M2-01d](progress/M2-01d.md)는 geo-kit과 자체 basemap 빌드·엔진 실측을 추가한다. 외부 요청
+차단은 hook이 아니라 **transport**에서 해결했다. 모든 자산 URL을 `geokit-self` protocol로
+재작성하고 등록된 loader 한 곳에서만 fetch한다. hook만으로는 부족했는데, 최초 URL만 검사하는
+동안 MapLibre가 redirect를 따라가고, TileJSON의 attribution을 source에 합쳐 HTML로 렌더하기
+때문이다(설치된 sanitizer는 script만 제거하고 img는 남긴다). 게시는 매번 새 deployment
+디렉터리 + 포인터 전환이며 publish·포인터·prune을 하나의 배타 잠금에서 직렬화한다.
 
-Migration 032는 채워진 031 DB 업그레이드 경로를 포함한다. 기존 reviewed 행은 본문이 하나뿐
-(`current_version = 1`)이거나 검토 시각이 version 생성보다 명확히 이후일 때만 pin하며,
-동률처럼 순서를 증명할 수 없으면 pin하지 않는다.
+엔진은 문서 비교가 아니라 실제 빌드·질의로 **GraphHopper 10.0**을 선정했다. `round_trip`이
+실재하고(목표 5,000 m에 4,428.763 m), 서해 음성 대조군에서 **OSRM은 HTTP 200 `Ok`·0 m를 조용히
+반환**한 반면 GraphHopper는 400으로 거절했다. 포기한 비용(질의 2 ms 대 7–67 ms, graph 43 MB 대
+455 MB)도 기록했다. Valhalla는 빌드하지 않았고 열등하다고 주장하지 않는다.
 
-검증은 typecheck 28/28, unit 219 files/2,332 tests, 실제 PostgreSQL integration
-42 files/373 tests, build 11 tasks, Playwright 10/10, backup/restore drill 44 checks를
-통과했다. drill은 export가 v14에서 v17로 오르는 동안 갱신되지 않아 red였던 것을 고치고
-v15·v16·v17 collection 복원과 삭제·동의 철회 자료의 미부활까지 검증하도록 확장했다.
+검증은 typecheck 30/30, unit 226 files/2,489 tests(5회 연속 통과), 실제 PostgreSQL integration
+42 files/373 tests, build 12 task, backup drill 44 checks, ruff·pytest 229를 통과했다. 측정은
+초기화 통지 285 ms와 **track·basemap 실제 렌더 2,281 ms**를 분리한다. 이전 단일 수치는 빈
+source 기준이었다. 브라우저 probe는 11개 조건과 실패 시 비정상 종료를 갖추고, redirect를
+허용한 permissive 대조군이 외부 시도 6건을 관측하는 것으로 공허하지 않음을 증명한다.
 
-**검증하지 않은 것**: 실제 LLM 호출이 없어 모델의 인용 생성과 의미 정확도, claim-citation
-entailment, retrieval recall, latency/cost 평가는 not_executed다. 검색은 `simple` FTS
-lexical만 있고 vector·rerank·한국어 형태소는 없다. 색인은 retrieval 시점 지연 색인이며
-운영 재색인 scheduler는 없다.
+과거 관측되던 `activity-workbench` 5초 timeout은 이번 5회 연속 실행에서 재현되지 않았다.
+원인은 규명하지 않았다.
 
 ## 다음 ready 작업
 
-사용자 요청으로 [지도 뷰어·자체 경로 생성 계획](map-implementation-plan.md)을 추가했다.
-이번 작업 기준 HEAD는 `3577f92a4c1fdc2f044de7c5c45bf537038541af`이며 최신 코드 작업은
-비공식 개인 Garmin FIT fetch다. [해당 기록](progress/garmin-unofficial-fetch.md)은 공식 연동
-gate와 별개다. 위 M2-05 검증 수치는 해당 구현 당시 결과이며 이번 문서 변경에서 재실행하지 않았다.
-
-**M2-01a Track 계약·정규화와 M2-01d 자체 지도 인프라 spike가 ready**다. 신규 11개 노드는
-모두 not_started이며 graph는 133개(완료 108, 진행 2, 미착수 23)다. FIT 상세 v1~3에는 GPS가
-없으므로 기존 producer·runtime 계약·저장·consumer를 함께 확장한다. 실제 viewer와 Course는
-아직 없으며 합성 MapLibre spike를 제품 완료로 세지 않는다.
-
-외부 상용 지도/routing API는 채택하지 않고 renderer와 자체 배경·경로 엔진을 분리한다.
-작은 지역 운영 spike에서 데이터/license·자원 예산·engine을 확정한다. viewer 선행 개발은
-허용하지만 부모 M2-01과 M2-06의 M0-06b 및 아래 gate는 유지한다. 이번 요청은 계획·문서
-변경이며 앱 구현·배포·커밋·push를 실행하지 않았다.
+**M2-01b 로컬 파일 viewer**와 **M2-01g 자체 보행 routing**이 ready다. 두 작업은 서로 독립이다.
+b는 M2-01a의 parser로 파일 1개를 메모리에서 읽어 표시하며 자동 upload를 하지 않는다.
+g는 M2-01d가 선정한 GraphHopper 위에 내부 adapter와 한국 보행 coverage 독립 검토를 올린다.
+coverage는 계속 `not_reviewed`이며 HTTP 200만으로 통과 처리하지 않는다.
 
 ## 남은 외부·실환경 gate
 

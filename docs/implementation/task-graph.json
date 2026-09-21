@@ -1037,8 +1037,9 @@
       "title": "Track 계약·정규화",
       "dependsOn": ["M1-04x"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "versioned FIT/GPX parser·sample/segment·GeoJSON·bounded input·구버전 호환"
+      "status": "completed",
+      "scope": "versioned FIT/GPX parser·sample/segment·GeoJSON·bounded input·구버전 호환",
+      "evidence": "docs/implementation/progress/M2-01a.md"
     },
     {
       "id": "M2-01b",
@@ -1061,8 +1062,9 @@
       "title": "자체 지도 인프라 spike",
       "dependsOn": ["M1c-04"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "자체 basemap/style/assets·CSP·license·엔진 후보 실측·운영 ADR"
+      "status": "completed",
+      "scope": "자체 basemap/style/assets·CSP·license·엔진 후보 실측·운영 ADR",
+      "evidence": "docs/implementation/progress/M2-01d.md"
     },
     {
       "id": "M2-01e",
