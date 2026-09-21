@@ -660,6 +660,15 @@ importers:
 
   packages/server/resource-ingestion: {}
 
+  packages/server/track-ingestion:
+    dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   packages/tooling:
     dependencies:
       react:

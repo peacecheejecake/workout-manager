@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from workout_manager.fit_batch import MAX_SOURCE_BYTES, parse_fit, parse_fit_streams, sha256_file
+from workout_manager.track_export import stop_ordinals, track_payload
 
 
 def optional_number(value: object) -> float | None:
@@ -35,9 +36,12 @@ def activity_commands(
     *,
     include_details: bool = False,
     include_bouts: bool = False,
+    include_track: bool = False,
 ) -> list[dict[str, object]]:
-    if include_details or include_bouts:
-        return detailed_commands(source, timezone_name, include_bouts=include_bouts)
+    if include_details or include_bouts or include_track:
+        return detailed_commands(
+            source, timezone_name, include_bouts=include_bouts, include_track=include_track
+        )
     if timezone_name is not None:
         ZoneInfo(timezone_name)  # Explicit user metadata; never infer from GPS or this machine.
     if source.stat().st_size > MAX_SOURCE_BYTES:
@@ -94,17 +98,30 @@ def export_activity(
     *,
     include_details: bool = False,
     include_bouts: bool = False,
+    include_track: bool = False,
 ) -> None:
     if output.exists() or output.is_symlink():
         raise ValueError("Activity export already exists")
     value = {
-        "schemaVersion": 4 if include_bouts else 3 if include_details else 1,
+        "schemaVersion": 5
+        if include_track
+        else 4
+        if include_bouts
+        else 3
+        if include_details
+        else 1,
         "imports": activity_commands(
-            source, timezone_name, include_details=include_details, include_bouts=include_bouts
+            source,
+            timezone_name,
+            include_details=include_details,
+            include_bouts=include_bouts,
+            include_track=include_track,
         ),
     }
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
-    if (include_details or include_bouts) and len(content.encode("utf-8")) > MAX_EXPORT_BYTES:
+    if (include_details or include_bouts or include_track) and len(
+        content.encode("utf-8")
+    ) > MAX_EXPORT_BYTES:
         raise ValueError("Activity export exceeds 16 MiB limit")
     output.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(prefix=".activity-export-", dir=output.parent)
@@ -273,14 +290,24 @@ def bout_allocation(parent: dict[str, object], laps: list[dict[str, object]]) ->
 
 
 def detailed_commands(
-    source: Path, timezone_name: str | None, *, include_bouts: bool = False
+    source: Path,
+    timezone_name: str | None,
+    *,
+    include_bouts: bool = False,
+    include_track: bool = False,
 ) -> list[dict[str, object]]:
     if timezone_name is not None:
         ZoneInfo(timezone_name)
     if source.stat().st_size > MAX_SOURCE_BYTES:
         raise ValueError("FIT exceeds export size limit")
     digest = sha256_file(source)
-    streams = parse_fit_streams(source)
+    byte_length = source.stat().st_size
+    # The single-argument call shape is preserved for callers that do not need events.
+    streams = (
+        parse_fit_streams(source, ("event",), with_order=True)
+        if include_track
+        else parse_fit_streams(source)
+    )
     if sha256_file(source) != digest:
         raise ValueError("FIT changed during export")
     count = sum(len(stream["session"]) for stream in streams)
@@ -324,6 +351,22 @@ def detailed_commands(
             }
             if include_bouts:
                 details["allocation"] = bout_allocation(row, owned_laps)
+            track = (
+                track_payload(
+                    stream["record"],
+                    records[local_index],
+                    stream_index=stream_index,
+                    session_index=index,
+                    source_item_index=local_index,
+                    detail_schema_version=3 if include_bouts else 2,
+                    digest=digest,
+                    byte_length=byte_length,
+                    device_distance_meters=detail_number(row.get("total_distance")),
+                    stops=stop_ordinals(stream.get("event", [])),
+                )
+                if include_track
+                else None
+            )
             compact = json.dumps(
                 details, ensure_ascii=False, separators=(",", ":"), allow_nan=False
             )
@@ -343,11 +386,15 @@ def detailed_commands(
                 )
             commands.append(
                 {
-                    "idempotencyKey": f"fit-details-v{'3' if include_bouts else '2'}-{digest}-{index}",
+                    "idempotencyKey": (
+                        f"fit-track-v1-{digest}-{index}"
+                        if include_track
+                        else f"fit-details-v{'3' if include_bouts else '2'}-{digest}-{index}"
+                    ),
                     "source": {
                         "kind": "fit",
                         "sourceId": f"sha256:{digest}:session:{index}",
-                        "revision": 4 if include_bouts else 3,
+                        "revision": 5 if include_track else 4 if include_bouts else 3,
                         "contentHash": digest,
                     },
                     "activity": {
@@ -364,6 +411,7 @@ def detailed_commands(
                         "distanceMeters": detail_number(row.get("total_distance")),
                     },
                     "details": details,
+                    **({"track": track} if track is not None else {}),
                 }
             )
     return commands

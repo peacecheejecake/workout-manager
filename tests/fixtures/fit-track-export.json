@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 5,
+  "imports": [
+    {
+      "idempotencyKey": "fit-track-v1-f08e48c9ebc784bada0becf1cad663e5057a452ccf118a3372ab2ba7c3791cd2-0",
+      "source": {
+        "kind": "fit",
+        "sourceId": "sha256:f08e48c9ebc784bada0becf1cad663e5057a452ccf118a3372ab2ba7c3791cd2:session:0",
+        "revision": 5,
+        "contentHash": "f08e48c9ebc784bada0becf1cad663e5057a452ccf118a3372ab2ba7c3791cd2"
+      },
+      "activity": {
+        "title": null,
+        "kind": "unknown",
+        "startedAt": "2026-03-01T00:00:00+00:00",
+        "timezone": null,
+        "durationSeconds": 600.0,
+        "durationKind": "elapsed",
+        "distanceMeters": 1234.5
+      },
+      "details": {
+        "schemaVersion": 2,
+        "streamIndex": 0,
+        "sessionIndex": 0,
+        "startedAt": "2026-03-01T00:00:00+00:00",
+        "recordedAt": "2026-03-01T00:00:00+00:00",
+        "elapsedSeconds": 600.0,
+        "sessionSummary": {
+          "averageHeartRateBpm": null,
+          "maximumHeartRateBpm": null
+        },
+        "records": [
+          {
+            "index": 0,
+            "timestamp": "2026-03-01T00:00:00+00:00",
+            "distanceMeters": 0.0,
+            "heartRateBpm": 140
+          },
+          {
+            "index": 1,
+            "timestamp": "2026-03-01T00:00:01+00:00",
+            "distanceMeters": 13.2,
+            "heartRateBpm": 142
+          },
+          {
+            "index": 2,
+            "timestamp": "2026-03-01T00:00:02+00:00",
+            "distanceMeters": 26.0,
+            "heartRateBpm": 143
+          },
+          {
+            "index": 3,
+            "timestamp": "2026-03-01T00:00:03+00:00",
+            "distanceMeters": 39.1,
+            "heartRateBpm": 144
+          }
+        ],
+        "laps": []
+      },
+      "track": {
+        "schemaVersion": 1,
+        "provenance": {
+          "kind": "local-file",
+          "format": "fit",
+          "fileSha256": "f08e48c9ebc784bada0becf1cad663e5057a452ccf118a3372ab2ba7c3791cd2",
+          "fileByteLength": 207,
+          "parserId": "fit-python-export-v1",
+          "parserVersion": 1,
+          "streamIndex": 0,
+          "sourceItemIndex": 0,
+          "streamLabel": null
+        },
+        "sourceKind": "fit-session",
+        "name": null,
+        "samples": [
+          {
+            "sampleId": "0:0",
+            "sourceIndex": 0,
+            "recordedAt": "2026-03-01T00:00:00+00:00",
+            "position": [127.05000003799796, 37.50000002793968],
+            "elevationMeters": null,
+            "distanceMeters": 0.0,
+            "speedMetersPerSecond": null,
+            "heartRateBpm": 140,
+            "lapIndex": null,
+            "detailLink": {
+              "detailSchemaVersion": 2,
+              "streamIndex": 0,
+              "sessionIndex": 0,
+              "recordIndex": 0
+            }
+          },
+          {
+            "sampleId": "0:1",
+            "sourceIndex": 1,
+            "recordedAt": "2026-03-01T00:00:01+00:00",
+            "position": [127.0501000341028, 37.500100024044514],
+            "elevationMeters": null,
+            "distanceMeters": 13.2,
+            "speedMetersPerSecond": null,
+            "heartRateBpm": 142,
+            "lapIndex": null,
+            "detailLink": {
+              "detailSchemaVersion": 2,
+              "streamIndex": 0,
+              "sessionIndex": 0,
+              "recordIndex": 1
+            }
+          },
+          {
+            "sampleId": "0:2",
+            "sourceIndex": 2,
+            "recordedAt": "2026-03-01T00:00:02+00:00",
+            "position": null,
+            "elevationMeters": null,
+            "distanceMeters": 26.0,
+            "speedMetersPerSecond": null,
+            "heartRateBpm": 143,
+            "lapIndex": null,
+            "detailLink": {
+              "detailSchemaVersion": 2,
+              "streamIndex": 0,
+              "sessionIndex": 0,
+              "recordIndex": 2
+            }
+          },
+          {
+            "sampleId": "0:3",
+            "sourceIndex": 3,
+            "recordedAt": "2026-03-01T00:00:03+00:00",
+            "position": [127.05030002631247, 37.50030001625419],
+            "elevationMeters": null,
+            "distanceMeters": 39.1,
+            "speedMetersPerSecond": null,
+            "heartRateBpm": 144,
+            "lapIndex": null,
+            "detailLink": {
+              "detailSchemaVersion": 2,
+              "streamIndex": 0,
+              "sessionIndex": 0,
+              "recordIndex": 3
+            }
+          }
+        ],
+        "segments": [
+          {
+            "index": 0,
+            "startReason": "stream-start",
+            "sampleIds": ["0:0", "0:1"]
+          },
+          {
+            "index": 1,
+            "startReason": "missing-position",
+            "sampleIds": ["0:2"]
+          },
+          {
+            "index": 2,
+            "startReason": "missing-position",
+            "sampleIds": ["0:3"]
+          }
+        ],
+        "segmentPolicy": {
+          "version": 1,
+          "maxGapSeconds": 60,
+          "maxGapMeters": 200
+        },
+        "distances": {
+          "deviceReportedMeters": 1234.5,
+          "recomputedFromPositionsMeters": 14.193309344279356
+        }
+      }
+    }
+  ]
+}

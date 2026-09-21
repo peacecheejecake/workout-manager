@@ -18,6 +18,7 @@ export default defineConfig({
             // never reached the default suite or CI. Retrieval chunking and the
             // derived-store cleanup worker are covered here instead.
             'packages/server/resource-ingestion/tests/**/*.test.ts',
+            'packages/server/track-ingestion/tests/**/*.test.ts',
             'apps/worker/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],

@@ -147,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Export explicit FIT lap boundaries as non-overlapping parent bouts (v4)",
     )
+    export.add_argument(
+        "--include-track",
+        action="store_true",
+        help="Also export bounded GPS samples and segments for each session (v5)",
+    )
     add_fetch_parser(commands)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -168,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.timezone,
                 include_details=args.include_details,
                 include_bouts=args.include_bouts,
+                include_track=args.include_track,
             )
             return 0
         return convert_batch(

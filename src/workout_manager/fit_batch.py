@@ -54,8 +54,19 @@ def fit_streams(data: bytes) -> Iterator[bytes]:
         offset = end
 
 
-def parse_fit_streams(source: Path) -> list[dict[str, list[dict[str, object]]]]:
-    """Validate the complete FIT stream, including CRC, before writing any output."""
+MESSAGE_ORDINAL = "_message_ordinal"
+
+
+def parse_fit_streams(
+    source: Path, extra_types: tuple[str, ...] = (), *, with_order: bool = False
+) -> list[dict[str, list[dict[str, object]]]]:
+    """Validate the complete FIT stream, including CRC, before writing any output.
+
+    `extra_types` collects additional message names (for example `event`) for callers that
+    need them. `with_order` adds the stream-local message position under
+    `MESSAGE_ORDINAL`, which is the only thing that orders two messages sharing a
+    whole-second timestamp. Conversion outputs use neither, so they are unchanged.
+    """
     with source.open("rb") as stream:
         data = stream.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
@@ -63,7 +74,9 @@ def parse_fit_streams(source: Path) -> list[dict[str, list[dict[str, object]]]]:
     streams: list[dict[str, list[dict[str, object]]]] = []
     message_count = 0
     for stream in fit_streams(data):
-        rows: dict[str, list[dict[str, object]]] = {name: [] for name in MESSAGE_TYPES}
+        rows: dict[str, list[dict[str, object]]] = {
+            name: [] for name in (*MESSAGE_TYPES, *extra_types)
+        }
         fit = FitFile(stream, check_crc=True)
         try:
             for message in fit.get_messages(with_definitions=True):
@@ -71,7 +84,10 @@ def parse_fit_streams(source: Path) -> list[dict[str, list[dict[str, object]]]]:
                 if message_count > MAX_MESSAGES:
                     raise ValueError("FIT exceeds the local message limit")
                 if message.type == "data" and message.name in rows:
-                    rows[message.name].append({field.name: field.value for field in message})
+                    row = {field.name: field.value for field in message}
+                    if with_order:
+                        row[MESSAGE_ORDINAL] = message_count
+                    rows[message.name].append(row)
         except (KeyError, IndexError, RecursionError) as error:
             # fitparse may leak implementation exceptions for invalid developer
             # metadata. Normalize them at the parser boundary without exposing data.

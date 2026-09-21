@@ -156,6 +156,10 @@
     "./resource-retrieval": {
       "types": "./src/resource-retrieval.ts",
       "default": "./dist/resource-retrieval.js"
+    },
+    "./tracks": {
+      "types": "./src/tracks.ts",
+      "default": "./dist/tracks.js"
     }
   },
   "scripts": {
