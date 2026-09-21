@@ -1,0 +1,18 @@
+{
+  "name": "@workout/server-integrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "exports": {
+    "./routing": "./src/routing/index.ts"
+  },
+  "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

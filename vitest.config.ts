@@ -19,6 +19,7 @@ export default defineConfig({
             // derived-store cleanup worker are covered here instead.
             'packages/server/resource-ingestion/tests/**/*.test.ts',
             'packages/track-parsing/tests/**/*.test.ts',
+            'packages/server/integrations/tests/**/*.test.ts',
             'apps/worker/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],

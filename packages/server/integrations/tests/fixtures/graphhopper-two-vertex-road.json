@@ -1,0 +1,25 @@
+{
+  "paths": [
+    {
+      "distance": 169.908,
+      "time": 169908.0,
+      "points": {
+        "type": "LineString",
+        "coordinates": [
+          [127.033122, 37.567874],
+          [127.034328, 37.566682]
+        ]
+      },
+      "snapped_waypoints": {
+        "type": "LineString",
+        "coordinates": [
+          [127.033122, 37.567874],
+          [127.034328, 37.566682]
+        ]
+      },
+      "details": {
+        "road_class": [[0, 1, "residential"]]
+      }
+    }
+  ]
+}

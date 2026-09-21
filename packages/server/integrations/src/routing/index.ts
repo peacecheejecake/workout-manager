@@ -1,0 +1,55 @@
+export {
+  TenantAdmissionControl,
+  defaultTenantAdmissionLimits,
+  type AdmissionClock,
+  type AdmissionLease,
+  type AdmissionRefusal,
+  type TenantAdmissionLimits,
+} from './admission.js';
+export {
+  RoutingEndpointError,
+  createRoutingEngineEndpoint,
+  defaultRoutingEngineHosts,
+  type RoutingEngineEndpoint,
+  type RoutingEngineEndpointOptions,
+} from './endpoint.js';
+export { haversineMeters, polylineLengthMeters, requestedSpanMeters } from './geo.js';
+export {
+  RoutingDeployment,
+  assertVerifiedDeployment,
+  loadRoutingDeployment,
+  type LoadRoutingDeploymentOptions,
+} from './deployment.js';
+export {
+  GraphManifestError,
+  ROUTING_GRAPH_MANIFEST_FILE,
+  graphBuildIdFromManifest,
+  hashGraphDirectory,
+  loadVerifiedRoutingGraph,
+  readGraphProperties,
+  routingGraphManifestSchema,
+  type RoutingGraphManifest,
+  type VerifiedRoutingGraph,
+} from './graph-manifest.js';
+export {
+  GraphHopperRoutingAdapter,
+  distanceMatchesGeometry,
+  edgeDetailsCoverGeometry,
+  geometryVisitsWaypointsInOrder,
+  type GraphHopperAdapterOptions,
+  type RoutingClock,
+  type RoutingComputeContext,
+} from './graphhopper-adapter.js';
+export {
+  RoutingRequestError,
+  WalkingRouteService,
+  type WalkingRouteComputation,
+  type WalkingRouteServiceOptions,
+} from './service.js';
+export {
+  RoutingTransportError,
+  createFetchRoutingTransport,
+  type RoutingEngineResponse,
+  type RoutingEngineTransport,
+  type RoutingEngineTransportRequest,
+} from './transport.js';

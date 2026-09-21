@@ -160,6 +160,10 @@
     "./tracks": {
       "types": "./src/tracks.ts",
       "default": "./dist/tracks.js"
+    },
+    "./routing": {
+      "types": "./src/routing.ts",
+      "default": "./dist/routing.js"
     }
   },
   "scripts": {

@@ -1,0 +1,50 @@
+# GraphHopper open-source pedestrian profile for the M2-01g internal routing engine.
+#
+# This is the self-hosted engine, not the hosted GraphHopper Directions API.
+#
+# Kept separate from `graphhopper-foot.yml` on purpose: that file is the exact profile
+# whose SHA-256 the M2-01d candidate measurement recorded, and editing it would
+# invalidate an existing evidence record. The import settings below (encoded values,
+# ignored highways) are byte-identical to it, so the same graph directory is reusable;
+# only the serving-side bounds differ.
+#
+# datareader.file, graph.location and the listener ports are supplied on the command
+# line by the probe script so nothing outside .geo-build is touched and both connectors
+# bind to loopback only. The engine is never exposed outside the host: reachability is
+# an operations property, not something this file can prove.
+graphhopper:
+  datareader.file: ''
+  graph.location: ''
+  graph.encoded_values: foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, road_class, road_access, surface
+  # Pedestrian import: motorways and trunk roads carry no walking access.
+  import.osm.ignored_highways: motorway,trunk
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+  # No contraction hierarchies: the flexible path is what the adapter queries.
+  profiles_ch: []
+  profiles_lm: []
+  routing.non_ch.max_waypoint_distance: 1000000
+  # Last-resort backstop only. Measured on 2026-09-21 with GraphHopper 10.0: when this
+  # budget is exhausted the engine answers `ConnectionNotFoundException`, i.e. a timeout
+  # is indistinguishable from a genuinely disconnected pair. It is therefore set far
+  # above the adapter deadline (8 s) and is NOT the primary bound. The primary
+  # engine-side bound is the per-request `max_visited_nodes` parameter the adapter
+  # always sends, which answers with a distinct `MaximumNodesExceededException`.
+  routing.timeout_ms: 30000
+
+server:
+  application_connectors:
+    - type: http
+      port: 8991
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8992
+      bind_host: 127.0.0.1
+
+logging:
+  level: INFO
+  appenders:
+    - type: console
+      threshold: WARN

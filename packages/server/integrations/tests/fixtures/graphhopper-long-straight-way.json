@@ -1,0 +1,26 @@
+{
+  "paths": [
+    {
+      "distance": 552.096,
+      "time": 552096.0,
+      "points": {
+        "type": "LineString",
+        "coordinates": [
+          [127.052632, 37.528605],
+          [127.052007, 37.52876],
+          [127.046633, 37.530026]
+        ]
+      },
+      "snapped_waypoints": {
+        "type": "LineString",
+        "coordinates": [
+          [127.052632, 37.528605],
+          [127.046633, 37.530026]
+        ]
+      },
+      "details": {
+        "road_class": [[0, 2, "cycleway"]]
+      }
+    }
+  ]
+}
