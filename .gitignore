@@ -24,3 +24,6 @@ garmin-tokens/
 .garmin-tokens/
 garmin-downloads/
 apps/web/next-env.d.ts
+
+# Self-hosted map build workspace (M2-01d): extracts, tiles, graphs. Never committed.
+.geo-build/

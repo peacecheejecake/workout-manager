@@ -1,0 +1,5 @@
+{
+  "extends": "../../tooling/tsconfig/bundler.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["src", "tests"]
+}

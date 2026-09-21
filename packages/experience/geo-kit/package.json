@@ -1,0 +1,20 @@
+{
+  "name": "@workout/geo-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "maplibre-gl": "6.9.1"
+  },
+  "exports": {
+    "./map-path": "./src/map-path.ts",
+    "./basemap": "./src/basemap.ts",
+    "./map-adapter": "./src/map-adapter.ts",
+    "./maplibre-adapter": "./src/maplibre-adapter.ts",
+    "./map-view": "./src/map-view.tsx"
+  }
+}

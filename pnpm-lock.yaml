@@ -300,6 +300,15 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  packages/experience/geo-kit:
+    dependencies:
+      maplibre-gl:
+        specifier: 6.9.1
+        version: 6.9.1
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+
   packages/experience/ui-spike:
     dependencies:
       '@dnd-kit/react':

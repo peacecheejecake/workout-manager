@@ -1,0 +1,2164 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-21T12:51:47.830Z",
+  "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+  "buildId": "ec81f3367889",
+  "deploymentId": "ec81f3367889-mub8vb9q",
+  "basePath": "/map/basemap",
+  "publish": {
+    "deploymentId": "ec81f3367889-mub8vb9q",
+    "buildId": "ec81f3367889",
+    "publishedAt": "2026-09-21T12:51:47.493Z",
+    "previousDeploymentId": "ec81f3367889-mub8csxv",
+    "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+  },
+  "prunedDeployments": ["ec81f3367889-mub8b1k6"],
+  "region": {
+    "id": "seoul-bbbike",
+    "name": "Seoul (BBBike city extract)",
+    "bounds": [126.734, 37.413, 127.269, 37.715],
+    "center": [126.9779, 37.5663],
+    "minzoom": 9,
+    "maxzoom": 15
+  },
+  "source": {
+    "sourceId": "osm-extract-seoul",
+    "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+    "bytes": 51884841,
+    "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+    "sha256Pinned": null,
+    "httpStatus": 200,
+    "lastModified": "Sat, 19 Sep 2026 16:20:02 GMT",
+    "etag": "\"2533873529\"",
+    "dateSource": "http-last-modified",
+    "license": "ODbL-1.0",
+    "licenseUrl": "https://www.openstreetmap.org/copyright",
+    "attribution": "© OpenStreetMap contributors",
+    "reusedFromDisk": false
+  },
+  "toolVersions": {
+    "osmium": "osmium version 1.19.1",
+    "tippecanoe": "tippecanoe v2.79.0",
+    "node": "v24.12.0"
+  },
+  "steps": [
+    {
+      "step": "download-extract",
+      "command": "curl",
+      "durationMs": 26875,
+      "peakRssBytes": null
+    },
+    {
+      "step": "tags-filter:roads",
+      "command": "osmium",
+      "durationMs": 714,
+      "peakRssBytes": 2046083072
+    },
+    {
+      "step": "export:roads",
+      "command": "osmium",
+      "durationMs": 1253,
+      "peakRssBytes": 127975424
+    },
+    {
+      "step": "tags-filter:water",
+      "command": "osmium",
+      "durationMs": 614,
+      "peakRssBytes": 2078064640
+    },
+    {
+      "step": "export:water",
+      "command": "osmium",
+      "durationMs": 98,
+      "peakRssBytes": 22593536
+    },
+    {
+      "step": "tags-filter:structures",
+      "command": "osmium",
+      "durationMs": 933,
+      "peakRssBytes": 2248998912
+    },
+    {
+      "step": "export:structures",
+      "command": "osmium",
+      "durationMs": 3718,
+      "peakRssBytes": 201162752
+    },
+    {
+      "step": "tippecanoe",
+      "command": "tippecanoe",
+      "durationMs": 54987,
+      "peakRssBytes": 1027981312
+    },
+    {
+      "step": "extract-pyramid",
+      "command": "node:sqlite",
+      "durationMs": 464,
+      "peakRssBytes": null
+    }
+  ],
+  "artifacts": {
+    "mbtilesBytes": 93732864,
+    "publishedBytes": 90399515,
+    "publishedFiles": 4828,
+    "tileCount": 4817,
+    "tileBytes": 90121069,
+    "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+    "glyphs": [
+      {
+        "range": "0-255",
+        "bytes": 76044,
+        "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+      },
+      {
+        "range": "256-511",
+        "bytes": 127726,
+        "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+      },
+      {
+        "range": "8192-8447",
+        "bytes": 64220,
+        "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+      }
+    ],
+    "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+    "mbtilesMetadataKeys": [
+      "antimeridian_adjusted_bounds",
+      "attribution",
+      "bounds",
+      "center",
+      "description",
+      "format",
+      "generator",
+      "generator_options",
+      "json",
+      "maxzoom",
+      "minzoom",
+      "name",
+      "strategies",
+      "type",
+      "version"
+    ]
+  },
+  "alterationMethod": {
+    "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+    "layerFilters": [
+      {
+        "layer": "roads",
+        "expressions": ["w/highway"]
+      },
+      {
+        "layer": "water",
+        "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+      },
+      {
+        "layer": "structures",
+        "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+      }
+    ],
+    "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+    "tippecanoeArguments": [
+      "--force",
+      "--output",
+      "<stage>/basemap.mbtiles",
+      "--minimum-zoom",
+      "9",
+      "--maximum-zoom",
+      "15",
+      "--drop-densest-as-needed",
+      "--extend-zooms-if-still-dropping",
+      "--name",
+      "workout-manager-basemap",
+      "--attribution",
+      "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+      "--quiet",
+      "-L{\"file\":\"<stage>/roads.geojsons\",\"layer\":\"roads\"}",
+      "-L{\"file\":\"<stage>/water.geojsons\",\"layer\":\"water\"}",
+      "-L{\"file\":\"<stage>/structures.geojsons\",\"layer\":\"structures\"}"
+    ],
+    "tippecanoeLayers": ["roads", "water", "structures"],
+    "minzoom": 9,
+    "maxzoom": 15,
+    "glyphRanges": ["0-255", "256-511", "8192-8447"],
+    "scripts": {
+      "scripts/build-basemap.mjs": "27a1561262694ccc46e5a502a6c0307fd1993b3c07c0970d1c99cade88afbbc6",
+      "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+      "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+      "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+    }
+  },
+  "licenses": {
+    "osmData": "ODbL-1.0",
+    "glyphs": "OFL-1.1",
+    "sprite": "generated in-repository",
+    "tippecanoe": "BSD-2-Clause",
+    "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "totalMemoryBytes": 34359738368
+  },
+  "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here.",
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:24:08.536Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "b265b63270bd",
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "license": "ODbL-1.0",
+        "licenseUrl": "https://www.openstreetmap.org/copyright",
+        "attribution": "© OpenStreetMap contributors",
+        "reusedFromDisk": false
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "download-extract",
+          "command": "curl",
+          "durationMs": 8377,
+          "peakRssBytes": null
+        },
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 1718,
+          "peakRssBytes": 2057617408
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1320,
+          "peakRssBytes": 127582208
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 647,
+          "peakRssBytes": 2074836992
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 100,
+          "peakRssBytes": 21610496
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 967,
+          "peakRssBytes": 2228092928
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3904,
+          "peakRssBytes": 187760640
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 57695,
+          "peakRssBytes": 972914688
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 513,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93708288,
+        "publishedBytes": 90399234,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:48:01.875Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "b265b63270bd",
+      "basePath": "/map/basemap",
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 741,
+          "peakRssBytes": 2044510208
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1327,
+          "peakRssBytes": 124141568
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 641,
+          "peakRssBytes": 2074656768
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 100,
+          "peakRssBytes": 21610496
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 990,
+          "peakRssBytes": 2229862400
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3864,
+          "peakRssBytes": 199376896
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 57534,
+          "peakRssBytes": 997818368
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 503,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93577216,
+        "publishedBytes": 90399330,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:05:45.314Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "b265b63270bd",
+      "basePath": "/map/basemap",
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 771,
+          "peakRssBytes": 2044477440
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1361,
+          "peakRssBytes": 121782272
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 652,
+          "peakRssBytes": 2072051712
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 103,
+          "peakRssBytes": 22577152
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 983,
+          "peakRssBytes": 2227404800
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3939,
+          "peakRssBytes": 192217088
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 60165,
+          "peakRssBytes": 981925888
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 517,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93749248,
+        "publishedBytes": 90399479,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:15:56.626Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "b265b63270bd",
+      "basePath": "/map/basemap",
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "license": "ODbL-1.0",
+        "licenseUrl": "https://www.openstreetmap.org/copyright",
+        "attribution": "© OpenStreetMap contributors",
+        "reusedFromDisk": false
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "download-extract",
+          "command": "curl",
+          "durationMs": 8132,
+          "peakRssBytes": null
+        },
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 706,
+          "peakRssBytes": 2052816896
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1266,
+          "peakRssBytes": 131137536
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 629,
+          "peakRssBytes": 2075803648
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 97,
+          "peakRssBytes": 20054016
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 941,
+          "peakRssBytes": 2245296128
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3776,
+          "peakRssBytes": 201211904
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 65629,
+          "peakRssBytes": 819888128
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 856,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93659136,
+        "publishedBytes": 90399479,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:33:23.518Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "basePath": "/map/basemap",
+      "publish": {
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T11:33:23.435Z",
+        "previousBuildId": null,
+        "supersededCopy": null,
+        "rollback": "Rewrite current.json with the previous build id; its directory is still on disk."
+      },
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 710,
+          "peakRssBytes": 2053931008
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1289,
+          "peakRssBytes": 125698048
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 614,
+          "peakRssBytes": 2076753920
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 100,
+          "peakRssBytes": 21626880
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 929,
+          "peakRssBytes": 2242625536
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3797,
+          "peakRssBytes": 207486976
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 55717,
+          "peakRssBytes": 938049536
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 475,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93667328,
+        "publishedBytes": 90399479,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:34:27.019Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "basePath": "/map/basemap",
+      "publish": {
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T11:34:26.940Z",
+        "previousBuildId": "ec81f3367889",
+        "supersededCopy": "ec81f3367889.superseded-1789990466940",
+        "rollback": "Rewrite current.json with the previous build id; its directory is still on disk."
+      },
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 705,
+          "peakRssBytes": 2057732096
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1259,
+          "peakRssBytes": 130514944
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 609,
+          "peakRssBytes": 2085289984
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 98,
+          "peakRssBytes": 21397504
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 926,
+          "peakRssBytes": 2245132288
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3807,
+          "peakRssBytes": 198328320
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 55229,
+          "peakRssBytes": 980058112
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 477,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93675520,
+        "publishedBytes": 90399479,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:37:47.632Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "basePath": "/map/basemap",
+      "publish": {
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T11:37:47.556Z",
+        "previousBuildId": "ec81f3367889",
+        "supersededCopy": "ec81f3367889.superseded-1789990667555",
+        "rollback": "Rewrite current.json with the previous build id; its directory is still on disk."
+      },
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "sha256Pinned": null,
+        "lastModified": "Sat, 19 Sep 2026 16:20:02 GMT",
+        "etag": "\"2533873529\"",
+        "dateSource": "http-last-modified",
+        "license": "ODbL-1.0",
+        "licenseUrl": "https://www.openstreetmap.org/copyright",
+        "attribution": "© OpenStreetMap contributors",
+        "reusedFromDisk": false
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "download-extract",
+          "command": "curl",
+          "durationMs": 7688,
+          "peakRssBytes": null
+        },
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 714,
+          "peakRssBytes": 2056323072
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1256,
+          "peakRssBytes": 131514368
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 611,
+          "peakRssBytes": 2081079296
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 96,
+          "peakRssBytes": 21217280
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 940,
+          "peakRssBytes": 2245656576
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3709,
+          "peakRssBytes": 193855488
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54604,
+          "peakRssBytes": 1003454464
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 476,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93663232,
+        "publishedBytes": 90399479,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:13:24.402Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "deploymentId": "ec81f3367889-mub7hy3z",
+      "basePath": "/map/basemap",
+      "publish": {
+        "deploymentId": "ec81f3367889-mub7hy3z",
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T12:13:24.310Z",
+        "previousDeploymentId": null,
+        "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+      },
+      "prunedDeployments": [],
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 733,
+          "peakRssBytes": 2055749632
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1244,
+          "peakRssBytes": 130940928
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 611,
+          "peakRssBytes": 2083241984
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 96,
+          "peakRssBytes": 21479424
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 929,
+          "peakRssBytes": 2234712064
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3793,
+          "peakRssBytes": 204488704
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54752,
+          "peakRssBytes": 1033371648
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 464,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93667328,
+        "publishedBytes": 90399515,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "alterationMethod": {
+        "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+        "layerFilters": [
+          {
+            "layer": "roads",
+            "expressions": ["w/highway"]
+          },
+          {
+            "layer": "water",
+            "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+          },
+          {
+            "layer": "structures",
+            "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+          }
+        ],
+        "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+        "tippecanoeArguments": [
+          "--force",
+          "--output",
+          "/Users/minjiwon/workout-manager/.geo-build/stage/basemap.mbtiles",
+          "--minimum-zoom",
+          "9",
+          "--maximum-zoom",
+          "15",
+          "--drop-densest-as-needed",
+          "--extend-zooms-if-still-dropping",
+          "--name",
+          "workout-manager-basemap",
+          "--attribution",
+          "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+          "--quiet"
+        ],
+        "tippecanoeLayers": ["roads", "water", "structures"],
+        "minzoom": 9,
+        "maxzoom": 15,
+        "glyphRanges": ["0-255", "256-511", "8192-8447"],
+        "scripts": {
+          "scripts/build-basemap.mjs": "b2d0c4248a4dc2bf1421e74f0b8465f8d5e41e66a931404210e2988d6e39b2b7",
+          "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+          "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+          "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+        }
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:14:27.059Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "deploymentId": "ec81f3367889-mub7jb58",
+      "basePath": "/map/basemap",
+      "publish": {
+        "deploymentId": "ec81f3367889-mub7jb58",
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T12:14:26.986Z",
+        "previousDeploymentId": "ec81f3367889-mub7hy3z",
+        "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+      },
+      "prunedDeployments": [],
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 707,
+          "peakRssBytes": 2051440640
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1258,
+          "peakRssBytes": 126976000
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 609,
+          "peakRssBytes": 2082848768
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 97,
+          "peakRssBytes": 21725184
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 934,
+          "peakRssBytes": 2243461120
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3812,
+          "peakRssBytes": 203997184
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54402,
+          "peakRssBytes": 921501696
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 483,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93732864,
+        "publishedBytes": 90399515,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "alterationMethod": {
+        "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+        "layerFilters": [
+          {
+            "layer": "roads",
+            "expressions": ["w/highway"]
+          },
+          {
+            "layer": "water",
+            "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+          },
+          {
+            "layer": "structures",
+            "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+          }
+        ],
+        "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+        "tippecanoeArguments": [
+          "--force",
+          "--output",
+          "/Users/minjiwon/workout-manager/.geo-build/stage/basemap.mbtiles",
+          "--minimum-zoom",
+          "9",
+          "--maximum-zoom",
+          "15",
+          "--drop-densest-as-needed",
+          "--extend-zooms-if-still-dropping",
+          "--name",
+          "workout-manager-basemap",
+          "--attribution",
+          "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+          "--quiet"
+        ],
+        "tippecanoeLayers": ["roads", "water", "structures"],
+        "minzoom": 9,
+        "maxzoom": 15,
+        "glyphRanges": ["0-255", "256-511", "8192-8447"],
+        "scripts": {
+          "scripts/build-basemap.mjs": "b2d0c4248a4dc2bf1421e74f0b8465f8d5e41e66a931404210e2988d6e39b2b7",
+          "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+          "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+          "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+        }
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:25:31.592Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "deploymentId": "ec81f3367889-mub7xiyf",
+      "basePath": "/map/basemap",
+      "publish": {
+        "deploymentId": "ec81f3367889-mub7xiyf",
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T12:25:31.261Z",
+        "previousDeploymentId": "ec81f3367889-mub7jb58",
+        "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+      },
+      "prunedDeployments": ["ec81f3367889-mub7hy3z"],
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "sha256Pinned": null,
+        "httpStatus": 200,
+        "lastModified": "Sat, 19 Sep 2026 16:20:02 GMT",
+        "etag": "\"2533873529\"",
+        "dateSource": "http-last-modified",
+        "license": "ODbL-1.0",
+        "licenseUrl": "https://www.openstreetmap.org/copyright",
+        "attribution": "© OpenStreetMap contributors",
+        "reusedFromDisk": false
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "download-extract",
+          "command": "curl",
+          "durationMs": 46836,
+          "peakRssBytes": null
+        },
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 720,
+          "peakRssBytes": 2056945664
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1256,
+          "peakRssBytes": 132628480
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 612,
+          "peakRssBytes": 2079604736
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 98,
+          "peakRssBytes": 21643264
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 926,
+          "peakRssBytes": 2242920448
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3719,
+          "peakRssBytes": 204374016
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54875,
+          "peakRssBytes": 1008336896
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 487,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93786112,
+        "publishedBytes": 90399515,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "alterationMethod": {
+        "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+        "layerFilters": [
+          {
+            "layer": "roads",
+            "expressions": ["w/highway"]
+          },
+          {
+            "layer": "water",
+            "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+          },
+          {
+            "layer": "structures",
+            "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+          }
+        ],
+        "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+        "tippecanoeArguments": [
+          "--force",
+          "--output",
+          "/Users/minjiwon/workout-manager/.geo-build/stage/basemap.mbtiles",
+          "--minimum-zoom",
+          "9",
+          "--maximum-zoom",
+          "15",
+          "--drop-densest-as-needed",
+          "--extend-zooms-if-still-dropping",
+          "--name",
+          "workout-manager-basemap",
+          "--attribution",
+          "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+          "--quiet"
+        ],
+        "tippecanoeLayers": ["roads", "water", "structures"],
+        "minzoom": 9,
+        "maxzoom": 15,
+        "glyphRanges": ["0-255", "256-511", "8192-8447"],
+        "scripts": {
+          "scripts/build-basemap.mjs": "b2d0c4248a4dc2bf1421e74f0b8465f8d5e41e66a931404210e2988d6e39b2b7",
+          "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+          "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+          "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+        }
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:36:02.138Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "deploymentId": "ec81f3367889-mub8b1k6",
+      "basePath": "/map/basemap",
+      "publish": {
+        "deploymentId": "ec81f3367889-mub8b1k6",
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T12:36:01.786Z",
+        "previousDeploymentId": "ec81f3367889-mub7xiyf",
+        "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+      },
+      "prunedDeployments": ["ec81f3367889-mub7jb58"],
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": null,
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "reusedFromDisk": true
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 706,
+          "peakRssBytes": 2058125312
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1246,
+          "peakRssBytes": 130711552
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 608,
+          "peakRssBytes": 2076983296
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 97,
+          "peakRssBytes": 21872640
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 939,
+          "peakRssBytes": 2236776448
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3746,
+          "peakRssBytes": 202227712
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54519,
+          "peakRssBytes": 1019133952
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 463,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93732864,
+        "publishedBytes": 90399515,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "alterationMethod": {
+        "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+        "layerFilters": [
+          {
+            "layer": "roads",
+            "expressions": ["w/highway"]
+          },
+          {
+            "layer": "water",
+            "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+          },
+          {
+            "layer": "structures",
+            "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+          }
+        ],
+        "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+        "tippecanoeArguments": [
+          "--force",
+          "--output",
+          "<stage>/basemap.mbtiles",
+          "--minimum-zoom",
+          "9",
+          "--maximum-zoom",
+          "15",
+          "--drop-densest-as-needed",
+          "--extend-zooms-if-still-dropping",
+          "--name",
+          "workout-manager-basemap",
+          "--attribution",
+          "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+          "--quiet",
+          "-L{\"file\":\"<stage>/roads.geojsons\",\"layer\":\"roads\"}",
+          "-L{\"file\":\"<stage>/water.geojsons\",\"layer\":\"water\"}",
+          "-L{\"file\":\"<stage>/structures.geojsons\",\"layer\":\"structures\"}"
+        ],
+        "tippecanoeLayers": ["roads", "water", "structures"],
+        "minzoom": 9,
+        "maxzoom": 15,
+        "glyphRanges": ["0-255", "256-511", "8192-8447"],
+        "scripts": {
+          "scripts/build-basemap.mjs": "55a096eecf9a80c2a88cc1a7f6ad4bce1dbb65162821c3709e5771023bfe7e8d",
+          "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+          "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+          "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+        }
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:37:23.384Z",
+      "scope": "M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.",
+      "buildId": "ec81f3367889",
+      "deploymentId": "ec81f3367889-mub8csxv",
+      "basePath": "/map/basemap",
+      "publish": {
+        "deploymentId": "ec81f3367889-mub8csxv",
+        "buildId": "ec81f3367889",
+        "publishedAt": "2026-09-21T12:37:23.045Z",
+        "previousDeploymentId": "ec81f3367889-mub8b1k6",
+        "rollback": "Rewrite current.json with previousDeploymentId; that directory is untouched and holds the previous bytes."
+      },
+      "prunedDeployments": ["ec81f3367889-mub7xiyf"],
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bounds": [126.734, 37.413, 127.269, 37.715],
+        "center": [126.9779, 37.5663],
+        "minzoom": 9,
+        "maxzoom": 15
+      },
+      "source": {
+        "sourceId": "osm-extract-seoul",
+        "url": "https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf",
+        "bytes": 51884841,
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "sha256Pinned": null,
+        "httpStatus": 200,
+        "lastModified": "Sat, 19 Sep 2026 16:20:02 GMT",
+        "etag": "\"2533873529\"",
+        "dateSource": "http-last-modified",
+        "license": "ODbL-1.0",
+        "licenseUrl": "https://www.openstreetmap.org/copyright",
+        "attribution": "© OpenStreetMap contributors",
+        "reusedFromDisk": false
+      },
+      "toolVersions": {
+        "osmium": "osmium version 1.19.1",
+        "tippecanoe": "tippecanoe v2.79.0",
+        "node": "v24.12.0"
+      },
+      "steps": [
+        {
+          "step": "download-extract",
+          "command": "curl",
+          "durationMs": 8050,
+          "peakRssBytes": null
+        },
+        {
+          "step": "tags-filter:roads",
+          "command": "osmium",
+          "durationMs": 698,
+          "peakRssBytes": 2056437760
+        },
+        {
+          "step": "export:roads",
+          "command": "osmium",
+          "durationMs": 1241,
+          "peakRssBytes": 133185536
+        },
+        {
+          "step": "tags-filter:water",
+          "command": "osmium",
+          "durationMs": 604,
+          "peakRssBytes": 2086109184
+        },
+        {
+          "step": "export:water",
+          "command": "osmium",
+          "durationMs": 97,
+          "peakRssBytes": 21807104
+        },
+        {
+          "step": "tags-filter:structures",
+          "command": "osmium",
+          "durationMs": 937,
+          "peakRssBytes": 2242985984
+        },
+        {
+          "step": "export:structures",
+          "command": "osmium",
+          "durationMs": 3723,
+          "peakRssBytes": 206733312
+        },
+        {
+          "step": "tippecanoe",
+          "command": "tippecanoe",
+          "durationMs": 54609,
+          "peakRssBytes": 988479488
+        },
+        {
+          "step": "extract-pyramid",
+          "command": "node:sqlite",
+          "durationMs": 455,
+          "peakRssBytes": null
+        }
+      ],
+      "artifacts": {
+        "mbtilesBytes": 93659136,
+        "publishedBytes": 90399515,
+        "publishedFiles": 4828,
+        "tileCount": 4817,
+        "tileBytes": 90121069,
+        "tileEncoding": "gzip (MBTiles native); serving layer must send Content-Encoding: gzip",
+        "glyphs": [
+          {
+            "range": "0-255",
+            "bytes": 76044,
+            "sha256": "62c6d49b15fa836eb6aa45e259c7ca6762f44b011b09e47776efbe4a6db1b397"
+          },
+          {
+            "range": "256-511",
+            "bytes": 127726,
+            "sha256": "2eca7561f9f566bcacfda5dd04fb5880baec1328ec0f5484678289a13994de8a"
+          },
+          {
+            "range": "8192-8447",
+            "bytes": 64220,
+            "sha256": "8ea977a587352fe31b4159ffdbc9a40be79056f2472017c742ea1e4a931864b9"
+          }
+        ],
+        "glyphLicenseSha256": "7713cfc8e3c36d5ec4aa3d6cffe7500a1b3310f8a86d914b8ea09c2a9dee7c2d",
+        "mbtilesMetadataKeys": [
+          "antimeridian_adjusted_bounds",
+          "attribution",
+          "bounds",
+          "center",
+          "description",
+          "format",
+          "generator",
+          "generator_options",
+          "json",
+          "maxzoom",
+          "minzoom",
+          "name",
+          "strategies",
+          "type",
+          "version"
+        ]
+      },
+      "alterationMethod": {
+        "description": "Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.",
+        "layerFilters": [
+          {
+            "layer": "roads",
+            "expressions": ["w/highway"]
+          },
+          {
+            "layer": "water",
+            "expressions": ["nwr/natural=water", "nwr/waterway", "nwr/landuse=reservoir"]
+          },
+          {
+            "layer": "structures",
+            "expressions": ["nwr/building", "nwr/leisure=park", "nwr/landuse"]
+          }
+        ],
+        "osmiumExportFormat": "geojsonseq (--add-unique-id=type_id)",
+        "tippecanoeArguments": [
+          "--force",
+          "--output",
+          "<stage>/basemap.mbtiles",
+          "--minimum-zoom",
+          "9",
+          "--maximum-zoom",
+          "15",
+          "--drop-densest-as-needed",
+          "--extend-zooms-if-still-dropping",
+          "--name",
+          "workout-manager-basemap",
+          "--attribution",
+          "지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href=\"https://www.openstreetmap.org/copyright\">라이선스</a>",
+          "--quiet",
+          "-L{\"file\":\"<stage>/roads.geojsons\",\"layer\":\"roads\"}",
+          "-L{\"file\":\"<stage>/water.geojsons\",\"layer\":\"water\"}",
+          "-L{\"file\":\"<stage>/structures.geojsons\",\"layer\":\"structures\"}"
+        ],
+        "tippecanoeLayers": ["roads", "water", "structures"],
+        "minzoom": 9,
+        "maxzoom": 15,
+        "glyphRanges": ["0-255", "256-511", "8192-8447"],
+        "scripts": {
+          "scripts/build-basemap.mjs": "55a096eecf9a80c2a88cc1a7f6ad4bce1dbb65162821c3709e5771023bfe7e8d",
+          "scripts/geo/style.mjs": "4f54ab503950e5a6376f7109aafc944a35f02cff4a904bf5839b419c37b000b9",
+          "scripts/geo/sources.mjs": "576ddcb89eec742e089b78ba6cb6b5762fe4d2be4819cd67bb1b547681bbae17",
+          "scripts/geo/png.mjs": "6cc39bbed84edcca27631a5db8083c62d850fcdf46d3e57193b9ed8a0ce51218"
+        }
+      },
+      "licenses": {
+        "osmData": "ODbL-1.0",
+        "glyphs": "OFL-1.1",
+        "sprite": "generated in-repository",
+        "tippecanoe": "BSD-2-Clause",
+        "osmium": "GPL-3.0-or-later (build-time tool only, not redistributed)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here."
+    }
+  ]
+}

@@ -17,6 +17,8 @@ export function createConfig(root) {
         '**/coverage/**',
         '**/playwright-report/**',
         '**/test-results/**',
+        // Opt-in self-hosted map build workspace (tiles, graphs, bundled harness output).
+        '**/.geo-build/**',
         '**/.venv/**',
         'docs/.pre/**',
         '.agents/**',

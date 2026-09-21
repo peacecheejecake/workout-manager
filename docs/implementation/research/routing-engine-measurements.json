@@ -1,0 +1,905 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-21T11:34:58.804Z",
+  "scope": "M2-01d self-hosted engine candidate measurement on a developer machine. Not a production deployment and not Korean pedestrian coverage approval.",
+  "extract": {
+    "path": ".geo-build/source/region.osm.pbf",
+    "region": "Seoul (BBBike city extract)",
+    "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "totalMemoryBytes": 34359738368
+  },
+  "notExecuted": [
+    {
+      "engine": "valhalla",
+      "reason": "No Homebrew formula on this machine and the Docker daemon was not running, so no Valhalla build or measurement was attempted."
+    }
+  ],
+  "interpretation": "HTTP success and a computed geometry are not walkability, accessibility or safety. Every case stays not_reviewed and belongs to M2-01g / M0-06b.",
+  "engines": [
+    {
+      "engine": "osrm",
+      "version": "v26.9.0",
+      "identity": {
+        "extractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "profilePath": "/opt/homebrew/share/osrm/profiles/foot.lua",
+        "profileSha256": "d51e0c71b99cb3cdee77e7725b5b9a9f680d97276b578f5083bf338bc3268ad5",
+        "extractBinaryVersion": "v26.9.0",
+        "routedBinaryVersion": "v26.9.0"
+      },
+      "license": "BSD-2-Clause",
+      "profile": "share/osrm/profiles/foot.lua (stock)",
+      "algorithm": "MLD",
+      "steps": [
+        {
+          "step": "osrm-extract",
+          "durationMs": 8564,
+          "peakRssBytes": 1294319616
+        },
+        {
+          "step": "osrm-partition",
+          "durationMs": 4366,
+          "peakRssBytes": 698613760
+        },
+        {
+          "step": "osrm-customize",
+          "durationMs": 1587,
+          "peakRssBytes": 600342528
+        }
+      ],
+      "graphBytes": 455472232,
+      "residentAfterLoadBytes": 308576256,
+      "results": [
+        {
+          "caseId": "KR-WALK-01",
+          "engine": "osrm",
+          "negativeControl": false,
+          "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+          "httpStatus": 200,
+          "engineCode": "Ok",
+          "latencyMs": 3,
+          "distanceMeters": 1266.1,
+          "durationSeconds": 911.6,
+          "geometryPoints": 72,
+          "geometrySha256": "9e81b92af3adc6c067e27fd4f5e030d0fc7a11bd61093e3ad8386c4fb52268e9",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "KR-WALK-02",
+          "engine": "osrm",
+          "negativeControl": false,
+          "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+          "httpStatus": 200,
+          "engineCode": "Ok",
+          "latencyMs": 2,
+          "distanceMeters": 1478.5,
+          "durationSeconds": 1064.7,
+          "geometryPoints": 38,
+          "geometrySha256": "cbdebb269bcf970b2e63c3ef0fcaf06220b73b62216d3ea7184bf5e2759c49fb",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "KR-WALK-03",
+          "engine": "osrm",
+          "negativeControl": false,
+          "context": "Namsan park slope; stair and park path handling",
+          "httpStatus": 200,
+          "engineCode": "Ok",
+          "latencyMs": 2,
+          "distanceMeters": 1224.1,
+          "durationSeconds": 883.6,
+          "geometryPoints": 98,
+          "geometrySha256": "4a98086060ac1b12e4b2cbd2721ded2ed5dc2a183c00a1c32a7cea899bc90c5f",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "NEG-WALK-01",
+          "engine": "osrm",
+          "negativeControl": true,
+          "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+          "httpStatus": 200,
+          "engineCode": "Ok",
+          "latencyMs": 2,
+          "distanceMeters": 0,
+          "durationSeconds": 0,
+          "geometryPoints": 2,
+          "geometrySha256": "b3d7d67a396d7d25a3c91d92c022ac684763802f7d536d1555604408f4c3bc6a",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "ROUNDTRIP-01",
+          "engine": "osrm",
+          "outcome": "capability_absent",
+          "detail": "osrm-routed exposes route/table/trip/match/nearest. No target-distance round trip exists in the open-source engine; /trip solves a TSP over supplied waypoints instead.",
+          "coverageReview": "not_reviewed"
+        }
+      ]
+    },
+    {
+      "engine": "graphhopper",
+      "version": null,
+      "versionSource": "graphhopper startup log; jar pinned by SHA-256 in the operations allowlist",
+      "identity": {
+        "extractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "artifactUrl": "https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/10.0/graphhopper-web-10.0.jar",
+        "jarSha256": "e5a1268f2cd6b1e4ef849b9237e98b651bf3c31adf4a3766c6d9f5feb241bb41",
+        "jarSha256Pinned": "e5a1268f2cd6b1e4ef849b9237e98b651bf3c31adf4a3766c6d9f5feb241bb41",
+        "profilePath": "scripts/geo/graphhopper-foot.yml",
+        "profileSha256": "06a4da4f33b0e73b6b3f6f3f6eb27641674d33eb721c3051aae9c7e35a4e976a",
+        "javaVersion": "openjdk version \"17.0.15\" 2025-04-15"
+      },
+      "license": "Apache-2.0",
+      "profile": "scripts/geo/graphhopper-foot.yml",
+      "algorithm": "flexible (CH disabled) + round_trip",
+      "steps": [
+        {
+          "step": "graphhopper-import-and-start",
+          "durationMs": 6842,
+          "peakRssBytes": null
+        }
+      ],
+      "graphBytes": 43039253,
+      "residentAfterLoadBytes": 1736671232,
+      "results": [
+        {
+          "caseId": "KR-WALK-01",
+          "engine": "graphhopper",
+          "negativeControl": false,
+          "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+          "httpStatus": 200,
+          "engineMessage": null,
+          "latencyMs": 52,
+          "distanceMeters": 1281.844,
+          "durationSeconds": 926.42,
+          "geometryPoints": 43,
+          "geometrySha256": "7f66101e1de81db051c657d538b3ad0bd3e38485565c97dfa363d343c7dbb6d4",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "KR-WALK-02",
+          "engine": "graphhopper",
+          "negativeControl": false,
+          "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+          "httpStatus": 200,
+          "engineMessage": null,
+          "latencyMs": 6,
+          "distanceMeters": 2080.537,
+          "durationSeconds": 1037.02,
+          "geometryPoints": 62,
+          "geometrySha256": "b5469cb0e7db1b2157640c59d36346074df5e3859295b85d672289791334390b",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "KR-WALK-03",
+          "engine": "graphhopper",
+          "negativeControl": false,
+          "context": "Namsan park slope; stair and park path handling",
+          "httpStatus": 200,
+          "engineMessage": null,
+          "latencyMs": 7,
+          "distanceMeters": 1299.499,
+          "durationSeconds": 1190.877,
+          "geometryPoints": 79,
+          "geometrySha256": "9a80441f91ebff1f9a884a2f5d8e19e214cb6f79ed18b570c17f06acc9801edd",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "NEG-WALK-01",
+          "engine": "graphhopper",
+          "negativeControl": true,
+          "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+          "httpStatus": 400,
+          "engineMessage": "Cannot find point 0: 36.5,125.5",
+          "latencyMs": 4,
+          "distanceMeters": null,
+          "durationSeconds": null,
+          "geometryPoints": null,
+          "geometrySha256": null,
+          "outcome": "http_400",
+          "coverageReview": "not_reviewed"
+        },
+        {
+          "caseId": "ROUNDTRIP-01",
+          "engine": "graphhopper",
+          "negativeControl": false,
+          "context": "Target-distance loop from Gwanghwamun, 5 km",
+          "httpStatus": 200,
+          "engineMessage": null,
+          "latencyMs": 12,
+          "distanceMeters": 4428.763,
+          "durationSeconds": 3192.2,
+          "geometryPoints": 157,
+          "geometrySha256": "e7ca1e487fe1b7f94a031d0d8dd7f078b8100ffcbd3c9ada57cc763351ef9b5c",
+          "outcome": "route_computed",
+          "coverageReview": "not_reviewed"
+        }
+      ]
+    }
+  ],
+  "failures": [],
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:27:14.415Z",
+      "scope": "M2-01d self-hosted engine candidate measurement on a developer machine. Not a production deployment and not Korean pedestrian coverage approval.",
+      "extract": {
+        "path": ".geo-build/source/region.osm.pbf",
+        "region": "Seoul (BBBike city extract)",
+        "sha256Recorded": "see docs/implementation/research/self-hosted-basemap-build.json"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "notExecuted": [
+        {
+          "engine": "valhalla",
+          "reason": "No Homebrew formula on this machine and the Docker daemon was not running, so no Valhalla build or measurement was attempted."
+        }
+      ],
+      "interpretation": "HTTP success and a computed geometry are not walkability, accessibility or safety. Every case stays not_reviewed and belongs to M2-01g / M0-06b.",
+      "engines": [],
+      "failures": [
+        {
+          "engine": "osrm",
+          "error": "OSRM_SERVER_NOT_READY"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:44:08.133Z",
+      "scope": "M2-01d self-hosted engine candidate measurement on a developer machine. Not a production deployment and not Korean pedestrian coverage approval.",
+      "extract": {
+        "path": ".geo-build/source/region.osm.pbf",
+        "region": "Seoul (BBBike city extract)",
+        "sha256Recorded": "see docs/implementation/research/self-hosted-basemap-build.json"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "notExecuted": [
+        {
+          "engine": "valhalla",
+          "reason": "No Homebrew formula on this machine and the Docker daemon was not running, so no Valhalla build or measurement was attempted."
+        }
+      ],
+      "interpretation": "HTTP success and a computed geometry are not walkability, accessibility or safety. Every case stays not_reviewed and belongs to M2-01g / M0-06b.",
+      "engines": [
+        {
+          "engine": "osrm",
+          "version": "v26.9.0 (Homebrew bottle)",
+          "license": "BSD-2-Clause",
+          "profile": "share/osrm/profiles/foot.lua (stock)",
+          "algorithm": "MLD",
+          "steps": [
+            {
+              "step": "osrm-extract",
+              "durationMs": 10171,
+              "peakRssBytes": 1285832704
+            },
+            {
+              "step": "osrm-partition",
+              "durationMs": 5286,
+              "peakRssBytes": 707477504
+            },
+            {
+              "step": "osrm-customize",
+              "durationMs": 1706,
+              "peakRssBytes": 599769088
+            }
+          ],
+          "graphBytes": 455073896,
+          "residentAfterLoadBytes": 308346880,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1266.1,
+              "durationSeconds": 911.6,
+              "geometryPoints": 72,
+              "geometrySha256": "9e81b92af3adc6c067e27fd4f5e030d0fc7a11bd61093e3ad8386c4fb52268e9",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1478.5,
+              "durationSeconds": 1064.7,
+              "geometryPoints": 38,
+              "geometrySha256": "cbdebb269bcf970b2e63c3ef0fcaf06220b73b62216d3ea7184bf5e2759c49fb",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1224.1,
+              "durationSeconds": 883.6,
+              "geometryPoints": 98,
+              "geometrySha256": "4a98086060ac1b12e4b2cbd2721ded2ed5dc2a183c00a1c32a7cea899bc90c5f",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "osrm",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 0,
+              "durationSeconds": 0,
+              "geometryPoints": 2,
+              "geometrySha256": "b3d7d67a396d7d25a3c91d92c022ac684763802f7d536d1555604408f4c3bc6a",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "osrm",
+              "outcome": "capability_absent",
+              "detail": "osrm-routed exposes route/table/trip/match/nearest. No target-distance round trip exists in the open-source engine; /trip solves a TSP over supplied waypoints instead.",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        },
+        {
+          "engine": "graphhopper",
+          "version": "10.0 (graphhopper-web jar from Maven Central)",
+          "license": "Apache-2.0",
+          "profile": "scripts/geo/graphhopper-foot.yml",
+          "algorithm": "flexible (CH disabled) + round_trip",
+          "steps": [
+            {
+              "step": "graphhopper-import-and-start",
+              "durationMs": 7376,
+              "peakRssBytes": null
+            }
+          ],
+          "graphBytes": 43039253,
+          "residentAfterLoadBytes": 1566883840,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 66,
+              "distanceMeters": 1281.844,
+              "durationSeconds": 926.42,
+              "geometryPoints": 43,
+              "geometrySha256": "7f66101e1de81db051c657d538b3ad0bd3e38485565c97dfa363d343c7dbb6d4",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 7,
+              "distanceMeters": 2080.537,
+              "durationSeconds": 1037.02,
+              "geometryPoints": 62,
+              "geometrySha256": "b5469cb0e7db1b2157640c59d36346074df5e3859295b85d672289791334390b",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 7,
+              "distanceMeters": 1299.499,
+              "durationSeconds": 1190.877,
+              "geometryPoints": 79,
+              "geometrySha256": "9a80441f91ebff1f9a884a2f5d8e19e214cb6f79ed18b570c17f06acc9801edd",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 400,
+              "engineMessage": "Cannot find point 0: 36.5,125.5",
+              "latencyMs": 4,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "geometryPoints": null,
+              "geometrySha256": null,
+              "outcome": "http_400",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Target-distance loop from Gwanghwamun, 5 km",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 15,
+              "distanceMeters": 4428.763,
+              "durationSeconds": 3192.2,
+              "geometryPoints": 157,
+              "geometrySha256": "e7ca1e487fe1b7f94a031d0d8dd7f078b8100ffcbd3c9ada57cc763351ef9b5c",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        }
+      ],
+      "failures": []
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:07:47.630Z",
+      "scope": "M2-01d self-hosted engine candidate measurement on a developer machine. Not a production deployment and not Korean pedestrian coverage approval.",
+      "extract": {
+        "path": ".geo-build/source/region.osm.pbf",
+        "region": "Seoul (BBBike city extract)",
+        "sha256Recorded": "see docs/implementation/research/self-hosted-basemap-build.json"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "notExecuted": [
+        {
+          "engine": "valhalla",
+          "reason": "No Homebrew formula on this machine and the Docker daemon was not running, so no Valhalla build or measurement was attempted."
+        }
+      ],
+      "interpretation": "HTTP success and a computed geometry are not walkability, accessibility or safety. Every case stays not_reviewed and belongs to M2-01g / M0-06b.",
+      "engines": [
+        {
+          "engine": "osrm",
+          "version": "v26.9.0 (Homebrew bottle)",
+          "license": "BSD-2-Clause",
+          "profile": "share/osrm/profiles/foot.lua (stock)",
+          "algorithm": "MLD",
+          "steps": [
+            {
+              "step": "osrm-extract",
+              "durationMs": 9583,
+              "peakRssBytes": 1277280256
+            },
+            {
+              "step": "osrm-partition",
+              "durationMs": 5225,
+              "peakRssBytes": 712048640
+            },
+            {
+              "step": "osrm-customize",
+              "durationMs": 1755,
+              "peakRssBytes": 600555520
+            }
+          ],
+          "graphBytes": 455348840,
+          "residentAfterLoadBytes": 308658176,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1266.1,
+              "durationSeconds": 911.6,
+              "geometryPoints": 72,
+              "geometrySha256": "9e81b92af3adc6c067e27fd4f5e030d0fc7a11bd61093e3ad8386c4fb52268e9",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1478.5,
+              "durationSeconds": 1064.7,
+              "geometryPoints": 38,
+              "geometrySha256": "cbdebb269bcf970b2e63c3ef0fcaf06220b73b62216d3ea7184bf5e2759c49fb",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1224.1,
+              "durationSeconds": 883.6,
+              "geometryPoints": 98,
+              "geometrySha256": "4a98086060ac1b12e4b2cbd2721ded2ed5dc2a183c00a1c32a7cea899bc90c5f",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "osrm",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 0,
+              "durationSeconds": 0,
+              "geometryPoints": 2,
+              "geometrySha256": "b3d7d67a396d7d25a3c91d92c022ac684763802f7d536d1555604408f4c3bc6a",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "osrm",
+              "outcome": "capability_absent",
+              "detail": "osrm-routed exposes route/table/trip/match/nearest. No target-distance round trip exists in the open-source engine; /trip solves a TSP over supplied waypoints instead.",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        },
+        {
+          "engine": "graphhopper",
+          "version": "10.0 (graphhopper-web jar from Maven Central)",
+          "license": "Apache-2.0",
+          "profile": "scripts/geo/graphhopper-foot.yml",
+          "algorithm": "flexible (CH disabled) + round_trip",
+          "steps": [
+            {
+              "step": "graphhopper-import-and-start",
+              "durationMs": 7829,
+              "peakRssBytes": null
+            }
+          ],
+          "graphBytes": 43039253,
+          "residentAfterLoadBytes": 1623195648,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 67,
+              "distanceMeters": 1281.844,
+              "durationSeconds": 926.42,
+              "geometryPoints": 43,
+              "geometrySha256": "7f66101e1de81db051c657d538b3ad0bd3e38485565c97dfa363d343c7dbb6d4",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 7,
+              "distanceMeters": 2080.537,
+              "durationSeconds": 1037.02,
+              "geometryPoints": 62,
+              "geometrySha256": "b5469cb0e7db1b2157640c59d36346074df5e3859295b85d672289791334390b",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 11,
+              "distanceMeters": 1299.499,
+              "durationSeconds": 1190.877,
+              "geometryPoints": 79,
+              "geometrySha256": "9a80441f91ebff1f9a884a2f5d8e19e214cb6f79ed18b570c17f06acc9801edd",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 400,
+              "engineMessage": "Cannot find point 0: 36.5,125.5",
+              "latencyMs": 4,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "geometryPoints": null,
+              "geometrySha256": null,
+              "outcome": "http_400",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Target-distance loop from Gwanghwamun, 5 km",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 15,
+              "distanceMeters": 4428.763,
+              "durationSeconds": 3192.2,
+              "geometryPoints": 157,
+              "geometrySha256": "e7ca1e487fe1b7f94a031d0d8dd7f078b8100ffcbd3c9ada57cc763351ef9b5c",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        }
+      ],
+      "failures": []
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:16:34.909Z",
+      "scope": "M2-01d self-hosted engine candidate measurement on a developer machine. Not a production deployment and not Korean pedestrian coverage approval.",
+      "extract": {
+        "path": ".geo-build/source/region.osm.pbf",
+        "region": "Seoul (BBBike city extract)",
+        "sha256Recorded": "see docs/implementation/research/self-hosted-basemap-build.json"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "notExecuted": [
+        {
+          "engine": "valhalla",
+          "reason": "No Homebrew formula on this machine and the Docker daemon was not running, so no Valhalla build or measurement was attempted."
+        }
+      ],
+      "interpretation": "HTTP success and a computed geometry are not walkability, accessibility or safety. Every case stays not_reviewed and belongs to M2-01g / M0-06b.",
+      "engines": [
+        {
+          "engine": "osrm",
+          "version": "v26.9.0 (Homebrew bottle)",
+          "license": "BSD-2-Clause",
+          "profile": "share/osrm/profiles/foot.lua (stock)",
+          "algorithm": "MLD",
+          "steps": [
+            {
+              "step": "osrm-extract",
+              "durationMs": 19116,
+              "peakRssBytes": 1284128768
+            },
+            {
+              "step": "osrm-partition",
+              "durationMs": 6829,
+              "peakRssBytes": 689405952
+            },
+            {
+              "step": "osrm-customize",
+              "durationMs": 1820,
+              "peakRssBytes": 600145920
+            }
+          ],
+          "graphBytes": 455278184,
+          "residentAfterLoadBytes": 308396032,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1266.1,
+              "durationSeconds": 911.6,
+              "geometryPoints": 72,
+              "geometrySha256": "9e81b92af3adc6c067e27fd4f5e030d0fc7a11bd61093e3ad8386c4fb52268e9",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 2,
+              "distanceMeters": 1478.5,
+              "durationSeconds": 1064.7,
+              "geometryPoints": 38,
+              "geometrySha256": "cbdebb269bcf970b2e63c3ef0fcaf06220b73b62216d3ea7184bf5e2759c49fb",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "osrm",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 1,
+              "distanceMeters": 1224.1,
+              "durationSeconds": 883.6,
+              "geometryPoints": 98,
+              "geometrySha256": "4a98086060ac1b12e4b2cbd2721ded2ed5dc2a183c00a1c32a7cea899bc90c5f",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "osrm",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 200,
+              "engineCode": "Ok",
+              "latencyMs": 1,
+              "distanceMeters": 0,
+              "durationSeconds": 0,
+              "geometryPoints": 2,
+              "geometrySha256": "b3d7d67a396d7d25a3c91d92c022ac684763802f7d536d1555604408f4c3bc6a",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "osrm",
+              "outcome": "capability_absent",
+              "detail": "osrm-routed exposes route/table/trip/match/nearest. No target-distance round trip exists in the open-source engine; /trip solves a TSP over supplied waypoints instead.",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        },
+        {
+          "engine": "graphhopper",
+          "version": "10.0 (graphhopper-web jar from Maven Central)",
+          "license": "Apache-2.0",
+          "profile": "scripts/geo/graphhopper-foot.yml",
+          "algorithm": "flexible (CH disabled) + round_trip",
+          "steps": [
+            {
+              "step": "graphhopper-import-and-start",
+              "durationMs": 7211,
+              "peakRssBytes": null
+            }
+          ],
+          "graphBytes": 43039253,
+          "residentAfterLoadBytes": 1669709824,
+          "results": [
+            {
+              "caseId": "KR-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Gwanghwamun to Seoul City Hall; dense urban footways and crossings",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 54,
+              "distanceMeters": 1281.844,
+              "durationSeconds": 926.42,
+              "geometryPoints": 43,
+              "geometrySha256": "7f66101e1de81db051c657d538b3ad0bd3e38485565c97dfa363d343c7dbb6d4",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-02",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Han river crossing near Yeouido; requires a bridge with a pedestrian way",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 7,
+              "distanceMeters": 2080.537,
+              "durationSeconds": 1037.02,
+              "geometryPoints": 62,
+              "geometrySha256": "b5469cb0e7db1b2157640c59d36346074df5e3859295b85d672289791334390b",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "KR-WALK-03",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Namsan park slope; stair and park path handling",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 7,
+              "distanceMeters": 1299.499,
+              "durationSeconds": 1190.877,
+              "geometryPoints": 79,
+              "geometrySha256": "9a80441f91ebff1f9a884a2f5d8e19e214cb6f79ed18b570c17f06acc9801edd",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "NEG-WALK-01",
+              "engine": "graphhopper",
+              "negativeControl": true,
+              "context": "Yellow Sea coordinates far outside the extract; a computed route would be a defect",
+              "httpStatus": 400,
+              "engineMessage": "Cannot find point 0: 36.5,125.5",
+              "latencyMs": 4,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "geometryPoints": null,
+              "geometrySha256": null,
+              "outcome": "http_400",
+              "coverageReview": "not_reviewed"
+            },
+            {
+              "caseId": "ROUNDTRIP-01",
+              "engine": "graphhopper",
+              "negativeControl": false,
+              "context": "Target-distance loop from Gwanghwamun, 5 km",
+              "httpStatus": 200,
+              "engineMessage": null,
+              "latencyMs": 16,
+              "distanceMeters": 4428.763,
+              "durationSeconds": 3192.2,
+              "geometryPoints": 157,
+              "geometrySha256": "e7ca1e487fe1b7f94a031d0d8dd7f078b8100ffcbd3c9ada57cc763351ef9b5c",
+              "outcome": "route_computed",
+              "coverageReview": "not_reviewed"
+            }
+          ]
+        }
+      ],
+      "failures": []
+    }
+  ]
+}

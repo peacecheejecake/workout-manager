@@ -1,0 +1,3396 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-21T13:09:26.128Z",
+  "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+  "deploymentId": "ec81f3367889-mub8vb9q",
+  "buildId": "ec81f3367889",
+  "passed": true,
+  "requirements": [
+    {
+      "name": "no external request attempted (route + every redirect hop)",
+      "satisfied": true,
+      "observed": "0 attempts "
+    },
+    {
+      "name": "no CSP violation (checked after the interaction)",
+      "satisfied": true,
+      "observed": "none"
+    },
+    {
+      "name": "harness ready and still ready after the interaction",
+      "satisfied": true,
+      "observed": "ready -> ready"
+    },
+    {
+      "name": "renderer reported no error, including during the interaction",
+      "satisfied": true,
+      "observed": "none"
+    },
+    {
+      "name": "basemap tiles fetched successfully",
+      "satisfied": true,
+      "observed": "9 tiles with HTTP 200"
+    },
+    {
+      "name": "style, sprite and glyph fetched successfully",
+      "satisfied": true,
+      "observed": "style 1, sprite 2, glyph 1"
+    },
+    {
+      "name": "every same-origin request completed with a success status",
+      "satisfied": true,
+      "observed": "none"
+    },
+    {
+      "name": "track rendered and renderer settled",
+      "satisfied": true,
+      "observed": "4 path features, settled=true"
+    },
+    {
+      "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+      "satisfied": true,
+      "observed": "0 attempts "
+    },
+    {
+      "name": "redirect control: the redirected tile is treated as a failure",
+      "satisfied": true,
+      "observed": "6 tile requests did not return 200"
+    },
+    {
+      "name": "redirect control is not vacuous: a permissive transport is detected",
+      "satisfied": true,
+      "observed": "6 attempts https://tiles.example.com/hijacked.pbf"
+    }
+  ],
+  "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+  "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  "track": {
+    "kind": "synthetic",
+    "points": 20000,
+    "breaks": 1,
+    "approximateLengthMeters": 78231,
+    "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+  },
+  "results": {
+    "rendererReadyNotificationMs": 285,
+    "trackAndBasemapRenderedMs": 2281,
+    "renderedPathFeatures": 4,
+    "renderSettled": true,
+    "idleCount": 1,
+    "cspViolations": [],
+    "harnessStatus": "ready",
+    "timedOut": false,
+    "rendererDiagnostics": [],
+    "consoleMessages": [
+      "warning: [.WebGL-0x124004d1400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x124004d1400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x124004d1400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x124004d1400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    ],
+    "statusAtMs": {
+      "trackLoaded": 69.59999990463257,
+      "preparing": 77.29999995231628,
+      "ready": 275.2000000476837
+    },
+    "usedJsHeapBytes": 44700000,
+    "totalJsHeapBytes": 60300000,
+    "usedJsHeapAfterPanBytes": 44700000,
+    "panFrames": {
+      "count": 111,
+      "p50Ms": 100.1,
+      "p95Ms": 133.4,
+      "maxMs": 133.4
+    },
+    "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+    "webglVendor": "Google Inc. (Google)"
+  },
+  "redirectControl": {
+    "externalAttempts": 0,
+    "externalUrls": [],
+    "tileFailures": 6,
+    "permissiveExternalAttempts": 6,
+    "permissiveExternalUrls": ["https://tiles.example.com/hijacked.pbf"],
+    "cspSent": false
+  },
+  "externalRequests": {
+    "attempted": 0,
+    "observedUrls": []
+  },
+  "sameOriginRequests": {
+    "total": 20,
+    "byKind": {
+      "harness": 6,
+      "track": 1,
+      "style": 1,
+      "sprite": 2,
+      "tile": 9,
+      "glyph": 1
+    },
+    "distinctPaths": [
+      "/",
+      "/assets/index-72RGK7sY.js",
+      "/assets/index-DQEACjzk.css",
+      "/assets/maplibre-adapter-D1YQLikP.js",
+      "/track.json",
+      "/map/basemap/ec81f3367889-mub8vb9q/style.json",
+      "/assets/maplibre-gl-worker.mjs",
+      "/map/basemap/ec81f3367889-mub8vb9q/sprite.json",
+      "/map/basemap/ec81f3367889-mub8vb9q/sprite.png",
+      "/assets/maplibre-gl-shared.mjs",
+      "/map/basemap/ec81f3367889-mub8vb9q/tiles/{z}/{x}/{y}.pbf",
+      "/map/basemap/ec81f3367889-mub8vb9q/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+    ]
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "totalMemoryBytes": 34359738368
+  },
+  "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here.",
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:45:39.135Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 1042,
+        "harnessStatus": "ready",
+        "statusAtMs": {
+          "trackLoaded": 71.59999990463257,
+          "unavailable": 629.7999999523163,
+          "ready": 992.2000000476837
+        },
+        "usedJsHeapBytes": 56800000,
+        "totalJsHeapBytes": 68000000,
+        "usedJsHeapAfterPanBytes": 56800000,
+        "panFrames": {
+          "count": 94,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 7,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1
+        }
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:46:33.833Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 932,
+        "harnessStatus": "ready",
+        "rendererDiagnostics": [
+          "Invalid sprite URL \"./sprite\", must be absolute. Modify style specification directly or use TransformStyleFunction to correct the issue dynamically"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 43.299999952316284,
+          "unavailable": 554.0999999046326,
+          "ready": 881.5999999046326
+        },
+        "usedJsHeapBytes": 60300000,
+        "totalJsHeapBytes": 68000000,
+        "usedJsHeapAfterPanBytes": 60300000,
+        "panFrames": {
+          "count": 94,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 7,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1
+        }
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:48:17.112Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 921,
+        "harnessStatus": "ready",
+        "rendererDiagnostics": [
+          "Invalid sprite URL \"/map/basemap/b265b63270bd/sprite\", must be absolute. Modify style specification directly or use TransformStyleFunction to correct the issue dynamically"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 41.89999985694885,
+          "unavailable": 550.5999999046326,
+          "ready": 876
+        },
+        "usedJsHeapBytes": 60300000,
+        "totalJsHeapBytes": 68000000,
+        "usedJsHeapAfterPanBytes": 60300000,
+        "panFrames": {
+          "count": 95,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 7,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1
+        }
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:53:14.879Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 588,
+        "harnessStatus": "unavailable",
+        "timedOut": false,
+        "rendererDiagnostics": [
+          "glyphs: \"glyphs\" url must include a \"{fontstack}\" token",
+          "glyphs: \"glyphs\" url must include a \"{range}\" token"
+        ],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1340044b600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 42.89999985694885,
+          "unavailable": 417.89999985694885
+        },
+        "usedJsHeapBytes": 47400000,
+        "totalJsHeapBytes": 64000000,
+        "usedJsHeapAfterPanBytes": 47400000,
+        "panFrames": {
+          "count": 31,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.7
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 7,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1
+        }
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:53:33.216Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 920,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1040044a400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040044a400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040044a400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040044a400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 42.299999952316284,
+          "ready": 865
+        },
+        "usedJsHeapBytes": 50400000,
+        "totalJsHeapBytes": 68000000,
+        "usedJsHeapAfterPanBytes": 50400000,
+        "panFrames": {
+          "count": 95,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 9,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1,
+          "sprite": 2
+        }
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:54:05.687Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 922,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x13400444a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400444a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400444a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400444a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 41.80000019073486,
+          "ready": 865.2000000476837
+        },
+        "usedJsHeapBytes": 50400000,
+        "totalJsHeapBytes": 68000000,
+        "usedJsHeapAfterPanBytes": 50400000,
+        "panFrames": {
+          "count": 97,
+          "p50Ms": 16.7,
+          "p95Ms": 16.8,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 9,
+        "byKind": {
+          "harness": 5,
+          "track": 1,
+          "style": 1,
+          "sprite": 2
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-qZDK8aw_.js",
+          "/assets/index-DQEACjzk.css",
+          "/track.json",
+          "/assets/maplibre-adapter-BpDN6xbG.js",
+          "/map/basemap/b265b63270bd/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/b265b63270bd/sprite.json",
+          "/map/basemap/b265b63270bd/sprite.png"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:55:08.983Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 939,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1040043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1040043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+          "error: Failed to load resource: net::ERR_CONTENT_DECODING_FAILED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0030 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0031 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0032 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0033 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0034 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0035 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0036 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0037 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0038 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0039 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0020 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+005B locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+005D locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0028 locally instead. TypeError: Failed to fetch",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0029 locally instead. TypeError: Failed to fetch"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 71,
+          "ready": 881.3000001907349
+        },
+        "usedJsHeapBytes": 76600000,
+        "totalJsHeapBytes": 148000000,
+        "usedJsHeapAfterPanBytes": 76600000,
+        "panFrames": {
+          "count": 98,
+          "p50Ms": 116.6,
+          "p95Ms": 133.4,
+          "maxMs": 166.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-Cw0_mmfn.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-BpDN6xbG.js",
+          "/track.json",
+          "/map/basemap/b265b63270bd/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/b265b63270bd/sprite.json",
+          "/map/basemap/b265b63270bd/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/b265b63270bd/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/b265b63270bd/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T10:55:38.300Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 940,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10400446200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400446200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400446200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400446200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 66.90000009536743,
+          "ready": 880.9000000953674
+        },
+        "usedJsHeapBytes": 103000000,
+        "totalJsHeapBytes": 139000000,
+        "usedJsHeapAfterPanBytes": 103000000,
+        "panFrames": {
+          "count": 99,
+          "p50Ms": 116.7,
+          "p95Ms": 133.4,
+          "maxMs": 166.7
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-Cw0_mmfn.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-BpDN6xbG.js",
+          "/track.json",
+          "/map/basemap/b265b63270bd/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/b265b63270bd/sprite.json",
+          "/map/basemap/b265b63270bd/sprite.png",
+          "/map/basemap/b265b63270bd/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/b265b63270bd/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:06:09.506Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 382,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10c00440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 98,
+          "preparing": 120.5,
+          "ready": 367.2000000476837
+        },
+        "usedJsHeapBytes": 42100000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 42100000,
+        "panFrames": {
+          "count": 96,
+          "p50Ms": 116.7,
+          "p95Ms": 133.4,
+          "maxMs": 166.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-Dc_KeWzP.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-D-xlg4-f.js",
+          "/track.json",
+          "/map/basemap/b265b63270bd/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/b265b63270bd/sprite.json",
+          "/map/basemap/b265b63270bd/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/b265b63270bd/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/b265b63270bd/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:16:53.124Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "b265b63270bd",
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "styleAndTrackReadyMs": 301,
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 69.59999990463257,
+          "preparing": 77.79999995231628,
+          "ready": 290.89999985694885
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 96,
+          "p50Ms": 116.7,
+          "p95Ms": 133.4,
+          "maxMs": 150
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-Dc_KeWzP.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-D-xlg4-f.js",
+          "/track.json",
+          "/map/basemap/b265b63270bd/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/b265b63270bd/sprite.json",
+          "/map/basemap/b265b63270bd/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/b265b63270bd/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/b265b63270bd/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "Zero external requests and these timings were observed for this synthetic track in this browser. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:35:20.341Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 300,
+        "trackAndBasemapRenderedMs": 2168,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 66.59999990463257,
+          "preparing": 74.5,
+          "ready": 289.7000000476837
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 105,
+          "p50Ms": 100.1,
+          "p95Ms": 116.7,
+          "maxMs": 133.3
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-w_-v02Tx.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Cwq9JNh3.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:35:40.336Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": false,
+          "observed": "0 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": false,
+          "observed": "/map/basemap/ec81f3367889/tiles/13/6985/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6985/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6985/3173.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3173.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3173.pbf:404"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 283,
+        "trackAndBasemapRenderedMs": 617,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x11c00441a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00441a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00441a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00441a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 67.79999995231628,
+          "preparing": 75.70000004768372,
+          "ready": 273.2000000476837
+        },
+        "usedJsHeapBytes": 15200000,
+        "totalJsHeapBytes": 23100000,
+        "usedJsHeapAfterPanBytes": 15200000,
+        "panFrames": {
+          "count": 95,
+          "p50Ms": 16.7,
+          "p95Ms": 16.8,
+          "maxMs": 33.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 19,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-w_-v02Tx.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Cwq9JNh3.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:35:56.544Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": false,
+          "observed": "0 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": false,
+          "observed": "/map/basemap/ec81f3367889/tiles/13/6985/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6985/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3172.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3171.pbf:404, /map/basemap/ec81f3367889/tiles/13/6985/3173.pbf:404, /map/basemap/ec81f3367889/tiles/13/6986/3173.pbf:404, /map/basemap/ec81f3367889/tiles/13/6984/3173.pbf:404"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 285,
+        "trackAndBasemapRenderedMs": 615,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x12400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.10000014305115,
+          "preparing": 80.10000014305115,
+          "ready": 274.10000014305115
+        },
+        "usedJsHeapBytes": 15200000,
+        "totalJsHeapBytes": 23100000,
+        "usedJsHeapAfterPanBytes": 15200000,
+        "panFrames": {
+          "count": 96,
+          "p50Ms": 16.7,
+          "p95Ms": 16.8,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 19,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-w_-v02Tx.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Cwq9JNh3.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:36:12.008Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2256,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x11c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c00440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.39999985694885,
+          "preparing": 74.59999990463257,
+          "ready": 273.09999990463257
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 105,
+          "p50Ms": 100.1,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-w_-v02Tx.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Cwq9JNh3.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:38:10.645Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 285,
+        "trackAndBasemapRenderedMs": 2268,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10c00442c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10c00442c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.80000019073486,
+          "preparing": 75,
+          "ready": 274.10000014305115
+        },
+        "usedJsHeapBytes": 39600000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 39600000,
+        "panFrames": {
+          "count": 105,
+          "p50Ms": 116.5,
+          "p95Ms": 116.8,
+          "maxMs": 133.3
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-w_-v02Tx.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Cwq9JNh3.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T11:55:51.700Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness reached ready",
+          "satisfied": true,
+          "observed": "ready"
+        },
+        {
+          "name": "renderer reported no style error",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "no same-origin request failed",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 301,
+        "trackAndBasemapRenderedMs": 2279,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10400440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 67.20000004768372,
+          "preparing": 75,
+          "ready": 291
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 98,
+          "p50Ms": 116.6,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-DgP7ouY6.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-Dvz5tW42.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889/sprite.json",
+          "/map/basemap/ec81f3367889/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:14:51.967Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7jb58",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control: no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 283,
+        "trackAndBasemapRenderedMs": 2360,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x12c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c00442000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0030 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0031 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0032 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0033 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0034 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0035 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0036 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0037 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0038 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0039 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0020 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+005B locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+005D locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0028 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0029 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0053 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 68.70000004768372,
+          "preparing": 76.40000009536743,
+          "ready": 273.2000000476837
+        },
+        "usedJsHeapBytes": 47400000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 47400000,
+        "panFrames": {
+          "count": 104,
+          "p50Ms": 100.1,
+          "p95Ms": 116.8,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 19,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-m0eYD1Kw.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DG_vlr55.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7jb58/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.json",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:15:17.229Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7jb58",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control: no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2412,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1340043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1340043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1340043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1340043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0030 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0031 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0032 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0033 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0034 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0035 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0036 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0037 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0038 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0039 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0020 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0028 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0029 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+002D locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+0041 locally instead. Error: SELF_HOSTED_REQUEST_REJECTED",
+          "warning: Unable to load glyph range 0, 0-255. Rendering codepoint U+006C locally instead. Error: SELF_HOSTED_REQUEST_REJECTED"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 61.89999985694885,
+          "preparing": 79.5,
+          "ready": 273.7999999523163
+        },
+        "usedJsHeapBytes": 42100000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 42100000,
+        "panFrames": {
+          "count": 105,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 19,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-m0eYD1Kw.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DG_vlr55.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7jb58/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.json",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:16:18.439Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7jb58",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control: no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 285,
+        "trackAndBasemapRenderedMs": 2353,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x13c00441400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13c00441400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13c00441400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13c00441400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.39999985694885,
+          "preparing": 74.5,
+          "ready": 274.2999999523163
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 106,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 116.7
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7jb58/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.json",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub7jb58/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:17:06.639Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7jb58",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2418,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 61.40000009536743,
+          "preparing": 73.70000004768372,
+          "ready": 274.09999990463257
+        },
+        "usedJsHeapBytes": 47400000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 47400000,
+        "panFrames": {
+          "count": 104,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7jb58/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.json",
+          "/map/basemap/ec81f3367889-mub7jb58/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7jb58/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub7jb58/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:25:59.162Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7xiyf",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2356,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x11c0043f600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c0043f600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c0043f600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11c0043f600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 61.299999952316284,
+          "preparing": 79.59999990463257,
+          "ready": 274
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 106,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub7xiyf/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:28:22.777Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7xiyf",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": false,
+          "observed": "unavailable -> unavailable"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": false,
+          "observed": "SELF_HOSTED_REQUEST_FAILED_404"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": false,
+          "observed": "0 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": false,
+          "observed": "/map/basemap/ec81f3367889-mub7xiyf/tiles/13/6985/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub7xiyf/tiles/13/6985/3171.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub7xiyf/tiles/13/6984/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub7xiyf/tiles/13/6986/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub7xiyf/tiles/13/6984/3171.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub7xiyf/tiles/13/6986/3171.pbf:net::ERR_ABORTED"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 286,
+        "trackAndBasemapRenderedMs": 616,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "unavailable",
+        "timedOut": false,
+        "rendererDiagnostics": ["SELF_HOSTED_REQUEST_FAILED_404"],
+        "consoleMessages": [
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.299999952316284,
+          "preparing": 74.29999995231628,
+          "ready": 274.09999990463257,
+          "unavailable": 476.40000009536743
+        },
+        "usedJsHeapBytes": 15200000,
+        "totalJsHeapBytes": 23100000,
+        "usedJsHeapAfterPanBytes": 15200000,
+        "panFrames": {
+          "count": 31,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.8
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 16,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 6
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:28:49.156Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub7xiyf",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 286,
+        "trackAndBasemapRenderedMs": 2394,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x11400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 62.90000009536743,
+          "preparing": 75.10000014305115,
+          "ready": 276.2999999523163
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 112,
+          "p50Ms": 100,
+          "p95Ms": 116.8,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.json",
+          "/map/basemap/ec81f3367889-mub7xiyf/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub7xiyf/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub7xiyf/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:37:52.645Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub8csxv",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted",
+          "satisfied": true,
+          "observed": "0 attempts"
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 358,
+        "trackAndBasemapRenderedMs": 2516,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 84.70000004768372,
+          "preparing": 111.40000009536743,
+          "ready": 346.90000009536743
+        },
+        "usedJsHeapBytes": 47400000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 47400000,
+        "panFrames": {
+          "count": 106,
+          "p50Ms": 100,
+          "p95Ms": 116.8,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "blockedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-BpV46Hvk.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-CJHgixCq.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub8csxv/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub8csxv/sprite.json",
+          "/map/basemap/ec81f3367889-mub8csxv/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub8csxv/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub8csxv/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:50:00.877Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub8csxv",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted (route + every redirect hop)",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        },
+        {
+          "name": "redirect control is not vacuous: a permissive transport is detected",
+          "satisfied": true,
+          "observed": "6 attempts https://tiles.example.com/hijacked.pbf"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 356,
+        "trackAndBasemapRenderedMs": 2387,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x12c0043fc00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 93.90000009536743,
+          "preparing": 114.90000009536743,
+          "ready": 349.2000000476837
+        },
+        "usedJsHeapBytes": 39600000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 39600000,
+        "panFrames": {
+          "count": 105,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "permissiveExternalAttempts": 6,
+        "permissiveExternalUrls": ["https://tiles.example.com/hijacked.pbf"],
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "observedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-EnxO6iDL.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DRDfxukN.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub8csxv/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub8csxv/sprite.json",
+          "/map/basemap/ec81f3367889-mub8csxv/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub8csxv/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub8csxv/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T12:52:18.016Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub8vb9q",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted (route + every redirect hop)",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        },
+        {
+          "name": "redirect control is not vacuous: a permissive transport is detected",
+          "satisfied": true,
+          "observed": "6 attempts https://tiles.example.com/hijacked.pbf"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2373,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x10400440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x10400440200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 61.5,
+          "preparing": 74.59999990463257,
+          "ready": 273.5
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 111,
+          "p50Ms": 100,
+          "p95Ms": 116.7,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "permissiveExternalAttempts": 6,
+        "permissiveExternalUrls": ["https://tiles.example.com/hijacked.pbf"],
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "observedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-EnxO6iDL.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DRDfxukN.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub8vb9q/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T13:01:22.415Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub8vb9q",
+      "buildId": "ec81f3367889",
+      "passed": false,
+      "requirements": [
+        {
+          "name": "no external request attempted (route + every redirect hop)",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": false,
+          "observed": "unavailable -> unavailable"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": false,
+          "observed": "SELF_HOSTED_REQUEST_FAILED_404"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": false,
+          "observed": "0 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": false,
+          "observed": "style 1, sprite 2, glyph 0"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": false,
+          "observed": "/map/basemap/ec81f3367889-mub8vb9q/tiles/13/6985/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub8vb9q/tiles/13/6985/3171.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub8vb9q/tiles/13/6984/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub8vb9q/tiles/13/6986/3172.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub8vb9q/tiles/13/6984/3171.pbf:net::ERR_ABORTED, /map/basemap/ec81f3367889-mub8vb9q/tiles/13/6986/3171.pbf:net::ERR_ABORTED"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        },
+        {
+          "name": "redirect control is not vacuous: a permissive transport is detected",
+          "satisfied": true,
+          "observed": "6 attempts https://tiles.example.com/hijacked.pbf"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 360,
+        "trackAndBasemapRenderedMs": 691,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "unavailable",
+        "timedOut": false,
+        "rendererDiagnostics": ["SELF_HOSTED_REQUEST_FAILED_404"],
+        "consoleMessages": [
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x1240043ea00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 83.09999990463257,
+          "preparing": 109.09999990463257,
+          "ready": 348.7999999523163,
+          "unavailable": 549.2999999523163
+        },
+        "usedJsHeapBytes": 15200000,
+        "totalJsHeapBytes": 23100000,
+        "usedJsHeapAfterPanBytes": 15200000,
+        "panFrames": {
+          "count": 32,
+          "p50Ms": 16.7,
+          "p95Ms": 16.7,
+          "maxMs": 16.7
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "permissiveExternalAttempts": 6,
+        "permissiveExternalUrls": ["https://tiles.example.com/hijacked.pbf"],
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "observedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 16,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 6
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-EnxO6iDL.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DRDfxukN.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/tiles/{z}/{x}/{y}.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    },
+    {
+      "schemaVersion": 1,
+      "executedAt": "2026-09-21T13:01:51.127Z",
+      "scope": "M2-01d self-hosted basemap browser measurement on a developer machine. Not a production performance budget and not a physical-GPU result.",
+      "deploymentId": "ec81f3367889-mub8vb9q",
+      "buildId": "ec81f3367889",
+      "passed": true,
+      "requirements": [
+        {
+          "name": "no external request attempted (route + every redirect hop)",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "no CSP violation (checked after the interaction)",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "harness ready and still ready after the interaction",
+          "satisfied": true,
+          "observed": "ready -> ready"
+        },
+        {
+          "name": "renderer reported no error, including during the interaction",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "basemap tiles fetched successfully",
+          "satisfied": true,
+          "observed": "9 tiles with HTTP 200"
+        },
+        {
+          "name": "style, sprite and glyph fetched successfully",
+          "satisfied": true,
+          "observed": "style 1, sprite 2, glyph 1"
+        },
+        {
+          "name": "every same-origin request completed with a success status",
+          "satisfied": true,
+          "observed": "none"
+        },
+        {
+          "name": "track rendered and renderer settled",
+          "satisfied": true,
+          "observed": "4 path features, settled=true"
+        },
+        {
+          "name": "redirect control (no CSP): no external request when a tile endpoint answers 302 elsewhere",
+          "satisfied": true,
+          "observed": "0 attempts "
+        },
+        {
+          "name": "redirect control: the redirected tile is treated as a failure",
+          "satisfied": true,
+          "observed": "6 tile requests did not return 200"
+        },
+        {
+          "name": "redirect control is not vacuous: a permissive transport is detected",
+          "satisfied": true,
+          "observed": "6 attempts https://tiles.example.com/hijacked.pbf"
+        }
+      ],
+      "harness": "scripts/geo/harness (geo-kit MapView, real MapLibre 6.9.1)",
+      "contentSecurityPolicy": "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "track": {
+        "kind": "synthetic",
+        "points": 20000,
+        "breaks": 1,
+        "approximateLengthMeters": 78231,
+        "digest": "c4d540a592ce152d34e56aeb24afe9c9f7a2b1afa1c4317ecd52c81f007088bc"
+      },
+      "results": {
+        "rendererReadyNotificationMs": 284,
+        "trackAndBasemapRenderedMs": 2341,
+        "renderedPathFeatures": 4,
+        "renderSettled": true,
+        "idleCount": 1,
+        "cspViolations": [],
+        "harnessStatus": "ready",
+        "timedOut": false,
+        "rendererDiagnostics": [],
+        "consoleMessages": [
+          "warning: [.WebGL-0x13400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+          "warning: [.WebGL-0x13400442600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        ],
+        "statusAtMs": {
+          "trackLoaded": 68.09999990463257,
+          "preparing": 76.29999995231628,
+          "ready": 272.59999990463257
+        },
+        "usedJsHeapBytes": 44700000,
+        "totalJsHeapBytes": 60300000,
+        "usedJsHeapAfterPanBytes": 44700000,
+        "panFrames": {
+          "count": 96,
+          "p50Ms": 116.6,
+          "p95Ms": 116.8,
+          "maxMs": 133.4
+        },
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+        "webglVendor": "Google Inc. (Google)"
+      },
+      "redirectControl": {
+        "externalAttempts": 0,
+        "externalUrls": [],
+        "tileFailures": 6,
+        "permissiveExternalAttempts": 6,
+        "permissiveExternalUrls": ["https://tiles.example.com/hijacked.pbf"],
+        "cspSent": false
+      },
+      "externalRequests": {
+        "attempted": 0,
+        "observedUrls": []
+      },
+      "sameOriginRequests": {
+        "total": 20,
+        "byKind": {
+          "harness": 6,
+          "track": 1,
+          "style": 1,
+          "sprite": 2,
+          "tile": 9,
+          "glyph": 1
+        },
+        "distinctPaths": [
+          "/",
+          "/assets/index-EnxO6iDL.js",
+          "/assets/index-DQEACjzk.css",
+          "/assets/maplibre-adapter-DRDfxukN.js",
+          "/track.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/style.json",
+          "/assets/maplibre-gl-worker.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.json",
+          "/map/basemap/ec81f3367889-mub8vb9q/sprite.png",
+          "/assets/maplibre-gl-shared.mjs",
+          "/map/basemap/ec81f3367889-mub8vb9q/tiles/{z}/{x}/{y}.pbf",
+          "/map/basemap/ec81f3367889-mub8vb9q/glyphs/Noto%20Sans%20Regular/0-255.pbf"
+        ]
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "totalMemoryBytes": 34359738368
+      },
+      "interpretation": "These numbers only count when `passed` is true: every requirement above had to hold, including successful tile/glyph/sprite responses and an idle with the track actually drawn. GPU behaviour is only as strong as the recorded WebGL renderer string, and no product performance budget is approved here."
+    }
+  ]
+}

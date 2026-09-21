@@ -1,0 +1,38 @@
+# GraphHopper open-source pedestrian profile for the M2-01d measurement.
+#
+# This is the self-hosted engine, not the hosted GraphHopper Directions API: the
+# features available here are only the ones this build exposes.
+#
+# datareader.file, graph.location and the listener ports are supplied on the command
+# line by scripts/probe-routing-engines.mjs so nothing outside .geo-build is touched
+# and both connectors bind to loopback only.
+graphhopper:
+  datareader.file: ''
+  graph.location: ''
+  graph.encoded_values: foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, road_class, road_access, surface
+  # Pedestrian import: motorways and trunk roads carry no walking access.
+  import.osm.ignored_highways: motorway,trunk
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+  # No contraction hierarchies: round-trip and other flexible algorithms require the
+  # non-CH path, and this measurement wants that path's real cost.
+  profiles_ch: []
+  profiles_lm: []
+  routing.non_ch.max_waypoint_distance: 1000000
+
+server:
+  application_connectors:
+    - type: http
+      port: 8991
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8992
+      bind_host: 127.0.0.1
+
+logging:
+  level: INFO
+  appenders:
+    - type: console
+      threshold: WARN
