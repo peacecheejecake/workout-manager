@@ -1046,8 +1046,9 @@
       "title": "로컬 파일 viewer",
       "dependsOn": ["M2-01a"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "파일 1개 메모리 preview·geo-kit·gap/no-GPS/오류·자동 upload 없음"
+      "status": "completed",
+      "scope": "파일 1개 메모리 preview·geo-kit·gap/no-GPS/오류·자동 upload 없음",
+      "evidence": "docs/implementation/progress/M2-01b.md"
     },
     {
       "id": "M2-01c",
@@ -1087,8 +1088,9 @@
       "title": "자체 보행 routing",
       "dependsOn": ["M2-01d"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "고정 engine/profile/graph·bounded adapter·한국 독립 coverage·실패 복구"
+      "status": "completed",
+      "scope": "고정 engine/profile/graph·bounded adapter·한국 독립 coverage·실패 복구",
+      "evidence": "docs/implementation/progress/M2-01g.md"
     },
     {
       "id": "M2-01h",

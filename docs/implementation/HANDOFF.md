@@ -17,44 +17,57 @@
 
 ## 완료된 최신 작업
 
-[지도 구현 계획](map-implementation-plan.md)의 첫 두 노드를 병렬로 구현하고 각각 커밋했다.
+[지도 구현 계획](map-implementation-plan.md)의 b·g 두 노드를 병렬로 구현하고 각각 커밋했다.
 
-[M2-01a](progress/M2-01a.md)는 버전 있는 track 계약과 의존성 없는 FIT/GPX parser를 추가한다.
-상세 v1~v3 payload와 hash는 그대로 두고 단방향으로만 연결한다. provenance union으로 로컬
-preview가 Activity ID를 만들 수 없게 했다. 결손은 0으로 채우지 않으며, 빈 좌표는 거절하고
-좌표 없는 sample도 측정 관계를 유지한다. segment는 GPX trkseg와 FIT stop을 **message 순서**로
-분할해 같은 초의 stop도 선을 끊는다. 기기 보고 거리·GPS 재계산 거리·표시 선 길이·routing
-예상은 네 값으로 분리했고, 단순화가 집계를 바꾸지 않음을 시험으로 고정했다. 각 한도에 경계·
-초과 시험이 있다. **예산은 작업량 상한이며 계획 §7의 실제 메모리 상한은 충족하지 않는다** —
-재파싱 시 새 revision 강제와 함께 M2-01b/c 배선으로 이월한다.
+[M2-01b](progress/M2-01b.md)는 로컬 FIT/GPX 파일 1개를 worker에서 메모리 parse해 표시한다.
+서버 actual을 만들지 않고 Activity ID를 지어내지 않으며 자동 upload가 없다. 이를 위해 parser를
+`packages/server/track-ingestion`에서 `packages/track-parsing`으로 **옮겼다** — 경계 lint가
+브라우저의 server 패키지 import를 정당하게 막고 있었고, 규칙을 완화하는 대신 `node:crypto`
+의존을 제거했다. digest는 동기 core에 주입하고 비동기 진입점이 Web Crypto로 공급한다.
 
-[M2-01d](progress/M2-01d.md)는 geo-kit과 자체 basemap 빌드·엔진 실측을 추가한다. 외부 요청
-차단은 hook이 아니라 **transport**에서 해결했다. 모든 자산 URL을 `geokit-self` protocol로
-재작성하고 등록된 loader 한 곳에서만 fetch한다. hook만으로는 부족했는데, 최초 URL만 검사하는
-동안 MapLibre가 redirect를 따라가고, TileJSON의 attribution을 source에 합쳐 HTML로 렌더하기
-때문이다(설치된 sanitizer는 script만 제거하고 img는 남긴다). 게시는 매번 새 deployment
-디렉터리 + 포인터 전환이며 publish·포인터·prune을 하나의 배타 잠금에서 직렬화한다.
+해시는 **실제로 parse된 bytes**를 기술해야 한다. 진입점과 공개 helper 모두 입력의 정확한 범위를
+먼저 복사한다 — `Buffer.slice`가 view를 반환해 `.buffer`를 해시하면 파일이 아니라 8 KiB 풀
+전체가 해시됐고, 호출 직후 buffer를 바꾸면 parse된 것과 다른 bytes의 digest가 나왔다. 두 경우
+모두 fixture가 실제로 pooled·mutated인지 먼저 단언하는 테스트로 고정했다.
 
-엔진은 문서 비교가 아니라 실제 빌드·질의로 **GraphHopper 10.0**을 선정했다. `round_trip`이
-실재하고(목표 5,000 m에 4,428.763 m), 서해 음성 대조군에서 **OSRM은 HTTP 200 `Ok`·0 m를 조용히
-반환**한 반면 GraphHopper는 400으로 거절했다. 포기한 비용(질의 2 ms 대 7–67 ms, graph 43 MB 대
-455 MB)도 기록했다. Valhalla는 빌드하지 않았고 열등하다고 주장하지 않는다.
+parse는 worker 전용이다. 이전의 조용한 메인 스레드 강등은 브라우저 쪽 완화책인 격리·강제 종료를
+그대로 버리는 것이라 제거했다. 다중 기록 파일은 **명시 선택 전까지 아무것도 보여주지 않는다**.
+지도는 error boundary 뒤의 lazy leaf이고, kit의 200개 목록 너머 표본은 페이지 목록으로 도달한다.
 
-검증은 typecheck 30/30, unit 226 files/2,489 tests(5회 연속 통과), 실제 PostgreSQL integration
-42 files/373 tests, build 12 task, backup drill 44 checks, ruff·pytest 229를 통과했다. 측정은
-초기화 통지 285 ms와 **track·basemap 실제 렌더 2,281 ms**를 분리한다. 이전 단일 수치는 빈
-source 기준이었다. 브라우저 probe는 11개 조건과 실패 시 비정상 종료를 갖추고, redirect를
-허용한 permissive 대조군이 외부 시도 6건을 관측하는 것으로 공허하지 않음을 증명한다.
+[M2-01g](progress/M2-01g.md)는 M2-01d가 선정한 GraphHopper 위에 내부 adapter를 올린다. tenant별
+rate·동시성·waypoint·거리·응답점·deadline 상한을 두고 NoRoute·coverage 밖·과도한 snap·timeout·
+과부하를 구분하며 실패해도 미계산 초안을 보존한다.
 
-과거 관측되던 `activity-workbench` 5초 timeout은 이번 5회 연속 실행에서 재현되지 않았다.
-원인은 규명하지 않았다.
+직선을 성공으로 보고하지 않는 규칙은 **형상이 아니라 edge 기준**이다. 첫 시도는 형상으로 판단했고
+실제 graph에 대보니 양방향으로 틀렸다 — 정점이 자기 chord에서 0.742 m 떨어진 552 m cycleway와
+정점 2개로 반환된 실제 주택가 도로를 거절했다. 둘 다 이제 "계산되어야 한다"는 fixture다. 대신
+모든 요청이 `road_class` 상세를 받아 interval이 geometry를 연속으로 덮고, geometry가 snap된
+waypoint에서 시작·종료하며 순서대로 경유하는지 확인한다. **일관되게 거짓말하는 엔진은 통과한다**는
+한계를 adapter·문서·테스트가 같은 말로 명시한다.
+
+graph 신원은 설정이 아니라 **빌드 시점에 결속**한다. import 후 graph·jar·profile을 해시한 manifest를
+쓰고 로드 시 디스크에서 재검증하며, 매 계산마다 `/info`를 읽어 교체를 mismatch로 잡는다.
+이 보장을 세우는 데 peer review가 다섯 라운드 걸렸고, 매번 guard 자체는 건전했으나 **그것이
+신뢰하는 무언가가 도달 가능**했다 — 미검증 생성자 → 무방비 소비 → lint 규칙을 달래려 넣은 getter가
+노출한 생성 키 → 교체 가능한 공개 predicate 순이었다. 지금은 신뢰 경로가 module-private이고
+클래스가 frozen이며, 유효 인스턴스에서 얻을 수 있는 모든 값으로 생성을 시도해 전부 거절되는지
+단언하는 테스트가 있다.
+
+검증은 typecheck 31/31, unit 239 files/2,655 tests(3회 연속), 실제 PostgreSQL integration
+42 files/373 tests, build 13 task, ruff·pytest 229, identity E2E 3건을 통과했다. root가 배포 신원
+우회 5종(평범한 객체, 공개 static 교체, `Object.create(prototype)`, 수확한 심볼, prototype
+pollution)을 직접 시도해 전부 거절되는 것을 확인했다.
+
+한국 보행 coverage는 **`not_reviewed` 그대로**다. 서울 표본 6건이 모두 계산되고 대조군 9건이 사전
+기대와 일치했으나, 독립 검토자·ground truth·서울 밖 표본·시간대 및 단차 모델이 없고 횡단보도
+경유 여부를 판정할 수 없으며 표본이 6개뿐이다.
 
 ## 다음 ready 작업
 
-**M2-01b 로컬 파일 viewer**와 **M2-01g 자체 보행 routing**이 ready다. 두 작업은 서로 독립이다.
-b는 M2-01a의 parser로 파일 1개를 메모리에서 읽어 표시하며 자동 upload를 하지 않는다.
-g는 M2-01d가 선정한 GraphHopper 위에 내부 adapter와 한국 보행 coverage 독립 검토를 올린다.
-coverage는 계속 `not_reviewed`이며 HTTP 200만으로 통과 처리하지 않는다.
+**M2-01c private track 저장**이 다음 직렬 작업이다. M2-01b의 preview를 기존 ingestion에 연결해
+원본·정규화·파생 object와 revision을 묶고 tenant·중복·suppression·삭제/export/복원을 처리한다.
+M2-01a가 이월한 **실제 메모리 상한과 초과 시험**, 그리고 재파싱 시 새 revision 강제도 여기서
+해결한다 — 서버 worker에는 `resourceLimits`와 cgroup이 있어 브라우저와 달리 실제 상한을 걸 수 있다.
 
 ## 남은 외부·실환경 gate
 
