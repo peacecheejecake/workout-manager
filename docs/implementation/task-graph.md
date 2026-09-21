@@ -14,8 +14,8 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 [M2-04d 접근·공유·coach 사용 경계](progress/M2-04d.md)를 완료해 M2-04 자료 생명주기 전체를
 마쳤다. [M2-03 갤러리·media](progress/M2-03.md)도 완료했다. 두 task는 병렬로 구현하고
 독립 peer review를 반복한 뒤 각각 커밋했다. 검색 색인·retrieval cache·인용 저장소의 실제
-삭제 실행기는 아직 없어 derived cleanup manifest가 열린 채 유지되며, 해당 실행기는 M2-05
-범위다. 지도 coverage·Native 실기기·공식 Garmin의 독립 gate는 유지한다.
+삭제 실행기는 당시 없어 derived cleanup manifest가 열려 있었으며 아래 M2-05에서 구현했다.
+지도 coverage·Native 실기기·공식 Garmin의 독립 gate는 유지한다.
 
 [M2-05 RAG·검토 자료·코치](progress/M2-05.md)도 완료했다. M2-04d가 남긴 색인·cache·인용
 실행기를 실제로 구현해 파생 cleanup manifest가 닫히고, retrieval은 검토·동의·공유·삭제
@@ -23,9 +23,10 @@ gate를 조회 시점에 다시 통과한 자료만 반환한다. 검토 pin이 
 색인하므로 본문을 교체하면 재검토 전까지 코치 경로에 들어가지 않는다. 실제 LLM 호출과
 인용의 의미 정확도는 검증하지 않았고 not_executed로 남는다.
 
-남은 노드는 모두 EXT-G 공식 Garmin 권한, M0-06b 지도 coverage·운영 provider,
-M0-06c 실기기 HealthKit이라는 외부 증거에 막혀 있다. mock이나 합성 데이터로는 완료로
-바꾸지 않는다.
+2026-09-21 [지도 실행 계획](map-implementation-plan.md)에 따라 M2-01a~k를 분해했다.
+M2-01a 계약과 M2-01d 자체 인프라 spike는 ready이며 신규 노드는 모두 not_started다.
+총 133개 노드(완료 108, 진행 2, 미착수 23). 부모 M2-01은 M0-06b와 k를 계속 요구한다.
+EXT-G 공식 Garmin·M0-06b 실제 coverage/IME·M0-06c 실기기 gate는 유지한다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속
@@ -442,6 +443,35 @@ flowchart TD
     task24["M1c-03 회복 전략"]
     task25["M1c-04 다영역 통합 승인"]
     task26["M2-01 코스·도로 routing"]
+    mapa["M2-01a Track 계약·정규화"]
+    mapb["M2-01b 로컬 파일 viewer"]
+    mapc["M2-01c private track 저장"]
+    mapd["M2-01d 자체 지도 인프라 spike"]
+    mape["M2-01e 저장 활동 지도·차트"]
+    mapf["M2-01f 기록→Course"]
+    mapg["M2-01g 자체 보행 routing"]
+    maph["M2-01h 경유지 편집"]
+    mapi["M2-01i 목표 거리 후보"]
+    mapj["M2-01j S13/S14 잔여 기능"]
+    mapk["M2-01k 지도·코스 통합 수용"]
+    mapa --> mapb
+    mapb --> mapc
+    mapc --> mape
+    mapd --> mape
+    mape --> mapf
+    mapd --> mapg
+    mapf --> maph
+    mapg --> maph
+    maph --> mapi
+    mapf --> mapj
+    maph --> mapj
+    mapi --> mapk
+    mapj --> mapk
+    task25 --> mapd
+    trackBase["M1-04x FIT 상세"] --> mapa
+    task29b --> mapc
+    selectionBase["M1-04au 상세 선택"] --> mape
+    mapk --> task26
     task27["M2-02 대회·기록"]
     task28["M2-03 갤러리·media"]
     task29["M2-04 자료 생명주기"]
@@ -617,7 +647,18 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1c-02 스트레칭 | M1b-03 | supplementary stretching; 기존 catalog·좌우/시간 |
 | M1c-03 회복 전략 | M1b-03 | recovery; 비운동 원장·계획·재평가 |
 | M1c-04 다영역 통합 승인 | M1c-01, M1c-02, M1c-03 | approval/Planner; schema v4·V023 회귀·중단·실제 링크 |
-| M2-01 코스·도로 routing | M1c-04, M0-06b | courses/geo-kit; provider coverage·실제 route |
+| M2-01 코스·도로 routing | M1c-04, M0-06b, M2-01k | 기록 viewer·자체 운영 routing·coverage·하위 전체 통합 |
+| M2-01a Track 계약·정규화 | M1-04x | 미착수; versioned FIT/GPX parser·sample/segment·GeoJSON·bounded input·구버전 호환 |
+| M2-01b 로컬 파일 viewer | M2-01a | 미착수; 파일 1개 메모리 preview·geo-kit·gap/no-GPS/오류·자동 upload 없음 |
+| M2-01c private track 저장 | M2-01b, M2-04b | 미착수; 기존 Activity ingestion·원본/정규화/파생물·RLS·삭제/export/복원 |
+| M2-01d 자체 지도 인프라 spike | M1c-04 | 미착수; 자체 basemap/style/assets·CSP·license·엔진 후보 실측·운영 ADR |
+| M2-01e 저장 활동 지도·차트 | M2-01c, M2-01d, M1-04au | 미착수; S09 recorded viewer·sample 선택·두 shell·계정 lifetime·반응형 |
+| M2-01f 기록→Course | M2-01e | 미착수; 명시 구간 선택·Course CRUD/불변 version·GPX export·원본 불변 |
+| M2-01g 자체 보행 routing | M2-01d | 미착수; 고정 engine/profile/graph·bounded adapter·한국 독립 coverage·실패 복구 |
+| M2-01h 경유지 편집 | M2-01f, M2-01g | 미착수; S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장 |
+| M2-01i 목표 거리 후보 | M2-01h | 미착수; loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택 |
+| M2-01j S13/S14 잔여 기능 | M2-01f, M2-01h | 미착수; GPX import·즐겨찾기·썸네일·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조 |
+| M2-01k 지도·코스 통합 수용 | M2-01i, M2-01j | 미착수; S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback |
 | M2-02 대회·기록 | M2-01 | competitions; 코스 참조·결과 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |

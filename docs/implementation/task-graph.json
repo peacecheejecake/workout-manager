@@ -1027,10 +1027,98 @@
     {
       "id": "M2-01",
       "title": "코스·도로 routing",
-      "dependsOn": ["M1c-04", "M0-06b"],
+      "dependsOn": ["M1c-04", "M0-06b", "M2-01k"],
       "kind": "task",
       "status": "not_started",
-      "scope": "courses/geo-kit; provider coverage·실제 route"
+      "scope": "courses/geo-kit; 기록 viewer·자체 운영 routing·coverage·M2-01a~k 통합"
+    },
+    {
+      "id": "M2-01a",
+      "title": "Track 계약·정규화",
+      "dependsOn": ["M1-04x"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "versioned FIT/GPX parser·sample/segment·GeoJSON·bounded input·구버전 호환"
+    },
+    {
+      "id": "M2-01b",
+      "title": "로컬 파일 viewer",
+      "dependsOn": ["M2-01a"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "파일 1개 메모리 preview·geo-kit·gap/no-GPS/오류·자동 upload 없음"
+    },
+    {
+      "id": "M2-01c",
+      "title": "private track 저장",
+      "dependsOn": ["M2-01b", "M2-04b"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "기존 Activity ingestion·원본/정규화/파생물·RLS·삭제/export/복원"
+    },
+    {
+      "id": "M2-01d",
+      "title": "자체 지도 인프라 spike",
+      "dependsOn": ["M1c-04"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "자체 basemap/style/assets·CSP·license·엔진 후보 실측·운영 ADR"
+    },
+    {
+      "id": "M2-01e",
+      "title": "저장 활동 지도·차트",
+      "dependsOn": ["M2-01c", "M2-01d", "M1-04au"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S09 recorded viewer·sample 선택·두 shell·계정 lifetime·반응형"
+    },
+    {
+      "id": "M2-01f",
+      "title": "기록→Course",
+      "dependsOn": ["M2-01e"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "명시 구간 선택·Course CRUD/불변 version·GPX export·원본 불변"
+    },
+    {
+      "id": "M2-01g",
+      "title": "자체 보행 routing",
+      "dependsOn": ["M2-01d"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "고정 engine/profile/graph·bounded adapter·한국 독립 coverage·실패 복구"
+    },
+    {
+      "id": "M2-01h",
+      "title": "경유지 편집",
+      "dependsOn": ["M2-01f", "M2-01g"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장"
+    },
+    {
+      "id": "M2-01i",
+      "title": "목표 거리 후보",
+      "dependsOn": ["M2-01h"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택"
+    },
+    {
+      "id": "M2-01j",
+      "title": "S13/S14 잔여 기능",
+      "dependsOn": ["M2-01f", "M2-01h"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "GPX import·즐겨찾기·썸네일·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조"
+    },
+    {
+      "id": "M2-01k",
+      "title": "지도·코스 통합 수용",
+      "dependsOn": ["M2-01i", "M2-01j"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback"
     },
     {
       "id": "M2-02",

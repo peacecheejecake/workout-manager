@@ -1,4 +1,4 @@
-# 다음 세션 handoff · 2026-09-20
+# 다음 세션 handoff · 2026-09-21
 
 최신 상태는 [task-graph.json](task-graph.json), 요구·수용 기준은
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
@@ -49,18 +49,29 @@ lexical만 있고 vector·rerank·한국어 형태소는 없다. 색인은 retri
 
 ## 다음 ready 작업
 
-**내부 구현으로 진행할 수 있는 task는 없다.** 남은 15개 노드는 모두 아래 외부 gate에
-막혀 있다. task-graph의 semantics대로 외부 노드는 실제 외부 증거가 있어야 하며 mock이나
-합성 데이터 준비는 완료가 아니다.
+사용자 요청으로 [지도 뷰어·자체 경로 생성 계획](map-implementation-plan.md)을 추가했다.
+이번 작업 기준 HEAD는 `3577f92a4c1fdc2f044de7c5c45bf537038541af`이며 최신 코드 작업은
+비공식 개인 Garmin FIT fetch다. [해당 기록](progress/garmin-unofficial-fetch.md)은 공식 연동
+gate와 별개다. 위 M2-05 검증 수치는 해당 구현 당시 결과이며 이번 문서 변경에서 재실행하지 않았다.
+
+**M2-01a Track 계약·정규화와 M2-01d 자체 지도 인프라 spike가 ready**다. 신규 11개 노드는
+모두 not_started이며 graph는 133개(완료 108, 진행 2, 미착수 23)다. FIT 상세 v1~3에는 GPS가
+없으므로 기존 producer·runtime 계약·저장·consumer를 함께 확장한다. 실제 viewer와 Course는
+아직 없으며 합성 MapLibre spike를 제품 완료로 세지 않는다.
+
+외부 상용 지도/routing API는 채택하지 않고 renderer와 자체 배경·경로 엔진을 분리한다.
+작은 지역 운영 spike에서 데이터/license·자원 예산·engine을 확정한다. viewer 선행 개발은
+허용하지만 부모 M2-01과 M2-06의 M0-06b 및 아래 gate는 유지한다. 이번 요청은 계획·문서
+변경이며 앱 구현·배포·커밋·push를 실행하지 않았다.
 
 ## 남은 외부·실환경 gate
 
-- M0-06b: 한국 보행 경로 coverage·접근 제한 독립 검토, 운영 provider 선택,
+- M0-06b: 한국 보행 경로 coverage·접근 제한 독립 검토, 자체 운영 engine/data 선택·검증,
   OS 한글 IME/물리 touch/성능·배포 조건.
 - M0-06c: 실제 WKWebView HTML 입력·한국어 IME·foreground/background 수명주기,
   실제 iPhone/서명/HealthKit 검증. 현재 실기기 작업은 보류 상태다.
 - EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
   별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 
-다음 세션은 M2-04c commit이 원격에 있는지 확인하고 M2-04d의 접근 revision과 전환 command 계약부터
-구현한다.
+다음 세션은 working tree와 위 계획을 확인하고 M2-01a/d부터 진행한다. 실제 외부·실환경
+증거가 필요한 gate를 문서 검토나 합성 fixture로 완료 처리하지 않는다.
