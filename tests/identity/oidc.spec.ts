@@ -37,9 +37,19 @@ test('actual OIDC login, consent, logout, and separate account isolation', async
   await expect(page.getByText('현재 동의: 허용하지 않음')).toBeVisible();
   const bob = (await (await page.request.get('/bff/v1/session')).json()) as { athleteId: string };
   expect(bob.athleteId).not.toBe(alice.athleteId);
-  expect(
-    await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length })),
-  ).toEqual({ local: 0, session: 0 });
+  // Browser storage holds exactly one entry: the account scope the private-storage helper
+  // writes so a previous account's opt-in drafts are cleared before a new one mounts. It
+  // names the current athlete and nothing else — no token, no session id, no CSRF token.
+  const storage = await page.evaluate(() => ({
+    local: Object.fromEntries(Object.entries(localStorage)),
+    session: Object.fromEntries(Object.entries(sessionStorage)),
+  }));
+  expect(Object.keys(storage.local)).toEqual(['workout:private:account-scope']);
+  expect(storage.local['workout:private:account-scope']).toBe(bob.athleteId);
+  expect(storage.session).toEqual({});
+  expect(JSON.stringify(storage)).not.toContain(alice.athleteId);
+  expect(JSON.stringify(storage)).not.toContain(alice.csrfToken);
+  expect(JSON.stringify(storage)).not.toContain(alice.sessionId);
 });
 
 test('a second-tab account switch cannot populate the previous session consent cache', async ({

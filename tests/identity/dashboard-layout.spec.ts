@@ -363,7 +363,13 @@ test('account-specific layout storage contains only preferences and cannot inher
     local: Object.fromEntries(Object.entries(localStorage)),
     session: Object.fromEntries(Object.entries(sessionStorage)),
   }));
-  expect(Object.keys(storage.local).sort()).toEqual([restoredSession.key, bobKey].sort());
+  // The account-scope key is written by the private-storage helper on every login; it
+  // names the current athlete so a previous account's drafts are cleared before a new one
+  // mounts. Everything else in local storage is still only these two layout preferences.
+  expect(Object.keys(storage.local).sort()).toEqual(
+    [restoredSession.key, bobKey, 'workout:private:account-scope'].sort(),
+  );
+  expect(storage.local['workout:private:account-scope']).toBe(restoredSession.athleteId);
   expect(storage.session).toEqual({});
   expect(JSON.stringify(storage)).not.toContain(fixture.note);
   expect(JSON.stringify(storage)).not.toContain(restoredSession.headers['x-csrf-token']);

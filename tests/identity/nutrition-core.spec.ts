@@ -6,7 +6,7 @@ import {
   nutritionPlanDraftSchema,
   nutritionPlanVersionSchema,
 } from '../../packages/contracts/src/nutrition-core';
-import { accountExportSchema } from '../../packages/contracts/src/operations';
+import { parseCurrentAccountExport } from './account-export';
 import { manualActivityResultSchema } from '../../packages/contracts/src/activity';
 
 type Headers = {
@@ -204,9 +204,7 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
   expect(deletedIntakeEntrySchema.parse(await deleted.json()).status).toBe('deleted');
   const exported = await page.request.post('/bff/v1/operations/export', { headers });
   expect(exported.status()).toBe(200);
-  const artifact = accountExportSchema.parse(await exported.json());
-  expect(artifact.schemaVersion).toBe(12);
-  if (artifact.schemaVersion !== 12) throw new Error('Expected nutrition export');
+  const artifact = parseCurrentAccountExport(await exported.json());
   expect(artifact.data.intakeEntries).toContainEqual(
     expect.objectContaining({ id, status: 'deleted' }),
   );

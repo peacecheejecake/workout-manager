@@ -5,7 +5,7 @@ import {
   checkInCommandResultSchema,
   checkInListSchema,
 } from '../../packages/contracts/src/check-ins';
-import { accountExportSchema } from '../../packages/contracts/src/operations';
+import { parseCurrentAccountExport } from './account-export';
 
 test('OIDC scoped check-in API persists null and zero, corrects revisions, exports and removes health payload', async ({
   page,
@@ -66,8 +66,7 @@ test('OIDC scoped check-in API persists null and zero, corrects revisions, expor
   expect(stale.status()).toBe(409);
   const exported = await page.request.post('/bff/v1/operations/export', { headers });
   expect(exported.status()).toBe(200);
-  const artifact = accountExportSchema.parse(await exported.json());
-  expect(artifact.schemaVersion).toBe(12);
+  const artifact = parseCurrentAccountExport(await exported.json());
   expect(JSON.stringify(artifact.data.checkIns)).toContain(marker);
   expect(
     artifact.data.checkInRevisions.filter((row) => row.check_in_id === original.id),
