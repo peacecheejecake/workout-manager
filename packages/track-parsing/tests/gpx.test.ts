@@ -22,6 +22,57 @@ const code = (run: () => unknown): string => {
 };
 
 describe('GPX track parsing', () => {
+  /**
+   * `creator` is a fact about the file and decides nothing in it, so a value this parser
+   * cannot make safe is absent rather than a reason to refuse the upload.
+   *
+   * This matters beyond the course import that reads it: the same parser is the activity
+   * track upload path, where nothing reads `creator` at all. Treating it strictly made
+   * `creator="Foo &gt; Bar"` (the attribute is entity-decoded, so the value really is
+   * `Foo > Bar`) and any creator over the metadata length refuse the whole file.
+   */
+  describe('the creator attribute', () => {
+    const withCreator = (creator: string) =>
+      `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" xmlns="${GPX11}" creator="${creator}">` +
+      `<trk><trkseg>${point(127, 37)}${point(127.001, 37.001)}</trkseg></trk></gpx>`;
+
+    it('keeps a plain creator', () => {
+      expect(parse(withCreator('Garmin Connect')).creator).toBe('Garmin Connect');
+    });
+
+    it('is absent, not a refusal, when the value carries angle brackets', () => {
+      // The XML attribute is entity-decoded before this is reached.
+      const file = parse(withCreator('Foo &gt; Bar'));
+      expect(file.creator).toBeNull();
+      expect(file.recorded).toHaveLength(1);
+    });
+
+    it('is absent, not a refusal, when the value is longer than metadata text may be', () => {
+      const file = parse(withCreator('a'.repeat(400)));
+      expect(file.creator).toBeNull();
+      expect(file.recorded).toHaveLength(1);
+    });
+
+    it('is absent when the file names no creator at all', () => {
+      expect(
+        parse(gpx(`<trk><trkseg>${point(127, 37)}${point(127.001, 37.001)}</trkseg></trk>`))
+          .creator,
+      ).toBeNull();
+    });
+
+    it('still refuses a filename that cannot be made safe', () => {
+      // The strict rule is unchanged for the fields the product uses as text.
+      expect(
+        code(() =>
+          parse(
+            gpx(`<trk><trkseg>${point(127, 37)}${point(127.001, 37.001)}</trkseg></trk>`),
+            'a'.repeat(400),
+          ),
+        ),
+      ).toBe('TRACK_TEXT_UNSAFE');
+    });
+  });
+
   it('blocks DOCTYPE and external entity declarations (XXE)', () => {
     const xxe =
       '<?xml version="1.0"?><!DOCTYPE gpx [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>' +

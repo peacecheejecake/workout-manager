@@ -1,7 +1,11 @@
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 
-import { trackLimits } from '@workout/contracts/tracks';
+import {
+  parsedTrackFileSchema,
+  trackLimits,
+  type ParsedTrackFile,
+} from '@workout/contracts/tracks';
 
 import {
   storedTrackArtifactsSchema,
@@ -73,6 +77,20 @@ export type TrackParseOutcome =
   | { readonly ok: true; readonly artifacts: StoredTrackArtifacts }
   | { readonly ok: false; readonly code: TrackParseFailureCode };
 
+/**
+ * The whole parsed file, for a caller that needs more than one recorded track out of it.
+ *
+ * A course import (M2-01j) is such a caller: it has to see the file's routes and its
+ * waypoints as well as its recordings, because a GPX `trk`, a `rte` and a `wpt` are three
+ * different things and it must not merge them. The bytes still go through this host, so an
+ * import is parsed under the same heap ceiling, the same deadline and the same
+ * cancellation as a stored recording, and the reply is validated against the contract
+ * before the parent looks at it.
+ */
+export type TrackFileParseOutcome =
+  | { readonly ok: true; readonly file: ParsedTrackFile }
+  | { readonly ok: false; readonly code: TrackParseFailureCode };
+
 export interface BoundedTrackParserOptions {
   /** Hard V8 old-generation ceiling for one parse worker. */
   readonly maxOldGenerationSizeMb?: number;
@@ -96,6 +114,11 @@ export interface BoundedTrackParser {
     selection: StoredTrackSelection,
     options?: { readonly filename?: string | null; readonly signal?: AbortSignal },
   ): Promise<TrackParseOutcome>;
+  /** The whole file, under the same bounds. Used by course import (M2-01j). */
+  parseFile(
+    bytes: Uint8Array,
+    options?: { readonly filename?: string | null; readonly signal?: AbortSignal },
+  ): Promise<TrackFileParseOutcome>;
   /** Workers currently running. */
   active(): number;
 }
@@ -163,33 +186,47 @@ export function createBoundedTrackParser(
     throw new TrackParseRuntimeConflictError();
   let active = 0;
 
-  return {
-    active: () => active,
-    async parse(bytes, rawSelection, parseOptions = {}) {
-      const selection = storedTrackSelectionSchema.parse(rawSelection);
-      if (active >= concurrency) return { ok: false, code: 'TRACK_PARSER_BUSY' };
-      if (bytes.byteLength > trackLimits.fileBytes)
-        return { ok: false, code: 'TRACK_FILE_TOO_LARGE' };
-      if (parseOptions.signal?.aborted) return { ok: false, code: 'TRACK_PARSE_CANCELLED' };
-      active += 1;
-      // Copy the exact range once and transfer it. The copy is what both the digest and the
-      // parse see; the transfer hands the only reference to the worker, so the parent is
-      // not holding a second copy of the file while the parse runs.
-      const payload = new Uint8Array(bytes).buffer;
-      const worker = new Worker(workerEntry, {
-        execArgv,
-        resourceLimits: { maxOldGenerationSizeMb: heapMegabytes },
-        // A parse worker needs no environment, no stdio and no inherited handles.
-        env: {},
-        stdout: true,
-        stderr: true,
-      });
-      let settled = false;
-      let timer: NodeJS.Timeout | undefined;
-      let onAbort: (() => void) | undefined;
-      try {
-        return await new Promise<TrackParseOutcome>((resolve) => {
-          const finish = (outcome: TrackParseOutcome) => {
+  /**
+   * One bounded parse in one worker.
+   *
+   * `request` is what the worker is handed once its heap ceiling has been verified, and
+   * `accept` turns a successful reply into the caller's outcome — or refuses it, because a
+   * worker reply is untrusted like any other boundary. Both callers below share every
+   * bound: concurrency, file size, cancellation, the deadline and the terminate in
+   * `finally` that ends the worker on success, failure, timeout and cancellation alike.
+   */
+  async function run<T>(
+    bytes: Uint8Array,
+    parseOptions: { readonly filename?: string | null; readonly signal?: AbortSignal },
+    request: (payload: ArrayBuffer, filename: string | null) => Record<string, unknown>,
+    accept: (reply: unknown) => T | null,
+  ): Promise<{ ok: true; value: T } | { ok: false; code: TrackParseFailureCode }> {
+    if (active >= concurrency) return { ok: false, code: 'TRACK_PARSER_BUSY' };
+    if (bytes.byteLength > trackLimits.fileBytes)
+      return { ok: false, code: 'TRACK_FILE_TOO_LARGE' };
+    if (parseOptions.signal?.aborted) return { ok: false, code: 'TRACK_PARSE_CANCELLED' };
+    active += 1;
+    // Copy the exact range once and transfer it. The copy is what both the digest and the
+    // parse see; the transfer hands the only reference to the worker, so the parent is
+    // not holding a second copy of the file while the parse runs.
+    const payload = new Uint8Array(bytes).buffer;
+    const worker = new Worker(workerEntry, {
+      execArgv,
+      resourceLimits: { maxOldGenerationSizeMb: heapMegabytes },
+      // A parse worker needs no environment, no stdio and no inherited handles.
+      env: {},
+      stdout: true,
+      stderr: true,
+    });
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      return await new Promise<{ ok: true; value: T } | { ok: false; code: TrackParseFailureCode }>(
+        (resolve) => {
+          const finish = (
+            outcome: { ok: true; value: T } | { ok: false; code: TrackParseFailureCode },
+          ) => {
             if (settled) return;
             settled = true;
             resolve(outcome);
@@ -205,7 +242,6 @@ export function createBoundedTrackParser(
               appliedHeapLimitMb?: unknown;
               ok?: unknown;
               code?: unknown;
-              artifacts?: unknown;
             } | null;
             if (reply?.ready === true) {
               // The ceiling is checked before the worker is handed any bytes, so a runtime
@@ -219,19 +255,16 @@ export function createBoundedTrackParser(
                 finish({ ok: false, code: 'TRACK_PARSE_CEILING_NOT_APPLIED' });
                 return;
               }
-              worker.postMessage(
-                { bytes: payload, filename: parseOptions.filename ?? null, selection },
-                [payload],
-              );
+              worker.postMessage(request(payload, parseOptions.filename ?? null), [payload]);
               return;
             }
             if (reply && reply.ok === true) {
               // The worker is not trusted either: its reply must satisfy the contract.
-              const parsed = storedTrackArtifactsSchema.safeParse(reply.artifacts);
+              const value = accept(reply);
               finish(
-                parsed.success
-                  ? { ok: true, artifacts: parsed.data }
-                  : { ok: false, code: 'TRACK_PARSE_REPLY_INVALID' },
+                value === null
+                  ? { ok: false, code: 'TRACK_PARSE_REPLY_INVALID' }
+                  : { ok: true, value },
               );
               return;
             }
@@ -249,15 +282,46 @@ export function createBoundedTrackParser(
           worker.on('exit', () => finish({ ok: false, code: 'TRACK_PARSE_WORKER_FAILED' }));
           // Nothing is sent yet: the worker speaks first, with the heap limit it was
           // actually given.
-        });
-      } finally {
-        if (timer) clearTimeout(timer);
-        if (onAbort) parseOptions.signal?.removeEventListener('abort', onAbort);
-        // Every path terminates the worker: success, parser failure, memory ceiling,
-        // deadline and caller cancellation. When the worker is gone, so is its heap.
-        await worker.terminate().catch(() => undefined);
-        active -= 1;
-      }
+        },
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onAbort) parseOptions.signal?.removeEventListener('abort', onAbort);
+      // Every path terminates the worker: success, parser failure, memory ceiling,
+      // deadline and caller cancellation. When the worker is gone, so is its heap.
+      await worker.terminate().catch(() => undefined);
+      active -= 1;
+    }
+  }
+
+  return {
+    active: () => active,
+    async parse(bytes, rawSelection, parseOptions = {}) {
+      const selection = storedTrackSelectionSchema.parse(rawSelection);
+      const outcome = await run(
+        bytes,
+        parseOptions,
+        (payload, filename) => ({ bytes: payload, filename, selection }),
+        (reply) => {
+          const parsed = storedTrackArtifactsSchema.safeParse(
+            (reply as { artifacts?: unknown }).artifacts,
+          );
+          return parsed.success ? parsed.data : null;
+        },
+      );
+      return outcome.ok ? { ok: true, artifacts: outcome.value } : outcome;
+    },
+    async parseFile(bytes, parseOptions = {}) {
+      const outcome = await run(
+        bytes,
+        parseOptions,
+        (payload, filename) => ({ bytes: payload, filename, purpose: 'whole-file' }),
+        (reply) => {
+          const parsed = parsedTrackFileSchema.safeParse((reply as { file?: unknown }).file);
+          return parsed.success ? parsed.data : null;
+        },
+      );
+      return outcome.ok ? { ok: true, file: outcome.value } : outcome;
     },
   };
 }

@@ -127,6 +127,7 @@ export function parseGpx(
   const waypoints: RawRoutePoint[] = [];
   const stack: ElementScope[] = [];
   let rootSeen = false;
+  let creator: string | null = null;
   let track: { name: string | null; samples: RawSample[] } | null = null;
   let route: { name: string | null; points: RawRoutePoint[] } | null = null;
   let point: PointDraft | null = null;
@@ -159,6 +160,7 @@ export function parseGpx(
         if (name !== 'gpx' || !GPX_NAMESPACES.has(namespace))
           throw new TrackIngestionError('TRACK_GPX_INVALID_ROOT');
         rootSeen = true;
+        creator = event.attributes.get('creator') ?? null;
       } else if (name === 'gpx' && GPX_NAMESPACES.has(namespace))
         // A nested `gpx` would make an inner element look like a child of the root and
         // could silently replace the track being built. There is no valid nested root.
@@ -336,5 +338,5 @@ export function parseGpx(
     budget.check();
   }
   if (!rootSeen) throw new TrackIngestionError('TRACK_GPX_INVALID_ROOT');
-  return { tracks, routes, waypoints };
+  return { creator, tracks, routes, waypoints };
 }

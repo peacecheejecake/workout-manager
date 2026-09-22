@@ -179,6 +179,26 @@ const accountExportV19Schema = accountExportV18Schema.extend({
     courseRevisions: rows,
   }),
 });
+/**
+ * v20 adds the owner's own course preferences and protected areas (M2-01j).
+ *
+ * The protected-area **centre is included**, and deliberately so. The "no coordinates"
+ * posture elsewhere in this export is about derived records not carrying coordinates they
+ * do not need — a generation condition, a revision's provenance. A protected area is not
+ * derived: it is a datum the owner typed in, and an export that omits it cannot restore
+ * what they had, which is what an export is for. The export is already the sensitive
+ * artifact of this product and is handled as one; making it lossy would not make it safer.
+ *
+ * Preferences are the two allowlisted fields and nothing else, so an export cannot become
+ * a back door for state the product refused to store in the first place.
+ */
+const accountExportV20Schema = accountExportV19Schema.extend({
+  schemaVersion: z.literal(20),
+  data: accountExportV19Schema.shape.data.extend({
+    coursePreferences: rows,
+    coursePrivacyZones: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -199,6 +219,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV17Schema,
   accountExportV18Schema,
   accountExportV19Schema,
+  accountExportV20Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

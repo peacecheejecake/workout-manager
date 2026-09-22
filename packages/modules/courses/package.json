@@ -21,6 +21,9 @@
     "./course-draft": "./src/course-draft.ts",
     "./course-draft-context": "./src/course-draft-context.tsx",
     "./course-editor": "./src/course-editor.tsx",
+    "./course-extras": "./src/course-extras.tsx",
+    "./course-thumbnail": "./src/course-thumbnail.tsx",
+    "./course-extras-api": "./src/course-extras-api.ts",
     "./course-map-leaf": "./src/course-map-leaf.tsx"
   }
 }

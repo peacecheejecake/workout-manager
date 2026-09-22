@@ -9,6 +9,7 @@ import {
   courseListSchema,
   courseNameSchema,
   coursePositionSchema,
+  coursePrivacyZoneSchema,
   courseReadResultSchema,
   courseCandidateBoundsSchema,
   courseCandidateEvaluationSchema,
@@ -23,6 +24,7 @@ import {
   type CourseGeneration,
   type CourseLineage,
   type CoursePosition,
+  type CoursePrivacyZone,
   type CourseCandidateEvaluation,
   type CourseRouteCandidate,
   type CourseRouteCandidateSet,
@@ -71,6 +73,7 @@ export class CourseStateError extends Error {
       | 'ROUTE_PROPOSAL_EXPIRED'
       | 'ROUTE_PROPOSAL_STALE_DRAFT'
       | 'ROUTE_PROPOSAL_CONTENT_MISMATCH'
+      | 'COURSE_ZONE_ACKNOWLEDGEMENT_STALE'
       | 'ROUTE_CANDIDATE_SET_MISMATCH'
       | 'ROUTE_CANDIDATE_ALREADY_CHOSEN'
       | 'ROUTE_PROPOSAL_IS_CANDIDATE',
@@ -138,6 +141,24 @@ export interface CourseUpdateOptions {
     readonly candidateSetId: string;
     readonly draftRevision: number;
     readonly geometrySha256: string;
+  };
+  /**
+   * Re-check the owner's protected areas **inside the writing transaction** (M2-01j).
+   *
+   * A privacy trim is computed against the areas the screen showed, and the API checks
+   * that set before it derives anything. That check is a different transaction from the
+   * write, so an area added in between would leave its coordinates inside a line that was
+   * reported as a successful trim. The guard is repeated here, under the same tenant lock
+   * every zone write takes, so nothing can be added or removed between the check and the
+   * revision it guards.
+   *
+   * `digestOf` is injected rather than imported: what may leave the server is a domain
+   * rule (ids and radii only, never a centre), and this repository must not be the place
+   * that decides it.
+   */
+  readonly requireZoneSet?: {
+    readonly expectedDigest: string;
+    readonly digestOf: (zones: readonly CoursePrivacyZone[]) => string;
   };
 }
 
@@ -508,6 +529,29 @@ function proposalStateError(error: unknown): never {
   throw error;
 }
 
+/**
+ * The owner's protected areas, ordered, for the in-transaction trim guard. The rows are
+ * returned as the contract describes them; what may be digested from them is decided by
+ * the domain, not here.
+ */
+async function readPrivacyZones(tx: Transaction): Promise<CoursePrivacyZone[]> {
+  const rows = await tx.query(
+    `SELECT zone_id,name,center_longitude,center_latitude,radius_meters,created_at,updated_at
+     FROM course_privacy_zone WHERE athlete_id=$1 ORDER BY created_at,zone_id LIMIT $2`,
+    [tx.athleteId, courseLimits.privacyZonesPerTenant],
+  );
+  return rows.rows.map((row) =>
+    coursePrivacyZoneSchema.parse({
+      zoneId: row['zone_id'],
+      name: row['name'],
+      center: [Number(row['center_longitude']), Number(row['center_latitude'])],
+      radiusMeters: Number(row['radius_meters']),
+      createdAt: instant(row['created_at']),
+      updatedAt: instant(row['updated_at']),
+    }),
+  );
+}
+
 async function tenantLock(tx: Transaction) {
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
 }
@@ -613,7 +657,9 @@ function validateContent(content: PreparedCourseContent): PreparedCourseContent 
           trackRevision: z.number().int().positive(),
         }),
       )
-      .min(1)
+      // Empty only for a course whose coordinates never came from one of our recordings:
+      // an imported file (M2-01j). Everything derived from a recording still names it, so
+      // reclamation on activity deletion is unchanged.
       .max(courseLimits.waypoints)
       .parse(content.lineage),
     distanceMeters: z.number().finite().nonnegative().parse(content.distanceMeters),
@@ -1039,6 +1085,18 @@ export function createCourseRepository(database: Database): CourseRepository {
         if (state.status !== 'available') throw new CourseStateError('COURSE_UNAVAILABLE');
         if (state.head_revision !== expectedRevision)
           throw new CourseStateError('COURSE_REVISION_CONFLICT');
+        // The protected areas, re-read inside this transaction. The API checked them
+        // before it derived the trimmed line, but that was another transaction: an area
+        // added in between would otherwise leave its coordinates inside a line reported as
+        // a successful trim. Every write to `course_privacy_zone` takes the same tenant
+        // advisory lock this transaction already holds, so the set cannot move between
+        // this check and the revision it guards.
+        const zoneGuard = options?.requireZoneSet;
+        if (
+          zoneGuard &&
+          zoneGuard.digestOf(await readPrivacyZones(tx)) !== zoneGuard.expectedDigest
+        )
+          throw new CourseStateError('COURSE_ZONE_ACKNOWLEDGEMENT_STALE');
         const headRow = await tx.query(
           'SELECT content_digest FROM course_revision WHERE athlete_id=$1 AND course_id=$2 AND course_revision=$3',
           [tenantId, courseId, expectedRevision],

@@ -40,6 +40,36 @@ function generationMaterial(generation: CourseGeneration): unknown {
       generation.simplificationVersion,
       generation.toleranceMeters,
     ];
+  // An imported revision is identified by the file it came from and the reader that read
+  // it: the same bytes read by the same parser produce the same course. The filename is
+  // left out on purpose — renaming a file on disk does not make a different course.
+  if (generation.kind === 'imported-file')
+    return [
+      generation.kind,
+      generation.format,
+      generation.sourceKind,
+      generation.itemIndex,
+      generation.parserId,
+      generation.parserVersion,
+      generation.fileSha256,
+      generation.fileByteLength,
+      generation.vertexCount,
+      generation.importedWaypointCount,
+    ];
+  // A trimmed revision is identified by what it trimmed and by the policy and area set it
+  // was trimmed against. No centre and no coordinate, here as everywhere.
+  if (generation.kind === 'privacy-trimmed')
+    return [
+      generation.kind,
+      generation.sourceRevision,
+      generation.sourceGenerationKind,
+      generation.sourceGraphBuildId,
+      generation.policyVersion,
+      generation.zoneSetDigest,
+      generation.appliedZoneCount,
+      generation.removedVertexCount,
+      generation.vertexCount,
+    ];
   // A generated revision is identified by what answered it AND by the search that produced
   // it. Two candidates of one search are different courses even on the same graph, so both
   // seeds and the attempt index are material; running the same search again and picking the

@@ -5,7 +5,12 @@ import {
   routingLimits,
   snappedWaypointSchema,
 } from './routing.js';
-import { trackSampleIdSchema, trackTextSchema } from './tracks.js';
+import {
+  trackLimits,
+  trackParserIdSchema,
+  trackSampleIdSchema,
+  trackTextSchema,
+} from './tracks.js';
 import { z } from 'zod';
 
 /**
@@ -43,6 +48,19 @@ export const courseLimits = {
   routeProposalTtlSeconds: 30 * 60,
   /** Draft edits one editing session may number. A draft revision never goes backwards. */
   maxDraftRevision: 1_000_000,
+  /** Bytes of one imported file. Smaller than the parser's own file bound on purpose. */
+  importFileBytes: 4 * 1024 * 1024,
+  /** Protected areas one owner may keep. */
+  privacyZonesPerTenant: 20,
+  /** Radius of one protected area. A pin-point area protects nothing. */
+  privacyZoneMinRadiusMeters: 50,
+  privacyZoneMaxRadiusMeters: 5_000,
+  /** Characters of one place-search query. */
+  placeQueryLength: 80,
+  /** Places one search may answer with. */
+  placeResults: 20,
+  /** Vertices one elevation profile reports on. A long course is sampled, never summarised. */
+  elevationProfilePoints: 200,
 } as const;
 
 /**
@@ -300,6 +318,75 @@ export const courseGenerationSchema = z.discriminatedUnion('kind', [
     generatorVersion: z.literal('target-distance-loop-v1'),
     evaluation: courseCandidateEvaluationSchema,
   }),
+  /**
+   * `imported-file` (M2-01j) means the owner handed us a GPX file and the **server** parsed
+   * it under M2-01a's bounds. The line is a planned line whatever the file called it: a
+   * GPX `trk` is a recording someone made, and importing it produces a course, never an
+   * Activity and never a recorded actual — `sourceKind` keeps saying which of the two the
+   * bytes came from so that distinction survives in the ledger.
+   *
+   * The conditions name the file (hash, length, filename) and the parser that read it, so
+   * a stored course says which version of which reader produced its coordinates. They
+   * carry **no coordinates**, like every other generation.
+   */
+  z.strictObject({
+    kind: z.literal('imported-file'),
+    format: z.literal('gpx'),
+    /** Which GPX element the coordinates came from. A `trk` is not promoted to an actual. */
+    sourceKind: z.enum(['gpx-trk', 'gpx-rte']),
+    /** Which track or route of the file, when it held more than one. */
+    itemIndex: z
+      .number()
+      .int()
+      .min(0)
+      .max(trackLimits.tracksPerFile - 1),
+    parserId: trackParserIdSchema,
+    parserVersion: z.literal(1),
+    fileSha256: sha256Schema,
+    fileByteLength: z.number().int().min(1).max(courseLimits.importFileBytes),
+    originalFilename: trackTextSchema.nullable(),
+    /** `creator` as the file declared it. Untrusted text, kept as a fact about the file. */
+    fileCreator: trackTextSchema.nullable(),
+    vertexCount: z.number().int().min(2).max(courseLimits.vertices),
+    /** How many of the file's own `wpt` elements became course waypoints. */
+    importedWaypointCount: z.number().int().min(0).max(courseLimits.waypoints),
+    /** How many were left alone instead of being promoted into the course. */
+    ignoredFileWaypointCount: z.number().int().min(0).max(trackLimits.samples),
+  }),
+  /**
+   * `privacy-trimmed` (M2-01j) means this revision is a **derived** one: the vertices that
+   * fell inside the owner's protected areas were removed from the line of an earlier
+   * revision. It never overwrites that revision — the original stays in the ledger and this
+   * one is appended after it.
+   *
+   * It names the policy version and the identity of the protected-area set it was computed
+   * against, never a centre, a radius or a coordinate: the whole point of the trim is that
+   * those coordinates stop travelling, and the account export takes these conditions
+   * verbatim. `sourceGraphBuildId` is carried over from the revision that was trimmed so a
+   * trimmed course still says which graph computed the line underneath it.
+   */
+  z.strictObject({
+    kind: z.literal('privacy-trimmed'),
+    sourceRevision: revisionSchema.min(1),
+    sourceGenerationKind: z.enum([
+      'recorded-segment',
+      'routed-waypoints',
+      'target-distance-loop',
+      'imported-file',
+      // Trimming an already trimmed course is allowed: the owner may have added an area.
+      'privacy-trimmed',
+    ]),
+    sourceGraphBuildId: routingGraphIdentitySchema.shape.graphBuildId.nullable(),
+    policyVersion: z.literal(1),
+    /** Identity of the protected-area set applied. Ids and radii only, never a centre. */
+    zoneSetDigest: sha256Schema,
+    appliedZoneCount: z.number().int().min(1).max(courseLimits.privacyZonesPerTenant),
+    removedVertexCount: z.number().int().min(1).max(courseLimits.vertices),
+    removedLeadingVertexCount: z.number().int().min(0).max(courseLimits.vertices),
+    removedTrailingVertexCount: z.number().int().min(0).max(courseLimits.vertices),
+    removedWaypointCount: z.number().int().min(0).max(courseLimits.waypoints),
+    vertexCount: z.number().int().min(2).max(courseLimits.vertices),
+  }),
 ]);
 export type CourseGeneration = z.infer<typeof courseGenerationSchema>;
 
@@ -311,7 +398,13 @@ export type CourseGeneration = z.infer<typeof courseGenerationSchema>;
 export function courseGenerationGraphBuildId(generation: CourseGeneration): string | null {
   switch (generation.kind) {
     case 'recorded-segment':
+    case 'imported-file':
       return null;
+    // A trimmed revision was not computed by the engine, but the line under it may have
+    // been: it carries that graph forward so trimming a course does not quietly turn
+    // "computed on graph X" into "never computed".
+    case 'privacy-trimmed':
+      return generation.sourceGraphBuildId;
     default:
       return generation.computation.graph.graphBuildId;
   }
@@ -330,6 +423,10 @@ export const courseEditSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('rerouted') }),
   /** The owner picked one generated target-distance candidate and saved it (M2-01i). */
   z.strictObject({ kind: z.literal('generated') }),
+  /** The course was created from a file the owner handed us (M2-01j). */
+  z.strictObject({ kind: z.literal('imported') }),
+  /** The owner made a derived revision with their protected areas removed (M2-01j). */
+  z.strictObject({ kind: z.literal('privacy-trimmed') }),
   z.strictObject({
     kind: z.literal('copied'),
     copiedFromCourseId: uuid,
@@ -533,6 +630,19 @@ export const courseUpdateRequestSchema = z.strictObject({
         previous: routingGraphIdentitySchema.shape.graphBuildId.nullable(),
         next: routingGraphIdentitySchema.shape.graphBuildId,
       }),
+    }),
+    /**
+     * Append a derived revision with the owner's protected areas removed (M2-01j).
+     *
+     * There is no geometry here either: the server trims the line it already holds against
+     * the protected areas it already holds. `acknowledgedZoneSetDigest` is the identity of
+     * the area set the screen showed, so a trim computed against areas that have since
+     * changed is refused instead of quietly using a different set. The revision this trims
+     * is not rewritten — it stays in the ledger and this one is appended after it.
+     */
+    z.strictObject({
+      kind: z.literal('privacy-trim'),
+      acknowledgedZoneSetDigest: sha256Schema,
     }),
   ]),
 });
@@ -866,3 +976,140 @@ export const courseRouteCandidateResultSchema = z.discriminatedUnion('outcome', 
   candidateFailure('graph_mismatch'),
 ]);
 export type CourseRouteCandidateResult = z.infer<typeof courseRouteCandidateResultSchema>;
+
+/**
+ * Importing a GPX file as a course (M2-01j).
+ *
+ * The bytes are the input, not a parse: the client may have read the file to show a
+ * preview, but the server parses it again under M2-01a's bounds and the course is built
+ * from **the server's** parse. There is no geometry, no vertex count and no distance in
+ * this request, so a client still has no way to hand in a line.
+ *
+ * `selection` is required when the file holds more than one track or route: the first
+ * request answers `requires_selection` with what the file contains, and the owner picks.
+ * Nothing is merged and nothing is guessed.
+ */
+export const courseImportRequestSchema = z.strictObject({
+  /** `null` takes the name from the file; a file with no name of its own is refused. */
+  name: courseNameSchema.nullable(),
+  originalFilename: trackTextSchema.nullable(),
+  selection: z
+    .strictObject({
+      sourceKind: z.enum(['gpx-trk', 'gpx-rte']),
+      itemIndex: z
+        .number()
+        .int()
+        .min(0)
+        .max(trackLimits.tracksPerFile - 1),
+    })
+    .nullable(),
+  /**
+   * The file itself, base64. Bounded here as well as by the route's body limit, and the
+   * decoded length is checked against {@link courseLimits.importFileBytes} before a parse
+   * is attempted.
+   */
+  fileBase64: z
+    .string()
+    .min(4)
+    .max(Math.ceil((courseLimits.importFileBytes / 3) * 4) + 4)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'Expected standard base64 without whitespace'),
+});
+export type CourseImportRequest = z.infer<typeof courseImportRequestSchema>;
+
+/** One importable item the server found in the file. Named as the file named it. */
+export const courseImportItemSchema = z.strictObject({
+  sourceKind: z.enum(['gpx-trk', 'gpx-rte']),
+  itemIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(trackLimits.tracksPerFile - 1),
+  name: trackTextSchema.nullable(),
+  pointCount: z.number().int().min(0).max(trackLimits.samples),
+  /** Points that carry a position. A recorded track may hold samples without one. */
+  positionedPointCount: z.number().int().min(0).max(trackLimits.samples),
+});
+
+export const courseImportResultSchema = z.discriminatedUnion('outcome', [
+  z.strictObject({ outcome: z.literal('imported'), course: courseReadResultSchema }),
+  /** More than one track or route: the owner chooses, we never merge or pick for them. */
+  z.strictObject({
+    outcome: z.literal('requires_selection'),
+    fileSha256: sha256Schema,
+    items: z.array(courseImportItemSchema).min(2).max(trackLimits.tracksPerFile),
+  }),
+]);
+export type CourseImportResult = z.infer<typeof courseImportResultSchema>;
+
+/**
+ * Per-owner course preferences (M2-01j): a favourite mark and when the course was last
+ * used. These are **preferences, not course content** — they never produce a revision,
+ * never enter the content digest and never leave this allowlist. Anything else a screen
+ * might want to remember about a course is not persisted at all.
+ */
+export const coursePreferenceSchema = z.strictObject({
+  courseId: uuid,
+  favourite: z.boolean(),
+  lastUsedAt: instantSchema.nullable(),
+});
+export type CoursePreference = z.infer<typeof coursePreferenceSchema>;
+
+export const coursePreferenceListSchema = z.strictObject({
+  preferences: z.array(coursePreferenceSchema).max(courseLimits.coursesPerTenant),
+  total: z.number().int().min(0).max(courseLimits.coursesPerTenant),
+});
+export type CoursePreferenceList = z.infer<typeof coursePreferenceListSchema>;
+
+/**
+ * The only two things a screen may write here. `markUsed` records the moment on the
+ * server's clock rather than accepting one, so a client cannot backdate or forward-date
+ * what it did; `favourite` is the mark itself. Absent fields are left alone.
+ */
+export const coursePreferenceUpdateSchema = z
+  .strictObject({
+    favourite: z.boolean().optional(),
+    markUsed: z.literal(true).optional(),
+  })
+  .refine(
+    (value) => value.favourite !== undefined || value.markUsed !== undefined,
+    'A preference write must change something',
+  );
+export type CoursePreferenceUpdate = z.infer<typeof coursePreferenceUpdateSchema>;
+
+/**
+ * A protected area (M2-01j). Private, per-owner, and the most sensitive coordinate this
+ * product holds: it is typically where the owner lives. It is never logged, never part of
+ * a course revision's conditions and never leaves an authenticated response to its owner.
+ */
+export const coursePrivacyZoneSchema = z.strictObject({
+  zoneId: uuid,
+  name: courseNameSchema,
+  center: coursePositionSchema,
+  radiusMeters: z
+    .number()
+    .finite()
+    .min(courseLimits.privacyZoneMinRadiusMeters)
+    .max(courseLimits.privacyZoneMaxRadiusMeters),
+  createdAt: instantSchema,
+  updatedAt: instantSchema,
+});
+export type CoursePrivacyZone = z.infer<typeof coursePrivacyZoneSchema>;
+
+export const coursePrivacyZoneCreateSchema = coursePrivacyZoneSchema.pick({
+  name: true,
+  center: true,
+  radiusMeters: true,
+});
+
+/**
+ * The owner's protected areas and the identity of that set. The digest covers zone ids and
+ * radii, **never a centre**: it travels with a trim request so a trim computed against a
+ * set that has since changed is refused, and it is stored in the trimmed revision's
+ * conditions, which the account export carries verbatim.
+ */
+export const coursePrivacyZoneListSchema = z.strictObject({
+  zones: z.array(coursePrivacyZoneSchema).max(courseLimits.privacyZonesPerTenant),
+  total: z.number().int().min(0).max(courseLimits.privacyZonesPerTenant),
+  zoneSetDigest: sha256Schema,
+});
+export type CoursePrivacyZoneList = z.infer<typeof coursePrivacyZoneListSchema>;

@@ -16,7 +16,7 @@ import {
   type TrackParseLimits,
 } from './limits';
 import type { RawSample, RawTrack, RawTrackFile } from './raw';
-import { sanitizeMetadataText } from './sanitize';
+import { sanitizeMetadataText, sanitizeOptionalMetadataText } from './sanitize';
 
 export interface SegmentPolicy {
   readonly version: 1;
@@ -198,6 +198,10 @@ export function normalizeTrackFile(
       options.originalFilename ?? null,
       limits.metadataTextLength,
     ),
+    // Best-effort: see `sanitizeOptionalMetadataText`. A `creator` this parser cannot make
+    // safe is absent, not a reason to refuse the file — the same bytes go up the activity
+    // track upload path, where `creator` is read by nothing at all.
+    creator: sanitizeOptionalMetadataText(raw.creator, limits.metadataTextLength),
     recorded: raw.tracks.map((track) => normalizeRecordedTrack(track, options, limits, budget)),
     routes: raw.routes.map((route) => ({
       schemaVersion: 1 as const,

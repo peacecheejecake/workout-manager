@@ -92,6 +92,21 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
         course: { ...head, headRevision: 3 },
         revision: { ...revision, courseRevision: 3, name: 'Renamed loop' },
       });
+    // M2-01j: the screen also reads the owner's own preferences, their protected areas and
+    // what the elevation dataset knows, and it records that a course was opened. None of
+    // that is course content; these defaults keep the rest of this file about the ledger.
+    if (input.path === '/bff/v1/courses/preferences' && input.method === 'GET')
+      return reply({ preferences: [], total: 0 });
+    if (input.path === '/bff/v1/courses/preferences' && input.method === 'PUT')
+      return reply({ courseId, favourite: false, lastUsedAt: createdAt });
+    if (input.path === '/bff/v1/courses/privacy-zones' && input.method === 'GET')
+      return reply({ zones: [], total: 0, zoneSetDigest: 'c'.repeat(64) });
+    if (input.path.endsWith('/elevation') && input.method === 'GET')
+      return reply({ outcome: 'no_dataset' });
+    if (input.path === '/bff/v1/courses/place-search' && input.method === 'POST')
+      return reply({ outcome: 'no_dataset' });
+    if (input.path === '/bff/v1/courses/imports' && input.method === 'POST')
+      return reply({ status: 'available', course: head, revision }, 200);
     if (input.method === 'DELETE') return reply({ deleted: true });
     throw new Error(`unexpected request ${input.method} ${input.path}`);
   });

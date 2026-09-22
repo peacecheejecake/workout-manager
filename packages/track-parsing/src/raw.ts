@@ -39,6 +39,12 @@ export interface RawRoute {
 }
 
 export interface RawTrackFile {
+  /**
+   * What the file says produced it (GPX `creator`), untrusted text kept as a fact about
+   * the file. It decides nothing about how the file is read; a consumer may use it to
+   * recognise a document this product wrote, which is how a course export round-trips.
+   */
+  readonly creator: string | null;
   readonly tracks: readonly RawTrack[];
   readonly routes: readonly RawRoute[];
   readonly waypoints: readonly RawRoutePoint[];

@@ -416,6 +416,21 @@ const collections = [
      content_digest,created_at,lineage`,
     'course_id,course_revision',
   ],
+  // M2-01j. Two rows of the owner's own opinion about a course; nothing derived.
+  [
+    'coursePreferences',
+    'course_preference',
+    'course_id,favourite,last_used_at,created_at,updated_at',
+    'course_id',
+  ],
+  // The protected-area **centre is included**: unlike a generation condition, this is a
+  // datum the owner entered, and an export without it cannot restore what they had.
+  [
+    'coursePrivacyZones',
+    'course_privacy_zone',
+    `zone_id,name,center_longitude,center_latitude,radius_meters,created_at,updated_at`,
+    'created_at,zone_id',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -482,7 +497,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 19,
+          schemaVersion: 20,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

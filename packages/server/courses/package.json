@@ -13,6 +13,9 @@
     "./digest": "./src/digest.ts",
     "./geo": "./src/geo.ts",
     "./routed": "./src/routed.ts",
+    "./import": "./src/import.ts",
+    "./privacy-trim": "./src/privacy-trim.ts",
+    "./geo-data": "./src/geo-data.ts",
     "./candidates": "./src/candidates.ts"
   },
   "dependencies": {

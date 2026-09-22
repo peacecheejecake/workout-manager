@@ -346,6 +346,12 @@ export const parsedTrackFileSchema = z
     parserId: trackParserIdSchema,
     parserVersion: z.literal(1),
     originalFilename: trackTextSchema.nullable(),
+    /**
+     * What the file declared produced it (GPX `creator`). Untrusted text, and a fact about
+     * the file rather than an authority: nothing about how the file is parsed depends on
+     * it. Absent in documents written before it existed, which read as `null`.
+     */
+    creator: trackTextSchema.nullable().default(null),
     recorded: z.array(recordedTrackSchema).max(trackLimits.tracksPerFile),
     routes: z.array(plannedRouteSchema).max(trackLimits.tracksPerFile),
     waypoints: z.array(trackWaypointSchema).max(trackLimits.samples),

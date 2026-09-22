@@ -70,7 +70,10 @@ export function writeCourseGpx(input: CourseGpxInput): string {
   ];
   for (const waypoint of waypoints) {
     lines.push(`  <wpt ${coordinateAttributes(waypoint.position)}>`);
-    lines.push(`    <name>${escapeXml(waypoint.name ?? `${name} ${waypoint.role}`)}</name>`);
+    // No name is written for a waypoint that has none. A synthesised one ("<course>
+    // start") is a fact nobody stated, and re-importing this document would turn it into
+    // a name the owner never gave — the importer is the reason this is not cosmetic.
+    if (waypoint.name !== null) lines.push(`    <name>${escapeXml(waypoint.name)}</name>`);
     lines.push(`    <type>${escapeXml(waypoint.role)}</type>`);
     lines.push('  </wpt>');
   }

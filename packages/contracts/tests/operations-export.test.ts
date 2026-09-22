@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 19,
+    schemaVersion: 20,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -692,9 +692,11 @@ it('parses the currently integrated export version without dropping access facts
       activityTrackRevisions: [],
       courses: [],
       courseRevisions: [],
+      coursePreferences: [],
+      coursePrivacyZones: [],
     },
   });
-  if (current.schemaVersion !== 19) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 20) throw new Error('Expected the integrated export version');
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
   expect(current.data.resourcePassages).toEqual([]);
@@ -703,7 +705,10 @@ it('parses the currently integrated export version without dropping access facts
   expect(current.data.activityTrackRevisions).toEqual([]);
   expect(current.data.courses).toEqual([]);
   expect(current.data.courseRevisions).toEqual([]);
-  // v19 requires every retrieval, track and course collection: an absent one is not empty.
+  expect(current.data.coursePreferences).toEqual([]);
+  expect(current.data.coursePrivacyZones).toEqual([]);
+  // v20 requires every retrieval, track, course and preference collection: an absent one
+  // is not an empty one.
   for (const missing of [
     'resourcePassages',
     'resourceGroundings',
@@ -713,6 +718,8 @@ it('parses the currently integrated export version without dropping access facts
     'activityTrackRevisions',
     'courses',
     'courseRevisions',
+    'coursePreferences',
+    'coursePrivacyZones',
   ] as const)
     expect(
       accountExportSchema.safeParse({
@@ -720,12 +727,44 @@ it('parses the currently integrated export version without dropping access facts
         data: { ...current.data, [missing]: undefined },
       }).success,
     ).toBe(false);
+  // A v19 artifact is still read unchanged and never gains manufactured preference rows.
+  const nineteen = accountExportSchema.parse({
+    ...current,
+    schemaVersion: 19,
+    data: Object.fromEntries(
+      Object.entries(current.data).filter(
+        ([key]) => !['coursePreferences', 'coursePrivacyZones'].includes(key),
+      ),
+    ),
+  });
+  expect(nineteen.schemaVersion).toBe(19);
+  expect(nineteen.data).not.toHaveProperty('coursePreferences');
+  expect(nineteen.data).not.toHaveProperty('coursePrivacyZones');
+  // The two assertions above are about an object this test already built without those
+  // keys, so on their own they fix nothing. The fact worth fixing is that v19's `data` is
+  // a strict object: an artifact that CLAIMS to be v19 and carries a v20 collection is
+  // **refused**, rather than read as a v19 artifact with an extra field nobody validates.
+  for (const added of ['coursePreferences', 'coursePrivacyZones'] as const)
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        schemaVersion: 19,
+        data: { ...nineteen.data, [added]: [] },
+      }).success,
+    ).toBe(false);
+  // The collections v19 did carry are still read, unchanged.
+  if (nineteen.schemaVersion !== 19) throw new Error('Expected the previous export version');
+  expect(nineteen.data.courses).toEqual([]);
+  expect(nineteen.data.courseRevisions).toEqual([]);
   // A v18 artifact is still read unchanged and never gains manufactured course rows.
   const eighteen = accountExportSchema.parse({
     ...current,
     schemaVersion: 18,
     data: Object.fromEntries(
-      Object.entries(current.data).filter(([key]) => !['courses', 'courseRevisions'].includes(key)),
+      Object.entries(current.data).filter(
+        ([key]) =>
+          !['courses', 'courseRevisions', 'coursePreferences', 'coursePrivacyZones'].includes(key),
+      ),
     ),
   });
   expect(eighteen.schemaVersion).toBe(18);
@@ -737,7 +776,14 @@ it('parses the currently integrated export version without dropping access facts
     data: Object.fromEntries(
       Object.entries(current.data).filter(
         ([key]) =>
-          !['activityTracks', 'activityTrackRevisions', 'courses', 'courseRevisions'].includes(key),
+          ![
+            'activityTracks',
+            'activityTrackRevisions',
+            'courses',
+            'courseRevisions',
+            'coursePreferences',
+            'coursePrivacyZones',
+          ].includes(key),
       ),
     ),
   });
@@ -759,6 +805,8 @@ it('parses the currently integrated export version without dropping access facts
             'activityTrackRevisions',
             'courses',
             'courseRevisions',
+            'coursePreferences',
+            'coursePrivacyZones',
           ].includes(key),
       ),
     ),

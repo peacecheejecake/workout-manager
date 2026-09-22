@@ -22,6 +22,8 @@ import type {
   CourseGeneration,
   CourseHead,
   CoursePosition,
+  CoursePreference,
+  CoursePreferenceUpdate,
   CourseReadResult,
 } from '@workout/contracts/courses';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
@@ -34,6 +36,15 @@ import { TextField } from '@workout/ui-foundation/text-field';
 import { courseExportPath, createCourseApi, CourseRequestError } from './course-api';
 import { CourseDraftProvider, draftMapPaths, useCourseDraft } from './course-draft-context';
 import { CourseEditor } from './course-editor';
+import { createCourseExtrasApi } from './course-extras-api';
+import { CourseThumbnail } from './course-thumbnail';
+import {
+  CourseElevationPanel,
+  CourseImportPanel,
+  CoursePlaceSearch,
+  CoursePrivacyPanel,
+  readableExtrasError,
+} from './course-extras';
 import { CourseMapLeaf } from './course-map-leaf';
 import styles from './courses.module.css';
 
@@ -90,9 +101,9 @@ function readableError(error: unknown): string {
 }
 
 /**
- * How this revision's line was made, in the owner's words. Every kind is named on its own
- * branch rather than falling back to one of them: a generated candidate says it was
- * generated instead of reading as the recording it started from.
+ * How this revision's line was made, in the owner's words. Every kind is named: a course
+ * that was imported says so, and a trimmed one says it is a derived revision rather than
+ * quietly looking like the line it came from.
  */
 function generationLabel(generation: CourseGeneration): string {
   switch (generation.kind) {
@@ -102,6 +113,10 @@ function generationLabel(generation: CourseGeneration): string {
       return `경유지 경로 계산 · 지도 데이터 ${generation.computation.graph.graphBuildId}`;
     case 'target-distance-loop':
       return `목표 거리 후보 · 지도 데이터 ${generation.computation.graph.graphBuildId}`;
+    case 'imported-file':
+      return `가져온 파일 · ${generation.sourceKind === 'gpx-trk' ? 'GPX 기록(trk)' : 'GPX 경로(rte)'} · 읽은 도구 ${generation.parserId} v${generation.parserVersion}`;
+    case 'privacy-trimmed':
+      return `보호 구역 제거본 · 수정본 ${generation.sourceRevision}에서 파생 · 정책 v${generation.policyVersion}`;
   }
 }
 
@@ -241,6 +256,7 @@ function Workbench({
   // Created once for this screen. Held in state rather than a ref because it is read
   // during render to compose the editor, which a ref may not be.
   const [api] = useState(() => createCourseApi(transport));
+  const [extrasApi] = useState(() => createCourseExtrasApi(transport));
   const adapterFactory = useMemo<MapAdapterFactory | undefined>(() => {
     if (createMapAdapter) return createMapAdapter;
     if (!mapWorkerUrl) return undefined;
@@ -296,6 +312,9 @@ function Workbench({
   const [listCollapsed, setListCollapsed] = useState(false);
   const [picked, setPicked] = useState<CoursePosition | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
+  const [trimMessage, setTrimMessage] = useState('');
+  // Ordering is a preference, not a fact about a course: the list is the owner's own.
+  const [order, setOrder] = useState<'name' | 'recent'>('name');
 
   const list = useQuery({
     queryKey: [...scope, 'list'],
@@ -305,6 +324,61 @@ function Workbench({
     queryKey: [...scope, 'detail', selected ?? ''],
     enabled: selected !== null,
     queryFn: ({ signal }) => api.read(selected ?? '', signal),
+  });
+
+  // Preferences (M2-01j) are private to this owner and this session's cache: the key is
+  // scoped like every other one here, so a logout or an account switch cannot leave a
+  // favourite mark or a last-used moment behind for the next account.
+  const preferences = useQuery({
+    queryKey: [...scope, 'preferences'],
+    queryFn: ({ signal }) => extrasApi.preferences(signal),
+  });
+  const writePreference = useMutation({
+    mutationFn: (input: { courseId: string; update: CoursePreferenceUpdate }) =>
+      extrasApi.writePreference(input.courseId, input.update),
+    onSuccess: async () => {
+      await queries.invalidateQueries({ queryKey: [...scope, 'preferences'] });
+    },
+    // A preference is not course content: a failed favourite mark says so and changes
+    // nothing else on the screen. It names the course it belongs to, because a favourite
+    // is marked from the list and the course it is about need not be the one now open —
+    // an unattributed failure would look like a failure of whatever is on screen.
+    onError: (_error: unknown, input) => {
+      const affected = list.data?.courses.find((course) => course.courseId === input.courseId);
+      setMessage(
+        `${affected ? affected.name : '이 코스'}: 기본 설정을 저장하지 못했습니다. 코스 자체는 그대로입니다.`,
+      );
+    },
+  });
+
+  /**
+   * The privacy trim. It appends a derived revision and leaves the one it trimmed exactly
+   * as it was, which is what the message says: the ledger keeps both.
+   */
+  const trim = useMutation({
+    mutationFn: (input: { courseId: string; expectedRevision: number; zoneSetDigest: string }) =>
+      api.update(
+        input.courseId,
+        {
+          expectedRevision: input.expectedRevision,
+          change: { kind: 'privacy-trim', acknowledgedZoneSetDigest: input.zoneSetDigest },
+        },
+        crypto.randomUUID(),
+      ),
+    onSuccess: async (result: CourseReadResult, input) => {
+      if (input.courseId === openCourse.current)
+        setTrimMessage(
+          result.status === 'available'
+            ? `보호 구역을 제거한 파생본을 만들었습니다. 현재 수정 번호 ${result.course.headRevision} · 이전 수정본은 그대로 남아 있습니다.`
+            : '코스를 사용할 수 없습니다.',
+        );
+      await queries.invalidateQueries({ queryKey: scope });
+    },
+    onError: (error: unknown, input) => {
+      if (input.courseId === openCourse.current) setTrimMessage(readableExtrasError(error));
+      if (error instanceof CourseRequestError && [404, 409, 410].includes(error.status))
+        void queries.invalidateQueries({ queryKey: scope });
+    },
   });
 
   const rename = useMutation({
@@ -353,7 +427,31 @@ function Workbench({
     },
   });
 
-  const courses: readonly CourseHead[] = list.data?.courses ?? [];
+  const preferenceOf = useMemo(() => {
+    const byCourse = new Map<string, CoursePreference>();
+    for (const preference of preferences.data?.preferences ?? [])
+      byCourse.set(preference.courseId, preference);
+    return byCourse;
+  }, [preferences.data]);
+  const courses: readonly CourseHead[] = useMemo(() => {
+    const stored = list.data?.courses ?? [];
+    // Favourites first in both orders, because that is what the mark is for. The rest is
+    // either the stored order or the owner's own last-used moments; a course never used
+    // sorts last rather than pretending to a date.
+    return [...stored].sort((left, right) => {
+      const leftPreference = preferenceOf.get(left.courseId);
+      const rightPreference = preferenceOf.get(right.courseId);
+      const favourite =
+        Number(rightPreference?.favourite ?? false) - Number(leftPreference?.favourite ?? false);
+      if (favourite !== 0) return favourite;
+      if (order === 'recent') {
+        const leftUsed = leftPreference?.lastUsedAt ?? '';
+        const rightUsed = rightPreference?.lastUsedAt ?? '';
+        if (leftUsed !== rightUsed) return leftUsed < rightUsed ? 1 : -1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+  }, [list.data, preferenceOf, order]);
   const current = detail.data ?? null;
 
   const onSaved = useCallback(() => {
@@ -375,6 +473,15 @@ function Workbench({
     current?.status === 'available' ? (
       <div className={styles.detail}>
         <h3>{current.course.name}</h3>
+        {/*
+          Drawn from the head revision the owner is looking at, so a privacy-trimmed course
+          shows its trimmed line. Nothing is stored: there is no derived object for a
+          deletion, a permission check or an export to have to reach.
+        */}
+        <CourseThumbnail
+          coordinates={current.revision.geometry.coordinates}
+          label={`${current.course.name} 선 미리보기 (수정 번호 ${current.course.headRevision})`}
+        />
         <dl>
           <dt>현재 수정 번호</dt>
           <dd data-testid="course-revision">{current.course.headRevision}</dd>
@@ -386,12 +493,14 @@ function Workbench({
           <dd data-testid="course-generation">{generationLabel(current.revision.generation)}</dd>
           <dt>출처 기록</dt>
           <dd>
-            {current.revision.lineage
-              .map(
-                (source) =>
-                  `활동 ${source.activityId.slice(0, 8)} · 기록본 ${source.trackRevision}`,
-              )
-              .join(', ')}
+            {current.revision.lineage.length === 0
+              ? '없음 · 가져온 파일에서 만든 코스입니다'
+              : current.revision.lineage
+                  .map(
+                    (source) =>
+                      `활동 ${source.activityId.slice(0, 8)} · 기록본 ${source.trackRevision}`,
+                  )
+                  .join(', ')}
           </dd>
         </dl>
         <p className={styles.note}>
@@ -516,30 +625,92 @@ function Workbench({
                 {listCollapsed ? '코스 목록 펼치기' : '코스 목록 접기'}
               </Button>
             ) : null}
+            <Button
+              className={styles.listControl}
+              variant="secondary"
+              aria-pressed={order === 'recent'}
+              onClick={() => setOrder((value) => (value === 'name' ? 'recent' : 'name'))}
+            >
+              {order === 'name' ? '최근 사용순으로 보기' : '이름순으로 보기'}
+            </Button>
             <ul className={styles.list} aria-label="코스 목록">
               {courses.map((course) => (
                 <li key={course.courseId}>
                   <Button
+                    id={`course-name-${course.courseId}`}
                     variant={selected === course.courseId ? 'primary' : 'secondary'}
                     aria-pressed={selected === course.courseId}
                     onClick={() => {
                       setSelected(course.courseId);
                       setName(course.name);
                       setMessage('');
+                      setTrimMessage('');
                       setPicked(null);
                       setFitRequest((value) => value + 1);
+                      // Opening a course is what "used" means here, and the moment is the
+                      // server's own: a client cannot backdate it.
+                      writePreference.mutate({
+                        courseId: course.courseId,
+                        update: { markUsed: true },
+                      });
                     }}
                   >
+                    {preferenceOf.get(course.courseId)?.favourite ? '★ ' : ''}
                     {course.name}
+                  </Button>
+                  {/*
+                    The favourite toggle names the action, and `aria-describedby` points at
+                    the course button beside it so assistive technology still reads which
+                    course it belongs to. Putting the course name *in* this button's own
+                    accessible name would make two controls in the same row answer to that
+                    name, which is ambiguous for a screen-reader user working by name and
+                    for anything else that addresses a control by its name.
+                  */}
+                  <Button
+                    variant="secondary"
+                    aria-label={
+                      preferenceOf.get(course.courseId)?.favourite ? '즐겨찾기 해제' : '즐겨찾기'
+                    }
+                    aria-describedby={`course-name-${course.courseId}`}
+                    aria-pressed={preferenceOf.get(course.courseId)?.favourite ?? false}
+                    // Read from the list, which is refreshed after the write settles. Two
+                    // fast clicks therefore send the same value twice: the write is an
+                    // idempotent set of one field rather than a toggle on the server, so
+                    // the stored value is what the last click asked for either way, and
+                    // the second click looks ignored rather than producing a wrong mark.
+                    onClick={() =>
+                      writePreference.mutate({
+                        courseId: course.courseId,
+                        update: {
+                          favourite: !(preferenceOf.get(course.courseId)?.favourite ?? false),
+                        },
+                      })
+                    }
+                  >
+                    {preferenceOf.get(course.courseId)?.favourite ? '즐겨찾기 해제' : '즐겨찾기'}
                   </Button>
                   <span>
                     {course.status === 'available'
                       ? `수정 번호 ${course.headRevision}`
                       : '사용 불가 · 원본 기록 삭제됨'}
+                    {preferenceOf.get(course.courseId)?.lastUsedAt
+                      ? ` · 마지막 사용 ${new Date(
+                          preferenceOf.get(course.courseId)?.lastUsedAt ?? '',
+                        ).toLocaleDateString('ko-KR')}`
+                      : ' · 사용 기록 없음'}
                   </span>
                 </li>
               ))}
             </ul>
+            <CourseImportPanel
+              api={extrasApi}
+              onImported={(result) => {
+                void queries.invalidateQueries({ queryKey: scope });
+                setSelected(result.course.courseId);
+                setName(result.course.name);
+                setFitRequest((value) => value + 1);
+              }}
+            />
           </div>
 
           <div className={`${styles.pane} ${styles.sheetPane}`} data-pane="sheet">
@@ -582,6 +753,29 @@ function Workbench({
                   pickedPosition={picked}
                   onSaved={onSaved}
                   onStale={onSaved}
+                />
+                <CoursePlaceSearch
+                  api={extrasApi}
+                  onPick={(position, placeName) => {
+                    // The editor already knows how to turn a picked position into a
+                    // waypoint; a searched place is one more way to pick one.
+                    setPicked(position);
+                    setMessage(`선택한 장소: ${placeName}`);
+                  }}
+                />
+                <CourseElevationPanel
+                  api={extrasApi}
+                  scope={scope}
+                  courseId={current.course.courseId}
+                />
+                <CoursePrivacyPanel
+                  api={extrasApi}
+                  scope={scope}
+                  courseId={current.course.courseId}
+                  headRevision={current.course.headRevision}
+                  generationKind={current.revision.generation.kind}
+                  onTrim={(input) => trim.mutate(input)}
+                  trimMessage={trimMessage}
                 />
               </>
             ) : null}

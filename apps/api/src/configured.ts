@@ -28,6 +28,8 @@ import { createGalleryMediaRepository } from '@workout/server-persistence/galler
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
+import { createCoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
+import { loadGeoDatasets } from './geo-datasets.js';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
@@ -101,6 +103,10 @@ export async function createConfiguredApi(environment: unknown) {
     const integratedApprovalV4 = createIntegratedApprovalV4Repository(database, {
       policyVersion: 'running-core-v4-integrated:1',
     });
+    // Read once at startup. There is no request path into this: a dataset is a build
+    // artifact in a configured directory, and an absent or malformed one leaves the
+    // feature off rather than reaching for an external service.
+    const geoDatasets = await loadGeoDatasets();
     const identity = createIdentityService({
       store,
       provider,
@@ -175,6 +181,17 @@ export async function createConfiguredApi(environment: unknown) {
         courses: createCourseRepository(database),
         tracks: createActivityTrackRepository(database),
         storage: resourceStorage,
+      },
+      courseExtras: {
+        courses: createCourseRepository(database),
+        preferences: createCoursePreferenceRepository(database),
+        // The same bounded parse host stored recordings use: an imported file is parsed
+        // under a real heap ceiling, a deadline and the same refusals.
+        parser: createBoundedTrackParser(),
+        // Absent unless a dataset directory is configured, and then place search and
+        // elevation answer `no_dataset` rather than reaching for anyone else's service.
+        places: geoDatasets.places,
+        elevation: geoDatasets.elevation,
       },
       activityTracks: {
         tracks: createActivityTrackRepository(database),

@@ -487,5 +487,7 @@ export function parseFit(
     streamIndex += 1;
   }
   if (tracks.length === 0) throw new TrackIngestionError('TRACK_NO_TRACK_DATA');
-  return { tracks, routes: [], waypoints: [] };
+  // A FIT file names its manufacturer and product in `file_id`, which this reader does not
+  // interpret; there is no GPX-style creator string to carry.
+  return { creator: null, tracks, routes: [], waypoints: [] };
 }

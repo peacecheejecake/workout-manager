@@ -51,6 +51,13 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
+import type { CoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
+import {
+  CourseTrimError,
+  privacyZoneSetDigest,
+  trimCourseForPrivacy,
+} from '@workout/server-courses/privacy-trim';
+
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 import { cancellationSignal } from './request-cancellation.js';
@@ -83,6 +90,12 @@ export interface CourseServices {
    * then the proposal route is not registered at all rather than pretending to compute.
    */
   walkingRoutes?: WalkingRoutePort;
+  /**
+   * The owner's protected areas (M2-01j). Absent: a privacy trim is refused as
+   * unconfigured rather than computed against an empty set, which would trim nothing and
+   * look like "this course never enters a protected area".
+   */
+  privacyZones?: CoursePreferenceRepository;
 }
 
 /**
@@ -105,6 +118,7 @@ function courseError(error: unknown): ProductRequestError | undefined {
     return new ProductRequestError(proposalStatus(error.code), error.code);
   if (error instanceof CourseSegmentError) return new ProductRequestError(422, error.code);
   if (error instanceof RoutedCourseError) return new ProductRequestError(422, error.code);
+  if (error instanceof CourseTrimError) return new ProductRequestError(422, error.code);
   if (error instanceof CandidateSearchError) return new ProductRequestError(422, error.code);
   return undefined;
 }
@@ -635,6 +649,61 @@ export function registerCourseRoutes(
                   candidateSetId: picked.candidateSetId,
                   draftRevision: picked.draftRevision,
                   geometrySha256: courseGeometrySha256(content.coordinates),
+                },
+              },
+            ),
+          ),
+        );
+      }
+      if (body.change.kind === 'privacy-trim') {
+        const change = body.change;
+        const zoneRepository = services.privacyZones;
+        if (!zoneRepository) throw new ProductRequestError(409, 'COURSE_TRIM_NOT_CONFIGURED');
+        const zones = await execute(() => zoneRepository.listPrivacyZones(athleteId));
+        if (zones.length === 0) throw new ProductRequestError(409, 'COURSE_TRIM_NO_PROTECTED_AREA');
+        // The area set the screen showed. A trim computed against areas that have since
+        // changed is refused rather than quietly applied against a different set — the
+        // same shape as the graph acknowledgement above.
+        if (privacyZoneSetDigest(zones) !== change.acknowledgedZoneSetDigest)
+          throw new ProductRequestError(409, 'COURSE_ZONE_ACKNOWLEDGEMENT_STALE');
+        const trimmed = await execute(async () =>
+          trimCourseForPrivacy({
+            coordinates: head.coordinates,
+            waypoints: head.waypoints,
+            zones,
+            sourceRevision: head.courseRevision,
+            sourceGenerationKind: head.generation.kind,
+            sourceGraphBuildId: courseGenerationGraphBuildId(head.generation),
+          }),
+        );
+        // A derived revision, appended. The revision it trims stays exactly as it was:
+        // this is not an overwrite, and the ledger keeps both.
+        const trimmedContent = prepared({
+          name: head.name,
+          coordinates: trimmed.coordinates,
+          waypoints: trimmed.waypoints,
+          generation: trimmed.generation,
+          edit: { kind: 'privacy-trimmed' },
+          lineage: head.lineage,
+          distanceMeters: trimmed.distanceMeters,
+        });
+        return courseReadResultSchema.parse(
+          await execute(() =>
+            services.courses.update(
+              athleteId,
+              courseId,
+              body.expectedRevision,
+              trimmedContent,
+              key,
+              command,
+              {
+                // The same check again, inside the transaction that writes the revision.
+                // The one above runs before the line is derived and in its own
+                // transaction; an area added in between would otherwise end up inside a
+                // line reported as a successful trim.
+                requireZoneSet: {
+                  expectedDigest: change.acknowledgedZoneSetDigest,
+                  digestOf: privacyZoneSetDigest,
                 },
               },
             ),

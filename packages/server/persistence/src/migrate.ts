@@ -39,6 +39,7 @@ const migrationFiles = [
   '034_course_ledger.sql',
   '035_course_route_proposal.sql',
   '036_course_target_distance_candidates.sql',
+  '037_course_preferences_and_privacy_zones.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -226,6 +227,9 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON course,course_revision,course_revision_source TO "${runtimeRole}"`,
     );
+    // The account export reads the owner's own preferences and protected areas (M2-01j,
+    // export v20). Read only: the export never writes either of them.
+    await pool.query(`GRANT SELECT ON course_preference,course_privacy_zone TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -817,6 +821,21 @@ export async function grantCourses(connectionString: string, runtimeRole: string
        public.consume_course_route_candidate(uuid,uuid,uuid,integer,text,integer),
        public.reap_course_route_candidate_sets() TO "${runtimeRole}"`,
     );
+    // Per-owner preferences (M2-01j). Two columns may be written and nothing else: the
+    // allowlist is a grant, not a convention. There is no DELETE — a preference row leaves
+    // only with the course it belongs to, through the foreign key.
+    await pool.query(`GRANT SELECT,INSERT ON course_preference TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(favourite,last_used_at,updated_at) ON course_preference TO "${runtimeRole}"`,
+    );
+    // Protected areas are the owner's own list: they may add one and remove one, and
+    // nothing else in the product writes here. There is deliberately no UPDATE — the
+    // product has no path that moves, renames or resizes an area, and a grant for a path
+    // that does not exist is a privilege nobody is watching. Adding such a path means
+    // granting the columns it writes AND revisiting `privacyZoneSetDigest`, which covers
+    // ids and radii but NOT centres: a moved centre would leave the digest unchanged and
+    // an acknowledged-set guard would pass over it.
+    await pool.query(`GRANT SELECT,INSERT,DELETE ON course_privacy_zone TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

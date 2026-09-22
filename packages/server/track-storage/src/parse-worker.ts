@@ -28,14 +28,44 @@ port.postMessage({
 });
 
 port.on('message', (message: unknown) => {
-  const request = message as { bytes?: unknown; filename?: unknown; selection?: unknown } | null;
+  const request = message as {
+    bytes?: unknown;
+    filename?: unknown;
+    selection?: unknown;
+    purpose?: unknown;
+  } | null;
   const buffer = request?.bytes;
-  const selection = storedTrackSelectionSchema.safeParse(request?.selection);
-  if (!(buffer instanceof ArrayBuffer) || !selection.success) {
+  const filename = typeof request?.filename === 'string' ? request.filename : null;
+  if (!(buffer instanceof ArrayBuffer)) {
     port.postMessage({ ok: false, code: 'TRACK_PARSE_REQUEST_INVALID' });
     return;
   }
-  const filename = typeof request?.filename === 'string' ? request.filename : null;
+  // The whole file, for a caller that must see recordings, routes and waypoints as three
+  // separate things (course import, M2-01j). It selects nothing and merges nothing: the
+  // parse result is returned as the contract describes it and the decision is the
+  // caller's.
+  if (request?.purpose === 'whole-file') {
+    void parseTrackFile(new Uint8Array(buffer), { filename })
+      .then((file) => {
+        port.postMessage({ ok: true, file });
+      })
+      .catch((error: unknown) => {
+        const code =
+          typeof error === 'object' && error !== null && 'code' in error
+            ? (error as { code: unknown }).code
+            : undefined;
+        port.postMessage({
+          ok: false,
+          code: typeof code === 'string' ? code : 'TRACK_PARSE_FAILED',
+        });
+      });
+    return;
+  }
+  const selection = storedTrackSelectionSchema.safeParse(request?.selection);
+  if (!selection.success) {
+    port.postMessage({ ok: false, code: 'TRACK_PARSE_REQUEST_INVALID' });
+    return;
+  }
   void parseTrackFile(new Uint8Array(buffer), { filename })
     .then((file) => {
       const parsed = file.recorded[selection.data.recordedTrackIndex];

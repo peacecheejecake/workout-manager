@@ -1118,13 +1118,22 @@
       "title": "S13/S14 잔여 기능",
       "dependsOn": ["M2-01f", "M2-01h"],
       "kind": "task",
+      "status": "completed",
+      "scope": "GPX import·즐겨찾기·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조. 저장되는 지도 썸네일은 M2-01l로 분리했다(화면에 그리는 쪽은 이 노드에 포함).",
+      "evidence": "docs/implementation/progress/M2-01j.md"
+    },
+    {
+      "id": "M2-01l",
+      "title": "저장되는 지도 썸네일",
+      "dependsOn": ["M2-01j"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "GPX import·즐겨찾기·썸네일·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조"
+      "scope": "계획 5절의 저장되는 코스 썸네일 파생물. M2-01j에서 분리했다 — 그 노드는 head revision을 화면에서 그리기만 하고 아무것도 저장하지 않으므로 권한·삭제·export 표면이 늘지 않았다. 저장하는 순간 늘어나므로 소유권·삭제 연쇄·account export·백업 복원을 함께 다뤄야 한다."
     },
     {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
-      "dependsOn": ["M2-01i", "M2-01j"],
+      "dependsOn": ["M2-01i", "M2-01j", "M2-01l"],
       "kind": "task",
       "status": "not_started",
       "scope": "S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback"

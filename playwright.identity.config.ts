@@ -14,6 +14,18 @@ const basemapDirectory = join(import.meta.dirname, '.geo-build/dist');
 const basemapEnv = existsSync(join(basemapDirectory, 'current.json'))
   ? { BASEMAP_DIST_DIR: basemapDirectory }
   : {};
+/**
+ * The self-hosted place and elevation datasets, when they have been built on this machine.
+ *
+ * `scripts/build-geo-datasets.mjs` is opt-in and its output is not committed either, so a
+ * checkout without it runs the same tests against "no dataset" — which is a state both
+ * screens support and say out loud.
+ */
+const geoDataDirectory = join(import.meta.dirname, '.geo-build/geo-data');
+const geoDataEnv = existsSync(join(geoDataDirectory, 'places.json'))
+  ? { GEO_DATA_DIR: geoDataDirectory }
+  : {};
+
 export default defineConfig({
   testDir: './tests/identity',
   workers: 1,
@@ -31,6 +43,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${identityApiPort}/health`,
       timeout: 60000,
       reuseExistingServer: false,
+      env: geoDataEnv,
       // Let the fixture stop its private PostgreSQL cluster before the runner exits.
       gracefulShutdown: { signal: 'SIGTERM', timeout: 10000 },
     },

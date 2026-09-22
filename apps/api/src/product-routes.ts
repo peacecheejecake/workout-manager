@@ -69,6 +69,7 @@ import {
 import { registerResourceRetrievalRoutes } from './resource-retrieval-routes.js';
 import { registerRoutingRoutes, type WalkingRoutePort } from './routing-routes.js';
 import { registerCourseRoutes, type CourseServices } from './course-routes.js';
+import { registerCourseExtrasRoutes, type CourseExtrasServices } from './course-extras-routes.js';
 import type { ResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
@@ -113,6 +114,8 @@ export interface ProductRepositories {
   walkingRoutes?: WalkingRoutePort;
   /** Private course ledger. Absent until track storage is wired. */
   courses?: CourseServices;
+  /** Import, preferences, protected areas, place search and elevation (M2-01j). */
+  courseExtras?: CourseExtrasServices;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -184,12 +187,20 @@ export function registerProductRoutes(
     registerRoutingRoutes(routes, repositories.walkingRoutes, principal);
   if (repositories.courses)
     // One configured engine serves both the bare computation endpoint and the course
-    // proposals; when none is configured neither route exists.
+    // proposals; when none is configured neither route exists. The protected areas come
+    // from the same place the preference routes read them, so a privacy trim and the
+    // screen that shows the areas can never disagree about what the set is.
     registerCourseRoutes(
       routes,
-      repositories.walkingRoutes
-        ? { ...repositories.courses, walkingRoutes: repositories.walkingRoutes }
-        : repositories.courses,
+      {
+        ...repositories.courses,
+        ...(repositories.walkingRoutes ? { walkingRoutes: repositories.walkingRoutes } : {}),
+        ...(repositories.courseExtras
+          ? { privacyZones: repositories.courseExtras.preferences }
+          : {}),
+      },
       principal,
     );
+  if (repositories.courseExtras)
+    registerCourseExtrasRoutes(routes, repositories.courseExtras, principal);
 }

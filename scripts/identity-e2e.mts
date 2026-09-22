@@ -33,6 +33,8 @@ import { createResourceFileUploadRepository } from '../packages/server/persisten
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
 import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
+import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
+import { loadGeoDatasets } from '../apps/api/src/geo-datasets.ts';
 import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
@@ -270,6 +272,9 @@ try {
     policyVersion: 'running-core-v4-integrated:1',
   });
   const resourceStorage = await createLocalFilesystemObjectStorage(join(directory, 'resources'));
+  // Present only when a dataset directory is configured for the run; otherwise place
+  // search and elevation answer `no_dataset`, which is a state the screens show.
+  const geoDatasets = await loadGeoDatasets();
   const api = createApi({
     auth: identity,
     identity,
@@ -337,6 +342,17 @@ try {
       courses: createCourseRepository(database),
       tracks: createActivityTrackRepository(database),
       storage: resourceStorage,
+    },
+    // M2-01j. The parse host is the real one: an imported file is parsed server-side under
+    // the same heap ceiling and the same refusals a stored recording is. The datasets are
+    // the ones `scripts/build-geo-datasets.mjs` produced when `GEO_DATA_DIR` names them,
+    // and absent otherwise — in which case the screens say so rather than guessing.
+    courseExtras: {
+      courses: createCourseRepository(database),
+      preferences: createCoursePreferenceRepository(database),
+      parser: createBoundedTrackParser({ execArgv: ['--import', 'tsx'] }),
+      places: geoDatasets.places,
+      elevation: geoDatasets.elevation,
     },
     // A deterministic stand-in for the pedestrian engine. It exercises our side of the
     // port — bounds, proposal storage, review, explicit save — and is explicitly NOT

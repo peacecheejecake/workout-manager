@@ -29,6 +29,34 @@ export function sanitizeMetadataText(value: string | null | undefined, max: numb
   return cleaned;
 }
 
+/**
+ * The same cleaning, best-effort: text that cannot be made safe becomes `null` instead of
+ * rejecting the file.
+ *
+ * This is for fields that are a fact **about** the file and decide nothing in it. A GPX
+ * `creator` is such a field — it is an attribute every document carries, its value is
+ * entity-decoded (so `creator="Foo &gt; Bar"` really is `Foo > Bar`), and a 400-character
+ * or angle-bracketed one is a perfectly readable file. Refusing the whole upload over it
+ * would turn a note about the writer into a reason the owner cannot store their recording,
+ * and this parser is shared with the activity track upload path, not only with the course
+ * import that reads `creator`. Absent is the honest answer, and absent is what every
+ * consumer already handles.
+ *
+ * Fields the product then uses as text — a filename, a stream label — keep the strict
+ * behaviour above on purpose.
+ */
+export function sanitizeOptionalMetadataText(
+  value: string | null | undefined,
+  max: number,
+): string | null {
+  try {
+    return sanitizeMetadataText(value, max);
+  } catch (error) {
+    if (error instanceof TrackIngestionError && error.code === 'TRACK_TEXT_UNSAFE') return null;
+    throw error;
+  }
+}
+
 const ARCHIVE_MAGIC: readonly (readonly number[])[] = [
   [0x50, 0x4b, 0x03, 0x04],
   [0x50, 0x4b, 0x05, 0x06],
