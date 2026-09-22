@@ -1055,8 +1055,9 @@
       "title": "private track 저장",
       "dependsOn": ["M2-01b", "M2-04b"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "기존 Activity ingestion·원본/정규화/파생물·RLS·삭제/export/복원"
+      "status": "completed",
+      "scope": "기존 Activity ingestion·원본/정규화/파생물·RLS·삭제/export/복원",
+      "evidence": "docs/implementation/progress/M2-01c.md"
     },
     {
       "id": "M2-01d",
