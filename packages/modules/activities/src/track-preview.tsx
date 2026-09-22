@@ -32,7 +32,7 @@ import {
   sanitizeDisplayText,
   summarizeTrack,
 } from './track-preview-geometry';
-import { TrackPreviewMap } from './track-preview-map';
+import { MapLeaf } from './map-leaf';
 import { TrackPreviewError, type TrackPreviewParser } from './track-preview-parser';
 import {
   initialTrackPreviewState,
@@ -464,7 +464,7 @@ function PreviewLifetime({
                 }`
               : '선택한 지점이 없습니다.'}
           </p>
-          <TrackPreviewMap
+          <MapLeaf
             label="로컬 파일 경로"
             paths={paths}
             selection={state.selection}

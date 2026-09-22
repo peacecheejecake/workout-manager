@@ -27,6 +27,7 @@ import {
   selfHostedPrefix,
   selfHostedScheme,
 } from './basemap';
+import { MapAdapterError } from './map-adapter';
 import type { MapAdapterFactory, MapAdapterHandle, MapAdapterOptions } from './map-adapter';
 import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
 
@@ -113,9 +114,31 @@ function plainStyle() {
   };
 }
 
+function message(error: unknown): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
+/**
+ * Constructing the renderer is where a device without a usable WebGL context fails, and
+ * that is a different state on screen from a background map that would not load.
+ */
+function createRenderer(options: ConstructorParameters<typeof MapLibreMap>[0]): MapLibreMap {
+  try {
+    return new MapLibreMap(options);
+  } catch (error) {
+    throw new MapAdapterError('RENDERER_UNAVAILABLE', message(error));
+  }
+}
+
 export const createMapLibreAdapter: MapAdapterFactory = async (options: MapAdapterOptions) => {
   const origin = currentOrigin();
-  if (options.basemap) assertBasemap(options.basemap, origin);
+  if (options.basemap) {
+    try {
+      assertBasemap(options.basemap, origin);
+    } catch (error) {
+      throw new MapAdapterError('BASEMAP_REJECTED', message(error));
+    }
+  }
   const deadline = initialisationDeadline(options.signal);
   try {
     return await initialise(options, origin, deadline.signal);
@@ -140,13 +163,23 @@ async function initialise(
   // Install the transport before the renderer exists, so no asset can be fetched any
   // other way.
   if (basemap) installSelfHostedTransport(origin);
-  const style = basemap
-    ? await loadSelfHostedStyle(basemap.styleUrl, origin, { signal })
-    : plainStyle();
+  let style: unknown;
+  if (basemap) {
+    try {
+      style = await loadSelfHostedStyle(basemap.styleUrl, origin, { signal });
+    } catch (error) {
+      // Cancellation is not a background-map failure: it is the caller going away, and
+      // classifying it as `STYLE_LOAD_FAILED` would put a false state on screen.
+      if (signal.aborted) throw new Error('ADAPTER_ABORTED');
+      throw new MapAdapterError('STYLE_LOAD_FAILED', message(error));
+    }
+  } else {
+    style = plainStyle();
+  }
   if (signal.aborted) throw new Error('ADAPTER_ABORTED');
 
   let destroyed = false;
-  const map = new MapLibreMap({
+  const map = createRenderer({
     container,
     style: style as never,
     center: [0, 0],

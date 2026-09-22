@@ -188,9 +188,11 @@ test('unsupported or invalid detail addresses explain availability and new sourc
   const address = (tab: string) => `/activities?selected=${imported.activityId}&detailTab=${tab}`;
   const tabs = page.getByRole('tablist', { name: '활동 상세 보기', exact: true });
   await page.goto(address('overview'));
-  for (const label of ['경로', '미디어'])
-    await expect(tabs.getByRole('tab', { name: label, exact: true })).toBeDisabled();
-  for (const tab of ['route', 'media', 'invalid-tab']) {
+  // M2-01e enabled the route tab; the stored-track panel behind it is what reports
+  // whether a track exists, so only the media tab is still unavailable here.
+  await expect(tabs.getByRole('tab', { name: '미디어', exact: true })).toBeDisabled();
+  await expect(tabs.getByRole('tab', { name: '경로', exact: true })).toBeEnabled();
+  for (const tab of ['media', 'invalid-tab']) {
     await page.goto(address(tab));
     await expect(page.getByRole('button', { name: '개요로 이동', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '개요로 이동', exact: true }).click();

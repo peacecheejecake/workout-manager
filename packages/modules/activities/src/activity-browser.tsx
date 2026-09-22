@@ -2,10 +2,20 @@
 
 import { ActivityMetricSummary } from './activity-metric-summary';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useStore } from 'zustand';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
+import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import { activityDetailsReadSchema, activityListSchema } from '@workout/contracts/activity';
 import { Button } from '@workout/ui-foundation/button';
 import { readActivitySearch, updateActivitySearch } from './browser-search';
@@ -22,7 +32,33 @@ import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from '.
 import { ActivityContextPanel } from './activity-context-panel';
 import { ActivityWorkbench } from './activity-workbench';
 import { ActivityDetailTabs } from './activity-detail-tabs';
+import { DetailSelectionProvider } from './detail-selection-provider';
 import { detailsMatchActivity } from './detail-projection';
+
+/**
+ * The stored-track panel pulls in the map kit, so it is a lazy leaf created once at module
+ * scope. A failure to load it must not take the rest of the activity screen down, which is
+ * why it also has its own boundary.
+ */
+const ActivityTrackPanel = lazy(() =>
+  import('./activity-track-panel').then((module) => ({ default: module.ActivityTrackPanel })),
+);
+
+class TrackPanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override render() {
+    return this.state.failed ? (
+      <p role="alert">
+        경로 화면을 불러오지 못했습니다. 요약·구간·출처 탭은 그대로 사용할 수 있습니다.
+      </p>
+    ) : (
+      this.props.children
+    );
+  }
+}
 
 export interface ActivityBrowserProps {
   athleteId: string;
@@ -37,6 +73,10 @@ export interface ActivityBrowserProps {
   planDayHref?: (date: string) => string;
   editHref?: (id: string) => string;
   renderActivityDetails?: (activityId: string) => ReactNode;
+  /** Self-hosted background map for the route tab; `null` draws the path with no background. */
+  basemap?: BasemapDescriptor | null;
+  /** Same-origin MapLibre worker served by the shell. */
+  mapWorkerUrl?: string;
 }
 export function ActivityBrowser(props: ActivityBrowserProps) {
   return <Lifetime key={JSON.stringify([props.athleteId, props.sessionId])} {...props} />;
@@ -79,6 +119,8 @@ function Workspace({
   planDayHref,
   linkedBlockHref,
   renderActivityDetails,
+  basemap = null,
+  mapWorkerUrl,
 }: ActivityBrowserProps) {
   const [batchStore] = useState(createBatchSelectionStore);
   const batchTargets = useStore(batchStore, (state) => state.targets);
@@ -548,63 +590,97 @@ function Workspace({
                   {renderActivityDetails?.(detail.data.activity.id)}
                 </>
               ) : null}
-              <ActivityDetailTabs
-                value={parsed.detailTab}
-                onChange={(detailTab) => change({ detailTab })}
+              <DetailSelectionProvider
+                identity={
+                  detail.data
+                    ? JSON.stringify([
+                        detail.data.activity.id,
+                        detail.data.activity.revision,
+                        detail.data.activity.source.kind,
+                        detail.data.activity.source.sourceId,
+                        detail.data.activity.source.revision,
+                        detail.data.activity.source.contentHash,
+                      ])
+                    : 'pending'
+                }
               >
-                {parsed.detailTab === 'overview' && detail.isSuccess && !detail.isFetching ? (
-                  <BrowserDetail activity={detail.data.activity} />
-                ) : null}
-                {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
-                  <ActivityContextPanel
-                    context={detail.data}
-                    {...(planDayHref ? { planDayHref } : {})}
-                    {...(linkedBlockHref ? { linkedBlockHref } : {})}
-                  />
-                ) : null}
-                <section
-                  aria-label="활동 세부 기록 조회"
-                  hidden={parsed.detailTab !== 'intervals' && parsed.detailTab !== 'source'}
+                <ActivityDetailTabs
+                  value={parsed.detailTab}
+                  onChange={(detailTab) => change({ detailTab })}
                 >
-                  {sourceDetails.isFetching ? (
-                    <p role="status">레코드·랩을 확인하고 있습니다.</p>
+                  {parsed.detailTab === 'overview' && detail.isSuccess && !detail.isFetching ? (
+                    <BrowserDetail activity={detail.data.activity} />
                   ) : null}
-                  {sourceDetails.isError ? (
-                    <p role="alert">
-                      {sourceDetails.error.message === 'NOT_FOUND'
-                        ? '세부 기록을 확인할 수 없습니다. 기록이 삭제되었거나 접근할 수 없습니다.'
-                        : '세부 기록 최신 확인 실패. 요약과 세부 기록을 다시 확인하세요.'}
-                    </p>
+                  {parsed.detailTab === 'route' && detail.isSuccess && !detail.isFetching ? (
+                    <TrackPanelBoundary>
+                      <Suspense fallback={<p role="status">경로 화면을 불러오는 중입니다.</p>}>
+                        <ActivityTrackPanel
+                          athleteId={athleteId}
+                          sessionId={sessionId}
+                          transport={transport}
+                          activityId={detail.data.activity.id}
+                          activitySourceRevision={detail.data.activity.source.revision}
+                          details={
+                            pairReady && pairMatches ? (sourceDetails.data?.details ?? null) : null
+                          }
+                          scope={[...prefix, 'activity', detail.data.activity.id]}
+                          basemap={basemap}
+                          {...(mapWorkerUrl ? { mapWorkerUrl } : {})}
+                        />
+                      </Suspense>
+                    </TrackPanelBoundary>
                   ) : null}
-                  {pairReady && !pairMatches ? (
-                    <p role="alert">
-                      활동 요약과 세부 기록의 버전이 다릅니다. 두 기록을 다시 확인하세요.
-                    </p>
+                  {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
+                    <ActivityContextPanel
+                      context={detail.data}
+                      {...(planDayHref ? { planDayHref } : {})}
+                      {...(linkedBlockHref ? { linkedBlockHref } : {})}
+                    />
                   ) : null}
-                  {sourceDetails.isError || (pairReady && !pairMatches) ? (
-                    <Button
-                      variant="secondary"
-                      disabled={detail.isFetching || sourceDetails.isFetching}
-                      onClick={() => void refreshDetails()}
-                    >
-                      요약과 세부 기록 다시 확인
-                    </Button>
-                  ) : null}
-                  {pairMatches && !pairNotFound ? (
-                    <div hidden={!pairReady}>
-                      <ActivityWorkbench
-                        activity={detail.data.activity}
-                        read={sourceDetails.data}
-                        panel={
-                          parsed.detailTab === 'intervals' || parsed.detailTab === 'source'
-                            ? parsed.detailTab
-                            : 'inactive'
-                        }
-                      />
-                    </div>
-                  ) : null}
-                </section>
-              </ActivityDetailTabs>
+                  <section
+                    aria-label="활동 세부 기록 조회"
+                    hidden={parsed.detailTab !== 'intervals' && parsed.detailTab !== 'source'}
+                  >
+                    {sourceDetails.isFetching ? (
+                      <p role="status">레코드·랩을 확인하고 있습니다.</p>
+                    ) : null}
+                    {sourceDetails.isError ? (
+                      <p role="alert">
+                        {sourceDetails.error.message === 'NOT_FOUND'
+                          ? '세부 기록을 확인할 수 없습니다. 기록이 삭제되었거나 접근할 수 없습니다.'
+                          : '세부 기록 최신 확인 실패. 요약과 세부 기록을 다시 확인하세요.'}
+                      </p>
+                    ) : null}
+                    {pairReady && !pairMatches ? (
+                      <p role="alert">
+                        활동 요약과 세부 기록의 버전이 다릅니다. 두 기록을 다시 확인하세요.
+                      </p>
+                    ) : null}
+                    {sourceDetails.isError || (pairReady && !pairMatches) ? (
+                      <Button
+                        variant="secondary"
+                        disabled={detail.isFetching || sourceDetails.isFetching}
+                        onClick={() => void refreshDetails()}
+                      >
+                        요약과 세부 기록 다시 확인
+                      </Button>
+                    ) : null}
+                    {pairMatches && !pairNotFound ? (
+                      <div hidden={!pairReady}>
+                        <ActivityWorkbench
+                          activity={detail.data.activity}
+                          read={sourceDetails.data}
+                          panel={
+                            parsed.detailTab === 'intervals' || parsed.detailTab === 'source'
+                              ? parsed.detailTab
+                              : 'inactive'
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </section>
+                </ActivityDetailTabs>
+              </DetailSelectionProvider>
             </section>
           ) : null}
         </>

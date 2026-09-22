@@ -11,6 +11,25 @@ import type { BasemapDescriptor } from './basemap';
 export type MapAdapterFailure =
   'RENDERER_UNAVAILABLE' | 'CONTEXT_LOST' | 'STYLE_LOAD_FAILED' | 'BASEMAP_REJECTED';
 
+/**
+ * A classified initialisation failure.
+ *
+ * Failures that happen *after* a renderer exists arrive through `onFailure`, but the ones
+ * that stop initialisation reject the factory promise instead, and a bare `Error` there
+ * leaves the caller unable to tell "this device has no WebGL" from "the background map
+ * did not load". Those are different states on screen, so the adapter classifies them and
+ * the view forwards the classification rather than guessing from a message string.
+ */
+export class MapAdapterError extends Error {
+  readonly failure: MapAdapterFailure;
+
+  constructor(failure: MapAdapterFailure, message?: string) {
+    super(message === undefined || message === '' ? failure : message);
+    this.name = 'MapAdapterError';
+    this.failure = failure;
+  }
+}
+
 export interface MapAdapterHandle {
   /** Replace the drawn geometry. Called whenever the path revision changes. */
   setPaths(collection: MapPathFeatureCollection): void;

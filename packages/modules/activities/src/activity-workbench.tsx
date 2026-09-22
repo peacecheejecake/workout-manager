@@ -13,6 +13,7 @@ import type { Activity, ActivityDetailsRead } from '@workout/contracts/activity'
 import type { ActivityDetails } from '@workout/contracts/activity-details';
 import { Button } from '@workout/ui-foundation/button';
 import { createDetailSelectionStore, type DetailSelectionStore } from './detail-selection';
+import { useSharedDetailSelectionStore } from './detail-selection-provider';
 import {
   detailsMatchActivity,
   lapTimeRange,
@@ -71,7 +72,11 @@ function Workbench({
   read: ActivityDetailsRead;
   panel?: 'intervals' | 'source' | 'inactive';
 }) {
-  const [store] = useState(createDetailSelectionStore);
+  // The shared store when an owner mounted one — the stored-track map reads the same
+  // selection — and an own store otherwise, so this screen still works standalone.
+  const shared = useSharedDetailSelectionStore();
+  const [fallback] = useState(createDetailSelectionStore);
+  const store = shared ?? fallback;
   const [view, setView] = useState<'overview' | 'laps' | 'source'>('overview');
   const visibleView = panel === 'intervals' && view === 'source' ? 'overview' : view;
   const [chartPage, setChartPage] = useState(0);

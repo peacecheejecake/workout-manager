@@ -13,7 +13,33 @@ if (
     target.hash)
 )
   throw new Error('API_ORIGIN must be an HTTP(S) origin');
-const proxy = target ? { '/bff': { target: target.origin } } : undefined;
+/**
+ * Development/preview only: where the self-hosted background map is served from.
+ *
+ * This shell has no server of its own, so during development the background assets are
+ * proxied to whichever origin already serves them (the Next shell, or a static host).
+ * Production hosting serves `/map/basemap/**` itself. Unset means no background map, which
+ * the route screen shows as its own state rather than as a failure.
+ */
+const basemapOrigin = process.env['BASEMAP_ORIGIN'];
+const basemapTarget = basemapOrigin ? new URL(basemapOrigin) : null;
+if (
+  basemapTarget &&
+  (!['http:', 'https:'].includes(basemapTarget.protocol) ||
+    basemapTarget.username ||
+    basemapTarget.password ||
+    basemapTarget.pathname !== '/' ||
+    basemapTarget.search ||
+    basemapTarget.hash)
+)
+  throw new Error('BASEMAP_ORIGIN must be an HTTP(S) origin');
+const proxy =
+  target || basemapTarget
+    ? {
+        ...(target ? { '/bff': { target: target.origin } } : {}),
+        ...(basemapTarget ? { '/map/basemap': { target: basemapTarget.origin } } : {}),
+      }
+    : undefined;
 
 export default defineConfig({
   esbuild: { jsx: 'automatic' },

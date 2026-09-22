@@ -7,7 +7,8 @@ import {
 import { ActivityBrowser } from '@workout/modules-activities/activity-browser';
 import { StretchingActivityPanel } from '@workout/modules-supplementary/stretching-activity-panel';
 import { shiftDashboardDate } from '@workout/contracts/dashboard';
-function Activities() {
+import type { ShellBasemap } from '../basemap-config';
+function Activities({ basemap }: { basemap: ShellBasemap | null }) {
   const session = useAuthenticatedSession();
   const [search, setSearch] = useState(() => window.location.search);
   const [timezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -21,6 +22,8 @@ function Activities() {
       {...session}
       search={search}
       initialTimezone={timezone}
+      basemap={basemap}
+      mapWorkerUrl="/dist/maplibre/maplibre-gl-worker.mjs"
       importHref="/activities/import"
       createHref="/activities/new"
       editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
@@ -41,10 +44,10 @@ function Activities() {
     />
   );
 }
-export function ActivitiesPage() {
+export function ActivitiesPage({ basemap }: { basemap: ShellBasemap | null }) {
   return (
     <AuthenticatedWorkspace>
-      <Activities />
+      <Activities basemap={basemap} />
     </AuthenticatedWorkspace>
   );
 }

@@ -46,6 +46,8 @@ describe('URL-owned activity detail tabs', () => {
     await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: '구간', selected: true })).toHaveFocus();
     await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: '경로', selected: true })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: '영향', selected: true })).toHaveFocus();
     await user.keyboard('{End}');
     expect(screen.getByRole('tab', { name: '출처', selected: true })).toHaveFocus();
@@ -63,7 +65,7 @@ describe('URL-owned activity detail tabs', () => {
     });
     expect(screen.getByRole('tab', { name: '개요', selected: true })).toHaveFocus();
   });
-  it.each([null, 'route', 'media'] as const)(
+  it.each([null, 'media'] as const)(
     'explains %s deep links and explicitly restores overview',
     async (value) => {
       const changed = vi.fn();
@@ -72,19 +74,25 @@ describe('URL-owned activity detail tabs', () => {
           <span />
         </ActivityDetailTabs>,
       );
-      expect(screen.getByRole('tab', { name: '경로' })).toBeDisabled();
       expect(screen.getByRole('tab', { name: '미디어' })).toBeDisabled();
-      expect(screen.getByRole('tab', { name: '경로' })).toHaveAccessibleDescription(
-        /GPS 기록 유무를 판단할 수 없습니다/,
-      );
       if (value === null) expect(screen.getByRole('alert')).toHaveTextContent('알 수 없는');
-      else
-        expect(screen.getByRole('status')).toHaveTextContent(
-          value === 'route' ? '경로 데이터를 제공하지 않습니다' : '미디어 연결을 제공하지 않습니다',
-        );
+      else expect(screen.getByRole('status')).toHaveTextContent('미디어 연결을 제공하지 않습니다');
       await userEvent.click(screen.getByRole('button', { name: '개요로 이동' }));
       expect(changed).toHaveBeenCalledExactlyOnceWith('overview');
       expect(screen.getByRole('tab', { name: '개요' })).toHaveFocus();
     },
   );
+  // M2-01e: the route tab is now reachable, and what it says about GPS is decided by the
+  // stored-track panel behind it rather than by a fixed "not provided" message here.
+  it('enables the route tab and renders its panel content', () => {
+    const changed = vi.fn();
+    render(
+      <ActivityDetailTabs value="route" onChange={changed}>
+        <span>저장된 경로 패널</span>
+      </ActivityDetailTabs>,
+    );
+    expect(screen.getByRole('tab', { name: '경로', selected: true })).toBeEnabled();
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('저장된 경로 패널');
+    expect(screen.queryByRole('button', { name: '개요로 이동' })).toBeNull();
+  });
 });

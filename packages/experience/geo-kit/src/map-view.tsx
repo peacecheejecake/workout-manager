@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BasemapDescriptor } from './basemap';
+import { MapAdapterError } from './map-adapter';
 import type { MapAdapterFactory, MapAdapterFailure, MapAdapterHandle } from './map-adapter';
 import {
   computeBounds,
@@ -49,6 +50,13 @@ export interface MapViewProps {
   /** Injected for tests and for callers that supply their own renderer. */
   readonly createAdapter?: MapAdapterFactory;
   readonly onStatusChange?: (status: MapViewStatus, detail?: string) => void;
+  /**
+   * The classified reason the renderer is unavailable. `onStatusChange` only says that it
+   * is; an owner that must distinguish "this device has no WebGL" from "the background
+   * map would not load" needs the reason, and guessing it from a message string would be
+   * a second, weaker copy of what the adapter already knows.
+   */
+  readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
 }
 
 async function defaultAdapterFactory(
@@ -69,6 +77,7 @@ export function MapView({
   onRenderIdle,
   createAdapter,
   onStatusChange,
+  onFailure,
 }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const [adapter, setAdapter] = useState<MapAdapterHandle | null>(null);
@@ -93,10 +102,10 @@ export function MapView({
       : renderer.status;
 
   // Latest callbacks without re-creating the renderer on every parent render.
-  const latest = useRef({ onSelect, paths, onRenderIdle });
+  const latest = useRef({ onSelect, paths, onRenderIdle, onFailure });
   useEffect(() => {
-    latest.current = { onSelect, paths, onRenderIdle };
-  }, [onSelect, paths, onRenderIdle]);
+    latest.current = { onSelect, paths, onRenderIdle, onFailure };
+  }, [onSelect, paths, onRenderIdle, onFailure]);
 
   const factory = createAdapter ?? defaultAdapterFactory;
 
@@ -110,8 +119,10 @@ export function MapView({
     // so the adapter can remove its renderer itself.
     const controller = new AbortController();
 
-    const fail = (_reason: MapAdapterFailure, detail?: string) => {
-      if (active) setRenderer({ status: 'unavailable', detail });
+    const fail = (reason: MapAdapterFailure, detail?: string) => {
+      if (!active) return;
+      setRenderer({ status: 'unavailable', detail });
+      latest.current.onFailure?.(reason, detail);
     };
 
     factory({
@@ -143,7 +154,12 @@ export function MapView({
         }
       })
       .catch((error: unknown) =>
-        fail('RENDERER_UNAVAILABLE', error instanceof Error ? error.message : undefined),
+        // The adapter classifies the failures that stop initialisation; anything else is
+        // reported as the renderer being unavailable rather than guessed at.
+        fail(
+          error instanceof MapAdapterError ? error.failure : 'RENDERER_UNAVAILABLE',
+          error instanceof Error ? error.message : undefined,
+        ),
       );
 
     return () => {

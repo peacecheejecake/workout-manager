@@ -11,9 +11,10 @@ const tabs = [
   ['media', '미디어'],
   ['source', '출처'],
 ] as const;
-const enabled: ActivityDetailTab[] = ['overview', 'intervals', 'impact', 'source'];
+// The route tab is reachable whether or not a track is stored: the panel behind it is
+// what distinguishes "no stored track" from "stored, but no GPS" from "failed to load".
+const enabled: ActivityDetailTab[] = ['overview', 'intervals', 'route', 'impact', 'source'];
 const unavailable = {
-  route: '현재 상세 형식에서 경로 데이터를 제공하지 않습니다. GPS 기록 유무를 판단할 수 없습니다.',
   media: '현재 활동 상세에서 미디어 연결을 제공하지 않습니다.',
 };
 export function ActivityDetailTabs({
@@ -28,7 +29,7 @@ export function ActivityDetailTabs({
   const id = useId();
   const refs = useRef(new Map<ActivityDetailTab, HTMLButtonElement>());
   const focusable = value !== null && enabled.includes(value) ? value : 'overview';
-  const unavailableMessage = value === 'route' || value === 'media' ? unavailable[value] : null;
+  const unavailableMessage = value === 'media' ? unavailable.media : null;
   return (
     <div className={styles.workspace}>
       <div role="tablist" aria-label="활동 상세 보기" className={styles.tabs}>
@@ -46,9 +47,7 @@ export function ActivityDetailTabs({
             aria-selected={value === tab}
             aria-controls={`${id}-panel`}
             tabIndex={focusable === tab ? 0 : -1}
-            aria-describedby={
-              tab === 'route' || tab === 'media' ? `${id}-${tab}-reason` : undefined
-            }
+            aria-describedby={tab === 'media' ? `${id}-${tab}-reason` : undefined}
             onClick={() => onChange(tab)}
             onKeyDown={(event) => {
               if (
@@ -81,7 +80,6 @@ export function ActivityDetailTabs({
           </Button>
         ))}
       </div>
-      <p id={`${id}-route-reason`}>경로: {unavailable.route}</p>
       <p id={`${id}-media-reason`}>미디어: {unavailable.media}</p>
       <div
         role="tabpanel"

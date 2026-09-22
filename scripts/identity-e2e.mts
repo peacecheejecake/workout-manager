@@ -31,6 +31,8 @@ import { createResourceRetrievalRepository } from '../packages/server/persistenc
 import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
+import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
+import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -318,6 +320,13 @@ try {
     galleryMedia: {
       media: createGalleryMediaRepository(database),
       storage: resourceStorage,
+    },
+    // Private recorded-track storage, so the stored-track route screen has a real track to
+    // read. The server re-parses the bytes it stored in a heap-bounded worker.
+    activityTracks: {
+      tracks: createActivityTrackRepository(database),
+      storage: resourceStorage,
+      parser: createBoundedTrackParser(),
     },
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
