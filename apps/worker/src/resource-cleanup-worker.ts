@@ -6,7 +6,9 @@ import {
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
+  reconcileActivityTrackObjects,
   type ResourceObjectCleanupRepository,
+  type TrackReconciliationOutcome,
 } from '@workout/server-persistence/resource-object-cleanup';
 import {
   createResourceDerivedCleanupRepository,
@@ -20,6 +22,8 @@ import type { ResourceCleanupWorkerConfig } from './config.js';
 export type ResourceCleanupWorkerResult = {
   objects: Awaited<ReturnType<typeof processOneResourceObjectCleanup>>;
   derived: Awaited<ReturnType<typeof processOneResourceDerivedCleanup>>;
+  /** Bounded comparison of the track object namespace against the ledger. */
+  trackReconciliation: TrackReconciliationOutcome;
 };
 
 export interface ResourceCleanupWorkerDependencies {
@@ -84,6 +88,10 @@ export async function runResourceCleanupWorker(
       (dependencies.derivedPurge ?? configuredDerivedStorePurge)(derivedRepository),
       now,
     );
+    // Reconciliation before housekeeping: an object the ledger does not account for is a
+    // leak, and it must be found even when every receipt for it is already closed. The pass
+    // is bounded and resumes where the last run stopped.
+    const trackReconciliation = await reconcileActivityTrackObjects(repository, storage, 200);
     // Housekeeping runs last. Deleting what a user withdrew is the point of
     // this worker; reclaiming history and expired cache entries must never
     // delay it, even when a prune has to wait for its own bounded timeout.
@@ -91,7 +99,7 @@ export async function runResourceCleanupWorker(
     await repository.pruneCleanupHistory(100);
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);
-    return { objects, derived };
+    return { objects, derived, trackReconciliation };
   } finally {
     await Promise.all([repository.close(), derivedRepository.close()]);
   }

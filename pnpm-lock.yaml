@@ -110,6 +110,9 @@ importers:
       '@workout/server-persistence':
         specifier: workspace:*
         version: link:../../packages/server/persistence
+      '@workout/server-track-storage':
+        specifier: workspace:*
+        version: link:../../packages/server/track-storage
       fastify:
         specifier: 5.12.4
         version: 5.12.4
@@ -686,6 +689,22 @@ importers:
         version: link:../media
 
   packages/server/resource-ingestion: {}
+
+  packages/server/track-storage:
+    dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@workout/track-parsing':
+        specifier: workspace:*
+        version: link:../../track-parsing
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
 
   packages/tooling:
     dependencies:

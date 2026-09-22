@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { chmod, link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, realpath, rmdir, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, parse, resolve, sep } from 'node:path';
 
 import { createHash } from 'node:crypto';
@@ -131,13 +131,32 @@ export async function createLocalFilesystemObjectStorage(
     }
   }
 
+  /**
+   * Remove directories that an unlink has just emptied, innermost first, stopping at the
+   * first directory that is not empty and never touching the root. Deleting objects would
+   * otherwise leave the namespace growing without limit in empty directories. This is
+   * hygiene, not a bound: nothing depends on it.
+   */
+  async function pruneEmptyParents(path: string): Promise<void> {
+    let current = dirname(path);
+    while (current.startsWith(`${canonicalRoot}${sep}`)) {
+      try {
+        await rmdir(current);
+      } catch {
+        return;
+      }
+      current = dirname(current);
+    }
+  }
+
   return {
     async writeTemporary(key, body) {
       const parsedKey = parseObjectKey(key);
       if (
         parsedKey.kind !== 'temporary' &&
         parsedKey.kind !== 'url_temporary' &&
-        parsedKey.kind !== 'gallery_temporary'
+        parsedKey.kind !== 'gallery_temporary' &&
+        parsedKey.kind !== 'track_temporary'
       )
         throw new UnsafeStoragePathError();
       const path = keyPath(key);
@@ -182,10 +201,12 @@ export async function createLocalFilesystemObjectStorage(
       if (
         (parsedTemporaryKey.kind !== 'temporary' &&
           parsedTemporaryKey.kind !== 'url_temporary' &&
-          parsedTemporaryKey.kind !== 'gallery_temporary') ||
+          parsedTemporaryKey.kind !== 'gallery_temporary' &&
+          parsedTemporaryKey.kind !== 'track_temporary') ||
         (parsedFinalKey.kind !== 'final' &&
           parsedFinalKey.kind !== 'url_final' &&
-          parsedFinalKey.kind !== 'gallery_final')
+          parsedFinalKey.kind !== 'gallery_final' &&
+          parsedFinalKey.kind !== 'track_final')
       )
         throw new ObjectStorageConflictError();
       const uploadPair =
@@ -201,16 +222,29 @@ export async function createLocalFilesystemObjectStorage(
         parsedTemporaryKey.kind === 'gallery_temporary' &&
         parsedFinalKey.kind === 'gallery_final' &&
         parsedTemporaryKey.uploadId === parsedFinalKey.uploadId;
+      // A track upload publishes three objects from one upload; the artifact kind and the
+      // track id must agree as well, so a normalized derivative can never be published
+      // over the original file's key.
+      const trackPair =
+        parsedTemporaryKey.kind === 'track_temporary' &&
+        parsedFinalKey.kind === 'track_final' &&
+        parsedTemporaryKey.uploadId === parsedFinalKey.uploadId &&
+        parsedTemporaryKey.trackId === parsedFinalKey.trackId &&
+        parsedTemporaryKey.artifactKind === parsedFinalKey.artifactKind;
       const temporaryOwnerId =
         parsedTemporaryKey.kind === 'gallery_temporary'
           ? parsedTemporaryKey.mediaItemId
-          : parsedTemporaryKey.resourceId;
+          : parsedTemporaryKey.kind === 'track_temporary'
+            ? parsedTemporaryKey.activityId
+            : parsedTemporaryKey.resourceId;
       const finalOwnerId =
         parsedFinalKey.kind === 'gallery_final'
           ? parsedFinalKey.mediaItemId
-          : parsedFinalKey.resourceId;
+          : parsedFinalKey.kind === 'track_final'
+            ? parsedFinalKey.activityId
+            : parsedFinalKey.resourceId;
       if (
-        (!uploadPair && !urlPair && !galleryPair) ||
+        (!uploadPair && !urlPair && !galleryPair && !trackPair) ||
         parsedTemporaryKey.tenantId !== parsedFinalKey.tenantId ||
         temporaryOwnerId !== finalOwnerId ||
         parsedFinalKey.sha256 !== expectation.sha256
@@ -271,6 +305,7 @@ export async function createLocalFilesystemObjectStorage(
       const stat = await assertSafeExistingFile(path);
       if (!stat) return;
       await unlink(path);
+      await pruneEmptyParents(path);
     },
   };
 }

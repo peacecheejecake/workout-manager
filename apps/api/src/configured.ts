@@ -25,6 +25,8 @@ import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
+import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
+import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
@@ -167,6 +169,13 @@ export async function createConfiguredApi(environment: unknown) {
       galleryMedia: {
         media: createGalleryMediaRepository(database),
         storage: resourceStorage,
+      },
+      activityTracks: {
+        tracks: createActivityTrackRepository(database),
+        storage: resourceStorage,
+        // Server-side re-parsing runs in a worker with a real V8 heap ceiling; the
+        // deployment's container memory limit bounds the process around it.
+        parser: createBoundedTrackParser(),
       },
       resourceAccess: createResourceAccessRepository(database),
       resourceRetrieval: createResourceRetrievalRepository(database),

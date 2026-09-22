@@ -20,6 +20,7 @@ export default defineConfig({
             'packages/server/resource-ingestion/tests/**/*.test.ts',
             'packages/track-parsing/tests/**/*.test.ts',
             'packages/server/integrations/tests/**/*.test.ts',
+            'packages/server/track-storage/tests/**/*.test.ts',
             'apps/worker/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],

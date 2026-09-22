@@ -35,6 +35,7 @@ const migrationFiles = [
   '030_resource_access_sharing.sql',
   '031_gallery_media.sql',
   '032_resource_retrieval.sql',
+  '033_activity_track_storage.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -216,6 +217,8 @@ export async function grantOperations(
       `GRANT SELECT ON resource_passage,resource_grounding,resource_grounding_excerpt,
        resource_citation TO "${runtimeRole}"`,
     );
+    // Track metadata only. Storage references are never part of the export projection.
+    await pool.query(`GRANT SELECT ON activity_track,activity_track_revision TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -445,6 +448,11 @@ export async function grantResourceObjectCleanupWorker(
        public.finish_resource_derived_cleanup(uuid,uuid,boolean,text),
        public.release_resource_derived_cleanup(uuid,uuid,text),
        public.prune_resource_derived_cleanup_history(integer),
+       public.activity_track_reconcile_cursor(),
+       public.activity_track_reconcile_candidates(text,integer),
+       public.settle_activity_track_object_ref(text),
+       public.advance_activity_track_reconcile_cursor(text),
+       public.reclaim_unreferenced_activity_track_object(text),
        public.purge_resource_derived_store(uuid,uuid,text),
        public.prune_resource_retrieval_cache(integer)
        TO "${workerRole}"`,
@@ -663,6 +671,56 @@ export async function grantCoachingConstraints(
   try {
     await pool.query(
       `GRANT SELECT,INSERT,UPDATE ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Stored recorded tracks are tenant scoped and their objects stay behind opaque refs.
+ * The runtime role may append revisions and advance the head; it may never update or
+ * delete a revision, and it has no DELETE on any track table — reclaiming bytes is the
+ * cleanup worker's job through the shared manifest.
+ */
+export async function grantActivityTracks(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON activity_track,activity_track_revision,activity_track_object,
+       activity_track_upload_intent,activity_track_object_ref TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(track_revision,revision_id,updated_at) ON activity_track TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(raw_storage_ref,normalized_storage_ref,map_path_storage_ref,format,
+       recorded_source_kind,parser_id,parser_version,correspondence_digest,original_filename,
+       raw_size_bytes,raw_content_hash,normalized_size_bytes,normalized_content_hash,
+       map_path_size_bytes,map_path_content_hash,sample_count,positioned_sample_count,
+       segment_count,segment_policy,distances,state,failure_code,publication_lease_until,
+       updated_at,prepared_at,staged_at,finalized_at) ON activity_track_upload_intent TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT ON activity_canonical,activity_source_head,activity_suppression TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.expire_activity_track_uploads(timestamptz),
+       public.fail_activity_track_upload(uuid,text),
+       public.cancel_activity_track_uploads(text,uuid,text),
+       public.protect_activity_track_upload_objects(uuid),
+       public.supersede_activity_track_upload_objects(uuid),
+       public.requeue_activity_track_upload_refs(uuid),
+       public.activity_track_publication_fence_open(uuid),
+       public.activity_track_pending_cleanup_bytes(),
+       public.compact_activity_track_upload_history(integer)
+       TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

@@ -150,6 +150,20 @@ const accountExportV17Schema = accountExportV16Schema.extend({
     resourceCitations: rows,
   }),
 });
+/**
+ * v18 adds the stored recorded-track ledger. Coordinates, sample ids and storage
+ * references are deliberately absent: the export carries track identity, parser
+ * identity, the sample-correspondence digest, aggregate counts and object hashes,
+ * while the geometry itself stays behind the authenticated download. Tracks of a
+ * deleted activity are excluded exactly as the activity itself is.
+ */
+const accountExportV18Schema = accountExportV17Schema.extend({
+  schemaVersion: z.literal(18),
+  data: accountExportV17Schema.shape.data.extend({
+    activityTracks: rows,
+    activityTrackRevisions: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -168,6 +182,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV15Schema,
   accountExportV16Schema,
   accountExportV17Schema,
+  accountExportV18Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

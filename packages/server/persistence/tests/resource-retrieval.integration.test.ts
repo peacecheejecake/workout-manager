@@ -787,7 +787,7 @@ describe('grounded coaching output cites reviewed excerpts', () => {
     expect(await count(athleteId, 'resource_citation')).toBe(0);
 
     const exported = await createOperationsRepository(database).exportAccount(athleteId);
-    if (exported.schemaVersion !== 17) throw new Error('Expected the current account export');
+    if (exported.schemaVersion !== 18) throw new Error('Expected the current account export');
     expect(exported.data.resourcePassages).toEqual([]);
     expect(exported.data.resourceCitations).toEqual([]);
     expect(exported.data.resourceGroundings).toHaveLength(1);

@@ -33,6 +33,11 @@ function setup(input: {
   derivedManifest?: ResourceDerivedCleanupManifest | null;
   derivedReleaseResult?: boolean;
   now?: () => Date;
+  reconcileCursor?: string;
+  reclaimQueued?: boolean;
+  candidates?: readonly string[];
+  statResult?: unknown;
+  settled?: boolean;
 }) {
   const deleteObject = input.deleteFailure
     ? vi.fn(async () => Promise.reject(input.deleteFailure))
@@ -43,6 +48,11 @@ function setup(input: {
       : vi.fn(async () => 0),
     pruneUploadHistory: vi.fn(async () => 0),
     pruneCleanupHistory: vi.fn(async () => 0),
+    reconcileCursor: vi.fn(async () => input.reconcileCursor ?? ''),
+    advanceReconcileCursor: vi.fn(async () => undefined),
+    reconcileCandidates: vi.fn(async () => input.candidates ?? []),
+    settleTrackObjectRef: vi.fn(async () => input.settled ?? false),
+    reclaimUnreferencedTrackObject: vi.fn(async () => input.reclaimQueued ?? false),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
       input.authorized === undefined ? leased : input.authorized,
@@ -57,7 +67,7 @@ function setup(input: {
     writeTemporary: notUsed,
     publishTemporary: notUsed,
     open: notUsed,
-    stat: notUsed,
+    stat: vi.fn(async () => (input.statResult ?? null) as never),
     delete: deleteObject,
   };
   const derivedRepository: ResourceDerivedCleanupRepository = {
@@ -75,7 +85,7 @@ function setup(input: {
     createDerivedRepository: vi.fn(() => derivedRepository),
     now: input.now ?? vi.fn(() => new Date('2026-09-19T00:00:00.000Z')),
   };
-  return { dependencies, repository, derivedRepository, deleteObject };
+  return { dependencies, repository, derivedRepository, deleteObject, storage };
 }
 
 describe('resource object cleanup worker', () => {
@@ -96,6 +106,35 @@ describe('resource object cleanup worker', () => {
     expect(deleteObject).toHaveBeenCalledWith(storageRef);
     expect(repository.finish).toHaveBeenCalledWith(lease, { ok: true }, expect.any(Date));
     expect(repository.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles a bounded window of ledger references and reports what it queued', async () => {
+    const trackKey =
+      'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa/activities/4d6cc1ce-0643-4c53-b055-9df458fec594/tracks/db985aaa-b96e-4aef-871a-c99a16183439/raw/uploads/db985aaa-b96e-4aef-871a-c99a16183439/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.gpx';
+    const { dependencies, repository, storage } = setup({
+      candidates: [trackKey],
+      reclaimQueued: true,
+      statResult: { key: trackKey, sizeBytes: 1, modifiedAt: new Date(0) },
+    });
+    const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+    // The window comes from the ledger, and the store is asked once per reference.
+    expect(repository.reconcileCandidates).toHaveBeenCalledWith('', 200);
+    expect(storage.stat).toHaveBeenCalledWith(trackKey);
+    expect(repository.reclaimUnreferencedTrackObject).toHaveBeenCalledWith(trackKey);
+    expect(result.trackReconciliation).toEqual({ inspected: 1, queued: 1, wrapped: true });
+    // A short window ended the ledger scan, so the cursor goes back to the start.
+    expect(repository.advanceReconcileCursor).toHaveBeenCalledWith('');
+  });
+
+  it('never asks the database about a reference whose object is absent', async () => {
+    const absent =
+      'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa/activities/4d6cc1ce-0643-4c53-b055-9df458fec594/tracks/db985aaa-b96e-4aef-871a-c99a16183439/raw/uploads/db985aaa-b96e-4aef-871a-c99a16183439/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.gpx';
+    const { dependencies, repository } = setup({ candidates: [absent], statResult: null });
+    const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+    expect(repository.reclaimUnreferencedTrackObject).not.toHaveBeenCalled();
+    // An absent object is offered for settling instead; the database decides.
+    expect(repository.settleTrackObjectRef).toHaveBeenCalledWith(absent);
+    expect(result.trackReconciliation).toEqual({ inspected: 1, queued: 0, wrapped: true });
   });
 
   it('returns an empty one-shot result without attempting deletion or finish', async () => {

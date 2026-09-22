@@ -1,0 +1,24 @@
+{
+  "name": "@workout/server-track-storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./parse-host": "./src/parse-host.ts",
+    "./derive": "./src/derive.ts",
+    "./artifacts": "./src/artifacts.ts"
+  },
+  "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "@workout/track-parsing": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "tsx": "4.23.13"
+  }
+}

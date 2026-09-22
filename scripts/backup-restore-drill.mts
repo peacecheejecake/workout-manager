@@ -40,6 +40,7 @@ import {
   grantResources,
   grantResourceRetrieval,
   grantGalleryMedia,
+  grantActivityTracks,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -60,6 +61,11 @@ import {
   processOneResourceDerivedCleanup,
 } from '../packages/server/persistence/src/resource-derived-cleanup.js';
 import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.js';
+import {
+  createResourceObjectCleanupRepository,
+  processOneResourceObjectCleanup,
+} from '../packages/server/persistence/src/resource-object-cleanup.js';
+import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
 import {
   createResourceUrlIngestionRepository,
@@ -67,9 +73,12 @@ import {
 } from '../packages/server/persistence/src/resource-url-ingestions.js';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.js';
 import {
+  createActivityTrackFinalObjectKey,
+  createActivityTrackTemporaryObjectKey,
   createGalleryFinalObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
+  validateObjectKey,
 } from '../packages/server/media/src/keys.js';
 import { storeValidatedUpload } from '../packages/server/media/src/upload.js';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.js';
@@ -493,6 +502,7 @@ async function execute() {
     directory,
     'post-backup-evidence-withdrawal-ledger.json',
   );
+  const activityDeletionLedgerFile = join(directory, 'post-backup-activity-deletion-ledger.json');
   const pools: Pool[] = [];
   const databases: Database[] = [];
   let started = false;
@@ -570,6 +580,7 @@ async function execute() {
     await grantResources(url('drill_source'), 'drill_runtime');
     await grantResourceRetrieval(url('drill_source'), 'drill_runtime');
     await grantGalleryMedia(url('drill_source'), 'drill_runtime');
+    await grantActivityTracks(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -811,6 +822,7 @@ async function execute() {
     const backupConstraintOwners = backupConstraintLedger.subjects.map((row) => row.athleteId);
     const constraintLedgerFile = join(directory, 'post-backup-constraint-ledger.json');
     const manualIds = new Map<string, string>();
+    const fixtureActivities = new Map<string, { activityId: string; revision: number }>();
     const manualHistories = new Map<string, unknown>();
     const checkInIds = new Map<string, string>();
     const completions = new Map<string, Awaited<ReturnType<typeof seedCompletion>>>();
@@ -868,7 +880,7 @@ async function execute() {
         expectedRevision: 0,
         idempotencyKey: randomUUID(),
       });
-      await createActivityRepository(sourceDb).importActivity(athleteId, {
+      const fixtureImport = await createActivityRepository(sourceDb).importActivity(athleteId, {
         idempotencyKey: randomUUID(),
         source: {
           kind: 'fixture',
@@ -886,6 +898,7 @@ async function execute() {
           distanceMeters: 0,
         },
       });
+      fixtureActivities.set(athleteId, fixtureImport);
       const activities = createActivityRepository(sourceDb);
       const manual = await activities.createManualActivity(athleteId, {
         confirmed: true,
@@ -907,7 +920,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 17);
+      assert.equal(before.schemaVersion, 18);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -969,7 +982,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 17) throw new Error('Expected coaching export v17');
+      if (coachingExport.schemaVersion !== 18) throw new Error('Expected coaching export v18');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -995,7 +1008,7 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v17 is added.
+      // A historical v8 download keeps its original shape and remains readable after v18 is added.
       const {
         coachingDecisions,
         coachingProposals,
@@ -1034,6 +1047,8 @@ async function execute() {
         resourceGroundings: _resourceGroundings,
         resourceGroundingExcerpts: _resourceGroundingExcerpts,
         resourceCitations: _resourceCitations,
+        activityTracks: _activityTracks,
+        activityTrackRevisions: _activityTrackRevisions,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1137,7 +1152,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 17) throw new Error('Expected candidate export v17');
+      if (candidateExport.schemaVersion !== 18) throw new Error('Expected candidate export v18');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1255,6 +1270,138 @@ async function execute() {
     });
     await galleryRepo.markStaged(retainedAthlete, previewReservation.uploadId);
     await galleryRepo.finalize(retainedAthlete, previewReservation.uploadId);
+
+    // Private recorded tracks for the retained tenant, seeded through the same
+    // reserve → prepare → stage → finalize lifecycle the API drives, so the restore has
+    // to reproduce the metadata, the revision and all three objects together.
+    const trackRepo = createActivityTrackRepository(sourceDb);
+    const trackCorrespondence = createHash('sha256')
+      .update('drill-track-correspondence')
+      .digest('hex');
+    const seedTrack = async (activityId: string, activityRevision: number, label: string) => {
+      const reservation = await trackRepo.reserve(
+        retainedAthlete,
+        activityId,
+        { expectedActivityRevision: activityRevision, recordedTrackIndex: 0 },
+        `track-${randomUUID()}`,
+      );
+      const publish = async (
+        artifactKind: 'raw' | 'normalized' | 'map_path',
+        extension: 'gpx' | 'json',
+        content: string,
+      ) => {
+        const bytes = Buffer.from(content, 'utf8');
+        const sha256 = createHash('sha256').update(bytes).digest('hex');
+        const parts = {
+          tenantId: retainedAthlete,
+          activityId,
+          trackId: reservation.trackId,
+          uploadId: reservation.uploadId,
+          artifactKind,
+        };
+        const temporary = createActivityTrackTemporaryObjectKey(parts);
+        const finalKey = createActivityTrackFinalObjectKey({ ...parts, sha256, extension });
+        await sourceObjectStorage.writeTemporary(
+          temporary,
+          (async function* () {
+            yield bytes;
+          })(),
+        );
+        await sourceObjectStorage.publishTemporary(temporary, finalKey, {
+          sizeBytes: bytes.byteLength,
+          sha256,
+        });
+        return { storageRef: finalKey, sizeBytes: bytes.byteLength, sha256, bytes };
+      };
+      const raw = await publish(
+        'raw',
+        'gpx',
+        `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${label}</name><trkseg>` +
+          '<trkpt lat="37.5" lon="127.02"><time>2026-03-01T00:00:00Z</time></trkpt>' +
+          '<trkpt lat="37.5001" lon="127.0201"><time>2026-03-01T00:00:10Z</time></trkpt>' +
+          '</trkseg></trk></gpx>',
+      );
+      const normalized = await publish(
+        'normalized',
+        'json',
+        JSON.stringify({ schemaVersion: 1, sampleCount: 2, label }),
+      );
+      const mapPath = await publish(
+        'map_path',
+        'json',
+        JSON.stringify({ schemaVersion: 1, lines: 1, label }),
+      );
+      await trackRepo.prepareObjects(retainedAthlete, reservation.uploadId, {
+        raw: {
+          storageRef: raw.storageRef,
+          sizeBytes: raw.sizeBytes,
+          sha256: raw.sha256,
+          format: 'gpx',
+          originalFileName: 'restore-drill.gpx',
+        },
+        normalized: {
+          storageRef: normalized.storageRef,
+          sizeBytes: normalized.sizeBytes,
+          sha256: normalized.sha256,
+        },
+        mapPath: {
+          storageRef: mapPath.storageRef,
+          sizeBytes: mapPath.sizeBytes,
+          sha256: mapPath.sha256,
+        },
+        parse: {
+          parserId: 'gpx-track-v1',
+          parserVersion: 1,
+          recordedSourceKind: 'gpx-trk',
+          correspondenceDigest: trackCorrespondence,
+          sampleCount: 2,
+          positionedSampleCount: 2,
+          segmentCount: 1,
+          segmentPolicy: { version: 1, maxGapSeconds: 60, maxGapMeters: 200 },
+          distances: { deviceReportedMeters: null, recomputedFromPositionsMeters: 14 },
+        },
+      });
+      await trackRepo.markStaged(retainedAthlete, reservation.uploadId);
+      const stored = await trackRepo.finalize(retainedAthlete, reservation.uploadId);
+      assert.equal(stored.status, 'available');
+      return { raw, normalized, mapPath, artifacts: [raw, normalized, mapPath] };
+    };
+    const retainedFixture = fixtureActivities.get(retainedAthlete);
+    assert.ok(retainedFixture);
+    const retainedTrack = await seedTrack(
+      retainedFixture.activityId,
+      retainedFixture.revision,
+      'retained',
+    );
+    const trackRaw = retainedTrack.raw;
+    const trackNormalized = retainedTrack.normalized;
+    const trackMapPath = retainedTrack.mapPath;
+    // A second tracked activity for the same tenant. This one is deleted *after* the
+    // backup, so the restored cluster starts out holding a track the user has since
+    // removed — the case a restore must not resurrect.
+    const doomedImport = await createActivityRepository(sourceDb).importActivity(retainedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: randomUUID(),
+        revision: 1,
+        contentHash: 'b'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic track deleted after backup',
+        kind: 'running',
+        startedAt: '2026-09-17T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
+    const doomedTrack = await seedTrack(
+      doomedImport.activityId,
+      doomedImport.revision,
+      'deleted-after-backup',
+    );
 
     // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
     // single lexical token so the 'simple' text search matches both bodies.
@@ -1474,6 +1621,32 @@ async function execute() {
       await readCoachingCandidateRows(source, absentConsentAthlete, absentConsentCandidate),
       'consent_withdrawn',
     );
+    // An activity of the tenant that is erased right after: its deletion is in the activity
+    // ledger and its owner is in the erasure ledger, so the restore has to treat the entry as
+    // already satisfied instead of failing the whole replay.
+    const erasedFixture = fixtureActivities.get(deletedAthlete);
+    assert.ok(erasedFixture);
+    await createActivityRepository(sourceDb).deleteActivity(
+      deletedAthlete,
+      erasedFixture.activityId,
+      { expectedRevision: erasedFixture.revision },
+    );
+    const overlappingDeletion = (
+      await source.query<{
+        athlete_id: string;
+        activity_id: string;
+        revision: number;
+        kind: string;
+        source_id: string;
+      }>(
+        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id
+         FROM activity_canonical c JOIN activity_source_head s
+           ON s.athlete_id=c.athlete_id AND s.activity_id=c.id
+         WHERE c.athlete_id=$1 AND c.deleted`,
+        [deletedAthlete],
+      )
+    ).rows;
+    assert.equal(overlappingDeletion.length, 1);
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
     const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
     assert.throws(() =>
@@ -1625,6 +1798,45 @@ async function execute() {
       [deletedAthlete],
     );
     checks.push('post_backup_erasure_ledger_captured_separately');
+    // Deleting a tracked activity after the backup. The dump still holds its track and its
+    // three objects are still in the object archive, so the restore has to re-apply this
+    // suppression before anyone can read, download, export or re-import it.
+    await createActivityRepository(sourceDb).deleteActivity(
+      retainedAthlete,
+      doomedImport.activityId,
+      { expectedRevision: doomedImport.revision },
+    );
+    const activityDeletionLedger = (
+      await source.query<{
+        athlete_id: string;
+        activity_id: string;
+        revision: number;
+        kind: string;
+        source_id: string;
+      }>(
+        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id
+         FROM activity_canonical c JOIN activity_source_head s
+           ON s.athlete_id=c.athlete_id AND s.activity_id=c.id
+         WHERE c.deleted ORDER BY c.athlete_id,c.id`,
+      )
+    ).rows;
+    assert.deepEqual(
+      activityDeletionLedger.map((row) => row.activity_id),
+      [doomedImport.activityId],
+    );
+    // The erased tenant's rows are gone from the source, so its entry is carried from the
+    // capture taken before the erasure. The ledger therefore overlaps the erasure ledger.
+    const combinedDeletionLedger = [...activityDeletionLedger, ...overlappingDeletion];
+    assert.ok(
+      combinedDeletionLedger.some((row) => row.athlete_id === deletedAthlete) &&
+        combinedDeletionLedger.some((row) => row.athlete_id === retainedAthlete),
+    );
+    await writeFile(activityDeletionLedgerFile, JSON.stringify(combinedDeletionLedger), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    // The source has already reclaimed those objects, so only the archive still holds them.
+    checks.push('post_backup_activity_deletion_ledger_captured_separately');
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -1908,12 +2120,76 @@ async function execute() {
       await restored.query(
         'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
       );
+      // Activity deletions that happened after the backup are suppression, not a cache:
+      // the restored cluster must re-apply them before any runtime read, and must reclaim
+      // the track objects the archive brought back with them.
+      const activityDeletionJson: unknown = JSON.parse(
+        await readFile(activityDeletionLedgerFile, 'utf8'),
+      );
+      assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
+      let replayedDeletions = 0;
+      let erasureSatisfiedDeletions = 0;
+      for (const entry of activityDeletionJson) {
+        assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
+        const row = entry as Record<string, unknown>;
+        const owner = row['athlete_id'];
+        const activityId = row['activity_id'];
+        const kind = row['kind'];
+        const sourceId = row['source_id'];
+        const revision = row['revision'];
+        assert.ok(
+          typeof owner === 'string' &&
+            typeof activityId === 'string' &&
+            typeof kind === 'string' &&
+            typeof sourceId === 'string' &&
+            typeof revision === 'number' &&
+            Number.isInteger(revision) &&
+            revision > 0,
+        );
+        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
+          owner,
+        ]);
+        if (erased.rowCount !== 0) {
+          // Erasure already removed this tenant's activities, which satisfies the entry
+          // more completely than suppression would. Counted, not silently skipped, so a
+          // ledger entry can never be lost without the count showing it.
+          assert.equal(
+            (
+              await restored.query(
+                'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+                [owner, activityId],
+              )
+            ).rowCount,
+            0,
+          );
+          erasureSatisfiedDeletions += 1;
+          continue;
+        }
+        await restored.query(
+          `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
+           ON CONFLICT DO NOTHING`,
+          [owner, kind, sourceId],
+        );
+        // Fail closed if the restored row is already ahead of the ledger.
+        const applied = await restored.query(
+          `UPDATE activity_canonical SET deleted=true,revision=$3
+           WHERE athlete_id=$1 AND id=$2 AND revision<=$3 RETURNING id`,
+          [owner, activityId, revision],
+        );
+        assert.equal(applied.rowCount, 1);
+        replayedDeletions += 1;
+      }
+      assert.equal(replayedDeletions + erasureSatisfiedDeletions, activityDeletionJson.length);
+      assert.equal(erasureSatisfiedDeletions, 1);
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
       throw error;
     }
     checks.push('latest_erasure_replayed_before_runtime_access');
+    checks.push('latest_activity_deletion_suppression_replayed_before_runtime_access');
+    checks.push('overlapping_erasure_and_activity_deletion_ledgers_replay_without_rollback');
     checks.push('latest_evidence_withdrawal_and_consent_replayed_before_runtime_access');
     assertCoachingCandidateRowsPurged(
       await readCoachingCandidateRows(restored, withdrawnAthlete, withdrawnCandidate),
@@ -2067,7 +2343,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 17);
+    assert.ok(constraintExport.schemaVersion === 18);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -2102,7 +2378,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
+    if (withdrawnExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -2154,7 +2430,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
+    if (absentExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -2247,6 +2523,99 @@ async function execute() {
     assert.deepEqual(Buffer.concat(restoredUrlRawChunks), urlRawBytes);
     assert.deepEqual(Buffer.concat(restoredUrlParsedChunks), urlParsedBytes);
     checks.push('private_resource_url_raw_parsed_provenance_and_objects_restored_together');
+    const restoredTrackRepo = createActivityTrackRepository(restoreDb);
+    const restoredTrack = await restoredTrackRepo.read(retainedAthlete, retainedFixture.activityId);
+    if (restoredTrack.status !== 'available') throw new Error('TRACK_RESTORE_FAILED');
+    assert.equal(restoredTrack.track.trackRevision, 1);
+    assert.equal(restoredTrack.track.file.sha256, trackRaw.sha256);
+    assert.equal(restoredTrack.track.correspondence.digest, trackCorrespondence);
+    assert.deepEqual(
+      restoredTrack.track.derivatives.map((item) => item.sha256),
+      [trackNormalized.sha256, trackMapPath.sha256],
+    );
+    for (const artifact of [trackRaw, trackNormalized, trackMapPath]) {
+      const object = await restoredObjectStorage.open(artifact.storageRef);
+      assert.ok(object);
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of object.body) chunks.push(chunk);
+      assert.deepEqual(Buffer.concat(chunks), artifact.bytes);
+    }
+    checks.push('private_activity_track_metadata_revision_and_all_three_objects_restored_together');
+    // The activity deleted after the backup: its track came back in the dump and its
+    // objects came back in the archive, and the replayed suppression must refuse every way
+    // of reaching them.
+    assert.deepEqual(await restoredTrackRepo.read(retainedAthlete, doomedImport.activityId), {
+      status: 'unavailable',
+      activityId: doomedImport.activityId,
+    });
+    for (const variant of ['raw', 'normalized', 'map_path'] as const)
+      assert.equal(
+        await restoredTrackRepo.resolveObject(retainedAthlete, doomedImport.activityId, variant),
+        null,
+      );
+    const restoredActivities = createActivityRepository(restoreDb);
+    assert.equal(
+      await restoredActivities.getActivity(retainedAthlete, doomedImport.activityId),
+      null,
+    );
+    // Re-importing the same source is suppressed rather than resurrected, and a track for
+    // it is refused at the database.
+    const reimported = await restoredActivities.importActivity(retainedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: String(
+          (
+            await restored.query<{ source_id: string }>(
+              'SELECT source_id FROM activity_source_head WHERE athlete_id=$1 AND activity_id=$2',
+              [retainedAthlete, doomedImport.activityId],
+            )
+          ).rows[0]?.source_id,
+        ),
+        revision: 2,
+        contentHash: 'c'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic re-import after restore',
+        kind: 'running',
+        startedAt: '2026-09-17T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
+    assert.equal(reimported.outcome, 'suppressed');
+    await assert.rejects(() =>
+      createActivityTrackRepository(restoreDb).reserve(
+        retainedAthlete,
+        doomedImport.activityId,
+        { expectedActivityRevision: doomedImport.revision + 1, recordedTrackIndex: 0 },
+        `track-${randomUUID()}`,
+      ),
+    );
+    // The replayed suppression also queued the restored objects. The real cleanup worker
+    // reclaims them from the restored object store, and leaves the retained track alone.
+    const restoreCleanup = createResourceObjectCleanupRepository({
+      connectionString: url('drill_restore'),
+      max: 1,
+    });
+    try {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const outcome = await processOneResourceObjectCleanup(restoreCleanup, (ref) =>
+          restoredObjectStorage.delete(validateObjectKey(ref)),
+        );
+        if (outcome === 'empty') break;
+      }
+    } finally {
+      await restoreCleanup.close();
+    }
+    for (const artifact of doomedTrack.artifacts)
+      assert.equal(await restoredObjectStorage.stat(artifact.storageRef), null);
+    for (const artifact of retainedTrack.artifacts)
+      assert.ok(await restoredObjectStorage.stat(artifact.storageRef));
+    checks.push('restored_activity_deletion_refuses_read_download_export_and_reimport');
+    checks.push('restored_activity_deletion_reclaims_track_objects_through_the_cleanup_worker');
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
     const manualId = manualIds.get(retainedAthlete);
     assert.ok(manualId);
@@ -2262,7 +2631,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 17) throw new Error('Expected resource export v17');
+    if (retainedExport.schemaVersion !== 18) throw new Error('Expected resource export v18');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -2306,6 +2675,23 @@ async function execute() {
     // The export carries passage identity and offsets, never passage bodies.
     assert.ok(!JSON.stringify(retainedExport.data.resourcePassages).includes('RESTOREDRILLTOKEN'));
     assert.ok(!JSON.stringify(retainedExport.data.resourceCitations).includes('RESTOREDRILLTOKEN'));
+    // v18 track collections: identity, parser identity, the correspondence digest and
+    // object hashes, and no storage reference anywhere.
+    assert.equal(retainedExport.data.activityTracks.length, 1);
+    assert.equal(
+      retainedExport.data.activityTracks[0]?.['activity_id'],
+      retainedFixture.activityId,
+    );
+    assert.equal(retainedExport.data.activityTrackRevisions.length, 1);
+    assert.equal(
+      retainedExport.data.activityTrackRevisions[0]?.['correspondence_digest'],
+      trackCorrespondence,
+    );
+    assert.ok(
+      !JSON.stringify(retainedExport.data.activityTrackRevisions).includes('private/v1/tenants'),
+    );
+    assert.ok(!JSON.stringify(retainedExport).includes(trackRaw.storageRef));
+    checks.push('restored_activity_track_reproduced_in_export_v18_without_storage_refs');
     checks.push('restored_access_shares_audit_and_gallery_media_reproduced_in_export');
     checks.push('restored_retrieval_passages_grounding_and_citations_reproduced_without_bodies');
 
@@ -2576,7 +2962,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 17) throw new Error('Expected coaching export v17');
+    if (retainedExport.schemaVersion !== 18) throw new Error('Expected coaching export v18');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -2708,7 +3094,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 17) throw new Error('Expected coaching export v17');
+    if (coachingAfterReplay.schemaVersion !== 18) throw new Error('Expected coaching export v18');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -2884,7 +3270,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 17) throw new Error('Expected evidence export v17');
+    if (scrubbedExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

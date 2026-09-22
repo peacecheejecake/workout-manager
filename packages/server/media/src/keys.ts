@@ -19,6 +19,16 @@ const urlTemporaryKeyPattern = new RegExp(
 const urlFinalKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/url-ingestions/(${UUID_PATTERN})/(raw|parsed)/sha256/(${SHA256_PATTERN})[.](html|xhtml|txt|md|json)$`,
 );
+// Recorded-track objects live under their activity, never under a client-supplied path.
+// The original file and the two server-built derivatives each get their own key, so an
+// upload that is abandoned halfway leaves three deterministic refs the cleanup manifest
+// can reclaim by exact key.
+const trackTemporaryKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/activities/(${UUID_PATTERN})/tracks/(${UUID_PATTERN})/temporary/(${UUID_PATTERN})/(raw|normalized|map_path)$`,
+);
+const trackFinalKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/activities/(${UUID_PATTERN})/tracks/(${UUID_PATTERN})/(raw|normalized|map_path)/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](fit|gpx|json)$`,
+);
 
 declare const temporaryObjectKeyBrand: unique symbol;
 declare const finalObjectKeyBrand: unique symbol;
@@ -31,6 +41,19 @@ export type GalleryMediaExtension = 'jpg' | 'png' | 'webp' | 'mp4' | 'webm';
 const GALLERY_MEDIA_EXTENSIONS: readonly string[] = ['jpg', 'png', 'webp', 'mp4', 'webm'];
 export type UrlArtifactKind = 'raw' | 'parsed';
 export type UrlArtifactExtension = 'html' | 'xhtml' | 'txt' | 'md' | 'json';
+export type TrackArtifactKind = 'raw' | 'normalized' | 'map_path';
+export type TrackArtifactExtension = 'fit' | 'gpx' | 'json';
+const TRACK_ARTIFACT_KINDS: readonly string[] = ['raw', 'normalized', 'map_path'];
+
+/** A derivative is always JSON; an original is always the format it was parsed as. */
+function assertTrackArtifactExtension(
+  artifactKind: TrackArtifactKind,
+  extension: TrackArtifactExtension,
+): void {
+  const allowed =
+    artifactKind === 'raw' ? extension === 'fit' || extension === 'gpx' : extension === 'json';
+  if (!allowed) throw new InvalidObjectKeyError();
+}
 
 export class InvalidObjectKeyError extends Error {
   readonly code = 'INVALID_OBJECT_KEY';
@@ -131,6 +154,41 @@ export function createUrlFinalObjectKey(input: {
   return `private/v1/tenants/${tenantId}/resources/${resourceId}/url-ingestions/${ingestionId}/${input.artifactKind}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
 }
 
+export function createActivityTrackTemporaryObjectKey(input: {
+  tenantId: string;
+  activityId: string;
+  trackId: string;
+  uploadId: string;
+  artifactKind: TrackArtifactKind;
+}): TemporaryObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const activityId = normalizeUuid(input.activityId);
+  const trackId = normalizeUuid(input.trackId);
+  const uploadId = normalizeUuid(input.uploadId);
+  if (!TRACK_ARTIFACT_KINDS.includes(input.artifactKind)) throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/temporary/${uploadId}/${input.artifactKind}` as TemporaryObjectKey;
+}
+
+export function createActivityTrackFinalObjectKey(input: {
+  tenantId: string;
+  activityId: string;
+  trackId: string;
+  uploadId: string;
+  artifactKind: TrackArtifactKind;
+  sha256: string;
+  extension: TrackArtifactExtension;
+}): FinalObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const activityId = normalizeUuid(input.activityId);
+  const trackId = normalizeUuid(input.trackId);
+  const uploadId = normalizeUuid(input.uploadId);
+  const sha256 = input.sha256.toLowerCase();
+  if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
+  if (!TRACK_ARTIFACT_KINDS.includes(input.artifactKind)) throw new InvalidObjectKeyError();
+  assertTrackArtifactExtension(input.artifactKind, input.extension);
+  return `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/${input.artifactKind}/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
+}
+
 export type ParsedObjectKey =
   | {
       kind: 'temporary';
@@ -175,6 +233,24 @@ export type ParsedObjectKey =
       artifactKind: UrlArtifactKind;
       sha256: string;
       extension: UrlArtifactExtension;
+    }
+  | {
+      kind: 'track_temporary';
+      tenantId: string;
+      activityId: string;
+      trackId: string;
+      uploadId: string;
+      artifactKind: TrackArtifactKind;
+    }
+  | {
+      kind: 'track_final';
+      tenantId: string;
+      activityId: string;
+      trackId: string;
+      uploadId: string;
+      artifactKind: TrackArtifactKind;
+      sha256: string;
+      extension: TrackArtifactExtension;
     };
 
 export function parseObjectKey(value: string): ParsedObjectKey {
@@ -274,6 +350,58 @@ export function parseObjectKey(value: string): ParsedObjectKey {
       artifactKind,
       sha256,
       extension: extension as UrlArtifactExtension,
+    };
+  }
+  const trackTemporaryMatch = trackTemporaryKeyPattern.exec(value);
+  if (trackTemporaryMatch) {
+    const [, tenantId, activityId, trackId, uploadId, artifactKind] = trackTemporaryMatch;
+    if (
+      !tenantId ||
+      !activityId ||
+      !trackId ||
+      !uploadId ||
+      !artifactKind ||
+      !TRACK_ARTIFACT_KINDS.includes(artifactKind)
+    )
+      throw new InvalidObjectKeyError();
+    return {
+      kind: 'track_temporary',
+      tenantId,
+      activityId,
+      trackId,
+      uploadId,
+      artifactKind: artifactKind as TrackArtifactKind,
+    };
+  }
+  const trackFinalMatch = trackFinalKeyPattern.exec(value);
+  if (trackFinalMatch) {
+    const [, tenantId, activityId, trackId, artifactKind, uploadId, sha256, extension] =
+      trackFinalMatch;
+    if (
+      !tenantId ||
+      !activityId ||
+      !trackId ||
+      !uploadId ||
+      !sha256 ||
+      !artifactKind ||
+      !TRACK_ARTIFACT_KINDS.includes(artifactKind) ||
+      !extension ||
+      !['fit', 'gpx', 'json'].includes(extension)
+    )
+      throw new InvalidObjectKeyError();
+    assertTrackArtifactExtension(
+      artifactKind as TrackArtifactKind,
+      extension as TrackArtifactExtension,
+    );
+    return {
+      kind: 'track_final',
+      tenantId,
+      activityId,
+      trackId,
+      uploadId,
+      artifactKind: artifactKind as TrackArtifactKind,
+      sha256,
+      extension: extension as TrackArtifactExtension,
     };
   }
   throw new InvalidObjectKeyError();

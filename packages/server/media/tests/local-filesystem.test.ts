@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  createActivityTrackTemporaryObjectKey,
   createFinalObjectKey,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
@@ -389,5 +390,55 @@ describe('private local filesystem object storage', () => {
     await expect(storage.writeTemporary(temporary, chunks('safe'))).rejects.toBeInstanceOf(
       UnsafeStoragePathError,
     );
+  });
+});
+
+describe('deleting an object does not leave its directories behind', () => {
+  it('prunes the directories an unlink emptied and stops at the first that is not', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'prune-'));
+    try {
+      const storage = await createLocalFilesystemObjectStorage(root);
+      const tenant = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const activity = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const track = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      const keys = [
+        'dddddddd-dddd-4ddd-8ddd-000000000001',
+        'dddddddd-dddd-4ddd-8ddd-000000000002',
+      ].map((uploadId) =>
+        createActivityTrackTemporaryObjectKey({
+          tenantId: tenant,
+          activityId: activity,
+          trackId: track,
+          uploadId,
+          artifactKind: 'raw',
+        }),
+      );
+      for (const key of keys)
+        await storage.writeTemporary(
+          key,
+          (async function* () {
+            yield new TextEncoder().encode('object');
+          })(),
+        );
+      const [first, second] = keys;
+      if (first === undefined || second === undefined) throw new Error('expected two keys');
+      await storage.delete(first);
+      // The upload directory of the deleted object is gone; the shared parent stays because
+      // the second object still lives there.
+      await expect(lstat(join(root, first.slice(0, first.lastIndexOf('/'))))).rejects.toMatchObject(
+        {
+          code: 'ENOENT',
+        },
+      );
+      expect(
+        (await lstat(join(root, second.slice(0, second.lastIndexOf('/'))))).isDirectory(),
+      ).toBe(true);
+      await storage.delete(second);
+      // With nothing left, the pruning walks up to — but never removes — the root.
+      await expect(lstat(join(root, 'private'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect((await lstat(root)).isDirectory()).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

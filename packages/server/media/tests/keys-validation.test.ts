@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createActivityTrackFinalObjectKey,
+  createActivityTrackTemporaryObjectKey,
   createFinalObjectKey,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
@@ -182,5 +184,70 @@ describe('central upload validation', () => {
     );
     await expect(consume(validated.body)).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
     await expect(validated.result).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+  });
+});
+
+describe('activity track object keys', () => {
+  const activityId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const trackId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const uploadId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const sha256 = 'f'.repeat(64);
+  const base = { tenantId, activityId, trackId, uploadId } as const;
+
+  it('places the original and both derivatives under their activity and track', () => {
+    expect(createActivityTrackTemporaryObjectKey({ ...base, artifactKind: 'raw' })).toBe(
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/temporary/${uploadId}/raw`,
+    );
+    const final = createActivityTrackFinalObjectKey({
+      ...base,
+      artifactKind: 'normalized',
+      sha256,
+      extension: 'json',
+    });
+    expect(final).toBe(
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/normalized/uploads/${uploadId}/sha256/${sha256}.json`,
+    );
+    expect(parseObjectKey(final)).toEqual({
+      kind: 'track_final',
+      tenantId,
+      activityId,
+      trackId,
+      uploadId,
+      artifactKind: 'normalized',
+      sha256,
+      extension: 'json',
+    });
+    expect(validateObjectKey(final)).toBe(final);
+  });
+
+  it('refuses an extension that does not match the artifact kind', () => {
+    for (const [artifactKind, extension] of [
+      ['raw', 'json'],
+      ['normalized', 'gpx'],
+      ['map_path', 'fit'],
+    ] as const)
+      expect(() =>
+        createActivityTrackFinalObjectKey({ ...base, artifactKind, sha256, extension }),
+      ).toThrow(InvalidObjectKeyError);
+  });
+
+  it('refuses traversal, an absolute path, a bad digest and an unknown artifact kind', () => {
+    for (const key of [
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/raw/uploads/${uploadId}/sha256/../../secret.gpx`,
+      `/private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/raw/uploads/${uploadId}/sha256/${sha256}.gpx`,
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/raw/uploads/${uploadId}/sha256/${'F'.repeat(64)}.gpx`,
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/other/uploads/${uploadId}/sha256/${sha256}.gpx`,
+      `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/temporary/${uploadId}/other`,
+    ])
+      expect(() => parseObjectKey(key)).toThrow(InvalidObjectKeyError);
+    expect(() =>
+      createActivityTrackFinalObjectKey({
+        ...base,
+        activityId: '../escape',
+        artifactKind: 'raw',
+        sha256,
+        extension: 'gpx',
+      }),
+    ).toThrow(InvalidObjectKeyError);
   });
 });

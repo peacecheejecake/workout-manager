@@ -369,6 +369,29 @@ const collections = [
     'media_item_id,kind,media_type,size_bytes,content_hash,created_at',
     'media_item_id,kind',
   ],
+  // Stored tracks of live activities only, and never a storage reference: the export
+  // carries identity, parser identity, the correspondence digest, aggregate counts and
+  // object hashes, while the geometry stays behind the authenticated download.
+  [
+    'activityTracks',
+    `(SELECT t.* FROM activity_track t JOIN activity_canonical c
+      ON c.athlete_id=t.athlete_id AND c.id=t.activity_id
+      WHERE NOT c.deleted) activity_track`,
+    'activity_id,track_id,source_kind,source_id,track_revision,revision_id,created_at,updated_at',
+    'created_at,activity_id',
+  ],
+  [
+    'activityTrackRevisions',
+    `(SELECT r.* FROM activity_track_revision r JOIN activity_canonical c
+      ON c.athlete_id=r.athlete_id AND c.id=r.activity_id
+      WHERE NOT c.deleted) activity_track_revision`,
+    `activity_id,track_id,track_revision,revision_id,source_kind,source_id,source_revision,
+     recorded_source_kind,parser_id,parser_version,correspondence_digest,format,original_filename,
+     raw_size_bytes,raw_content_hash,normalized_size_bytes,normalized_content_hash,
+     map_path_size_bytes,map_path_content_hash,sample_count,positioned_sample_count,segment_count,
+     segment_policy,distances,created_at`,
+    'activity_id,track_revision',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -435,7 +458,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 17,
+          schemaVersion: 18,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

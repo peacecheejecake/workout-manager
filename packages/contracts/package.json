@@ -161,6 +161,10 @@
       "types": "./src/tracks.ts",
       "default": "./dist/tracks.js"
     },
+    "./activity-tracks": {
+      "types": "./src/activity-tracks.ts",
+      "default": "./dist/activity-tracks.js"
+    },
     "./routing": {
       "types": "./src/routing.ts",
       "default": "./dist/routing.js"

@@ -10,6 +10,15 @@ export type ResourceObjectCleanupLease = {
 
 export interface ResourceObjectCleanupRepository {
   reapExpired(now: Date, limit?: number): Promise<number>;
+  /** Resumable cursor for the bounded track-object reconciliation sweep. */
+  reconcileCursor(): Promise<string>;
+  advanceReconcileCursor(key: string): Promise<void>;
+  /** One bounded, ordered window of watched references after the cursor. */
+  reconcileCandidates(cursor: string, limit: number): Promise<readonly string[]>;
+  /** Stop watching a reference whose object is absent and can no longer be created. */
+  settleTrackObjectRef(storageRef: string): Promise<boolean>;
+  /** Queues one track object the ledger does not account for. */
+  reclaimUnreferencedTrackObject(storageRef: string): Promise<boolean>;
   pruneUploadHistory(limit?: number): Promise<number>;
   pruneCleanupHistory(limit?: number): Promise<number>;
   lease(now: Date, leaseUntil: Date): Promise<ResourceObjectCleanupLease | null>;
@@ -52,6 +61,39 @@ export function createResourceObjectCleanupRepository(options: {
         [now.toISOString(), boundedLimit],
       );
       return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
+    },
+    async reconcileCursor() {
+      const result = await pool.query('SELECT public.activity_track_reconcile_cursor() AS cursor');
+      return z
+        .string()
+        .max(512)
+        .parse(result.rows[0]?.['cursor'] ?? '');
+    },
+    async advanceReconcileCursor(key) {
+      await pool.query('SELECT public.advance_activity_track_reconcile_cursor($1)', [
+        z.string().max(512).parse(key),
+      ]);
+    },
+    async reconcileCandidates(cursor, limit) {
+      const result = await pool.query(
+        'SELECT storage_ref FROM public.activity_track_reconcile_candidates($1,$2)',
+        [z.string().max(512).parse(cursor), z.number().int().min(1).max(1000).parse(limit)],
+      );
+      return result.rows.map((row) => z.string().min(1).max(512).parse(row['storage_ref']));
+    },
+    async settleTrackObjectRef(storageRef) {
+      const result = await pool.query(
+        'SELECT public.settle_activity_track_object_ref($1) AS settled',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['settled'] === true;
+    },
+    async reclaimUnreferencedTrackObject(storageRef) {
+      const result = await pool.query(
+        'SELECT public.reclaim_unreferenced_activity_track_object($1) AS queued',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['queued'] === true;
     },
     async pruneUploadHistory(limit = 100) {
       const boundedLimit = z.number().int().min(1).max(100).parse(limit);
@@ -105,6 +147,57 @@ export function createResourceObjectCleanupRepository(options: {
     },
     close: () => pool.end(),
   };
+}
+
+export interface TrackReconciliationOutcome {
+  /** Ledger references examined in this run. */
+  readonly inspected: number;
+  /** References whose object was found on the store and had nothing referencing it. */
+  readonly queued: number;
+  /** True when the window ended the ledger scan and the cursor went back to the start. */
+  readonly wrapped: boolean;
+}
+
+/**
+ * Compare the ledger against the object store and queue whatever nothing accounts for.
+ *
+ * This is the part of the guarantee that does not depend on a receipt still being open: a
+ * writer that resumes long after its upload expired, or any other path that leaves an object
+ * nothing references, is caught here.
+ *
+ * What is bounded, exactly: one run reads at most `limit` rows from the reference index — an
+ * index range scan over a keyset window, resumed from a stored cursor — and performs at most
+ * one `stat` and one bounded statement per row. No directory is walked and no ledger table is
+ * scanned, so empty directories, unrelated files and the size of the upload history all cost
+ * nothing. Reaching the end of the index resets the cursor, so the next run starts again from
+ * the beginning.
+ */
+export async function reconcileActivityTrackObjects(
+  repository: ResourceObjectCleanupRepository,
+  storage: { stat(key: never): Promise<unknown> },
+  limit = 200,
+): Promise<TrackReconciliationOutcome> {
+  const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
+  const cursor = await repository.reconcileCursor();
+  const candidates = await repository.reconcileCandidates(cursor, boundedLimit);
+  let queued = 0;
+  for (const reference of candidates) {
+    // The object store is asked once per reference. A reference whose object is absent is
+    // exactly the normal case and costs nothing further.
+    if ((await storage.stat(reference as never)) === null) {
+      // Absent, and possibly absent for good: the database decides whether anything could
+      // still create it and stops watching only then.
+      await repository.settleTrackObjectRef(reference);
+      continue;
+    }
+    if (await repository.reclaimUnreferencedTrackObject(reference)) queued += 1;
+  }
+  const last = candidates.at(-1);
+  // A short window means the end of the ledger: start again from the beginning next time, so
+  // nothing stays unvisited because it sorts before the cursor.
+  const next = candidates.length === boundedLimit && last !== undefined ? last : '';
+  await repository.advanceReconcileCursor(next);
+  return { inspected: candidates.length, queued, wrapped: next === '' };
 }
 
 /** Object deletion runs between the lease and finish transactions. */

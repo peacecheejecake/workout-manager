@@ -196,7 +196,7 @@ it('enforces ownership and immutable identity, exports current text only, and er
   });
   const exported = await createOperationsRepository(database).exportAccount(athlete);
   expect(exported).toMatchObject({
-    schemaVersion: 17,
+    schemaVersion: 18,
     data: {
       coachingConstraints: [
         { id: first.id, revision: 2, text: 'Latest confirmed restriction', deleted: false },
