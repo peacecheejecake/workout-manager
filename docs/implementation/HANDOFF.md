@@ -17,49 +17,52 @@
 
 ## 완료된 최신 작업
 
-[M2-01e](progress/M2-01e.md)를 완료했다. 활동 상세의 경로 탭이 서버가 저장한 `map_path`·
-정규화 객체를 재조회해 자체 호스팅 배경 지도 위에 그린다 — **저장된 track의 첫 실브라우저
-증거**다(M2-01c는 UI를 바꾸지 않았고 M2-01b의 증거는 저장 전 preview였다).
+[M2-01f](progress/M2-01f.md)를 완료했다. 저장된 track의 명시 구간이 Course가 된다 — 자체 ID,
+형상·경유지·생성 조건·출처 revision을 담은 불변 revision, GPX 내보내기, 그리고 private가
+유일한 가시성이다(나중에 끌 공유 경로를 아예 만들지 않았다). Course 편집은 출처 Activity나
+승인된 PlanVersion을 건드리지 않는다.
 
-탭은 3패널이다. desktop은 그래프와 지도를 나란히, mobile은 3탭, tablet은 스택이다. 그래프는
-같은 `DetailChart`가 같은 selection store에 쓰므로 chart·lap·sample 선택이 **표시 인덱스가
-아니라 저장된 sample id로** 서로를 가리키고, lap·구간 선택은 덮이는 표본을 별도 path로
-강조하되 gap을 잇지 않는다.
+활동을 지우면 그 좌표에서 파생된 Course revision을 회수하므로 **삭제 확인이 믿을 수 있어야
+한다.** 그렇지 않았다 — 영향 조회가 pending이거나 실패해도 확인 버튼이 눌렸고, 다른 탭에서
+만든 코스는 Activity revision이 움직이지 않으므로 **목록에 없이도 회수**됐다. 지금은 조회
+성공을 요구하고, 확인한 목록의 digest를 삭제 명령에 실어 **tombstone을 쓰는 같은 transaction
+안에서** 재대조한다.
 
-**대응 규칙을 두 번 틀렸고 둘 다 기록했다.** 처음엔 양방향 모두 같은 시각의 첫 항목을 골라
-표본 0:1 선택이 관측 0을 거쳐 0:0으로 옮겨갔다. 두 번째는 표본 쪽 유일성만 검사해, 한 시각에
-관측이 2개면 마커를 찍어 놓고 역방향 클릭이 연결을 거부해 관측 선택이 사라졌다. 지금은 한
-시각이 **정확히 한 표본과 정확히 한 관측**을 가리킬 때만 확정하고, 아니면 어느 쪽이 붐비는지
-말하며 선택을 움직이지 않는다.
+그 수정이 다시 한 겹을 불렀다. 미리보기가 목록과 digest를 **별도 select**로 읽어, 그 사이에
+코스가 생기면 목록 1개 / digest 2개짜리 응답이 나오고 그 digest로 삭제가 성공해 **사용자가
+보지 못한 코스까지 회수**됐다. 이제 SQL 함수 하나가 한 snapshot에서 둘을 함께 만들고 삭제
+비교도 같은 정의를 쓴다. 동시 writer가 코스를 만드는 동안 미리보기를 40회 읽어 매번 digest가
+실제 반환된 목록과 일치하는지 테스트가 SQL과 독립적으로 재계산해 확인한다.
 
-chart 대응이 저장된 링크가 아니라 **기록 시각** 기준인 이유는 `normalize.ts`가 `detailLink`를
-항상 null로 두기 때문이다. 이를 고치면 대응 digest가 바뀌어 **새 track revision**이 되므로
-M2-01c 저장 내부에 손대지 않고 보고만 했다. 이 항목은 M2-01f 이후 별도로 판단한다.
+멱등성도 같은 종류의 정정을 두 번 받았다. API가 receipt보다 head를 먼저 읽어 성공한 PATCH의
+동일 재전송이 409가 됐고(기존 replay 시험은 repository를 직접 불러 이 경로를 못 봤다),
+클라이언트는 클릭마다 새 key를 만들어 응답 유실 시 중복 코스를 만들었다. 모든 non-2xx를
+실패로 보는 1차 수정은 **저장은 됐는데 프록시가 504를 준** 경우에 같은 구멍을 남겼다. 지금은
+receipt를 먼저 보고, key는 확인된 성공이나 **아무것도 저장되지 않았음이 증명된 거절**에서만
+버린다.
 
-`current.json`은 변경 가능한 pointer이므로 `no-store`로 서빙하고, 일주일 immutable 정책은
-deployment별 자산에만 남겼다.
+**실브라우저가 Playwright로는 볼 수 없던 결함을 잡았다**: GPX 내보내기가 409
+`SESSION_CHANGED`로 실패했다. cookie session이 `x-workout-session-id` 헤더를 요구하는데
+평범한 `<a href>` 이동은 그것을 붙일 수 없고, spec은 헤더를 붙이는 `page.request.get`을 쓰고
+있었다. 클릭이 헤더를 붙인 읽기를 하도록 고쳤고, 다운로드는 본문을 다 읽고 세션이 그대로임을
+확인한 뒤에만 넘긴다 — 이미 시작된 다운로드는 revoke로 되돌릴 수 없다.
 
-검증은 typecheck 32 task, unit 246 files/2,743 tests, 실제 PostgreSQL integration
-44 files/403 tests, build 14 task, drill 51 checks, **identity E2E 146 passed / 0 failed**를
-통과했다. Aside가 실제 OIDC 로그인 → 실제 API로 FIT 저장 → 새 페이지 로드 재조회까지 몰아
-서울 도심 자체 타일 위 경로 feature 3개, **끊긴 구간이 직선으로 이어지지 않음**, 기기 거리
-640m와 GPS 재계산 213m 분리, 선택 왕복을 확인했다. Aside는 viewport를 바꿀 수 없어
-320~1280px와 420px pane은 Playwright로 확인했다.
+검증은 typecheck 34/34, unit 253 files/2,819 tests, 실제 PostgreSQL integration
+46 files/422 tests, build 15 task, **identity suite 148 passed/0 failed**, drill **54 checks**
+(코스 회수·복원 포함)를 통과했다. 계정 export는 v19다. 가드 11개를 각각 되돌려 해당 시험이
+실패하는 것을 확인했다.
 
-**별도 커밋으로 identity suite를 복구했다.** 계정 export가 v15→v18로 오르는 동안 spec 기대값이
-갱신되지 않아 main이 8건 red였다. 원인 커밋들이 format·lint·typecheck·unit·integration·drill만
-돌리고 **identity suite를 돌리지 않은 것**이 이유다. export 리터럴 6곳을 한 helper로 모으고
-(단언 내용 불변), storage spec 2건은 오히려 강화했다. 9 failed/131 passed → **146 passed/0 failed**.
-**앞으로 커밋 전 검증에 identity suite를 반드시 포함한다.**
-
-미충족으로 남긴 것: 경로 탭의 lap 표, 차트 드래그 범위 선택, hover 추종 마커, 장기 track 성능
-측정, 그리고 배경 지도 서빙은 개발·검증 배선이지 운영 호스팅이 아니다.
+**미충족으로 이월**: S13의 mobile sheet·tablet 접힘 목록·desktop 지도/목록 구성은 만들지
+않았고 M2-01h로 넘긴다. 확인한 것은 320px 가로 스크롤 0·키보드 조작·합성 입력 보존이며,
+마지막은 가드 증거이지 OS IME 증거가 아니다. 코스를 지도에 그리지 않고, lineage는 스키마상
+다중이나 실제로는 1건이며, 형상은 DB jsonb로 대용량 성능 미측정이고, GPX import는 M2-01j다.
 
 ## 다음 ready 작업
 
-**M2-01f 기록→Course**가 다음 직렬 작업이다. 저장된 track에서 명시 구간을 선택해 Course를
-만들고 불변 version·GPX export·private 기본값을 구현한다. 원본 actual은 불변이어야 하고 동시
-수정은 CAS로 막는다. Course revision 회수 대상이 생기므로 M2-01c의 삭제·회수 경로와 연결된다.
+**M2-01h 경유지 편집**이 다음 직렬 작업이다. M2-01f의 Course와 M2-01g의 routing adapter를
+잇는다 — S14의 시작/경유/끝 편집·잠금·undo/redo와 drag 대안 목록, 그리고 결과를 **최신
+draft에만** 적용하고 검토 후 명시 저장한다. M2-01f가 이월한 S13 레이아웃도 여기서 함께
+처리한다. M2-01g의 `RouteComputationRecord` 저장도 이 노드 몫이다.
 
 ## 남은 외부·실환경 gate
 

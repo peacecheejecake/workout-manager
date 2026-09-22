@@ -1082,8 +1082,9 @@
       "title": "기록→Course",
       "dependsOn": ["M2-01e"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "명시 구간 선택·Course CRUD/불변 version·GPX export·원본 불변"
+      "status": "completed",
+      "scope": "명시 구간 선택·Course CRUD/불변 version·GPX export·원본 불변",
+      "evidence": "docs/implementation/progress/M2-01f.md"
     },
     {
       "id": "M2-01g",
