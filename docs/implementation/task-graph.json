@@ -1100,8 +1100,9 @@
       "title": "경유지 편집",
       "dependsOn": ["M2-01f", "M2-01g"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장"
+      "status": "completed",
+      "scope": "S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장",
+      "evidence": "docs/implementation/progress/M2-01h.md"
     },
     {
       "id": "M2-01i",

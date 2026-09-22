@@ -17,52 +17,49 @@
 
 ## 완료된 최신 작업
 
-[M2-01f](progress/M2-01f.md)를 완료했다. 저장된 track의 명시 구간이 Course가 된다 — 자체 ID,
-형상·경유지·생성 조건·출처 revision을 담은 불변 revision, GPX 내보내기, 그리고 private가
-유일한 가시성이다(나중에 끌 공유 경로를 아예 만들지 않았다). Course 편집은 출처 Activity나
-승인된 PlanVersion을 건드리지 않는다.
+[M2-01h](progress/M2-01h.md)를 완료했다. 시작·경유·끝 경유점을 목록과 지도 양쪽에서 추가·정렬·
+잠금·undo할 수 있어 필수 조작에 drag가 필요 없다. 계산된 경로는 **서버에 저장되는 제안**이고
+코스를 전혀 바꾸지 않는다. 검토 후 저장할 때 revision을 쓰는 같은 transaction 안에서 소비되며,
+저장 요청에는 proposal id·draft revision·승인한 graph만 실려 **한 draft의 선에 다른 draft의
+경유점을 붙이는 것이 구조적으로 불가능**하다.
 
-활동을 지우면 그 좌표에서 파생된 Course revision을 회수하므로 **삭제 확인이 믿을 수 있어야
-한다.** 그렇지 않았다 — 영향 조회가 pending이거나 실패해도 확인 버튼이 눌렸고, 다른 탭에서
-만든 코스는 Activity revision이 움직이지 않으므로 **목록에 없이도 회수**됐다. 지금은 조회
-성공을 요구하고, 확인한 목록의 digest를 삭제 명령에 실어 **tombstone을 쓰는 같은 transaction
-안에서** 재대조한다.
+이월 부채 두 건을 여기서 갚았다. S13의 mobile sheet·tablet 접힘 목록·desktop 지도/목록을 만들고
+320·767·768·1279·1280px와 420px pane에서 실측했다. `RouteComputationRecord`는 좌표 없이
+revision에 저장되고, "옛 graph를 새 graph로 조용히 덮어쓰지 않는다"가 승인한 previous/next graph를
+CAS로 잠근 head와 대조하는 **검사 가능한 규칙**이 되었다(자동 재계산 경로 없음).
 
-그 수정이 다시 한 겹을 불렀다. 미리보기가 목록과 digest를 **별도 select**로 읽어, 그 사이에
-코스가 생기면 목록 1개 / digest 2개짜리 응답이 나오고 그 digest로 삭제가 성공해 **사용자가
-보지 못한 코스까지 회수**됐다. 이제 SQL 함수 하나가 한 snapshot에서 둘을 함께 만들고 삭제
-비교도 같은 정의를 쓴다. 동시 writer가 코스를 만드는 동안 미리보기를 40회 읽어 매번 digest가
-실제 반환된 목록과 일치하는지 테스트가 SQL과 독립적으로 재계산해 확인한다.
+**검토 다섯 라운드에서 같은 결함이 다섯 번 나왔다 — 모두 "자기가 속한 것보다 오래 사는 동작"이다.**
+draft revision에만 묶인 검토 확인이 다른 graph의 새 proposal로 승계돼 재검토 없이 저장될 수 있었고,
+취소한 계산의 늦은 성공이 적용됐으며(취소 테스트가 transport를 reject시켜 resolve 경로를 못 봤다),
+geometry를 막은 뒤에도 그 정리 경로가 새 계산의 상태를 끝냈고, 저장 대기 중 추가한 편집이
+revision만 보고 draft를 보지 않는 own-save 처리로 사라졌으며, 캐시된 코스로 전환하면 abort가
+unmount에만 묶인 탓에 이전 editor 전체가 살아남았다.
 
-멱등성도 같은 종류의 정정을 두 번 받았다. API가 receipt보다 head를 먼저 읽어 성공한 PATCH의
-동일 재전송이 409가 됐고(기존 replay 시험은 repository를 직접 불러 이 경로를 못 봤다),
-클라이언트는 클릭마다 새 key를 만들어 응답 유실 시 중복 코스를 만들었다. 모든 non-2xx를
-실패로 보는 1차 수정은 **저장은 됐는데 프록시가 504를 준** 경우에 같은 구멍을 남겼다. 지금은
-receipt를 먼저 보고, key는 확인된 성공이나 **아무것도 저장되지 않았음이 증명된 거절**에서만
-버린다.
+마지막 것의 해법은 또 하나의 검사가 아니라 **구조 변경**이었다 — 지도 pane과 editor를 코스 id로
+key해 각 동작이 매번 확인하는 대신 **소유자가 코스에 묶이게** 했다. 그래서 후속 sweep이 여섯 번째
+editor 내부 사례가 아니라 화면 수준 2건을 찾았다(다른 코스를 연 뒤 도착한 rename이 그 코스 아래
+성공을 보고, 삭제 완료가 열려 있던 코스를 닫음). 삭제·내보내기 **실패** 경로도 같은 대조를 받는다.
 
-**실브라우저가 Playwright로는 볼 수 없던 결함을 잡았다**: GPX 내보내기가 409
-`SESSION_CHANGED`로 실패했다. cookie session이 `x-workout-session-id` 헤더를 요구하는데
-평범한 `<a href>` 이동은 그것을 붙일 수 없고, spec은 헤더를 붙이는 `page.request.get`을 쓰고
-있었다. 클릭이 헤더를 붙인 읽기를 하도록 고쳤고, 다운로드는 본문을 다 읽고 세션이 그대로임을
-확인한 뒤에만 넘긴다 — 이미 시작된 다운로드는 revoke로 되돌릴 수 없다.
+**가드 두 개가 공허했던 것을 주장 전에 잡았다**: catch 경로 소유권 검사는 거부 테스트가 생기기
+전까지 되돌려도 아무것도 실패하지 않았고, 지도 pane key는 "vertex 인덱스가 다른 코스에서는 다른
+의미"를 검증하는 테스트가 생기기 전까지 마찬가지였다.
 
-검증은 typecheck 34/34, unit 253 files/2,819 tests, 실제 PostgreSQL integration
-46 files/422 tests, build 15 task, **identity suite 148 passed/0 failed**, drill **54 checks**
-(코스 회수·복원 포함)를 통과했다. 계정 export는 v19다. 가드 11개를 각각 되돌려 해당 시험이
-실패하는 것을 확인했다.
+검증은 typecheck 34/34, unit 256 files/2,901 tests, 실제 PostgreSQL integration 46 files/433 tests,
+build 15 task, drill 56 checks, **identity 151 passed/0 failed**(여기서 2회, 전 라운드 누적 13회
+clean)를 통과했다. 무관한 spec에서 부하성 click timeout 2회가 관측됐고 재현되지 않았으며
+**규명하지 않았다**.
 
-**미충족으로 이월**: S13의 mobile sheet·tablet 접힘 목록·desktop 지도/목록 구성은 만들지
-않았고 M2-01h로 넘긴다. 확인한 것은 320px 가로 스크롤 0·키보드 조작·합성 입력 보존이며,
-마지막은 가드 증거이지 OS IME 증거가 아니다. 코스를 지도에 그리지 않고, lineage는 스키마상
-다중이나 실제로는 1건이며, 형상은 DB jsonb로 대용량 성능 미측정이고, GPX import는 M2-01j다.
+**운영 완료가 아니다**: `configured.ts`가 `walkingRoutes`를 구성하지 않으므로 end-to-end 증거는
+결정적 fixture를 통한 제안·편집 흐름이지 운영 설정의 계산이 아니다. 2·3라운드 경합은 fixture가
+즉시 답하고 harness에 코스가 하나뿐이라 **브라우저 증거가 없고** 컴포넌트 테스트로 지탱된다.
+빈 지도에서 새 코스 생성 없음, GPX `via` 왕복 미확인, privacy trim 없음.
 
 ## 다음 ready 작업
 
-**M2-01h 경유지 편집**이 다음 직렬 작업이다. M2-01f의 Course와 M2-01g의 routing adapter를
-잇는다 — S14의 시작/경유/끝 편집·잠금·undo/redo와 drag 대안 목록, 그리고 결과를 **최신
-draft에만** 적용하고 검토 후 명시 저장한다. M2-01f가 이월한 S13 레이아웃도 여기서 함께
-처리한다. M2-01g의 `RouteComputationRecord` 저장도 이 노드 몫이다.
+**M2-01i 목표 거리 후보**와 **M2-01j S13/S14 잔여 기능**이 ready이고 서로 독립이라 병렬 진행한다.
+i는 M2-01h의 제안·검토 구조 위에 bounded loop/왕복 후보 생성·seed·평가·중복 제거·거리 오차·후보
+없음을 올린다(사용자 선택 전 저장·승인 금지). j는 GPX import/round-trip, 이름·즐겨찾기·마지막 사용,
+자체 장소 검색·고도 출처, privacy trim, 버전 참조를 맡는다. 둘 다 끝나면 M2-01k 통합 수용이 남는다.
 
 ## 남은 외부·실환경 gate
 
