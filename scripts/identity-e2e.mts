@@ -33,6 +33,7 @@ import { createResourceFileUploadRepository } from '../packages/server/persisten
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
 import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
+import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -337,6 +338,10 @@ try {
       tracks: createActivityTrackRepository(database),
       storage: resourceStorage,
     },
+    // A deterministic stand-in for the pedestrian engine. It exercises our side of the
+    // port — bounds, proposal storage, review, explicit save — and is explicitly NOT
+    // evidence about a real engine, a real graph or pedestrian coverage.
+    walkingRoutes: createFixtureWalkingRoutePort(),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

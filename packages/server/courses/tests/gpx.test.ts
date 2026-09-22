@@ -10,8 +10,8 @@ const last: [number, number] = [126.9799, 37.5671];
 const coordinates: [number, number][] = [first, middle, last];
 
 const waypoints: CourseWaypoint[] = [
-  { role: 'start', position: first, name: null, sourceSampleId: '0:0' },
-  { role: 'finish', position: last, name: '광화문', sourceSampleId: '0:2' },
+  { role: 'start', position: first, name: null, sourceSampleId: '0:0', locked: false },
+  { role: 'finish', position: last, name: '광화문', sourceSampleId: '0:2', locked: false },
 ];
 
 const document = writeCourseGpx({

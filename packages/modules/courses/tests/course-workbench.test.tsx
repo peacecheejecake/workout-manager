@@ -284,3 +284,85 @@ describe('course workbench', () => {
     await waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(before));
   });
 });
+
+/**
+ * The S13 compositions (carried forward from M2-01f, which did not build them).
+ *
+ * These assert the composition the stylesheet reads — `data-layout`, `data-sheet`,
+ * `data-list` — and that state lives above the switch. What they cannot assert is the
+ * rendered geometry: CSS modules are not applied in jsdom, so the widths themselves
+ * (320/767/768/1279/1280 and a 420px pane) are checked in a real browser instead.
+ */
+function resizeTo(width: number) {
+  Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+  window.dispatchEvent(new Event('resize'));
+}
+
+describe('S13 responsive composition', () => {
+  it('follows the generated viewport specification across both boundaries', async () => {
+    resizeTo(360);
+    setup();
+    const panes = (await screen.findByRole('button', { name: 'Seoul loop' })).closest(
+      '[data-layout]',
+    );
+    expect(panes).toHaveAttribute('data-layout', 'mobile');
+    for (const [width, mode] of [
+      [767, 'mobile'],
+      [768, 'tablet'],
+      [1279, 'tablet'],
+      [1280, 'desktop'],
+      [1920, 'desktop'],
+    ] as const) {
+      resizeTo(width);
+      await waitFor(() => expect(panes).toHaveAttribute('data-layout', mode));
+    }
+  });
+
+  it('opens a sheet over the list on mobile and offers the way back', async () => {
+    resizeTo(390);
+    setup();
+    const panes = (await screen.findByRole('button', { name: 'Seoul loop' })).closest(
+      '[data-layout]',
+    );
+    expect(panes).toHaveAttribute('data-sheet', 'closed');
+    await userEvent.click(screen.getByRole('button', { name: 'Seoul loop' }));
+    await waitFor(() => expect(panes).toHaveAttribute('data-sheet', 'open'));
+    const back = await screen.findByRole('button', { name: '코스 목록으로 돌아가기' });
+    await userEvent.click(back);
+    await waitFor(() => expect(panes).toHaveAttribute('data-sheet', 'closed'));
+  });
+
+  it('collapses the list on tablet without hiding the control that brings it back', async () => {
+    resizeTo(820);
+    setup();
+    const panes = (await screen.findByRole('button', { name: 'Seoul loop' })).closest(
+      '[data-layout]',
+    );
+    expect(panes).toHaveAttribute('data-list', 'expanded');
+    const toggle = screen.getByRole('button', { name: '코스 목록 접기' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(toggle);
+    await waitFor(() => expect(panes).toHaveAttribute('data-list', 'collapsed'));
+    expect(screen.getByRole('button', { name: '코스 목록 펼치기' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('keeps the waypoint draft across a layout change', async () => {
+    resizeTo(390);
+    setup();
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    await userEvent.type(await screen.findByLabelText('경유점 경도'), '126.9789');
+    await userEvent.type(screen.getByLabelText('경유점 위도'), '37.5668');
+    await userEvent.click(screen.getByRole('button', { name: '좌표로 경유점 추가' }));
+    expect(screen.getByRole('list', { name: '경유점 목록' }).children).toHaveLength(3);
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
+    // The draft, and the map renderer it feeds, live above the responsive switch.
+    resizeTo(1280);
+    await waitFor(() =>
+      expect(screen.getByRole('list', { name: '경유점 목록' }).children).toHaveLength(3),
+    );
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
+  });
+});

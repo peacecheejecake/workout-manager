@@ -67,7 +67,10 @@ import {
   processOneResourceObjectCleanup,
 } from '../packages/server/persistence/src/resource-object-cleanup.js';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
-import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
+import {
+  courseGeometrySha256,
+  createCourseRepository,
+} from '../packages/server/persistence/src/courses.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
 import {
   createResourceUrlIngestionRepository,
@@ -1494,6 +1497,142 @@ async function execute() {
     assert.equal(doomedCourseCopy.status, 'available');
     if (doomedCourseCopy.status !== 'available') throw new Error('COURSE_SEED_FAILED');
 
+    // A course whose head was computed by our own pedestrian engine (M2-01h), plus one
+    // reviewed-but-unsaved proposal. Both carry private planned coordinates, and the
+    // revision carries the graph identity that answered — the fact that makes "a stored
+    // course is never silently recomputed on a newer graph" checkable at all. A backup
+    // that lost either would lose exactly that.
+    const routedLine: [number, number][] = [
+      [127.02, 37.5],
+      [127.02005, 37.50005],
+      [127.0201, 37.5001],
+    ];
+    const drillComputation = (requestId: string, draftRevision: number) => ({
+      schemaVersion: 1 as const,
+      requestId,
+      requestRevision: draftRevision,
+      graph: {
+        engine: 'graphhopper' as const,
+        identitySource: 'engine' as const,
+        engineVersion: '10.0',
+        engineArtifactSha256: 'a'.repeat(64),
+        profileId: 'foot-v1' as const,
+        profileConfigSha256: 'b'.repeat(64),
+        extractSha256: 'c'.repeat(64),
+        extractRegion: 'drill fixture',
+        graphContentSha256: 'd'.repeat(64),
+        graphBuildId: '0123456789abcdef',
+        graphImportedAt: '2026-03-01T00:00:00.000Z',
+        roadDataAt: '2026-02-01T00:00:00.000Z',
+      },
+      conditions: {
+        profileId: 'foot-v1' as const,
+        algorithm: 'flexible' as const,
+        contractionHierarchies: false as const,
+        maxVisitedNodes: 1_000_000,
+        deadlineMilliseconds: 8_000,
+        snapLimitMeters: 120,
+        waypointCount: 2,
+      },
+      computedAt: '2026-03-02T00:00:00.000Z',
+      computationMilliseconds: 42,
+      warnings: [],
+    });
+    const drillProposalInput = (courseId: string, draftRevision: number) => {
+      const requestId = `req-${randomUUID()}`;
+      return {
+        courseId,
+        draftRevision,
+        requestId,
+        waypoints: [
+          {
+            role: 'start' as const,
+            position: routedLine[0] as [number, number],
+            name: null,
+            sourceSampleId: null,
+            locked: false,
+          },
+          {
+            role: 'finish' as const,
+            position: routedLine[2] as [number, number],
+            name: null,
+            sourceSampleId: null,
+            locked: true,
+          },
+        ],
+        coordinates: routedLine,
+        engineDistanceMeters: 15.5,
+        engineDurationSeconds: 12,
+        snappedWaypoints: [
+          {
+            requested: routedLine[0] as [number, number],
+            snapped: routedLine[0] as [number, number],
+            snapDistanceMeters: 0,
+          },
+          {
+            requested: routedLine[2] as [number, number],
+            snapped: routedLine[2] as [number, number],
+            snapDistanceMeters: 3.25,
+          },
+        ],
+        computation: drillComputation(requestId, draftRevision),
+        ttlSeconds: 1800,
+      };
+    };
+    const routedCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(retainedFixture.activityId, retainedTrackId, 'Routed drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (routedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const savedProposalInput = drillProposalInput(routedCourse.course.courseId, 4);
+    const savedProposal = await courseRepo.storeRouteProposal(retainedAthlete, savedProposalInput);
+    const routedSaved = await courseRepo.update(
+      retainedAthlete,
+      routedCourse.course.courseId,
+      1,
+      {
+        name: 'Routed drill course',
+        coordinates: routedLine,
+        waypoints: savedProposalInput.waypoints,
+        generation: {
+          kind: 'routed-waypoints',
+          computation: savedProposalInput.computation,
+          engineDistanceMeters: savedProposalInput.engineDistanceMeters,
+          engineDurationSeconds: savedProposalInput.engineDurationSeconds,
+          maxSnapDistanceMeters: 3.25,
+          waypointCount: 2,
+          vertexCount: routedLine.length,
+        },
+        edit: { kind: 'rerouted' },
+        lineage: [
+          {
+            activityId: retainedFixture.activityId,
+            trackId: retainedTrackId,
+            trackRevision: 1,
+          },
+        ],
+        distanceMeters: 15.25,
+        contentDigest: createHash('sha256').update('routed-drill-course').digest('hex'),
+      },
+      `course-${randomUUID()}`,
+      { kind: 'reroute' },
+      {
+        consumeProposal: {
+          proposalId: savedProposal.proposalId,
+          draftRevision: savedProposal.draftRevision,
+          geometrySha256: courseGeometrySha256(routedLine),
+        },
+      },
+    );
+    if (routedSaved.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const unsavedProposal = await courseRepo.storeRouteProposal(
+      retainedAthlete,
+      drillProposalInput(routedCourse.course.courseId, 5),
+    );
+
     // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
     // single lexical token so the 'simple' text search matches both bodies.
     const coachResourceText =
@@ -2724,6 +2863,43 @@ async function execute() {
       { activityId: retainedFixture.activityId, trackId: retainedTrackId, trackRevision: 1 },
     ]);
     checks.push('private_course_head_revision_geometry_and_lineage_restored_together');
+    // The routed head comes back with the record of what computed it, and the proposal the
+    // owner had not saved is still there to be reviewed — or to expire.
+    const restoredRouted = await restoredCourses.read(
+      retainedAthlete,
+      routedCourse.course.courseId,
+    );
+    if (restoredRouted.status !== 'available') throw new Error('COURSE_RESTORE_FAILED');
+    assert.equal(restoredRouted.course.headRevision, 2);
+    assert.equal(restoredRouted.revision.generation.kind, 'routed-waypoints');
+    if (restoredRouted.revision.generation.kind !== 'routed-waypoints')
+      throw new Error('COURSE_RESTORE_FAILED');
+    assert.equal(
+      restoredRouted.revision.generation.computation.graph.graphBuildId,
+      '0123456789abcdef',
+    );
+    assert.equal(
+      restoredRouted.revision.generation.computation.graph.graphContentSha256,
+      'd'.repeat(64),
+    );
+    assert.equal(restoredRouted.revision.generation.computation.requestRevision, 4);
+    assert.equal(restoredRouted.revision.waypoints[1]?.locked, true);
+    checks.push('restored_routed_course_revision_keeps_the_graph_that_computed_it');
+    const restoredProposal = await restoredCourses.readRouteProposal(
+      retainedAthlete,
+      routedCourse.course.courseId,
+      unsavedProposal.proposalId,
+    );
+    assert.ok(restoredProposal);
+    assert.equal(restoredProposal.draftRevision, 5);
+    assert.deepEqual(restoredProposal.geometry.coordinates, routedLine);
+    const consumedProposal = await restoredCourses.readRouteProposal(
+      retainedAthlete,
+      routedCourse.course.courseId,
+      savedProposal.proposalId,
+    );
+    assert.equal(consumedProposal, null);
+    checks.push('restored_unsaved_route_proposal_survives_and_a_saved_one_stays_consumed');
     for (const reclaimed of [doomedCourse.course.courseId, doomedCourseCopy.course.courseId]) {
       const read = await restoredCourses.read(retainedAthlete, reclaimed);
       assert.equal(read.status, 'unavailable');
@@ -2820,22 +2996,34 @@ async function execute() {
     );
     assert.ok(!JSON.stringify(retainedExport).includes(trackRaw.storageRef));
     // v19 course collections: identity, lineage and the content digest, never a coordinate.
-    assert.equal(retainedExport.data.courses.length, 3);
+    assert.equal(retainedExport.data.courses.length, 4);
     assert.equal(
       retainedExport.data.courses.filter((row) => row['status'] === 'unavailable').length,
       2,
     );
     assert.deepEqual(
-      retainedExport.data.courseRevisions.map((row) => row['course_id']),
-      [retainedCourse.course.courseId],
+      [...new Set(retainedExport.data.courseRevisions.map((row) => row['course_id']))].sort(),
+      [retainedCourse.course.courseId, routedCourse.course.courseId].sort(),
     );
-    assert.deepEqual(retainedExport.data.courseRevisions[0]?.['lineage'], [
+    const exportedRetainedRevisions = retainedExport.data.courseRevisions.filter(
+      (row) => row['course_id'] === retainedCourse.course.courseId,
+    );
+    assert.equal(exportedRetainedRevisions.length, 1);
+    assert.deepEqual(exportedRetainedRevisions[0]?.['lineage'], [
       {
         activity_id: retainedFixture.activityId,
         track_id: retainedTrackId,
         track_revision: 1,
       },
     ]);
+    // The routed revision's conditions travel in the export — that is what a reader needs
+    // to know which graph computed a stored course — and they carry no coordinate.
+    const exportedRoutedRevisions = retainedExport.data.courseRevisions.filter(
+      (row) => row['course_id'] === routedCourse.course.courseId,
+    );
+    assert.equal(exportedRoutedRevisions.length, 2);
+    const exportedRoutedHead = exportedRoutedRevisions.find((row) => row['course_revision'] === 2);
+    assert.ok(JSON.stringify(exportedRoutedHead?.['generation']).includes('"0123456789abcdef"'));
     assert.ok(!JSON.stringify(retainedExport.data.courseRevisions).includes('127.02'));
     checks.push('restored_courses_reproduced_in_export_v19_without_coordinates');
     checks.push('restored_activity_track_reproduced_in_export_v19_without_storage_refs');

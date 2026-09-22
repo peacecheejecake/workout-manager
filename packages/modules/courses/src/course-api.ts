@@ -5,7 +5,9 @@ import {
   activityDeletionImpactSchema,
   courseListSchema,
   courseReadResultSchema,
+  courseRouteProposalResultSchema,
   type CourseCreateRequest,
+  type CourseRouteProposalRequest,
   type CourseUpdateRequest,
 } from '@workout/contracts/courses';
 
@@ -92,6 +94,36 @@ export function createCourseApi(transport: AuthenticatedTransport) {
         `/bff/v1/courses/${encodeURIComponent(courseId)}?expectedRevision=${expectedRevision}`,
         'DELETE',
         z.object({ deleted: z.boolean() }),
+      );
+    },
+    /**
+     * Ask our own engine for a route under this draft.
+     *
+     * The abort signal is not a convenience: the server turns a dropped connection into a
+     * cancellation of the computation itself and releases the tenant's permit, so a screen
+     * that goes away or a draft that moves on stops costing engine time. Every outcome
+     * other than `route_computed` has stored nothing.
+     */
+    async computeRoute(courseId: string, input: CourseRouteProposalRequest, signal?: AbortSignal) {
+      const reply = transportReplySchema.parse(
+        await transport.request({
+          path: `/bff/v1/courses/${encodeURIComponent(courseId)}/route-proposals`,
+          method: 'POST',
+          body: z.json().parse(input),
+          idempotencyKey: null,
+          ...(signal ? { signal } : {}),
+        }),
+      );
+      // A named outcome is an answer, not an error, even when its status is 429, 499, 502
+      // or 504: the status says what kind of answer it is and the body says which one. Only
+      // a reply that is not a known outcome at all becomes a request error, so "the engine
+      // refused and stored nothing" is never collapsed into "something went wrong".
+      const outcome = courseRouteProposalResultSchema.safeParse(reply.body);
+      if (outcome.success) return outcome.data;
+      const parsed = errorSchema.safeParse(reply.body);
+      throw new CourseRequestError(
+        reply.status,
+        parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
       );
     },
     deletionImpact(activityId: string, signal?: AbortSignal) {

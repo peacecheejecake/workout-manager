@@ -182,5 +182,14 @@ export function registerProductRoutes(
     registerActivityTrackRoutes(routes, repositories.activityTracks, principal);
   if (repositories.walkingRoutes)
     registerRoutingRoutes(routes, repositories.walkingRoutes, principal);
-  if (repositories.courses) registerCourseRoutes(routes, repositories.courses, principal);
+  if (repositories.courses)
+    // One configured engine serves both the bare computation endpoint and the course
+    // proposals; when none is configured neither route exists.
+    registerCourseRoutes(
+      routes,
+      repositories.walkingRoutes
+        ? { ...repositories.courses, walkingRoutes: repositories.walkingRoutes }
+        : repositories.courses,
+      principal,
+    );
 }

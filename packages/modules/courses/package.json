@@ -11,10 +11,16 @@
     "@workout/contracts": "workspace:*",
     "@workout/ui-foundation": "workspace:*",
     "react": "19.3.0",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@workout/geo-kit": "workspace:*",
+    "zustand": "5.0.15"
   },
   "exports": {
     "./course-api": "./src/course-api.ts",
-    "./course-workbench": "./src/course-workbench.tsx"
+    "./course-workbench": "./src/course-workbench.tsx",
+    "./course-draft": "./src/course-draft.ts",
+    "./course-draft-context": "./src/course-draft-context.tsx",
+    "./course-editor": "./src/course-editor.tsx",
+    "./course-map-leaf": "./src/course-map-leaf.tsx"
   }
 }

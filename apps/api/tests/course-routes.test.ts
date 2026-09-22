@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 
+import type { WalkingRouteResult } from '@workout/contracts/routing';
 import type { MapPath } from '@workout/contracts/tracks';
+import { courseGeometrySha256 } from '@workout/server-persistence/courses';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
 import type { ActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { CourseStateError, type CourseRepository } from '@workout/server-persistence/courses';
@@ -15,6 +17,7 @@ const activityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const trackId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const uploadId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const courseId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const proposalId = 'f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0';
 const createdAt = '2026-09-19T01:00:00.000Z';
 const csrfToken = 'c'.repeat(43);
 const baseHeaders = {
@@ -116,12 +119,14 @@ const courseRevision = {
       position: [127.02, 37.5] as [number, number],
       name: null,
       sourceSampleId: '0:0',
+      locked: false,
     },
     {
       role: 'finish' as const,
       position: [127.0201, 37.5001] as [number, number],
       name: null,
       sourceSampleId: '0:1',
+      locked: false,
     },
   ],
   generation: {
@@ -179,7 +184,132 @@ function storageFixture(): ObjectStorage & { objects: Map<string, Uint8Array> } 
   };
 }
 
-function setup(options: { authenticated?: boolean } = {}) {
+/**
+ * A walking-route port under the test's control. It is our own side of M2-01g's boundary:
+ * what the tests below check is the bounded endpoint, the proposal store and the save, not
+ * the engine, which has its own suite.
+ */
+function walkingRouteFixture(
+  outcome: WalkingRouteResult['outcome'] = 'route_computed',
+  retryAfterSeconds: number | null = null,
+) {
+  const compute = vi.fn(
+    async (_athleteId: string, request: unknown, context: { signal?: AbortSignal }) => {
+      const parsed = request as {
+        requestId: string;
+        requestRevision: number;
+        waypoints: [number, number][];
+      };
+      seenSignals.push(context.signal ?? null);
+      const computation = {
+        schemaVersion: 1 as const,
+        requestId: parsed.requestId,
+        requestRevision: parsed.requestRevision,
+        graph: routeGraph,
+        conditions: {
+          profileId: 'foot-v1' as const,
+          algorithm: 'flexible' as const,
+          contractionHierarchies: false as const,
+          maxVisitedNodes: 1_000_000,
+          deadlineMilliseconds: 8_000,
+          snapLimitMeters: 120,
+          waypointCount: parsed.waypoints.length,
+        },
+        computedAt: createdAt,
+        computationMilliseconds: 12,
+        warnings: [],
+      };
+      if (outcome !== 'route_computed')
+        return { result: { outcome, computation }, retryAfterSeconds };
+      return {
+        result: {
+          outcome: 'route_computed' as const,
+          computation,
+          geometry: { type: 'LineString' as const, coordinates: routedCoordinates },
+          distanceMeters: 210.5,
+          durationSeconds: 150,
+          snappedWaypoints: parsed.waypoints.map((waypoint) => ({
+            requested: waypoint,
+            snapped: waypoint,
+            snapDistanceMeters: 0,
+          })),
+        },
+        retryAfterSeconds,
+      };
+    },
+  );
+  return { compute };
+}
+
+const seenSignals: (AbortSignal | null)[] = [];
+
+const routeGraph = {
+  engine: 'graphhopper' as const,
+  identitySource: 'engine' as const,
+  engineVersion: '10.0',
+  engineArtifactSha256: 'a'.repeat(64),
+  profileId: 'foot-v1' as const,
+  profileConfigSha256: 'b'.repeat(64),
+  extractSha256: 'c'.repeat(64),
+  extractRegion: 'seoul',
+  graphContentSha256: 'd'.repeat(64),
+  graphBuildId: '0123456789abcdef',
+  graphImportedAt: createdAt,
+  roadDataAt: createdAt,
+};
+
+const routedCoordinates: [number, number][] = [
+  [127.02, 37.5],
+  [127.02005, 37.50008],
+  [127.0201, 37.5001],
+];
+
+const draftWaypoints = [
+  { role: 'start', position: [127.02, 37.5], name: null, sourceSampleId: null, locked: false },
+  { role: 'finish', position: [127.0201, 37.5001], name: null, sourceSampleId: null, locked: true },
+];
+
+function storedProposal(draftRevision = 3, graphBuildId = '0123456789abcdef') {
+  return {
+    proposalId: proposalId,
+    courseId,
+    requestId: 'req-1',
+    draftRevision,
+    waypoints: draftWaypoints,
+    geometry: { type: 'LineString', coordinates: routedCoordinates },
+    engineDistanceMeters: 210.5,
+    engineDurationSeconds: 150,
+    snappedWaypoints: routedCoordinates.slice(0, 2).map((position) => ({
+      requested: position,
+      snapped: position,
+      snapDistanceMeters: 0,
+    })),
+    computation: {
+      schemaVersion: 1,
+      requestId: 'req-1',
+      requestRevision: draftRevision,
+      graph: { ...routeGraph, graphBuildId },
+      conditions: {
+        profileId: 'foot-v1',
+        algorithm: 'flexible',
+        contractionHierarchies: false,
+        maxVisitedNodes: 1_000_000,
+        deadlineMilliseconds: 8_000,
+        snapLimitMeters: 120,
+        waypointCount: 2,
+      },
+      computedAt: createdAt,
+      computationMilliseconds: 12,
+      warnings: [],
+    },
+    createdAt,
+    expiresAt: '2026-09-19T01:30:00.000Z',
+  };
+}
+
+function setup(
+  options: { authenticated?: boolean; walkingRoutes?: ReturnType<typeof walkingRouteFixture> } = {},
+) {
   const storage = storageFixture();
   const courses: CourseRepository = {
     replayCommand: vi.fn().mockResolvedValue(null),
@@ -207,6 +337,8 @@ function setup(options: { authenticated?: boolean } = {}) {
       revision: { ...courseRevision, courseRevision: 2 },
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
+    storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),
+    readRouteProposal: vi.fn().mockResolvedValue(null),
     affectedByActivityDeletion: vi.fn().mockResolvedValue({
       activityId,
       digest: 'f'.repeat(64),
@@ -238,6 +370,7 @@ function setup(options: { authenticated?: boolean } = {}) {
     },
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     courses: { courses, tracks, storage },
+    ...(options.walkingRoutes ? { walkingRoutes: options.walkingRoutes } : {}),
     logStream: new Writable({
       write(_chunk, _encoding, callback) {
         callback();
@@ -245,7 +378,7 @@ function setup(options: { authenticated?: boolean } = {}) {
     }),
   });
   instances.push(app);
-  return { app, courses, tracks, storage };
+  return { app, courses, tracks, storage, walkingRoutes: options.walkingRoutes };
 }
 
 const createPayload = {
@@ -708,5 +841,265 @@ describe('course command idempotency at the API boundary', () => {
     });
     expect(reused.statusCode).toBe(409);
     expect(reused.json().error.code).toBe('IDEMPOTENCY_CONFLICT');
+  });
+});
+
+/**
+ * M2-01h: asking our own engine for a route, keeping the answer as a reviewable proposal,
+ * and saving one the owner reviewed. What these check is that a computation cannot become
+ * a course on its own, and that a save carries no geometry of its own.
+ */
+describe('course route proposals', () => {
+  const computeBody = {
+    requestId: 'req-1',
+    draftRevision: 3,
+    waypoints: draftWaypoints,
+  };
+
+  it('offers no computation route at all when no engine is configured', async () => {
+    const { app, courses } = setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(response.statusCode).toBe(404);
+    expect(courses.storeRouteProposal).not.toHaveBeenCalled();
+  });
+
+  it('stores a computed route as a proposal and changes no course', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    courses.storeRouteProposal = vi.fn().mockResolvedValue(storedProposal());
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { outcome: string; proposal: { proposalId: string } };
+    expect(body.outcome).toBe('route_computed');
+    expect(body.proposal.proposalId).toBe(proposalId);
+    // The engine was asked for the draft revision, and the record carries it back.
+    expect(walkingRoutes.compute.mock.calls[0]?.[1]).toMatchObject({
+      requestRevision: 3,
+      profileId: 'foot-v1',
+    });
+    // Nothing about the course moved: no revision was written.
+    expect(courses.update).not.toHaveBeenCalled();
+    expect(courses.create).not.toHaveBeenCalled();
+    expect(courses.storeRouteProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it('spends no engine time on a course that has been reclaimed', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    courses.read = vi.fn().mockResolvedValue({
+      status: 'unavailable',
+      course: {
+        status: 'unavailable',
+        courseId,
+        name: 'Seoul loop',
+        visibility: 'private',
+        reason: 'source_activity_deleted',
+        reclaimedAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(response.statusCode).toBe(410);
+    expect(walkingRoutes.compute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no_route', 200],
+    ['outside_coverage', 200],
+    ['snap_too_far', 200],
+    ['timeout', 504],
+    ['compute_budget_exceeded', 504],
+    ['cancelled', 499],
+    ['overloaded', 429],
+    ['engine_unavailable', 502],
+    ['engine_contract_violation', 502],
+    ['graph_mismatch', 502],
+  ] as const)(
+    'answers %s with %i, stores nothing and returns no geometry',
+    async (outcome, status) => {
+      const walkingRoutes = walkingRouteFixture(outcome, outcome === 'overloaded' ? 30 : null);
+      const { app, courses } = setup({ walkingRoutes });
+      courses.storeRouteProposal = vi.fn();
+      const response = await app.inject({
+        method: 'POST',
+        url: `/bff/v1/courses/${courseId}/route-proposals`,
+        headers: commandHeaders,
+        payload: computeBody,
+      });
+      expect(response.statusCode).toBe(status);
+      const body = response.json() as { outcome: string; draftRevision: number };
+      expect(body.outcome).toBe(outcome);
+      expect(body.draftRevision).toBe(3);
+      expect(response.body).not.toContain('LineString');
+      expect(courses.storeRouteProposal).not.toHaveBeenCalled();
+      if (outcome === 'overloaded') expect(response.headers['retry-after']).toBe('30');
+    },
+  );
+
+  it('passes a cancellation signal the dropped connection can raise', async () => {
+    seenSignals.length = 0;
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    courses.storeRouteProposal = vi.fn().mockResolvedValue(storedProposal());
+    await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(seenSignals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  it('refuses a computation request that carries an engine, a URL or a geometry', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app } = setup({ walkingRoutes });
+    for (const smuggled of ['engineUrl', 'profileId', 'geometry']) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/bff/v1/courses/${courseId}/route-proposals`,
+        headers: commandHeaders,
+        payload: { ...computeBody, [smuggled]: 'x' },
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(walkingRoutes.compute).not.toHaveBeenCalled();
+  });
+
+  it('saves a reviewed proposal with the geometry the server stored, never one sent in', async () => {
+    const { app, courses } = setup({ walkingRoutes: walkingRouteFixture() });
+    courses.readRouteProposal = vi.fn().mockResolvedValue(storedProposal());
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/bff/v1/courses/${courseId}`,
+      headers: commandHeaders,
+      payload: {
+        expectedRevision: 1,
+        change: {
+          kind: 'reroute',
+          proposalId,
+          draftRevision: 3,
+          acknowledgedGraph: { previous: null, next: '0123456789abcdef' },
+        },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const call = vi.mocked(courses.update).mock.calls[0];
+    if (!call) throw new Error('the save never reached the repository');
+    const [, , expectedRevision, content, , , options] = call;
+    expect(expectedRevision).toBe(1);
+    expect(content.coordinates).toEqual(routedCoordinates);
+    expect(content.waypoints).toEqual(draftWaypoints);
+    expect(content.generation.kind).toBe('routed-waypoints');
+    // Consumed inside the writing transaction, against a hash recomputed from the line
+    // that is about to be written.
+    expect(options?.consumeProposal).toEqual({
+      proposalId,
+      draftRevision: 3,
+      geometrySha256: courseGeometrySha256(routedCoordinates),
+    });
+  });
+
+  it('refuses a save that does not acknowledge the graph the head was computed on', async () => {
+    const { app, courses } = setup({ walkingRoutes: walkingRouteFixture() });
+    courses.headContent = vi.fn().mockResolvedValue({
+      courseId,
+      courseRevision: 1,
+      name: 'Seoul loop',
+      coordinates: routedCoordinates,
+      waypoints: draftWaypoints,
+      generation: storedProposal(3, 'aaaaaaaaaaaaaaaa').computation
+        ? {
+            kind: 'routed-waypoints',
+            computation: storedProposal(3, 'aaaaaaaaaaaaaaaa').computation,
+            engineDistanceMeters: 1,
+            engineDurationSeconds: 1,
+            maxSnapDistanceMeters: 0,
+            waypointCount: 2,
+            vertexCount: 3,
+          }
+        : undefined,
+      lineage: [{ activityId, trackId, trackRevision: 1 }],
+    });
+    courses.readRouteProposal = vi.fn().mockResolvedValue(storedProposal(3, '0123456789abcdef'));
+    const save = (previous: string | null) =>
+      app.inject({
+        method: 'PATCH',
+        url: `/bff/v1/courses/${courseId}`,
+        headers: commandHeaders,
+        payload: {
+          expectedRevision: 1,
+          change: {
+            kind: 'reroute',
+            proposalId,
+            draftRevision: 3,
+            acknowledgedGraph: { previous, next: '0123456789abcdef' },
+          },
+        },
+      });
+    // The screen claims the head was not computed at all, but it was — on another graph.
+    const unacknowledged = await save(null);
+    expect(unacknowledged.statusCode).toBe(409);
+    expect(unacknowledged.json()).toMatchObject({
+      error: { code: 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE' },
+    });
+    expect(courses.update).not.toHaveBeenCalled();
+    // Naming the graph the head really carries is accepted: the change was shown.
+    const acknowledged = await save('aaaaaaaaaaaaaaaa');
+    expect(acknowledged.statusCode).toBe(200);
+  });
+
+  it('refuses a save whose draft moved on, and one whose proposal is gone', async () => {
+    const { app, courses } = setup({ walkingRoutes: walkingRouteFixture() });
+    courses.readRouteProposal = vi.fn().mockResolvedValue(storedProposal(4));
+    const stale = await app.inject({
+      method: 'PATCH',
+      url: `/bff/v1/courses/${courseId}`,
+      headers: commandHeaders,
+      payload: {
+        expectedRevision: 1,
+        change: {
+          kind: 'reroute',
+          proposalId,
+          draftRevision: 3,
+          acknowledgedGraph: { previous: null, next: '0123456789abcdef' },
+        },
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: { code: 'ROUTE_PROPOSAL_STALE_DRAFT' } });
+
+    courses.readRouteProposal = vi.fn().mockResolvedValue(null);
+    const missing = await app.inject({
+      method: 'PATCH',
+      url: `/bff/v1/courses/${courseId}`,
+      headers: commandHeaders,
+      payload: {
+        expectedRevision: 1,
+        change: {
+          kind: 'reroute',
+          proposalId,
+          draftRevision: 3,
+          acknowledgedGraph: { previous: null, next: '0123456789abcdef' },
+        },
+      },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(courses.update).not.toHaveBeenCalled();
   });
 });

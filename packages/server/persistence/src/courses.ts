@@ -10,13 +10,21 @@ import {
   courseNameSchema,
   coursePositionSchema,
   courseReadResultSchema,
+  courseRouteProposalSchema,
+  courseWaypointListSchema,
   courseWaypointSchema,
   type CourseEdit,
   type CourseGeneration,
   type CourseLineage,
   type CoursePosition,
+  type CourseRouteProposal,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
+import {
+  routeComputationRecordSchema,
+  snappedWaypointSchema,
+  type RouteComputationRecord,
+} from '@workout/contracts/routing';
 
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -47,7 +55,13 @@ export class CourseStateError extends Error {
       | 'COURSE_REVISION_CONFLICT'
       | 'COURSE_QUOTA_EXCEEDED'
       | 'COURSE_REVISION_LIMIT'
-      | 'COURSE_UNAVAILABLE',
+      | 'COURSE_UNAVAILABLE'
+      | 'ROUTE_PROPOSAL_QUOTA_EXCEEDED'
+      | 'ROUTE_PROPOSAL_NOT_FOUND'
+      | 'ROUTE_PROPOSAL_ALREADY_SAVED'
+      | 'ROUTE_PROPOSAL_EXPIRED'
+      | 'ROUTE_PROPOSAL_STALE_DRAFT'
+      | 'ROUTE_PROPOSAL_CONTENT_MISMATCH',
   ) {
     super(code);
     this.name = 'CourseStateError';
@@ -69,6 +83,39 @@ export interface PreparedCourseContent {
   readonly lineage: readonly CourseLineage[];
   readonly distanceMeters: number;
   readonly contentDigest: string;
+}
+
+/**
+ * One computed route to keep until the owner decides. `ttlSeconds` bounds how long an
+ * unreviewed computation keeps private coordinates around.
+ */
+export interface StoredRouteProposalInput {
+  readonly courseId: string;
+  readonly draftRevision: number;
+  readonly requestId: string;
+  readonly waypoints: readonly CourseWaypoint[];
+  readonly coordinates: readonly CoursePosition[];
+  readonly engineDistanceMeters: number;
+  readonly engineDurationSeconds: number;
+  readonly snappedWaypoints: readonly z.infer<typeof snappedWaypointSchema>[];
+  readonly computation: RouteComputationRecord;
+  readonly ttlSeconds: number;
+}
+
+/**
+ * Consuming a reviewed proposal in the same transaction as the revision it becomes.
+ *
+ * `geometrySha256` is recomputed by the caller from the coordinates it is about to write
+ * and compared against the value stored with the proposal, so the line that ends up in the
+ * ledger is the line that was proposed. `draftRevision` must be the one the proposal was
+ * computed from: a draft that moved on is recomputed, never saved from a stale answer.
+ */
+export interface CourseUpdateOptions {
+  readonly consumeProposal?: {
+    readonly proposalId: string;
+    readonly draftRevision: number;
+    readonly geometrySha256: string;
+  };
 }
 
 /** The head as the application needs it before it can derive a new revision. */
@@ -119,7 +166,23 @@ export interface CourseRepository {
     content: PreparedCourseContent,
     requestIdempotencyKey: string,
     request?: unknown,
+    options?: CourseUpdateOptions,
   ): Promise<ReadResult>;
+  /**
+   * Store one computed route as a proposal. Nothing about the course changes; this is the
+   * reviewable artefact the owner may or may not save, and it is also where M2-01g's
+   * computation record becomes durable.
+   */
+  storeRouteProposal(
+    athleteId: string,
+    input: StoredRouteProposalInput,
+  ): Promise<CourseRouteProposal>;
+  /** One stored proposal, or `null` when it is unknown, expired or already saved. */
+  readRouteProposal(
+    athleteId: string,
+    courseId: string,
+    proposalId: string,
+  ): Promise<CourseRouteProposal | null>;
   remove(
     athleteId: string,
     courseId: string,
@@ -258,6 +321,67 @@ function digest(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+/**
+ * Identity of one planned line. Computed the same way when a proposal is stored and when
+ * the revision it becomes is written, so the two can be compared inside the writing
+ * transaction rather than trusted to be the same.
+ */
+export function courseGeometrySha256(coordinates: readonly CoursePosition[]): string {
+  return createHash('sha256')
+    .update(JSON.stringify(coordinates.map((position) => [position[0], position[1]])))
+    .digest('hex');
+}
+
+const proposalRowSchema = z.object({
+  proposal_id: uuid,
+  course_id: uuid,
+  request_id: z.string(),
+  draft_revision: z.number().int().positive(),
+  waypoints: z.unknown(),
+  geometry: z.unknown(),
+  engine_distance_meters: z.coerce.number().finite(),
+  engine_duration_seconds: z.coerce.number().finite(),
+  snapped_waypoints: z.unknown(),
+  computation: z.unknown(),
+  created_at: z.union([z.date(), z.string()]),
+  expires_at: z.union([z.date(), z.string()]),
+});
+
+function proposal(row: z.infer<typeof proposalRowSchema>): CourseRouteProposal {
+  return courseRouteProposalSchema.parse({
+    proposalId: row.proposal_id,
+    courseId: row.course_id,
+    requestId: row.request_id,
+    draftRevision: row.draft_revision,
+    waypoints: row.waypoints,
+    geometry: row.geometry,
+    engineDistanceMeters: row.engine_distance_meters,
+    engineDurationSeconds: row.engine_duration_seconds,
+    snappedWaypoints: row.snapped_waypoints,
+    computation: row.computation,
+    createdAt: instant(row.created_at),
+    expiresAt: instant(row.expires_at),
+  });
+}
+
+const PROPOSAL_COLUMNS = `proposal_id,course_id,request_id,draft_revision,waypoints,geometry,
+  engine_distance_meters,engine_duration_seconds,snapped_waypoints,computation,created_at,
+  expires_at`;
+
+/** Map a bounded database refusal onto the state error the API answers with. */
+function proposalStateError(error: unknown): never {
+  const message = error instanceof Error ? error.message : '';
+  for (const code of [
+    'ROUTE_PROPOSAL_NOT_FOUND',
+    'ROUTE_PROPOSAL_ALREADY_SAVED',
+    'ROUTE_PROPOSAL_EXPIRED',
+    'ROUTE_PROPOSAL_STALE_DRAFT',
+    'ROUTE_PROPOSAL_CONTENT_MISMATCH',
+  ] as const)
+    if (message.includes(code)) throw new CourseStateError(code);
+  throw error;
+}
+
 async function tenantLock(tx: Transaction) {
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
 }
@@ -352,11 +476,7 @@ function validateContent(content: PreparedCourseContent): PreparedCourseContent 
     name: courseNameSchema.parse(content.name),
     coordinates: geometrySchema.parse({ type: 'LineString', coordinates: content.coordinates })
       .coordinates,
-    waypoints: z
-      .array(courseWaypointSchema)
-      .min(2)
-      .max(courseLimits.waypoints)
-      .parse(content.waypoints),
+    waypoints: courseWaypointListSchema.parse(content.waypoints),
     generation: courseGenerationSchema.parse(content.generation),
     edit: courseEditSchema.parse(content.edit),
     lineage: z
@@ -469,7 +589,97 @@ export function createCourseRepository(database: Database): CourseRepository {
       });
     },
 
-    update(athleteId, rawCourseId, rawExpected, rawContent, rawKey, clientRequest) {
+    storeRouteProposal(athleteId, rawInput) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawInput.courseId);
+      const draftRevision = z
+        .number()
+        .int()
+        .min(1)
+        .max(courseLimits.maxDraftRevision)
+        .parse(rawInput.draftRevision);
+      const waypoints = courseWaypointListSchema.parse(rawInput.waypoints);
+      const geometry = geometrySchema.parse({
+        type: 'LineString',
+        coordinates: rawInput.coordinates,
+      });
+      const computation = routeComputationRecordSchema.parse(rawInput.computation);
+      const snapped = z.array(snappedWaypointSchema).min(2).parse(rawInput.snappedWaypoints);
+      const ttlSeconds = z.number().int().min(1).max(86_400).parse(rawInput.ttlSeconds);
+      return database.tenant(tenantId, async (tx) => {
+        await tenantLock(tx);
+        // Expired and already-saved rows go first, so an owner who keeps recomputing does
+        // not accumulate private coordinates and the bound below measures live drafts.
+        await tx.query('SELECT public.reap_course_route_proposals()');
+        const course = await tx.query(
+          'SELECT status FROM course WHERE athlete_id=$1 AND course_id=$2',
+          [tenantId, courseId],
+        );
+        if (!course.rows[0]) throw new CourseNotFoundError();
+        if (course.rows[0]['status'] !== 'available')
+          throw new CourseStateError('COURSE_UNAVAILABLE');
+        const open = await tx.query(
+          `SELECT count(*) FILTER (WHERE course_id=$2)::integer AS for_course,
+                  count(*)::integer AS for_tenant
+           FROM course_route_proposal
+           WHERE athlete_id=$1 AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
+          [tenantId, courseId],
+        );
+        const counts = z
+          .object({ for_course: z.number().int(), for_tenant: z.number().int() })
+          .parse(open.rows[0]);
+        if (
+          counts.for_course >= courseLimits.openRouteProposalsPerCourse ||
+          counts.for_tenant >= courseLimits.openRouteProposalsPerTenant
+        )
+          throw new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+        const proposalId = randomUUID();
+        const inserted = await tx.query(
+          `INSERT INTO course_route_proposal(athlete_id,proposal_id,course_id,draft_revision,
+             request_id,waypoints,geometry,geometry_sha256,engine_distance_meters,
+             engine_duration_seconds,snapped_waypoints,computation,graph_build_id,created_at,
+             expires_at)
+           VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13,
+             statement_timestamp(),statement_timestamp()+make_interval(secs=>$14))
+           RETURNING ${PROPOSAL_COLUMNS}`,
+          [
+            tenantId,
+            proposalId,
+            courseId,
+            draftRevision,
+            computation.requestId,
+            JSON.stringify(waypoints),
+            JSON.stringify(geometry),
+            courseGeometrySha256(geometry.coordinates),
+            rawInput.engineDistanceMeters,
+            rawInput.engineDurationSeconds,
+            JSON.stringify(snapped),
+            JSON.stringify(computation),
+            computation.graph.graphBuildId,
+            ttlSeconds,
+          ],
+        );
+        return proposal(proposalRowSchema.parse(inserted.rows[0]));
+      });
+    },
+
+    readRouteProposal(athleteId, rawCourseId, rawProposalId) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawCourseId);
+      const proposalId = uuid.parse(rawProposalId);
+      return database.tenant(tenantId, async (tx) => {
+        const rows = await tx.query(
+          `SELECT ${PROPOSAL_COLUMNS} FROM course_route_proposal
+           WHERE athlete_id=$1 AND course_id=$2 AND proposal_id=$3
+             AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
+          [tenantId, courseId, proposalId],
+        );
+        if (!rows.rows[0]) return null;
+        return proposal(proposalRowSchema.parse(rows.rows[0]));
+      });
+    },
+
+    update(athleteId, rawCourseId, rawExpected, rawContent, rawKey, clientRequest, options) {
       const tenantId = uuid.parse(athleteId);
       const courseId = uuid.parse(rawCourseId);
       const expectedRevision = z.number().int().positive().parse(rawExpected);
@@ -519,6 +729,29 @@ export function createCourseRepository(database: Database): CourseRepository {
         const at = await databaseNow(tx);
         const nextRevision = expectedRevision + 1;
         const revisionId = randomUUID();
+        // Inside this transaction, not before it. A proposal read outside would leave the
+        // window where two saves of one reviewed computation both find it unconsumed; the
+        // bounded function takes the row `FOR UPDATE`, checks the course, the draft
+        // revision, the expiry and the geometry it is about to become, and marks it used.
+        const consume = options?.consumeProposal;
+        if (consume)
+          await tx
+            .query('SELECT public.consume_course_route_proposal($1,$2,$3,$4,$5)', [
+              uuid.parse(consume.proposalId),
+              courseId,
+              z
+                .number()
+                .int()
+                .min(1)
+                .max(courseLimits.maxDraftRevision)
+                .parse(consume.draftRevision),
+              z
+                .string()
+                .regex(/^[a-f0-9]{64}$/)
+                .parse(consume.geometrySha256),
+              nextRevision,
+            ])
+            .catch(proposalStateError);
         await insertRevision(tx, courseId, nextRevision, revisionId, content, at);
         const advanced = await tx.query(
           `UPDATE course SET name=$3,head_revision=$4,revision_id=$5,updated_at=$6

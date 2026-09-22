@@ -37,6 +37,7 @@ const migrationFiles = [
   '032_resource_retrieval.sql',
   '033_activity_track_storage.sql',
   '034_course_ledger.sql',
+  '035_course_route_proposal.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -796,6 +797,15 @@ export async function grantCourses(connectionString: string, runtimeRole: string
        public.courses_affected_by_activity_deletion(uuid),
        public.activity_course_impact(uuid),
        public.activity_course_impact_digest(uuid) TO "${runtimeRole}"`,
+    );
+    // Route proposals: the runtime role may write one and read its own. It has neither
+    // UPDATE nor DELETE, so consuming one and reaping expired ones happen only through the
+    // bounded functions, and a saved proposal cannot be quietly rewritten or re-used.
+    await pool.query(`GRANT SELECT,INSERT ON course_route_proposal TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION
+       public.consume_course_route_proposal(uuid,uuid,integer,text,integer),
+       public.reap_course_route_proposals() TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

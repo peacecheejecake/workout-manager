@@ -57,6 +57,15 @@ export interface MapViewProps {
    * a second, weaker copy of what the adapter already knows.
    */
   readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
+  /**
+   * The raw position the user picked, before it is snapped to a vertex.
+   *
+   * `onSelect` answers "which vertex did they mean", which is what a viewer wants. An
+   * editor needs the other question — "where on the map did they point" — because a new
+   * waypoint is not on any existing line. Both are reported for one pick; the owner uses
+   * whichever it needs, and the kit still knows nothing about waypoints or courses.
+   */
+  readonly onPickPosition?: (position: GeoPosition) => void;
 }
 
 async function defaultAdapterFactory(
@@ -78,6 +87,7 @@ export function MapView({
   createAdapter,
   onStatusChange,
   onFailure,
+  onPickPosition,
 }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const [adapter, setAdapter] = useState<MapAdapterHandle | null>(null);
@@ -102,10 +112,10 @@ export function MapView({
       : renderer.status;
 
   // Latest callbacks without re-creating the renderer on every parent render.
-  const latest = useRef({ onSelect, paths, onRenderIdle, onFailure });
+  const latest = useRef({ onSelect, paths, onRenderIdle, onFailure, onPickPosition });
   useEffect(() => {
-    latest.current = { onSelect, paths, onRenderIdle, onFailure };
-  }, [onSelect, paths, onRenderIdle, onFailure]);
+    latest.current = { onSelect, paths, onRenderIdle, onFailure, onPickPosition };
+  }, [onSelect, paths, onRenderIdle, onFailure, onPickPosition]);
 
   const factory = createAdapter ?? defaultAdapterFactory;
 
@@ -135,6 +145,7 @@ export function MapView({
       onFailure: fail,
       onPick: (position) => {
         if (!active) return;
+        latest.current.onPickPosition?.(position);
         latest.current.onSelect(findNearestVertex(latest.current.paths, position));
       },
       onIdle: (info) => {

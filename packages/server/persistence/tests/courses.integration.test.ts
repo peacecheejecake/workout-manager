@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
+import { courseLimits } from '@workout/contracts/courses';
 
 import { createActivityRepository, type ActivityRepository } from '../src/activities.js';
 import {
@@ -11,6 +12,7 @@ import {
 } from '../src/activity-tracks.js';
 import {
   CourseNotFoundError,
+  courseGeometrySha256,
   CourseStateError,
   createCourseRepository,
   type CourseRepository,
@@ -190,12 +192,13 @@ function content(input: {
     name,
     coordinates: line,
     waypoints: [
-      { role: 'start', position: startPosition, name: null, sourceSampleId: '0:0' },
+      { role: 'start', position: startPosition, name: null, sourceSampleId: '0:0', locked: false },
       {
         role: 'finish',
         position: endPosition,
         name: null,
         sourceSampleId: generation.endSampleId,
+        locked: false,
       },
     ],
     generation,
@@ -743,5 +746,456 @@ describe('M2-01f private course ledger', () => {
     );
     expect(rows.rows[0]).toEqual({ heads: 0, revisions: 0, lineage: 0 });
     expect(course.course.courseId).toBeTruthy();
+  });
+});
+
+/**
+ * M2-01h stores what the engine computed, as a proposal, and turns it into a revision only
+ * when the owner saves it. The tests below are about the seam between those two steps: one
+ * computation may become at most one revision, the revision that comes out of it carries
+ * the graph that answered, and nothing the reclamation and erasure rules reach can survive
+ * inside a proposal.
+ */
+const routeComputation = (
+  requestId: string,
+  draftRevision: number,
+  graphBuildId = '0123456789abcdef',
+) => ({
+  schemaVersion: 1 as const,
+  requestId,
+  requestRevision: draftRevision,
+  graph: {
+    engine: 'graphhopper' as const,
+    identitySource: 'engine' as const,
+    engineVersion: '10.0',
+    engineArtifactSha256: 'a'.repeat(64),
+    profileId: 'foot-v1' as const,
+    profileConfigSha256: 'b'.repeat(64),
+    extractSha256: 'c'.repeat(64),
+    extractRegion: 'seoul',
+    graphContentSha256: 'd'.repeat(64),
+    graphBuildId,
+    graphImportedAt: '2026-03-01T00:00:00.000Z',
+    roadDataAt: '2026-02-01T00:00:00.000Z',
+  },
+  conditions: {
+    profileId: 'foot-v1' as const,
+    algorithm: 'flexible' as const,
+    contractionHierarchies: false as const,
+    maxVisitedNodes: 1_000_000,
+    deadlineMilliseconds: 8_000,
+    snapLimitMeters: 120,
+    waypointCount: 2,
+  },
+  computedAt: '2026-03-02T00:00:00.000Z',
+  computationMilliseconds: 42,
+  warnings: [],
+});
+
+const routedLine: [number, number][] = [
+  [126.9779, 37.5665],
+  [126.9784, 37.5669],
+  [126.9799, 37.5671],
+];
+
+function proposalInput(courseId: string, draftRevision = 2, graphBuildId?: string) {
+  const requestId = `req-${randomUUID()}`;
+  return {
+    courseId,
+    draftRevision,
+    requestId,
+    waypoints: [
+      {
+        role: 'start' as const,
+        position: routedLine[0] as [number, number],
+        name: null,
+        sourceSampleId: null,
+        locked: false,
+      },
+      {
+        role: 'finish' as const,
+        position: routedLine[2] as [number, number],
+        name: null,
+        sourceSampleId: null,
+        locked: true,
+      },
+    ],
+    coordinates: routedLine,
+    engineDistanceMeters: 210.5,
+    engineDurationSeconds: 150,
+    snappedWaypoints: [
+      {
+        requested: routedLine[0] as [number, number],
+        snapped: routedLine[0] as [number, number],
+        snapDistanceMeters: 0,
+      },
+      {
+        requested: routedLine[2] as [number, number],
+        snapped: routedLine[2] as [number, number],
+        snapDistanceMeters: 4.5,
+      },
+    ],
+    computation: routeComputation(requestId, draftRevision, graphBuildId),
+    ttlSeconds: 1800,
+  };
+}
+
+/** The revision content a reviewed proposal becomes, as the API derives it. */
+function routedContent(
+  head: {
+    name: string;
+    lineage: readonly { activityId: string; trackId: string; trackRevision: number }[];
+  },
+  input: ReturnType<typeof proposalInput>,
+): PreparedCourseContent {
+  return {
+    name: head.name,
+    coordinates: input.coordinates,
+    waypoints: input.waypoints,
+    // Built here rather than imported from the courses domain package: the repository
+    // records what the application derived, and this test is about the ledger, not the
+    // derivation (which `packages/server/courses/tests/routed.test.ts` covers).
+    generation: {
+      kind: 'routed-waypoints',
+      computation: input.computation,
+      engineDistanceMeters: input.engineDistanceMeters,
+      engineDurationSeconds: input.engineDurationSeconds,
+      maxSnapDistanceMeters: Math.max(
+        ...input.snappedWaypoints.map((waypoint) => waypoint.snapDistanceMeters),
+      ),
+      waypointCount: input.waypoints.length,
+      vertexCount: input.coordinates.length,
+    },
+    edit: { kind: 'rerouted' },
+    lineage: head.lineage,
+    distanceMeters: 211.75,
+    contentDigest: hashOf(
+      JSON.stringify([head.name, input.coordinates, input.computation.graph.graphBuildId]),
+    ),
+  };
+}
+
+describe('M2-01h route proposals', () => {
+  it('stores a computed route without changing the course at all', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const stored = await courses.storeRouteProposal(athlete, proposalInput(course.course.courseId));
+    expect(stored.proposalId).toBeTruthy();
+    expect(stored.geometry.coordinates).toEqual(routedLine);
+    // Everything the RouteComputationRecord carries survived the round trip.
+    expect(stored.computation.graph.graphBuildId).toBe('0123456789abcdef');
+    expect(stored.computation.graph.graphContentSha256).toBe('d'.repeat(64));
+    expect(stored.computation.requestRevision).toBe(2);
+    expect(stored.computation.computationMilliseconds).toBe(42);
+    expect(stored.waypoints[1]?.locked).toBe(true);
+    // A proposal is not a course. The head has not moved and no revision appeared.
+    const after = await courses.read(athlete, course.course.courseId);
+    expect(after.status === 'available' && after.course.headRevision).toBe(1);
+    const revisions = await database.tenant(athlete, async (tx) =>
+      Number(
+        (
+          await tx.query('SELECT count(*)::int AS total FROM course_revision WHERE course_id=$1', [
+            course.course.courseId,
+          ])
+        ).rows[0]?.['total'],
+      ),
+    );
+    expect(revisions).toBe(1);
+  });
+
+  it('turns a reviewed proposal into a revision that names the graph that answered', async () => {
+    const { athlete, imported, stored: track, course } = await athleteWithCourse('Routed loop');
+    const input = proposalInput(course.course.courseId);
+    const proposal = await courses.storeRouteProposal(athlete, input);
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    const saved = await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      routedContent(head, input),
+      `save-${randomUUID()}`,
+      { kind: 'reroute' },
+      {
+        consumeProposal: {
+          proposalId: proposal.proposalId,
+          draftRevision: proposal.draftRevision,
+          geometrySha256: courseGeometrySha256(input.coordinates),
+        },
+      },
+    );
+    if (saved.status !== 'available') throw new Error('course was reclaimed');
+    expect(saved.course.headRevision).toBe(2);
+    expect(saved.revision.edit).toEqual({ kind: 'rerouted' });
+    expect(saved.revision.generation.kind).toBe('routed-waypoints');
+    if (saved.revision.generation.kind !== 'routed-waypoints') throw new Error('unreachable');
+    expect(saved.revision.generation.computation.graph.graphBuildId).toBe('0123456789abcdef');
+    expect(saved.revision.generation.computation.warnings).toEqual([]);
+    expect(saved.revision.generation.maxSnapDistanceMeters).toBe(4.5);
+    // The revision inherits the lineage of the head: rerouting is not a way out of the
+    // recording a course came from, so deleting that activity still reaches this revision.
+    expect(saved.revision.lineage).toEqual([
+      { activityId: imported.activityId, trackId: track.trackId, trackRevision: 1 },
+    ]);
+    // Revision 1 is untouched, as every other edit leaves it.
+    const first = await database.tenant(
+      athlete,
+      async (tx) =>
+        (
+          await tx.query(
+            'SELECT generation FROM course_revision WHERE course_id=$1 AND course_revision=1',
+            [course.course.courseId],
+          )
+        ).rows[0],
+    );
+    expect((first as { generation: { kind: string } }).generation.kind).toBe('recorded-segment');
+  });
+
+  it('refuses to save one reviewed computation twice', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const input = proposalInput(course.course.courseId);
+    const proposal = await courses.storeRouteProposal(athlete, input);
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    const consume = {
+      consumeProposal: {
+        proposalId: proposal.proposalId,
+        draftRevision: proposal.draftRevision,
+        geometrySha256: courseGeometrySha256(input.coordinates),
+      },
+    };
+    await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      routedContent(head, input),
+      `save-${randomUUID()}`,
+      { kind: 'reroute', attempt: 1 },
+      consume,
+    );
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        2,
+        { ...routedContent(head, input), name: 'Routed loop', contentDigest: hashOf('different') },
+        `save-${randomUUID()}`,
+        { kind: 'reroute', attempt: 2 },
+        consume,
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_ALREADY_SAVED' });
+    const read = await courses.read(athlete, course.course.courseId);
+    expect(read.status === 'available' && read.course.headRevision).toBe(2);
+  });
+
+  it('lets only one of two concurrent saves of one proposal succeed', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const input = proposalInput(course.course.courseId);
+    const proposal = await courses.storeRouteProposal(athlete, input);
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    const attempt = (key: string) =>
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        routedContent(head, input),
+        key,
+        { kind: 'reroute', key },
+        {
+          consumeProposal: {
+            proposalId: proposal.proposalId,
+            draftRevision: proposal.draftRevision,
+            geometrySha256: courseGeometrySha256(input.coordinates),
+          },
+        },
+      );
+    const results = await Promise.allSettled([
+      attempt(`save-a-${randomUUID()}`),
+      attempt(`save-b-${randomUUID()}`),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const read = await courses.read(athlete, course.course.courseId);
+    expect(read.status === 'available' && read.course.headRevision).toBe(2);
+  });
+
+  it('refuses a save whose draft moved on, and one whose geometry is not the proposed line', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const input = proposalInput(course.course.courseId, 5);
+    const proposal = await courses.storeRouteProposal(athlete, input);
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        routedContent(head, input),
+        `save-${randomUUID()}`,
+        { kind: 'reroute', stale: true },
+        {
+          consumeProposal: {
+            proposalId: proposal.proposalId,
+            // The owner edited a waypoint after the computation came back.
+            draftRevision: 6,
+            geometrySha256: courseGeometrySha256(input.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_STALE_DRAFT' });
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        { ...routedContent(head, input), coordinates: coordinates },
+        `save-${randomUUID()}`,
+        { kind: 'reroute', substituted: true },
+        {
+          consumeProposal: {
+            proposalId: proposal.proposalId,
+            draftRevision: proposal.draftRevision,
+            geometrySha256: courseGeometrySha256(coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_CONTENT_MISMATCH' });
+    const read = await courses.read(athlete, course.course.courseId);
+    expect(read.status === 'available' && read.course.headRevision).toBe(1);
+  });
+
+  it('refuses an expired proposal and stops offering it', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const input = proposalInput(course.course.courseId);
+    // The shortest life the contract allows, then waited out. The expiry cannot be forced
+    // by writing to the row: the write-once trigger refuses that, which the last test here
+    // fixes in place.
+    const proposal = await courses.storeRouteProposal(athlete, { ...input, ttlSeconds: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(
+      await courses.readRouteProposal(athlete, course.course.courseId, proposal.proposalId),
+    ).toBeNull();
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        routedContent(head, input),
+        `save-${randomUUID()}`,
+        { kind: 'reroute', expired: true },
+        {
+          consumeProposal: {
+            proposalId: proposal.proposalId,
+            draftRevision: proposal.draftRevision,
+            geometrySha256: courseGeometrySha256(input.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_EXPIRED' });
+  });
+
+  it('reclaims unsaved proposals with the activity the course came from', async () => {
+    const { athlete, imported, course } = await athleteWithCourse('Routed loop');
+    const other = await athleteWithCourse('Unrelated');
+    const mine = await courses.storeRouteProposal(athlete, proposalInput(course.course.courseId));
+    const theirs = await courses.storeRouteProposal(
+      other.athlete,
+      proposalInput(other.course.course.courseId),
+    );
+    await activities.deleteActivity(athlete, imported.activityId, {
+      expectedRevision: imported.revision,
+    });
+    // The draft's waypoints and the computed line are private location data belonging to a
+    // course that has just lost every coordinate it had. Leaving them would keep exactly
+    // what the reclamation exists to remove, and leave a saveable route behind.
+    const rows = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_proposal WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(rows.rows[0]).toEqual({ total: 0 });
+    expect(mine.proposalId).toBeTruthy();
+    const untouched = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_proposal WHERE athlete_id=$1',
+      [other.athlete],
+    );
+    expect(untouched.rows[0]).toEqual({ total: 1 });
+    expect(theirs.proposalId).toBeTruthy();
+  });
+
+  it('removes a proposal when its course is deleted, and with the account', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    await courses.storeRouteProposal(athlete, proposalInput(course.course.courseId));
+    await courses.remove(athlete, course.course.courseId, 1);
+    expect(
+      (
+        await admin.query(
+          'SELECT count(*)::int AS total FROM course_route_proposal WHERE athlete_id=$1',
+          [athlete],
+        )
+      ).rows[0],
+    ).toEqual({ total: 0 });
+
+    const second = await athleteWithCourse('Routed loop');
+    await courses.storeRouteProposal(second.athlete, proposalInput(second.course.course.courseId));
+    await createOperationsRepository(database).eraseAccount(second.athlete);
+    expect(
+      (
+        await admin.query(
+          'SELECT count(*)::int AS total FROM course_route_proposal WHERE athlete_id=$1',
+          [second.athlete],
+        )
+      ).rows[0],
+    ).toEqual({ total: 0 });
+  });
+
+  it('bounds how many unsaved proposals one course may hold', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    for (let index = 0; index < courseLimits.openRouteProposalsPerCourse; index += 1)
+      await courses.storeRouteProposal(athlete, proposalInput(course.course.courseId, index + 1));
+    await expect(
+      courses.storeRouteProposal(athlete, proposalInput(course.course.courseId, 99)),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' });
+  });
+
+  it('refuses to compute for a reclaimed course and keeps one tenant out of another', async () => {
+    const { athlete, imported, course } = await athleteWithCourse('Routed loop');
+    await activities.deleteActivity(athlete, imported.activityId, {
+      expectedRevision: imported.revision,
+    });
+    await expect(
+      courses.storeRouteProposal(athlete, proposalInput(course.course.courseId)),
+    ).rejects.toMatchObject({ code: 'COURSE_UNAVAILABLE' });
+    const intruder = randomUUID();
+    await expect(
+      courses.storeRouteProposal(intruder, proposalInput(course.course.courseId)),
+    ).rejects.toBeInstanceOf(CourseNotFoundError);
+  });
+
+  it('gives the runtime role no way to rewrite or remove a proposal', async () => {
+    const { athlete, course } = await athleteWithCourse('Routed loop');
+    const proposal = await courses.storeRouteProposal(
+      athlete,
+      proposalInput(course.course.courseId),
+    );
+    await expect(
+      database.tenant(athlete, (tx) =>
+        tx.query('UPDATE course_route_proposal SET draft_revision=99 WHERE proposal_id=$1', [
+          proposal.proposalId,
+        ]),
+      ),
+    ).rejects.toThrowError(/permission denied|IMMUTABLE_ROUTE_PROPOSAL/);
+    await expect(
+      database.tenant(athlete, (tx) =>
+        tx.query('DELETE FROM course_route_proposal WHERE proposal_id=$1', [proposal.proposalId]),
+      ),
+    ).rejects.toThrowError(/permission denied|IMMUTABLE_ROUTE_PROPOSAL/);
+    // The owner's own role may not rewrite a stored proposal either.
+    await expect(
+      admin.query('UPDATE course_route_proposal SET geometry=$2::jsonb WHERE proposal_id=$1', [
+        proposal.proposalId,
+        JSON.stringify({ type: 'LineString', coordinates }),
+      ]),
+    ).rejects.toThrowError(/IMMUTABLE_ROUTE_PROPOSAL/);
   });
 });

@@ -2,20 +2,25 @@ import {
   activityDeletionImpactSchema,
   courseCreateRequestSchema,
   courseDeleteRequestSchema,
+  courseGenerationGraphBuildId,
   courseGpxMediaType,
   courseLimits,
   courseListSchema,
   courseReadResultSchema,
+  courseRouteProposalRequestSchema,
+  courseRouteProposalResultSchema,
   courseUpdateRequestSchema,
   type CourseEdit,
   type CourseGeneration,
   type CourseLineage,
   type CoursePosition,
+  type CourseRouteProposal,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
 import { mapPathSchema, trackLimits } from '@workout/contracts/tracks';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import { courseGpxFileName, writeCourseGpx } from '@workout/server-courses/gpx';
+import { RoutedCourseError, routedCourseGeneration } from '@workout/server-courses/routed';
 import {
   CourseSegmentError,
   deriveCourseFromRecordedSegment,
@@ -26,16 +31,20 @@ import type { ObjectStorage } from '@workout/server-media/object-storage';
 import type { ActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import {
   CourseNotFoundError,
+  courseGeometrySha256,
   CourseStateError,
   type CourseHeadContent,
   type CourseRepository,
   type PreparedCourseContent,
 } from '@workout/server-persistence/courses';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import { cancellationSignal } from './request-cancellation.js';
+import type { WalkingRoutePort } from './routing-routes.js';
+import { RoutingRequestError } from '@workout/server-integrations/routing';
 
 const COURSE_BODY_LIMIT = 4 * 1024;
 
@@ -58,13 +67,30 @@ export interface CourseServices {
   courses: CourseRepository;
   tracks: ActivityTrackRepository;
   storage: ObjectStorage;
+  /**
+   * Our own pedestrian engine (M2-01g). Absent until an engine endpoint is configured, and
+   * then the proposal route is not registered at all rather than pretending to compute.
+   */
+  walkingRoutes?: WalkingRoutePort;
+}
+
+/**
+ * A refused proposal is 409 and an unknown one is 404: "we refused and stored nothing" and
+ * "there is nothing there" are different answers, and the screen tells them apart.
+ */
+function proposalStatus(code: CourseStateError['code']): number {
+  if (code === 'COURSE_UNAVAILABLE') return 410;
+  if (code === 'ROUTE_PROPOSAL_NOT_FOUND') return 404;
+  if (code === 'ROUTE_PROPOSAL_QUOTA_EXCEEDED') return 429;
+  return 409;
 }
 
 function courseError(error: unknown): ProductRequestError | undefined {
   if (error instanceof CourseNotFoundError) return new ProductRequestError(404, 'COURSE_NOT_FOUND');
   if (error instanceof CourseStateError)
-    return new ProductRequestError(error.code === 'COURSE_UNAVAILABLE' ? 410 : 409, error.code);
+    return new ProductRequestError(proposalStatus(error.code), error.code);
   if (error instanceof CourseSegmentError) return new ProductRequestError(422, error.code);
+  if (error instanceof RoutedCourseError) return new ProductRequestError(422, error.code);
   return undefined;
 }
 
@@ -283,6 +309,66 @@ async function courseFromRetrim(
 }
 
 /**
+ * Turn one reviewed proposal into the content of the next revision.
+ *
+ * The geometry and the waypoints both come from the stored proposal, never from the
+ * request: that is what makes it impossible to save the line of one draft with the
+ * waypoints of another. The lineage is inherited from the head, so a course whose
+ * coordinates started in a recording keeps naming that recording after it has been
+ * rerouted — rerouting is not a way out of deletion.
+ */
+function courseFromProposal(
+  head: CourseHeadContent,
+  reviewed: CourseRouteProposal,
+): PreparedCourseContent {
+  const coordinates = reviewed.geometry.coordinates;
+  const generation = routedCourseGeneration({
+    computation: reviewed.computation,
+    coordinates,
+    waypoints: reviewed.waypoints,
+    engineDistanceMeters: reviewed.engineDistanceMeters,
+    engineDurationSeconds: reviewed.engineDurationSeconds,
+    snappedWaypoints: reviewed.snappedWaypoints,
+  });
+  return prepared({
+    name: head.name,
+    coordinates,
+    waypoints: reviewed.waypoints,
+    generation,
+    edit: { kind: 'rerouted' },
+    lineage: head.lineage,
+    // The course's own planned line length, measured from its vertices. The engine's
+    // estimate is kept separately in the generation conditions; they are different values
+    // and the screen says so.
+    distanceMeters: plannedLineLengthMeters(coordinates),
+  });
+}
+
+/**
+ * Status for one computation attempt that produced no proposal. Mirrors the internal
+ * routing endpoint so the two cannot drift: a refusal that stored nothing (`no_route`,
+ * `outside_coverage`, `snap_too_far`) is a 200 answer with a named outcome, while an
+ * unknown result (`timeout`) and an engine problem are not.
+ */
+function proposalOutcomeStatus(outcome: string): number {
+  switch (outcome) {
+    case 'no_route':
+    case 'outside_coverage':
+    case 'snap_too_far':
+      return 200;
+    case 'overloaded':
+      return 429;
+    case 'timeout':
+    case 'compute_budget_exceeded':
+      return 504;
+    case 'cancelled':
+      return 499;
+    default:
+      return 502;
+  }
+}
+
+/**
  * Private course ledger.
  *
  * Every route derives its owner from the session. Nothing here can reach an Activity, a
@@ -360,6 +446,47 @@ export function registerCourseRoutes(
       if (head === null) throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
       if (head.courseRevision !== body.expectedRevision)
         throw new ProductRequestError(409, 'COURSE_REVISION_CONFLICT');
+      if (body.change.kind === 'reroute') {
+        const change = body.change;
+        // The graph the owner reviewed, on both sides. `previous` is what the head was
+        // computed on; it is read from the head this write is doing CAS against, so a head
+        // that moved is already refused above and cannot slip past this check. `next` is
+        // what the proposal was computed on. A course computed on an older graph therefore
+        // cannot be replaced by an answer from a newer one unless the screen showed the
+        // change and sent both values back.
+        if (change.acknowledgedGraph.previous !== courseGenerationGraphBuildId(head.generation))
+          throw new ProductRequestError(409, 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE');
+        const reviewed = await execute(() =>
+          services.courses.readRouteProposal(athleteId, courseId, change.proposalId),
+        );
+        if (reviewed === null) throw new ProductRequestError(404, 'ROUTE_PROPOSAL_NOT_FOUND');
+        if (reviewed.draftRevision !== change.draftRevision)
+          throw new ProductRequestError(409, 'ROUTE_PROPOSAL_STALE_DRAFT');
+        if (reviewed.computation.graph.graphBuildId !== change.acknowledgedGraph.next)
+          throw new ProductRequestError(409, 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE');
+        const content = courseFromProposal(head, reviewed);
+        return courseReadResultSchema.parse(
+          await execute(() =>
+            services.courses.update(
+              athleteId,
+              courseId,
+              body.expectedRevision,
+              content,
+              key,
+              command,
+              {
+                consumeProposal: {
+                  proposalId: reviewed.proposalId,
+                  draftRevision: reviewed.draftRevision,
+                  // Recomputed from the coordinates about to be written, and compared with
+                  // the proposal's own hash inside the writing transaction.
+                  geometrySha256: courseGeometrySha256(content.coordinates),
+                },
+              },
+            ),
+          ),
+        );
+      }
       const content =
         body.change.kind === 'rename'
           ? prepared({
@@ -428,6 +555,93 @@ export function registerCourseRoutes(
         )
         .send(body);
     });
+
+    /**
+     * Ask our own pedestrian engine for a route under the current waypoint draft.
+     *
+     * This is the only route in this file that can spend engine time, and it is bounded on
+     * every side: the course must exist, be the caller's and still be available before the
+     * engine is touched; M2-01g's service applies the tenant rate, concurrency, waypoint,
+     * distance and deadline limits; and the caller going away cancels the computation
+     * through the response stream, which is the server-side bound the plan asks for.
+     *
+     * A successful computation is stored as a **proposal**. The course is unchanged by it:
+     * no revision appears, no head moves, and the owner has to save it explicitly. Every
+     * other outcome stores nothing at all, leaving the uncomputed draft exactly as it was,
+     * and none of them returns a substitute geometry — a straight line is never an answer.
+     */
+    if (services.walkingRoutes) {
+      const walkingRoutes = services.walkingRoutes;
+      courseRoutes.post(
+        '/courses/:courseId/route-proposals',
+        { bodyLimit: COURSE_BODY_LIMIT },
+        async (request: FastifyRequest, reply: FastifyReply) => {
+          input(emptyQuery, request.query);
+          const athleteId = principal(request).athleteId;
+          const { courseId } = input(courseParamsSchema, request.params);
+          const body = input(courseRouteProposalRequestSchema, request.body);
+          // Before any engine work: an unknown, someone else's or a reclaimed course buys
+          // no computation at all.
+          const course = await execute(() => services.courses.read(athleteId, courseId));
+          if (course.status !== 'available')
+            throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
+          const cancellation = cancellationSignal(reply);
+          let computation;
+          try {
+            computation = await walkingRoutes.compute(
+              athleteId,
+              {
+                schemaVersion: 1,
+                requestId: body.requestId,
+                // The draft the request was made from travels into the computation record,
+                // so a result can be matched back to the exact draft it belongs to.
+                requestRevision: body.draftRevision,
+                profileId: 'foot-v1',
+                waypoints: body.waypoints.map((waypoint) => waypoint.position),
+              },
+              { signal: cancellation.signal },
+            );
+          } catch (error) {
+            if (error instanceof RoutingRequestError)
+              throw new ProductRequestError(422, error.code);
+            throw error;
+          } finally {
+            cancellation.dispose();
+          }
+          if (computation.retryAfterSeconds !== null)
+            reply.header('retry-after', String(computation.retryAfterSeconds));
+          const result = computation.result;
+          if (result.outcome !== 'route_computed')
+            return reply.code(proposalOutcomeStatus(result.outcome)).send(
+              courseRouteProposalResultSchema.parse({
+                outcome: result.outcome,
+                computation: result.computation,
+                draftRevision: body.draftRevision,
+              }),
+            );
+          const stored = await execute(() =>
+            services.courses.storeRouteProposal(athleteId, {
+              courseId,
+              draftRevision: body.draftRevision,
+              requestId: body.requestId,
+              waypoints: body.waypoints,
+              coordinates: result.geometry.coordinates,
+              engineDistanceMeters: result.distanceMeters,
+              engineDurationSeconds: result.durationSeconds,
+              snappedWaypoints: result.snappedWaypoints,
+              computation: result.computation,
+              ttlSeconds: courseLimits.routeProposalTtlSeconds,
+            }),
+          );
+          return reply.code(200).send(
+            courseRouteProposalResultSchema.parse({
+              outcome: 'route_computed',
+              proposal: stored,
+            }),
+          );
+        },
+      );
+    }
 
     /**
      * What deleting this activity would reclaim. The delete confirmation shows it, so the

@@ -2,11 +2,93 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3, 0.75rem);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .note {
   color: var(--color-text-muted, #555);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * One DOM for the three S13 compositions. The mode comes from the generated viewport
+ * specification and arrives as `data-layout`, so no breakpoint value is copied into this
+ * package. Panes are hidden with `display: none` rather than unmounted, which keeps the
+ * draft, the map renderer and the selection across a layout change.
+ */
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+
+.pane {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* mobile: a sheet over the list. Exactly one of them is on screen. */
+.panes[data-layout='mobile'][data-sheet='closed'] .mapPane,
+.panes[data-layout='mobile'][data-sheet='closed'] .sheetPane {
+  display: none;
+}
+.panes[data-layout='mobile'][data-sheet='open'] .listPane {
+  display: none;
+}
+.panes[data-layout='mobile'] .sheetPane {
+  border-top: 1px solid var(--color-border, #d8dce3);
+  padding-top: var(--space-3, 0.75rem);
+}
+
+/* tablet: a collapsible list beside the map and the detail. */
+.panes[data-layout='tablet'] {
+  grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+}
+.panes[data-layout='tablet'] .listPane {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.panes[data-layout='tablet'] .mapPane {
+  grid-column: 2;
+  grid-row: 1;
+}
+.panes[data-layout='tablet'] .sheetPane {
+  grid-column: 2;
+  grid-row: 2;
+}
+.panes[data-layout='tablet'][data-list='collapsed'] {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+/* Collapsed hides the entries, never the control that brings them back. */
+.panes[data-layout='tablet'][data-list='collapsed'] .listPane .list {
+  display: none;
+}
+
+/* desktop: the map and the list side by side, the detail underneath spanning both. */
+.panes[data-layout='desktop'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+}
+.panes[data-layout='desktop'] .mapPane {
+  grid-column: 1;
+  grid-row: 1;
+}
+.panes[data-layout='desktop'] .listPane {
+  grid-column: 2;
+  grid-row: 1;
+}
+.panes[data-layout='desktop'] .sheetPane {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.mapPane {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  min-height: 14rem;
 }
 
 .list {
@@ -33,4 +115,74 @@
 
 .download {
   align-self: flex-start;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2, 0.5rem);
+}
+
+/*
+ * The waypoint list is the non-drag path through every essential action, so it has to stay
+ * usable in a narrow pane: the controls wrap instead of forcing a horizontal scroll.
+ */
+.waypoints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.waypoints li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2, 0.5rem);
+  min-width: 0;
+  padding: var(--space-2, 0.5rem);
+  border: 1px solid var(--color-border, #d8dce3);
+  border-radius: var(--radius-2, 0.5rem);
+}
+
+.coordinate {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  color: var(--color-text-muted, #555);
+}
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-3, 0.75rem);
+  border: 1px solid var(--color-border, #d8dce3);
+  border-radius: var(--radius-2, 0.5rem);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: var(--space-2, 0.5rem);
+  margin: 0;
+}
+
+.summary dt {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #555);
+}
+
+.summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }

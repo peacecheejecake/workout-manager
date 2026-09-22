@@ -135,12 +135,14 @@ export function deriveCourseFromRecordedSegment(input: {
       position: coordinates[0] as CoursePosition,
       name: null,
       sourceSampleId: startSampleId,
+      locked: false,
     },
     {
       role: 'finish',
       position: coordinates[coordinates.length - 1] as CoursePosition,
       name: null,
       sourceSampleId: endSampleId,
+      locked: false,
     },
   ];
   return {

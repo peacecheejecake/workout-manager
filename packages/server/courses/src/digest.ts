@@ -25,19 +25,42 @@ export interface CourseContent {
 }
 
 function generationMaterial(generation: CourseGeneration): unknown {
+  if (generation.kind === 'recorded-segment')
+    return [
+      generation.kind,
+      generation.activityId,
+      generation.trackId,
+      generation.trackRevision,
+      generation.lineIndex,
+      generation.segmentIndex,
+      generation.startSampleId,
+      generation.endSampleId,
+      generation.vertexCount,
+      generation.mapPathContentSha256,
+      generation.simplificationVersion,
+      generation.toleranceMeters,
+    ];
+  // A routed revision is identified by what actually answered it. The request id, the
+  // draft revision and the computation timestamps are left out deliberately: recomputing
+  // the same waypoints on the same graph produces the same course, and recording it twice
+  // would be a second version of nothing.
+  const computation = generation.computation;
   return [
     generation.kind,
-    generation.activityId,
-    generation.trackId,
-    generation.trackRevision,
-    generation.lineIndex,
-    generation.segmentIndex,
-    generation.startSampleId,
-    generation.endSampleId,
+    computation.graph.engine,
+    computation.graph.engineArtifactSha256,
+    computation.graph.profileId,
+    computation.graph.profileConfigSha256,
+    computation.graph.graphBuildId,
+    computation.graph.graphContentSha256,
+    computation.conditions.algorithm,
+    computation.conditions.contractionHierarchies,
+    computation.conditions.maxVisitedNodes,
+    computation.conditions.snapLimitMeters,
+    computation.conditions.waypointCount,
+    generation.engineDistanceMeters,
+    generation.engineDurationSeconds,
     generation.vertexCount,
-    generation.mapPathContentSha256,
-    generation.simplificationVersion,
-    generation.toleranceMeters,
   ];
 }
 
@@ -52,6 +75,10 @@ export function courseContentDigest(content: CourseContent): string {
       waypoint.position[1],
       waypoint.name,
       waypoint.sourceSampleId,
+      // Appended only when set, so every revision stored before waypoint locking existed
+      // keeps the digest it was written with. An unlocked waypoint is the absence of this
+      // element, not a `false` that would change every digest in the ledger.
+      ...(waypoint.locked ? (['locked'] as const) : []),
     ]),
     generation: generationMaterial(content.generation),
     lineage: [...content.lineage]

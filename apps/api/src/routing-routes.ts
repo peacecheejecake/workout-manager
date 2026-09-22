@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { Principal } from './ports.js';
 import { emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import { cancellationSignal } from './request-cancellation.js';
 
 /**
  * Internal routing endpoint (M2-01g).
@@ -53,35 +54,6 @@ function statusFor(outcome: WalkingRouteResult['outcome']): number {
     case 'graph_mismatch':
       return 502;
   }
-}
-
-/**
- * Cancellation means the client went away, and nothing else.
- *
- * The obvious wiring is wrong: `close` on the REQUEST stream fires as soon as the request
- * body has been read, which on a normal POST happens long before the handler answers. That
- * turned every request whose computation took a few tens of milliseconds into a
- * cancellation. The response stream is the right one to watch, and even there `close`
- * fires on a normal finish too, so the signal is only raised when the response had not
- * been written out yet.
- */
-function cancellationSignal(reply: FastifyReply): {
-  signal: AbortSignal;
-  dispose: () => void;
-} {
-  const controller = new AbortController();
-  const onClose = () => {
-    if (!reply.raw.writableEnded) controller.abort();
-  };
-  // The socket may already be gone before the handler starts.
-  if (reply.raw.destroyed && !reply.raw.writableEnded) controller.abort();
-  reply.raw.on('close', onClose);
-  return {
-    signal: controller.signal,
-    dispose: () => {
-      reply.raw.off('close', onClose);
-    },
-  };
 }
 
 export function registerRoutingRoutes(
