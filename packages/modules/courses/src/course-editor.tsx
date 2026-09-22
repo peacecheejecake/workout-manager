@@ -2,11 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CoursePosition } from '@workout/contracts/courses';
-import { courseGenerationGraphBuildId, type CourseReadResult } from '@workout/contracts/courses';
+import {
+  courseGenerationGraphBuildId,
+  targetDistanceLimits,
+  type CourseReadResult,
+  type CourseUpdateRequest,
+} from '@workout/contracts/courses';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { CourseRequestError, type CourseApi } from './course-api';
-import { currentRoute, draftRequestWaypoints, type DraftProblem } from './course-draft';
+import {
+  currentCandidates,
+  currentRoute,
+  draftRequestWaypoints,
+  pickedCandidate,
+  type DraftProblem,
+} from './course-draft';
 import { useCourseDraft, useCourseDraftStore } from './course-draft-context';
 import styles from './courses.module.css';
 
@@ -59,7 +70,60 @@ const outcomes: Record<string, string> = {
   graph_mismatch: '실행 중인 지도 데이터가 고정된 것과 달라 계산을 사용하지 않았습니다.',
 };
 
+/**
+ * A candidate search answers one of these. `no_candidate` is a **known** answer — the
+ * search ran inside its bounds and found nothing worth offering — and it is said in those
+ * words rather than as a failure, because "we looked and found none" and "we do not know
+ * what happened" are different facts.
+ */
+const candidateOutcomes: Record<string, string> = {
+  no_candidate:
+    '정해진 한도 안에서 목표 거리에 맞는 후보를 찾지 못했습니다. 저장된 것은 없습니다. 목표 거리를 바꾸거나 다시 시도하세요.',
+  no_route: '후보 경로를 잇는 보행 경로를 찾지 못했습니다. 저장된 것은 없습니다.',
+  outside_coverage: '시작 지점이 보행 네트워크 범위 밖입니다. 이 지역은 후보를 만들 수 없습니다.',
+  snap_too_far: '시작 지점이 보행 네트워크에서 너무 멀리 떨어져 있습니다.',
+  timeout: '제한 시간 안에 탐색이 끝나지 않았습니다. 결과를 알 수 없으므로 저장된 것은 없습니다.',
+  cancelled: '후보 생성을 취소했습니다. 초안은 그대로입니다.',
+  overloaded: '지금은 계산 요청이 많습니다. 잠시 후 다시 시도하세요.',
+  compute_budget_exceeded: '경로 탐색 한도를 넘었습니다. 목표 거리를 줄여 보세요.',
+  engine_unavailable: '경로 계산 엔진에 연결하지 못했습니다. 초안은 그대로입니다.',
+  engine_contract_violation: '엔진 응답을 신뢰할 수 없어 사용하지 않았습니다. 초안은 그대로입니다.',
+  graph_mismatch: '실행 중인 지도 데이터가 고정된 것과 달라 후보를 사용하지 않았습니다.',
+};
+
+/** Why one attempt produced no candidate. Shown so the search is auditable, not magic. */
+const attemptOutcomes: Record<string, string> = {
+  accepted: '후보로 채택',
+  duplicate: '이미 제안한 후보와 대부분 겹침',
+  off_target: '목표 거리 허용 오차 밖',
+  not_a_loop: '출발점으로 돌아오지 않음',
+  outside_search_area: '탐색 허용 범위를 벗어남',
+  request_refused: '요청 한도에 걸려 계산하지 않음',
+  no_route: '보행 경로 없음',
+  outside_coverage: '네트워크 범위 밖',
+  snap_too_far: '네트워크에서 너무 멂',
+  timeout: '제한 시간 초과',
+  cancelled: '취소됨',
+  overloaded: '요청 한도 초과',
+  compute_budget_exceeded: '탐색 한도 초과',
+  engine_unavailable: '엔진 연결 실패',
+  engine_contract_violation: '엔진 응답 거절',
+  graph_mismatch: '지도 데이터 불일치',
+};
+
+const candidateSaveErrors: Record<string, string> = {
+  ROUTE_CANDIDATE_SET_MISMATCH: '고른 후보가 이 탐색의 것이 아닙니다. 후보를 다시 생성하세요.',
+  CANDIDATE_TARGET_OUT_OF_RANGE: `목표 거리는 ${targetDistanceLimits.minTargetMeters}m 이상 ${targetDistanceLimits.maxTargetMeters}m 이하여야 합니다.`,
+  CANDIDATE_LOCKED_WAYPOINTS_EXCEED_TARGET:
+    '잠긴 경유점만으로도 목표 거리를 넘습니다. 목표를 늘리거나 잠금을 푸세요.',
+  CANDIDATE_LOCKED_WAYPOINT_OUTSIDE_SEARCH_AREA: '잠긴 경유점이 이 목표 거리의 탐색 범위 밖입니다.',
+  CANDIDATE_TOO_MANY_LOCKED_WAYPOINTS: '잠긴 경유점이 너무 많아 후보를 만들 수 없습니다.',
+  CANDIDATE_LOCKED_FINISH_NOT_A_LOOP:
+    '끝 지점이 시작과 다른 곳에 잠겨 있습니다. 후보는 출발점으로 돌아오는 경로이므로 끝 지점의 잠금을 풀어야 합니다.',
+};
+
 const saveErrors: Record<string, string> = {
+  ...candidateSaveErrors,
   COURSE_REVISION_CONFLICT:
     '이 코스가 다른 곳에서 먼저 바뀌었습니다. 다시 불러온 뒤 경로를 다시 계산하세요.',
   COURSE_GRAPH_ACKNOWLEDGEMENT_STALE:
@@ -134,8 +198,26 @@ export function CourseEditor({
     draftRevision: number;
   } | null>(null);
   const [manual, setManual] = useState({ longitude: '', latitude: '' });
+  const [generating, setGenerating] = useState(false);
+  const [target, setTarget] = useState('5000');
+  /**
+   * What the owner read about the candidate they picked. Bound to the proposal and to the
+   * draft, exactly as the route review is: picking a different candidate, running a new
+   * search or touching a waypoint all mean nobody has read what is on screen now.
+   */
+  const [reviewedCandidate, setReviewedCandidate] = useState<{
+    proposalId: string;
+    draftRevision: number;
+  } | null>(null);
   const abort = useRef<AbortController | null>(null);
   const command = useRef<{ fingerprint: string; key: string } | null>(null);
+  const candidateSet = currentCandidates(state);
+  const picked = pickedCandidate(state);
+  const candidateReviewed =
+    picked !== null &&
+    reviewedCandidate !== null &&
+    reviewedCandidate.proposalId === picked.proposalId &&
+    reviewedCandidate.draftRevision === state.revision;
   const reviewed =
     route !== null &&
     reviewedProposal !== null &&
@@ -250,17 +332,131 @@ export function CourseEditor({
     }
   }
 
-  async function save() {
-    if (!route || !reviewed) return;
-    const body = {
-      expectedRevision: current.course.headRevision,
-      change: {
-        kind: 'reroute' as const,
-        proposalId: route.proposalId,
-        draftRevision: route.draftRevision,
-        acknowledgedGraph: { previous: headGraph, next: route.graphBuildId },
-      },
-    };
+  /**
+   * Ask for bounded target-distance candidates.
+   *
+   * Every rule the route computation follows applies here, for the same reasons: at most
+   * one engine operation is in flight at a time, a cancelled search discards whatever
+   * arrives afterwards, and an answer is used only when it is the answer to the question
+   * that was asked — this course, this request, this draft. A search takes longer than one
+   * computation, which makes the late-answer path more likely, not less.
+   */
+  async function generate() {
+    abort.current?.abort();
+    const controller = new AbortController();
+    abort.current = controller;
+    const draftRevision = store.getState().revision;
+    const requestId = crypto.randomUUID();
+    const targetDistanceMeters = Number(target);
+    // Refused here as well as at the contract: a target outside the range buys no engine
+    // time at all, and the screen says which range rather than "the request was invalid".
+    if (
+      !Number.isFinite(targetDistanceMeters) ||
+      targetDistanceMeters < targetDistanceLimits.minTargetMeters ||
+      targetDistanceMeters > targetDistanceLimits.maxTargetMeters
+    ) {
+      setMessage(candidateSaveErrors['CANDIDATE_TARGET_OUT_OF_RANGE'] ?? '');
+      abort.current = null;
+      return;
+    }
+    setGenerating(true);
+    setMessage('');
+    // A new search means nothing on screen has been read yet.
+    setReviewedCandidate(null);
+    try {
+      const answer = await api.generateCandidates(
+        current.course.courseId,
+        {
+          requestId,
+          draftRevision,
+          targetDistanceMeters,
+          seed: null,
+          waypoints: draftRequestWaypoints(store.getState().waypoints),
+        },
+        controller.signal,
+      );
+      if (controller.signal.aborted || abort.current !== controller) return;
+      if (answer.outcome !== 'candidates_generated') {
+        // A named outcome. Nothing was stored, the draft is untouched, and no line is
+        // invented to stand in for the candidates that were not found.
+        store.getState().clearCandidates();
+        setMessage(candidateOutcomes[answer.outcome] ?? '후보를 생성하지 못했습니다.');
+        return;
+      }
+      const set = answer.set;
+      if (
+        set.courseId !== current.course.courseId ||
+        set.requestId !== requestId ||
+        set.draftRevision !== draftRevision
+      ) {
+        store.getState().clearCandidates();
+        setMessage(
+          '이 후보 목록이 방금 보낸 요청의 것이 아니어서 사용하지 않았습니다. 다시 생성하세요.',
+        );
+        return;
+      }
+      const applied = store.getState().applyCandidates({
+        draftRevision: set.draftRevision,
+        candidateSetId: set.candidateSetId,
+        targetDistanceMeters: set.targetDistanceMeters,
+        searchSeed: set.searchSeed,
+        generatorVersion: set.generatorVersion,
+        evaluationVersion: set.evaluationVersion,
+        bounds: set.bounds,
+        search: set.search,
+        candidates: set.candidates.map((candidate) => ({
+          proposalId: candidate.proposalId,
+          ordinal: candidate.ordinal,
+          attemptIndex: candidate.attemptIndex,
+          candidateSeed: candidate.candidateSeed,
+          coordinates: candidate.geometry.coordinates,
+          engineDistanceMeters: candidate.engineDistanceMeters,
+          engineDurationSeconds: candidate.engineDurationSeconds,
+          graphBuildId: candidate.computation.graph.graphBuildId,
+          engineVersion: candidate.computation.graph.engineVersion,
+          computedAt: candidate.computation.computedAt,
+          warnings: candidate.computation.warnings,
+          evaluation: candidate.evaluation,
+        })),
+      });
+      setMessage(
+        applied
+          ? `후보 ${set.candidates.length}개를 만들었습니다. 이것은 제안입니다. 하나를 고르고 검토한 뒤 저장하세요.`
+          : '탐색하는 사이 초안이 바뀌어 이 후보를 적용하지 않았습니다. 현재 초안으로 다시 생성하세요.',
+      );
+    } catch (error) {
+      if (abort.current !== controller) return;
+      if (controller.signal.aborted) {
+        setMessage(candidateOutcomes['cancelled'] ?? '');
+        return;
+      }
+      if (error instanceof CourseRequestError) {
+        if (error.status === 404) {
+          setMessage('이 서버에는 경로 계산 기능이 구성되어 있지 않습니다.');
+          return;
+        }
+        if (provesNothingWasStored(error.status)) {
+          setMessage(candidateSaveErrors[error.code] ?? '후보를 생성하지 못했습니다.');
+          return;
+        }
+      }
+      setMessage('후보 생성 결과를 확인하지 못했습니다. 저장된 것은 없습니다.');
+    } finally {
+      if (abort.current === controller) {
+        abort.current = null;
+        setGenerating(false);
+      }
+    }
+  }
+
+  /**
+   * One explicit save. It takes the change rather than reading the screen, because two
+   * different reviews reach it — a computed reroute and a picked target-distance candidate
+   * — and both must go out under the same rules: the revision the screen was showing, one
+   * idempotency key per distinct command, and the same ownership test on the reply.
+   */
+  async function save(change: CourseUpdateRequest['change']) {
+    const body = { expectedRevision: current.course.headRevision, change };
     const fingerprint = JSON.stringify([current.course.courseId, body]);
     if (command.current?.fingerprint !== fingerprint)
       command.current = { fingerprint, key: crypto.randomUUID() };
@@ -283,7 +479,9 @@ export function CourseEditor({
       )
         store.getState().acknowledgeSave(result.course.headRevision, savedDraftRevision);
       store.getState().clearRoute();
+      store.getState().clearCandidates();
       setReviewedProposal(null);
+      setReviewedCandidate(null);
       setMessage(
         result.status === 'available'
           ? `경로를 저장했습니다. 현재 수정 번호 ${result.course.headRevision}`
@@ -313,6 +511,8 @@ export function CourseEditor({
   }
 
   const graphChanged = headGraph !== null && route !== null && headGraph !== route.graphBuildId;
+  const candidateGraphChanged =
+    headGraph !== null && picked !== null && headGraph !== picked.graphBuildId;
 
   return (
     <section className={styles.editor} aria-label="경유지 편집">
@@ -454,10 +654,15 @@ export function CourseEditor({
       </form>
 
       <div className={styles.actions}>
-        <Button onClick={() => void compute()} disabled={computing}>
+        {/*
+          At most one engine operation is in flight at a time: both controls are disabled
+          while either is running, so the single abort handle below can never belong to two
+          of them and a late answer can never end the other one's progress.
+        */}
+        <Button onClick={() => void compute()} disabled={computing || generating}>
           {computing ? '경로 계산 중' : '경로 계산'}
         </Button>
-        {computing ? (
+        {computing || generating ? (
           <Button
             variant="secondary"
             onClick={() => {
@@ -468,14 +673,178 @@ export function CourseEditor({
               if (!inFlight) return;
               abort.current = null;
               inFlight.abort();
+              const wasGenerating = generating;
               setComputing(false);
-              setMessage(outcomes['cancelled'] ?? '');
+              setGenerating(false);
+              setMessage(
+                (wasGenerating ? candidateOutcomes['cancelled'] : outcomes['cancelled']) ?? '',
+              );
             }}
           >
-            계산 취소
+            {generating ? '후보 생성 취소' : '계산 취소'}
           </Button>
         ) : null}
       </div>
+
+      <section className={styles.review} aria-label="목표 거리 후보">
+        <h4>목표 거리 후보</h4>
+        <p className={styles.note}>
+          목표 거리는 <strong>근사치</strong>입니다. 아래 후보는 제안이며, 하나를 고르고 검토해
+          저장해야 코스 수정본이 됩니다. 경로 계산 결과나 과거 기록은 지금 그 길을 다닐 수 있다는
+          보장이 아닙니다.
+        </p>
+        <div className={styles.actions}>
+          <TextField
+            label="목표 거리(m)"
+            value={target}
+            inputMode="numeric"
+            onChange={(event) => setTarget(event.target.value)}
+          />
+          <Button onClick={() => void generate()} disabled={computing || generating}>
+            {generating ? '후보 생성 중' : '목표 거리 후보 생성'}
+          </Button>
+        </div>
+        {state.candidates && candidateSet === null ? (
+          <p role="status">
+            만든 후보는 이전 초안의 것입니다. 초안이 바뀌었으므로 다시 생성해야 저장할 수 있습니다.
+          </p>
+        ) : null}
+        {candidateSet ? (
+          <div data-testid="candidate-set">
+            <dl className={styles.summary}>
+              <dt>목표 거리</dt>
+              <dd>{metres(candidateSet.targetDistanceMeters)}</dd>
+              <dt>탐색 seed</dt>
+              <dd data-testid="candidate-seed">{candidateSet.searchSeed}</dd>
+              <dt>생성기 버전</dt>
+              <dd>{candidateSet.generatorVersion}</dd>
+              <dt>평가 버전</dt>
+              <dd data-testid="evaluation-version">{candidateSet.evaluationVersion}</dd>
+              <dt>시도</dt>
+              <dd data-testid="candidate-attempts">
+                {candidateSet.search.attemptsMade} / {candidateSet.bounds.maxAttempts}
+              </dd>
+              <dt>중복으로 제외한 후보</dt>
+              <dd data-testid="candidate-duplicates">{candidateSet.search.duplicatesDropped}</dd>
+              <dt>탐색 범위 상한</dt>
+              <dd>{metres(candidateSet.bounds.maxSearchRadiusMeters)}</dd>
+              <dt>탐색 시간 상한</dt>
+              <dd>{Math.round(candidateSet.bounds.searchBudgetMilliseconds / 1000)}초</dd>
+              <dt>탐색 종료 이유</dt>
+              <dd>{candidateSet.search.stoppedBecause}</dd>
+            </dl>
+            <ul aria-label="시도 기록">
+              {candidateSet.search.attempts.map((attempt) => (
+                <li key={attempt.attemptIndex}>
+                  {attempt.attemptIndex + 1}번 시도 · {attempt.candidateSeed} ·{' '}
+                  {attemptOutcomes[attempt.outcome] ?? attempt.outcome}
+                </li>
+              ))}
+            </ul>
+            <ul className={styles.waypoints} aria-label="후보 목록">
+              {candidateSet.candidates.map((candidate) => (
+                <li key={candidate.proposalId} data-testid={`candidate-${candidate.ordinal}`}>
+                  <dl className={styles.summary}>
+                    <dt>경로 계산 예상 거리</dt>
+                    <dd>{metres(candidate.engineDistanceMeters)}</dd>
+                    <dt>목표 오차</dt>
+                    <dd data-testid={`candidate-error-${candidate.ordinal}`}>
+                      {candidate.evaluation.distanceErrorMeters >= 0 ? '+' : '−'}
+                      {metres(Math.abs(candidate.evaluation.distanceErrorMeters))} (
+                      {(candidate.evaluation.distanceErrorRatio * 100).toFixed(1)}%)
+                    </dd>
+                    <dt>연결성</dt>
+                    <dd>
+                      {candidate.evaluation.loop.closed
+                        ? '출발점으로 돌아옴'
+                        : '출발점으로 돌아오지 않음'}{' '}
+                      · 엔진이 지났다고 밝힌 도로 구간으로 이어짐
+                    </dd>
+                    <dt>반복·왕복 구간</dt>
+                    <dd data-testid={`candidate-repeat-${candidate.ordinal}`}>
+                      {metres(candidate.evaluation.repetition.repeatedMeters)} (
+                      {(candidate.evaluation.repetition.repeatedRatio * 100).toFixed(0)}%)
+                      {candidate.evaluation.repetition.outAndBack ? ' · 왕복 구간 많음' : ''}
+                    </dd>
+                    <dt>계단·노면·야간 통행·접근 제한</dt>
+                    <dd data-testid={`candidate-knowledge-${candidate.ordinal}`}>
+                      확인되지 않음 (자료 없음)
+                    </dd>
+                    <dt>경사 출처</dt>
+                    <dd data-testid={`candidate-gradient-${candidate.ordinal}`}>없음</dd>
+                    <dt>후보 seed</dt>
+                    <dd>{candidate.candidateSeed}</dd>
+                    <dt>사용한 지도 데이터</dt>
+                    <dd>{candidate.graphBuildId}</dd>
+                    <dt>계산 시각</dt>
+                    <dd>{candidate.computedAt}</dd>
+                  </dl>
+                  {candidate.warnings.length > 0 ? (
+                    <ul aria-label={`${candidate.ordinal + 1}번 후보 경고`}>
+                      {candidate.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    aria-pressed={picked?.proposalId === candidate.proposalId}
+                    onClick={() => store.getState().pickCandidate(candidate.proposalId)}
+                  >
+                    {candidate.ordinal + 1}번 후보 보기
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {picked ? (
+          <div role="group" aria-label="고른 후보 검토" data-testid="candidate-review">
+            <p className={styles.note}>
+              고른 후보는 아직 저장되지도 승인되지도 않았습니다. 계단·노면·야간 통행 정보가 없으므로
+              충족으로 판정하지 않습니다.
+            </p>
+            {candidateGraphChanged ? (
+              <p role="alert" data-testid="candidate-graph-changed">
+                이 코스는 다른 지도 데이터({headGraph})로 계산되어 있었습니다. 저장하면 새 지도
+                데이터({picked.graphBuildId})로 만든 후보로 바뀝니다.
+              </p>
+            ) : null}
+            <label>
+              <input
+                type="checkbox"
+                checked={candidateReviewed}
+                onChange={(event) =>
+                  setReviewedCandidate(
+                    event.target.checked
+                      ? { proposalId: picked.proposalId, draftRevision: state.revision }
+                      : null,
+                  )
+                }
+              />
+              위 후보 내용을 검토했습니다.
+            </label>
+            <Button
+              onClick={() =>
+                void (
+                  candidateSet &&
+                  candidateReviewed &&
+                  save({
+                    kind: 'pick-candidate',
+                    candidateSetId: candidateSet.candidateSetId,
+                    proposalId: picked.proposalId,
+                    draftRevision: candidateSet.draftRevision,
+                    acknowledgedGraph: { previous: headGraph, next: picked.graphBuildId },
+                  })
+                )
+              }
+              disabled={!candidateReviewed || saving}
+            >
+              고른 후보 저장
+            </Button>
+          </div>
+        ) : null}
+      </section>
 
       {state.route && route === null ? (
         <p role="status">
@@ -531,7 +900,21 @@ export function CourseEditor({
             />
             위 내용을 검토했습니다.
           </label>
-          <Button onClick={() => void save()} disabled={!reviewed || saving}>
+          <Button
+            onClick={() =>
+              void (
+                route &&
+                reviewed &&
+                save({
+                  kind: 'reroute',
+                  proposalId: route.proposalId,
+                  draftRevision: route.draftRevision,
+                  acknowledgedGraph: { previous: headGraph, next: route.graphBuildId },
+                })
+              )
+            }
+            disabled={!reviewed || saving}
+          >
             검토한 경로 저장
           </Button>
         </div>

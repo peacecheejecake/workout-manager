@@ -7,8 +7,11 @@ import {
   courseLimits,
   courseListSchema,
   courseReadResultSchema,
+  courseRouteCandidateRequestSchema,
+  courseRouteCandidateResultSchema,
   courseRouteProposalRequestSchema,
   courseRouteProposalResultSchema,
+  targetDistanceLimits,
   courseUpdateRequestSchema,
   type CourseEdit,
   type CourseGeneration,
@@ -17,6 +20,12 @@ import {
   type CourseRouteProposal,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
+import {
+  CandidateSearchError,
+  generateTargetDistanceCandidates,
+  targetDistanceGeneration,
+  type CandidateLegRouter,
+} from '@workout/server-courses/candidates';
 import { mapPathSchema, trackLimits } from '@workout/contracts/tracks';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import { courseGpxFileName, writeCourseGpx } from '@workout/server-courses/gpx';
@@ -28,6 +37,7 @@ import {
 } from '@workout/server-courses/segment';
 import { parseObjectKey, validateObjectKey } from '@workout/server-media/keys';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
+import { randomBytes } from 'node:crypto';
 import type { ActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import {
   CourseNotFoundError,
@@ -36,6 +46,7 @@ import {
   type CourseHeadContent,
   type CourseRepository,
   type PreparedCourseContent,
+  type StoredCandidateRead,
 } from '@workout/server-persistence/courses';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -81,6 +92,9 @@ export interface CourseServices {
 function proposalStatus(code: CourseStateError['code']): number {
   if (code === 'COURSE_UNAVAILABLE') return 410;
   if (code === 'ROUTE_PROPOSAL_NOT_FOUND') return 404;
+  if (code === 'ROUTE_CANDIDATE_SET_MISMATCH') return 409;
+  if (code === 'ROUTE_CANDIDATE_ALREADY_CHOSEN') return 409;
+  if (code === 'ROUTE_PROPOSAL_IS_CANDIDATE') return 409;
   if (code === 'ROUTE_PROPOSAL_QUOTA_EXCEEDED') return 429;
   return 409;
 }
@@ -91,6 +105,7 @@ function courseError(error: unknown): ProductRequestError | undefined {
     return new ProductRequestError(proposalStatus(error.code), error.code);
   if (error instanceof CourseSegmentError) return new ProductRequestError(422, error.code);
   if (error instanceof RoutedCourseError) return new ProductRequestError(422, error.code);
+  if (error instanceof CandidateSearchError) return new ProductRequestError(422, error.code);
   return undefined;
 }
 
@@ -345,6 +360,104 @@ function courseFromProposal(
 }
 
 /**
+ * Turn the one candidate the owner picked into the content of the next revision.
+ *
+ * Exactly like a reviewed reroute: the geometry and the waypoints come from the stored
+ * candidate, never from the request. What it adds is the search — the target, both seeds,
+ * the attempt index, the generator and evaluation versions and the whole evaluation — so
+ * the saved course can say how far off the target it landed, and so the same search can be
+ * run again. The lineage is inherited from the head: generating a loop is not a way out of
+ * the reclamation that follows the recording the course came from.
+ */
+function courseFromCandidate(
+  head: CourseHeadContent,
+  picked: StoredCandidateRead,
+): PreparedCourseContent {
+  const candidate = picked.candidate;
+  const coordinates = candidate.geometry.coordinates;
+  const generation = targetDistanceGeneration({
+    computation: candidate.computation,
+    coordinates,
+    waypoints: candidate.waypoints,
+    engineDistanceMeters: candidate.engineDistanceMeters,
+    engineDurationSeconds: candidate.engineDurationSeconds,
+    snappedWaypoints: candidate.snappedWaypoints,
+    targetDistanceMeters: picked.targetDistanceMeters,
+    searchSeed: picked.searchSeed,
+    candidateSeed: candidate.candidateSeed,
+    attemptIndex: candidate.attemptIndex,
+    evaluation: candidate.evaluation,
+  });
+  return prepared({
+    name: head.name,
+    coordinates,
+    waypoints: candidate.waypoints,
+    generation,
+    edit: { kind: 'generated' },
+    lineage: head.lineage,
+    // The course's own planned line length. The engine estimate and the target are two
+    // other values, kept apart in the conditions and shown apart on screen.
+    distanceMeters: plannedLineLengthMeters(coordinates),
+  });
+}
+
+/**
+ * The one way the candidate search reaches the engine: the ordinary bounded walking-route
+ * port, with its admission control, deadline and answer validation untouched. A request the
+ * service refuses before the engine sees it is `request_refused` — a refusal with no
+ * computation to report, which is a different fact from an engine that answered.
+ */
+function candidateRouter(port: WalkingRoutePort, athleteId: string): CandidateLegRouter {
+  return {
+    // The signal comes from the search, not from this closure: it carries both the
+    // dropped connection and the search's own remaining budget, so a leg is abandoned
+    // when either runs out rather than only when the caller goes away.
+    async route(leg, context) {
+      let computation;
+      try {
+        computation = await port.compute(
+          athleteId,
+          {
+            schemaVersion: 1,
+            requestId: leg.requestId,
+            requestRevision: leg.requestRevision,
+            profileId: 'foot-v1',
+            waypoints: leg.waypoints.map((position) => [position[0], position[1]]),
+          },
+          { signal: context.signal },
+        );
+      } catch (error) {
+        if (error instanceof RoutingRequestError)
+          return { kind: 'refused', outcome: 'request_refused', computation: null };
+        throw error;
+      }
+      const result = computation.result;
+      if (result.outcome !== 'route_computed')
+        return { kind: 'refused', outcome: result.outcome, computation: result.computation };
+      return {
+        kind: 'computed',
+        coordinates: result.geometry.coordinates,
+        distanceMeters: result.distanceMeters,
+        durationSeconds: result.durationSeconds,
+        snappedWaypoints: result.snappedWaypoints,
+        computation: result.computation,
+      };
+    },
+  };
+}
+
+/**
+ * Status for one candidate search. `no_candidate` is 200 because it is a **known** answer:
+ * the search ran inside its bounds and found nothing worth offering, and it stored nothing.
+ * A timeout or an engine failure is not that, and gets a status that says so.
+ */
+function candidateOutcomeStatus(outcome: string): number {
+  return outcome === 'no_candidate' || outcome === 'candidates_generated'
+    ? 200
+    : proposalOutcomeStatus(outcome);
+}
+
+/**
  * Status for one computation attempt that produced no proposal. Mirrors the internal
  * routing endpoint so the two cannot drift: a refusal that stored nothing (`no_route`,
  * `outside_coverage`, `snap_too_far`) is a 200 answer with a named outcome, while an
@@ -480,6 +593,47 @@ export function registerCourseRoutes(
                   draftRevision: reviewed.draftRevision,
                   // Recomputed from the coordinates about to be written, and compared with
                   // the proposal's own hash inside the writing transaction.
+                  geometrySha256: courseGeometrySha256(content.coordinates),
+                },
+              },
+            ),
+          ),
+        );
+      }
+      if (body.change.kind === 'pick-candidate') {
+        const change = body.change;
+        // The same two-sided graph acknowledgement a reroute needs. `previous` is read from
+        // the head this write does CAS against, so a head that moved is already refused.
+        if (change.acknowledgedGraph.previous !== courseGenerationGraphBuildId(head.generation))
+          throw new ProductRequestError(409, 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE');
+        const picked = await execute(() =>
+          services.courses.readRouteCandidate(
+            athleteId,
+            courseId,
+            change.candidateSetId,
+            change.proposalId,
+          ),
+        );
+        if (picked === null) throw new ProductRequestError(404, 'ROUTE_PROPOSAL_NOT_FOUND');
+        if (picked.draftRevision !== change.draftRevision)
+          throw new ProductRequestError(409, 'ROUTE_PROPOSAL_STALE_DRAFT');
+        if (picked.candidate.computation.graph.graphBuildId !== change.acknowledgedGraph.next)
+          throw new ProductRequestError(409, 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE');
+        const content = courseFromCandidate(head, picked);
+        return courseReadResultSchema.parse(
+          await execute(() =>
+            services.courses.update(
+              athleteId,
+              courseId,
+              body.expectedRevision,
+              content,
+              key,
+              command,
+              {
+                consumeCandidate: {
+                  proposalId: picked.candidate.proposalId,
+                  candidateSetId: picked.candidateSetId,
+                  draftRevision: picked.draftRevision,
                   geometrySha256: courseGeometrySha256(content.coordinates),
                 },
               },
@@ -637,6 +791,118 @@ export function registerCourseRoutes(
             courseRouteProposalResultSchema.parse({
               outcome: 'route_computed',
               proposal: stored,
+            }),
+          );
+        },
+      );
+    }
+
+    /**
+     * Generate bounded target-distance candidates under the current draft (M2-01i).
+     *
+     * A target distance is an approximation, and this route says so in every direction. The
+     * search has a ceiling on candidates, attempts, wall-clock time and how far from the
+     * origin it may wander; it records the seed it ran from and the evaluation version, and
+     * it reports the attempts that produced nothing alongside the ones that did.
+     *
+     * **Nothing is saved or approved here.** A successful search stores its candidates as
+     * proposals, exactly as a reroute stores one, and the course is unchanged by it: no
+     * revision appears and no head moves. The owner picks one and saves it explicitly, and
+     * at most one candidate from a search can ever become a revision.
+     *
+     * `no_candidate` is an answer, not an error: the search looked inside its bounds and
+     * found nothing worth offering. No outcome returns a substitute geometry — every leg of
+     * every candidate came back from the ordinary bounded routing path, which refuses an
+     * answer the engine cannot attest with the edges behind it.
+     */
+    if (services.walkingRoutes) {
+      const walkingRoutes = services.walkingRoutes;
+      courseRoutes.post(
+        '/courses/:courseId/route-candidates',
+        { bodyLimit: COURSE_BODY_LIMIT },
+        async (request: FastifyRequest, reply: FastifyReply) => {
+          input(emptyQuery, request.query);
+          const athleteId = principal(request).athleteId;
+          const { courseId } = input(courseParamsSchema, request.params);
+          const body = input(courseRouteCandidateRequestSchema, request.body);
+          // Before any engine work: an unknown, someone else's or a reclaimed course buys
+          // no search at all.
+          const course = await execute(() => services.courses.read(athleteId, courseId));
+          if (course.status !== 'available')
+            throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
+          // The seed is the caller's only when they are replaying a recorded one. Otherwise
+          // the server draws it, so a caller cannot steer the search into a chosen shape by
+          // grinding seeds against somebody else's engine time.
+          const searchSeed = body.seed ?? randomBytes(8).toString('hex');
+          const cancellation = cancellationSignal(reply);
+          let search;
+          try {
+            search = await execute(() =>
+              generateTargetDistanceCandidates({
+                requestId: body.requestId,
+                draftRevision: body.draftRevision,
+                targetDistanceMeters: body.targetDistanceMeters,
+                searchSeed,
+                waypoints: body.waypoints,
+                router: candidateRouter(walkingRoutes, athleteId),
+                clock: { now: () => new Date() },
+                signal: cancellation.signal,
+              }),
+            );
+          } finally {
+            cancellation.dispose();
+          }
+          const common = {
+            courseId,
+            draftRevision: body.draftRevision,
+            targetDistanceMeters: body.targetDistanceMeters,
+            searchSeed,
+            generatorVersion: 'target-distance-loop-v1' as const,
+            evaluationVersion: 1 as const,
+            bounds: search.bounds,
+            search: search.search,
+          };
+          if (search.candidates.length === 0) {
+            // A refusal by the engine or a tenant bound is not the same fact as "we looked
+            // and found nothing", and the two get different outcomes and different codes.
+            const outcome = search.terminalOutcome ?? 'no_candidate';
+            return reply.code(candidateOutcomeStatus(outcome)).send(
+              courseRouteCandidateResultSchema.parse({
+                outcome: outcome === 'request_refused' ? 'no_candidate' : outcome,
+                ...common,
+                computation: search.lastComputation,
+              }),
+            );
+          }
+          const stored = await execute(() =>
+            services.courses.storeRouteCandidateSet(athleteId, {
+              courseId,
+              draftRevision: body.draftRevision,
+              requestId: body.requestId,
+              targetDistanceMeters: body.targetDistanceMeters,
+              searchSeed,
+              bounds: search.bounds,
+              search: search.search,
+              ttlSeconds: courseLimits.routeProposalTtlSeconds,
+              candidates: search.candidates.map((candidate, ordinal) => ({
+                ordinal,
+                attemptIndex: candidate.attemptIndex,
+                candidateSeed: candidate.candidateSeed,
+                waypoints: candidate.waypoints,
+                coordinates: candidate.coordinates,
+                engineDistanceMeters: candidate.engineDistanceMeters,
+                engineDurationSeconds: candidate.engineDurationSeconds,
+                snappedWaypoints: candidate.snappedWaypoints,
+                computation: candidate.computation,
+                evaluation: candidate.evaluation,
+              })),
+            }),
+          );
+          z.number().max(targetDistanceLimits.maxCandidates).parse(stored.candidates.length);
+          return reply.code(200).send(
+            courseRouteCandidateResultSchema.parse({
+              outcome: 'candidates_generated',
+              set: stored,
             }),
           );
         },

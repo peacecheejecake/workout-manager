@@ -10,13 +10,22 @@ import {
   courseNameSchema,
   coursePositionSchema,
   courseReadResultSchema,
+  courseCandidateBoundsSchema,
+  courseCandidateEvaluationSchema,
+  courseCandidateSearchSummarySchema,
+  courseRouteCandidateSchema,
+  courseRouteCandidateSetSchema,
   courseRouteProposalSchema,
   courseWaypointListSchema,
   courseWaypointSchema,
+  targetDistanceLimits,
   type CourseEdit,
   type CourseGeneration,
   type CourseLineage,
   type CoursePosition,
+  type CourseCandidateEvaluation,
+  type CourseRouteCandidate,
+  type CourseRouteCandidateSet,
   type CourseRouteProposal,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
@@ -61,7 +70,10 @@ export class CourseStateError extends Error {
       | 'ROUTE_PROPOSAL_ALREADY_SAVED'
       | 'ROUTE_PROPOSAL_EXPIRED'
       | 'ROUTE_PROPOSAL_STALE_DRAFT'
-      | 'ROUTE_PROPOSAL_CONTENT_MISMATCH',
+      | 'ROUTE_PROPOSAL_CONTENT_MISMATCH'
+      | 'ROUTE_CANDIDATE_SET_MISMATCH'
+      | 'ROUTE_CANDIDATE_ALREADY_CHOSEN'
+      | 'ROUTE_PROPOSAL_IS_CANDIDATE',
   ) {
     super(code);
     this.name = 'CourseStateError';
@@ -116,6 +128,56 @@ export interface CourseUpdateOptions {
     readonly draftRevision: number;
     readonly geometrySha256: string;
   };
+  /**
+   * Picking one generated candidate (M2-01i). Everything `consumeProposal` checks is
+   * checked, and the candidate must belong to the search the request named — otherwise a
+   * revision could record conditions pointing at a search its line did not come from.
+   */
+  readonly consumeCandidate?: {
+    readonly proposalId: string;
+    readonly candidateSetId: string;
+    readonly draftRevision: number;
+    readonly geometrySha256: string;
+  };
+}
+
+/** One candidate as the application hands it over, before anything is stored. */
+export interface PreparedCandidate {
+  readonly ordinal: number;
+  readonly attemptIndex: number;
+  readonly candidateSeed: string;
+  readonly waypoints: readonly CourseWaypoint[];
+  readonly coordinates: readonly CoursePosition[];
+  readonly engineDistanceMeters: number;
+  readonly engineDurationSeconds: number;
+  readonly snappedWaypoints: readonly z.infer<typeof snappedWaypointSchema>[];
+  readonly computation: RouteComputationRecord;
+  readonly evaluation: CourseCandidateEvaluation;
+}
+
+/**
+ * One bounded search and the candidates it offered. Writing this changes nothing about the
+ * course: it is the reviewable artefact the owner may or may not pick one of.
+ */
+export interface StoredCandidateSetInput {
+  readonly courseId: string;
+  readonly draftRevision: number;
+  readonly requestId: string;
+  readonly targetDistanceMeters: number;
+  readonly searchSeed: string;
+  readonly bounds: unknown;
+  readonly search: unknown;
+  readonly candidates: readonly PreparedCandidate[];
+  readonly ttlSeconds: number;
+}
+
+/** One stored candidate, with the search facts a revision has to record alongside it. */
+export interface StoredCandidateRead {
+  readonly candidate: CourseRouteCandidate;
+  readonly candidateSetId: string;
+  readonly draftRevision: number;
+  readonly targetDistanceMeters: number;
+  readonly searchSeed: string;
 }
 
 /** The head as the application needs it before it can derive a new revision. */
@@ -177,6 +239,21 @@ export interface CourseRepository {
     athleteId: string,
     input: StoredRouteProposalInput,
   ): Promise<CourseRouteProposal>;
+  /**
+   * Store one bounded search and its candidates. Nothing about the course changes; at most
+   * one of these rows can ever become a revision, and only when the owner picks it.
+   */
+  storeRouteCandidateSet(
+    athleteId: string,
+    input: StoredCandidateSetInput,
+  ): Promise<CourseRouteCandidateSet>;
+  /** One stored candidate, or `null` when it is unknown, expired or already saved. */
+  readRouteCandidate(
+    athleteId: string,
+    courseId: string,
+    candidateSetId: string,
+    proposalId: string,
+  ): Promise<StoredCandidateRead | null>;
   /** One stored proposal, or `null` when it is unknown, expired or already saved. */
   readRouteProposal(
     athleteId: string,
@@ -368,10 +445,59 @@ const PROPOSAL_COLUMNS = `proposal_id,course_id,request_id,draft_revision,waypoi
   engine_distance_meters,engine_duration_seconds,snapped_waypoints,computation,created_at,
   expires_at`;
 
+const candidateRowSchema = proposalRowSchema.extend({
+  candidate_set_id: uuid,
+  candidate_ordinal: z.number().int().min(0),
+  candidate_attempt_index: z.number().int().min(0),
+  candidate_seed: z.string(),
+  candidate_evaluation: z.unknown(),
+});
+
+const CANDIDATE_COLUMNS = `${PROPOSAL_COLUMNS},candidate_set_id,candidate_ordinal,
+  candidate_attempt_index,candidate_seed,candidate_evaluation`;
+
+function candidate(row: z.infer<typeof candidateRowSchema>): CourseRouteCandidate {
+  return courseRouteCandidateSchema.parse({
+    proposalId: row.proposal_id,
+    ordinal: row.candidate_ordinal,
+    attemptIndex: row.candidate_attempt_index,
+    candidateSeed: row.candidate_seed,
+    waypoints: row.waypoints,
+    geometry: row.geometry,
+    engineDistanceMeters: row.engine_distance_meters,
+    engineDurationSeconds: row.engine_duration_seconds,
+    snappedWaypoints: row.snapped_waypoints,
+    computation: row.computation,
+    evaluation: row.candidate_evaluation,
+  });
+}
+
+const candidateSetRowSchema = z.object({
+  candidate_set_id: uuid,
+  course_id: uuid,
+  request_id: z.string(),
+  draft_revision: z.number().int().positive(),
+  target_distance_meters: z.coerce.number().finite(),
+  search_seed: z.string(),
+  generator_version: z.string(),
+  evaluation_version: z.number().int(),
+  bounds: z.unknown(),
+  search: z.unknown(),
+  created_at: z.union([z.date(), z.string()]),
+  expires_at: z.union([z.date(), z.string()]),
+});
+
+const CANDIDATE_SET_COLUMNS = `candidate_set_id,course_id,request_id,draft_revision,
+  target_distance_meters,search_seed,generator_version,evaluation_version,bounds,search,
+  created_at,expires_at`;
+
 /** Map a bounded database refusal onto the state error the API answers with. */
 function proposalStateError(error: unknown): never {
   const message = error instanceof Error ? error.message : '';
   for (const code of [
+    'ROUTE_CANDIDATE_SET_MISMATCH',
+    'ROUTE_CANDIDATE_ALREADY_CHOSEN',
+    'ROUTE_PROPOSAL_IS_CANDIDATE',
     'ROUTE_PROPOSAL_NOT_FOUND',
     'ROUTE_PROPOSAL_ALREADY_SAVED',
     'ROUTE_PROPOSAL_EXPIRED',
@@ -663,14 +789,218 @@ export function createCourseRepository(database: Database): CourseRepository {
       });
     },
 
+    storeRouteCandidateSet(athleteId, rawInput) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawInput.courseId);
+      const draftRevision = z
+        .number()
+        .int()
+        .min(1)
+        .max(courseLimits.maxDraftRevision)
+        .parse(rawInput.draftRevision);
+      const searchSeed = z
+        .string()
+        .regex(/^[0-9a-f]{16}$/)
+        .parse(rawInput.searchSeed);
+      const targetDistanceMeters = z
+        .number()
+        .finite()
+        .min(targetDistanceLimits.minTargetMeters)
+        .max(targetDistanceLimits.maxTargetMeters)
+        .parse(rawInput.targetDistanceMeters);
+      const bounds = courseCandidateBoundsSchema.parse(rawInput.bounds);
+      const search = courseCandidateSearchSummarySchema.parse(rawInput.search);
+      const ttlSeconds = z.number().int().min(1).max(86_400).parse(rawInput.ttlSeconds);
+      const candidates = z
+        .array(z.unknown())
+        .min(1)
+        .max(targetDistanceLimits.maxCandidates)
+        .parse(rawInput.candidates)
+        .map((_, index) => {
+          const input = rawInput.candidates[index] as PreparedCandidate;
+          return {
+            ordinal: z
+              .number()
+              .int()
+              .min(0)
+              .max(targetDistanceLimits.maxCandidates - 1)
+              .parse(input.ordinal),
+            attemptIndex: z
+              .number()
+              .int()
+              .min(0)
+              .max(targetDistanceLimits.maxAttempts - 1)
+              .parse(input.attemptIndex),
+            candidateSeed: z
+              .string()
+              .regex(/^[0-9a-f]{16}$/)
+              .parse(input.candidateSeed),
+            waypoints: courseWaypointListSchema.parse(input.waypoints),
+            geometry: geometrySchema.parse({
+              type: 'LineString',
+              coordinates: input.coordinates,
+            }),
+            engineDistanceMeters: input.engineDistanceMeters,
+            engineDurationSeconds: input.engineDurationSeconds,
+            snappedWaypoints: z.array(snappedWaypointSchema).min(2).parse(input.snappedWaypoints),
+            computation: routeComputationRecordSchema.parse(input.computation),
+            evaluation: courseCandidateEvaluationSchema.parse(input.evaluation),
+          };
+        });
+      return database.tenant(tenantId, async (tx) => {
+        await tenantLock(tx);
+        // Expired searches and the candidates cascading from them go first, for the same
+        // reason the proposal reaper runs here: an owner who keeps generating must not
+        // accumulate private coordinates, and the bound below has to measure live rows.
+        await tx.query('SELECT public.reap_course_route_candidate_sets()');
+        await tx.query('SELECT public.reap_course_route_proposals()');
+        const course = await tx.query(
+          'SELECT status FROM course WHERE athlete_id=$1 AND course_id=$2',
+          [tenantId, courseId],
+        );
+        if (!course.rows[0]) throw new CourseNotFoundError();
+        if (course.rows[0]['status'] !== 'available')
+          throw new CourseStateError('COURSE_UNAVAILABLE');
+        const open = await tx.query(
+          `SELECT count(*) FILTER (WHERE course_id=$2)::integer AS for_course,
+                  count(*)::integer AS for_tenant
+           FROM course_route_proposal
+           WHERE athlete_id=$1 AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
+          [tenantId, courseId],
+        );
+        const counts = z
+          .object({ for_course: z.number().int(), for_tenant: z.number().int() })
+          .parse(open.rows[0]);
+        // A whole search has to fit inside the same proposal bound a single reroute does.
+        // Candidates are proposals; letting a search write past the bound would be a way
+        // around it.
+        if (
+          counts.for_course + candidates.length > courseLimits.openRouteProposalsPerCourse ||
+          counts.for_tenant + candidates.length > courseLimits.openRouteProposalsPerTenant
+        )
+          throw new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+        const candidateSetId = randomUUID();
+        const insertedSet = await tx.query(
+          `INSERT INTO course_route_candidate_set(athlete_id,candidate_set_id,course_id,
+             draft_revision,request_id,target_distance_meters,search_seed,generator_version,
+             evaluation_version,bounds,search,created_at,expires_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,'target-distance-loop-v1',1,$8::jsonb,$9::jsonb,
+             statement_timestamp(),statement_timestamp()+make_interval(secs=>$10))
+           RETURNING ${CANDIDATE_SET_COLUMNS}`,
+          [
+            tenantId,
+            candidateSetId,
+            courseId,
+            draftRevision,
+            rawInput.requestId,
+            targetDistanceMeters,
+            searchSeed,
+            JSON.stringify(bounds),
+            JSON.stringify(search),
+            ttlSeconds,
+          ],
+        );
+        const setRow = candidateSetRowSchema.parse(insertedSet.rows[0]);
+        const stored: CourseRouteCandidate[] = [];
+        for (const item of candidates) {
+          const inserted = await tx.query(
+            `INSERT INTO course_route_proposal(athlete_id,proposal_id,course_id,draft_revision,
+               request_id,waypoints,geometry,geometry_sha256,engine_distance_meters,
+               engine_duration_seconds,snapped_waypoints,computation,graph_build_id,created_at,
+               expires_at,candidate_set_id,candidate_ordinal,candidate_attempt_index,
+               candidate_seed,candidate_evaluation)
+             VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11::jsonb,$12::jsonb,$13,
+               $14,$15,$16,$17,$18,$19,$20::jsonb)
+             RETURNING ${CANDIDATE_COLUMNS}`,
+            [
+              tenantId,
+              randomUUID(),
+              courseId,
+              draftRevision,
+              item.computation.requestId,
+              JSON.stringify(item.waypoints),
+              JSON.stringify(item.geometry),
+              courseGeometrySha256(item.geometry.coordinates),
+              item.engineDistanceMeters,
+              item.engineDurationSeconds,
+              JSON.stringify(item.snappedWaypoints),
+              JSON.stringify(item.computation),
+              item.computation.graph.graphBuildId,
+              setRow.created_at,
+              setRow.expires_at,
+              candidateSetId,
+              item.ordinal,
+              item.attemptIndex,
+              item.candidateSeed,
+              JSON.stringify(item.evaluation),
+            ],
+          );
+          stored.push(candidate(candidateRowSchema.parse(inserted.rows[0])));
+        }
+        return courseRouteCandidateSetSchema.parse({
+          candidateSetId,
+          courseId,
+          requestId: setRow.request_id,
+          draftRevision: setRow.draft_revision,
+          targetDistanceMeters: setRow.target_distance_meters,
+          searchSeed: setRow.search_seed,
+          generatorVersion: setRow.generator_version,
+          evaluationVersion: setRow.evaluation_version,
+          bounds: setRow.bounds,
+          search: setRow.search,
+          candidates: stored,
+          createdAt: instant(setRow.created_at),
+          expiresAt: instant(setRow.expires_at),
+        });
+      });
+    },
+
+    readRouteCandidate(athleteId, rawCourseId, rawSetId, rawProposalId) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawCourseId);
+      const candidateSetId = uuid.parse(rawSetId);
+      const proposalId = uuid.parse(rawProposalId);
+      return database.tenant(tenantId, async (tx) => {
+        const rows = await tx.query(
+          `SELECT ${CANDIDATE_COLUMNS} FROM course_route_proposal
+           WHERE athlete_id=$1 AND course_id=$2 AND proposal_id=$3 AND candidate_set_id=$4
+             AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
+          [tenantId, courseId, proposalId, candidateSetId],
+        );
+        if (!rows.rows[0]) return null;
+        const setRows = await tx.query(
+          // A spent search stops offering every one of its candidates, not just the taken
+          // one: the owner chose, and the siblings were alternatives to that choice.
+          `SELECT ${CANDIDATE_SET_COLUMNS} FROM course_route_candidate_set
+           WHERE athlete_id=$1 AND course_id=$2 AND candidate_set_id=$3
+             AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
+          [tenantId, courseId, candidateSetId],
+        );
+        if (!setRows.rows[0]) return null;
+        const setRow = candidateSetRowSchema.parse(setRows.rows[0]);
+        return {
+          candidate: candidate(candidateRowSchema.parse(rows.rows[0])),
+          candidateSetId,
+          draftRevision: setRow.draft_revision,
+          targetDistanceMeters: setRow.target_distance_meters,
+          searchSeed: setRow.search_seed,
+        };
+      });
+    },
+
     readRouteProposal(athleteId, rawCourseId, rawProposalId) {
       const tenantId = uuid.parse(athleteId);
       const courseId = uuid.parse(rawCourseId);
       const proposalId = uuid.parse(rawProposalId);
       return database.tenant(tenantId, async (tx) => {
         const rows = await tx.query(
+          // `candidate_set_id IS NULL` is the point of this clause: a candidate is a
+          // proposal row, and answering with one here would let the generic reroute save
+          // record it under conditions that carry no target, no seed and no evaluation.
+          // The database refuses it too; this stops the request before it gets there.
           `SELECT ${PROPOSAL_COLUMNS} FROM course_route_proposal
            WHERE athlete_id=$1 AND course_id=$2 AND proposal_id=$3
+             AND candidate_set_id IS NULL
              AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
           [tenantId, courseId, proposalId],
         );
@@ -733,6 +1063,26 @@ export function createCourseRepository(database: Database): CourseRepository {
         // window where two saves of one reviewed computation both find it unconsumed; the
         // bounded function takes the row `FOR UPDATE`, checks the course, the draft
         // revision, the expiry and the geometry it is about to become, and marks it used.
+        const pickCandidate = options?.consumeCandidate;
+        if (pickCandidate)
+          await tx
+            .query('SELECT public.consume_course_route_candidate($1,$2,$3,$4,$5,$6)', [
+              uuid.parse(pickCandidate.proposalId),
+              uuid.parse(pickCandidate.candidateSetId),
+              courseId,
+              z
+                .number()
+                .int()
+                .min(1)
+                .max(courseLimits.maxDraftRevision)
+                .parse(pickCandidate.draftRevision),
+              z
+                .string()
+                .regex(/^[a-f0-9]{64}$/)
+                .parse(pickCandidate.geometrySha256),
+              nextRevision,
+            ])
+            .catch(proposalStateError);
         const consume = options?.consumeProposal;
         if (consume)
           await tx
@@ -775,6 +1125,12 @@ export function createCourseRepository(database: Database): CourseRepository {
       const courseId = uuid.parse(rawCourseId);
       const expectedRevision = z.number().int().positive().parse(rawExpected);
       return database.tenant(tenantId, async (tx) => {
+        // Deletion joins the serialisation every other write in this repository uses. It
+        // did not before, which left it free to interleave with a store-and-reap on the
+        // same tenant's searches and candidates. The lock order inside the database is
+        // fixed separately (see `delete_course` in migration 036); this is the other half,
+        // and it is the half that keeps the application's writers in one queue.
+        await tenantLock(tx);
         // The expected revision is checked inside the function, which raises rather than
         // deleting when it does not match; a stale delete never removes a newer course.
         const deleted = await tx

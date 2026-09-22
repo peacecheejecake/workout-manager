@@ -7,6 +7,7 @@ import type { MapPath } from '@workout/geo-kit/map-path';
 import {
   createCourseDraftStore,
   currentRoute,
+  pickedCandidate,
   type CourseDraftState,
   type CourseDraftStore,
 } from './course-draft';
@@ -97,6 +98,16 @@ export function draftMapPaths(input: {
       role: 'candidate',
       revision: `proposal:${route.proposalId}`,
       positions: route.coordinates.map((position) => [position[0], position[1]] as const),
+    });
+  // Only the candidate the owner picked is drawn. Four loops at once would be four lines
+  // nobody asked for, and none of them is a course until one is picked and saved.
+  const candidate = pickedCandidate(input.state);
+  if (candidate)
+    paths.push({
+      id: 'course-candidate',
+      role: 'candidate',
+      revision: `candidate:${candidate.proposalId}`,
+      positions: candidate.coordinates.map((position) => [position[0], position[1]] as const),
     });
   if (input.state.waypoints.length > 0)
     paths.push({

@@ -38,6 +38,7 @@ const migrationFiles = [
   '033_activity_track_storage.sql',
   '034_course_ledger.sql',
   '035_course_route_proposal.sql',
+  '036_course_target_distance_candidates.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -806,6 +807,15 @@ export async function grantCourses(connectionString: string, runtimeRole: string
       `GRANT EXECUTE ON FUNCTION
        public.consume_course_route_proposal(uuid,uuid,integer,text,integer),
        public.reap_course_route_proposals() TO "${runtimeRole}"`,
+    );
+    // Target-distance searches (M2-01i) follow the same rule: write one, read your own, and
+    // nothing else. Picking a candidate and reaping expired searches are the two bounded
+    // functions, so a generated candidate cannot be rewritten, re-used or deleted directly.
+    await pool.query(`GRANT SELECT,INSERT ON course_route_candidate_set TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION
+       public.consume_course_route_candidate(uuid,uuid,uuid,integer,text,integer),
+       public.reap_course_route_candidate_sets() TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

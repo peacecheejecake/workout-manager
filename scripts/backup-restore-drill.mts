@@ -1633,6 +1633,120 @@ async function execute() {
       drillProposalInput(routedCourse.course.courseId, 5),
     );
 
+    // One bounded target-distance search (M2-01i) with its candidates, none of them picked.
+    // A candidate is a proposal carrying private planned coordinates, and the search row
+    // carries the seed and the evaluation version that make it reproducible. A backup that
+    // lost the search would leave candidates nobody could say where they came from.
+    const candidateLoop: [number, number][] = [
+      [127.02, 37.5],
+      [127.0203, 37.5004],
+      [127.0197, 37.5004],
+      [127.02, 37.5],
+    ];
+    const candidateEvaluation = {
+      evaluationVersion: 1 as const,
+      targetDistanceMeters: 5_000,
+      engineDistanceMeters: 4_800,
+      plannedLineMeters: 4_790,
+      distanceErrorMeters: -200,
+      distanceErrorRatio: -0.04,
+      loop: { closed: true, gapMeters: 0 },
+      connectivity: 'engine-attested-edges' as const,
+      repetition: { repeatedMeters: 0, repeatedRatio: 0, outAndBack: false },
+      knowledge: {
+        stairs: 'unknown' as const,
+        surface: 'unknown' as const,
+        nightAccess: 'unknown' as const,
+        accessRestrictions: 'unknown' as const,
+        gradient: 'unknown' as const,
+      },
+      gradientSource: 'none' as const,
+      maxSnapDistanceMeters: 2,
+      waypointCount: 3,
+      vertexCount: candidateLoop.length,
+    };
+    const candidateRequestId = `req-${randomUUID()}`;
+    const candidateSet = await courseRepo.storeRouteCandidateSet(retainedAthlete, {
+      courseId: routedCourse.course.courseId,
+      draftRevision: 6,
+      requestId: candidateRequestId,
+      targetDistanceMeters: 5_000,
+      searchSeed: 'feedfacefeedface',
+      ttlSeconds: 1800,
+      bounds: {
+        maxCandidates: 4,
+        maxAttempts: 8,
+        searchBudgetMilliseconds: 30_000,
+        maxSearchRadiusMeters: 2_500,
+        distanceToleranceRatio: 0.25,
+      },
+      search: {
+        attemptsMade: 2,
+        elapsedMilliseconds: 320,
+        duplicatesDropped: 1,
+        attempts: [
+          {
+            attemptIndex: 0,
+            candidateSeed: '0000000000000000',
+            requestedRadiusMeters: 962,
+            outcome: 'accepted' as const,
+            engineDistanceMeters: 4_800,
+          },
+          {
+            attemptIndex: 1,
+            candidateSeed: '1111111111111111',
+            requestedRadiusMeters: 970,
+            outcome: 'duplicate' as const,
+            engineDistanceMeters: 4_805,
+          },
+        ],
+        stoppedBecause: 'attempt_limit' as const,
+      },
+      candidates: [
+        {
+          ordinal: 0,
+          attemptIndex: 0,
+          candidateSeed: '0000000000000000',
+          waypoints: [
+            {
+              role: 'start' as const,
+              position: candidateLoop[0] as [number, number],
+              name: null,
+              sourceSampleId: null,
+              locked: false,
+            },
+            {
+              role: 'via' as const,
+              position: candidateLoop[1] as [number, number],
+              name: null,
+              sourceSampleId: null,
+              locked: false,
+            },
+            {
+              role: 'finish' as const,
+              position: candidateLoop[0] as [number, number],
+              name: null,
+              sourceSampleId: null,
+              locked: false,
+            },
+          ],
+          coordinates: candidateLoop,
+          engineDistanceMeters: 4_800,
+          engineDurationSeconds: 3_600,
+          snappedWaypoints: [0, 1, 0].map((index) => ({
+            requested: candidateLoop[index] as [number, number],
+            snapped: candidateLoop[index] as [number, number],
+            snapDistanceMeters: 2,
+          })),
+          computation: {
+            ...drillComputation(candidateRequestId, 6),
+            conditions: { ...drillComputation(candidateRequestId, 6).conditions, waypointCount: 3 },
+          },
+          evaluation: candidateEvaluation,
+        },
+      ],
+    });
+
     // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
     // single lexical token so the 'simple' text search matches both bodies.
     const coachResourceText =
@@ -2900,6 +3014,25 @@ async function execute() {
     );
     assert.equal(consumedProposal, null);
     checks.push('restored_unsaved_route_proposal_survives_and_a_saved_one_stays_consumed');
+    // The search comes back whole: the seed, the evaluation version and the candidate's
+    // own evaluation. Without them a restored candidate could not be reproduced, and the
+    // facts it has no data for could not be told from facts it never recorded.
+    const restoredCandidateSet = await restoredCourses.readRouteCandidate(
+      retainedAthlete,
+      routedCourse.course.courseId,
+      candidateSet.candidateSetId,
+      candidateSet.candidates[0]?.proposalId ?? '',
+    );
+    assert.ok(restoredCandidateSet);
+    assert.equal(restoredCandidateSet.searchSeed, 'feedfacefeedface');
+    assert.equal(restoredCandidateSet.targetDistanceMeters, 5_000);
+    assert.equal(restoredCandidateSet.draftRevision, 6);
+    assert.equal(restoredCandidateSet.candidate.candidateSeed, '0000000000000000');
+    assert.equal(restoredCandidateSet.candidate.evaluation.evaluationVersion, 1);
+    assert.equal(restoredCandidateSet.candidate.evaluation.knowledge.surface, 'unknown');
+    assert.equal(restoredCandidateSet.candidate.evaluation.gradientSource, 'none');
+    assert.deepEqual(restoredCandidateSet.candidate.geometry.coordinates, candidateLoop);
+    checks.push('restored_target_distance_search_keeps_its_seed_and_evaluation_version');
     for (const reclaimed of [doomedCourse.course.courseId, doomedCourseCopy.course.courseId]) {
       const read = await restoredCourses.read(retainedAthlete, reclaimed);
       assert.equal(read.status, 'unavailable');

@@ -1,5 +1,11 @@
 import { createStore } from 'zustand/vanilla';
-import { courseLimits, type CoursePosition, type CourseWaypoint } from '@workout/contracts/courses';
+import {
+  courseLimits,
+  type CourseCandidateEvaluation,
+  type CourseCandidateSearchSummary,
+  type CoursePosition,
+  type CourseWaypoint,
+} from '@workout/contracts/courses';
 
 /**
  * The waypoint draft behind S14 (M2-01h).
@@ -89,6 +95,49 @@ export interface ComputedDraftRoute {
   readonly warnings: readonly string[];
 }
 
+/**
+ * One generated target-distance candidate as the screen holds it (M2-01i).
+ *
+ * It is a proposal. Holding four of them changes nothing about the course, picking one
+ * changes nothing either, and only an explicit save writes a revision. The evaluation
+ * travels with it because the owner has to read it before picking: target error, loop
+ * closure, repeated sections, and the facts we have no data for at all.
+ */
+export interface DraftCandidate {
+  readonly proposalId: string;
+  readonly ordinal: number;
+  readonly attemptIndex: number;
+  readonly candidateSeed: string;
+  readonly coordinates: readonly CoursePosition[];
+  readonly engineDistanceMeters: number;
+  readonly engineDurationSeconds: number;
+  readonly graphBuildId: string;
+  readonly engineVersion: string | null;
+  readonly computedAt: string;
+  readonly warnings: readonly string[];
+  readonly evaluation: CourseCandidateEvaluation;
+}
+
+/** One bounded search, with the seed and bounds it ran under. */
+export interface DraftCandidateSet {
+  /** The draft revision this search ran for. It is current only for that one. */
+  readonly draftRevision: number;
+  readonly candidateSetId: string;
+  readonly targetDistanceMeters: number;
+  readonly searchSeed: string;
+  readonly generatorVersion: string;
+  readonly evaluationVersion: number;
+  readonly bounds: {
+    readonly maxCandidates: number;
+    readonly maxAttempts: number;
+    readonly searchBudgetMilliseconds: number;
+    readonly maxSearchRadiusMeters: number;
+    readonly distanceToleranceRatio: number;
+  };
+  readonly search: CourseCandidateSearchSummary;
+  readonly candidates: readonly DraftCandidate[];
+}
+
 interface DraftSnapshot {
   readonly waypoints: readonly DraftWaypoint[];
 }
@@ -111,6 +160,10 @@ export interface CourseDraftState {
   future: readonly DraftSnapshot[];
   /** The last computed route, with the revision it belongs to. */
   route: ComputedDraftRoute | null;
+  /** The last generated candidate set, with the revision it belongs to. */
+  candidates: DraftCandidateSet | null;
+  /** Which candidate the owner has picked to look at. Picking saves nothing. */
+  pickedCandidateId: string | null;
   /** Why the last attempted change was refused, so the screen can say it in words. */
   refusal: DraftProblem | null;
   /** The stored revision this draft was seeded from, and the waypoints it was seeded with. */
@@ -157,6 +210,15 @@ export interface CourseDraftState {
   applyRoute(route: ComputedDraftRoute): boolean;
   /** Drop a computed route, for example after it was saved or the engine refused. */
   clearRoute(): void;
+  /**
+   * Record one generated candidate set. Ignored unless it belongs to the draft as it is
+   * now — a search that finished after the waypoints moved is about a draft that is gone.
+   */
+  applyCandidates(set: DraftCandidateSet): boolean;
+  /** Drop the candidate set, after a save or when the search produced nothing. */
+  clearCandidates(): void;
+  /** Look at one candidate. This is a selection on screen, not a save and not an approval. */
+  pickCandidate(proposalId: string | null): void;
 }
 
 /** Bounded history: an editing session is not a document store. */
@@ -258,6 +320,8 @@ export function createCourseDraftStore(input: {
       past: [],
       future: [],
       route: null,
+      candidates: null,
+      pickedCandidateId: null,
       refusal: null,
       seededRevision: input.headRevision,
       seededWaypoints: input.waypoints,
@@ -408,6 +472,24 @@ export function createCourseDraftStore(input: {
 
       clearRoute: () => set({ route: null }),
 
+      /**
+       * A search is applied only to the draft it ran for, for the same reason a computed
+       * route is: by the time four candidates come back the owner may have moved a pin, and
+       * offering loops built around the previous arrangement would be offering routes that
+       * do not belong to the waypoints on screen.
+       */
+      applyCandidates: (candidateSet) => {
+        if (candidateSet.draftRevision !== get().revision) return false;
+        // Generated but unpicked candidates are unsaved work too, and a new search always
+        // starts with nothing picked: nobody has read these yet.
+        set({ candidates: candidateSet, pickedCandidateId: null, dirty: true });
+        return true;
+      },
+
+      clearCandidates: () => set({ candidates: null, pickedCandidateId: null }),
+
+      pickCandidate: (proposalId) => set({ pickedCandidateId: proposalId }),
+
       syncHead: (headRevision, waypoints) => {
         const state = get();
         if (headRevision === state.seededRevision) return;
@@ -418,6 +500,8 @@ export function createCourseDraftStore(input: {
             past: [],
             future: [],
             route: null,
+            candidates: null,
+            pickedCandidateId: null,
             refusal: null,
             seededRevision: headRevision,
             seededWaypoints: waypoints,
@@ -462,6 +546,8 @@ export function createCourseDraftStore(input: {
           past: [],
           future: [],
           route: null,
+          candidates: null,
+          pickedCandidateId: null,
           refusal: null,
           seededRevision: pending.headRevision,
           seededWaypoints: pending.waypoints,
@@ -488,4 +574,22 @@ export type CourseDraftStore = ReturnType<typeof createCourseDraftStore>;
 /** The computed route, but only while it still belongs to the draft as it is now. */
 export function currentRoute(state: CourseDraftState): ComputedDraftRoute | null {
   return state.route && state.route.draftRevision === state.revision ? state.route : null;
+}
+
+/** The generated candidates, but only while they still belong to the draft as it is now. */
+export function currentCandidates(state: CourseDraftState): DraftCandidateSet | null {
+  return state.candidates && state.candidates.draftRevision === state.revision
+    ? state.candidates
+    : null;
+}
+
+/**
+ * The candidate the owner is looking at, or `null`. A pick from a search that no longer
+ * belongs to this draft is not a pick: it names a line computed for waypoints that have
+ * since moved, and the screen has to say so rather than let it be saved.
+ */
+export function pickedCandidate(state: CourseDraftState): DraftCandidate | null {
+  const set = currentCandidates(state);
+  if (!set || state.pickedCandidateId === null) return null;
+  return set.candidates.find((c) => c.proposalId === state.pickedCandidateId) ?? null;
 }

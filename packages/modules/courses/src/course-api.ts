@@ -5,8 +5,10 @@ import {
   activityDeletionImpactSchema,
   courseListSchema,
   courseReadResultSchema,
+  courseRouteCandidateResultSchema,
   courseRouteProposalResultSchema,
   type CourseCreateRequest,
+  type CourseRouteCandidateRequest,
   type CourseRouteProposalRequest,
   type CourseUpdateRequest,
 } from '@workout/contracts/courses';
@@ -119,6 +121,37 @@ export function createCourseApi(transport: AuthenticatedTransport) {
       // a reply that is not a known outcome at all becomes a request error, so "the engine
       // refused and stored nothing" is never collapsed into "something went wrong".
       const outcome = courseRouteProposalResultSchema.safeParse(reply.body);
+      if (outcome.success) return outcome.data;
+      const parsed = errorSchema.safeParse(reply.body);
+      throw new CourseRequestError(
+        reply.status,
+        parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
+      );
+    },
+    /**
+     * Ask for bounded target-distance candidates under this draft (M2-01i).
+     *
+     * A search is longer than one computation, so the abort signal matters more: the server
+     * stops between attempts when the connection drops and releases the tenant's permit.
+     * Every outcome other than `candidates_generated` has stored nothing, and
+     * `no_candidate` is an answer — the search looked and found none — rather than a
+     * failure, which is why it is read from the body and not from the status alone.
+     */
+    async generateCandidates(
+      courseId: string,
+      input: CourseRouteCandidateRequest,
+      signal?: AbortSignal,
+    ) {
+      const reply = transportReplySchema.parse(
+        await transport.request({
+          path: `/bff/v1/courses/${encodeURIComponent(courseId)}/route-candidates`,
+          method: 'POST',
+          body: z.json().parse(input),
+          idempotencyKey: null,
+          ...(signal ? { signal } : {}),
+        }),
+      );
+      const outcome = courseRouteCandidateResultSchema.safeParse(reply.body);
       if (outcome.success) return outcome.data;
       const parsed = errorSchema.safeParse(reply.body);
       throw new CourseRequestError(

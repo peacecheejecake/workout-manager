@@ -45,6 +45,36 @@ export const courseLimits = {
   maxDraftRevision: 1_000_000,
 } as const;
 
+/**
+ * Bounds for one target-distance candidate search (M2-01i).
+ *
+ * A target distance is an APPROXIMATION, not a specification. Everything about the search
+ * that could run away is bounded here — how many candidates it may offer, how many engine
+ * computations it may spend, how long it may take and how far from the origin it may
+ * wander — and every bound is reported with the result so a reader can see what the search
+ * was allowed to do.
+ */
+export const targetDistanceLimits = {
+  minTargetMeters: 500,
+  maxTargetMeters: 50_000,
+  /** Candidates one search may offer. */
+  maxCandidates: 4,
+  /** Engine computations one search may spend, accepted and rejected alike. */
+  maxAttempts: 8,
+  /** Wall-clock budget for the whole search, measured by the server's own clock. */
+  searchBudgetMilliseconds: 30_000,
+  /** How far off the target a candidate may land and still be offered at all. */
+  distanceToleranceRatio: 0.25,
+  /** Gap between first and last vertex under which the line is called a closed loop. */
+  loopClosureMeters: 30,
+  /** Shared length above which a new candidate is the same proposal as an accepted one. */
+  duplicateOverlapRatio: 0.8,
+  /** Hard cap on how far from the origin any vertex of a candidate may lie. */
+  maxSearchRadiusMeters: 15_000,
+  /** Rounding used to compare two lines section by section, in degrees. */
+  sectionGridDegrees: 0.00005,
+} as const;
+
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/, 'Expected a lowercase SHA-256 hex digest');
 
@@ -112,6 +142,67 @@ export const courseWaypointListSchema = z
     }
   });
 
+const seedSchema = z.string().regex(/^[0-9a-f]{16}$/, 'Expected a 16 character hex seed');
+
+/**
+ * What one generated candidate was measured to be (M2-01i), version 1.
+ *
+ * Every field here is either measured from the candidate's own line or copied from the
+ * computation that produced it. There are **no coordinates**: the same rule the routed
+ * conditions follow, because the account export carries generation conditions verbatim.
+ *
+ * `knowledge` is the part that matters most and it is deliberately unforgiving. The plan
+ * forbids treating a missing stair, surface or night-access fact as satisfied, and our
+ * engine result carries none of them — the road-class detail M2-01g requests is used to
+ * check the answer and is not returned. So each of those is typed as the literal
+ * `'unknown'`: writing anything else is a contract change, not a value a caller can set.
+ * The same goes for gradient — there is no elevation source in this build at all.
+ */
+export const courseCandidateKnowledgeSchema = z.strictObject({
+  stairs: z.literal('unknown'),
+  surface: z.literal('unknown'),
+  nightAccess: z.literal('unknown'),
+  accessRestrictions: z.literal('unknown'),
+  gradient: z.literal('unknown'),
+});
+
+export const courseCandidateEvaluationSchema = z.strictObject({
+  evaluationVersion: z.literal(1),
+  /** The approximation asked for. Never an achieved distance. */
+  targetDistanceMeters: z.number().finite().min(1).max(targetDistanceLimits.maxTargetMeters),
+  /** The engine's estimate along this line. */
+  engineDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxRouteDistanceMeters),
+  /** The length of the line as stored, measured from its own vertices. A different value. */
+  plannedLineMeters: z.number().finite().nonnegative().max(1_000_000_000),
+  /** Signed error of the engine estimate against the target. Positive means longer. */
+  distanceErrorMeters: z.number().finite(),
+  distanceErrorRatio: z.number().finite(),
+  /** Loop closure measured between the first and the last vertex. */
+  loop: z.strictObject({
+    closed: z.boolean(),
+    gapMeters: z.number().finite().nonnegative().max(1_000_000),
+  }),
+  /**
+   * Every leg of this candidate is an answer the routing adapter accepted, which means the
+   * engine attested the graph edges it traversed. It is evidence of connectivity in the
+   * graph and nothing more: it is not a claim that a person can walk there now.
+   */
+  connectivity: z.literal('engine-attested-edges'),
+  /** Length of the line covered more than once, and whether it is an out-and-back. */
+  repetition: z.strictObject({
+    repeatedMeters: z.number().finite().nonnegative().max(1_000_000_000),
+    repeatedRatio: z.number().finite().min(0).max(1),
+    outAndBack: z.boolean(),
+  }),
+  knowledge: courseCandidateKnowledgeSchema,
+  /** Where gradient information came from. `none` means this build has none. */
+  gradientSource: z.literal('none'),
+  maxSnapDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxSnapMeters),
+  waypointCount: z.number().int().min(2).max(courseLimits.waypoints),
+  vertexCount: z.number().int().min(2).max(courseLimits.vertices),
+});
+export type CourseCandidateEvaluation = z.infer<typeof courseCandidateEvaluationSchema>;
+
 /**
  * How one course revision's geometry was generated, and under what conditions.
  *
@@ -170,6 +261,45 @@ export const courseGenerationSchema = z.discriminatedUnion('kind', [
     waypointCount: z.number().int().min(2).max(courseLimits.waypoints),
     vertexCount: z.number().int().min(2).max(courseLimits.vertices),
   }),
+  /**
+   * `target-distance-loop` (M2-01i) means a bounded search generated this line as one
+   * candidate for an approximate target distance, our own engine computed every leg of it,
+   * and the owner picked it and saved it explicitly. The seed of the search and of this
+   * attempt, the generator and evaluation versions and the whole evaluation are kept, so
+   * the candidate can be reproduced and so a reader can see how far off the target it is
+   * rather than assuming it hit it. No coordinate is in here.
+   */
+  z.strictObject({
+    kind: z.literal('target-distance-loop'),
+    computation: routeComputationRecordSchema,
+    engineDistanceMeters: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(routingLimits.maxRouteDistanceMeters),
+    engineDurationSeconds: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(30 * 24 * 3600),
+    maxSnapDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxSnapMeters),
+    waypointCount: z.number().int().min(2).max(courseLimits.waypoints),
+    vertexCount: z.number().int().min(2).max(courseLimits.vertices),
+    targetDistanceMeters: z
+      .number()
+      .finite()
+      .min(targetDistanceLimits.minTargetMeters)
+      .max(targetDistanceLimits.maxTargetMeters),
+    searchSeed: seedSchema,
+    candidateSeed: seedSchema,
+    attemptIndex: z
+      .number()
+      .int()
+      .min(0)
+      .max(targetDistanceLimits.maxAttempts - 1),
+    generatorVersion: z.literal('target-distance-loop-v1'),
+    evaluation: courseCandidateEvaluationSchema,
+  }),
 ]);
 export type CourseGeneration = z.infer<typeof courseGenerationSchema>;
 
@@ -179,7 +309,12 @@ export type CourseGeneration = z.infer<typeof courseGenerationSchema>;
  * silently recomputed on a new graph" becomes something the server can refuse.
  */
 export function courseGenerationGraphBuildId(generation: CourseGeneration): string | null {
-  return generation.kind === 'routed-waypoints' ? generation.computation.graph.graphBuildId : null;
+  switch (generation.kind) {
+    case 'recorded-segment':
+      return null;
+    default:
+      return generation.computation.graph.graphBuildId;
+  }
 }
 
 /**
@@ -193,6 +328,8 @@ export const courseEditSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('retrimmed') }),
   /** The owner edited the waypoints and explicitly saved a reviewed route proposal. */
   z.strictObject({ kind: z.literal('rerouted') }),
+  /** The owner picked one generated target-distance candidate and saved it (M2-01i). */
+  z.strictObject({ kind: z.literal('generated') }),
   z.strictObject({
     kind: z.literal('copied'),
     copiedFromCourseId: uuid,
@@ -218,24 +355,51 @@ export type CourseLineage = z.infer<typeof courseLineageSchema>;
  * else: it is not the device-reported distance, not the distance recomputed from the
  * recording's positions, and not a routing estimate.
  */
-export const courseRevisionSchema = z.strictObject({
-  courseId: uuid,
-  courseRevision: revisionSchema.min(1),
-  revisionId: uuid,
-  name: courseNameSchema,
-  geometry: z.strictObject({
-    type: z.literal('LineString'),
-    coordinates: z.array(coursePositionSchema).min(2).max(courseLimits.vertices),
-  }),
-  waypoints: courseWaypointListSchema,
-  generation: courseGenerationSchema,
-  edit: courseEditSchema,
-  lineage: z.array(courseLineageSchema).min(1).max(courseLimits.waypoints),
-  distanceMeters: z.number().finite().nonnegative().max(1_000_000_000),
-  /** Digest over the revision's content. Equal content under CAS is not a new version. */
-  contentDigest: sha256Schema,
-  createdAt: instantSchema,
-});
+export const courseRevisionSchema = z
+  .strictObject({
+    courseId: uuid,
+    courseRevision: revisionSchema.min(1),
+    revisionId: uuid,
+    name: courseNameSchema,
+    geometry: z.strictObject({
+      type: z.literal('LineString'),
+      coordinates: z.array(coursePositionSchema).min(2).max(courseLimits.vertices),
+    }),
+    waypoints: courseWaypointListSchema,
+    generation: courseGenerationSchema,
+    edit: courseEditSchema,
+    /**
+     * Empty only for a course whose coordinates never came from one of our recordings — an
+     * imported file is the one such case (M2-01j). Every course derived from a recording
+     * still names it, and a revision derived from such a course inherits that lineage, so
+     * reclamation on activity deletion is unchanged.
+     */
+    lineage: z.array(courseLineageSchema).max(courseLimits.waypoints),
+    distanceMeters: z.number().finite().nonnegative().max(1_000_000_000),
+    /** Digest over the revision's content. Equal content under CAS is not a new version. */
+    contentDigest: sha256Schema,
+    createdAt: instantSchema,
+  })
+  .superRefine((revision, context) => {
+    // A revision cut from a recording must name it. Lineage is how deleting an activity
+    // reaches every course derived from its coordinates, so a `recorded-segment` revision
+    // without it would be exactly the detached copy the ledger refuses to make — the empty
+    // lineage above exists for an imported file, which came from no recording of ours.
+    if (revision.generation.kind !== 'recorded-segment') return;
+    const generation = revision.generation;
+    const named = revision.lineage.some(
+      (source) =>
+        source.activityId === generation.activityId &&
+        source.trackId === generation.trackId &&
+        source.trackRevision === generation.trackRevision,
+    );
+    if (!named)
+      context.addIssue({
+        code: 'custom',
+        path: ['lineage'],
+        message: 'A revision cut from a recording must name that recording in its lineage',
+      });
+  });
 export type CourseRevision = z.infer<typeof courseRevisionSchema>;
 
 /**
@@ -346,6 +510,25 @@ export const courseUpdateRequestSchema = z.strictObject({
        * an older graph cannot be replaced by an answer from a newer one without the screen
        * having shown that the graph changed.
        */
+      acknowledgedGraph: z.strictObject({
+        previous: routingGraphIdentitySchema.shape.graphBuildId.nullable(),
+        next: routingGraphIdentitySchema.shape.graphBuildId,
+      }),
+    }),
+    /**
+     * Save the one generated candidate the owner picked (M2-01i).
+     *
+     * A candidate is a proposal like any other: the geometry and the waypoints come from
+     * the stored candidate, never from this request, and `candidateSetId` is checked
+     * against the stored row inside the writing transaction so a candidate cannot be
+     * saved as if it belonged to a different search. Until this request arrives the course
+     * is untouched — generating candidates saves and approves nothing.
+     */
+    z.strictObject({
+      kind: z.literal('pick-candidate'),
+      candidateSetId: uuid,
+      proposalId: uuid,
+      draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
       acknowledgedGraph: z.strictObject({
         previous: routingGraphIdentitySchema.shape.graphBuildId.nullable(),
         next: routingGraphIdentitySchema.shape.graphBuildId,
@@ -464,3 +647,222 @@ export const courseRouteProposalResultSchema = z.discriminatedUnion('outcome', [
   routeProposalFailure('graph_mismatch'),
 ]);
 export type CourseRouteProposalResult = z.infer<typeof courseRouteProposalResultSchema>;
+
+/**
+ * Asking for target-distance candidates under the current draft (M2-01i).
+ *
+ * The target is an approximation and this request says so by carrying bounds nowhere: the
+ * bounds are the server's, not the caller's. `seed` is optional — supplying the seed a
+ * previous search recorded reruns the same search, which is what makes a candidate
+ * reproducible rather than a one-off accident. The waypoints come along because the search
+ * starts at the draft's start waypoint and must keep every locked one; it never invents an
+ * origin, and it never carries a geometry, an engine, a profile or a URL.
+ */
+export const courseRouteCandidateRequestSchema = z.strictObject({
+  /**
+   * Bounded at 120 rather than 128: each attempt appends its index to this id before it
+   * reaches the routing contract, which caps request ids at 128.
+   */
+  requestId: idSchema.max(120),
+  draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+  targetDistanceMeters: z
+    .number()
+    .finite()
+    .min(targetDistanceLimits.minTargetMeters)
+    .max(targetDistanceLimits.maxTargetMeters),
+  seed: seedSchema.nullable(),
+  waypoints: courseWaypointListSchema,
+});
+export type CourseRouteCandidateRequest = z.infer<typeof courseRouteCandidateRequestSchema>;
+
+/**
+ * What one attempt of the search did. Accepted and rejected attempts are both here: a
+ * reader has to be able to see that the search spent eight computations and offered two
+ * candidates, not just the two.
+ */
+export const courseCandidateAttemptOutcomeSchema = z.enum([
+  'accepted',
+  /** Too close to a candidate already offered. Counted, never silently merged. */
+  'duplicate',
+  /** Outside the distance tolerance. Not offered — an approximation still has a bound. */
+  'off_target',
+  /** The line did not come back to where it started. */
+  'not_a_loop',
+  /** A vertex fell outside the search radius this search was allowed. */
+  'outside_search_area',
+  /** The routing service refused the request before the engine saw it. */
+  'request_refused',
+  'no_route',
+  'outside_coverage',
+  'snap_too_far',
+  'timeout',
+  'cancelled',
+  'overloaded',
+  'compute_budget_exceeded',
+  'engine_unavailable',
+  'engine_contract_violation',
+  'graph_mismatch',
+]);
+
+export const courseCandidateAttemptSchema = z.strictObject({
+  attemptIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(targetDistanceLimits.maxAttempts - 1),
+  candidateSeed: seedSchema,
+  /** The radius this attempt asked for, which is how the search's extent is auditable. */
+  requestedRadiusMeters: z
+    .number()
+    .finite()
+    .nonnegative()
+    .max(targetDistanceLimits.maxSearchRadiusMeters),
+  outcome: courseCandidateAttemptOutcomeSchema,
+  /** The engine's distance, when there was one. `null` when no line came back at all. */
+  engineDistanceMeters: z
+    .number()
+    .finite()
+    .nonnegative()
+    .max(routingLimits.maxRouteDistanceMeters)
+    .nullable(),
+});
+
+/** Why the search stopped. A bound reached is a different fact from an engine refusal. */
+export const courseCandidateStopReasonSchema = z.enum([
+  'candidate_limit',
+  'attempt_limit',
+  'time_budget',
+  'engine_refusal',
+  'cancelled',
+]);
+
+export const courseCandidateSearchSummarySchema = z.strictObject({
+  attemptsMade: z.number().int().min(0).max(targetDistanceLimits.maxAttempts),
+  elapsedMilliseconds: z.number().int().nonnegative().max(600_000),
+  duplicatesDropped: z.number().int().min(0).max(targetDistanceLimits.maxAttempts),
+  attempts: z.array(courseCandidateAttemptSchema).max(targetDistanceLimits.maxAttempts),
+  stoppedBecause: courseCandidateStopReasonSchema,
+});
+export type CourseCandidateSearchSummary = z.infer<typeof courseCandidateSearchSummarySchema>;
+
+/** The bounds the search actually ran under, reported with every answer. */
+export const courseCandidateBoundsSchema = z.strictObject({
+  maxCandidates: z.number().int().min(1).max(targetDistanceLimits.maxCandidates),
+  maxAttempts: z.number().int().min(1).max(targetDistanceLimits.maxAttempts),
+  searchBudgetMilliseconds: z
+    .number()
+    .int()
+    .min(1)
+    .max(targetDistanceLimits.searchBudgetMilliseconds),
+  maxSearchRadiusMeters: z.number().finite().min(1).max(targetDistanceLimits.maxSearchRadiusMeters),
+  distanceToleranceRatio: z.number().finite().min(0).max(1),
+});
+
+/**
+ * One generated candidate the server has stored, waiting for the owner to pick it.
+ *
+ * It is a **proposal**, exactly like a computed reroute: not an actual, not an approved
+ * plan and not a course revision. Generating four of these changes nothing about the
+ * course, and at most one of them can ever become a revision.
+ */
+export const courseRouteCandidateSchema = z.strictObject({
+  proposalId: uuid,
+  ordinal: z
+    .number()
+    .int()
+    .min(0)
+    .max(targetDistanceLimits.maxCandidates - 1),
+  attemptIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(targetDistanceLimits.maxAttempts - 1),
+  candidateSeed: seedSchema,
+  waypoints: courseWaypointListSchema,
+  geometry: z.strictObject({
+    type: z.literal('LineString'),
+    coordinates: z.array(coursePositionSchema).min(2).max(courseLimits.vertices),
+  }),
+  engineDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxRouteDistanceMeters),
+  engineDurationSeconds: z
+    .number()
+    .finite()
+    .nonnegative()
+    .max(30 * 24 * 3600),
+  snappedWaypoints: z.array(snappedWaypointSchema).min(2).max(courseLimits.waypoints),
+  computation: routeComputationRecordSchema,
+  evaluation: courseCandidateEvaluationSchema,
+});
+export type CourseRouteCandidate = z.infer<typeof courseRouteCandidateSchema>;
+
+export const courseRouteCandidateSetSchema = z.strictObject({
+  candidateSetId: uuid,
+  courseId: uuid,
+  requestId: idSchema.max(128),
+  draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+  targetDistanceMeters: z
+    .number()
+    .finite()
+    .min(targetDistanceLimits.minTargetMeters)
+    .max(targetDistanceLimits.maxTargetMeters),
+  searchSeed: seedSchema,
+  generatorVersion: z.literal('target-distance-loop-v1'),
+  evaluationVersion: z.literal(1),
+  bounds: courseCandidateBoundsSchema,
+  search: courseCandidateSearchSummarySchema,
+  candidates: z.array(courseRouteCandidateSchema).min(1).max(targetDistanceLimits.maxCandidates),
+  createdAt: instantSchema,
+  expiresAt: instantSchema,
+});
+export type CourseRouteCandidateSet = z.infer<typeof courseRouteCandidateSetSchema>;
+
+/**
+ * What one candidate search answered.
+ *
+ * `no_candidate` is a **known** outcome: the search ran inside its bounds, spent its
+ * attempts and found nothing worth offering, and it stored nothing. That is a different
+ * fact from a timeout or an engine failure, where the result is unknown, and a different
+ * fact again from a straight line — which is not an outcome here at all. No outcome in
+ * this union carries a geometry the engine did not attest.
+ */
+const candidateFailure = <Code extends string>(outcome: Code) =>
+  z.strictObject({
+    outcome: z.literal(outcome),
+    courseId: uuid,
+    draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+    targetDistanceMeters: z
+      .number()
+      .finite()
+      .min(targetDistanceLimits.minTargetMeters)
+      .max(targetDistanceLimits.maxTargetMeters),
+    searchSeed: seedSchema,
+    generatorVersion: z.literal('target-distance-loop-v1'),
+    evaluationVersion: z.literal(1),
+    bounds: courseCandidateBoundsSchema,
+    search: courseCandidateSearchSummarySchema,
+    /**
+     * The conditions of the last attempt that reached the engine, or `null` when none did.
+     * A search that was refused before any engine call has no computation to report, and
+     * inventing one would claim an observation that never happened.
+     */
+    computation: routeComputationRecordSchema.nullable(),
+  });
+
+export const courseRouteCandidateResultSchema = z.discriminatedUnion('outcome', [
+  z.strictObject({
+    outcome: z.literal('candidates_generated'),
+    set: courseRouteCandidateSetSchema,
+  }),
+  candidateFailure('no_candidate'),
+  candidateFailure('no_route'),
+  candidateFailure('outside_coverage'),
+  candidateFailure('snap_too_far'),
+  candidateFailure('timeout'),
+  candidateFailure('cancelled'),
+  candidateFailure('overloaded'),
+  candidateFailure('compute_budget_exceeded'),
+  candidateFailure('engine_unavailable'),
+  candidateFailure('engine_contract_violation'),
+  candidateFailure('graph_mismatch'),
+]);
+export type CourseRouteCandidateResult = z.infer<typeof courseRouteCandidateResultSchema>;

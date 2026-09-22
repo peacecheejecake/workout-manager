@@ -40,6 +40,36 @@ function generationMaterial(generation: CourseGeneration): unknown {
       generation.simplificationVersion,
       generation.toleranceMeters,
     ];
+  // A generated revision is identified by what answered it AND by the search that produced
+  // it. Two candidates of one search are different courses even on the same graph, so both
+  // seeds and the attempt index are material; running the same search again and picking the
+  // same attempt is the same course, so the request id and the timestamps are not.
+  if (generation.kind === 'target-distance-loop') {
+    const routed = generation.computation;
+    return [
+      generation.kind,
+      routed.graph.engine,
+      routed.graph.engineArtifactSha256,
+      routed.graph.profileId,
+      routed.graph.profileConfigSha256,
+      routed.graph.graphBuildId,
+      routed.graph.graphContentSha256,
+      routed.conditions.algorithm,
+      routed.conditions.contractionHierarchies,
+      routed.conditions.maxVisitedNodes,
+      routed.conditions.snapLimitMeters,
+      routed.conditions.waypointCount,
+      generation.engineDistanceMeters,
+      generation.engineDurationSeconds,
+      generation.vertexCount,
+      generation.targetDistanceMeters,
+      generation.generatorVersion,
+      generation.searchSeed,
+      generation.candidateSeed,
+      generation.attemptIndex,
+      generation.evaluation.evaluationVersion,
+    ];
+  }
   // A routed revision is identified by what actually answered it. The request id, the
   // draft revision and the computation timestamps are left out deliberately: recomputing
   // the same waypoints on the same graph produces the same course, and recording it twice

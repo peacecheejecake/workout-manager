@@ -1109,8 +1109,9 @@
       "title": "목표 거리 후보",
       "dependsOn": ["M2-01h"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택"
+      "status": "completed",
+      "scope": "loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택",
+      "evidence": "docs/implementation/progress/M2-01i.md"
     },
     {
       "id": "M2-01j",

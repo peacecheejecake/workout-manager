@@ -12,7 +12,8 @@
     "./gpx": "./src/gpx.ts",
     "./digest": "./src/digest.ts",
     "./geo": "./src/geo.ts",
-    "./routed": "./src/routed.ts"
+    "./routed": "./src/routed.ts",
+    "./candidates": "./src/candidates.ts"
   },
   "dependencies": {
     "@workout/contracts": "workspace:*",

@@ -18,7 +18,12 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
-import type { CourseHead, CoursePosition, CourseReadResult } from '@workout/contracts/courses';
+import type {
+  CourseGeneration,
+  CourseHead,
+  CoursePosition,
+  CourseReadResult,
+} from '@workout/contracts/courses';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
 import type { MapSelection } from '@workout/geo-kit/map-path';
@@ -82,6 +87,22 @@ function readableError(error: unknown): string {
   if (error.status === 410) return '원본 기록이 삭제되어 이 코스는 더 이상 사용할 수 없습니다.';
   if (error.status === 404) return '코스를 찾을 수 없습니다.';
   return '입력을 확인한 뒤 다시 시도하세요.';
+}
+
+/**
+ * How this revision's line was made, in the owner's words. Every kind is named on its own
+ * branch rather than falling back to one of them: a generated candidate says it was
+ * generated instead of reading as the recording it started from.
+ */
+function generationLabel(generation: CourseGeneration): string {
+  switch (generation.kind) {
+    case 'recorded-segment':
+      return '기록 구간 잘라내기';
+    case 'routed-waypoints':
+      return `경유지 경로 계산 · 지도 데이터 ${generation.computation.graph.graphBuildId}`;
+    case 'target-distance-loop':
+      return `목표 거리 후보 · 지도 데이터 ${generation.computation.graph.graphBuildId}`;
+  }
 }
 
 function metres(value: number): string {
@@ -362,11 +383,7 @@ function Workbench({
           <dt>경유점</dt>
           <dd>{current.revision.waypoints.length}개</dd>
           <dt>만들어진 방법</dt>
-          <dd data-testid="course-generation">
-            {current.revision.generation.kind === 'routed-waypoints'
-              ? `경유지 경로 계산 · 지도 데이터 ${current.revision.generation.computation.graph.graphBuildId}`
-              : '기록 구간 잘라내기'}
-          </dd>
+          <dd data-testid="course-generation">{generationLabel(current.revision.generation)}</dd>
           <dt>출처 기록</dt>
           <dd>
             {current.revision.lineage

@@ -1199,3 +1199,981 @@ describe('M2-01h route proposals', () => {
     ).rejects.toThrowError(/IMMUTABLE_ROUTE_PROPOSAL/);
   });
 });
+
+const candidateLine: [number, number][] = [
+  [126.9779, 37.5665],
+  [126.9789, 37.5672],
+  [126.9769, 37.5672],
+  [126.9779, 37.5665],
+];
+
+const candidateEvaluation = {
+  evaluationVersion: 1 as const,
+  targetDistanceMeters: 5_000,
+  engineDistanceMeters: 4_800,
+  plannedLineMeters: 4_790,
+  distanceErrorMeters: -200,
+  distanceErrorRatio: -0.04,
+  loop: { closed: true, gapMeters: 0 },
+  connectivity: 'engine-attested-edges' as const,
+  repetition: { repeatedMeters: 0, repeatedRatio: 0, outAndBack: false },
+  knowledge: {
+    stairs: 'unknown' as const,
+    surface: 'unknown' as const,
+    nightAccess: 'unknown' as const,
+    accessRestrictions: 'unknown' as const,
+    gradient: 'unknown' as const,
+  },
+  gradientSource: 'none' as const,
+  maxSnapDistanceMeters: 4.5,
+  waypointCount: 3,
+  vertexCount: candidateLine.length,
+};
+
+const candidateWaypoints = [
+  {
+    role: 'start' as const,
+    position: candidateLine[0] as [number, number],
+    name: null,
+    sourceSampleId: null,
+    locked: false,
+  },
+  {
+    role: 'via' as const,
+    position: candidateLine[1] as [number, number],
+    name: null,
+    sourceSampleId: null,
+    locked: false,
+  },
+  {
+    role: 'finish' as const,
+    position: candidateLine[0] as [number, number],
+    name: null,
+    sourceSampleId: null,
+    locked: false,
+  },
+];
+
+function candidateSetInput(
+  courseId: string,
+  options: {
+    draftRevision?: number;
+    count?: number;
+    ttlSeconds?: number;
+    graphBuildId?: string;
+    searchSeed?: string;
+  } = {},
+) {
+  const draftRevision = options.draftRevision ?? 2;
+  const count = options.count ?? 2;
+  return {
+    courseId,
+    draftRevision,
+    requestId: `req-${randomUUID()}`,
+    targetDistanceMeters: 5_000,
+    searchSeed: options.searchSeed ?? 'feedfacefeedface',
+    ttlSeconds: options.ttlSeconds ?? 1800,
+    bounds: {
+      maxCandidates: 4,
+      maxAttempts: 8,
+      searchBudgetMilliseconds: 30_000,
+      maxSearchRadiusMeters: 2_500,
+      distanceToleranceRatio: 0.25,
+    },
+    search: {
+      attemptsMade: count,
+      elapsedMilliseconds: 120,
+      duplicatesDropped: 0,
+      attempts: Array.from({ length: count }, (_, index) => ({
+        attemptIndex: index,
+        candidateSeed: `${index}`.repeat(16).slice(0, 16),
+        requestedRadiusMeters: 962,
+        outcome: 'accepted' as const,
+        engineDistanceMeters: 4_800,
+      })),
+      stoppedBecause: 'candidate_limit' as const,
+    },
+    candidates: Array.from({ length: count }, (_, ordinal) => {
+      const requestId = `req-${randomUUID()}`;
+      // Each candidate is a different line, as two candidates of one search must be.
+      const coordinates = candidateLine.map(
+        ([longitude, latitude]) => [longitude + ordinal * 0.0005, latitude] as [number, number],
+      );
+      return {
+        ordinal,
+        attemptIndex: ordinal,
+        candidateSeed: `${ordinal}`.repeat(16).slice(0, 16),
+        waypoints: candidateWaypoints.map((waypoint, index) => ({
+          ...waypoint,
+          position: (index === 1 ? coordinates[1] : coordinates[0]) as [number, number],
+        })),
+        coordinates,
+        engineDistanceMeters: 4_800,
+        engineDurationSeconds: 3_600,
+        snappedWaypoints: [0, 1, 0].map((index) => ({
+          requested: coordinates[index] as [number, number],
+          snapped: coordinates[index] as [number, number],
+          snapDistanceMeters: 4.5,
+        })),
+        computation: {
+          ...routeComputation(requestId, draftRevision, options.graphBuildId),
+          conditions: {
+            ...routeComputation(requestId, draftRevision).conditions,
+            waypointCount: 3,
+          },
+        },
+        evaluation: candidateEvaluation,
+      };
+    }),
+  };
+}
+
+/** The revision content a picked candidate becomes, as the API derives it. */
+function candidateContent(
+  head: {
+    name: string;
+    lineage: readonly { activityId: string; trackId: string; trackRevision: number }[];
+  },
+  set: { targetDistanceMeters: number; searchSeed: string },
+  candidate: ReturnType<typeof candidateSetInput>['candidates'][number],
+): PreparedCourseContent {
+  return {
+    name: head.name,
+    coordinates: candidate.coordinates,
+    waypoints: candidate.waypoints,
+    generation: {
+      kind: 'target-distance-loop',
+      computation: candidate.computation,
+      engineDistanceMeters: candidate.engineDistanceMeters,
+      engineDurationSeconds: candidate.engineDurationSeconds,
+      maxSnapDistanceMeters: 4.5,
+      waypointCount: candidate.waypoints.length,
+      vertexCount: candidate.coordinates.length,
+      targetDistanceMeters: set.targetDistanceMeters,
+      searchSeed: set.searchSeed,
+      candidateSeed: candidate.candidateSeed,
+      attemptIndex: candidate.attemptIndex,
+      generatorVersion: 'target-distance-loop-v1',
+      evaluation: { ...candidateEvaluation, vertexCount: candidate.coordinates.length },
+    },
+    edit: { kind: 'generated' },
+    lineage: head.lineage,
+    distanceMeters: 4_790,
+    contentDigest: hashOf(
+      JSON.stringify([head.name, candidate.coordinates, candidate.candidateSeed]),
+    ),
+  };
+}
+
+describe('M2-01i target-distance candidates', () => {
+  it('stores a whole search without changing the course at all', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const stored = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId),
+    );
+    expect(stored.candidates).toHaveLength(2);
+    expect(stored.searchSeed).toBe('feedfacefeedface');
+    expect(stored.generatorVersion).toBe('target-distance-loop-v1');
+    expect(stored.evaluationVersion).toBe(1);
+    expect(stored.search.attemptsMade).toBe(2);
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    // Nothing about the course moved: not the head, not the number of revisions.
+    expect(after.course.headRevision).toBe(1);
+    const revisions = await admin.query(
+      'SELECT count(*)::int AS total FROM course_revision WHERE athlete_id=$1 AND course_id=$2',
+      [athlete, course.course.courseId],
+    );
+    expect(revisions.rows[0]?.['total']).toBe(1);
+  });
+
+  it('turns one picked candidate into a revision that names the search that made it', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const read = await courses.readRouteCandidate(
+      athlete,
+      course.course.courseId,
+      stored.candidateSetId,
+      first.proposalId,
+    );
+    expect(read?.searchSeed).toBe('feedfacefeedface');
+    expect(read?.targetDistanceMeters).toBe(5_000);
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    const saved = await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      content,
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: {
+          proposalId: first.proposalId,
+          candidateSetId: stored.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(content.coordinates),
+        },
+      },
+    );
+    if (saved.status !== 'available') throw new Error('save failed');
+    expect(saved.course.headRevision).toBe(2);
+    expect(saved.revision.edit).toEqual({ kind: 'generated' });
+    expect(saved.revision.generation.kind).toBe('target-distance-loop');
+    if (saved.revision.generation.kind === 'target-distance-loop') {
+      expect(saved.revision.generation.searchSeed).toBe('feedfacefeedface');
+      expect(saved.revision.generation.candidateSeed).toBe(source.candidateSeed);
+      expect(saved.revision.generation.targetDistanceMeters).toBe(5_000);
+      expect(saved.revision.generation.evaluation.knowledge.surface).toBe('unknown');
+      expect(saved.revision.generation.computation.graph.graphBuildId).toBe('0123456789abcdef');
+    }
+    // The picked candidate is consumed; its sibling is untouched and still unconsumed.
+    const rows = await admin.query(
+      `SELECT proposal_id,consumed_at,consumed_course_revision FROM course_route_proposal
+       WHERE athlete_id=$1 AND candidate_set_id=$2 ORDER BY candidate_ordinal`,
+      [athlete, stored.candidateSetId],
+    );
+    expect(rows.rows[0]?.['consumed_at']).not.toBeNull();
+    expect(rows.rows[0]?.['consumed_course_revision']).toBe(2);
+    expect(rows.rows[1]?.['consumed_at']).toBeNull();
+    // A spent candidate stops being offered: reading it back finds nothing to pick again.
+    expect(
+      await courses.readRouteCandidate(
+        athlete,
+        course.course.courseId,
+        stored.candidateSetId,
+        first.proposalId,
+      ),
+    ).toBeNull();
+    // The siblings go with it: they were alternatives to a choice that has been made, and
+    // the search itself is spent so none of them can become a second course.
+    const sibling = stored.candidates[1];
+    if (!sibling) throw new Error('no sibling');
+    expect(
+      await courses.readRouteCandidate(
+        athlete,
+        course.course.courseId,
+        stored.candidateSetId,
+        sibling.proposalId,
+      ),
+    ).toBeNull();
+    const spentSearch = await admin.query(
+      `SELECT consumed_proposal_id,consumed_course_revision FROM course_route_candidate_set
+       WHERE athlete_id=$1 AND candidate_set_id=$2`,
+      [athlete, stored.candidateSetId],
+    );
+    expect(spentSearch.rows[0]?.['consumed_proposal_id']).toBe(first.proposalId);
+    expect(spentSearch.rows[0]?.['consumed_course_revision']).toBe(2);
+  });
+
+  it('refuses to save one picked candidate twice', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    const consume = {
+      proposalId: first.proposalId,
+      candidateSetId: stored.candidateSetId,
+      draftRevision: 2,
+      geometrySha256: courseGeometrySha256(content.coordinates),
+    };
+    await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      content,
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: consume,
+      },
+    );
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        2,
+        { ...content, contentDigest: hashOf('different') },
+        `pick-${randomUUID()}`,
+        undefined,
+        { consumeCandidate: { ...consume, draftRevision: 2 } },
+      ),
+      // The search is spent before the candidate is even looked at, so this is the answer
+      // rather than `ROUTE_PROPOSAL_ALREADY_SAVED`: one search, one revision. The
+      // candidate row is marked consumed too, which the sibling test above relies on.
+    ).rejects.toMatchObject({ code: 'ROUTE_CANDIDATE_ALREADY_CHOSEN' });
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(2);
+    const consumedRow = await admin.query(
+      `SELECT consumed_at FROM course_route_proposal WHERE athlete_id=$1 AND proposal_id=$2`,
+      [athlete, first.proposalId],
+    );
+    expect(consumedRow.rows[0]?.['consumed_at']).not.toBeNull();
+  });
+
+  it('refuses a candidate that belongs to a different search', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const other = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId, { count: 1 }),
+    );
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: {
+            proposalId: first.proposalId,
+            candidateSetId: other.candidateSetId,
+            draftRevision: 2,
+            geometrySha256: courseGeometrySha256(content.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_CANDIDATE_SET_MISMATCH' });
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(1);
+  });
+
+  it('refuses a pick whose draft moved on, and one whose geometry is not the candidate', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: {
+            proposalId: first.proposalId,
+            candidateSetId: stored.candidateSetId,
+            draftRevision: 9,
+            geometrySha256: courseGeometrySha256(content.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_STALE_DRAFT' });
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: {
+            proposalId: first.proposalId,
+            candidateSetId: stored.candidateSetId,
+            draftRevision: 2,
+            geometrySha256: 'a'.repeat(64),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_CONTENT_MISMATCH' });
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(1);
+  });
+
+  it('lets only one of two concurrent picks of one candidate succeed', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    const consume = {
+      proposalId: first.proposalId,
+      candidateSetId: stored.candidateSetId,
+      draftRevision: 2,
+      geometrySha256: courseGeometrySha256(content.coordinates),
+    };
+    const settled = await Promise.allSettled([
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: consume,
+        },
+      ),
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: consume,
+        },
+      ),
+    ]);
+    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(2);
+  });
+
+  it('refuses an expired search and stops offering its candidates', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const stored = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId, { ttlSeconds: 1 }),
+    );
+    const first = stored.candidates[0];
+    const source = candidateSetInput(course.course.courseId).candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    // The shortest life the contract allows, then waited out. The expiry cannot be forced
+    // by writing to the row: the write-once trigger refuses that even for the table owner,
+    // which the immutability test below fixes in place.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(
+      await courses.readRouteCandidate(
+        athlete,
+        course.course.courseId,
+        stored.candidateSetId,
+        first.proposalId,
+      ),
+    ).toBeNull();
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      { ...source, coordinates: first.geometry.coordinates as [number, number][] },
+    );
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        content,
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: {
+            proposalId: first.proposalId,
+            candidateSetId: stored.candidateSetId,
+            draftRevision: 2,
+            geometrySha256: courseGeometrySha256(content.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_EXPIRED' });
+  });
+
+  it('bounds how many unsaved candidates one course may hold', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId, { count: 4 }),
+    );
+    await expect(
+      courses.storeRouteCandidateSet(
+        athlete,
+        candidateSetInput(course.course.courseId, { count: 4 }),
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' });
+  });
+
+  it('reclaims unsaved searches with the activity the course came from', async () => {
+    const mine = await athleteWithCourse('Target loop');
+    const other = await athleteWithCourse('Someone else');
+    await courses.storeRouteCandidateSet(
+      mine.athlete,
+      candidateSetInput(mine.course.course.courseId),
+    );
+    await courses.storeRouteCandidateSet(
+      other.athlete,
+      candidateSetInput(other.course.course.courseId),
+    );
+    await activities.deleteActivity(mine.athlete, mine.imported.activityId, {
+      expectedRevision: mine.imported.revision,
+    });
+    const remaining = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [mine.athlete],
+    );
+    expect(remaining.rows[0]?.['total']).toBe(0);
+    const theirs = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [other.athlete],
+    );
+    expect(theirs.rows[0]?.['total']).toBe(1);
+    const candidates = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_proposal WHERE athlete_id=$1',
+      [mine.athlete],
+    );
+    expect(candidates.rows[0]?.['total']).toBe(0);
+  });
+
+  it('removes a search when its course is deleted, and with the account', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    await courses.storeRouteCandidateSet(athlete, candidateSetInput(course.course.courseId));
+    await courses.remove(athlete, course.course.courseId, 1);
+    const afterDelete = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(afterDelete.rows[0]?.['total']).toBe(0);
+    const second = await athleteWithCourse('Target loop');
+    await courses.storeRouteCandidateSet(
+      second.athlete,
+      candidateSetInput(second.course.course.courseId),
+    );
+    const runtime = new Pool({ connectionString: runtimeUrl });
+    try {
+      const client = await runtime.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config($1,$2,true)', ['app.athlete_id', second.athlete]);
+        await client.query('SELECT public.erase_account($1)', [second.athlete]);
+        await client.query('COMMIT');
+      } finally {
+        client.release();
+      }
+    } finally {
+      await runtime.end();
+    }
+    const afterErase = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [second.athlete],
+    );
+    expect(afterErase.rows[0]?.['total']).toBe(0);
+  });
+
+  it('gives the runtime role no way to rewrite or remove a search', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const stored = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId),
+    );
+    const runtime = new Pool({ connectionString: runtimeUrl });
+    try {
+      const client = await runtime.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+        await expect(
+          client.query('UPDATE course_route_candidate_set SET search_seed=$1 WHERE athlete_id=$2', [
+            'aaaaaaaaaaaaaaaa',
+            athlete,
+          ]),
+        ).rejects.toThrow(/permission denied/);
+        await client.query('ROLLBACK');
+        await client.query('BEGIN');
+        await client.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+        await expect(
+          client.query('DELETE FROM course_route_candidate_set WHERE athlete_id=$1', [athlete]),
+        ).rejects.toThrow(/permission denied/);
+        await client.query('ROLLBACK');
+      } finally {
+        client.release();
+      }
+    } finally {
+      await runtime.end();
+    }
+    // Even the owner of the table cannot edit one: it is written once.
+    await expect(
+      admin.query(
+        'UPDATE course_route_candidate_set SET search_seed=$1 WHERE candidate_set_id=$2',
+        ['aaaaaaaaaaaaaaaa', stored.candidateSetId],
+      ),
+    ).rejects.toThrow(/IMMUTABLE_ROUTE_CANDIDATE_SET/);
+  });
+
+  it('refuses to save a second candidate from the same search', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const [first, second] = stored.candidates;
+    const [firstSource, secondSource] = input.candidates;
+    if (!first || !second || !firstSource || !secondSource) throw new Error('need two candidates');
+    const contentFor = (source: typeof firstSource) =>
+      candidateContent({ name: 'Target loop', lineage: course.revision.lineage }, stored, source);
+    await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      contentFor(firstSource),
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: {
+          proposalId: first.proposalId,
+          candidateSetId: stored.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(firstSource.coordinates),
+        },
+      },
+    );
+    // One search proposes several routes and the owner chooses ONE. The draft revision is
+    // stored, so it cannot tell a second choice apart: the search itself has to be spent.
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        2,
+        contentFor(secondSource),
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeCandidate: {
+            proposalId: second.proposalId,
+            candidateSetId: stored.candidateSetId,
+            draftRevision: 2,
+            geometrySha256: courseGeometrySha256(secondSource.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_CANDIDATE_ALREADY_CHOSEN' });
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(2);
+    const consumed = await admin.query(
+      `SELECT count(*)::int AS total FROM course_route_proposal
+       WHERE athlete_id=$1 AND candidate_set_id=$2 AND consumed_at IS NOT NULL`,
+      [athlete, stored.candidateSetId],
+    );
+    expect(consumed.rows[0]?.['total']).toBe(1);
+    // The siblings are spent with the search: nothing is left to offer or to pick.
+    expect(
+      await courses.readRouteCandidate(
+        athlete,
+        course.course.courseId,
+        stored.candidateSetId,
+        second.proposalId,
+      ),
+    ).toBeNull();
+  });
+
+  it('frees the proposal quota once a search has been spent', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId, { count: 4 });
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const firstSource = input.candidates[0];
+    if (!first || !firstSource) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      firstSource,
+    );
+    await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      content,
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: {
+          proposalId: first.proposalId,
+          candidateSetId: stored.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(content.coordinates),
+        },
+      },
+    );
+    // Three siblings are still unconsumed rows, but they can never be used: the search is
+    // spent. Counting them against the quota would stop the owner searching again.
+    const next = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId, { count: 4, draftRevision: 3 }),
+    );
+    expect(next.candidates).toHaveLength(4);
+    const remaining = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(remaining.rows[0]?.['total']).toBe(1);
+  });
+
+  it('never lets a candidate be saved through the plain proposal path', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const firstSource = input.candidates[0];
+    if (!first || !firstSource) throw new Error('no candidate');
+    // A candidate row IS a proposal row, which is how it inherits every rule migration 035
+    // established. It must not inherit the generic save with it: that path records
+    // `routed-waypoints` conditions, which carry no target, no seed and no evaluation, so a
+    // course saved through it could not say what search produced it.
+    expect(
+      await courses.readRouteProposal(athlete, course.course.courseId, first.proposalId),
+    ).toBeNull();
+    const head = await courses.headContent(athlete, course.course.courseId);
+    if (!head) throw new Error('missing head');
+    await expect(
+      courses.update(
+        athlete,
+        course.course.courseId,
+        1,
+        candidateContent(
+          { name: 'Target loop', lineage: course.revision.lineage },
+          stored,
+          firstSource,
+        ),
+        `pick-${randomUUID()}`,
+        undefined,
+        {
+          consumeProposal: {
+            proposalId: first.proposalId,
+            draftRevision: 2,
+            geometrySha256: courseGeometrySha256(firstSource.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_IS_CANDIDATE' });
+    const after = await courses.read(athlete, course.course.courseId);
+    if (after.status !== 'available') throw new Error('course went away');
+    expect(after.course.headRevision).toBe(1);
+  });
+
+  it('does not deadlock when a course is deleted while its searches are reaped', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const firstSource = input.candidates[0];
+    if (!first || !firstSource) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      firstSource,
+    );
+    await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      content,
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: {
+          proposalId: first.proposalId,
+          candidateSetId: stored.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(content.coordinates),
+        },
+      },
+    );
+
+    // The reaper removes a search and the cascade takes its candidates with it: search row
+    // first, candidate rows second. Course deletion removes the same rows through two
+    // foreign keys of its own, and nothing made it take them in that order. Two writers
+    // taking two rows in opposite orders is a deadlock, and it was one: 40P01.
+    //
+    // `reaperSide` stands where the reaper stands after it has locked the search and before
+    // the cascade reaches the candidates; `deleteSide` runs the real `delete_course`.
+    const reaperSide = await admin.connect();
+    const deleteRunner = new Pool({ connectionString: runtimeUrl });
+    try {
+      await reaperSide.query('BEGIN');
+      await reaperSide.query(
+        `SELECT 1 FROM course_route_candidate_set
+         WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
+        [athlete, stored.candidateSetId],
+      );
+      const deleteSide = await deleteRunner.connect();
+      const deletion = (async () => {
+        await deleteSide.query('BEGIN');
+        await deleteSide.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+        await deleteSide.query('SELECT public.delete_course($1,$2)', [course.course.courseId, 2]);
+        await deleteSide.query('COMMIT');
+      })();
+      // Give the deletion time to take whatever locks it is going to take first.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await reaperSide.query(
+        'DELETE FROM course_route_proposal WHERE athlete_id=$1 AND candidate_set_id=$2',
+        [athlete, stored.candidateSetId],
+      );
+      await reaperSide.query('COMMIT');
+      await deletion;
+      deleteSide.release();
+    } finally {
+      await reaperSide.query('ROLLBACK').catch(() => undefined);
+      reaperSide.release();
+      await deleteRunner.end();
+    }
+    const left = await admin.query(
+      'SELECT count(*)::int AS total FROM course WHERE athlete_id=$1 AND course_id=$2',
+      [athlete, course.course.courseId],
+    );
+    expect(left.rows[0]?.['total']).toBe(0);
+  });
+
+  it('erases an account without meeting the reaper head on', async () => {
+    // The third writer of the same two rows. Migration 035's erasure removes every proposal
+    // row first and reaches the searches afterwards through the course cascade, which is
+    // candidate-then-search — the opposite of everything else. One writer going the other
+    // way is all a deadlock needs.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const stored = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(course.course.courseId),
+    );
+    const reaperSide = await admin.connect();
+    const eraser = new Pool({ connectionString: runtimeUrl });
+    try {
+      await reaperSide.query('BEGIN');
+      await reaperSide.query(
+        `SELECT 1 FROM course_route_candidate_set
+         WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
+        [athlete, stored.candidateSetId],
+      );
+      const client = await eraser.connect();
+      const erasure = (async () => {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+        await client.query('SELECT public.erase_account($1)', [athlete]);
+        await client.query('COMMIT');
+      })();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await reaperSide.query(
+        'DELETE FROM course_route_proposal WHERE athlete_id=$1 AND candidate_set_id=$2',
+        [athlete, stored.candidateSetId],
+      );
+      await reaperSide.query('COMMIT');
+      await erasure;
+      client.release();
+    } finally {
+      await reaperSide.query('ROLLBACK').catch(() => undefined);
+      reaperSide.release();
+      await eraser.end();
+    }
+    const left = await admin.query(
+      `SELECT (SELECT count(*)::int FROM course WHERE athlete_id=$1) AS courses,
+              (SELECT count(*)::int FROM course_route_candidate_set WHERE athlete_id=$1) AS searches`,
+      [athlete],
+    );
+    expect(left.rows[0]?.['courses']).toBe(0);
+    expect(left.rows[0]?.['searches']).toBe(0);
+  });
+
+  it('serialises course deletion with a store-and-reap holding the tenant lock', async () => {
+    // The other half of the same hazard, one table further out. A store-and-reap holds the
+    // tenant lock, removes a spent search, then inserts a new one — and that insert needs a
+    // foreign-key share lock on the course row. Deletion used to take that course row
+    // exclusively without ever asking for the tenant lock, so the two could face each other
+    // across two different tables. Deletion now joins the same queue instead.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const runtime = new Pool({ connectionString: runtimeUrl });
+    try {
+      const writer = await runtime.connect();
+      await writer.query('BEGIN');
+      await writer.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+      await writer.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+      await admin.query(
+        'DELETE FROM course_route_candidate_set WHERE athlete_id=$1 AND candidate_set_id=$2',
+        [athlete, stored.candidateSetId],
+      );
+      // Deletion starts here and must wait for the tenant lock, not race ahead of it.
+      const deletion = courses.remove(athlete, course.course.courseId, 1);
+      const settled: string[] = [];
+      void deletion.then(
+        () => settled.push('deleted'),
+        (error: unknown) => settled.push(String((error as Error).message)),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(settled).toEqual([]);
+      await writer.query(
+        `INSERT INTO course_route_candidate_set(athlete_id,candidate_set_id,course_id,
+           draft_revision,request_id,target_distance_meters,search_seed,generator_version,
+           evaluation_version,bounds,search,created_at,expires_at)
+         VALUES($1,$2,$3,9,'req-serialise',5000,'feedfacefeedface','target-distance-loop-v1',1,
+           $4::jsonb,$5::jsonb,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
+        [
+          athlete,
+          randomUUID(),
+          course.course.courseId,
+          JSON.stringify(input.bounds),
+          JSON.stringify(input.search),
+        ],
+      );
+      await writer.query('COMMIT');
+      writer.release();
+      await expect(deletion).resolves.toEqual({ deleted: true });
+    } finally {
+      await runtime.end();
+    }
+    const left = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(left.rows[0]?.['total']).toBe(0);
+  });
+
+  it('keeps one tenant out of another tenant search', async () => {
+    const mine = await athleteWithCourse('Target loop');
+    const other = await athleteWithCourse('Someone else');
+    const stored = await courses.storeRouteCandidateSet(
+      mine.athlete,
+      candidateSetInput(mine.course.course.courseId),
+    );
+    const first = stored.candidates[0];
+    if (!first) throw new Error('no candidate');
+    expect(
+      await courses.readRouteCandidate(
+        other.athlete,
+        mine.course.course.courseId,
+        stored.candidateSetId,
+        first.proposalId,
+      ),
+    ).toBeNull();
+  });
+});
