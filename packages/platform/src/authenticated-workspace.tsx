@@ -224,7 +224,7 @@ export function createSessionTransport(
       assertLiveSession(session, expired, available);
       const path = apiPathSchema.parse(input.path);
       if (
-        !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard|gallery)(?:\/|\?|$)/.test(
+        !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard|gallery|courses)(?:\/|\?|$)/.test(
           path,
         )
       )

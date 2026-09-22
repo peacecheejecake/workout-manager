@@ -63,6 +63,12 @@ function setup(handler: (input: TransportRequest) => Promise<Reply>) {
   const request = vi.fn((input: TransportRequest) => {
     if (input.path === '/bff/v1/plans/current')
       return Promise.resolve(reply({ head: null, history: [] }));
+    // The delete confirmation reads the courses a deletion would reclaim (M2-01f) and
+    // cannot be confirmed until it has an answer.
+    if (input.path.endsWith('/deletion-impact'))
+      return Promise.resolve(
+        reply({ activityId: activity.id, digest: 'a'.repeat(64), courses: [], total: 0 }),
+      );
     if (input.path.includes('?')) return Promise.resolve(reply({ items: [], total: 0 }));
     return handler(input);
   });
@@ -350,6 +356,9 @@ describe('activity summary and source detail boundary', () => {
       });
       expect(await screen.findByRole('region', { name: '원본 관측 워크벤치' })).toBeVisible();
       await user.click(screen.getByRole('button', { name: '이 활동 로컬 삭제' }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: '이 활동 삭제 확인' })).toBeEnabled(),
+      );
       await user.click(screen.getByRole('button', { name: '이 활동 삭제 확인' }));
       await waitFor(() =>
         expect(

@@ -56,6 +56,9 @@ const GalleryPage = lazy(() =>
 const ActivitiesPage = lazy(() =>
   import('./activities-page').then((module) => ({ default: module.ActivitiesPage })),
 );
+const CoursePage = lazy(() =>
+  import('./course-page').then((module) => ({ default: module.CoursePage })),
+);
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)
@@ -109,11 +112,18 @@ createRoot(root).render(
           </nav>
           <TrackPreviewPage />
         </Suspense>
+      ) : location.pathname === '/courses' ? (
+        <Suspense fallback={<p role="status">코스 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/activities">활동</a> · <a href="/account">계정</a>
+          </nav>
+          <CoursePage />
+        </Suspense>
       ) : location.pathname === '/activities' ? (
         <Suspense fallback={<p role="status">활동 목록 준비 중</p>}>
           <nav aria-label="주요 화면">
-            <a href="/activities/track-preview">기록 파일 미리보기</a> ·{' '}
-            <a href="/planner">훈련 계획</a> · <a href="/account">계정</a>
+            <a href="/activities/track-preview">기록 파일 미리보기</a> · <a href="/courses">코스</a>{' '}
+            · <a href="/planner">훈련 계획</a> · <a href="/account">계정</a>
           </nav>
           <ActivitiesPage />
         </Suspense>

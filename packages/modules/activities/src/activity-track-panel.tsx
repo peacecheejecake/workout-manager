@@ -41,6 +41,7 @@ import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import { Button } from '@workout/ui-foundation/button';
 import { getLayoutMode, type LayoutMode } from '@workout/ui-foundation/responsive';
 import { StatusNotice } from '@workout/ui-foundation/status-notice';
+import { CourseFromSegment } from './course-from-segment';
 import { createDetailSelectionStore } from './detail-selection';
 import { useSharedDetailSelectionStore } from './detail-selection-provider';
 import { lapTimeRange, type TimeRange } from './detail-projection';
@@ -304,6 +305,8 @@ function StoredTrackArtifacts({
     <StoredTrackView
       recorded={artifacts.data.track}
       mapPath={artifacts.data.mapPath}
+      transport={transport}
+      activityId={track.activityId}
       details={details}
       basemap={basemap}
       onReload={reload}
@@ -317,6 +320,8 @@ function StoredTrackArtifacts({
 interface StoredTrackViewProps {
   readonly recorded: RecordedTrack;
   readonly mapPath: MapPath;
+  readonly transport: AuthenticatedTransport;
+  readonly activityId: string;
   readonly details: ActivityDetails | null;
   readonly basemap: BasemapDescriptor | null;
   readonly onReload: () => void;
@@ -328,6 +333,8 @@ interface StoredTrackViewProps {
 function StoredTrackView({
   recorded,
   mapPath,
+  transport,
+  activityId,
   details,
   basemap,
   onReload,
@@ -774,6 +781,20 @@ function StoredTrackView({
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {/*
+            A course can only be cut from a recording the server stored, so the section is
+            offered only when this geometry carries stored provenance.
+          */}
+          {mapPath.sourceRevision.kind === 'activity-source' ? (
+            <CourseFromSegment
+              transport={transport}
+              activityId={activityId}
+              trackRevision={mapPath.sourceRevision.trackRevision}
+              selectedSampleId={sampleId}
+              selectedIsDrawn={vertexIndex !== undefined}
+            />
           ) : null}
 
           <h4 id={`${tabsId}-samples`}>표본 목록</h4>

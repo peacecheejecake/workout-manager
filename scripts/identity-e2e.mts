@@ -32,6 +32,7 @@ import { createGalleryMediaRepository } from '../packages/server/persistence/src
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
+import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -61,6 +62,7 @@ import {
   grantIntegratedApprovalV4,
   grantGalleryMedia,
   grantActivityTracks,
+  grantCourses,
   grantResources,
   grantResourceRetrieval,
   grantCoachingRunWorker,
@@ -184,6 +186,7 @@ try {
     await grantResourceRetrieval(adminUrl, 'workout_runtime');
     await grantGalleryMedia(adminUrl, 'workout_runtime');
     await grantActivityTracks(adminUrl, 'workout_runtime');
+    await grantCourses(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(
@@ -327,6 +330,12 @@ try {
       tracks: createActivityTrackRepository(database),
       storage: resourceStorage,
       parser: createBoundedTrackParser(),
+    },
+    // The private course ledger reads the same stored derivative the route screen draws.
+    courses: {
+      courses: createCourseRepository(database),
+      tracks: createActivityTrackRepository(database),
+      storage: resourceStorage,
     },
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),

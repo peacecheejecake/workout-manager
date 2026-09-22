@@ -392,6 +392,30 @@ const collections = [
      segment_policy,distances,created_at`,
     'activity_id,track_revision',
   ],
+  // The private course ledger. Geometry is deliberately absent: identity, lineage, the
+  // generation conditions, vertex count, planned distance and the content digest are
+  // exported, and the coordinates come through the owner's authenticated GPX export. A
+  // course reclaimed with a deleted activity keeps its head row and has no revisions.
+  [
+    'courses',
+    'course',
+    `course_id,name,visibility,status,head_revision,revision_id,unavailable_reason,reclaimed_at,
+     created_at,updated_at`,
+    'created_at,course_id',
+  ],
+  [
+    'courseRevisions',
+    `(SELECT r.athlete_id,r.course_id,r.course_revision,r.revision_id,r.name,r.generation,
+        r.edit,r.vertex_count,r.distance_meters,r.content_digest,r.created_at,
+        (SELECT jsonb_agg(jsonb_build_object('activity_id',s.activity_id,'track_id',s.track_id,
+          'track_revision',s.track_revision) ORDER BY s.activity_id,s.track_id,s.track_revision)
+         FROM course_revision_source s WHERE s.athlete_id=r.athlete_id
+           AND s.course_id=r.course_id AND s.course_revision=r.course_revision) AS lineage
+      FROM course_revision r) course_revision`,
+    `course_id,course_revision,revision_id,name,generation,edit,vertex_count,distance_meters,
+     content_digest,created_at,lineage`,
+    'course_id,course_revision',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -458,7 +482,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 18,
+          schemaVersion: 19,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

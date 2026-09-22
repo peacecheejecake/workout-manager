@@ -16,7 +16,8 @@
     "@workout/contracts": "workspace:*",
     "@workout/server-identity": "workspace:*",
     "@workout/server-integrations": "workspace:*",
-    "@workout/server-track-storage": "workspace:*"
+    "@workout/server-track-storage": "workspace:*",
+    "@workout/server-courses": "workspace:*"
   },
   "exports": {
     "./app": "./src/app.ts",

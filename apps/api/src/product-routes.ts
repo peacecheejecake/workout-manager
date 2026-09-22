@@ -68,6 +68,7 @@ import {
 } from './activity-track-routes.js';
 import { registerResourceRetrievalRoutes } from './resource-retrieval-routes.js';
 import { registerRoutingRoutes, type WalkingRoutePort } from './routing-routes.js';
+import { registerCourseRoutes, type CourseServices } from './course-routes.js';
 import type { ResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
@@ -110,6 +111,8 @@ export interface ProductRepositories {
   activityTracks?: ActivityTrackServices;
   /** Internal pedestrian routing. Absent until an engine endpoint is configured. */
   walkingRoutes?: WalkingRoutePort;
+  /** Private course ledger. Absent until track storage is wired. */
+  courses?: CourseServices;
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -179,4 +182,5 @@ export function registerProductRoutes(
     registerActivityTrackRoutes(routes, repositories.activityTracks, principal);
   if (repositories.walkingRoutes)
     registerRoutingRoutes(routes, repositories.walkingRoutes, principal);
+  if (repositories.courses) registerCourseRoutes(routes, repositories.courses, principal);
 }

@@ -164,6 +164,21 @@ const accountExportV18Schema = accountExportV17Schema.extend({
     activityTrackRevisions: rows,
   }),
 });
+/**
+ * v19 adds the private course ledger. Course geometry is deliberately absent: the export
+ * carries course identity, revision identity, name, the generation conditions, the source
+ * lineage, vertex count, planned distance and the content digest, while the coordinates
+ * themselves are obtained through the owner's authenticated GPX export. Courses reclaimed
+ * with a deleted activity keep their head row and have no revisions, exactly as the read
+ * path reports them.
+ */
+const accountExportV19Schema = accountExportV18Schema.extend({
+  schemaVersion: z.literal(19),
+  data: accountExportV18Schema.shape.data.extend({
+    courses: rows,
+    courseRevisions: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -183,6 +198,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV16Schema,
   accountExportV17Schema,
   accountExportV18Schema,
+  accountExportV19Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

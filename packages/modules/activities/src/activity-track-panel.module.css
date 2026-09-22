@@ -111,3 +111,9 @@
 .samples li {
   margin-block: 0.125rem;
 }
+
+.course {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+}

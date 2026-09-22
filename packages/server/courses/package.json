@@ -1,0 +1,24 @@
+{
+  "name": "@workout/server-courses",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "exports": {
+    "./segment": "./src/segment.ts",
+    "./gpx": "./src/gpx.ts",
+    "./digest": "./src/digest.ts",
+    "./geo": "./src/geo.ts"
+  },
+  "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@workout/track-parsing": "workspace:*",
+    "tsx": "4.23.13"
+  }
+}

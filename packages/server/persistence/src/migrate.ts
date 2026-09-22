@@ -36,6 +36,7 @@ const migrationFiles = [
   '031_gallery_media.sql',
   '032_resource_retrieval.sql',
   '033_activity_track_storage.sql',
+  '034_course_ledger.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -219,6 +220,10 @@ export async function grantOperations(
     );
     // Track metadata only. Storage references are never part of the export projection.
     await pool.query(`GRANT SELECT ON activity_track,activity_track_revision TO "${runtimeRole}"`);
+    // Course identity, conditions and lineage. Geometry is not part of the projection.
+    await pool.query(
+      `GRANT SELECT ON course,course_revision,course_revision_source TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -759,6 +764,38 @@ export async function grantGalleryMedia(
        public.compact_gallery_upload_history(integer),
        public.tombstone_gallery_media_receipts(uuid)
        TO "${runtimeRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Private course ledger. The runtime role may read, append revisions and advance a head;
+ * it has no DELETE anywhere and no UPDATE on the status columns, so reclaiming a course
+ * and removing one are only possible through the bounded functions below.
+ */
+export async function grantCourses(connectionString: string, runtimeRole: string): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT ON course,course_revision,course_revision_source TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT UPDATE(name,head_revision,revision_id,updated_at) ON course TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT ON activity_canonical,activity_source_head,activity_suppression,
+       activity_track,activity_track_revision TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.delete_course(uuid,integer),
+       public.courses_affected_by_activity_deletion(uuid),
+       public.activity_course_impact(uuid),
+       public.activity_course_impact_digest(uuid) TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

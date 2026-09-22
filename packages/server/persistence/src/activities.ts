@@ -67,7 +67,11 @@ export interface ActivityRepository {
   getActivityDetails(athleteId: string, id: string): Promise<ActivityDetailsRead | null>;
   getActivity(athleteId: string, id: string): Promise<Activity | null>;
   updateOverlay(athleteId: string, id: string, input: ActivityOverlayWrite): Promise<Activity>;
-  deleteActivity(athleteId: string, id: string, input: { expectedRevision: number }): Promise<void>;
+  deleteActivity(
+    athleteId: string,
+    id: string,
+    input: { expectedRevision: number; expectedCourseImpact?: string | undefined },
+  ): Promise<void>;
   summary(athleteId: string): Promise<ActivitySummary>;
 }
 async function validatePlanLink(tx: Transaction, report: ActivityReportValues) {
@@ -415,6 +419,18 @@ export function createActivityRepository(
         const revision = z.number().int().parse(row['revision']);
         if (revision !== command.expectedRevision)
           throw new PersistenceConflict('REVISION_CONFLICT');
+        // The list of courses this deletion reclaims is re-validated here, inside the same
+        // transaction that writes the tombstone, because the Activity revision above does
+        // not move when a course is cut from this activity. Only commands that carried a
+        // confirmed list are checked; a caller that never showed one is unaffected.
+        if (command.expectedCourseImpact !== undefined) {
+          const impact = await tx.query(
+            'SELECT public.activity_course_impact_digest($1) AS digest',
+            [id],
+          );
+          if (z.string().parse(impact.rows[0]?.['digest']) !== command.expectedCourseImpact)
+            throw new PersistenceConflict('COURSE_IMPACT_CHANGED');
+        }
         await tx.query(
           'INSERT INTO activity_suppression(athlete_id,kind,source_id) SELECT athlete_id,kind,source_id FROM activity_source_head WHERE athlete_id=$1 AND activity_id=$2 ON CONFLICT DO NOTHING',
           [athleteId, id],

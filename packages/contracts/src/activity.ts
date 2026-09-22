@@ -225,6 +225,18 @@ export const activityOverlayWriteSchema = z
   );
 export const activityDeleteSchema = z.strictObject({
   expectedRevision: z.number().int().min(1).max(2147483646),
+  /**
+   * Digest of the affected-course list the user actually confirmed (M2-01f).
+   *
+   * The Activity revision does not change when a course is cut from it, so it cannot
+   * stand for "the list you were shown is still the list". This is checked inside the
+   * deletion transaction, and a list that changed under the user is refused rather than
+   * reclaiming a course they never saw.
+   */
+  expectedCourseImpact: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 });
 export const activitySchema = z.strictObject({
   id: z.uuid(),

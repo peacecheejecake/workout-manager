@@ -41,6 +41,7 @@ import {
   grantResourceRetrieval,
   grantGalleryMedia,
   grantActivityTracks,
+  grantCourses,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -66,6 +67,7 @@ import {
   processOneResourceObjectCleanup,
 } from '../packages/server/persistence/src/resource-object-cleanup.js';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
+import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
 import {
   createResourceUrlIngestionRepository,
@@ -581,6 +583,7 @@ async function execute() {
     await grantResourceRetrieval(url('drill_source'), 'drill_runtime');
     await grantGalleryMedia(url('drill_source'), 'drill_runtime');
     await grantActivityTracks(url('drill_source'), 'drill_runtime');
+    await grantCourses(url('drill_source'), 'drill_runtime');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -920,7 +923,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 18);
+      assert.equal(before.schemaVersion, 19);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -982,7 +985,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 18) throw new Error('Expected coaching export v18');
+      if (coachingExport.schemaVersion !== 19) throw new Error('Expected coaching export v19');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1049,6 +1052,8 @@ async function execute() {
         resourceCitations: _resourceCitations,
         activityTracks: _activityTracks,
         activityTrackRevisions: _activityTrackRevisions,
+        courses: _courses,
+        courseRevisions: _courseRevisions,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1152,7 +1157,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 18) throw new Error('Expected candidate export v18');
+      if (candidateExport.schemaVersion !== 19) throw new Error('Expected candidate export v19');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1402,6 +1407,92 @@ async function execute() {
       doomedImport.revision,
       'deleted-after-backup',
     );
+
+    // Private courses cut from those recordings (M2-01f). One belongs to the retained
+    // activity and must come back intact; two belong to the activity deleted after the
+    // backup — the second is an independently named copy — and the replayed suppression
+    // has to reclaim both, or a restore would be a way around deletion.
+    const courseRepo = createCourseRepository(sourceDb);
+    const courseContent = (
+      activityId: string,
+      trackId: string,
+      name: string,
+      edit:
+        | { kind: 'created' }
+        | { kind: 'copied'; copiedFromCourseId: string; copiedFromRevision: number },
+    ) => {
+      const start: [number, number] = [127.02, 37.5];
+      const finish: [number, number] = [127.0201, 37.5001];
+      const line: [number, number][] = [start, finish];
+      return {
+        name,
+        coordinates: line,
+        waypoints: [
+          { role: 'start' as const, position: start, name: null, sourceSampleId: '0:0' },
+          { role: 'finish' as const, position: finish, name: null, sourceSampleId: '0:1' },
+        ],
+        generation: {
+          kind: 'recorded-segment' as const,
+          activityId,
+          trackId,
+          trackRevision: 1,
+          lineIndex: 0,
+          segmentIndex: 0,
+          startSampleId: '0:0',
+          endSampleId: '0:1',
+          vertexCount: 2,
+          mapPathContentSha256: 'c'.repeat(64),
+          simplificationVersion: 1 as const,
+          toleranceMeters: 2.5,
+        },
+        edit,
+        lineage: [{ activityId, trackId, trackRevision: 1 }],
+        distanceMeters: 14.2,
+        contentDigest: createHash('sha256').update(`${activityId}:${name}`).digest('hex'),
+      };
+    };
+    const retainedTrackId = (
+      await source.query<{ track_id: string }>(
+        'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
+        [retainedAthlete, retainedFixture.activityId],
+      )
+    ).rows[0]?.track_id;
+    const doomedTrackId = (
+      await source.query<{ track_id: string }>(
+        'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
+        [retainedAthlete, doomedImport.activityId],
+      )
+    ).rows[0]?.track_id;
+    assert.ok(retainedTrackId && doomedTrackId);
+    const retainedCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(retainedFixture.activityId, retainedTrackId, 'Retained drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    assert.equal(retainedCourse.status, 'available');
+    if (retainedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const doomedCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(doomedImport.activityId, doomedTrackId, 'Doomed drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    assert.equal(doomedCourse.status, 'available');
+    if (doomedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const doomedCourseCopy = await courseRepo.create(
+      retainedAthlete,
+      courseContent(doomedImport.activityId, doomedTrackId, 'Doomed drill course copy', {
+        kind: 'copied',
+        copiedFromCourseId: doomedCourse.course.courseId,
+        copiedFromRevision: 1,
+      }),
+      `course-${randomUUID()}`,
+    );
+    assert.equal(doomedCourseCopy.status, 'available');
+    if (doomedCourseCopy.status !== 'available') throw new Error('COURSE_SEED_FAILED');
 
     // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
     // single lexical token so the 'simple' text search matches both bodies.
@@ -2343,7 +2434,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 18);
+    assert.ok(constraintExport.schemaVersion === 19);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -2378,7 +2469,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
+    if (withdrawnExport.schemaVersion !== 19) throw new Error('Expected evidence export v19');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -2430,7 +2521,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
+    if (absentExport.schemaVersion !== 19) throw new Error('Expected evidence export v19');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -2614,6 +2705,43 @@ async function execute() {
       assert.equal(await restoredObjectStorage.stat(artifact.storageRef), null);
     for (const artifact of retainedTrack.artifacts)
       assert.ok(await restoredObjectStorage.stat(artifact.storageRef));
+    // Courses restored with the cluster. The retained one is intact; the two derived from
+    // the deleted activity were reclaimed by the replayed suppression, and what is left is
+    // an explicitly unavailable reference with no geometry and no revisions.
+    const restoredCourses = createCourseRepository(restoreDb);
+    const restoredRetainedCourse = await restoredCourses.read(
+      retainedAthlete,
+      retainedCourse.course.courseId,
+    );
+    assert.equal(restoredRetainedCourse.status, 'available');
+    if (restoredRetainedCourse.status !== 'available') throw new Error('COURSE_RESTORE_FAILED');
+    assert.equal(restoredRetainedCourse.revision.name, 'Retained drill course');
+    assert.deepEqual(restoredRetainedCourse.revision.geometry.coordinates, [
+      [127.02, 37.5],
+      [127.0201, 37.5001],
+    ]);
+    assert.deepEqual(restoredRetainedCourse.revision.lineage, [
+      { activityId: retainedFixture.activityId, trackId: retainedTrackId, trackRevision: 1 },
+    ]);
+    checks.push('private_course_head_revision_geometry_and_lineage_restored_together');
+    for (const reclaimed of [doomedCourse.course.courseId, doomedCourseCopy.course.courseId]) {
+      const read = await restoredCourses.read(retainedAthlete, reclaimed);
+      assert.equal(read.status, 'unavailable');
+      if (read.status !== 'unavailable') throw new Error('COURSE_RECLAIM_FAILED');
+      assert.equal(read.course.reason, 'source_activity_deleted');
+      assert.ok(!JSON.stringify(read).includes('127.02'));
+    }
+    assert.equal(
+      (
+        await restored.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM course_revision
+           WHERE athlete_id=$1 AND course_id=ANY($2::uuid[])`,
+          [retainedAthlete, [doomedCourse.course.courseId, doomedCourseCopy.course.courseId]],
+        )
+      ).rows[0]?.count,
+      0,
+    );
+    checks.push('restored_activity_deletion_reclaims_derived_courses_and_their_copies');
     checks.push('restored_activity_deletion_refuses_read_download_export_and_reimport');
     checks.push('restored_activity_deletion_reclaims_track_objects_through_the_cleanup_worker');
     checks.push('retained_tenant_consent_and_activity_readable_through_runtime_rls');
@@ -2631,7 +2759,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 18) throw new Error('Expected resource export v18');
+    if (retainedExport.schemaVersion !== 19) throw new Error('Expected resource export v19');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -2691,7 +2819,26 @@ async function execute() {
       !JSON.stringify(retainedExport.data.activityTrackRevisions).includes('private/v1/tenants'),
     );
     assert.ok(!JSON.stringify(retainedExport).includes(trackRaw.storageRef));
-    checks.push('restored_activity_track_reproduced_in_export_v18_without_storage_refs');
+    // v19 course collections: identity, lineage and the content digest, never a coordinate.
+    assert.equal(retainedExport.data.courses.length, 3);
+    assert.equal(
+      retainedExport.data.courses.filter((row) => row['status'] === 'unavailable').length,
+      2,
+    );
+    assert.deepEqual(
+      retainedExport.data.courseRevisions.map((row) => row['course_id']),
+      [retainedCourse.course.courseId],
+    );
+    assert.deepEqual(retainedExport.data.courseRevisions[0]?.['lineage'], [
+      {
+        activity_id: retainedFixture.activityId,
+        track_id: retainedTrackId,
+        track_revision: 1,
+      },
+    ]);
+    assert.ok(!JSON.stringify(retainedExport.data.courseRevisions).includes('127.02'));
+    checks.push('restored_courses_reproduced_in_export_v19_without_coordinates');
+    checks.push('restored_activity_track_reproduced_in_export_v19_without_storage_refs');
     checks.push('restored_access_shares_audit_and_gallery_media_reproduced_in_export');
     checks.push('restored_retrieval_passages_grounding_and_citations_reproduced_without_bodies');
 
@@ -2962,7 +3109,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 18) throw new Error('Expected coaching export v18');
+    if (retainedExport.schemaVersion !== 19) throw new Error('Expected coaching export v19');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -3094,7 +3241,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 18) throw new Error('Expected coaching export v18');
+    if (coachingAfterReplay.schemaVersion !== 19) throw new Error('Expected coaching export v19');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -3270,7 +3417,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 18) throw new Error('Expected evidence export v18');
+    if (scrubbedExport.schemaVersion !== 19) throw new Error('Expected evidence export v19');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

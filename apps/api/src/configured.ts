@@ -26,6 +26,7 @@ import { createDashboardRepository } from '@workout/server-persistence/dashboard
 import { createOperationsRepository } from '@workout/server-persistence/operations';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
+import { createCourseRepository } from '@workout/server-persistence/courses';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
@@ -168,6 +169,11 @@ export async function createConfiguredApi(environment: unknown) {
       resourceUrls: createResourceUrlIngestionRepository(database),
       galleryMedia: {
         media: createGalleryMediaRepository(database),
+        storage: resourceStorage,
+      },
+      courses: {
+        courses: createCourseRepository(database),
+        tracks: createActivityTrackRepository(database),
         storage: resourceStorage,
       },
       activityTracks: {

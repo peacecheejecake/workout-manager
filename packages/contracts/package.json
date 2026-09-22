@@ -165,6 +165,10 @@
       "types": "./src/activity-tracks.ts",
       "default": "./dist/activity-tracks.js"
     },
+    "./courses": {
+      "types": "./src/courses.ts",
+      "default": "./dist/courses.js"
+    },
     "./routing": {
       "types": "./src/routing.ts",
       "default": "./dist/routing.js"

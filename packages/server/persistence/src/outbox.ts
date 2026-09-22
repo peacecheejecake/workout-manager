@@ -9,7 +9,13 @@ const eventSchema = z.object({
 });
 export type OutboxEvent = z.infer<typeof eventSchema>;
 export class PersistenceConflict extends Error {
-  constructor(public readonly code: 'REVISION_CONFLICT' | 'IDEMPOTENCY_CONFLICT') {
+  constructor(
+    public readonly code:
+      | 'REVISION_CONFLICT'
+      | 'IDEMPOTENCY_CONFLICT'
+      /** The affected-course list a deletion confirmed is no longer the current one. */
+      | 'COURSE_IMPACT_CHANGED',
+  ) {
     super(code);
   }
 }

@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 18,
+    schemaVersion: 19,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -690,16 +690,20 @@ it('parses the currently integrated export version without dropping access facts
       resourceCitations: [],
       activityTracks: [],
       activityTrackRevisions: [],
+      courses: [],
+      courseRevisions: [],
     },
   });
-  if (current.schemaVersion !== 18) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 19) throw new Error('Expected the integrated export version');
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
   expect(current.data.resourcePassages).toEqual([]);
   expect(current.data.resourceCitations).toEqual([]);
   expect(current.data.activityTracks).toEqual([]);
   expect(current.data.activityTrackRevisions).toEqual([]);
-  // v18 requires every retrieval and track collection: an absent one is not an empty one.
+  expect(current.data.courses).toEqual([]);
+  expect(current.data.courseRevisions).toEqual([]);
+  // v19 requires every retrieval, track and course collection: an absent one is not empty.
   for (const missing of [
     'resourcePassages',
     'resourceGroundings',
@@ -707,6 +711,8 @@ it('parses the currently integrated export version without dropping access facts
     'resourceCitations',
     'activityTracks',
     'activityTrackRevisions',
+    'courses',
+    'courseRevisions',
   ] as const)
     expect(
       accountExportSchema.safeParse({
@@ -714,13 +720,24 @@ it('parses the currently integrated export version without dropping access facts
         data: { ...current.data, [missing]: undefined },
       }).success,
     ).toBe(false);
+  // A v18 artifact is still read unchanged and never gains manufactured course rows.
+  const eighteen = accountExportSchema.parse({
+    ...current,
+    schemaVersion: 18,
+    data: Object.fromEntries(
+      Object.entries(current.data).filter(([key]) => !['courses', 'courseRevisions'].includes(key)),
+    ),
+  });
+  expect(eighteen.schemaVersion).toBe(18);
+  expect(eighteen.data).not.toHaveProperty('courses');
   // A v17 artifact is still read unchanged and never gains manufactured track rows.
   const seventeen = accountExportSchema.parse({
     ...current,
     schemaVersion: 17,
     data: Object.fromEntries(
       Object.entries(current.data).filter(
-        ([key]) => !['activityTracks', 'activityTrackRevisions'].includes(key),
+        ([key]) =>
+          !['activityTracks', 'activityTrackRevisions', 'courses', 'courseRevisions'].includes(key),
       ),
     ),
   });
@@ -740,6 +757,8 @@ it('parses the currently integrated export version without dropping access facts
             'resourceCitations',
             'activityTracks',
             'activityTrackRevisions',
+            'courses',
+            'courseRevisions',
           ].includes(key),
       ),
     ),

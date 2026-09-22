@@ -21,6 +21,7 @@ export default defineConfig({
             'packages/track-parsing/tests/**/*.test.ts',
             'packages/server/integrations/tests/**/*.test.ts',
             'packages/server/track-storage/tests/**/*.test.ts',
+            'packages/server/courses/tests/**/*.test.ts',
             'apps/worker/tests/**/*.test.ts',
           ],
           exclude: ['**/*.integration.test.ts'],

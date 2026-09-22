@@ -44,6 +44,7 @@
     "./session-completions": "./src/session-completions.ts",
     "./activities": "./src/activities.ts",
     "./activity-tracks": "./src/activity-tracks.ts",
+    "./courses": "./src/courses.ts",
     "./operations": "./src/operations.ts",
     "./garmin": "./src/garmin.ts",
     "./check-ins": "./src/check-ins.ts",
