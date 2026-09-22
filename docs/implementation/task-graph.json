@@ -1073,8 +1073,9 @@
       "title": "저장 활동 지도·차트",
       "dependsOn": ["M2-01c", "M2-01d", "M1-04au"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "S09 recorded viewer·sample 선택·두 shell·계정 lifetime·반응형"
+      "status": "completed",
+      "scope": "S09 recorded viewer·sample 선택·두 shell·계정 lifetime·반응형",
+      "evidence": "docs/implementation/progress/M2-01e.md"
     },
     {
       "id": "M2-01f",

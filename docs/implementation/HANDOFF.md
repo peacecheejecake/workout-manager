@@ -17,55 +17,49 @@
 
 ## 완료된 최신 작업
 
-[M2-01c](progress/M2-01c.md)를 완료했다. preview한 FIT/GPX가 저장된 track이 된다 — 원본
-bytes·정규화 기록·지도 파생물이 불변 revision에 묶인 private 객체가 되고, 기존 reserve →
-prepare → stage → finalize 수명주기와 tenant RLS·서버 생성 key·durable cleanup manifest를
-그대로 쓴다. 서버는 클라이언트 preview를 신뢰하지 않고 같은 규칙으로 재파싱·재검증한다.
+[M2-01e](progress/M2-01e.md)를 완료했다. 활동 상세의 경로 탭이 서버가 저장한 `map_path`·
+정규화 객체를 재조회해 자체 호스팅 배경 지도 위에 그린다 — **저장된 track의 첫 실브라우저
+증거**다(M2-01c는 UI를 바꾸지 않았고 M2-01b의 증거는 저장 전 preview였다).
 
-**이월 부채 두 건을 여기서 갚았다.**
+탭은 3패널이다. desktop은 그래프와 지도를 나란히, mobile은 3탭, tablet은 스택이다. 그래프는
+같은 `DetailChart`가 같은 selection store에 쓰므로 chart·lap·sample 선택이 **표시 인덱스가
+아니라 저장된 sample id로** 서로를 가리키고, lap·구간 선택은 덮이는 표본을 별도 path로
+강조하되 gap을 잇지 않는다.
 
-실제 메모리 상한: M2-01a의 예산은 작업량 상한이었고 M2-01b는 브라우저에 per-worker heap
-상한이 없어 닫지 못했다. Node worker는 걸 수 있지만 **실제로 적용됐을 때만**이다 — ceiling
-32 MiB인데 부모가 `--max-old-space-size`로 뜨면 조용히 무력화되는 것을 재현했다. 옵션은
-CLI·`NODE_OPTIONS`·wrapper·`setFlagsFromString` 어디로든 들어오므로 문자열 검사는 가드가
-아니다. 그래서 **worker가 실제로 받은 heap 한도를 보고**하고 명시한 예산과 일치할 때만
-bytes를 보낸다. 보장은 "요청한 ceiling이 적용됐다"가 아니라 **"worker 총 heap이 명시한 예산
-이하"**로 적었다.
+**대응 규칙을 두 번 틀렸고 둘 다 기록했다.** 처음엔 양방향 모두 같은 시각의 첫 항목을 골라
+표본 0:1 선택이 관측 0을 거쳐 0:0으로 옮겨갔다. 두 번째는 표본 쪽 유일성만 검사해, 한 시각에
+관측이 2개면 마커를 찍어 놓고 역방향 클릭이 연결을 거부해 관측 선택이 사라졌다. 지금은 한
+시각이 **정확히 한 표본과 정확히 한 관측**을 가리킬 때만 확정하고, 아니면 어느 쪽이 붐비는지
+말하며 선택을 움직이지 않는다.
 
-재파싱 = 새 revision: 주석으로만 있던 규칙을 강제했다. parser 신원과 각 sample의 id·index·
-시각·좌표·detailLink를 묶은 대응 digest를 revision에 저장하고, revision은 append-only
-trigger, head는 +1 전이만 허용한다.
+chart 대응이 저장된 링크가 아니라 **기록 시각** 기준인 이유는 `normalize.ts`가 `detailLink`를
+항상 null로 두기 때문이다. 이를 고치면 대응 digest가 바뀌어 **새 track revision**이 되므로
+M2-01c 저장 내부에 손대지 않고 보고만 했다. 이 항목은 M2-01f 이후 별도로 판단한다.
 
-**검토의 대부분은 한 질문에 쓰였다 — 객체가 그것을 회수할 기록보다 오래 살 수 있는가.**
-네 가지 경로로 가능했고 전부 재현 후 고쳤다: fence를 통과한 writer가 삭제·cleanup 완료 후
-publish / upload 만료로 receipt가 영구 종료된 뒤 재개한 writer의 publish / compaction이
-intent를 지우면 참조가 모든 후보 원장에서 사라짐 / 중복 업로드가 bytes를 등록하지 않아
-삭제-재시도 반복이 backlog 예산을 우회. 지금은 객체를 드러내기 직전마다 fence를 재확인하고,
-writer가 재개 가능한 동안 cleanup이 receipt를 재무장하며, byte 원장이 객체와 intent를 참조
-기준으로 합집합하고, **영속 per-reference 색인이 compaction보다 오래 남아** 대조 sweep이
-늦은 write를 찾는다.
+`current.json`은 변경 가능한 pointer이므로 `no-store`로 서빙하고, 일주일 immutable 정책은
+deployment별 자산에만 남겼다.
 
-그 sweep 자체도 두 번 경계가 틀렸다. 객체 key 나열은 반환 key만 묶어 **예산 1에 빈 디렉터리
-1,001개를 읽었고**, 원장으로 옮기자 순회는 사라졌지만 **1행을 돌려주려 498행을 스캔**했다.
-지금은 참조 색인의 keyset window를 읽으며, 원장 테이블이 행을 하나도 내놓지 않는다는 것을
-트랜잭션 통계로 측정해 시험으로 고정했다.
+검증은 typecheck 32 task, unit 246 files/2,743 tests, 실제 PostgreSQL integration
+44 files/403 tests, build 14 task, drill 51 checks, **identity E2E 146 passed / 0 failed**를
+통과했다. Aside가 실제 OIDC 로그인 → 실제 API로 FIT 저장 → 새 페이지 로드 재조회까지 몰아
+서울 도심 자체 타일 위 경로 feature 3개, **끊긴 구간이 직선으로 이어지지 않음**, 기기 거리
+640m와 GPS 재계산 213m 분리, 선택 왕복을 확인했다. Aside는 viewport를 바꿀 수 없어
+320~1280px와 420px pane은 Playwright로 확인했다.
 
-**늦은 publication은 막지 못한다** — 객체 저장소에 조건부 쓰기가 없다 — 회수로만 보장하며,
-그 회수의 경계도 문서에 적었다: 1시간 grace는 절대 상한이 아니고, sweep은 즉시가 아니라 몇
-번의 실행 안에 따라잡으며, 참조 감시 해제의 7일은 상한이 아닌 바닥값이고, 서버가 기록하지
-않은 key는 범위 밖이다.
+**별도 커밋으로 identity suite를 복구했다.** 계정 export가 v15→v18로 오르는 동안 spec 기대값이
+갱신되지 않아 main이 8건 red였다. 원인 커밋들이 format·lint·typecheck·unit·integration·drill만
+돌리고 **identity suite를 돌리지 않은 것**이 이유다. export 리터럴 6곳을 한 helper로 모으고
+(단언 내용 불변), storage spec 2건은 오히려 강화했다. 9 failed/131 passed → **146 passed/0 failed**.
+**앞으로 커밋 전 검증에 identity suite를 반드시 포함한다.**
 
-검증은 typecheck 32/32, unit 242 files/2,688 tests, 실제 PostgreSQL integration
-44 files/403 tests(2회 동일), build 14 task, backup/restore drill **51 checks**를 통과했다.
-drill은 백업 이후 활동을 삭제해 복원된 런타임이 read·download·export·재수입을 모두 거절하고
-객체가 회수되는 것까지 검증하도록 확장했다. 계정 export는 v18이다.
+미충족으로 남긴 것: 경로 탭의 lap 표, 차트 드래그 범위 선택, hover 추종 마커, 장기 track 성능
+측정, 그리고 배경 지도 서빙은 개발·검증 배선이지 운영 호스팅이 아니다.
 
 ## 다음 ready 작업
 
-**M2-01e 저장 활동 지도·차트**가 다음 직렬 작업이다. M2-01c의 저장된 track과 M2-01d의
-basemap을 S09 화면에 연결하고 chart·lap·sample 선택을 잇는다. 이 노드가 **저장된 track의
-첫 실브라우저 증거**를 만든다 — M2-01c는 UI를 바꾸지 않아 브라우저 검증이 없고, M2-01b의
-증거는 저장 전 preview에 대한 것이다.
+**M2-01f 기록→Course**가 다음 직렬 작업이다. 저장된 track에서 명시 구간을 선택해 Course를
+만들고 불변 version·GPX export·private 기본값을 구현한다. 원본 actual은 불변이어야 하고 동시
+수정은 CAS로 막는다. Course revision 회수 대상이 생기므로 M2-01c의 삭제·회수 경로와 연결된다.
 
 ## 남은 외부·실환경 gate
 
