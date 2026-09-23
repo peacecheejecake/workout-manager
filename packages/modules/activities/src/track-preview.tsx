@@ -136,10 +136,6 @@ function PreviewLifetime({
     revision: string;
     status: MapViewStatus;
   } | null>(null);
-
-  // The report is tied to the geometry it describes, so a new recording shows no count
-  // until its own renderer reports one. No effect resets it.
-  const [rendered, setRendered] = useState<{ revision: string; count: number } | null>(null);
   const running = useRef<AbortController | null>(null);
   // The generation lives in a ref so two file choices in the same tick cannot share one.
   const generationRef = useRef(0);
@@ -236,20 +232,9 @@ function PreviewLifetime({
     },
     [revision],
   );
-  const onRenderIdle = useCallback(
-    (info: { renderedPathFeatures: number }) => {
-      if (revision === null) return;
-      setRendered((current) =>
-        current?.revision === revision && current.count === info.renderedPathFeatures
-          ? current
-          : { revision, count: info.renderedPathFeatures },
-      );
-    },
-    [revision],
-  );
-  const renderedFeatures = rendered && rendered.revision === revision ? rendered.count : 0;
   const mapUnavailable =
-    statusReport?.revision === revision && statusReport.status === 'unavailable';
+    statusReport?.revision === revision &&
+    (statusReport.status === 'unavailable' || statusReport.status === 'not-drawn');
   const selectedSampleId =
     state.selection && geometry
       ? (geometry.vertexSampleIds[state.selection.vertexIndex] ?? null)
@@ -477,19 +462,20 @@ function PreviewLifetime({
                 지도를 표시하지 못했습니다. 아래 표본 목록과 위 요약은 그대로 사용할 수 있습니다.
               </p>
             }
-            onRenderIdle={onRenderIdle}
             {...(adapterFactory ? { createAdapter: adapterFactory } : {})}
             {...(mapView ? { mapView } : {})}
           />
-          {rendered && rendered.revision === revision ? (
-            <p role="status" className={styles.note}>
-              {renderedFeatures > 0
-                ? `지도가 경로를 그렸습니다 (렌더된 경로 feature ${renderedFeatures}개).`
-                : '지도가 아직 경로를 그리지 않았습니다.'}
-            </p>
-          ) : null}
+          {/*
+            Whether the path is drawn is the map's own status line, which is tied to what
+            the renderer actually drew. This screen adds only what it owns: the summary
+            and the sample list stay usable when the map cannot show the path.
+          */}
+          {/*
+            Not a second live region: the map's own status line already announces that it
+            could not show the path (review N6). This only adds what the screen owns.
+          */}
           {mapUnavailable ? (
-            <p role="status" className={styles.note}>
+            <p className={styles.note}>
               지도를 표시하지 못했습니다. 아래 표본 목록과 위 요약은 그대로 사용할 수 있습니다.
             </p>
           ) : null}

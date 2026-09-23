@@ -15,6 +15,7 @@
     "./basemap": "./src/basemap.ts",
     "./map-adapter": "./src/map-adapter.ts",
     "./maplibre-adapter": "./src/maplibre-adapter.ts",
-    "./map-view": "./src/map-view.tsx"
+    "./map-view": "./src/map-view.tsx",
+    "./render-evidence": "./src/render-evidence.ts"
   }
 }

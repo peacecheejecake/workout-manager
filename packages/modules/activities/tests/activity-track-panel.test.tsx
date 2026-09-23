@@ -287,10 +287,16 @@ describe('stored activity track renderer failures', () => {
   it('separates an unusable renderer from a background map that would not load', async () => {
     const probe = adapterProbe();
     renderPanel({ handler: available(), probe });
-    expect(await screen.findByText(/렌더된 경로 feature|지도 표시 중/)).toBeVisible();
+    expect(
+      await screen.findByText(/경로를 그리는 중입니다|지도에 경로를 표시했습니다/),
+    ).toBeVisible();
     act(() => probe.options()?.onFailure('CONTEXT_LOST'));
     expect(await screen.findByText(/지도 렌더러\(WebGL\)를 사용할 수 없습니다/)).toBeVisible();
     expect(screen.queryByText(/배경 지도를 불러오지 못했습니다/)).toBeNull();
+    // Announced once, by the map's own status line (review N6).
+    expect(
+      screen.getAllByRole('status').filter((element) => /WebGL/.test(element.textContent ?? '')),
+    ).toHaveLength(1);
   });
 
   it('reports a background map failure as its own state', async () => {

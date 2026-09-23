@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
+import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
+import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 import { CourseWorkbench } from '../src/course-workbench';
 
 type Reply = Awaited<ReturnType<AuthenticatedTransport['request']>>;
@@ -383,5 +385,133 @@ describe('S13 responsive composition', () => {
       expect(screen.getByRole('list', { name: '경유점 목록' }).children).toHaveLength(3),
     );
     expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
+  });
+});
+
+/**
+ * M2-01q. Switching courses fits the new course (plan §5: "최초/활동 전환/전체 보기"), and
+ * the course map's own status line says the line is shown only once the renderer drew it.
+ */
+describe('course map viewport and status', () => {
+  const busanId = '66666666-6666-4666-8666-666666666666';
+  const busanHead = { ...head, courseId: busanId, name: 'Busan line' };
+  const busanRevision = {
+    ...revision,
+    courseId: busanId,
+    name: 'Busan line',
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [129.06, 35.15],
+        [129.068, 35.151],
+      ],
+    },
+    waypoints: [
+      { role: 'start', position: [129.06, 35.15], name: null, sourceSampleId: '0:0' },
+      { role: 'finish', position: [129.068, 35.151], name: null, sourceSampleId: '0:3' },
+    ],
+  };
+
+  function renderWithAdapter() {
+    const renderers: {
+      fitBounds: ReturnType<typeof vi.fn>;
+      idle: (info: MapRenderIdleInfo) => void;
+    }[] = [];
+    const factory: MapAdapterFactory = async (options) => {
+      const fitBounds = vi.fn();
+      renderers.push({ fitBounds, idle: (info) => options.onIdle?.(info) });
+      options.onReady();
+      return {
+        setPaths: vi.fn(),
+        setSelection: vi.fn(),
+        fitBounds,
+        resize: vi.fn(),
+        destroy: vi.fn(),
+      };
+    };
+    const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
+      if (input.path === '/bff/v1/courses' && input.method === 'GET')
+        return reply({ courses: [head, busanHead], total: 2 });
+      if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
+        return reply({
+          status: 'available',
+          course: head,
+          revision,
+          thumbnail: { status: 'none' },
+        });
+      if (input.path === `/bff/v1/courses/${busanId}` && input.method === 'GET')
+        return reply({
+          status: 'available',
+          course: busanHead,
+          revision: busanRevision,
+          thumbnail: { status: 'none' },
+        });
+      if (input.path === '/bff/v1/courses/preferences' && input.method === 'GET')
+        return reply({ preferences: [], total: 0 });
+      if (input.path === '/bff/v1/courses/preferences' && input.method === 'PUT')
+        return reply({ courseId, favourite: false, lastUsedAt: createdAt });
+      if (input.path === '/bff/v1/courses/privacy-zones' && input.method === 'GET')
+        return reply({ zones: [], total: 0, zoneSetDigest: 'c'.repeat(64) });
+      if (input.path.endsWith('/elevation') && input.method === 'GET')
+        return reply({ outcome: 'no_dataset' });
+      throw new Error(`unexpected request ${input.method} ${input.path}`);
+    });
+    render(
+      <CourseWorkbench
+        athleteId="athlete-1"
+        sessionId="session-1"
+        transport={{ request }}
+        createMapAdapter={factory}
+      />,
+    );
+    return renderers;
+  }
+
+  it('fits the newly opened course on a switch', async () => {
+    const renderers = renderWithAdapter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    await waitFor(() => expect(renderers.at(-1)?.fitBounds).toHaveBeenCalledTimes(1));
+    expect(renderers.at(-1)?.fitBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ west: 126.9779, east: 126.9799 }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Busan line' }));
+    await waitFor(() =>
+      expect(renderers.at(-1)?.fitBounds).toHaveBeenLastCalledWith(
+        expect.objectContaining({ west: 129.06, east: 129.068, south: 35.15, north: 35.151 }),
+      ),
+    );
+  });
+
+  it('says the course line is shown only after the renderer drew it', async () => {
+    const renderers = renderWithAdapter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    const map = await screen.findByRole('region', { name: '코스 지도' });
+    const status = () => within(map).getAllByRole('status')[0];
+    await waitFor(() => expect(status()).toHaveTextContent('경로를 그리는 중입니다.'));
+    expect(within(map).queryByText(/표시했습니다/)).toBeNull();
+    act(() =>
+      renderers.at(-1)?.idle({
+        renderedPathFeatures: 0,
+        renderedLineFeatures: 0,
+        renderedPointFeatures: 0,
+        pathFeatures: 1,
+        expected: { line: true, point: false },
+      }),
+    );
+    expect(status()).toHaveTextContent('지도가 경로를 그리지 못했습니다.');
+    expect(
+      screen.getByText(/경유점 목록과 좌표 입력만으로 편집과 저장이 가능합니다/),
+    ).toBeInTheDocument();
+    act(() =>
+      renderers.at(-1)?.idle({
+        renderedPathFeatures: 2,
+        renderedLineFeatures: 2,
+        renderedPointFeatures: 0,
+        pathFeatures: 1,
+        expected: { line: true, point: false },
+      }),
+    );
+    expect(status()).toHaveTextContent('배경 지도 없이 경로를 표시했습니다.');
+    expect(map).toHaveAttribute('data-rendered-lines', '2');
   });
 });

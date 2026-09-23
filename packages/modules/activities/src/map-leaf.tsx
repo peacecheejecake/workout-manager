@@ -16,6 +16,7 @@ import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory, MapAdapterFailure } from '@workout/geo-kit/map-adapter';
 import type { MapPath, MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
+import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 
 /** The renderer leaf itself. Created once, at module scope, never during a render. */
 const DefaultMapView = lazy(() =>
@@ -52,8 +53,8 @@ export interface MapLeafProps {
   readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
   /** Shown in place of the renderer when it could not be loaded at all. */
   readonly loadFailureFallback: ReactNode;
-  /** Number of path features the renderer actually drew, for the screen's status line. */
-  readonly onRenderIdle: (info: { readonly renderedPathFeatures: number }) => void;
+  /** What the renderer drew at each idle. The map's own status line already says it. */
+  readonly onRenderIdle?: (info: MapRenderIdleInfo) => void;
   readonly createAdapter?: MapAdapterFactory;
   /**
    * Renderer component override. Injected by tests to exercise the chunk-load failure
@@ -75,7 +76,7 @@ export function MapLeaf({ mapView, ...props }: MapLeafProps) {
           basemap={props.basemap}
           fitRequest={props.fitRequest}
           onStatusChange={props.onStatusChange}
-          onRenderIdle={props.onRenderIdle}
+          {...(props.onRenderIdle ? { onRenderIdle: props.onRenderIdle } : {})}
           {...(props.onFailure ? { onFailure: props.onFailure } : {})}
           {...(props.createAdapter ? { createAdapter: props.createAdapter } : {})}
         />

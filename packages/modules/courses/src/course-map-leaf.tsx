@@ -18,6 +18,7 @@ import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory, MapAdapterFailure } from '@workout/geo-kit/map-adapter';
 import type { GeoPosition, MapPath, MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
+import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 
 /** Created once, at module scope, never during a render. */
 const DefaultMapView = lazy(() =>
@@ -52,12 +53,11 @@ export interface CourseMapLeafProps {
   readonly onStatusChange: (status: MapViewStatus) => void;
   readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
   /**
-   * Called after the renderer goes idle with how many course-line features it actually
-   * drew (`queryRenderedFeatures` over the path layers, never the basemap). A map that
-   * loaded its style but no worker reports ready and draws nothing; this is the signal
-   * that tells the two apart.
+   * What the renderer drew at each idle (`queryRenderedFeatures` over the path layers,
+   * never the basemap). The map's own status already turns this into "drawn" or "not
+   * drawn"; this is for an owner that wants the raw observation.
    */
-  readonly onRenderIdle?: (info: { readonly renderedPathFeatures: number }) => void;
+  readonly onRenderIdle?: (info: MapRenderIdleInfo) => void;
   readonly loadFailureFallback: ReactNode;
   /** Injected by tests to exercise the chunk-load failure path. */
   readonly mapView?: ComponentType<MapViewProps>;

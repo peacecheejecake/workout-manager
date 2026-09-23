@@ -295,7 +295,9 @@ async function measure(page: Page, origin: string, path = '/') {
   try {
     await page.waitForFunction(
       () =>
-        window.__geoHarness?.status === 'ready' || window.__geoHarness?.status === 'unavailable',
+        ['drawn', 'not-drawn', 'out-of-view', 'unavailable'].includes(
+          window.__geoHarness?.status ?? '',
+        ),
       undefined,
       { timeout: 120_000 },
     );
@@ -358,7 +360,7 @@ async function measure(page: Page, origin: string, path = '/') {
   // Scripted pan across the track, with frame intervals recorded in the page.
   await page.evaluate(() => window.__geoHarness?.startFrameRecording());
   const surface = page.locator('[data-status]').first();
-  const box = detail.status === 'ready' ? await surface.boundingBox() : null;
+  const box = detail.status === 'drawn' ? await surface.boundingBox() : null;
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
@@ -465,9 +467,9 @@ function evaluateRequirements(measurement: Awaited<ReturnType<typeof measure>>):
       observed: after.cspViolations.slice(0, 3).join(' | ') || 'none',
     },
     {
-      name: 'harness ready and still ready after the interaction',
+      name: 'harness drew the track and still shows it after the interaction',
       satisfied:
-        measurement.detail.status === 'ready' && after.status === 'ready' && !measurement.timedOut,
+        measurement.detail.status === 'drawn' && after.status === 'drawn' && !measurement.timedOut,
       observed: `${measurement.detail.status} -> ${after.status}${
         measurement.timedOut ? ' (timeout)' : ''
       }`,

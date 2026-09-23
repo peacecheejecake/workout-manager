@@ -30,10 +30,20 @@ import {
 import { MapAdapterError } from './map-adapter';
 import type { MapAdapterFactory, MapAdapterHandle, MapAdapterOptions } from './map-adapter';
 import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
+import { expectedVisibleGeometry, judgeRender } from './render-evidence';
 
 const pathSourceId = 'geo-kit-paths';
 const selectionSourceId = 'geo-kit-selection';
-const pathLayerIds = ['geo-kit-path-line', 'geo-kit-path-uncomputed', 'geo-kit-path-point'];
+const pathLineLayerId = 'geo-kit-path-line';
+const pathUncomputedLayerId = 'geo-kit-path-uncomputed';
+const pathPointLayerId = 'geo-kit-path-point';
+/**
+ * Every layer that draws a LineString of ours. `expectedVisibleGeometry` expects a line for
+ * any LineString in view, whatever its role, so the count must include the dashed layer
+ * that carries uncomputed drafts (M2-01r) — otherwise a draft whose only line is uncomputed
+ * (`/courses/new`) is announced as "could not draw" on a working map.
+ */
+const pathLineLayerIds = [pathLineLayerId, pathUncomputedLayerId];
 
 /** A style that never arrives or never loads must not hang initialisation forever. */
 const styleLoadTimeoutMs = 20_000;
@@ -179,6 +189,10 @@ async function initialise(
   if (signal.aborted) throw new Error('ADAPTER_ABORTED');
 
   let destroyed = false;
+  // The paths the source currently holds, so an idle can be judged against them.
+  let current: MapPathFeatureCollection = emptyCollection;
+  // New paths were handed over and no frame has yet shown them drawn.
+  let awaitingDraw = false;
   const map = createRenderer({
     container,
     style: style as never,
@@ -233,7 +247,7 @@ async function initialise(
       data: { type: 'FeatureCollection', features: [] },
     });
     map.addLayer({
-      id: 'geo-kit-path-line',
+      id: pathLineLayerId,
       type: 'line',
       source: pathSourceId,
       filter: [
@@ -258,7 +272,7 @@ async function initialise(
     map.addLayer({
       // A line nobody computed. Thin, grey and dashed, in its own layer, so it cannot be
       // mistaken for a route even before anyone reads the words the caller puts beside it.
-      id: 'geo-kit-path-uncomputed',
+      id: pathUncomputedLayerId,
       type: 'line',
       source: pathSourceId,
       filter: [
@@ -271,7 +285,7 @@ async function initialise(
     });
     map.addLayer({
       // A path with a single sample is a point, never a line joined across a gap.
-      id: 'geo-kit-path-point',
+      id: pathPointLayerId,
       type: 'circle',
       source: pathSourceId,
       filter: ['==', ['geometry-type'], 'Point'],
@@ -290,24 +304,66 @@ async function initialise(
     });
 
     if (onIdle) {
-      // `idle` means the renderer finished drawing everything it currently has, so this
-      // is the only point at which "the track is actually on screen" can be asserted.
+      // Lines and points are counted apart: points alone must not stand in for a line.
+      const count = (layers: string[]) => {
+        try {
+          return map.queryRenderedFeatures({ layers }).length;
+        } catch {
+          return 0;
+        }
+      };
+      const observe = () => {
+        const renderedLineFeatures = count(pathLineLayerIds);
+        const renderedPointFeatures = count([pathPointLayerId]);
+        const viewport = map.getBounds();
+        return {
+          renderedPathFeatures: renderedLineFeatures + renderedPointFeatures,
+          renderedLineFeatures,
+          renderedPointFeatures,
+          pathFeatures: current.features.length,
+          expected: expectedVisibleGeometry(current, {
+            west: viewport.getWest(),
+            south: viewport.getSouth(),
+            east: viewport.getEast(),
+            north: viewport.getNorth(),
+          }),
+        };
+      };
+      // `idle` means the renderer finished drawing everything it currently has, so it is
+      // the one point where "nothing of the track is on screen" can be concluded.
       map.on('idle', () => {
         if (destroyed) return;
-        let renderedPathFeatures = 0;
+        awaitingDraw = false;
+        onIdle(observe());
+      });
+      // But `idle` also waits for every background tile, and a cold or slow tile server
+      // held it past the render deadline while the line was already on screen (seen in
+      // the Vite shell on a first load, M2-01q). So once our own source has loaded new
+      // paths, each rendered frame is checked too — and reported only when it shows them
+      // drawn. A frame can prove a draw early; only `idle` or the deadline can say "not".
+      map.on('render', () => {
+        if (destroyed || !awaitingDraw) return;
+        let loaded = false;
         try {
-          renderedPathFeatures = map.queryRenderedFeatures({ layers: pathLayerIds }).length;
+          loaded = map.isSourceLoaded(pathSourceId);
         } catch {
-          renderedPathFeatures = 0;
+          loaded = false;
         }
-        onIdle({ renderedPathFeatures });
+        if (!loaded) return;
+        const info = observe();
+        if (judgeRender(info) !== 'drawn') return;
+        awaitingDraw = false;
+        onIdle(info);
       });
     }
 
     const handle: MapAdapterHandle = {
       setPaths(collection) {
         const source = map.getSource(pathSourceId);
-        if (source instanceof GeoJSONSource) source.setData(collection as never);
+        if (!(source instanceof GeoJSONSource)) return;
+        current = collection;
+        awaitingDraw = collection.features.length > 0;
+        source.setData(collection as never);
       },
       setSelection(position: GeoPosition | null) {
         const source = map.getSource(selectionSourceId);

@@ -7,6 +7,7 @@
  */
 import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
 import type { BasemapDescriptor } from './basemap';
+import type { MapRenderIdleInfo } from './render-evidence';
 
 export type MapAdapterFailure =
   'RENDERER_UNAVAILABLE' | 'CONTEXT_LOST' | 'STYLE_LOAD_FAILED' | 'BASEMAP_REJECTED';
@@ -45,17 +46,25 @@ export interface MapAdapterOptions {
   readonly container: HTMLElement;
   /** `null` renders the geometry with no background map at all. */
   readonly basemap: BasemapDescriptor | null;
-  readonly onReady: () => void;
   /** `detail` is a bounded renderer message for diagnostics; the view never displays it. */
   readonly onFailure: (failure: MapAdapterFailure, detail?: string) => void;
   /** A click/tap on the map surface, in map coordinates. */
   readonly onPick: (position: GeoPosition) => void;
   /**
-   * The renderer settled: it finished drawing everything it currently has.
-   * `renderedPathFeatures` is how many of our path features are actually on screen, which
-   * is what distinguishes "initialised" from "the track is visible".
+   * The style finished loading. This says only that a background (or the plain no-basemap
+   * canvas) is in place: a style loads without the renderer's worker, so it is **not**
+   * evidence that any path was drawn. `onIdle` is.
    */
-  readonly onIdle?: (info: { readonly renderedPathFeatures: number }) => void;
+  readonly onReady: () => void;
+  /**
+   * An observation of what the renderer actually drew: how many of our path features are
+   * on screen, per layer, and what the viewport says should be — which is what
+   * distinguishes "initialised" from "the track is visible". Reported when the renderer
+   * settles (`idle`), and also from the first rendered frame that shows newly handed
+   * paths drawn, because `idle` waits for every background tile. Only a settled
+   * observation ever reports nothing drawn.
+   */
+  readonly onIdle?: (info: MapRenderIdleInfo) => void;
   /**
    * Abort initialisation. Without this a renderer whose style never loads could not be
    * cleaned up, because no handle had been returned yet.

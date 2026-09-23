@@ -5,6 +5,7 @@ import {
   recordMessage,
   sessionMessage,
 } from '../../packages/track-parsing/tests/fit-fixture';
+import { expectLineDrawn, mapRegion } from './map-evidence';
 
 /**
  * Real-browser check of the local-file preview route in the Next shell.
@@ -77,10 +78,10 @@ test('parses real GPX bytes in a worker, draws the track and uploads nothing', a
   await expect(page.getByText('전체 5개 · 위치 있음 5개 · 구간 1개')).toBeVisible();
   await expect(page.getByText('40초')).toBeVisible();
   await expect(page.getByRole('heading', { name: '경로' })).toBeVisible();
-  // Not just "the adapter is ready": the renderer reported the path features it actually
-  // drew. The count is renderer feature instances (one line can be split across tiles),
-  // so the assertion is that it is non-zero, not a specific number.
-  await expect(page.getByText(/렌더된 경로 feature [1-9]\d*개/)).toBeVisible();
+  // Not just "the adapter is ready": the map's status line says the path is shown only
+  // after the renderer drew our line features. The count is renderer feature instances
+  // (one line can be split across tiles), so the assertion is non-zero, not a number.
+  await expectLineDrawn(mapRegion(page, '로컬 파일 경로'));
 
   // Start and end selection resolve back to source sample ids.
   await page.getByRole('button', { name: '시작 지점' }).click();

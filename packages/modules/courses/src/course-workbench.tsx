@@ -234,20 +234,11 @@ export function CourseMapPane({
   const [selection, setSelection] = useDraftMapSelection();
   const [status, setStatus] = useState<MapViewStatus>('preparing');
   const paths = draftMapPaths({ state, storedCoordinates });
-  // What the renderer actually drew at its last idle, not what it said about itself:
-  // `status` reaches `ready` on style load even when no worker ever runs (M2-01k F2/F3).
-  const [renderedPathFeatures, setRenderedPathFeatures] = useState<number | null>(null);
-  const onRenderIdle = useCallback(
-    (info: { readonly renderedPathFeatures: number }) =>
-      setRenderedPathFeatures(info.renderedPathFeatures),
-    [],
-  );
+  // `status` is the map's own, and it says "drawn" only after the renderer went idle with
+  // the course line among what it drew: a style load is not enough (M2-01k F2/F3). The map
+  // section carries the drawn line and point counts as data for acceptance tests.
   return (
-    <div
-      className={`${styles.pane} ${styles.mapPane}`}
-      data-pane="map"
-      data-rendered-path-features={renderedPathFeatures ?? undefined}
-    >
+    <div className={`${styles.pane} ${styles.mapPane}`} data-pane="map">
       <CourseMapLeaf
         label="코스 지도"
         paths={paths}
@@ -257,7 +248,6 @@ export function CourseMapPane({
         basemap={basemap}
         fitRequest={fitRequest}
         onStatusChange={setStatus}
-        onRenderIdle={onRenderIdle}
         {...(mapView ? { mapView } : {})}
         {...(createMapAdapter ? { createAdapter: createMapAdapter } : {})}
         loadFailureFallback={
@@ -266,7 +256,7 @@ export function CourseMapPane({
           </p>
         }
       />
-      {status === 'unavailable' ? (
+      {status === 'unavailable' || status === 'not-drawn' ? (
         <p className={styles.note}>
           지도를 표시할 수 없습니다. 경유점 목록과 좌표 입력만으로 편집과 저장이 가능합니다.
         </p>

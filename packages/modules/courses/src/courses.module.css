@@ -98,6 +98,65 @@
   min-height: 14rem;
 }
 
+/*
+ * The minimum width of each pane (07 §3: a kit may define its own container condition with
+ * its minimum widths stated). The viewport picks the composition, but the screen can be
+ * mounted in a narrower module pane — a 420px pane on a desktop viewport — and a side-by-side
+ * grid there left the map 20px wide (M2-01q). When the container cannot hold the list at
+ * its track width, the gap and a map of at least 15rem, the panes stack instead:
+ *   desktop: 24rem list + 1rem gap + 15rem map = 40rem
+ *   tablet:  16rem list + 1rem gap + 15rem map = 32rem
+ * These are this screen's own track sizes, not copies of a viewport breakpoint.
+ */
+.workbench {
+  container: course-workbench / inline-size;
+}
+@container course-workbench (width < 40rem) {
+  .panes[data-layout='desktop'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .panes[data-layout='desktop'] .mapPane,
+  .panes[data-layout='desktop'] .listPane,
+  .panes[data-layout='desktop'] .sheetPane {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+/*
+ * 07 §3 asks for a single-column fallback where container queries are not supported. The
+ * side-by-side grids above are viewport-driven, so without this a browser that cannot
+ * evaluate the container conditions would keep them in any container, however narrow.
+ * Stacked panes are usable at every width; side by side only when the width is known.
+ */
+@supports not (container-type: inline-size) {
+  .panes[data-layout='desktop'],
+  .panes[data-layout='tablet'],
+  .panes[data-layout='tablet'][data-list='collapsed'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .panes[data-layout='desktop'] .mapPane,
+  .panes[data-layout='desktop'] .listPane,
+  .panes[data-layout='desktop'] .sheetPane,
+  .panes[data-layout='tablet'] .mapPane,
+  .panes[data-layout='tablet'] .listPane,
+  .panes[data-layout='tablet'] .sheetPane {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+@container course-workbench (width < 32rem) {
+  .panes[data-layout='tablet'],
+  .panes[data-layout='tablet'][data-list='collapsed'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .panes[data-layout='tablet'] .mapPane,
+  .panes[data-layout='tablet'] .listPane,
+  .panes[data-layout='tablet'] .sheetPane {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
 .list {
   display: flex;
   flex-direction: column;

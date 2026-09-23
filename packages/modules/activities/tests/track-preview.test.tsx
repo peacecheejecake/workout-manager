@@ -272,6 +272,13 @@ describe('local track preview screen', () => {
     render(<LocalTrackPreview {...session} parser={parser} createMapAdapter={adapter.factory} />);
     await user.upload(screen.getByTestId('track-preview-file'), file('run.gpx'));
     await screen.findByText(/지도를 표시하지 못했습니다/);
+    // One announcement of the failure, the map's own (review N6): the screen's note that the
+    // summary still works is not a second live region read over it.
+    expect(
+      screen
+        .getAllByRole('status')
+        .filter((element) => /지도|렌더러/.test(element.textContent ?? '')),
+    ).toHaveLength(1);
     expect(screen.getByRole('heading', { name: '기본 요약' })).toBeInTheDocument();
     const list = screen.getByRole('list', { name: '로컬 파일 경로 좌표 목록' });
     const buttons = within(list).getAllByRole('button');

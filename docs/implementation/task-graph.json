@@ -1180,7 +1180,8 @@
       "title": "지도 상태 신호 정직성과 두 shell 렌더 증명",
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01q.md",
       "scope": "M2-01k F3과 K-next-map-render·R-S13-S14·P5-fitbounds partial. geo-kit의 onReady가 style load에서 발생하는데(maplibre-adapter.ts:216, 329) style 로드에는 worker가 필요 없어, MapView를 쓰는 다섯 화면(코스 2, activities 3)이 빈 canvas 위에 '지도 표시 중'을 표시할 수 있고 스크린리더에도 그렇게 읽힌다. F2(Next 코스 지도 mapWorkerUrl 누락)가 이 때문에 M2-01h부터 가려졌다. 올바른 신호 onIdle은 이미 있다(:275-277). Next shell 코스 지도 렌더는 idle 뒤 코스 source layer의 queryRenderedFeatures로 증명됐으나 Vite shell은 미증명. 커밋된 반응형 시험은 3100만 돌고 최소 폭 검증이 없으며 지도가 아닌 레이아웃만 본다. fitBounds의 코스·활동 전환과 resize 단언 없음."
     },
     {

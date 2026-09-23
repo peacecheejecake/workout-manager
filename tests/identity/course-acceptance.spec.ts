@@ -20,6 +20,7 @@ import {
   sessionMessage,
 } from '../../packages/track-parsing/tests/fit-fixture';
 import { parseCurrentAccountExport } from './account-export';
+import { expectLineDrawn, mapRegion } from './map-evidence';
 
 /**
  * M2-01k: one continuous map-and-course flow against the real stack — the real OIDC
@@ -312,19 +313,10 @@ test('one account carries a recording through courses, thumbnails, exports and d
     await workbench.getByRole('button', { name: recordedName, exact: true }).click();
     await mapWorker;
     // A requested worker is still only a proxy. What counts is that the renderer went idle
-    // having DRAWN course-line features: `queryRenderedFeatures` over the path layers only,
-    // so basemap tiles cannot satisfy it.
-    await expect
-      .poll(
-        async () =>
-          Number(
-            (await workbench
-              .locator('[data-pane="map"]')
-              .getAttribute('data-rendered-path-features')) ?? '0',
-          ),
-        { timeout: 20_000 },
-      )
-      .toBeGreaterThan(0);
+    // having DRAWN course-line features: `queryRenderedFeatures` over the line layer only,
+    // so neither basemap tiles nor waypoint points can satisfy it, and the map's own
+    // status line says so (M2-01q).
+    await expectLineDrawn(mapRegion(workbench, '코스 지도'));
     await expect(workbench.getByTestId('course-revision')).toHaveText('1');
     await expect(workbench.getByTestId('course-generation')).toContainText('기록 구간 잘라내기');
     const editor = workbench.getByRole('region', { name: '경유지 편집' });

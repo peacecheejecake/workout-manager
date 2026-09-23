@@ -11,6 +11,7 @@ import {
   recordMessage,
   sessionMessage,
 } from '../../packages/track-parsing/tests/fit-fixture';
+import { expectLineDrawn, mapRegion } from './map-evidence';
 
 /**
  * S09 stored-track route screen, against the real OIDC session, API, PostgreSQL and object
@@ -189,8 +190,9 @@ test('re-reads a stored track after a full load, draws it and round-trips select
   await expect(panel).toContainText('경로 수정 번호');
   // Device-reported distance and the GPS recomputation stay separate values.
   await expect(panel).toContainText('640m');
-  // The renderer reported the path features it actually drew.
-  await expect(panel.getByText(/렌더된 경로 feature [1-9]\d*개/)).toBeVisible();
+  // The map's own status line says the path is shown only after the renderer drew our
+  // line features; a loaded style is not enough (M2-01q).
+  await expectLineDrawn(mapRegion(panel, '저장된 활동 경로'));
   await expect(panel.getByText(/위치가 없어 표시하지 않았습니다/)).toBeVisible();
 
   // Start and end resolve to the stored track's own sample ids.
@@ -252,7 +254,7 @@ test('draws the stored path over the self-hosted basemap with its attribution', 
   });
   await page.goto(routeAddress(activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
-  await expect(panel.getByText(/렌더된 경로 feature [1-9]\d*개/)).toBeVisible();
+  await expectLineDrawn(mapRegion(panel, '저장된 활동 경로'));
   // ODbL attribution is rendered next to the map as plain text by the kit itself, so it
   // is present whether or not the renderer's own control is.
   const attribution = panel.getByText(/Background map tiles built by Workout Manager/);
@@ -277,7 +279,7 @@ test('lays out S09 at every breakpoint boundary and in a 420px pane', async ({ p
   await page.goto(routeAddress(activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
   const panes = page.getByTestId('stored-track-panes');
-  await expect(panel.getByText(/렌더된 경로 feature [1-9]\d*개/)).toBeVisible();
+  await expectLineDrawn(mapRegion(panel, '저장된 활동 경로'));
   await panel.getByRole('button', { name: '끝 지점', exact: true }).click();
   await expect(panel.getByText(/선택 표본 0:5/)).toBeVisible();
 
@@ -362,7 +364,7 @@ test('shows the stored track in the Vite shell too', async ({ page }) => {
   await page.goto(`http://127.0.0.1:4200${routeAddress(activityId)}`);
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
   await expect(panel).toContainText('전체 6개 · 위치 있음 5개 · 구간 3개');
-  await expect(panel.getByText(/렌더된 경로 feature [1-9]\d*개/)).toBeVisible();
+  await expectLineDrawn(mapRegion(panel, '저장된 활동 경로'));
   await panel.getByRole('button', { name: '시작 지점', exact: true }).click();
   await expect(panel.getByText(/선택 표본 0:0/)).toBeVisible();
 });

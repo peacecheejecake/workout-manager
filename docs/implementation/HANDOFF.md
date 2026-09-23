@@ -17,26 +17,22 @@
 
 ## 완료된 최신 작업
 
-[M2-01y](progress/M2-01y.md)를 완료했다. 살아 있는 계정에서 백업 뒤 삭제된 활동의 업로드가 DB dump와 객체 아카이브
-복사 사이에 들어오면 복원 뒤 어떤 행도 가리키지 않는 객체가 남던 구멍을 닫았다(실제 PG·파일시스템 재현, drill 고정).
+[M2-01q](progress/M2-01q.md)를 완료했다. 지도 화면이 실제로 그리지 못했는데 "표시했습니다"라고 하거나, 그렸는데
+"그리지 못했습니다"라고 하던 거짓 상태를 없앴다.
 
-- migration 046이 활동·코스 단위 객체 purge를 무장한다(삭제 묘비 trigger, 코스 회수 trigger, 복원 재적용).
-  worker가 그 디렉터리만 walk해 guarded delete로 지우며 실행당 최대 20건이다. 살아 있는 소유자의 purge 행은
-  lease하지 않고 `INCONSISTENT_LEDGER:*`로 표시한다. lease 유실·dead letter 표식은 M2-01z와 같다.
-- **복원 뒤 재-import 억제**: 복원 cluster에 없는 삭제 활동은 `replay_absent_activity_deletion`이 값 없는 삭제
-  canonical 행·source head·suppression 행을 되살려, 기기 재동기화가 `suppressed`로 거절된다. 검증할 수 없는
-  항목은 복원 전체를 rollback한다(조용히 건너뛰지 않는다). 첫 판은 이 경우를 조용히 넘겨 지운 활동이 되살아날 수
-  있었고 독립 검토가 차단으로 잡았다.
-- 삭제 표시를 되돌리는 UPDATE는 DB가 거절한다(`activity_tombstone_terminal`).
-- **배포·복원**: migrate 046 → `grantResourceObjectCleanupWorker` 재실행 → worker. 활동 삭제 원장에 source
-  revision·content hash가 있어야 하며, 재적용은 runtime 접근 전에 RLS 우회 복원 관리자 role로 하고 계정 원장을
-  먼저 재적용한다(runbook).
+- 상태는 렌더러가 실제 그린 feature와 경로 세대(`data-paths-generation`/`data-evidence-generation`)로 판정한다.
+  한 번도 그리지 못한 렌더러만 `not-drawn`, 이미 그린 렌더러의 확인 지연은 `unconfirmed`, 화면 밖은
+  `out-of-view`다. 이전 경로에 대한 `drawn`은 편집 뒤 최대 1.5초만 남는다.
+- M2-01r의 미계산 점선(`geo-kit-path-uncomputed`)도 선으로 센다(`/courses/new` 거짓 음성 수정).
+- 실패 알림은 지도 상태 줄 하나로만 나간다. 컨테이너 쿼리 미지원 브라우저 fallback은 실제 미지원 브라우저에서
+  실행하지 못했다.
+- 비차단 후속 지적은 M2-01q.md §11에 남겼다. 매트릭스 판정은 M2-01k 재실행에서 반영한다.
 
-직전 완료: [M2-01w](progress/M2-01w.md)(OIDC 운영 견고성, back-channel logout은 미구현).
+직전 완료: [M2-01y](progress/M2-01y.md)(활동·코스 단위 객체 purge와 복원 뒤 재-import 억제, migration 046).
 
 ## 다음 ready 작업
 
-M2-01q는 3라운드 검토 승인되어 병합 대기, M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
+M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
 
 ## 남은 외부·실환경 gate
 

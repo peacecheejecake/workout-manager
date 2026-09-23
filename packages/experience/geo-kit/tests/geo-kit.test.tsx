@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -21,8 +21,18 @@ import {
   validateMapPath,
 } from '@workout/geo-kit/map-path';
 import type { MapPath, MapSelection } from '@workout/geo-kit/map-path';
-import type { MapAdapterFactory, MapAdapterHandle } from '@workout/geo-kit/map-adapter';
+import type {
+  MapAdapterFactory,
+  MapAdapterFailure,
+  MapAdapterHandle,
+} from '@workout/geo-kit/map-adapter';
 import { MapView } from '@workout/geo-kit/map-view';
+import {
+  collectionKey,
+  expectedVisibleGeometry,
+  judgeRender,
+} from '@workout/geo-kit/render-evidence';
+import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 
 function path(overrides: Partial<MapPath> = {}): MapPath {
   return {
@@ -518,8 +528,22 @@ interface FakeAdapter {
   readonly handle: MapAdapterHandle;
   readonly factory: MapAdapterFactory;
   pick(position: [number, number]): void;
-  fail(): void;
-  idle(renderedPathFeatures: number): void;
+  fail(failure?: MapAdapterFailure): void;
+  idle(info: MapRenderIdleInfo): void;
+}
+
+/** What a renderer reports at idle. Defaults: a line in view, drawn. */
+function idleInfo(overrides: Partial<MapRenderIdleInfo> = {}): MapRenderIdleInfo {
+  const lines = overrides.renderedLineFeatures ?? 1;
+  const points = overrides.renderedPointFeatures ?? 0;
+  return {
+    renderedPathFeatures: lines + points,
+    renderedLineFeatures: lines,
+    renderedPointFeatures: points,
+    pathFeatures: 1,
+    expected: { line: true, point: false },
+    ...overrides,
+  };
 }
 
 function fakeAdapter(): FakeAdapter {
@@ -531,12 +555,12 @@ function fakeAdapter(): FakeAdapter {
     destroy: vi.fn(),
   };
   let pick: ((position: [number, number]) => void) | null = null;
-  let fail: (() => void) | null = null;
-  let idle: ((count: number) => void) | null = null;
+  let fail: ((failure: MapAdapterFailure) => void) | null = null;
+  let idle: ((info: MapRenderIdleInfo) => void) | null = null;
   const factory: MapAdapterFactory = async (options) => {
     pick = options.onPick;
-    fail = () => options.onFailure('RENDERER_UNAVAILABLE');
-    idle = (count) => options.onIdle?.({ renderedPathFeatures: count });
+    fail = (failure) => options.onFailure(failure);
+    idle = (info) => options.onIdle?.(info);
     options.onReady();
     return handle;
   };
@@ -544,9 +568,14 @@ function fakeAdapter(): FakeAdapter {
     handle,
     factory,
     pick: (position) => pick?.(position),
-    fail: () => fail?.(),
-    idle: (count) => idle?.(count),
+    fail: (failure = 'RENDERER_UNAVAILABLE') => fail?.(failure),
+    idle: (info) => act(() => idle?.(info)),
   };
+}
+
+/** The map's own live status line: what a screen reader announces for this map. */
+function mapStatus(label = '기록 지도') {
+  return within(screen.getByRole('region', { name: label })).getAllByRole('status')[0];
 }
 
 describe('MapView', () => {
@@ -566,7 +595,8 @@ describe('MapView', () => {
     );
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
     expect(screen.getByText('© OpenStreetMap')).toBeInTheDocument();
-    expect(await screen.findByText('지도 표시 중')).toBeInTheDocument();
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
   });
 
   it('fits once on first ready and not again for a selection change', async () => {
@@ -649,7 +679,9 @@ describe('MapView', () => {
     );
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
     adapter.fail();
-    expect(await screen.findByText(/지도를 표시할 수 없습니다/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/지도 렌더러\(WebGL\)를 사용할 수 없습니다/),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(3);
     await userEvent.click(screen.getByRole('button', { name: '37.56800, 126.98000' }));
     expect(onSelect).toHaveBeenCalledWith({ pathId: 'track-1', vertexIndex: 1 });
@@ -761,8 +793,12 @@ describe('MapView', () => {
       />,
     );
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
-    adapter.idle(3);
-    expect(onRenderIdle).toHaveBeenCalledWith({ renderedPathFeatures: 3 });
+    const info = idleInfo({ renderedLineFeatures: 2, renderedPointFeatures: 1 });
+    adapter.idle(info);
+    expect(onRenderIdle).toHaveBeenCalledWith(info);
+    const region = screen.getByRole('region', { name: '기록 지도' });
+    expect(region).toHaveAttribute('data-rendered-lines', '2');
+    expect(region).toHaveAttribute('data-rendered-points', '1');
   });
 
   it('destroys the renderer on unmount', async () => {
@@ -780,5 +816,487 @@ describe('MapView', () => {
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
     view.unmount();
     expect(adapter.handle.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * M2-01q. What the map says about itself must be what the renderer actually drew.
+ *
+ * The style loads without the renderer's worker, so a map whose worker never started
+ * used to report "지도 표시 중" over an empty canvas, to sighted users and to screen
+ * readers alike (M2-01k F2/F3). These tests hold the status line — the element with
+ * `role="status"` inside the map region, which is what assistive technology announces —
+ * to the evidence each state needs.
+ */
+describe('render evidence', () => {
+  const line = toFeatureCollection([path()]);
+  const single = toFeatureCollection([path({ positions: [[126.978, 37.566]] })]);
+  const around = { west: 126.97, south: 37.56, east: 126.99, north: 37.57 };
+
+  it('expects a line only when one of its vertices is inside the viewport', () => {
+    expect(expectedVisibleGeometry(line, around)).toEqual({ line: true, point: false });
+    expect(
+      expectedVisibleGeometry(line, { west: 127.5, south: 37.0, east: 127.6, north: 37.1 }),
+    ).toEqual({ line: false, point: false });
+    // The line crosses this narrow box between two vertices; no vertex lies inside it, so
+    // whether it is drawn there is left undecided rather than guessed.
+    expect(
+      expectedVisibleGeometry(line, {
+        west: 126.9805,
+        south: 37.5665,
+        east: 126.9806,
+        north: 37.5666,
+      }),
+    ).toEqual({ line: false, point: false });
+  });
+
+  it('keys a collection by its content, not by its array identity', () => {
+    const same = collectionKey(toFeatureCollection([path()]));
+    expect(collectionKey(toFeatureCollection([path()]))).toBe(same);
+    // Same ids, same counts, one vertex moved by about a metre: a different line.
+    const moved = path({
+      positions: [
+        [126.978, 37.566],
+        [126.98001, 37.568],
+        [126.982, 37.566],
+      ],
+    });
+    expect(collectionKey(toFeatureCollection([moved]))).not.toBe(same);
+    // Same numbers split differently across features is a different collection too.
+    const split = path({ breaks: [1] });
+    expect(collectionKey(toFeatureCollection([split]))).not.toBe(same);
+  });
+
+  it('does not expect waypoint points that are off screen while the line is on it', () => {
+    // Review N3: the course line in view, its waypoint markers outside it.
+    const course = toFeatureCollection([
+      path(),
+      path({
+        id: 'waypoints',
+        revision: 'w1',
+        positions: [
+          [127.5, 37.9],
+          [127.6, 37.95],
+        ],
+        breaks: [1],
+      }),
+    ]);
+    expect(expectedVisibleGeometry(course, around)).toEqual({ line: true, point: false });
+    expect(
+      judgeRender(
+        idleInfo({
+          pathFeatures: course.features.length,
+          expected: expectedVisibleGeometry(course, around),
+          renderedPointFeatures: 0,
+        }),
+      ),
+    ).toBe('drawn');
+  });
+
+  it('expects a lone sample as a point, and handles a viewport that wraps the world', () => {
+    expect(expectedVisibleGeometry(single, around)).toEqual({ line: false, point: true });
+    // MapLibre reports edges past ±180° when the map wraps.
+    expect(
+      expectedVisibleGeometry(single, { west: -233.1, south: 37.5, east: -232.9, north: 37.6 }),
+    ).toEqual({ line: false, point: true });
+    expect(expectedVisibleGeometry(line, { west: -540, south: -85, east: 540, north: 85 })).toEqual(
+      { line: true, point: false },
+    );
+  });
+
+  it('turns one idle into a verdict, lines and points judged apart', () => {
+    expect(judgeRender(idleInfo({ pathFeatures: 0 }))).toBe('no-evidence');
+    expect(judgeRender(idleInfo({ expected: { line: false, point: false } }))).toBe('out-of-view');
+    expect(judgeRender(idleInfo({ renderedLineFeatures: 0 }))).toBe('not-drawn');
+    // Points on screen do not stand in for a line that should be there.
+    expect(judgeRender(idleInfo({ renderedLineFeatures: 0, renderedPointFeatures: 4 }))).toBe(
+      'not-drawn',
+    );
+    expect(
+      judgeRender(idleInfo({ expected: { line: true, point: true }, renderedPointFeatures: 0 })),
+    ).toBe('not-drawn');
+    expect(judgeRender(idleInfo())).toBe('drawn');
+  });
+});
+
+describe('MapView status honesty', () => {
+  const basemap = { styleUrl: '/map/basemap/abc/style.json', attribution: '© OpenStreetMap' };
+  const props = {
+    label: '기록 지도',
+    selection: null,
+    onSelect: vi.fn(),
+    basemap,
+  };
+
+  it('says the background is ready but the path is still being drawn after a style load', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    expect(mapStatus()).toHaveTextContent('배경 지도를 불러왔습니다. 경로를 그리는 중입니다.');
+    expect(screen.getByRole('region', { name: '기록 지도' })).toHaveAttribute(
+      'data-map-status',
+      'drawing',
+    );
+    expect(screen.queryByText(/표시 중|표시했습니다/)).not.toBeInTheDocument();
+  });
+
+  it('says it could not draw when the renderer never settles, and recovers if it later does', async () => {
+    const adapter = fakeAdapter();
+    const onStatusChange = vi.fn();
+    render(
+      <MapView
+        {...props}
+        paths={[path()]}
+        createAdapter={adapter.factory}
+        renderDeadlineMs={30}
+        onStatusChange={onStatusChange}
+      />,
+    );
+    await waitFor(() =>
+      expect(mapStatus()).toHaveTextContent(
+        '지도가 경로를 그리지 못했습니다. 아래 좌표 목록을 사용하세요.',
+      ),
+    );
+    // Reported outward from an effect, which may run just after the text is committed.
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith('not-drawn', undefined));
+    expect(screen.queryByText(/표시했습니다/)).not.toBeInTheDocument();
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+  });
+
+  it('says it could not draw when the path is in view and the renderer drew none of it', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo({ renderedLineFeatures: 0, renderedPointFeatures: 2 }));
+    expect(mapStatus()).toHaveTextContent('지도가 경로를 그리지 못했습니다.');
+  });
+
+  it('says the path is outside the view rather than drawn or failed', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo({ renderedLineFeatures: 0, expected: { line: false, point: false } }));
+    expect(mapStatus()).toHaveTextContent('경로가 지금 보이는 지도 영역 밖에 있습니다.');
+  });
+
+  it('does not call a renderer that already drew it unable to draw when the view stops showing it', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+    // Zoomed far out: a vertex is still inside the viewport, but the line is below a pixel.
+    adapter.idle(idleInfo({ renderedLineFeatures: 0 }));
+    expect(mapStatus()).toHaveTextContent('경로가 지도에 그려졌는지 지금은 확인하지 못했습니다.');
+    expect(screen.queryByText(/그리지 못했습니다|표시했습니다/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Review B1: a renderer that drew, a changed path, and nothing confirming the new path
+   * within the deadline (off screen while slow tiles hold back idle). That silence says
+   * nothing about whether the renderer can draw; it must not be announced as "cannot".
+   */
+  it('says a changed path is unconfirmed, not undrawable, when a renderer that drew goes silent', async () => {
+    const adapter = fakeAdapter();
+    const onStatusChange = vi.fn();
+    const view = render(
+      <MapView
+        {...props}
+        paths={[path()]}
+        createAdapter={adapter.factory}
+        renderDeadlineMs={10_000}
+        onStatusChange={onStatusChange}
+      />,
+    );
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+    // A waypoint is added; no observation follows.
+    view.rerender(
+      <MapView
+        {...props}
+        paths={[
+          path({
+            positions: [
+              [126.978, 37.566],
+              [126.98, 37.568],
+              [127.3, 37.9],
+            ],
+          }),
+        ]}
+        createAdapter={adapter.factory}
+        renderDeadlineMs={40}
+        onStatusChange={onStatusChange}
+      />,
+    );
+    await waitFor(() =>
+      expect(mapStatus()).toHaveTextContent('경로가 지도에 그려졌는지 지금은 확인하지 못했습니다.'),
+    );
+    expect(screen.queryByText(/그리지 못했습니다|표시했습니다/)).not.toBeInTheDocument();
+    expect(onStatusChange).not.toHaveBeenCalledWith('not-drawn', undefined);
+    // And a later observation of the new path restores "drawn" for it.
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+  });
+
+  /**
+   * Review NB1: after a change, "drawn" about the previous path may carry over only
+   * briefly. Past the grace, the status line stops saying the path is shown until the new
+   * path is confirmed — a dead worker must not keep "shown" for the whole deadline.
+   */
+  it('stops saying a changed path is shown once its confirmation is overdue', async () => {
+    const adapter = fakeAdapter();
+    const common = {
+      ...props,
+      createAdapter: adapter.factory,
+      renderDeadlineMs: 10_000,
+      confirmGraceMs: 30,
+    };
+    const view = render(<MapView {...common} paths={[path()]} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+    view.rerender(
+      <MapView
+        {...common}
+        paths={[
+          path({
+            positions: [
+              [126.978, 37.566],
+              [127.3, 37.9],
+            ],
+          }),
+        ]}
+      />,
+    );
+    await waitFor(() => expect(mapStatus()).toHaveTextContent('경로를 그리는 중입니다.'));
+    expect(screen.queryByText(/표시했습니다/)).not.toBeInTheDocument();
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+  });
+
+  it('still says a renderer that never drew cannot draw a changed path', async () => {
+    const adapter = fakeAdapter();
+    const view = render(
+      <MapView {...props} paths={[path()]} createAdapter={adapter.factory} renderDeadlineMs={40} />,
+    );
+    await waitFor(() => expect(mapStatus()).toHaveTextContent('지도가 경로를 그리지 못했습니다.'));
+    view.rerender(
+      <MapView
+        {...props}
+        paths={[
+          path({
+            positions: [
+              [126.978, 37.566],
+              [127.3, 37.9],
+            ],
+          }),
+        ]}
+        createAdapter={adapter.factory}
+        renderDeadlineMs={40}
+      />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(mapStatus()).toHaveTextContent('지도가 경로를 그리지 못했습니다.');
+  });
+
+  it('marks which path a verdict is about', async () => {
+    const adapter = fakeAdapter();
+    const view = render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    const region = screen.getByRole('region', { name: '기록 지도' });
+    adapter.idle(idleInfo());
+    const first = region.getAttribute('data-paths-generation');
+    expect(region).toHaveAttribute('data-evidence-generation', first);
+    view.rerender(
+      <MapView
+        {...props}
+        paths={[
+          path({
+            positions: [
+              [126.978, 37.566],
+              [127.3, 37.9],
+            ],
+          }),
+        ]}
+        createAdapter={adapter.factory}
+      />,
+    );
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalledTimes(2));
+    // The standing verdict is about the previous path until an observation of this one.
+    expect(region.getAttribute('data-paths-generation')).not.toBe(first);
+    expect(region).toHaveAttribute('data-evidence-generation', first);
+    adapter.idle(idleInfo());
+    expect(region).toHaveAttribute(
+      'data-evidence-generation',
+      region.getAttribute('data-paths-generation'),
+    );
+  });
+
+  it('holds the deadline across re-renders that rebuild the same lines', async () => {
+    // The course editor builds a new paths array on every render. Each rebuild used to
+    // re-send the data and restart the deadline, so a screen that kept re-rendering kept a
+    // map with no worker at "drawing" indefinitely (found in the real browser, M2-01q).
+    const adapter = fakeAdapter();
+    const view = render(
+      <MapView {...props} paths={[path()]} createAdapter={adapter.factory} renderDeadlineMs={80} />,
+    );
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 8; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      view.rerender(
+        <MapView
+          {...props}
+          paths={[path()]}
+          createAdapter={adapter.factory}
+          renderDeadlineMs={80}
+        />,
+      );
+    }
+    expect(mapStatus()).toHaveTextContent('지도가 경로를 그리지 못했습니다.');
+    expect(adapter.handle.setPaths).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores an idle over a source that holds nothing yet', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo({ pathFeatures: 0, renderedLineFeatures: 0 }));
+    expect(mapStatus()).toHaveTextContent('경로를 그리는 중입니다.');
+  });
+
+  it('never waits for a feature when there is legitimately nothing to draw', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} paths={[]} createAdapter={adapter.factory} renderDeadlineMs={10} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(mapStatus()).toHaveTextContent('표시할 좌표가 없습니다.');
+    expect(screen.queryByText(/그리지 못했습니다|그리는 중/)).not.toBeInTheDocument();
+  });
+
+  it('says there is no background map when it drew the path without one', async () => {
+    const adapter = fakeAdapter();
+    render(<MapView {...props} basemap={null} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    expect(mapStatus()).toHaveTextContent('경로를 그리는 중입니다.');
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('배경 지도 없이 경로를 표시했습니다.');
+  });
+
+  it('tells a background-map failure apart from a device without WebGL', async () => {
+    const first = fakeAdapter();
+    const view = render(<MapView {...props} paths={[path()]} createAdapter={first.factory} />);
+    await waitFor(() => expect(first.handle.setPaths).toHaveBeenCalled());
+    act(() => first.fail('STYLE_LOAD_FAILED'));
+    expect(mapStatus()).toHaveTextContent('배경 지도를 불러오지 못해 지도를 표시할 수 없습니다.');
+    view.unmount();
+
+    const second = fakeAdapter();
+    render(<MapView {...props} paths={[path()]} createAdapter={second.factory} />);
+    await waitFor(() => expect(second.handle.setPaths).toHaveBeenCalled());
+    act(() => second.fail('RENDERER_UNAVAILABLE'));
+    expect(mapStatus()).toHaveTextContent(
+      '이 브라우저에서 지도 렌더러(WebGL)를 사용할 수 없습니다.',
+    );
+  });
+
+  it('does not carry "drawn" over to a new renderer created for a new background map', async () => {
+    const adapter = fakeAdapter();
+    const view = render(<MapView {...props} paths={[path()]} createAdapter={adapter.factory} />);
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.idle(idleInfo());
+    expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
+    view.rerender(
+      <MapView
+        {...props}
+        basemap={{ ...basemap, styleUrl: '/map/basemap/def/style.json' }}
+        paths={[path()]}
+        createAdapter={adapter.factory}
+      />,
+    );
+    await waitFor(() =>
+      expect(mapStatus()).toHaveTextContent('배경 지도를 불러왔습니다. 경로를 그리는 중입니다.'),
+    );
+  });
+});
+
+/**
+ * Plan §5: fitBounds only on first render, on switching the displayed track, and on an
+ * explicit "show all" request. A resize only resizes.
+ */
+describe('MapView viewport', () => {
+  const basemap = { styleUrl: '/map/basemap/abc/style.json', attribution: '© OpenStreetMap' };
+
+  it('only resizes on a container resize, never refits', async () => {
+    const callbacks: (() => void)[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const adapter = fakeAdapter();
+      render(
+        <MapView
+          label="기록 지도"
+          paths={[path()]}
+          selection={null}
+          onSelect={vi.fn()}
+          basemap={basemap}
+          createAdapter={adapter.factory}
+        />,
+      );
+      await waitFor(() => expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(1));
+      expect(callbacks).toHaveLength(1);
+      act(() => callbacks[0]?.());
+      act(() => callbacks[0]?.());
+      expect(adapter.handle.resize).toHaveBeenCalledTimes(2);
+      expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  });
+
+  it('refits to the new track on a switch, and not for a data update without one', async () => {
+    const adapter = fakeAdapter();
+    const first = path();
+    const second = path({
+      id: 'track-2',
+      revision: 'r2',
+      positions: [
+        [127.05, 37.5],
+        [127.06, 37.51],
+      ],
+    });
+    const common = {
+      label: '기록 지도',
+      selection: null,
+      onSelect: vi.fn(),
+      basemap,
+      createAdapter: adapter.factory,
+    };
+    const view = render(<MapView {...common} paths={[first]} fitRequest={0} />);
+    await waitFor(() => expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(1));
+    // A data update on the same track (a highlight, an edit) keeps the user's viewport.
+    view.rerender(
+      <MapView
+        {...common}
+        paths={[first, path({ id: 'highlight', revision: 'h1' })]}
+        fitRequest={0}
+      />,
+    );
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalledTimes(2));
+    expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(1);
+    // Switching the displayed track raises the request, and the fit is to the new track.
+    view.rerender(<MapView {...common} paths={[second]} fitRequest={1} />);
+    await waitFor(() => expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(2));
+    expect(adapter.handle.fitBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ west: 127.05, east: 127.06, south: 37.5, north: 37.51 }),
+    );
   });
 });

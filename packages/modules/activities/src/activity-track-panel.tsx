@@ -348,7 +348,6 @@ function StoredTrackView({
   const [page, setPage] = useState(0);
   const [failure, setFailure] = useState<MapAdapterFailure | null>(null);
   const [mapStatus, setMapStatus] = useState<MapViewStatus>('preparing');
-  const [rendered, setRendered] = useState<number | null>(null);
   const tabsId = useId();
 
   const shared = useSharedDetailSelectionStore();
@@ -479,10 +478,6 @@ function StoredTrackView({
     [basemap],
   );
 
-  const onRenderIdle = useCallback(
-    (info: { renderedPathFeatures: number }) => setRendered(info.renderedPathFeatures),
-    [],
-  );
   const onFailure = useCallback((next: MapAdapterFailure) => setFailure(next), []);
 
   const total = geometry.vertexSampleIds.length;
@@ -646,7 +641,6 @@ function StoredTrackView({
               fitRequest={fitRequest}
               onStatusChange={setMapStatus}
               onFailure={onFailure}
-              onRenderIdle={onRenderIdle}
               loadFailureFallback={
                 <p role="status">
                   지도 구성 요소를 불러오지 못했습니다. 아래 요약과 표본 목록은 그대로 사용할 수
@@ -661,24 +655,26 @@ function StoredTrackView({
               그릴 좌표가 없습니다. 아래 요약과 표본 목록을 사용하세요.
             </StatusNotice>
           )}
+          {/*
+            Plain notes, not live regions: the map's own status line already announces the
+            classified failure (review N6). These add only what this screen owns — that the
+            summary and the sample list still work.
+          */}
           {basemapFailed ? (
-            <StatusNotice state="unavailable">
+            <p className={styles.note}>
               배경 지도를 불러오지 못했습니다. 경로와 요약은 그대로 사용할 수 있습니다.
-            </StatusNotice>
-          ) : null}
-          {rendererFailed ? (
-            <StatusNotice state="unavailable">
-              이 브라우저에서 지도 렌더러(WebGL)를 사용할 수 없습니다. 아래 표본 목록으로 같은
-              지점을 선택할 수 있습니다.
-            </StatusNotice>
-          ) : null}
-          {rendered !== null ? (
-            <p role="status" className={styles.note}>
-              {rendered > 0
-                ? `지도가 경로를 그렸습니다 (렌더된 경로 feature ${rendered}개).`
-                : '지도가 아직 경로를 그리지 않았습니다.'}
             </p>
           ) : null}
+          {rendererFailed ? (
+            <p className={styles.note}>
+              이 브라우저에서 지도 렌더러(WebGL)를 사용할 수 없습니다. 아래 표본 목록으로 같은
+              지점을 선택할 수 있습니다.
+            </p>
+          ) : null}
+          {/*
+            Whether the path is drawn is the map's own status line, tied to what the
+            renderer actually drew; a second count here once contradicted it.
+          */}
           {mapStatus === 'invalid' ? (
             <StatusNotice state="error">
               저장된 좌표가 표시 계약을 만족하지 않아 그리지 않았습니다.
