@@ -1866,6 +1866,97 @@ describe('M2-01m thumbnail object reconciliation', () => {
     expect(queued.rows[0]?.['reason']).toBe('account_erased');
   });
 
+  it('queues an orphan only the reference index still names when the account is erased', async () => {
+    // M2-01s. The orphan of the test above — published after every receipt closed, its
+    // ledger row pruned — so the reference index is the only thing left that names it. The
+    // account is erased before the sweep got to it. Erasure deletes the index row, and
+    // without a receipt for the key nothing would ever name those bytes again: not the
+    // ledger (pruned), not the index (erased), not the queue (closed). The same state is
+    // what a restore of a backup taken before the erasure hands the replayed erasure.
+    const { athlete, course } = await athleteWithCourse('Erased orphan');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    await ageClosedRender(render.lease.jobId, 8);
+    await cleanup.pruneCourseThumbnailHistory(100);
+    expect(await watchedRef(render.finalKey)).toMatchObject({ athlete_id: athlete });
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+
+    await operations.eraseAccount(athlete);
+    expect(await watchedRef(render.finalKey)).toBeNull();
+    expect(await queuedReasons(render.finalKey)).toEqual(['account_erased']);
+    expect(await pendingCleanupRows(render.finalKey)).toBe(1);
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+  });
+
+  it('turns a receipt the sweep already opened for an orphan into an erasure receipt', async () => {
+    // M2-01s NB-1. The sweep got to the orphan first, so an `upload_abandoned` receipt is
+    // open when the account is erased. The 033 and 038 stages convert every receipt their
+    // ledgers name to `account_erased`, open or closed; this key is named only by the index,
+    // and it has to end up under the same rule — and with it the thirty-day erasure fence.
+    const { athlete, course } = await athleteWithCourse('Swept then erased');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    await ageClosedRender(render.lease.jobId, 8);
+    await cleanup.pruneCourseThumbnailHistory(100);
+    await admin.query(
+      `UPDATE course_thumbnail_object_ref SET recorded_at=clock_timestamp()-interval '9 days'
+       WHERE storage_ref=$1`,
+      [render.finalKey],
+    );
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 1 });
+    expect(await queuedReasons(render.finalKey)).toEqual(['upload_abandoned']);
+    expect(await pendingCleanupRows(render.finalKey)).toBe(1);
+
+    await operations.eraseAccount(athlete);
+    const queued = await admin.query(
+      `SELECT reason,completed_at IS NULL AS open,available_at<=clock_timestamp() AS due
+       FROM resource_object_cleanup WHERE storage_ref=$1`,
+      [render.finalKey],
+    );
+    expect(queued.rows).toEqual([{ reason: 'account_erased', open: true, due: true }]);
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+  });
+
+  it('converts a fence-carrying receipt of a deleted course without pulling its fence earlier', async () => {
+    // M2-01s NB-1, the other half. A course deleted while its render held an open publication
+    // fence cascades the ledger row away; the `course_deleted` receipt carries the fence in
+    // its `available_at` alone, and at erasure the key is named only by the index. Erasure
+    // makes it an erasure receipt but must not make it due any earlier than it already was.
+    const { athlete, course } = await athleteWithCourse('Deleted mid publication, then erased');
+    const render = await preparedRender(course.course.courseId);
+    await courses.remove(athlete, course.course.courseId, 1);
+    const before = await admin.query<{ reason: string; available_at: Date }>(
+      'SELECT reason,available_at FROM resource_object_cleanup WHERE storage_ref=$1',
+      [render.finalKey],
+    );
+    expect(before.rows[0]?.reason).toBe('course_deleted');
+    expect(await watchedRef(render.finalKey)).toMatchObject({ athlete_id: athlete });
+
+    await operations.eraseAccount(athlete);
+    const after = await admin.query<{
+      reason: string;
+      open: boolean;
+      not_earlier: boolean;
+      held_back: boolean;
+    }>(
+      `SELECT reason,completed_at IS NULL AS open,available_at>=$2 AS not_earlier,
+         available_at>clock_timestamp()+interval '50 minutes' AS held_back
+       FROM resource_object_cleanup WHERE storage_ref=$1`,
+      [render.finalKey, before.rows[0]?.available_at],
+    );
+    expect(after.rows).toEqual([
+      { reason: 'account_erased', open: true, not_earlier: true, held_back: true },
+    ]);
+  });
+
   it('adds no export surface: the index is internal operating state', async () => {
     // M2-01l settled that a recomputable fact does not go into the export (v21); M2-01j that
     // an owner-entered, non-recomputable one does (v20). This table is neither owner input

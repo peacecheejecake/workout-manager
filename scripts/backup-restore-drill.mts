@@ -1305,9 +1305,14 @@ async function execute() {
     const trackCorrespondence = createHash('sha256')
       .update('drill-track-correspondence')
       .digest('hex');
-    const seedTrack = async (activityId: string, activityRevision: number, label: string) => {
+    const seedTrack = async (
+      activityId: string,
+      activityRevision: number,
+      label: string,
+      owner: string = retainedAthlete,
+    ) => {
       const reservation = await trackRepo.reserve(
-        retainedAthlete,
+        owner,
         activityId,
         { expectedActivityRevision: activityRevision, recordedTrackIndex: 0 },
         `track-${randomUUID()}`,
@@ -1320,7 +1325,7 @@ async function execute() {
         const bytes = Buffer.from(content, 'utf8');
         const sha256 = createHash('sha256').update(bytes).digest('hex');
         const parts = {
-          tenantId: retainedAthlete,
+          tenantId: owner,
           activityId,
           trackId: reservation.trackId,
           uploadId: reservation.uploadId,
@@ -1358,7 +1363,7 @@ async function execute() {
         'json',
         JSON.stringify({ schemaVersion: 1, lines: 1, label }),
       );
-      await trackRepo.prepareObjects(retainedAthlete, reservation.uploadId, {
+      await trackRepo.prepareObjects(owner, reservation.uploadId, {
         raw: {
           storageRef: raw.storageRef,
           sizeBytes: raw.sizeBytes,
@@ -1388,8 +1393,8 @@ async function execute() {
           distances: { deviceReportedMeters: null, recomputedFromPositionsMeters: 14 },
         },
       });
-      await trackRepo.markStaged(retainedAthlete, reservation.uploadId);
-      const stored = await trackRepo.finalize(retainedAthlete, reservation.uploadId);
+      await trackRepo.markStaged(owner, reservation.uploadId);
+      const stored = await trackRepo.finalize(owner, reservation.uploadId);
       assert.equal(stored.status, 'available');
       return { raw, normalized, mapPath, artifacts: [raw, normalized, mapPath] };
     };
@@ -1704,14 +1709,19 @@ async function execute() {
       waypointCount: 3,
       vertexCount: candidateLoop.length,
     };
-    const candidateRequestId = `req-${randomUUID()}`;
-    // The same draft as the unsaved route above. Since M2-01p a new answer replaces the
-    // unsaved answers of the course the editor has moved past, and a search for another
-    // draft would remove that route before the backup ever saw it. Route and search of one
-    // draft sit side by side, as they do on the editor's screen.
-    const candidateSet = await courseRepo.storeRouteCandidateSet(retainedAthlete, {
-      courseId: routedCourse.course.courseId,
-      draftRevision: 5,
+    // A search is seeded for the same draft as its course's unsaved route. Since M2-01p a new
+    // answer replaces the unsaved answers of a draft the editor has moved past, so a search
+    // for another draft would remove that route before the backup ever saw it. Route and
+    // search of one draft sit side by side, as they do on the editor's screen — which is why
+    // the draft is a parameter here: the retained course's route is draft 5 and the erased
+    // tenant's is draft 3.
+    const drillCandidateSetInput = (
+      courseId: string,
+      candidateRequestId: string,
+      draftRevision: number,
+    ) => ({
+      courseId,
+      draftRevision,
       requestId: candidateRequestId,
       targetDistanceMeters: 5_000,
       searchSeed: 'feedfacefeedface',
@@ -1782,22 +1792,105 @@ async function execute() {
             snapDistanceMeters: 2,
           })),
           computation: {
-            ...drillComputation(candidateRequestId, 5),
-            conditions: { ...drillComputation(candidateRequestId, 5).conditions, waypointCount: 3 },
+            ...drillComputation(candidateRequestId, draftRevision),
+            conditions: {
+              ...drillComputation(candidateRequestId, draftRevision).conditions,
+              waypointCount: 3,
+            },
           },
           evaluation: candidateEvaluation,
         },
       ],
     });
+    const candidateSet = await courseRepo.storeRouteCandidateSet(
+      retainedAthlete,
+      drillCandidateSetInput(routedCourse.course.courseId, `req-${randomUUID()}`, 5),
+    );
+
+    // M2-01s: the tenant erased after the backup owns courses too, so the restore has
+    // something of theirs to bring back and the replayed erasure something to take away.
+    // Everything a course can leave behind is seeded: a recorded track with its three
+    // objects, a course that is edited to a second revision (so one picture is superseded
+    // and one is the head), a copy whose render fails retryably with its temporary object
+    // already written (a retry that never finished), a preference, a protected area, an
+    // unsaved proposal, a candidate search, and — through the triggers — the reconciliation
+    // index rows for both kinds of object.
+    const erasedCourseFixture = fixtureActivities.get(deletedAthlete);
+    assert.ok(erasedCourseFixture);
+    const erasedTrack = await seedTrack(
+      erasedCourseFixture.activityId,
+      erasedCourseFixture.revision,
+      'erased-tenant',
+      deletedAthlete,
+    );
+    const erasedTrackId = (
+      await source.query<{ track_id: string }>(
+        'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
+        [deletedAthlete, erasedCourseFixture.activityId],
+      )
+    ).rows[0]?.track_id;
+    assert.ok(erasedTrackId);
+    const erasedCourse = await courseRepo.create(
+      deletedAthlete,
+      courseContent(erasedCourseFixture.activityId, erasedTrackId, 'Erased tenant drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (erasedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const erasedRetryCourse = await courseRepo.create(
+      deletedAthlete,
+      courseContent(
+        erasedCourseFixture.activityId,
+        erasedTrackId,
+        'Erased tenant retrying course',
+        {
+          kind: 'copied',
+          copiedFromCourseId: erasedCourse.course.courseId,
+          copiedFromRevision: 1,
+        },
+      ),
+      `course-${randomUUID()}`,
+    );
+    if (erasedRetryCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    // A third course whose render stalls after preparing and publishes only after every
+    // receipt for its key closed, and whose ledger row is then pruned: the orphan that only
+    // the M2-01m reference index still names when the backup is taken.
+    const erasedStalledCourse = await courseRepo.create(
+      deletedAthlete,
+      courseContent(
+        erasedCourseFixture.activityId,
+        erasedTrackId,
+        'Erased tenant stalled render course',
+        {
+          kind: 'copied',
+          copiedFromCourseId: erasedCourse.course.courseId,
+          copiedFromRevision: 1,
+        },
+      ),
+      `course-${randomUUID()}`,
+    );
+    if (erasedStalledCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    await preferenceRepo.write(deletedAthlete, erasedCourse.course.courseId, { favourite: true });
+    await preferenceRepo.createPrivacyZone(deletedAthlete, {
+      name: 'Erased tenant protected area',
+      center: [127.02, 37.5],
+      radiusMeters: 200,
+    });
+    await courseRepo.storeRouteProposal(
+      deletedAthlete,
+      drillProposalInput(erasedCourse.course.courseId, 3),
+    );
+    await courseRepo.storeRouteCandidateSet(
+      deletedAthlete,
+      drillCandidateSetInput(erasedCourse.course.courseId, `req-${randomUUID()}`, 3),
+    );
 
     // M2-01l: the stored picture of each course. A thumbnail is a derivative object —
     // drawn by its own least-privilege worker, published through the same private object
     // store as every other private object, and pointed at by a row the runtime owns. A
     // restore therefore has to bring back the row *and* the bytes, and a deletion has to
     // take both away again; neither is true of anything the earlier course checks cover.
-    const thumbnailWorker = createCourseThumbnailWorkerRepository({
-      connectionString: url('drill_source', 'drill_thumbnailer'),
-    });
     const drawnThumbnails = new Map<
       string,
       {
@@ -1809,62 +1902,196 @@ async function execute() {
         rendererVersion: string;
       }
     >();
-    try {
-      const renderOneLease = async (lease: CourseThumbnailLease) => {
-        const drawn = renderCourseThumbnail(lease.coordinates);
-        const temporaryKey = createCourseThumbnailTemporaryObjectKey({
-          tenantId: lease.athleteId,
-          courseId: lease.courseId,
-          jobId: lease.jobId,
-        });
-        const finalKey = createCourseThumbnailFinalObjectKey({
-          tenantId: lease.athleteId,
-          courseId: lease.courseId,
-          revisionId: lease.revisionId,
-          sha256: drawn.sha256,
-        });
-        await sourceObjectStorage.writeTemporary(
-          temporaryKey,
-          (async function* () {
-            yield drawn.bytes;
-          })(),
-        );
-        // Prepare first, publish second, finalize last: the database decides whether these
-        // bytes may become the course's picture before the store makes them visible.
-        assert.ok(
-          await thumbnailWorker.prepare(lease, {
+    // Temporary objects written by a render that then failed retryably. Nothing published
+    // them, so only the ledger row's `temporary_ref` still names them.
+    const failedThumbnailTemporaryRefs: string[] = [];
+    let stalledRender:
+      | {
+          jobId: string;
+          temporaryKey: ReturnType<typeof createCourseThumbnailTemporaryObjectKey>;
+          finalKey: ReturnType<typeof createCourseThumbnailFinalObjectKey>;
+          drawn: ReturnType<typeof renderCourseThumbnail>;
+        }
+      | undefined;
+    const drainThumbnailQueue = async () => {
+      const thumbnailWorker = createCourseThumbnailWorkerRepository({
+        connectionString: url('drill_source', 'drill_thumbnailer'),
+      });
+      try {
+        const renderOneLease = async (lease: CourseThumbnailLease) => {
+          const drawn = renderCourseThumbnail(lease.coordinates);
+          const temporaryKey = createCourseThumbnailTemporaryObjectKey({
+            tenantId: lease.athleteId,
+            courseId: lease.courseId,
+            jobId: lease.jobId,
+          });
+          const finalKey = createCourseThumbnailFinalObjectKey({
+            tenantId: lease.athleteId,
+            courseId: lease.courseId,
+            revisionId: lease.revisionId,
+            sha256: drawn.sha256,
+          });
+          await sourceObjectStorage.writeTemporary(
+            temporaryKey,
+            (async function* () {
+              yield drawn.bytes;
+            })(),
+          );
+          if (
+            lease.athleteId === deletedAthlete &&
+            lease.courseId === erasedRetryCourse.course.courseId
+          ) {
+            // A render that wrote its temporary object and then failed retryably: the row
+            // waits for a retry an hour away, and its object is in the store and the archive.
+            assert.ok(
+              await thumbnailWorker.fail(lease, 'DRILL_RENDER_INTERRUPTED', {
+                retryable: true,
+                retryAfterSeconds: 3600,
+              }),
+            );
+            failedThumbnailTemporaryRefs.push(temporaryKey);
+            return;
+          }
+          if (
+            lease.athleteId === deletedAthlete &&
+            lease.courseId === erasedStalledCourse.course.courseId
+          ) {
+            // Prepared, and then the writer stalls before either storage call.
+            assert.ok(
+              await thumbnailWorker.prepare(lease, {
+                storageRef: finalKey,
+                sha256: drawn.sha256,
+                byteSize: drawn.byteSize,
+                vertexCount: drawn.vertexCount,
+              }),
+            );
+            stalledRender = { jobId: lease.jobId, temporaryKey, finalKey, drawn };
+            await sourceObjectStorage.delete(temporaryKey);
+            return;
+          }
+          // Prepare first, publish second, finalize last: the database decides whether these
+          // bytes may become the course's picture before the store makes them visible.
+          assert.ok(
+            await thumbnailWorker.prepare(lease, {
+              storageRef: finalKey,
+              sha256: drawn.sha256,
+              byteSize: drawn.byteSize,
+              vertexCount: drawn.vertexCount,
+            }),
+          );
+          await sourceObjectStorage.publishTemporary(temporaryKey, finalKey, {
+            sha256: drawn.sha256,
+            sizeBytes: drawn.byteSize,
+          });
+          assert.equal(await thumbnailWorker.finalize(lease), 'ready');
+          drawnThumbnails.set(`${lease.courseId}:${lease.courseRevision}`, {
             storageRef: finalKey,
             sha256: drawn.sha256,
             byteSize: drawn.byteSize,
             vertexCount: drawn.vertexCount,
-          }),
-        );
-        await sourceObjectStorage.publishTemporary(temporaryKey, finalKey, {
-          sha256: drawn.sha256,
-          sizeBytes: drawn.byteSize,
-        });
-        assert.equal(await thumbnailWorker.finalize(lease), 'ready');
-        drawnThumbnails.set(`${lease.courseId}:${lease.courseRevision}`, {
-          storageRef: finalKey,
-          sha256: drawn.sha256,
-          byteSize: drawn.byteSize,
-          vertexCount: drawn.vertexCount,
-          rendererId: drawn.rendererId,
-          rendererVersion: drawn.rendererVersion,
-        });
-      };
-      // The render queue is deliberately tenant-blind — one worker drains every tenant —
-      // so drain it whole and look each course up afterwards rather than assuming the next
-      // lease is the one this drill just queued.
-      for (let attempt = 0; ; attempt += 1) {
-        if (attempt >= 200) throw new Error('COURSE_THUMBNAIL_QUEUE_DID_NOT_DRAIN');
-        const lease = await thumbnailWorker.lease(60);
-        if (lease === null) break;
-        await renderOneLease(lease);
+            rendererId: drawn.rendererId,
+            rendererVersion: drawn.rendererVersion,
+          });
+        };
+        // The render queue is deliberately tenant-blind — one worker drains every tenant —
+        // so drain it whole and look each course up afterwards rather than assuming the next
+        // lease is the one this drill just queued.
+        for (let attempt = 0; ; attempt += 1) {
+          if (attempt >= 200) throw new Error('COURSE_THUMBNAIL_QUEUE_DID_NOT_DRAIN');
+          const lease = await thumbnailWorker.lease(60);
+          if (lease === null) break;
+          await renderOneLease(lease);
+        }
+      } finally {
+        await thumbnailWorker.close();
       }
+    };
+    await drainThumbnailQueue();
+    // The erased tenant's course moves to a second revision after its first picture was
+    // stored, so the restored ledger holds a superseded picture as well as the head one.
+    const erasedCourseV2 = await courseRepo.update(
+      deletedAthlete,
+      erasedCourse.course.courseId,
+      1,
+      courseContent(
+        erasedCourseFixture.activityId,
+        erasedTrackId,
+        'Erased tenant drill course renamed',
+        { kind: 'renamed' },
+      ),
+      `course-${randomUUID()}`,
+    );
+    if (erasedCourseV2.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    await drainThumbnailQueue();
+    // The stalled render, taken through the exact sequence M2-01m reproduced: its lease,
+    // fence and deadline pass; the real reaper abandons it and queues both keys; the queue
+    // closes both receipts (the objects are absent, so there is nothing to delete — done here
+    // by closing exactly those two rows rather than draining a queue that holds other drill
+    // fixtures); the writer then wakes and publishes; a week later the real housekeeping
+    // prunes the closed row. What is left is an object and one index row naming it.
+    assert.ok(stalledRender);
+    const orphan = stalledRender;
+    await source.query(
+      `UPDATE course_thumbnail
+         SET created_at=clock_timestamp()-interval '4 hours',
+             updated_at=clock_timestamp()-interval '4 hours',
+             lease_until=clock_timestamp()-interval '3 hours',
+             publication_lease_until=clock_timestamp()-interval '3 hours',
+             expires_at=clock_timestamp()-interval '3 hours'
+       WHERE job_id=$1`,
+      [orphan.jobId],
+    );
+    const sourceCleanup = createResourceObjectCleanupRepository({
+      connectionString: url('drill_source'),
+      max: 1,
+    });
+    try {
+      assert.ok((await sourceCleanup.reapCourseThumbnailRenders(100)) >= 1);
+      const closedReceipts = await source.query(
+        `UPDATE resource_object_cleanup SET completed_at=clock_timestamp(),attempts=1
+         WHERE storage_ref=ANY($1::text[]) AND completed_at IS NULL`,
+        [[orphan.temporaryKey, orphan.finalKey]],
+      );
+      assert.equal(closedReceipts.rowCount, 2);
+      await sourceObjectStorage.writeTemporary(
+        orphan.temporaryKey,
+        (async function* () {
+          yield orphan.drawn.bytes;
+        })(),
+      );
+      await sourceObjectStorage.publishTemporary(orphan.temporaryKey, orphan.finalKey, {
+        sha256: orphan.drawn.sha256,
+        sizeBytes: orphan.drawn.byteSize,
+      });
+      await source.query(
+        `UPDATE course_thumbnail
+           SET created_at=clock_timestamp()-interval '9 days',
+               expires_at=clock_timestamp()-interval '8 days'-interval '1 hour',
+               publication_lease_until=clock_timestamp()-interval '8 days'-interval '2 hours',
+               lease_until=NULL,lease_owner=NULL,lease_token=NULL,
+               updated_at=clock_timestamp()-interval '8 days'
+         WHERE job_id=$1`,
+        [orphan.jobId],
+      );
+      assert.equal(await sourceCleanup.pruneCourseThumbnailHistory(100), 1);
     } finally {
-      await thumbnailWorker.close();
+      await sourceCleanup.close();
     }
+    assert.equal(
+      (await source.query('SELECT 1 FROM course_thumbnail WHERE job_id=$1', [orphan.jobId]))
+        .rowCount,
+      0,
+    );
+    assert.equal(
+      (
+        await source.query(
+          'SELECT 1 FROM course_thumbnail_object_ref WHERE storage_ref=$1 AND athlete_id=$2',
+          [orphan.finalKey, deletedAthlete],
+        )
+      ).rowCount,
+      1,
+    );
+    assert.ok(await sourceObjectStorage.stat(validateObjectKey(orphan.finalKey)));
     const retainedThumbnail = drawnThumbnails.get(`${retainedCourse.course.courseId}:1`);
     const doomedThumbnail = drawnThumbnails.get(`${doomedCourse.course.courseId}:1`);
     assert.ok(retainedThumbnail, 'the retained course was queued for a thumbnail');
@@ -2025,6 +2252,78 @@ async function execute() {
         retainedAthlete,
         removedConstraintAthlete,
       ].sort(),
+    );
+    // M2-01s: what the erased tenant owns in the course and track tables at backup time,
+    // and every object key any of those rows names. The restore must bring all of it back
+    // and the replayed erasure must take all of it away again — rows, index rows and bytes.
+    const erasedTenantCourseTables = [
+      'course',
+      'course_revision',
+      'course_revision_source',
+      'course_route_proposal',
+      'course_route_candidate_set',
+      'course_preference',
+      'course_privacy_zone',
+      'course_thumbnail',
+      'course_thumbnail_object_ref',
+      'activity_track',
+      'activity_track_revision',
+      'activity_track_object',
+      'activity_track_object_ref',
+    ] as const;
+    const countErasedTenantRows = async (owner: Pool) => {
+      const counts: Record<string, number> = {};
+      for (const table of erasedTenantCourseTables) {
+        counts[table] =
+          (
+            await owner.query<{ count: number }>(
+              `SELECT count(*)::int AS count FROM ${table} WHERE athlete_id=$1`,
+              [deletedAthlete],
+            )
+          ).rows[0]?.count ?? -1;
+      }
+      return counts;
+    };
+    const erasedTenantBackupCounts = await countErasedTenantRows(source);
+    for (const table of erasedTenantCourseTables)
+      assert.ok(
+        (erasedTenantBackupCounts[table] ?? 0) > 0,
+        `the erased tenant has ${table} rows at backup time`,
+      );
+    assert.equal(erasedTenantBackupCounts['course'], 3);
+    assert.ok((erasedTenantBackupCounts['course_revision'] ?? 0) >= 3);
+    const erasedTenantThumbnailStates = (
+      await source.query<{ state: string }>(
+        'SELECT state FROM course_thumbnail WHERE athlete_id=$1 ORDER BY state',
+        [deletedAthlete],
+      )
+    ).rows.map((row) => row.state);
+    assert.deepEqual(erasedTenantThumbnailStates, ['failed', 'ready', 'superseded']);
+    const erasedTenantObjectRefs = (
+      await source.query<{ storage_ref: string }>(
+        `SELECT refs.storage_ref FROM course_thumbnail t
+           CROSS JOIN LATERAL (VALUES(t.temporary_ref),(t.storage_ref)) refs(storage_ref)
+           WHERE t.athlete_id=$1 AND refs.storage_ref IS NOT NULL
+         UNION SELECT storage_ref FROM activity_track_object WHERE athlete_id=$1
+         UNION SELECT storage_ref FROM activity_track_object_ref WHERE athlete_id=$1
+         UNION SELECT storage_ref FROM course_thumbnail_object_ref WHERE athlete_id=$1
+         ORDER BY 1`,
+        [deletedAthlete],
+      )
+    ).rows.map((row) => row.storage_ref);
+    // Only the keys that are actual objects: a published render's temporary key was moved.
+    const erasedTenantObjects: string[] = [];
+    for (const ref of erasedTenantObjectRefs)
+      if (await sourceObjectStorage.stat(validateObjectKey(ref))) erasedTenantObjects.push(ref);
+    // Three track objects, two published pictures, one abandoned render's temporary object,
+    // and the orphan only the reference index names.
+    assert.equal(erasedTenantObjects.length, 7);
+    assert.ok(erasedTenantObjects.includes(orphan.finalKey));
+    for (const artifact of erasedTrack.artifacts)
+      assert.ok(erasedTenantObjects.includes(artifact.storageRef));
+    for (const ref of failedThumbnailTemporaryRefs) assert.ok(erasedTenantObjects.includes(ref));
+    checks.push(
+      'erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup',
     );
     run(bin, 'pg_dump', [
       '-h',
@@ -2329,6 +2628,15 @@ async function execute() {
     ]);
     await cp(objectArchive, restoredObjectRoot, { recursive: true, errorOnExist: true });
     const restored = pool('drill_restore');
+    // M2-01s: the archive predates the erasure, so before any replay the restored cluster
+    // holds every course row and every object the erased tenant had. This is what makes
+    // the checks after the replay mean something.
+    assert.deepEqual(await countErasedTenantRows(restored), erasedTenantBackupCounts);
+    const restoredObjectStorageBeforeReplay =
+      await createLocalFilesystemObjectStorage(restoredObjectRoot);
+    for (const ref of erasedTenantObjects)
+      assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
+    checks.push('restore_brings_back_erased_tenant_course_rows_and_objects_before_replay');
     // Admin inspection only: the runtime has not connected to the restored database yet.
     const restoredOldEvidence = await restored.query<{ body: unknown; purged_reason: unknown }>(
       'SELECT body,purged_reason FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$2',
@@ -2725,6 +3033,29 @@ async function execute() {
       0,
     );
     checks.push('deleted_tenant_absent_from_all_health_and_command_tables_and_identity');
+    // M2-01s: the replayed erasure reaches every course table, the reconciliation index and
+    // the track tables, and queues every object any of those rows named.
+    assert.deepEqual(
+      await countErasedTenantRows(restored),
+      Object.fromEntries(erasedTenantCourseTables.map((table) => [table, 0])),
+    );
+    // Every one of them has an open `account_erased` receipt that is already due. The orphan
+    // arrived with a receipt that had closed before the backup; the replay has to reopen it.
+    const erasedTenantQueue = (
+      await restored.query<{ storage_ref: string; reason: string; open: boolean; due: boolean }>(
+        `SELECT storage_ref,reason,completed_at IS NULL AS open,
+           available_at<=clock_timestamp() AS due
+         FROM resource_object_cleanup WHERE storage_ref=ANY($1::text[]) ORDER BY storage_ref`,
+        [erasedTenantObjects],
+      )
+    ).rows;
+    assert.deepEqual(
+      erasedTenantQueue,
+      [...erasedTenantObjects]
+        .sort()
+        .map((storage_ref) => ({ storage_ref, reason: 'account_erased', open: true, due: true })),
+    );
+    checks.push('erased_tenant_course_rows_and_reference_index_absent_after_erasure_replay');
     for (const table of selfReportTables) {
       assert.equal(
         (
@@ -3107,6 +3438,15 @@ async function execute() {
     checks.push(
       'restored_activity_deletion_reclaims_course_thumbnail_objects_through_the_cleanup_worker',
     );
+    // M2-01s: the same worker run reclaims every object of the erased tenant the archive
+    // brought back — track objects, the head and the superseded picture, the abandoned
+    // render's temporary object and the orphan only the reference index named — so no byte
+    // of the erased account outlives the replay.
+    const erasedTenantSurvivors: string[] = [];
+    for (const ref of erasedTenantObjects)
+      if (await restoredObjectStorage.stat(validateObjectKey(ref))) erasedTenantSurvivors.push(ref);
+    assert.deepEqual(erasedTenantSurvivors, []);
+    checks.push('erased_tenant_course_thumbnail_and_track_objects_reclaimed_after_erasure_replay');
     // Courses restored with the cluster. The retained one is intact; the two derived from
     // the deleted activity were reclaimed by the replayed suppression, and what is left is
     // an explicitly unavailable reference with no geometry and no revisions.

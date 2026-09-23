@@ -1141,6 +1141,91 @@ describe('M2-01c private track storage', () => {
     }
   });
 
+  it('queues a late publication only the reference index still names when the account is erased', async () => {
+    // M2-01s. The raw recording of the test above — published after its receipt closed,
+    // its upload row compacted away — is named by nothing but the reference index. The
+    // account is erased before the sweep reached it. Erasure deletes the index row, so
+    // unless it queues the key first nothing ever names those GPS bytes again. A restore
+    // of a backup taken while the index still watched the key hands the replayed erasure
+    // exactly this state, even when the source had long since reclaimed the object.
+    const athlete = randomUUID();
+    const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    const imported = await activities.importActivity(athlete, importInput());
+    const prepared = await storeTrack(athlete, imported.activityId, imported.revision, {
+      finalize: false,
+      rawContent: `erased-late-${athlete}`,
+    });
+    await activities.deleteActivity(athlete, imported.activityId, {
+      expectedRevision: imported.revision,
+    });
+    const worker = createResourceObjectCleanupRepository({ connectionString: workerUrl, max: 1 });
+    const drain = async () => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const outcome = await processOneResourceObjectCleanup(worker, (ref) =>
+          storage.delete(validateObjectKey(ref)),
+        );
+        if (outcome === 'empty') break;
+      }
+    };
+    try {
+      await admin.query(
+        'ALTER TABLE activity_track_upload_intent DISABLE TRIGGER activity_track_upload_transition',
+      );
+      await admin.query(
+        `UPDATE activity_track_upload_intent
+         SET created_at=clock_timestamp()-interval '9 days',
+             updated_at=clock_timestamp()-interval '9 days',
+             prepared_at=clock_timestamp()-interval '9 days'+interval '1 minute',
+             publication_lease_until=clock_timestamp()-interval '9 days'+interval '3 minutes',
+             expires_at=clock_timestamp()-interval '9 days'+interval '30 minutes'
+         WHERE upload_id=$1`,
+        [prepared.reservation.uploadId],
+      );
+      await admin.query(
+        'ALTER TABLE activity_track_upload_intent ENABLE TRIGGER activity_track_upload_transition',
+      );
+      await drain();
+      await database.tenant(athlete, async (tx) => {
+        await tx.query('SELECT public.compact_activity_track_upload_history(100)');
+      });
+      await publishObject(storage, prepared.keys.raw, `erased-late-${athlete}`);
+      const watched = await admin.query(
+        'SELECT athlete_id FROM activity_track_object_ref WHERE storage_ref=$1',
+        [prepared.keys.raw],
+      );
+      expect(watched.rows).toEqual([{ athlete_id: athlete }]);
+      const pending = async () =>
+        Number(
+          (
+            await admin.query(
+              `SELECT count(*)::int AS count FROM resource_object_cleanup
+               WHERE storage_ref=$1 AND completed_at IS NULL`,
+              [prepared.keys.raw],
+            )
+          ).rows[0]?.['count'],
+        );
+      expect(await pending()).toBe(0);
+
+      await createOperationsRepository(database).eraseAccount(athlete);
+      expect(
+        (
+          await admin.query('SELECT 1 FROM activity_track_object_ref WHERE storage_ref=$1', [
+            prepared.keys.raw,
+          ])
+        ).rowCount,
+      ).toBe(0);
+      const queued = await admin.query(
+        'SELECT reason FROM resource_object_cleanup WHERE storage_ref=$1 AND completed_at IS NULL',
+        [prepared.keys.raw],
+      );
+      expect(queued.rows).toEqual([{ reason: 'account_erased' }]);
+      await drain();
+      expect(await storage.stat(validateObjectKey(prepared.keys.raw))).toBeNull();
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('exports live tracks without a storage reference and drops the tracks of a deleted activity', async () => {
     const athlete = randomUUID();
     const kept = await activities.importActivity(athlete, importInput());

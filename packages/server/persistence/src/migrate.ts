@@ -44,6 +44,7 @@ const migrationFiles = [
   '039_course_thumbnail_reconciliation.sql',
   '040_reconcile_sweep_faults.sql',
   '041_course_route_proposal_supersession.sql',
+  '042_erasure_queues_watched_object_refs.sql',
 ] as const;
 
 /**
