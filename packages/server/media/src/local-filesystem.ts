@@ -1,11 +1,23 @@
 import { constants } from 'node:fs';
-import { access, chmod, link, lstat, mkdir, open, realpath, rmdir, unlink } from 'node:fs/promises';
+import {
+  access,
+  chmod,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  realpath,
+  rmdir,
+  unlink,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, parse, resolve, sep } from 'node:path';
 
 import { createHash } from 'node:crypto';
 
 import {
   parseObjectKey,
+  tenantObjectPrefix,
   type ParsedObjectKey,
   type FinalObjectKey,
   type ObjectKey,
@@ -18,6 +30,8 @@ import type {
   PublishResult,
   StoreReachability,
   StoredObjectStat,
+  TenantObjectEnumeration,
+  TenantObjectListing,
 } from './object-storage.js';
 
 export class ObjectStorageConflictError extends Error {
@@ -122,9 +136,26 @@ function unitPrivateDirectoryDepth(parsed: ParsedObjectKey): number {
   }
 }
 
+/**
+ * How many directory levels below a tenant's own directory any key reaches (M2-01x). The
+ * deepest keys are a track's final objects, `activities/A/tracks/T/<kind>/uploads/U/sha256/`
+ * and then the file: eight levels. A tenant walk never descends further, since nothing it could
+ * find down there is a key.
+ */
+const TENANT_DIRECTORY_DEPTH = 8;
+
+/** Whether a path the walk found is an object key, and one of this tenant's (M2-01x). */
+function isObjectKeyOfTenant(key: string, tenantId: string): boolean {
+  try {
+    return parseObjectKey(key).tenantId === tenantId;
+  } catch {
+    return false;
+  }
+}
+
 export async function createLocalFilesystemObjectStorage(
   rootDirectory: string,
-): Promise<ObjectStorage & StoreReachability> {
+): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration> {
   if (!isAbsolute(rootDirectory)) throw new UnsafeStoragePathError();
   const absoluteRoot = resolve(rootDirectory);
   if (absoluteRoot === parse(absoluteRoot).root) throw new UnsafeStoragePathError();
@@ -313,7 +344,114 @@ export async function createLocalFilesystemObjectStorage(
     }
   }
 
+  /**
+   * The names in one directory of a tenant walk, or null when the directory has gone (M2-01x).
+   *
+   * `readdir` is path-based and follows a symbolic link in its last component, so the directory
+   * is `lstat`ed on both sides of the read: it has to be a directory — never a link — before,
+   * and still the same directory (device and inode) after. A directory swapped for a link, or
+   * swapped away and back for another one, around the read is refused rather than listed. Only
+   * ENOENT is read as "gone", as everywhere in this file.
+   */
+  async function readTenantDirectory(directory: string): Promise<string[] | null> {
+    const before = await lstatIfPresent(directory);
+    if (before === null) return null;
+    if (!before.isDirectory()) throw new UnsafeStoragePathError();
+    let names: string[];
+    try {
+      names = await readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    const after = await lstatIfPresent(directory);
+    if (after === null) return null;
+    if (!after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino)
+      throw new UnsafeStoragePathError();
+    return names.sort();
+  }
+
+  /**
+   * Every object key under one tenant's prefix, up to `limit` (M2-01x).
+   *
+   * What it walks. Exactly the directory `private/v1/tenants/<tenant>`, reached component by
+   * component from the root the way every key is: each component `lstat`ed, a link or a
+   * non-directory refused. The walk is by directory, never by string prefix, so a tenant whose
+   * id another id starts with is a different directory and is never entered; and every file it
+   * reports must parse as an object key naming this same tenant. A file that is not such a key
+   * is counted as unrecognized and left alone, and so is a directory deeper than any key goes.
+   *
+   * The root (M2-01o), exactly as for every other operation here: asked before the walk,
+   * and again before the answer — including the answer "this tenant has nothing", which a
+   * purge would otherwise record as a finished pass. A root swapped mid-walk rejects.
+   *
+   * What it does not do is delete, and that is the point of the split. Everything this returns
+   * is a name. The caller deletes each one through `delete`, which re-walks the key from the
+   * root with its own guards (M2-01m's single `lstat` per component, M2-01n's prune floor,
+   * M2-01o's root checks before, before answering, and after the unlink). So a listing read
+   * through a directory swapped under the walk can at worst name keys; it cannot make a
+   * deletion leave the root or follow a link, and nothing about those guards changes here.
+   *
+   * Symbolic links, sockets, FIFOs and devices under the prefix reject the walk, as a link in a
+   * key's path rejects `stat`: a purge stops loudly rather than skipping past what it cannot
+   * explain.
+   */
+  async function listTenantObjects(tenantId: string, limit: number): Promise<TenantObjectListing> {
+    const prefix = tenantObjectPrefix(tenantId);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+      throw new RangeError('Tenant listing limit must be an integer from 1 to 1000.');
+    const tenantDirectory = resolve(canonicalRoot, ...prefix.split('/'));
+    if (!tenantDirectory.startsWith(`${canonicalRoot}${sep}`)) throw new UnsafeStoragePathError();
+    await assertRootIntact();
+    let current = canonicalRoot;
+    for (const part of prefix.split('/')) {
+      current = resolve(current, part);
+      const stat = await lstatIfPresent(current);
+      if (stat === null) {
+        await assertRootIntact();
+        return { keys: [], unrecognized: 0, truncated: false };
+      }
+      if (!stat.isDirectory()) throw new UnsafeStoragePathError();
+    }
+    const keys: ObjectKey[] = [];
+    let unrecognized = 0;
+    let truncated = false;
+    const visit = async (directory: string, keyPrefix: string, depth: number): Promise<void> => {
+      const names = await readTenantDirectory(directory);
+      if (names === null) return;
+      for (const name of names) {
+        if (keys.length >= limit) {
+          truncated = true;
+          return;
+        }
+        const path = resolve(directory, name);
+        if (dirname(path) !== directory) throw new UnsafeStoragePathError();
+        const stat = await lstatIfPresent(path);
+        if (stat === null) continue;
+        if (stat.isSymbolicLink()) throw new UnsafeStoragePathError();
+        const key = `${keyPrefix}/${name}`;
+        if (stat.isDirectory()) {
+          if (depth + 1 > TENANT_DIRECTORY_DEPTH) unrecognized += 1;
+          else await visit(path, key, depth + 1);
+          if (truncated) return;
+        } else if (stat.isFile()) {
+          if (isObjectKeyOfTenant(key, tenantId)) keys.push(key as ObjectKey);
+          else unrecognized += 1;
+        } else {
+          throw new UnsafeStoragePathError();
+        }
+      }
+    };
+    await visit(tenantDirectory, prefix, 0);
+    // Before the answer (M2-01o): names read through a root swapped mid-walk are not this
+    // store's, and an empty listing read that way is not "nothing left".
+    await assertRootIntact();
+    return { keys, unrecognized, truncated };
+  }
+
   return {
+    listTenantObjects,
+
     async writeTemporary(key, body) {
       const parsedKey = parseObjectKey(key);
       if (

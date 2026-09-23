@@ -1238,8 +1238,25 @@
       "title": "말소 후 객체 저장소 tenant prefix purge",
       "dependsOn": ["M2-01s"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01x.md",
       "scope": "M2-01s 독립 검토에서 분리(검토 판정: 중상, 계획 7절 말소 완결성의 구멍). drill 순서가 DB dump → 객체 아카이브 복사라서, 그 사이 업로드된 객체는 복원된 DB에 어떤 행도 없다. 그 tenant가 말소되거나 복원 후 suppression이 재생되면 DB 기반 경로(원장·참조 색인·reconciliation 스윕)는 그 객체를 찾을 수 없어 아무것도 지우지 않는다. key가 전부 private/v1/tenants/<id>/로 시작하므로 말소가 fence 이후 저장소 prefix walk로 purge하는 작업을 worker에 넘기면 이 구멍과 render worker 경합을 DB와 무관하게 함께 닫는다(검토자 제안). 과잉 삭제 금지: prefix purge는 말소된 tenant의 prefix에만 작용해야 하고 다른 tenant나 공유 경로를 건드리면 안 된다."
+    },
+    {
+      "id": "M2-01y",
+      "title": "활동 단위 suppression의 백업 공백",
+      "dependsOn": ["M2-01x"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01x에서 분리. 살아 있는 계정에서 백업 뒤 삭제된 활동의 업로드가 DB dump와 객체 아카이브 복사 사이에 들어오면, 복원 DB에는 그 객체를 가리키는 행이 없고 tenant가 살아 있어 prefix purge도 적용되지 않는다. 복원 후 활동 단위 suppression 재적용이 그 객체까지 지우는 방법을 설계·구현하고, M2-01x와 같은 drill 공백 재현(dump와 cp 사이 실제 업로드)으로 닫혔음을 보인다. 과잉 삭제 금지: 살아 있는 활동과 다른 tenant의 객체는 건드리지 않는다."
+    },
+    {
+      "id": "M2-01z",
+      "title": "tenant prefix purge 운영 가시성",
+      "dependsOn": ["M2-01x"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01x 독립 검토의 비차단 지적. (1) 계정이 남아 있어 lease가 거절한 purge 행이 조용히 남는다(attempts 0, 오류 코드 없음) — 불일치 원장으로 운영자에게 드러낸다. (2) lease를 잃은(120초 초과) 실행은 오류 코드 없이 attempts만 늘어 100회에 last_error_code NULL로 끝날 수 있다 — DEAD_LETTER 표식을 남긴다. (3) worker 호출당 purge 1회라 말소 tenant가 많으면 30일 동안의 시간당 재무장 pass가 밀린다 — 처리량 한계를 문서화하거나 조정한다. 과잉 삭제 방지 가드는 약화하지 않는다."
     },
     {
       "id": "M2-01k",

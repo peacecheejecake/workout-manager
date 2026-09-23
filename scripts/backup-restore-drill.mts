@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -66,6 +66,9 @@ import { createGalleryMediaRepository } from '../packages/server/persistence/src
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
+  processOneTenantObjectPurge,
+  reconcileActivityTrackObjects,
+  reconcileCourseThumbnailObjects,
 } from '../packages/server/persistence/src/resource-object-cleanup.js';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
 import {
@@ -2346,6 +2349,36 @@ async function execute() {
       '--file',
       archive,
     ]);
+    // M2-01x: an upload that lands between the database dump and the object-archive copy.
+    // The tenant erased right after it records a new activity and uploads its track through
+    // the real lifecycle; the rows go into the source cluster after the dump was taken, the
+    // three objects into the store before the archive is copied. So the restored cluster will
+    // hold the objects and not one row that names them.
+    const gapImport = await createActivityRepository(sourceDb).importActivity(deletedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: randomUUID(),
+        revision: 1,
+        contentHash: 'd'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic run uploaded between dump and archive copy',
+        kind: 'running',
+        startedAt: '2026-09-18T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
+    const gapTrack = await seedTrack(
+      gapImport.activityId,
+      gapImport.revision,
+      'gap-upload',
+      deletedAthlete,
+    );
+    const gapObjects = gapTrack.artifacts.map((artifact) => artifact.storageRef);
     await cp(sourceObjectRoot, objectArchive, { recursive: true, errorOnExist: true });
     await constraintRepo.update(retainedAthlete, oldConstraint.id, {
       expectedHeadRevision: 1,
@@ -2647,6 +2680,32 @@ async function execute() {
     for (const ref of erasedTenantObjects)
       assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
     checks.push('restore_brings_back_erased_tenant_course_rows_and_objects_before_replay');
+    // M2-01x: the gap upload came back with the archive and with no row at all — not in the
+    // ledger, not in the reference index, not in the queue.
+    for (const ref of gapObjects)
+      assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
+    const gapRowCount = (
+      await restored.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM (
+           SELECT storage_ref FROM activity_track_object WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT storage_ref FROM activity_track_object_ref
+             WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT storage_ref FROM resource_object_cleanup
+             WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT x.ref FROM activity_track_revision r CROSS JOIN LATERAL
+             (VALUES(r.raw_storage_ref),(r.normalized_storage_ref),(r.map_path_storage_ref)) x(ref)
+             WHERE x.ref=ANY($1::text[])
+           UNION ALL SELECT x.ref FROM activity_track_upload_intent i CROSS JOIN LATERAL
+             (VALUES(i.raw_temporary_ref),(i.normalized_temporary_ref),(i.map_path_temporary_ref),
+               (i.raw_storage_ref),(i.normalized_storage_ref),(i.map_path_storage_ref)) x(ref)
+             WHERE x.ref=ANY($1::text[])
+           UNION ALL SELECT id::text FROM activity_canonical WHERE id::text=$2
+         ) rows`,
+        [gapObjects, gapImport.activityId],
+      )
+    ).rows[0]?.count;
+    assert.equal(gapRowCount, 0);
+    checks.push('gap_upload_between_dump_and_archive_copy_restored_with_objects_and_no_row');
     // Admin inspection only: the runtime has not connected to the restored database yet.
     const restoredOldEvidence = await restored.query<{ body: unknown; purged_reason: unknown }>(
       'SELECT body,purged_reason FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$2',
@@ -3457,6 +3516,104 @@ async function execute() {
       if (await restoredObjectStorage.stat(validateObjectKey(ref))) erasedTenantSurvivors.push(ref);
     assert.deepEqual(erasedTenantSurvivors, []);
     checks.push('erased_tenant_course_thumbnail_and_track_objects_reclaimed_after_erasure_replay');
+    // M2-01x: the gap upload is what none of that reaches. The replay deleted every row, the
+    // queue is drained, and both reconciliation sweeps read their indexes to the end — and
+    // the three objects are still in the restored store, because nothing in the restored
+    // database ever named them.
+    const restoreSweep = createResourceObjectCleanupRepository({
+      connectionString: url('drill_restore'),
+      max: 1,
+    });
+    try {
+      for (let window = 0; window < 50; window += 1) {
+        const tracksSwept = await reconcileActivityTrackObjects(
+          restoreSweep,
+          restoredObjectStorage,
+          1000,
+        );
+        const thumbnailsSwept = await reconcileCourseThumbnailObjects(
+          restoreSweep,
+          restoredObjectStorage,
+          1000,
+        );
+        if (tracksSwept.wrapped && thumbnailsSwept.wrapped) break;
+      }
+      for (let attempt = 0; attempt < 200; attempt += 1)
+        if (
+          (await processOneResourceObjectCleanup(restoreSweep, (ref) =>
+            restoredObjectStorage.delete(validateObjectKey(ref)),
+          )) === 'empty'
+        )
+          break;
+    } finally {
+      await restoreSweep.close();
+    }
+    for (const ref of gapObjects)
+      assert.ok(await restoredObjectStorage.stat(validateObjectKey(ref)));
+    checks.push('gap_upload_survives_erasure_replay_queue_drain_and_both_sweeps');
+    // What does name them is the key prefix. The replayed erasure armed the tenant's purge in
+    // the restored cluster; the cleanup worker's purge run walks the prefix and deletes through
+    // the store's guarded delete. Everything outside that one prefix — every other tenant's
+    // object, byte for byte the same set — is still there afterwards.
+    const armedPurges = (
+      await restored.query<{ athlete_id: string; due: boolean }>(
+        `SELECT athlete_id,available_at<=clock_timestamp() AS due FROM tenant_object_purge
+         WHERE completed_at IS NULL ORDER BY athlete_id`,
+      )
+    ).rows;
+    assert.deepEqual(armedPurges, [{ athlete_id: deletedAthlete, due: true }]);
+    const storedFiles = async (): Promise<string[]> => {
+      const files: string[] = [];
+      for (const entry of await readdir(restoredObjectRoot, { recursive: true })) {
+        const path = join(restoredObjectRoot, entry);
+        if ((await lstat(path)).isFile()) files.push(entry);
+      }
+      return files.sort();
+    };
+    const erasedPrefix = `private/v1/tenants/${deletedAthlete}/`;
+    const othersBeforePurge = (await storedFiles()).filter(
+      (file) => !file.startsWith(erasedPrefix),
+    );
+    assert.ok(othersBeforePurge.length > 0);
+    const restorePurge = createResourceObjectCleanupRepository({
+      connectionString: url('drill_restore'),
+      max: 1,
+    });
+    const purgeOutcomes: string[] = [];
+    try {
+      for (let run = 0; run < 50; run += 1) {
+        const outcome = await processOneTenantObjectPurge(restorePurge, {
+          listTenantObjects: (tenantId, limit) =>
+            restoredObjectStorage.listTenantObjects(tenantId, limit),
+          delete: (key) => restoredObjectStorage.delete(validateObjectKey(key)),
+          stat: (key) => restoredObjectStorage.stat(validateObjectKey(key)),
+        });
+        if (outcome === 'empty') break;
+        purgeOutcomes.push(outcome);
+      }
+    } finally {
+      await restorePurge.close();
+    }
+    assert.deepEqual(purgeOutcomes, ['passed']);
+    for (const ref of gapObjects)
+      assert.equal(await restoredObjectStorage.stat(validateObjectKey(ref)), null);
+    assert.deepEqual(
+      (await restoredObjectStorage.listTenantObjects(deletedAthlete, 1000)).keys,
+      [],
+    );
+    assert.deepEqual(await storedFiles(), othersBeforePurge);
+    const purgedRow = (
+      await restored.query<{ passes: number; objects_purged: string; open: boolean }>(
+        `SELECT passes,objects_purged,completed_at IS NULL AS open FROM tenant_object_purge
+         WHERE athlete_id=$1`,
+        [deletedAthlete],
+      )
+    ).rows[0];
+    // Three gap objects; the pass re-arms for the rest of the thirty days.
+    assert.deepEqual(purgedRow, { passes: 1, objects_purged: '3', open: true });
+    checks.push(
+      'erased_tenant_prefix_purge_armed_by_replay_reclaims_gap_upload_and_spares_every_other_object',
+    );
     // Courses restored with the cluster. The retained one is intact; the two derived from
     // the deleted activity were reclaimed by the replayed suppression, and what is left is
     // an explicitly unavailable reference with no geometry and no revisions.

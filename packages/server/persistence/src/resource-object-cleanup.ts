@@ -8,6 +8,25 @@ export type ResourceObjectCleanupLease = {
   attempts: number;
 };
 
+/** One erased tenant whose object-storage prefix a worker holds the lease to purge (M2-01x). */
+export type TenantObjectPurgeLease = {
+  tenantId: string;
+  attempts: number;
+};
+
+/** What one leased purge run did, as recorded against the purge row. */
+export type TenantObjectPurgeRunOutcome =
+  | {
+      ok: true;
+      /** Objects deleted (or found already gone) in this run. */
+      purged: number;
+      /** Entries under the prefix that are no object key of this tenant, left alone. */
+      unrecognized: number;
+      /** The run stopped at its budget with keys still listed: due again at once. */
+      more: boolean;
+    }
+  | { ok: false; errorCode: string; purged: number };
+
 /** One watched reference in a reconciliation window, with its recorded sweep fault (M2-01n). */
 export type ReconcileCandidate = {
   storageRef: string;
@@ -51,6 +70,15 @@ export interface ResourceObjectCleanupRepository {
   pruneCourseThumbnailHistory(limit?: number): Promise<number>;
   pruneUploadHistory(limit?: number): Promise<number>;
   pruneCleanupHistory(limit?: number): Promise<number>;
+  /**
+   * One due tenant purge (M2-01x). Only a tenant in the erasure ledger with no identity
+   * account left is ever returned; the database decides that, not the worker.
+   */
+  leaseTenantObjectPurge(now: Date, leaseUntil: Date): Promise<TenantObjectPurgeLease | null>;
+  finishTenantObjectPurge(
+    lease: TenantObjectPurgeLease,
+    outcome: TenantObjectPurgeRunOutcome,
+  ): Promise<boolean>;
   lease(now: Date, leaseUntil: Date): Promise<ResourceObjectCleanupLease | null>;
   authorize(
     lease: ResourceObjectCleanupLease,
@@ -86,6 +114,11 @@ const sweepFaultCode = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
 function recordedAttempts(value: unknown): number | null {
   return value === null || value === undefined ? null : z.number().int().positive().parse(value);
 }
+
+const purgeLeaseRow = z.object({
+  athlete_id: z.uuid(),
+  attempts: z.number().int().positive(),
+});
 
 const leaseRow = z.object({
   id: z.uuid(),
@@ -244,6 +277,32 @@ export function createResourceObjectCleanupRepository(options: {
         [boundedLimit],
       );
       return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
+    },
+    async leaseTenantObjectPurge(now, leaseUntil) {
+      const result = await pool.query('SELECT * FROM public.lease_tenant_object_purge($1,$2,$3)', [
+        workerId,
+        now.toISOString(),
+        leaseUntil.toISOString(),
+      ]);
+      if (!result.rows[0]) return null;
+      const row = purgeLeaseRow.parse(result.rows[0]);
+      return { tenantId: row.athlete_id, attempts: row.attempts };
+    },
+    async finishTenantObjectPurge(lease, outcome) {
+      const count = z.number().int().min(0).max(1_000_000);
+      const result = await pool.query(
+        'SELECT public.finish_tenant_object_purge($1,$2,$3,$4,$5,$6,$7) AS finished',
+        [
+          z.uuid().parse(lease.tenantId),
+          workerId,
+          outcome.ok,
+          outcome.ok ? null : sweepFaultCode.parse(outcome.errorCode),
+          count.parse(outcome.purged),
+          outcome.ok ? count.parse(outcome.unrecognized) : 0,
+          outcome.ok ? outcome.more : false,
+        ],
+      );
+      return result.rows[0]?.['finished'] === true;
     },
     async lease(now, leaseUntil) {
       const result = await pool.query(
@@ -523,4 +582,113 @@ export async function processOneResourceObjectCleanup(
       ? 'retry_scheduled'
       : 'lease_lost';
   }
+}
+
+/**
+ * What a tenant purge needs from the object store (M2-01x): the listing of one tenant's
+ * prefix, the ordinary guarded `delete`, and `stat` to tell a key another deleter removed
+ * first from a failure.
+ */
+export interface PurgedStorage {
+  listTenantObjects(
+    tenantId: string,
+    limit: number,
+  ): Promise<{ readonly keys: readonly string[]; readonly unrecognized: number }>;
+  delete(key: string): Promise<void>;
+  stat(key: string): Promise<unknown>;
+}
+
+export type TenantObjectPurgeResult =
+  'empty' | 'passed' | 'continuing' | 'retry_scheduled' | 'lease_lost';
+
+/** A listing that named a key outside the leased tenant's prefix: a bug to stop on. */
+class ForeignKeyListedError extends Error {
+  readonly code = 'FOREIGN_KEY_LISTED';
+
+  constructor() {
+    super('The store listed a key outside the tenant being purged.');
+    this.name = 'ForeignKeyListedError';
+  }
+}
+
+/**
+ * One leased run of an erased tenant's prefix purge (M2-01x).
+ *
+ * Why it exists: every other deletion of an erased tenant's objects starts from a database row,
+ * and an object uploaded between a backup's dump and its archive copy has none in the restored
+ * cluster. The key prefix still names it.
+ *
+ * What it deletes, and the guards on that, in the order they apply:
+ *
+ * - Whose. The database leases only a tenant that is in the erasure ledger and has no identity
+ *   account (`lease_tenant_object_purge`); the store lists only the canonical tenant directory,
+ *   by directory and not by string prefix (`listTenantObjects`); and here every listed key must
+ *   begin with that tenant's prefix INCLUDING its trailing separator, or the run stops before
+ *   deleting anything of that listing — a storage implementation that answered with another
+ *   tenant's key is a bug to fail on, not to act on.
+ * - How. Each key goes through the store's own `delete`, with every guard it has: the walk
+ *   from the root, symlinks refused, the prune floor, the root re-checked before and after.
+ *   Nothing is deleted any other way.
+ * - When it stops. At the first error of any kind — a root that is no longer intact, a link, an
+ *   unreadable directory, a database failure. The run is recorded as failed with the error's
+ *   code and retried with backoff; it never continues past an error to the next key. The one
+ *   thing that is not an error is a key another deleter (the cleanup queue works the same keys)
+ *   removed first: `delete`'s `unlink` then fails with ENOENT, and the key is re-asked through
+ *   `stat`, which walks it under the same guards and answers "absent" only under an intact
+ *   root. Anything but that answer ends the run with the original error.
+ *
+ * Bounded: at most `budget` deletions per run. A run that used its whole budget is recorded as
+ * unfinished and is due again at once; only a run that listed nothing left is a pass.
+ */
+export async function processOneTenantObjectPurge(
+  repository: ResourceObjectCleanupRepository,
+  storage: PurgedStorage,
+  budget = 200,
+  now: () => Date = () => new Date(),
+): Promise<TenantObjectPurgeResult> {
+  const boundedBudget = z.number().int().min(1).max(1000).parse(budget);
+  const leasedAt = now();
+  const lease = await repository.leaseTenantObjectPurge(
+    leasedAt,
+    new Date(leasedAt.getTime() + 120_000),
+  );
+  if (!lease) return 'empty';
+  const prefix = `private/v1/tenants/${lease.tenantId}/`;
+  let purged = 0;
+  let unrecognized = 0;
+  let more = false;
+  try {
+    for (;;) {
+      const remaining = boundedBudget - purged;
+      if (remaining <= 0) {
+        more = true;
+        break;
+      }
+      const listing = await storage.listTenantObjects(lease.tenantId, Math.min(remaining, 100));
+      unrecognized = listing.unrecognized;
+      if (listing.keys.length === 0) break;
+      for (const key of listing.keys)
+        if (!key.startsWith(prefix)) throw new ForeignKeyListedError();
+      for (const key of listing.keys) {
+        try {
+          await storage.delete(key);
+        } catch (error) {
+          if ((error as { code?: unknown } | null)?.code !== 'ENOENT') throw error;
+          if ((await storage.stat(key)) !== null) throw error;
+        }
+        purged += 1;
+      }
+    }
+  } catch (error) {
+    return (await repository.finishTenantObjectPurge(lease, {
+      ok: false,
+      errorCode: sweepFaultCodeOf(error),
+      purged,
+    }))
+      ? 'retry_scheduled'
+      : 'lease_lost';
+  }
+  if (!(await repository.finishTenantObjectPurge(lease, { ok: true, purged, unrecognized, more })))
+    return 'lease_lost';
+  return more ? 'continuing' : 'passed';
 }

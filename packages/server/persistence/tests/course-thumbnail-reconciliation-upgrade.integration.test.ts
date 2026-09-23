@@ -152,6 +152,9 @@ describe('migration 039 upgrade of a populated 038 database', () => {
         'reclaim_unreferenced_activity_track_object(text)',
         'purge_resource_derived_store(uuid,uuid,text)',
         'prune_resource_retrieval_cache(integer)',
+        // M2-01x: the erased-tenant prefix purge's two calls.
+        'lease_tenant_object_purge(uuid,timestamp with time zone,timestamp with time zone)',
+        'finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean)',
       ]),
     );
   });

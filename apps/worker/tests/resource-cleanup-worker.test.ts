@@ -1,7 +1,13 @@
-import type { ObjectStorage, StoreReachability } from '@workout/server-media';
+import type {
+  ObjectStorage,
+  StoreReachability,
+  TenantObjectEnumeration,
+  TenantObjectListing,
+} from '@workout/server-media';
 import type {
   ResourceObjectCleanupLease,
   ResourceObjectCleanupRepository,
+  TenantObjectPurgeLease,
 } from '@workout/server-persistence/resource-object-cleanup';
 import type {
   ResourceDerivedCleanupManifest,
@@ -51,6 +57,10 @@ function setup(input: {
   recordFault?: () => Promise<number | null>;
   /** What the store's reachability check raises; absent means the store answers. */
   storeDown?: Error;
+  /** The erased tenant whose prefix purge is due (M2-01x); absent means none. */
+  purgeLease?: TenantObjectPurgeLease;
+  /** Successive answers of the tenant listing; the last one repeats. */
+  tenantListings?: readonly TenantObjectListing[];
 }) {
   const window = (references: readonly string[]) =>
     references.map((storageRef) => ({
@@ -84,6 +94,8 @@ function setup(input: {
     reclaimUnreferencedThumbnailObject: vi.fn(async () => input.thumbnailReclaimQueued ?? false),
     recordThumbnailSweepFault: vi.fn(input.recordFault ?? (async () => 1)),
     clearThumbnailSweepFault: vi.fn(async () => true),
+    leaseTenantObjectPurge: vi.fn(async () => input.purgeLease ?? null),
+    finishTenantObjectPurge: vi.fn(async () => true),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
       input.authorized === undefined ? leased : input.authorized,
@@ -94,7 +106,16 @@ function setup(input: {
   const notUsed = vi.fn(async () => {
     throw new Error('unexpected storage operation');
   });
-  const storage: ObjectStorage & StoreReachability = {
+  const listings = [...(input.tenantListings ?? [])];
+  const storage: ObjectStorage & StoreReachability & TenantObjectEnumeration = {
+    listTenantObjects: vi.fn(
+      async () =>
+        (listings.length > 1 ? listings.shift() : listings[0]) ?? {
+          keys: [],
+          unrecognized: 0,
+          truncated: false,
+        },
+    ),
     assertReachable: vi.fn(async () => {
       if (input.storeDown) throw input.storeDown;
     }),
@@ -785,5 +806,130 @@ describe('resource object cleanup worker', () => {
     for (const target of ['derivedData', 'searchIndex', 'cache', 'citations'])
       expect(derivedRepository.purgeTarget).toHaveBeenCalledWith(manifest, target);
     expect(derivedRepository.finish).toHaveBeenCalledWith(manifest, { ok: true });
+  });
+
+  describe('an erased tenant’s prefix purge (M2-01x)', () => {
+    const erased = 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa';
+    const purgeLease: TenantObjectPurgeLease = { tenantId: erased, attempts: 1 };
+    const keyOf = (tenantPart: string, hex: string) =>
+      `private/v1/tenants/${tenantPart}/courses/4d6cc1ce-0643-4c53-b055-9df458fec594/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183${hex}` as never;
+    const first = keyOf(erased, '439');
+    const second = keyOf(erased, '43a');
+    const listing = (...keys: never[]): TenantObjectListing => ({
+      keys,
+      unrecognized: 0,
+      truncated: false,
+    });
+
+    it('deletes every listed key of the leased tenant through the guarded delete, then passes', async () => {
+      const { dependencies, repository, deleteObject, storage } = setup({
+        purgeLease,
+        tenantListings: [listing(first, second), listing()],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.tenantPurge).toBe('passed');
+      expect(storage.listTenantObjects).toHaveBeenCalledWith(erased, 100);
+      expect(deleteObject.mock.calls).toEqual([[first], [second]]);
+      expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
+        ok: true,
+        purged: 2,
+        unrecognized: 0,
+        more: false,
+      });
+    });
+
+    it('does nothing at all when no purge is due', async () => {
+      const { dependencies, repository, storage } = setup({});
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.tenantPurge).toBe('empty');
+      expect(storage.listTenantObjects).not.toHaveBeenCalled();
+      expect(repository.finishTenantObjectPurge).not.toHaveBeenCalled();
+    });
+
+    it('stops before deleting anything when a listing names a key outside the tenant’s directory', async () => {
+      // `…/tenants/<erased>0/…` starts with the tenant id but is another directory: the
+      // boundary is the separator after the id, not the id's characters.
+      const lookalike = keyOf(`${erased}0`, '43b');
+      const { dependencies, repository, deleteObject } = setup({
+        purgeLease,
+        tenantListings: [listing(first, lookalike)],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.tenantPurge).toBe('retry_scheduled');
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
+        ok: false,
+        errorCode: 'FOREIGN_KEY_LISTED',
+        purged: 0,
+      });
+    });
+
+    it('stops at the first failed delete and records its code instead of going on to the next key', async () => {
+      const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+      const { dependencies, repository, deleteObject } = setup({
+        purgeLease,
+        deleteFailure: unsafe,
+        tenantListings: [listing(first, second)],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.tenantPurge).toBe('retry_scheduled');
+      expect(deleteObject.mock.calls).toEqual([[first]]);
+      expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
+        ok: false,
+        errorCode: 'UNSAFE_STORAGE_PATH',
+        purged: 0,
+      });
+    });
+
+    it('treats a key another deleter removed first as gone only when stat says so', async () => {
+      const gone = Object.assign(new Error('unlink'), { code: 'ENOENT' });
+      const { dependencies, repository, storage } = setup({
+        purgeLease,
+        deleteFailure: gone,
+        statResult: null,
+        tenantListings: [listing(first), listing()],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.tenantPurge).toBe('passed');
+      expect(storage.stat).toHaveBeenCalledWith(first);
+      expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
+        ok: true,
+        purged: 1,
+        unrecognized: 0,
+        more: false,
+      });
+
+      const still = setup({
+        purgeLease,
+        deleteFailure: gone,
+        statResult: { key: first, sizeBytes: 1, modifiedAt: new Date(0) },
+        tenantListings: [listing(first)],
+      });
+      const failed = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        still.dependencies,
+      );
+      expect(failed.tenantPurge).toBe('retry_scheduled');
+      expect(still.repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
+        ok: false,
+        errorCode: 'ENOENT',
+        purged: 0,
+      });
+    });
   });
 });

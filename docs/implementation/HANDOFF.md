@@ -17,23 +17,23 @@
 
 ## 완료된 최신 작업
 
-[M2-01r](progress/M2-01r.md)를 완료했다. M2-01k 수용 매트릭스에서 빠져 있던 S13/S14 기능을 채웠다.
+[M2-01x](progress/M2-01x.md)를 완료했다. 말소 완결성의 구멍을 닫았다. drill 순서가 DB dump → 객체 아카이브
+복사라서, 그 사이 업로드된 객체는 복원 DB에 어떤 행도 없어 말소 재생·큐·두 스윕이 모두 지나쳤다(실제
+PostgreSQL·파일시스템에서 재현, drill 검사로 고정).
 
-- `/courses/new`·`/courses/:id/edit`(두 shell). 빈 지도에서 코스를 시작하는 경로가 아예 없었다. 미리보기는
-  저장하지 않고(`POST /bff/v1/courses/route-previews`), 저장 때 서버가 엔진에 다시 물어 graph와 선 digest가
-  검토한 것과 같을 때만 쓴다. 요청에는 geometry가 없다. **실제 GraphHopper에서 재계산 digest가 일치하는지는
-  미실측**이며, E2E 저장은 fixture 엔진으로만 돌았다.
-- S13 접근성 메모를 코스 content 밖의 새 표(migration 043, RLS FORCE, 컬럼 한정 UPDATE grant, head CAS)에
-  저장한다. 계정 삭제는 course cascade로 지워지고 잠금 순서는 바뀌지 않았다. export v22.
-- "미계산 초안" 상태와 geo-kit `uncomputed` 점선, 목록에서의 선택·순서 변경·삭제를 내용 기반 시험과 변이로
-  고정했다.
-- 매트릭스 판정 제안(§6)은 적용하지 않았다. M2-01k 재실행 때 반영하되, `S14-address`에는 위 미실측을 적는다.
-- 병합 때 migration 목록을 042(M2-01s) 뒤 043으로 놓고, foundation 시험에 version 43을 더했으며, 새 upgrade
-  시험에 M2-01v의 drop helper를 적용했다.
+- migration 044가 `erase_account`에 새 outermost 링크를 달아 tenant prefix purge를 durable하게 무장한다.
+  worker가 DB와 무관하게 `private/v1/tenants/<id>/`를 디렉터리 단위로 걷고, 삭제는 기존 guarded `delete`로만
+  한다. lease는 identity 계정이 없는 말소 tenant만 받는다. 복원 재생도 같은 경로로 다시 무장한다.
+- 과잉 삭제 가드는 anchor를 하나씩 빼 실패를 확인했고, 빼도 실패하지 않는 중복 방어는 주장하지 않는다.
+  독립 검토가 살아 있는 tenant·이웃 UUID·root swap 경로를 추적해 과잉 삭제 경로를 찾지 못했다. root swap
+  잔여 위험(한 번의 한 방향 swap에 최대 1건)은 M2-01o에서 물려받는다.
+- **배포 순서**: migrate → `grantOperations`와 `grantResourceObjectCleanupWorker` 둘 다 다시 실행 → 새 worker.
+  그 전에는 말소가 `42501`로 실패하고 worker 실행도 매번 실패한다.
+- 분리한 후속: M2-01y(살아 있는 계정의 활동 단위 suppression에 같은 공백), M2-01z(purge 운영 가시성·처리량).
 
 ## 다음 ready 작업
 
-M2-01q는 검토 대응 중, M2-01w·x는 진행 중이다. **M2-01t는 사용자 결정이 먼저**다.
+M2-01q는 검토 대응 중, M2-01w는 진행 중이다. M2-01y·z는 ready다. **M2-01t는 사용자 결정이 먼저**다.
 
 ## 남은 외부·실환경 gate
 

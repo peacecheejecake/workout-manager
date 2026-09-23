@@ -15,6 +15,7 @@ import {
   validateObjectKey,
   type ObjectStorage,
   type StoreReachability,
+  type TenantObjectEnumeration,
 } from '@workout/server-media';
 import { renderCourseThumbnail } from '@workout/server-courses/thumbnail';
 
@@ -46,6 +47,7 @@ import { createOperationsRepository, type OperationsRepository } from '../src/op
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
+  processOneTenantObjectPurge,
   reconcileCourseThumbnailObjects,
   type ResourceObjectCleanupRepository,
 } from '../src/resource-object-cleanup.js';
@@ -61,7 +63,7 @@ let activities: ActivityRepository;
 let operations: OperationsRepository;
 let renderer: CourseThumbnailWorkerRepository;
 let cleanup: ResourceObjectCleanupRepository;
-let storage: ObjectStorage & StoreReachability;
+let storage: ObjectStorage & StoreReachability & TenantObjectEnumeration;
 let objectRoot: string;
 // Two least-privilege roles, as in production: one draws, one deletes. Neither is the
 // runtime role, and neither can do the other's job.
@@ -911,6 +913,13 @@ describe('M2-01l stored course thumbnails', () => {
           // index, and it runs under no advisory lock at all. It belongs in this contention
           // rather than beside it.
           await reconcileCourseThumbnailObjects(cleanup, storage, 5);
+          // M2-01x's prefix purge is one more writer an erasure arms and a worker drains: it
+          // locks its purge row, and deletes through the same store.
+          await processOneTenantObjectPurge(cleanup, {
+            listTenantObjects: (tenantId, limit) => storage.listTenantObjects(tenantId, limit),
+            delete: (key) => storage.delete(validateObjectKey(key)),
+            stat: (key) => storage.stat(validateObjectKey(key)),
+          });
         } catch (error) {
           record(error);
         }

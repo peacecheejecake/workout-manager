@@ -81,6 +81,20 @@ function normalizeUuid(value: string): string {
   return normalized;
 }
 
+/**
+ * The directory every object of one tenant lives under, `private/v1/tenants/<tenant>` (M2-01x).
+ *
+ * Only the canonical spelling is accepted — the lowercase UUID every key of this store is
+ * written with. It is not normalized here the way the key builders normalize their inputs: a
+ * prefix is what a tenant-wide purge deletes beneath, so an id that is not already exactly the
+ * name of a tenant directory (another case, a truncated id, anything with a separator or a
+ * dot segment) is refused rather than mapped onto some directory that belongs to someone else.
+ */
+export function tenantObjectPrefix(tenantId: string): string {
+  if (!new RegExp(`^${UUID_PATTERN}$`).test(tenantId)) throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}`;
+}
+
 export function createTemporaryObjectKey(input: {
   tenantId: string;
   resourceId: string;

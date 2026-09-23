@@ -3,13 +3,16 @@ import {
   validateObjectKey,
   type ObjectStorage,
   type StoreReachability,
+  type TenantObjectEnumeration,
 } from '@workout/server-media';
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
+  processOneTenantObjectPurge,
   reconcileActivityTrackObjects,
   reconcileCourseThumbnailObjects,
   type ResourceObjectCleanupRepository,
+  type TenantObjectPurgeResult,
   type TrackReconciliationOutcome,
 } from '@workout/server-persistence/resource-object-cleanup';
 import {
@@ -24,6 +27,8 @@ import type { ResourceCleanupWorkerConfig } from './config.js';
 export type ResourceCleanupWorkerResult = {
   objects: Awaited<ReturnType<typeof processOneResourceObjectCleanup>>;
   derived: Awaited<ReturnType<typeof processOneResourceDerivedCleanup>>;
+  /** One leased run of an erased tenant's object-prefix purge (M2-01x). */
+  tenantPurge: TenantObjectPurgeResult;
   /** Bounded comparison of the track object namespace against the ledger. */
   trackReconciliation: TrackReconciliationOutcome;
   /** The same, for the course-thumbnail namespace (M2-01m). */
@@ -31,7 +36,9 @@ export type ResourceCleanupWorkerResult = {
 };
 
 export interface ResourceCleanupWorkerDependencies {
-  createStorage(rootDirectory: string): Promise<ObjectStorage & StoreReachability>;
+  createStorage(
+    rootDirectory: string,
+  ): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration>;
   createRepository(options: {
     connectionString: string;
     max: number;
@@ -90,6 +97,19 @@ export async function runResourceCleanupWorker(
       (storageRef) => storage.delete(validateObjectKey(storageRef)),
       now,
     );
+    // An erased tenant's whole prefix, independently of any row (M2-01x): what a restored
+    // archive brought back that no row of the restored database names. Right after the queue,
+    // for the same reason: deleting what an erased user left is the point of this worker.
+    const tenantPurge = await processOneTenantObjectPurge(
+      repository,
+      {
+        listTenantObjects: (tenantId, limit) => storage.listTenantObjects(tenantId, limit),
+        delete: (key) => storage.delete(validateObjectKey(key)),
+        stat: (key) => storage.stat(validateObjectKey(key)),
+      },
+      200,
+      now,
+    );
     const derived = await processOneResourceDerivedCleanup(
       derivedRepository,
       (dependencies.derivedPurge ?? configuredDerivedStorePurge)(derivedRepository),
@@ -111,7 +131,7 @@ export async function runResourceCleanupWorker(
     await repository.pruneCleanupHistory(100);
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);
-    return { objects, derived, trackReconciliation, thumbnailReconciliation };
+    return { objects, tenantPurge, derived, trackReconciliation, thumbnailReconciliation };
   } finally {
     await Promise.all([repository.close(), derivedRepository.close()]);
   }
