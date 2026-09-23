@@ -14,9 +14,13 @@ interface Authorization {
   nonce: string;
   challenge: string;
   expires: number;
+  /** `max_age` was requested, so the ID Token must carry `auth_time` (OIDC Core §3.1.2.1). */
+  authTimeRequired: boolean;
 }
 interface Code extends Authorization {
   subject: string;
+  /** This fixture authenticates on every request: the account choice is the authentication. */
+  authTime: number;
 }
 
 /** Deliberately local test identity provider: never part of the production application. */
@@ -78,7 +82,13 @@ export async function startFixtureOidc() {
       )
         return json(reply, 400, { error: 'invalid_request' });
       const id = random();
-      pending.set(id, { state, nonce, challenge, expires: Date.now() + 60_000 });
+      pending.set(id, {
+        state,
+        nonce,
+        challenge,
+        expires: Date.now() + 60_000,
+        authTimeRequired: url.searchParams.has('max_age'),
+      });
       reply.writeHead(200, {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
@@ -100,7 +110,7 @@ export async function startFixtureOidc() {
       )
         return json(reply, 400, { error: 'invalid_request' });
       const code = random();
-      codes.set(code, { ...authorization, subject });
+      codes.set(code, { ...authorization, subject, authTime: Math.floor(Date.now() / 1000) });
       const destination = new URL(redirectUri);
       destination.searchParams.set('state', authorization.state);
       destination.searchParams.set('code', code);
@@ -141,7 +151,7 @@ export async function startFixtureOidc() {
       if (failures.length > 0 || authorization === undefined)
         return json(reply, 400, { error: 'invalid_grant', error_description: failures.join(',') });
       const now = Math.floor(Date.now() / 1000);
-      const unsigned = `${encode({ alg: 'RS256', typ: 'JWT', kid: jwk.kid })}.${encode({ iss: issuer, aud: fixtureOidc.clientId, sub: authorization.subject, nonce: authorization.nonce, iat: now, exp: now + 60 })}`;
+      const unsigned = `${encode({ alg: 'RS256', typ: 'JWT', kid: jwk.kid })}.${encode({ iss: issuer, aud: fixtureOidc.clientId, sub: authorization.subject, nonce: authorization.nonce, iat: now, exp: now + 60, ...(authorization.authTimeRequired ? { auth_time: authorization.authTime } : {}) })}`;
       const idToken = `${unsigned}.${sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url')}`;
       return json(reply, 200, {
         access_token: random(),

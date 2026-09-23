@@ -70,7 +70,7 @@
       "dependsOn": ["M2-01u"],
       "kind": "external",
       "status": "not_started",
-      "scope": "외부 조건(M2-01u에서 분리): 운영 IdP 선택 — prompt=login을 지키고 서명 키를 사전 공개해야 한다(Google의 prompt=login 지원 여부는 미검증) · HTTPS 도메인과 redirect https://<host>/bff/v1/auth/callback 등록 · OIDC_ISSUER/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET을 secret manager로 · 시험 계정 둘(하나는 MFA) · 실제 브라우저 체크리스트(로그인, 로그아웃 후 다른 계정 로그인, 계정 전환, 취소, 8시간 만료). M2-01u는 OpenID Certified OP(panva oidc-provider)를 운영 등록과 같은 설정으로 로컬에서 띄워 수용했으나 그것은 운영 IdP의 증거가 아니다. M2-01k의 K-oidc 행은 이 gate까지 not_executed다."
+      "scope": "외부 조건(M2-01u에서 분리): 운영 IdP 선택 — prompt=login을 지키고 서명 키를 사전 공개해야 한다(Google의 prompt=login 지원 여부는 미검증) · HTTPS 도메인과 redirect https://<host>/bff/v1/auth/callback 등록 · OIDC_ISSUER/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET을 secret manager로 · 시험 계정 둘(하나는 MFA) · 실제 브라우저 체크리스트(로그인, 로그아웃 후 다른 계정 로그인, 계정 전환, 취소, 8시간 만료). M2-01u는 OpenID Certified OP(panva oidc-provider)를 운영 등록과 같은 설정으로 로컬에서 띄워 수용했으나 그것은 운영 IdP의 증거가 아니다. M2-01k의 K-oidc 행은 이 gate까지 not_executed다. M2-01w가 넘긴 확인 항목: 운영 IdP가 max_age=0 요청에 새 auth_time을 넣는가(RP 재인증 검사 기본값 on의 전제), end_session_endpoint 광고와 post_logout_redirect_uri=https://<host>/account 등록, id_token_hint 없는 로그아웃 요청의 확인 화면, back-channel logout 지원 여부(미구현·migration 필요, 그때까지 OP 쪽 계정 정지가 앱에 닿는 상한 8시간), 수용 체크리스트에 취소 화면·앱 로그아웃→OP 로그아웃 확인→다른 계정 로그인·OP 장애 중 기존 세션 유지와 로그인 unavailable 추가."
     },
     {
       "id": "M0-06b",
@@ -1206,7 +1206,7 @@
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
       "status": "in_progress",
-      "scope": "M2-01k 수용 failed(S09-indoor-tab). 사양은 '실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화'인데 activity-detail-tabs.test.tsx:94는 탭이 활성임을 단언한다. M2-01e의 거짓 통과가 아니라 표시하지 않은 이탈이다 — M2-01e는 이 조항을 통과로 주장하지 않았고 '경로 탭이 열리고 media만 비활성'을 자기 수용 기준으로 적었다(M2-01e.md:187). 독립 검토 의견: 현재 방식(활성 탭 + 패널 설명)이 비활성 탭보다 설명에 접근하기 쉬워 사양을 고치는 결론도 합리적이다. 사용자 결정이 필요하다."
+      "scope": "M2-01k 수용 failed(S09-indoor-tab). 사양은 '실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화'인데 activity-detail-tabs.test.tsx:94는 탭이 활성임을 단언한다. M2-01e의 거짓 통과가 아니라 표시하지 않은 이탈이다 — M2-01e는 이 조항을 통과로 주장하지 않았고 '경로 탭이 열리고 media만 비활성'을 자기 수용 기준으로 적었다(M2-01e.md:187). 독립 검토 의견: 현재 방식(활성 탭 + 패널 설명)이 비활성 탭보다 설명에 접근하기 쉬워 사양을 고치는 결론도 합리적이다. 사용자 결정(2026-09-23): 현재 구현에 맞게 사양을 고친다. 실내·GPS 없는 기록의 실제 브라우저 증거(두 shell)를 더한다."
     },
     {
       "id": "M2-01u",
@@ -1230,7 +1230,8 @@
       "title": "OIDC 운영 견고성",
       "dependsOn": ["M2-01u"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01w.md",
       "scope": "M2-01u에서 분리한 비차단 넷. (1) API가 기동 시에만 OP를 discovery해 OP가 내려가 있으면 API 전체가 뜨지 않는다(fail-closed). (2) back-channel/RP-initiated logout이 없어 OP에서 비활성화·로그아웃된 계정이 최대 8시간 앱 세션을 유지한다. (3) 사용자 취소·OP 오류 시 브라우저에 날것의 401 JSON이 보인다. (4) RP가 auth_time을 확인하지 않아 OP가 prompt=login을 실제로 따랐는지 알 수 없다 — migration 없이 코드만으로 가능하다(max_age=0 + authorizationCodeGrant(..., { maxAge: 0 }), 독립 검토 실측)지만 운영 IdP가 prompt=login/max_age를 지원하지 않으면 로그아웃 뒤 로그인이 아예 실패하므로 EXT-OIDC의 IdP 선택에 달렸다."
     },
     {

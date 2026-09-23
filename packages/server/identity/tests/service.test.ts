@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { createIdentityService, type IdentityStore } from '../src/service.js';
+import {
+  createIdentityService,
+  ProviderUnavailableError,
+  type IdentityStore,
+  type OidcProvider,
+} from '../src/service.js';
 
 function fixture() {
   let now = new Date('2026-09-16T00:00:00Z');
@@ -41,7 +46,14 @@ function fixture() {
       async (input: { state: string; nonce: string; verifier: string; reauthenticate: boolean }) =>
         `https://provider.example/authorize?state=${input.state}${input.reauthenticate ? '&prompt=login' : ''}`,
     ),
-    exchange: vi.fn(async () => ({ issuer: 'https://provider.example', subject: 'subject' })),
+    exchange: vi.fn(
+      async (_url: URL, _checks: Parameters<OidcProvider['exchange']>[1]) =>
+        ({ issuer: 'https://provider.example', subject: 'subject' }) as {
+          issuer: string;
+          subject: string;
+        },
+    ),
+    logoutUrl: vi.fn(async (): Promise<string | null> => null),
   };
   const service = createIdentityService({
     store,
@@ -189,6 +201,80 @@ describe('opaque session lifecycle and browser-bound one-use login', () => {
     );
     await data.login('unrelated=1');
     expect(reauthenticated()).toBe(false);
+  });
+  it('M2-01w: tells the exchange whether the stored attempt asked to re-authenticate', async () => {
+    const data = fixture();
+    const first = await data.login();
+    const nonces = () => [...data.attempts.values()].map((attempt) => attempt.nonce);
+    expect(nonces().every((nonce) => !nonce.startsWith('reauth.'))).toBe(true);
+    const result = await data.service.completeLogin(first.callback, first.cookie);
+    expect(data.provider.exchange.mock.lastCall?.[1].reauthenticate).toBe(false);
+    const session = result.cookies[0]?.split(';')[0] ?? '';
+    const marker =
+      (await data.service.logout(session))
+        .find((line) => line.startsWith('__Host-workout_signed_out='))
+        ?.split(';')[0] ?? '';
+    const again = await data.login(marker);
+    expect(nonces().some((nonce) => /^reauth\.[A-Za-z0-9_-]{43}$/.test(nonce))).toBe(true);
+    // Only the stored attempt decides: the callback's own cookies are not consulted.
+    await data.service.completeLogin(again.callback, again.cookie);
+    expect(data.provider.exchange.mock.lastCall?.[1].reauthenticate).toBe(true);
+  });
+  it('M2-01w: classifies an error response for this browser attempt by its fixed code only', async () => {
+    const data = fixture();
+    for (const [error, code] of [
+      ['access_denied', 'LOGIN_CANCELLED'],
+      ['server_error', 'LOGIN_REJECTED'],
+      ['login_required', 'LOGIN_REJECTED'],
+    ] as const) {
+      const login = await data.login();
+      await expect(
+        data.service.completeLogin(
+          `${login.callback}&error=${error}&error_description=%3Cscript%3E`,
+          login.cookie,
+        ),
+      ).rejects.toThrow(code);
+      // The attempt is used up either way.
+      await expect(data.service.completeLogin(login.callback, login.cookie)).rejects.toThrow(
+        'LOGIN_REJECTED',
+      );
+    }
+    // Without this browser's attempt, "cancelled" is not believed.
+    const login = await data.login();
+    await expect(
+      data.service.completeLogin(`${login.callback}&error=access_denied`),
+    ).rejects.toThrow('LOGIN_REJECTED');
+    expect(data.provider.exchange).not.toHaveBeenCalled();
+    expect(data.sessions.size).toBe(0);
+  });
+  it('M2-01w: an unreachable provider is IDENTITY_UNAVAILABLE and leaves no attempt', async () => {
+    const data = fixture();
+    data.provider.authorizationUrl.mockRejectedValueOnce(new ProviderUnavailableError());
+    await expect(data.service.beginLogin()).rejects.toThrow('IDENTITY_UNAVAILABLE');
+    expect(data.attempts.size).toBe(0);
+    const login = await data.login();
+    data.provider.exchange.mockRejectedValueOnce(new ProviderUnavailableError());
+    await expect(data.service.completeLogin(login.callback, login.cookie)).rejects.toThrow(
+      'IDENTITY_UNAVAILABLE',
+    );
+    expect(data.sessions.size).toBe(0);
+  });
+  it('M2-01w: passes the provider logout URL through, or null when the provider has none', async () => {
+    const data = fixture();
+    expect(await data.service.providerLogoutUrl()).toBeNull();
+    data.provider.logoutUrl.mockResolvedValueOnce('https://provider.example/logout?client_id=c');
+    expect(await data.service.providerLogoutUrl()).toBe(
+      'https://provider.example/logout?client_id=c',
+    );
+    const bare = createIdentityService({
+      store: data.store,
+      provider: {
+        authorizationUrl: data.provider.authorizationUrl,
+        exchange: data.provider.exchange,
+      },
+      publicOrigin: 'https://workout.example',
+    });
+    expect(await bare.providerLogoutUrl()).toBeNull();
   });
   it('refuses insecure non-loopback origins and credentials embedded in an origin', () => {
     const data = fixture();

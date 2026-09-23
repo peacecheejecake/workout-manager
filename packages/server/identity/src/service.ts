@@ -40,17 +40,36 @@ export interface OidcProvider {
     verifier: string;
     reauthenticate: boolean;
   }): Promise<string>;
+  /** `reauthenticate` is what the attempt asked for, read back from the stored attempt. */
   exchange(
     url: URL,
-    checks: { state: string; nonce: string; verifier: string },
+    checks: { state: string; nonce: string; verifier: string; reauthenticate: boolean },
   ): Promise<{ issuer: string; subject: string }>;
+  /** Start provider discovery ahead of the first sign-in; failure is not fatal. */
+  prepare?(): Promise<void>;
+  /** The provider's RP-initiated logout URL, or null (none advertised, disabled, unreachable). */
+  logoutUrl?(): Promise<string | null>;
+}
+
+/** The provider's configuration is not available (discovery failed): sign-in fails closed. */
+export class ProviderUnavailableError extends Error {
+  constructor() {
+    super('IDENTITY_PROVIDER_UNAVAILABLE');
+  }
 }
 
 export class IdentityError extends Error {
-  constructor(readonly code: 'LOGIN_REJECTED' | 'IDENTITY_UNAVAILABLE') {
+  constructor(readonly code: 'LOGIN_REJECTED' | 'LOGIN_CANCELLED' | 'IDENTITY_UNAVAILABLE') {
     super(code);
   }
 }
+
+/**
+ * Marks, inside the nonce stored with the attempt, that this attempt asked the provider to
+ * re-authenticate. The attempt row is server-side and the nonce is generated here, so the
+ * callback learns what was asked without trusting the browser — and without a migration.
+ */
+const reauthenticationNonce = 'reauth.';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const token = () => randomBytes(32).toString('base64url');
@@ -117,15 +136,21 @@ export function createIdentityService(options: IdentityOptions) {
     async beginLogin(header?: string) {
       const state = token();
       const browser = token();
-      const nonce = token();
       const verifier = token();
       const reauthenticate = hasCookie(header, sessionName) || hasCookie(header, signedOutName);
-      const location = await options.provider.authorizationUrl({
-        state,
-        nonce,
-        verifier,
-        reauthenticate,
-      });
+      const nonce = `${reauthenticate ? reauthenticationNonce : ''}${token()}`;
+      let location: string;
+      try {
+        location = await options.provider.authorizationUrl({
+          state,
+          nonce,
+          verifier,
+          reauthenticate,
+        });
+      } catch {
+        // Without the provider's configuration nothing can be asked of it: no attempt.
+        throw new IdentityError('IDENTITY_UNAVAILABLE');
+      }
       await options.store.createAttempt({
         stateHash: hash(state),
         browserHash: hash(browser),
@@ -150,11 +175,23 @@ export function createIdentityService(options: IdentityOptions) {
         throw new IdentityError('LOGIN_REJECTED');
       const attempt = await options.store.consumeAttempt(hash(state), hash(browser), now());
       if (attempt === null) throw new IdentityError('LOGIN_REJECTED');
+      // An error response for this browser's own attempt (the attempt is consumed either
+      // way). Only the fixed code is looked at — never error_description or error_uri — and
+      // it only chooses between two fixed messages.
+      const error = url.searchParams.get('error');
+      if (error !== null)
+        throw new IdentityError(error === 'access_denied' ? 'LOGIN_CANCELLED' : 'LOGIN_REJECTED');
       let identity: { issuer: string; subject: string };
       try {
-        identity = await options.provider.exchange(url, { state, ...attempt });
-      } catch {
-        throw new IdentityError('LOGIN_REJECTED');
+        identity = await options.provider.exchange(url, {
+          state,
+          ...attempt,
+          reauthenticate: attempt.nonce.startsWith(reauthenticationNonce),
+        });
+      } catch (reason) {
+        throw new IdentityError(
+          reason instanceof ProviderUnavailableError ? 'IDENTITY_UNAVAILABLE' : 'LOGIN_REJECTED',
+        );
       }
       const sessionToken = token();
       const previous = readCookie(header, sessionName);
@@ -188,6 +225,14 @@ export function createIdentityService(options: IdentityOptions) {
       const value = readCookie(header, sessionName);
       if (value !== null) await options.store.revokeSession(hash(value));
       return [cookie(sessionName, '', 0), cookie(attemptName, '', 0), signedOutMarker()];
+    },
+    /**
+     * Where to send the browser after an app sign-out so the provider can end its own
+     * session too (RP-initiated logout), or null. Never needed for the app sign-out itself,
+     * which is complete (server-side revocation + marker) before this is asked.
+     */
+    async providerLogoutUrl(): Promise<string | null> {
+      return (await options.provider.logoutUrl?.()) ?? null;
     },
     /**
      * Only the sign-out marker — never a session or attempt cookie deletion. For a sign-out

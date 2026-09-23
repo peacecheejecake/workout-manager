@@ -2,7 +2,8 @@ import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createOidcProvider } from '../src/oidc.js';
+import { createOidcProvider, type OidcEvent } from '../src/oidc.js';
+import { ProviderUnavailableError } from '../src/service.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -18,7 +19,24 @@ afterEach(async () => {
   );
 });
 
-async function providerFixture() {
+interface FixtureOptions {
+  /** Discovery answers 503 while true. */
+  down?: boolean;
+  /** The `issuer` the discovery document claims, when not the real one. */
+  claimedIssuer?: string;
+  /** An advertised end_session_endpoint (relative to the issuer, or absolute). */
+  endSession?: string;
+  /** Advertise this authorization_endpoint instead of the real one. */
+  authorizationEndpoint?: string;
+  /** Do not sign in once while building the fixture (so nothing is discovered yet). */
+  lazy?: boolean;
+  adapter?: Record<string, unknown>;
+}
+
+async function providerFixture(fixtureOptions: FixtureOptions = {}) {
+  let down = fixtureOptions.down ?? false;
+  let discoveries = 0;
+  let authTime: 'absent' | 'stale' | 'fresh' = 'absent';
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const otherKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = {
@@ -35,10 +53,20 @@ async function providerFixture() {
   const server = createServer(async (request, response) => {
     response.setHeader('content-type', 'application/json');
     if (request.url === '/.well-known/openid-configuration') {
+      discoveries += 1;
+      if (down) {
+        response.statusCode = 503;
+        response.end('{}');
+        return;
+      }
+      const endSession = fixtureOptions.endSession;
       response.end(
         JSON.stringify({
-          issuer,
-          authorization_endpoint: `${issuer}/authorize`,
+          issuer: fixtureOptions.claimedIssuer ?? issuer,
+          ...(endSession === undefined
+            ? {}
+            : { end_session_endpoint: new URL(endSession, issuer).href }),
+          authorization_endpoint: fixtureOptions.authorizationEndpoint ?? `${issuer}/authorize`,
           token_endpoint: `${issuer}/token`,
           jwks_uri: `${issuer}/jwks`,
           response_types_supported: ['code'],
@@ -77,6 +105,7 @@ async function providerFixture() {
         iat: now,
         exp: invalid === 'expired' ? now - 600 : now + 300,
         nonce: invalid === 'nonce' ? 'incorrect' : nonce,
+        ...(authTime === 'absent' ? {} : { auth_time: authTime === 'fresh' ? now : now - 3600 }),
       };
       const encoded = `${Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test-key' })).toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
       const signature = sign(
@@ -109,16 +138,37 @@ async function providerFixture() {
     redirectUri: 'http://127.0.0.1:4301/bff/v1/auth/callback',
     allowInsecureLocalhost: true,
   };
-  const provider = await createOidcProvider(config);
+  const events: OidcEvent[] = [];
+  const provider = await createOidcProvider(
+    { ...config, ...fixtureOptions.adapter },
+    { onEvent: (event) => events.push(event) },
+  );
   const checks = {
     state: randomBytes(32).toString('base64url'),
     nonce: randomBytes(32).toString('base64url'),
     verifier: randomBytes(32).toString('base64url'),
+    reauthenticate: false,
   };
-  const authorize = new URL(await provider.authorizationUrl({ ...checks, reauthenticate: false }));
-  expectedChallenge = authorize.searchParams.get('code_challenge') ?? '';
+  let authorize = new URL('about:blank');
+  if (
+    !down &&
+    fixtureOptions.claimedIssuer === undefined &&
+    fixtureOptions.authorizationEndpoint === undefined &&
+    fixtureOptions.lazy !== true
+  ) {
+    authorize = new URL(await provider.authorizationUrl(checks));
+    expectedChallenge = authorize.searchParams.get('code_challenge') ?? '';
+  } else expectedChallenge = createHash('sha256').update(checks.verifier).digest('base64url');
   nonce = checks.nonce;
   return {
+    setDown(value: boolean) {
+      down = value;
+    },
+    discoveries: () => discoveries,
+    events,
+    setAuthTime(value: typeof authTime) {
+      authTime = value;
+    },
     provider,
     checks,
     authorize,
@@ -159,6 +209,197 @@ describe('standard OIDC adapter using a real local signed provider protocol', ()
       await fixture.provider.authorizationUrl({ ...fixture.checks, reauthenticate: true }),
     );
     expect(again.searchParams.getAll('prompt')).toEqual(['login']);
+    expect(again.searchParams.getAll('max_age')).toEqual(['0']);
+  });
+  describe('M2-01w: proof that the provider re-authenticated (auth_time)', () => {
+    it.each([
+      ['absent', false],
+      ['stale', false],
+      ['fresh', true],
+    ] as const)(
+      'a re-authentication answer with %s auth_time is accepted: %s',
+      async (time, ok) => {
+        const fixture = await providerFixture();
+        fixture.setAuthTime(time);
+        const result = fixture.provider.exchange(fixture.callback, {
+          ...fixture.checks,
+          reauthenticate: true,
+        });
+        if (ok) await expect(result).resolves.toMatchObject({ subject: 'athlete-subject' });
+        else await expect(result).rejects.toThrow();
+      },
+    );
+    it('does not demand auth_time of a first sign-in', async () => {
+      const fixture = await providerFixture();
+      await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).resolves.toEqual({
+        issuer: fixture.issuer,
+        subject: 'athlete-subject',
+      });
+    });
+    it('can be turned off: no max_age, and a missing auth_time is accepted', async () => {
+      const fixture = await providerFixture({ adapter: { verifyReauthentication: false } });
+      const again = new URL(
+        await fixture.provider.authorizationUrl({ ...fixture.checks, reauthenticate: true }),
+      );
+      expect(again.searchParams.getAll('prompt')).toEqual(['login']);
+      expect(again.searchParams.has('max_age')).toBe(false);
+      await expect(
+        fixture.provider.exchange(fixture.callback, { ...fixture.checks, reauthenticate: true }),
+      ).resolves.toMatchObject({ subject: 'athlete-subject' });
+    });
+  });
+  describe('M2-01w: deferred discovery', () => {
+    it('starts without the provider, fails sign-in closed, and waits before asking again', async () => {
+      const fixture = await providerFixture({ down: true, adapter: { discoveryRetryMs: 60_000 } });
+      await expect(fixture.provider.authorizationUrl(fixture.checks)).rejects.toBeInstanceOf(
+        ProviderUnavailableError,
+      );
+      await expect(
+        fixture.provider.exchange(fixture.callback, fixture.checks),
+      ).rejects.toBeInstanceOf(ProviderUnavailableError);
+      expect(await fixture.provider.logoutUrl?.()).toBeNull();
+      // Within the retry wait the provider is not asked again, and the failure is reported
+      // once — for the attempt, not for each refused request.
+      expect(fixture.discoveries()).toBe(1);
+      expect(fixture.events).toEqual([{ event: 'oidc_discovery_failed', reason: 'network' }]);
+    });
+    it('retries after the wait, then signs in, and keeps a successful discovery', async () => {
+      const fixture = await providerFixture({ down: true, adapter: { discoveryRetryMs: 0 } });
+      await expect(fixture.provider.authorizationUrl(fixture.checks)).rejects.toBeInstanceOf(
+        ProviderUnavailableError,
+      );
+      fixture.setDown(false);
+      const url = new URL(await fixture.provider.authorizationUrl(fixture.checks));
+      expect(url.searchParams.get('code_challenge')).toBe(
+        createHash('sha256').update(fixture.checks.verifier).digest('base64url'),
+      );
+      await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).resolves.toEqual({
+        issuer: fixture.issuer,
+        subject: 'athlete-subject',
+      });
+      fixture.setDown(true);
+      await expect(fixture.provider.authorizationUrl(fixture.checks)).resolves.toContain(
+        '/authorize?',
+      );
+      expect(fixture.discoveries()).toBe(2);
+    });
+    it('shares one discovery between concurrent sign-ins', async () => {
+      const fixture = await providerFixture({ down: true, adapter: { discoveryRetryMs: 0 } });
+      fixture.setDown(false);
+      await Promise.all([1, 2, 3].map(() => fixture.provider.authorizationUrl(fixture.checks)));
+      expect(fixture.discoveries()).toBe(1);
+    });
+    it('never accepts a discovery document for another issuer, however often it retries', async () => {
+      const fixture = await providerFixture({
+        claimedIssuer: 'https://attacker.example',
+        adapter: { discoveryRetryMs: 0 },
+      });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(fixture.provider.authorizationUrl(fixture.checks)).rejects.toBeInstanceOf(
+          ProviderUnavailableError,
+        );
+        await expect(
+          fixture.provider.exchange(fixture.callback, fixture.checks),
+        ).rejects.toBeInstanceOf(ProviderUnavailableError);
+      }
+      expect(fixture.discoveries()).toBe(6);
+      expect(fixture.events).toEqual(
+        Array.from({ length: 6 }, () => ({
+          event: 'oidc_discovery_failed',
+          reason: 'issuer_mismatch',
+        })),
+      );
+    });
+    it('reports why discovery failed as a fixed category', async () => {
+      const insecure = await providerFixture({
+        authorizationEndpoint: 'http://provider.example/authorize',
+      });
+      await expect(insecure.provider.authorizationUrl(insecure.checks)).rejects.toBeInstanceOf(
+        ProviderUnavailableError,
+      );
+      expect(insecure.events).toEqual([
+        { event: 'oidc_discovery_failed', reason: 'insecure_endpoint' },
+      ]);
+      const events: OidcEvent[] = [];
+      const unreachable = await createOidcProvider(
+        {
+          issuer: 'http://127.0.0.1:1',
+          clientId: 'client',
+          clientSecret: 'secret',
+          redirectUri: 'http://127.0.0.1:4301/bff/v1/auth/callback',
+          allowInsecureLocalhost: true,
+        },
+        { onEvent: (event) => events.push(event) },
+      );
+      await expect(unreachable.prepare?.()).rejects.toBeInstanceOf(ProviderUnavailableError);
+      expect(events).toEqual([{ event: 'oidc_discovery_failed', reason: 'network' }]);
+      expect(JSON.stringify([...insecure.events, ...events])).not.toMatch(
+        /provider\.example|127\.0\.0\.1/,
+      );
+    });
+    it('still refuses a misconfigured issuer or callback at startup', async () => {
+      const base = {
+        clientId: 'client',
+        clientSecret: 'secret',
+        allowInsecureLocalhost: true,
+      };
+      await expect(
+        createOidcProvider({
+          ...base,
+          issuer: 'http://provider.example',
+          redirectUri: 'http://127.0.0.1:4301/bff/v1/auth/callback',
+        }),
+      ).rejects.toThrow();
+      await expect(
+        createOidcProvider({
+          ...base,
+          issuer: 'http://127.0.0.1:1',
+          redirectUri: 'http://127.0.0.1:4301/elsewhere',
+        }),
+      ).rejects.toThrow();
+    });
+  });
+  describe('M2-01w: RP-initiated logout', () => {
+    it('offers the advertised end_session_endpoint with client_id and the account page', async () => {
+      const fixture = await providerFixture({ endSession: '/logout' });
+      const url = new URL((await fixture.provider.logoutUrl?.()) ?? 'about:blank');
+      expect(`${url.origin}${url.pathname}`).toBe(`${fixture.issuer}/logout`);
+      expect([...url.searchParams.keys()].sort()).toEqual([
+        'client_id',
+        'post_logout_redirect_uri',
+      ]);
+      expect(url.searchParams.get('client_id')).toBe('client');
+      expect(url.searchParams.get('post_logout_redirect_uri')).toBe(
+        'http://127.0.0.1:4301/account',
+      );
+    });
+    it('offers nothing when not advertised or turned off', async () => {
+      expect(await (await providerFixture()).provider.logoutUrl?.()).toBeNull();
+      const off = await providerFixture({
+        endSession: '/logout',
+        adapter: { providerLogout: false },
+      });
+      expect(await off.provider.logoutUrl?.()).toBeNull();
+    });
+    it('ignores a non-HTTPS end_session_endpoint: no provider logout, sign-in unaffected', async () => {
+      const fixture = await providerFixture({ endSession: 'http://provider.example/logout' });
+      await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).resolves.toEqual({
+        issuer: fixture.issuer,
+        subject: 'athlete-subject',
+      });
+      expect(await fixture.provider.logoutUrl?.()).toBeNull();
+      expect(fixture.events).toEqual([
+        { event: 'oidc_provider_logout_disabled', reason: 'insecure_endpoint' },
+      ]);
+    });
+    it('reads only cached metadata: sign-out never starts or waits for a discovery', async () => {
+      const fixture = await providerFixture({ endSession: '/logout', lazy: true });
+      expect(await fixture.provider.logoutUrl?.()).toBeNull();
+      expect(fixture.discoveries()).toBe(0);
+      await fixture.provider.authorizationUrl(fixture.checks);
+      expect(await fixture.provider.logoutUrl?.()).toContain('/logout?');
+      expect(fixture.discoveries()).toBe(1);
+    });
   });
   it('rejects incorrect state and PKCE verifier', async () => {
     const fixture = await providerFixture();

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { focusManager } from '@tanstack/react-query';
@@ -29,7 +29,10 @@ function operationsResponse() {
     audit: [],
   });
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
+});
 
 it('shows provider login on401 without exposing private controls', async () => {
   vi.stubGlobal(
@@ -241,4 +244,82 @@ it('clears an expired server session and its private consent controls', async ()
   expect(screen.queryByText(/athlete-a/)).not.toBeInTheDocument();
   expect(screen.queryByText(/현재 동의:/)).not.toBeInTheDocument();
   focusManager.setFocused(undefined);
+});
+
+describe('M2-01w: sign-in failure screen and provider sign-out', () => {
+  it.each([
+    ['cancelled', '로그인을 취소했습니다.'],
+    ['failed', '로그인을 완료하지 못했습니다.'],
+    ['unavailable', '인증 제공자에 연결하지 못해'],
+  ])('shows its own words for login_error=%s once, then removes the code', async (code, text) => {
+    window.history.replaceState(null, '', `/account?login_error=${code}&keep=1`);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(null, 401)),
+    );
+    render(<IdentityWorkspace loginError={code} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(await screen.findByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+    expect(window.location.search).toBe('?keep=1');
+  });
+  it.each([
+    '<img src=x onerror=alert(1)>',
+    'access_denied',
+    'toString',
+    '__proto__',
+    ['cancelled', 'failed'],
+    { toString: () => 'cancelled' },
+  ])('shows nothing for any other login_error value (%s)', async (value) => {
+    window.history.replaceState(null, '', '/account?login_error=x');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(null, 401)),
+    );
+    const view = render(<IdentityWorkspace loginError={value} />);
+    await screen.findByRole('link', { name: 'OIDC로 로그인' });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(view.container.querySelector('img')).toBeNull();
+    expect(window.location.search).toBe('');
+  });
+  function signedIn(logout: () => Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string) =>
+        path === '/bff/v1/integrations/garmin/status'
+          ? garminResponse()
+          : path === '/bff/v1/operations/status'
+            ? operationsResponse()
+            : path === '/bff/v1/session'
+              ? response(session)
+              : path.endsWith('/logout')
+                ? logout()
+                : response({ kind: 'ai', granted: true, revision: 2 }),
+      ),
+    );
+  }
+  it('continues to the provider sign-out after clearing the account', async () => {
+    const url = 'https://provider.example/logout?client_id=c&post_logout_redirect_uri=x';
+    signedIn(() => response({ providerLogoutUrl: url }));
+    const navigate = vi.fn(() => {
+      // By the time the browser leaves, the private account UI is already gone.
+      expect(screen.queryByText(/athlete-a/)).not.toBeInTheDocument();
+    });
+    render(<IdentityWorkspace navigateToProviderLogout={navigate} />);
+    await userEvent.click(await screen.findByRole('button', { name: '로그아웃' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(url));
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+  it.each([
+    ['204', () => new Response(null, { status: 204 })],
+    ['401', () => response(null, 401)],
+    ['200 malformed', () => response({ providerLogoutUrl: 'javascript:alert(1)' })],
+    ['200 extra keys', () => response({ providerLogoutUrl: 'https://p.example/', x: 1 })],
+  ])('signs out without leaving the app on %s', async (_label, logout) => {
+    signedIn(logout);
+    const navigate = vi.fn();
+    render(<IdentityWorkspace navigateToProviderLogout={navigate} />);
+    await userEvent.click(await screen.findByRole('button', { name: '로그아웃' }));
+    await screen.findByRole('link', { name: 'OIDC로 로그인' });
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });

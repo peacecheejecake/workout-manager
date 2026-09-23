@@ -10,6 +10,7 @@
  * Listens only on 127.0.0.1:${OIDC_CHECK_PORT:-4461}; nothing is written to disk. No
  * secret, password, code or token is printed.
  */
+import { randomBytes } from 'node:crypto';
 import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import {
   createIdentityService,
@@ -168,6 +169,53 @@ async function authorize(
   throw new Error('Too many redirects');
 }
 
+/**
+ * Follow an RP-initiated logout URL at the OP: its confirmation page, then "Yes, sign me out"
+ * (or "No"). Returns where the OP finally sends the browser.
+ */
+async function endProviderSession(jar: Jar, location: string, confirm: boolean) {
+  let url = new URL(location);
+  let method = 'GET';
+  let body: string | undefined;
+  for (let hop = 0; hop < 8; hop += 1) {
+    if (url.origin === publicOrigin) return url;
+    const response = await fetch(url, {
+      method,
+      redirect: 'manual',
+      headers: {
+        cookie: jar.header(url),
+        ...(body === undefined ? {} : { 'content-type': 'application/x-www-form-urlencoded' }),
+      },
+      ...(body === undefined ? {} : { body }),
+    });
+    jar.store(response);
+    const next = response.headers.get('location');
+    if (response.status >= 300 && response.status < 400 && next !== null) {
+      url = new URL(next, url);
+      method = 'GET';
+      body = undefined;
+      continue;
+    }
+    const html = await response.text();
+    const form = /<form[^>]*method="post"[^>]*>/.exec(html);
+    const action = form === null ? null : /action="([^"]+)"/.exec(form[0]);
+    if (response.status === 200 && action?.[1] !== undefined) {
+      const fields = [
+        ...html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"\/?>/g),
+      ].map((match) => [match[1] ?? '', match[2] ?? ''] as [string, string]);
+      if (confirm) fields.push(['logout', 'yes']);
+      url = new URL(action[1].replaceAll('&amp;', '&'), url);
+      method = 'POST';
+      body = new URLSearchParams(fields).toString();
+      continue;
+    }
+    throw new Error(
+      `Unexpected OP logout response ${response.status} ${process.env['OIDC_CHECK_DEBUG'] ? html.replace(/\s+/g, ' ').slice(0, 1500) : ''}`,
+    );
+  }
+  throw new Error('Too many redirects');
+}
+
 const results: { name: string; pass: boolean; detail: string }[] = [];
 async function check(name: string, run: () => Promise<string>) {
   try {
@@ -189,13 +237,17 @@ async function rejected(promise: Promise<unknown>) {
   }
 }
 
-async function relyingParty(op: CertifiedOidc) {
+async function relyingParty(
+  op: Pick<CertifiedOidc, 'issuer' | 'clientId' | 'clientSecret' | 'redirectUri'>,
+  adapter: Record<string, unknown> = {},
+) {
   const provider = await createOidcProvider({
     issuer: op.issuer,
     clientId: op.clientId,
     clientSecret: op.clientSecret,
     redirectUri: op.redirectUri,
     allowInsecureLocalhost: true,
+    ...adapter,
   });
   const store = memoryStore();
   const service = createIdentityService({
@@ -247,9 +299,16 @@ try {
   const rp = await relyingParty(op);
   const alice = browser();
 
-  await check('discovery: the RP accepts the OP metadata and every endpoint', async () =>
-    Promise.resolve('createOidcProvider completed discovery against a real OP'),
-  );
+  // Round 2 (N5): a real assertion, no longer an unconditional PASS. Discovery is deferred
+  // (M2-01w), so this is the first request to the OP: it must accept the metadata and every
+  // endpoint, and a sign-out before it must not have offered a provider URL.
+  await check('discovery: the RP accepts the OP metadata and every endpoint', async () => {
+    assert((await rp.service.providerLogoutUrl()) === null, 'provider URL before discovery');
+    assert(rp.provider.prepare !== undefined, 'adapter has no prepare()');
+    await rp.provider.prepare();
+    assert(typeof (await rp.service.providerLogoutUrl()) === 'string', 'no end_session_endpoint');
+    return 'discovered on first use; end_session_endpoint offered only after it';
+  });
 
   let aliceAthlete: string | null = null;
   let firstCallback: URL | undefined;
@@ -341,7 +400,7 @@ try {
         await rejected(rp.service.completeLogin(callback.href, productHeader(agent))),
         'error response accepted',
       );
-      return 'IdentityError LOGIN_REJECTED';
+      return 'rejected, no session';
     },
   );
 
@@ -414,23 +473,187 @@ try {
     return 'silent SSO, no credential prompt';
   });
 
-  await check('OP unavailable at API start: configuration fails closed', async () => {
-    assert(
-      await rejected(
-        createOidcProvider({
-          issuer: 'http://127.0.0.1:1',
-          clientId: op.clientId,
-          clientSecret: op.clientSecret,
-          redirectUri: op.redirectUri,
-          allowInsecureLocalhost: true,
-        }),
-      ),
-      'provider created without discovery',
+  // ---- M2-01w ----
+
+  await check('re-authentication request carries prompt=login and max_age=0', async () => {
+    const marker = (await rp.service.logout()).find((line) =>
+      line.startsWith('workout_signed_out='),
     );
-    return 'createOidcProvider rejects → createConfiguredApi does not start';
+    const start = await rp.service.beginLogin(cookiePair(marker));
+    const url = new URL(start.location);
+    assert(url.searchParams.getAll('prompt').join() === 'login', 'no prompt=login');
+    assert(url.searchParams.getAll('max_age').join() === '0', 'no max_age=0');
+    const first = new URL((await rp.service.beginLogin()).location);
+    assert(
+      !first.searchParams.has('max_age') && !first.searchParams.has('prompt'),
+      'a first sign-in asked for re-authentication',
+    );
+    return 'prompt=login&max_age=0 only when re-authenticating';
   });
+
+  await check('cancel at the OP is classified as a cancellation (readable screen)', async () => {
+    const agent = browser();
+    const start = await rp.service.beginLogin();
+    keepProductCookies(agent, [start.cookie]);
+    const { callback } = await authorize(agent.jar, start.location, {
+      account: 'cancel',
+      password: '',
+    });
+    assert(callback !== null, 'no callback');
+    const code = await rp.service.completeLogin(callback.href, productHeader(agent)).then(
+      () => 'accepted',
+      (error: unknown) => (error instanceof Error ? error.message : 'error'),
+    );
+    assert(code === 'LOGIN_CANCELLED', `classified as ${code}`);
+    return 'LOGIN_CANCELLED (no session)';
+  });
+
+  await check(
+    'RP-initiated logout: app sign-out also ends the OP session after confirmation',
+    async () => {
+      const agent = browser();
+      const signedIn = await login(rp, op, agent, 'bob');
+      assert(signedIn.athleteId !== null, 'no session');
+      keepProductCookies(agent, await rp.service.logout(productHeader(agent)));
+      const location = await rp.service.providerLogoutUrl();
+      assert(typeof location === 'string', 'no provider logout URL');
+      const end = new URL(location);
+      assert(
+        `${end.origin}${end.pathname}` === `${op.issuer}/session/end`,
+        'not the OP end_session_endpoint',
+      );
+      assert(end.searchParams.get('client_id') === op.clientId, 'no client_id');
+      assert(
+        end.searchParams.get('post_logout_redirect_uri') === `${publicOrigin}/account`,
+        'wrong post_logout_redirect_uri',
+      );
+      assert(!end.searchParams.has('id_token_hint'), 'unexpected id_token_hint');
+      const landed = await endProviderSession(agent.jar, location, true);
+      assert(landed.href === `${publicOrigin}/account`, `landed at ${landed.href}`);
+      // Even a product browser without the sign-out marker is prompted now: the OP has no
+      // session left to answer from.
+      const again = await login(rp, op, { jar: agent.jar, product: new Map() }, null);
+      assert(again.prompted, 'OP still answered from its SSO session');
+      return 'OP confirmation → OP session ended → redirected to /account → OP prompts again';
+    },
+  );
+
+  await check(
+    'RP-initiated logout: declining at the OP keeps its session (user choice)',
+    async () => {
+      const agent = browser();
+      await login(rp, op, agent, 'alice');
+      keepProductCookies(agent, await rp.service.logout(productHeader(agent)));
+      const location = await rp.service.providerLogoutUrl();
+      assert(typeof location === 'string', 'no provider logout URL');
+      await endProviderSession(agent.jar, location, false);
+      const again = await login(rp, op, { jar: agent.jar, product: new Map() }, null);
+      assert(!again.prompted, 'OP session ended although the user declined');
+      return 'declined → OP SSO kept; the app session is already revoked and the marker still asks';
+    },
+  );
 } finally {
   await op.close();
+}
+
+// ---- M2-01w: an OP that does not honour prompt=login / max_age ----
+{
+  const noncompliant = await startCertifiedOidc({ port: port + 1, ignoreReauthentication: true });
+  try {
+    for (const verify of [true, false]) {
+      await check(
+        `non-conformant OP ignores prompt=login/max_age; verifyReauthentication=${verify ? 'default (on)' : 'false'}`,
+        async () => {
+          // The default configuration is the one under test when verifying.
+          const rp = await relyingParty(
+            noncompliant,
+            verify ? {} : { verifyReauthentication: false },
+          );
+          const agent = browser();
+          const first = await login(rp, noncompliant, agent, 'alice');
+          assert(first.prompted && first.athleteId !== null, 'first login failed');
+          keepProductCookies(agent, await rp.service.logout(productHeader(agent)));
+          const start = await rp.service.beginLogin(productHeader(agent));
+          keepProductCookies(agent, [start.cookie]);
+          const { callback, prompted } = await authorize(agent.jar, start.location, {
+            account: 'bob',
+            password: noncompliant.passwords.bob,
+          });
+          assert(!prompted, 'the non-conformant OP asked anyway (fixture broken)');
+          assert(callback !== null, 'no callback');
+          const outcome = await rp.service.completeLogin(callback.href, productHeader(agent)).then(
+            () => 'accepted',
+            (error: unknown) => (error instanceof Error ? error.message : 'error'),
+          );
+          if (verify) {
+            assert(outcome === 'LOGIN_REJECTED', `silent SSO answer ${outcome}`);
+            return 'silent SSO answer refused: no fresh auth_time in the id_token (fails closed)';
+          }
+          assert(outcome === 'accepted', `outcome ${outcome}`);
+          return 'OBSERVED: accepted silently as the previous user — what the setting off allows';
+        },
+      );
+    }
+  } finally {
+    await noncompliant.close();
+  }
+}
+
+// ---- M2-01w: the OP is down at start, comes up, goes away again ----
+{
+  const outagePort = port + 2;
+  const signingKeys = [createSigningKey('outage-a')];
+  const clientSecret = `${randomBytes(18).toString('base64')}:%+/`;
+  const settings = {
+    issuer: `http://127.0.0.1:${outagePort}`,
+    clientId: 'workout-e2e',
+    clientSecret,
+    redirectUri: 'http://127.0.0.1:3100/bff/v1/auth/callback',
+  };
+  let current: CertifiedOidc | undefined;
+  try {
+    let rp: Awaited<ReturnType<typeof relyingParty>> | undefined;
+    await check('OP down at API start: the relying party is still created', async () => {
+      rp = await relyingParty(settings, { discoveryRetryMs: 0 });
+      return 'createOidcProvider resolved without the OP (discovery deferred to first use)';
+    });
+    await check('OP down: sign-in fails closed with IDENTITY_UNAVAILABLE', async () => {
+      assert(rp !== undefined, 'no relying party');
+      const outcome = await rp.service.beginLogin().then(
+        () => 'started',
+        (error: unknown) => (error instanceof Error ? error.message : 'error'),
+      );
+      assert(outcome === 'IDENTITY_UNAVAILABLE', outcome);
+      return 'no authorization URL, no attempt stored';
+    });
+    current = await startCertifiedOidc({ port: outagePort, signingKeys, clientSecret });
+    const up = current;
+    const agent = browser();
+    await check('OP comes up: the same relying party signs in without a restart', async () => {
+      assert(rp !== undefined, 'no relying party');
+      const result = await login(rp, up, agent, 'alice');
+      assert(result.athleteId !== null, 'no session');
+      return 'discovery retried on demand';
+    });
+    await current.close();
+    current = undefined;
+    await check(
+      'OP goes down again: an issued session keeps working (no OP dependency)',
+      async () => {
+        assert(rp !== undefined, 'no relying party');
+        const session = await rp.service.authenticate({ cookie: productHeader(agent) });
+        assert(session !== null, 'session lost');
+        const cookies = await rp.service.logout(productHeader(agent));
+        assert(
+          cookies.some((line) => line.startsWith('workout_signed_out=')),
+          'sign-out did not complete',
+        );
+        return 'authenticate() and sign-out read only the session store';
+      },
+    );
+  } finally {
+    await current?.close();
+  }
 }
 
 if (process.env['OIDC_CHECK_ROTATION'] === '1') {

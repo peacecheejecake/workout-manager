@@ -1,6 +1,13 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createIdentityService, type IdentityStore } from '@workout/server-identity/service';
+import {
+  createIdentityService,
+  ProviderUnavailableError,
+  type IdentityStore,
+} from '@workout/server-identity/service';
 import { createApi } from '../src/app.js';
 import { createConfiguredApi } from '../src/configured.js';
 
@@ -50,14 +57,15 @@ function fixture() {
     issuer: 'https://provider.example',
     subject: 'subject-a',
   }));
+  const authorizationUrl = vi.fn(
+    async ({ state, reauthenticate }: { state: string; reauthenticate: boolean }) =>
+      `https://provider.example/authorize?state=${state}${reauthenticate ? '&prompt=login' : ''}`,
+  );
+  const logoutUrl = vi.fn(async (): Promise<string | null> => null);
   const identity = createIdentityService({
     store,
     publicOrigin: 'https://workout.example',
-    provider: {
-      authorizationUrl: async ({ state, reauthenticate }) =>
-        `https://provider.example/authorize?state=${state}${reauthenticate ? '&prompt=login' : ''}`,
-      exchange,
-    },
+    provider: { authorizationUrl, exchange, logoutUrl },
   });
   const logs: string[] = [];
   const getConsent = vi.fn(
@@ -108,7 +116,7 @@ function fixture() {
       throw new Error('Missing CSRF token');
     return { response, cookie, csrfToken: session.csrfToken, current };
   }
-  return { app, login, exchange, logs, getConsent };
+  return { app, login, exchange, authorizationUrl, logoutUrl, logs, getConsent };
 }
 
 describe('M1-01 browser authentication boundary', () => {
@@ -262,12 +270,128 @@ describe('M1-01 browser authentication boundary', () => {
     const start = await data.app.inject('/bff/v1/auth/login');
     const state = new URL(String(start.headers.location)).searchParams.get('state');
     const response = await data.app.inject({
-      url: `/bff/v1/auth/callback?state=${state}&error=access_denied`,
+      url: `/bff/v1/auth/callback?state=${state}&code=provider-private-code`,
       headers: { cookie: String(start.headers['set-cookie']).split(';')[0] ?? '' },
     });
-    expect(response.statusCode).toBe(401);
-    expect(response.json()).toMatchObject({ error: { code: 'LOGIN_REJECTED' } });
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe('/account?login_error=failed');
+    expect(response.headers['set-cookie']).toBeUndefined();
     expect(data.logs.join('')).not.toContain('SECRET PROVIDER TOKEN');
+    expect(data.logs.join('')).toContain('"code":"failed"');
+  });
+  it('M2-01w: a cancelled or refused sign-in ends on the account screen with a fixed code only', async () => {
+    const data = fixture();
+    const hostile = encodeURIComponent('<img src=x onerror=alert(1)>');
+    for (const [error, expected] of [
+      ['access_denied', 'cancelled'],
+      ['server_error', 'failed'],
+      [hostile, 'failed'],
+    ] as const) {
+      const start = await data.app.inject('/bff/v1/auth/login');
+      const state = new URL(String(start.headers.location)).searchParams.get('state');
+      const response = await data.app.inject({
+        url: `/bff/v1/auth/callback?state=${state}&error=${error}&error_description=${hostile}&error_uri=https%3A%2F%2Fattacker.example`,
+        headers: { cookie: String(start.headers['set-cookie']).split(';')[0] ?? '' },
+      });
+      expect(response.statusCode).toBe(302);
+      expect(response.headers.location).toBe(`/account?login_error=${expected}`);
+      expect(response.body).toBe('');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    }
+    expect(data.exchange).not.toHaveBeenCalled();
+    expect(data.logs.join('')).not.toContain('onerror');
+    // A forged callback (no attempt cookie in this browser) touches no cookie either.
+    const forged = await data.app.inject({
+      url: '/bff/v1/auth/callback?state=a&error=access_denied',
+      headers: { cookie: 'unrelated=1' },
+    });
+    expect(forged.headers.location).toBe('/account?login_error=failed');
+    expect(forged.headers['set-cookie']).toBeUndefined();
+  });
+  it('M2-01w: an unreachable provider ends sign-in on the account screen, not in a JSON error', async () => {
+    const data = fixture();
+    data.authorizationUrl.mockRejectedValueOnce(new ProviderUnavailableError());
+    const start = await data.app.inject('/bff/v1/auth/login');
+    expect(start.statusCode).toBe(302);
+    expect(start.headers.location).toBe('/account?login_error=unavailable');
+    expect(start.headers['set-cookie']).toBeUndefined();
+    // Query validation is still a boundary error, not a redirect.
+    expect((await data.app.inject('/bff/v1/auth/login?returnTo=/x')).statusCode).toBe(400);
+  });
+  it('M2-01w: sign-out continues to the provider only through the checked sign-out', async () => {
+    const data = fixture();
+    const login = await data.login();
+    data.logoutUrl.mockResolvedValue('https://provider.example/logout?client_id=client');
+    // Refused sign-outs (CSRF, cross-site, no session) never hand out the provider URL.
+    for (const headers of [
+      { cookie: login.cookie, 'x-workout-session-id': 'session-a' },
+      {
+        cookie: login.cookie,
+        origin: 'https://attacker.example',
+        'x-csrf-token': login.csrfToken,
+        'x-workout-session-id': 'session-a',
+      },
+      { origin: 'https://attacker.example', 'content-type': 'text/plain' },
+      { origin: 'https://workout.example' },
+    ]) {
+      const refused = await data.app.inject({
+        method: 'POST',
+        url: '/bff/v1/auth/logout',
+        headers,
+        ...(headers['content-type'] === undefined ? {} : { payload: 'x=y' }),
+      });
+      expect([401, 403]).toContain(refused.statusCode);
+      expect(refused.body).not.toContain('provider.example');
+    }
+    expect(data.logoutUrl).not.toHaveBeenCalled();
+    const logout = await data.app.inject({
+      method: 'POST',
+      url: '/bff/v1/auth/logout',
+      headers: {
+        cookie: login.cookie,
+        origin: 'https://workout.example',
+        'x-csrf-token': login.csrfToken,
+        'x-workout-session-id': 'session-a',
+      },
+    });
+    expect(logout.statusCode).toBe(200);
+    expect(logout.json()).toEqual({
+      providerLogoutUrl: 'https://provider.example/logout?client_id=client',
+    });
+    // The app sign-out itself is complete: session revoked, marker set.
+    expect([logout.headers['set-cookie']].flat().map(String)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^__Host-workout_session=; /),
+        expect.stringMatching(/^__Host-workout_signed_out=[A-Za-z0-9_-]{43}; /),
+      ]),
+    );
+    expect(
+      (await data.app.inject({ url: '/bff/v1/session', headers: { cookie: login.cookie } }))
+        .statusCode,
+    ).toBe(401);
+  });
+  it('M2-01w: the API starts while the provider is unreachable; sign-in fails closed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'workout-m2-01w-'));
+    try {
+      const app = await createConfiguredApi({
+        NODE_ENV: 'test',
+        DATABASE_URL: 'postgres://runtime@127.0.0.1:1/workout',
+        PUBLIC_ORIGIN: 'http://127.0.0.1:4301',
+        OIDC_ISSUER: 'http://127.0.0.1:1',
+        OIDC_CLIENT_ID: 'client',
+        OIDC_CLIENT_SECRET: 'secret',
+        PRIVATE_RESOURCE_STORAGE_ROOT: join(root, 'resources'),
+        ALLOW_INSECURE_LOCALHOST: 'true',
+      });
+      instances.push(app);
+      expect((await app.inject('/health')).statusCode).toBe(200);
+      const login = await app.inject('/bff/v1/auth/login');
+      expect(login.statusCode).toBe(302);
+      expect(login.headers.location).toBe('/account?login_error=unavailable');
+      expect(login.headers['set-cookie']).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
   it('rejects incomplete startup and insecure production before network or database access', async () => {
     await expect(createConfiguredApi({})).rejects.toThrow();

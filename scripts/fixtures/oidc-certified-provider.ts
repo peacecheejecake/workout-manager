@@ -23,6 +23,13 @@ export interface CertifiedOidcOptions {
   signingKeys?: JsonWebKey[];
   /** Reuse a secret across a restart (key rotation); generated when absent. */
   clientSecret?: string;
+  /**
+   * M2-01w: model an identity provider that does not support re-authentication requests —
+   * `prompt` and `max_age` are dropped before the OP sees the authorization request, so it
+   * answers from its single sign-on session. A deliberately non-conformant OP, for proving
+   * what the relying party does when the provider silently ignores `prompt=login`.
+   */
+  ignoreReauthentication?: boolean;
 }
 
 export interface CertifiedOidc {
@@ -83,7 +90,13 @@ export async function startCertifiedOidc(
     pkce: { required: () => true },
     features: {
       devInteractions: { enabled: false },
-      rpInitiatedLogout: { enabled: true },
+      rpInitiatedLogout: {
+        enabled: true,
+        // Same confirmation the default page asks, without its external font request.
+        logoutSource: (context: { body: string }, form: string) => {
+          context.body = `<!doctype html><html lang="en"><head><title>Sign out of the identity provider</title></head><body><main><h1>Sign out of the certified identity provider?</h1>${form}<button type="submit" form="op.logoutForm" value="yes" name="logout">Yes, sign me out</button><button type="submit" form="op.logoutForm">No, stay signed in</button></main></body></html>`;
+        },
+      },
       revocation: { enabled: false },
     },
     interactions: {
@@ -179,7 +192,13 @@ export async function startCertifiedOidc(
   }
 
   const server = createServer((request, reply) => {
-    const path = new URL(request.url ?? '/', issuer).pathname;
+    const url = new URL(request.url ?? '/', issuer);
+    const path = url.pathname;
+    if (options.ignoreReauthentication === true && path === '/auth') {
+      url.searchParams.delete('prompt');
+      url.searchParams.delete('max_age');
+      request.url = `${url.pathname}${url.search}`;
+    }
     if (/^\/interaction\/[A-Za-z0-9_-]+$/.test(path)) {
       void interaction(request, reply).catch(() => {
         if (!reply.headersSent)

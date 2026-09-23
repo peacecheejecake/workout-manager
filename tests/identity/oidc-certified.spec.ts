@@ -51,8 +51,16 @@ test('real OP: sign-in, sign-out, re-authenticated account switch and stable acc
   const opSession = (await context.cookies(opOrigin)).find((cookie) => cookie.name === '_session');
   expect(opSession, 'the OP keeps its own SSO session').toBeDefined();
 
-  // App sign-out: the product session is revoked server-side; the OP session is not.
+  // App sign-out: the product session is revoked server-side. M2-01w: the screen then
+  // continues to the OP's RP-initiated logout, where this user declines — the OP session
+  // stays, and the sign-out marker still makes the next sign-in ask again.
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Sign out of the certified identity provider?' }),
+  ).toBeVisible();
+  expect(new URL(page.url()).origin).toBe(opOrigin);
+  await page.getByRole('button', { name: 'No, stay signed in' }).click();
+  await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
   expect((await page.request.get('/bff/v1/session')).status()).toBe(401);
   expect((await context.cookies(opOrigin)).some((cookie) => cookie.name === '_session')).toBe(true);
@@ -60,8 +68,15 @@ test('real OP: sign-in, sign-out, re-authenticated account switch and stable acc
   expect(marker?.httpOnly).toBe(true);
 
   // The next sign-in must not be answered from the OP's SSO session: the OP asks again, and
-  // a different person can sign in with their own account.
+  // a different person can sign in with their own account. M2-01w: the request carries
+  // max_age=0, and the RP accepts the answer only with a fresh auth_time.
+  const reauthorize = page.waitForRequest((request) =>
+    request.url().startsWith(`${opOrigin}/auth`),
+  );
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
+  const asked = new URL((await reauthorize).url());
+  expect(asked.searchParams.get('prompt')).toBe('login');
+  expect(asked.searchParams.get('max_age')).toBe('0');
   await signInAtProvider(page, 'bob');
   await expect(page).toHaveURL(/\/account$/);
   const bob = await athlete(page);
@@ -131,6 +146,69 @@ test('real OP: a first sign-in keeps single sign-on; a session-less sign-out and
   await page.getByRole('button', { name: 'Cancel' }).click();
   const rejected = await callback;
   expect(new URL(rejected.url()).searchParams.get('error')).toBe('access_denied');
-  expect(rejected.status()).toBe(401);
+  // M2-01w: a readable screen, not a JSON body. The OP's own wording
+  // ("End-User cancelled the sign-in", its error_description) is not shown.
+  expect(rejected.status()).toBe(302);
+  expect(rejected.headers()['location']).toBe('/account?login_error=cancelled');
+  await expect(page.locator('main').getByRole('alert')).toHaveText(
+    '로그인을 취소했습니다. 다시 로그인하려면 아래에서 시작하세요.',
+  );
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+  expect(await page.content()).not.toContain('End-User cancelled');
   expect((await page.request.get('/bff/v1/session')).status()).toBe(401);
+});
+
+test('real OP: sign-out that ends the OP session too; failure codes render only fixed words', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/bff/v1/auth/login');
+  await signInAtProvider(page, 'alice');
+  await expect(page).toHaveURL(/\/account$/);
+  await athlete(page);
+
+  // RP-initiated logout, accepted at the OP.
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Sign out of the certified identity provider?' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Yes, sign me out' }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+  expect((await page.request.get('/bff/v1/session')).status()).toBe(401);
+
+  // The OP session is gone: even with every product cookie (and so the sign-out marker)
+  // removed, a sign-in is asked for credentials instead of answered from SSO.
+  const opCookies = (await context.cookies()).filter(
+    (cookie) => !cookie.name.startsWith('workout_'),
+  );
+  await context.clearCookies();
+  await context.addCookies(opCookies);
+  const firstAsk = page.waitForRequest((request) => request.url().startsWith(`${opOrigin}/auth`));
+  await page.goto('/bff/v1/auth/login');
+  expect(new URL((await firstAsk).url()).searchParams.has('prompt')).toBe(false);
+  await expect(
+    page.getByRole('heading', { name: 'Certified identity provider sign-in' }),
+  ).toBeVisible();
+
+  // Attacker-chosen failure codes and descriptions render nothing of theirs.
+  await page.goto(
+    `/account?login_error=${encodeURIComponent('<img src=x onerror=window.__xss=1>')}`,
+  );
+  await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+  await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
+  expect(await page.locator('main img').count()).toBe(0);
+  expect(await page.evaluate(() => (window as { __xss?: number }).__xss)).toBeUndefined();
+
+  const hostile = encodeURIComponent('<img src=x onerror=window.__xss=1>');
+  await page.goto(
+    `/bff/v1/auth/callback?state=forged&error=access_denied&error_description=${hostile}`,
+  );
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.locator('main').getByRole('alert')).toHaveText(
+    '로그인을 완료하지 못했습니다. 로그인 요청이 만료되었거나 인증 제공자의 응답을 확인하지 못했습니다. 다시 시도하세요.',
+  );
+  expect(await page.locator('main img').count()).toBe(0);
+  expect(await page.evaluate(() => (window as { __xss?: number }).__xss)).toBeUndefined();
 });

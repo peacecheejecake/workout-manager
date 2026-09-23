@@ -28,6 +28,29 @@ const consentSchema = z.strictObject({
   revision: z.number().int().nonnegative(),
 });
 type Session = z.infer<typeof sessionSchema>;
+const providerLogoutSchema = z.strictObject({
+  providerLogoutUrl: z.url({ protocol: /^https?$/ }),
+});
+
+/**
+ * A failed sign-in comes back as `/account?login_error=<code>` (M2-01w). Only these fixed
+ * codes are shown, with this screen's own words; any other value is ignored. Nothing the
+ * identity provider wrote is displayed.
+ */
+const loginErrors = {
+  cancelled: '로그인을 취소했습니다. 다시 로그인하려면 아래에서 시작하세요.',
+  failed:
+    '로그인을 완료하지 못했습니다. 로그인 요청이 만료되었거나 인증 제공자의 응답을 확인하지 못했습니다. 다시 시도하세요.',
+  unavailable: '인증 제공자에 연결하지 못해 로그인할 수 없습니다. 잠시 뒤 다시 시도하세요.',
+} as const;
+type LoginError = keyof typeof loginErrors;
+/** The raw query value (string, repeated, or absent) → one of the fixed codes, or nothing. */
+export function parseLoginError(value: unknown): LoginError | null {
+  return typeof value === 'string' && Object.hasOwn(loginErrors, value)
+    ? (value as LoginError)
+    : null;
+}
+const navigate = (url: string) => window.location.assign(url);
 
 async function loadSession(signal: AbortSignal) {
   const response = await fetch('/bff/v1/session', {
@@ -41,19 +64,44 @@ async function loadSession(signal: AbortSignal) {
   return Date.parse(data.expiresAt) <= Date.now() ? null : data;
 }
 
-export function IdentityWorkspace() {
+interface WorkspaceProps {
+  /** The `login_error` query value as the page received it; parsed here, never echoed. */
+  loginError?: unknown;
+  /** Continue to the identity provider's own sign-out (RP-initiated logout). */
+  navigateToProviderLogout?(url: string): void;
+}
+
+export function IdentityWorkspace({
+  loginError: rawLoginError,
+  navigateToProviderLogout = navigate,
+}: WorkspaceProps = {}) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } }),
   );
   useEffect(() => () => client.clear(), [client]);
+  const loginError = parseLoginError(rawLoginError);
+  useEffect(() => {
+    // Shown for this visit only: a reload or a copied link does not repeat it.
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('login_error')) return;
+    url.searchParams.delete('login_error');
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
   return (
     <QueryClientProvider client={client}>
-      <SessionBoundary />
+      {loginError === null ? null : (
+        <p role="alert" data-login-error={loginError}>
+          {loginErrors[loginError]}
+        </p>
+      )}
+      <SessionBoundary navigateToProviderLogout={navigateToProviderLogout} />
     </QueryClientProvider>
   );
 }
 
-function SessionBoundary() {
+function SessionBoundary({
+  navigateToProviderLogout,
+}: Required<Pick<WorkspaceProps, 'navigateToProviderLogout'>>) {
   const client = useQueryClient();
   const session = useQuery({
     queryKey: ['identity', 'current-session'],
@@ -107,6 +155,7 @@ function SessionBoundary() {
         void client.cancelQueries({ queryKey: ['identity', 'current-session'] });
         client.setQueryData(['identity', 'current-session'], null);
       }}
+      navigateToProviderLogout={navigateToProviderLogout}
     />
   );
 }
@@ -115,20 +164,26 @@ interface AccountProps {
   session: Session;
   onSignedOut: () => void;
   onSessionChanged: () => void;
+  navigateToProviderLogout: (url: string) => void;
 }
-function AccountLifetime({ session, onSignedOut, onSessionChanged }: AccountProps) {
+function AccountLifetime(props: AccountProps) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
   useEffect(() => () => client.clear(), [client]);
   return (
     <QueryClientProvider client={client}>
-      <Account session={session} onSignedOut={onSignedOut} onSessionChanged={onSessionChanged} />
+      <Account {...props} />
     </QueryClientProvider>
   );
 }
 
-function Account({ session, onSignedOut, onSessionChanged }: AccountProps) {
+function Account({
+  session,
+  onSignedOut,
+  onSessionChanged,
+  navigateToProviderLogout,
+}: AccountProps) {
   async function requireSameSession(response: Response) {
     if (response.status === 401) {
       onSignedOut();
@@ -199,10 +254,17 @@ function Account({ session, onSignedOut, onSessionChanged }: AccountProps) {
       });
       if (response.status !== 401) await requireSameSession(response);
       if (!response.ok && response.status !== 401) throw new Error('LOGOUT_FAILED');
+      // 204: the app sign-out is all there is. 200: it is done, and the provider offers to
+      // end its own session too. A malformed answer still counts as signed out of the app.
+      if (response.status !== 200) return null;
+      const body: unknown = await response.json().catch(() => null);
+      const parsed = providerLogoutSchema.safeParse(body);
+      return parsed.success ? parsed.data.providerLogoutUrl : null;
     },
-    onSuccess: () => {
+    onSuccess: (providerLogoutUrl) => {
       client.clear();
       onSignedOut();
+      if (providerLogoutUrl !== null) navigateToProviderLogout(providerLogoutUrl);
     },
   });
   return (

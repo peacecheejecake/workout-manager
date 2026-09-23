@@ -114,6 +114,22 @@ function classifyError(error: unknown): { statusCode: number; code: string } {
   return { statusCode: 500, code: 'INTERNAL_ERROR' };
 }
 
+/**
+ * A failed sign-in is a browser navigation, so it ends on the account screen with one of
+ * these fixed codes instead of a JSON body (M2-01w). Nothing from the provider's response —
+ * `error_description`, `error_uri`, even the `error` value itself — reaches the URL; the
+ * screen maps the code to its own text.
+ */
+function loginFailure(error: unknown): 'cancelled' | 'failed' | 'unavailable' {
+  if (error instanceof IdentityError)
+    return error.code === 'LOGIN_CANCELLED'
+      ? 'cancelled'
+      : error.code === 'LOGIN_REJECTED'
+        ? 'failed'
+        : 'unavailable';
+  return 'unavailable';
+}
+
 /** Composition factory only: production identity and connection ownership are injected. */
 export function createApi(options: ApiOptions): FastifyInstance {
   const origins = new Set(
@@ -170,11 +186,27 @@ export function createApi(options: ApiOptions): FastifyInstance {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {
       parseInput(emptyQuerySchema, request.query);
-      const result = await identity.beginLogin(request.headers.cookie);
+      let result: Awaited<ReturnType<IdentityService['beginLogin']>>;
+      try {
+        result = await identity.beginLogin(request.headers.cookie);
+      } catch (error) {
+        const code = loginFailure(error);
+        request.log.warn({ event: 'login_failed', code });
+        return reply.redirect(`/account?login_error=${code}`);
+      }
       return reply.header('set-cookie', result.cookie).redirect(result.location);
     });
     app.get('/bff/v1/auth/callback', async (request, reply) => {
-      const result = await identity.completeLogin(request.url, request.headers.cookie);
+      let result: Awaited<ReturnType<IdentityService['completeLogin']>>;
+      try {
+        result = await identity.completeLogin(request.url, request.headers.cookie);
+      } catch (error) {
+        // No cookie is set or deleted: a forged callback navigation must not be able to
+        // touch the victim's session, attempt or sign-out marker.
+        const code = loginFailure(error);
+        request.log.warn({ event: 'login_failed', code });
+        return reply.redirect(`/account?login_error=${code}`);
+      }
       return reply.header('set-cookie', result.cookies).redirect(result.location);
     });
   }
@@ -245,7 +277,13 @@ export function createApi(options: ApiOptions): FastifyInstance {
         routes.post('/auth/logout', async (request, reply) => {
           if (request.body !== undefined) throw new BoundaryError(400, 'INVALID_REQUEST');
           const cookies = await identity.logout(request.headers.cookie);
-          return reply.header('set-cookie', cookies).code(204).send();
+          // The app sign-out is complete here. When the provider offers RP-initiated logout
+          // the screen continues there, so the provider's own session can end as well; this
+          // is only reachable through the session, Origin and CSRF checks above.
+          const providerLogoutUrl = await identity.providerLogoutUrl();
+          return providerLogoutUrl === null
+            ? reply.header('set-cookie', cookies).code(204).send()
+            : reply.header('set-cookie', cookies).code(200).send({ providerLogoutUrl });
         });
       }
       routes.get('/consents/:kind', async (request) => {

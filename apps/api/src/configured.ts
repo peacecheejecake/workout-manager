@@ -42,7 +42,7 @@ import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createIdentityService } from '@workout/server-identity/service';
-import { createOidcProvider } from '@workout/server-identity/oidc';
+import { createOidcProvider, type OidcEvent } from '@workout/server-identity/oidc';
 import { configuredGarmin } from '@workout/server-identity/garmin-config';
 import {
   createGarminService,
@@ -62,6 +62,9 @@ const environmentSchema = z.object({
   OIDC_CLIENT_ID: z.string().min(1),
   OIDC_CLIENT_SECRET: z.string().min(1),
   ALLOW_INSECURE_LOCALHOST: z.enum(['true', 'false']).default('false'),
+  // M2-01w. Both default on; see docs/implementation/oidc-setup.md for when to turn off.
+  OIDC_VERIFY_REAUTHENTICATION: z.enum(['true', 'false']).default('true'),
+  OIDC_PROVIDER_LOGOUT: z.enum(['true', 'false']).default('true'),
   COACHING_FIXTURE_ENABLED: z.enum(['true', 'false']).default('false'),
   COACHING_FIXTURE_ID: z.string().optional(),
   PRIVATE_RESOURCE_STORAGE_ROOT: z
@@ -97,13 +100,30 @@ export async function createConfiguredApi(environment: unknown) {
     env.PUBLIC_ORIGIN,
     allowInsecureLocalhost,
   );
-  const provider = await createOidcProvider({
-    issuer: env.OIDC_ISSUER,
-    clientId: env.OIDC_CLIENT_ID,
-    clientSecret: env.OIDC_CLIENT_SECRET,
-    redirectUri: new URL('/bff/v1/auth/callback', env.PUBLIC_ORIGIN).href,
-    allowInsecureLocalhost,
-  });
+  // Discovery failures carry only a fixed reason (never provider text). Before the API's
+  // logger exists they go to stderr as the same one-line JSON.
+  let log: { warn(event: OidcEvent): void } | undefined;
+  const provider = await createOidcProvider(
+    {
+      issuer: env.OIDC_ISSUER,
+      clientId: env.OIDC_CLIENT_ID,
+      clientSecret: env.OIDC_CLIENT_SECRET,
+      redirectUri: new URL('/bff/v1/auth/callback', env.PUBLIC_ORIGIN).href,
+      allowInsecureLocalhost,
+      verifyReauthentication: env.OIDC_VERIFY_REAUTHENTICATION === 'true',
+      providerLogout: env.OIDC_PROVIDER_LOGOUT === 'true',
+    },
+    {
+      onEvent: (event) => {
+        if (log === undefined) process.stderr.write(`${JSON.stringify(event)}\n`);
+        else log.warn(event);
+      },
+    },
+  );
+  // Discovery no longer blocks startup (M2-01w): an unreachable provider fails sign-in
+  // closed, not the whole API. Warm it now; a failure is reported (onEvent) and retried on
+  // the next sign-in.
+  void provider.prepare?.().catch(() => undefined);
   const database = createDatabase({ connectionString: env.DATABASE_URL });
   const store = createIdentityRepository({ connectionString: env.DATABASE_URL });
   try {
@@ -132,7 +152,7 @@ export async function createConfiguredApi(environment: unknown) {
       publicOrigin: env.PUBLIC_ORIGIN,
       allowInsecureLocalhost,
     });
-    return createApi({
+    const app = createApi({
       auth: identity,
       identity,
       garmin:
@@ -227,6 +247,8 @@ export async function createConfiguredApi(environment: unknown) {
         await Promise.all([store.close(), database.close()]);
       },
     });
+    log = app.log;
+    return app;
   } catch (error) {
     await Promise.all([store.close(), database.close()]);
     throw error;

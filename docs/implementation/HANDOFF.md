@@ -17,18 +17,23 @@
 
 ## 완료된 최신 작업
 
-[M2-01ab](progress/M2-01ab.md)를 완료했다. M2-01x tenant listing의 root swap 시험이 부하에서 "링크를 통해 답함"으로
-실패하던 것은 **목록 가드의 결함이 아니라 시험 쪽 판정 오류**였다. 시험이 답을 받은 뒤 전역 플래그로 판정해,
-마지막 root 확인이 실제 root를 읽은 뒤 swap이 끼어든 경우를 오탐했다. 답의 내용으로 판정하도록 고치고, 80개 호출
-위치마다 swap하는 결정적 시험과 M2-01x에 시험이 없던 dev/ino 재확인 시험을 더했다. 제품 코드는 바뀌지 않았다.
-ABA(가서 돌아오는 swap)는 Node에 `openat`이 없어 막을 수 없고, 그 영향은 이 tenant 자기 key 이름으로 한정되며
-결과는 과소 삭제다(30일 창 밖의 마지막 pass라면 객체가 남은 채 닫힐 수 있음).
+[M2-01w](progress/M2-01w.md)를 완료했다(OIDC 운영 견고성, migration 없음).
 
-직전 완료: [M2-01z](progress/M2-01z.md)(tenant purge 운영 가시성·처리량, migration 045, grant 단계 불필요).
+- OP discovery를 첫 사용 때로 미뤘다. OP가 내려가 있어도 API는 뜨고 로그인은 `unavailable`로 닫히며, 기존 세션과
+  로그아웃은 유지된다. 설정값 오류는 여전히 기동을 거부하고, discovery에서만 드러나는 오류는 고정 사유
+  (`oidc_discovery_failed`: issuer_mismatch·insecure_endpoint·network·other)를 시도마다 한 번 남긴다.
+- 앱 로그아웃이 먼저 완결된 뒤, 같은 출처·CSRF를 통과한 요청에만 OP 쪽 RP-initiated logout URL을 준다. 이미 성공한
+  discovery 결과만 쓰며 로그아웃이 discovery를 일으키지 않는다. HTTPS가 아닌 `end_session_endpoint`는 OP 로그아웃만 끈다.
+- 로그인 취소·실패는 `/account?login_error=cancelled|failed|unavailable`의 고정 문구로 끝나며 OP 문구·쿠키 변경이 없다.
+- 재인증 요청은 `prompt=login&max_age=0`을 보내고 callback에서 `auth_time`을 검사한다(기본 on, 허용 오차 30초, NTP 전제).
+- **back-channel logout은 미구현**(migration 필요)이다. 그때까지 OP 쪽 계정 정지가 앱에 닿는 상한은 8시간이다.
+  운영 IdP에서 확인할 항목은 EXT-OIDC scope에 옮겼다.
+
+직전 완료: [M2-01ab](progress/M2-01ab.md)(root swap 목록 시험의 판정 오류, 제품 코드 변경 없음).
 
 ## 다음 ready 작업
 
-M2-01q는 rebase 뒤 3라운드 검토 중, M2-01w는 승인되어 병합 대기, M2-01y는 차단 지적(복원 후 재-import 억제) 수정 중이다. M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
+M2-01q는 3라운드 검토 승인되어 병합 대기, M2-01y는 차단 지적(복원 후 재-import 억제) 수정 중이다. M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
 
 ## 남은 외부·실환경 gate
 
