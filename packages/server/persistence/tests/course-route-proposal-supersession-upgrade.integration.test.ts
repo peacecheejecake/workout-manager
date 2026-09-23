@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { grantCourses, migrate, migrationFileNames } from '../src/migrate.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
  * Migration 042 (M2-01p) has to run on a database every earlier migration already built,
@@ -65,7 +66,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await upgraded?.end();
-  await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+  await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${runtimeRole}"`);
   await admin.end();
 });

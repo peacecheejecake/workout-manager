@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { migrate } from '../src/migrate.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
  * Migration 032 has to run against a populated database, not only a fresh one.
@@ -28,7 +29,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await upgraded?.end();
-  await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+  await dropIsolatedDatabase(admin, database);
   await admin.end();
 });
 

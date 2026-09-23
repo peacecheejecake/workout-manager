@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { grantOperations, migrate, migrationFileNames } from '../src/migrate.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
  * The erasure watched-ref migration (M2-01s, 042) has to run against a populated database and leave every earlier
@@ -67,7 +68,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await upgraded?.end();
-  await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+  await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${runtimeRole}"`);
   await admin.end();
 });

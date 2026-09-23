@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { grantResourceObjectCleanupWorker, migrate } from '../src/migrate.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
  * Migration 039 has to run against a populated 038 database and leave every earlier migration
@@ -50,7 +51,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await upgraded?.end();
-  await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+  await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${workerRole}"`);
   await admin.end();
 });
@@ -246,7 +247,7 @@ describe('migration 039 upgrade of a populated 038 database', () => {
       ]);
     } finally {
       await pool.end();
-      await admin.query(`DROP DATABASE IF EXISTS ${seeded} WITH (FORCE)`);
+      await dropIsolatedDatabase(admin, seeded);
     }
   });
 });

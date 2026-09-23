@@ -1180,7 +1180,7 @@
       "title": "지도 상태 신호 정직성과 두 shell 렌더 증명",
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01k F3과 K-next-map-render·R-S13-S14·P5-fitbounds partial. geo-kit의 onReady가 style load에서 발생하는데(maplibre-adapter.ts:216, 329) style 로드에는 worker가 필요 없어, MapView를 쓰는 다섯 화면(코스 2, activities 3)이 빈 canvas 위에 '지도 표시 중'을 표시할 수 있고 스크린리더에도 그렇게 읽힌다. F2(Next 코스 지도 mapWorkerUrl 누락)가 이 때문에 M2-01h부터 가려졌다. 올바른 신호 onIdle은 이미 있다(:275-277). Next shell 코스 지도 렌더는 idle 뒤 코스 source layer의 queryRenderedFeatures로 증명됐으나 Vite shell은 미증명. 커밋된 반응형 시험은 3100만 돌고 최소 폭 검증이 없으며 지도가 아닌 레이아웃만 본다. fitBounds의 코스·활동 전환과 resize 단언 없음."
     },
     {
@@ -1188,7 +1188,7 @@
       "title": "S13/S14 누락 기능",
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01k 수용 missing 3행과 P5-list-alternative partial. /courses/new·/courses/:id/edit 라우트 없음, S13 접근성 메모 없음, '미계산 초안' 표시 없음(S14-no-confirmation 행이 이 때문에 일부 공허). 목록에서 선택·순서 변경·삭제 대안 중 좌표 입력만 단언된다 — 검토자 변이 moveEarlier no-op에서 인용 시험 0 failed."
     },
     {
@@ -1222,7 +1222,7 @@
       "title": "identity 스위트 간헐 실패 규명",
       "dependsOn": ["M2-01l"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "전체 identity 스위트에서만 서로 다른 spec이 간헐 실패한다: tests/identity/oidc.spec.ts:55(page.waitForResponse 30초 타임아웃, M2-01m 커밋 전 4회 중 1회)와 planned-completion-status.spec.ts:184(5초 안에 '완료 보고 조회 중'에 머묾, M2-01k 4회 중 1회). 둘 다 단독 실행 4/4 통과. 독립 검토 가설(미확증): identity-e2e.mts:275, 301에서 Garmin revocation poller와 M2-01l이 들인 썸네일 렌더 poller가 250 ms 간격으로 API와 같은 프로세스에서 돌고, workers:1 알파벳 순서라 코스 spec(#27~31)이 먼저 돌아 렌더 job을 쌓는다. '코스 5개 → oidc → planned-completion' 3회로는 재현되지 않았다. 수용 게이트의 증거 신뢰도에 영향을 준다."
     },
     {
@@ -1230,7 +1230,7 @@
       "title": "OIDC 운영 견고성",
       "dependsOn": ["M2-01u"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01u에서 분리한 비차단 넷. (1) API가 기동 시에만 OP를 discovery해 OP가 내려가 있으면 API 전체가 뜨지 않는다(fail-closed). (2) back-channel/RP-initiated logout이 없어 OP에서 비활성화·로그아웃된 계정이 최대 8시간 앱 세션을 유지한다. (3) 사용자 취소·OP 오류 시 브라우저에 날것의 401 JSON이 보인다. (4) RP가 auth_time을 확인하지 않아 OP가 prompt=login을 실제로 따랐는지 알 수 없다 — migration 없이 코드만으로 가능하다(max_age=0 + authorizationCodeGrant(..., { maxAge: 0 }), 독립 검토 실측)지만 운영 IdP가 prompt=login/max_age를 지원하지 않으면 로그아웃 뒤 로그인이 아예 실패하므로 EXT-OIDC의 IdP 선택에 달렸다."
     },
     {
@@ -1238,7 +1238,7 @@
       "title": "말소 후 객체 저장소 tenant prefix purge",
       "dependsOn": ["M2-01s"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01s 독립 검토에서 분리(검토 판정: 중상, 계획 7절 말소 완결성의 구멍). drill 순서가 DB dump → 객체 아카이브 복사라서, 그 사이 업로드된 객체는 복원된 DB에 어떤 행도 없다. 그 tenant가 말소되거나 복원 후 suppression이 재생되면 DB 기반 경로(원장·참조 색인·reconciliation 스윕)는 그 객체를 찾을 수 없어 아무것도 지우지 않는다. key가 전부 private/v1/tenants/<id>/로 시작하므로 말소가 fence 이후 저장소 prefix walk로 purge하는 작업을 worker에 넘기면 이 구멍과 render worker 경합을 DB와 무관하게 함께 닫는다(검토자 제안). 과잉 삭제 금지: prefix purge는 말소된 tenant의 prefix에만 작용해야 하고 다른 tenant나 공유 경로를 건드리면 안 된다."
     },
     {
