@@ -217,8 +217,20 @@ function CourseMapPane({
   const [selection, setSelection] = useState<MapSelection | null>(null);
   const [status, setStatus] = useState<MapViewStatus>('preparing');
   const paths = draftMapPaths({ state, storedCoordinates });
+  // What the renderer actually drew at its last idle, not what it said about itself:
+  // `status` reaches `ready` on style load even when no worker ever runs (M2-01k F2/F3).
+  const [renderedPathFeatures, setRenderedPathFeatures] = useState<number | null>(null);
+  const onRenderIdle = useCallback(
+    (info: { readonly renderedPathFeatures: number }) =>
+      setRenderedPathFeatures(info.renderedPathFeatures),
+    [],
+  );
   return (
-    <div className={`${styles.pane} ${styles.mapPane}`} data-pane="map">
+    <div
+      className={`${styles.pane} ${styles.mapPane}`}
+      data-pane="map"
+      data-rendered-path-features={renderedPathFeatures ?? undefined}
+    >
       <CourseMapLeaf
         label="코스 지도"
         paths={paths}
@@ -228,6 +240,7 @@ function CourseMapPane({
         basemap={basemap}
         fitRequest={fitRequest}
         onStatusChange={setStatus}
+        onRenderIdle={onRenderIdle}
         {...(mapView ? { mapView } : {})}
         {...(createMapAdapter ? { createAdapter: createMapAdapter } : {})}
         loadFailureFallback={

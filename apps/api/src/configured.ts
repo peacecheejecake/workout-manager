@@ -30,6 +30,7 @@ import { createCourseRepository } from '@workout/server-persistence/courses';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createCoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import { loadGeoDatasets } from './geo-datasets.js';
+import { createConfiguredWalkingRoutes } from './routing-deployment.js';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
@@ -107,6 +108,12 @@ export async function createConfiguredApi(environment: unknown) {
     // artifact in a configured directory, and an absent or malformed one leaves the
     // feature off rather than reaching for an external service.
     const geoDatasets = await loadGeoDatasets();
+    // The self-hosted pedestrian engine, verified against its graph manifest before any
+    // route can be computed. Unset leaves the routing routes unregistered; half-set or
+    // unverifiable refuses to start rather than serving under an unchecked identity.
+    const routing = await createConfiguredWalkingRoutes(
+      z.record(z.string(), z.unknown()).parse(environment),
+    );
     const identity = createIdentityService({
       store,
       provider,
@@ -193,6 +200,7 @@ export async function createConfiguredApi(environment: unknown) {
         places: geoDatasets.places,
         elevation: geoDatasets.elevation,
       },
+      ...(routing === null ? {} : { walkingRoutes: routing.walkingRoutes }),
       activityTracks: {
         tracks: createActivityTrackRepository(database),
         storage: resourceStorage,

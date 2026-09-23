@@ -51,6 +51,13 @@ export interface CourseMapLeafProps {
   readonly fitRequest: number;
   readonly onStatusChange: (status: MapViewStatus) => void;
   readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
+  /**
+   * Called after the renderer goes idle with how many course-line features it actually
+   * drew (`queryRenderedFeatures` over the path layers, never the basemap). A map that
+   * loaded its style but no worker reports ready and draws nothing; this is the signal
+   * that tells the two apart.
+   */
+  readonly onRenderIdle?: (info: { readonly renderedPathFeatures: number }) => void;
   readonly loadFailureFallback: ReactNode;
   /** Injected by tests to exercise the chunk-load failure path. */
   readonly mapView?: ComponentType<MapViewProps>;
@@ -72,6 +79,7 @@ export function CourseMapLeaf({ mapView, ...props }: CourseMapLeafProps) {
           onStatusChange={props.onStatusChange}
           {...(props.onPickPosition ? { onPickPosition: props.onPickPosition } : {})}
           {...(props.onFailure ? { onFailure: props.onFailure } : {})}
+          {...(props.onRenderIdle ? { onRenderIdle: props.onRenderIdle } : {})}
           {...(props.createAdapter ? { createAdapter: props.createAdapter } : {})}
         />
       </Suspense>

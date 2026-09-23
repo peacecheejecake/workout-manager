@@ -1,0 +1,1084 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k",
+  "baseHead": "e2b3bf5",
+  "rule": "passed only when a test, probe or measurement executed in this node passed AND asserts the core of the requirement AND would fail without the feature. Code reading, test names, stubs of the thing being judged, or tests that accept \"not deployed\" as success are not passed evidence. Verdicts were decided by the root implementer from quoted assertions; a read-only helper only collected quotes.",
+  "verdicts": ["passed", "partial", "not_executed", "missing", "failed"],
+  "executedThisNode": [
+    "pnpm test 3,207",
+    "pnpm test:integration 524",
+    "pnpm test:identity 157 x2",
+    "backup-restore-drill 62",
+    "probe-routing-operational 26 checks x3 + guard revert",
+    "probe-course-performance",
+    "course-acceptance.spec fixture x1, real engine x3 (after render assertion), F2 revert fails"
+  ],
+  "counts": {
+    "partial": 72,
+    "passed": 27,
+    "failed": 2,
+    "missing": 3,
+    "not_executed": 6
+  },
+  "total": 110,
+  "rows": [
+    {
+      "id": "S09-address",
+      "source": "docs/.pre/01_product_screen_spec.md:47",
+      "quote": "| S09 | 활동 상세 `/activities/:id?tab=overview` | 분석·구간·지도·impact·미디어·출처 | M1 |",
+      "verdict": "partial",
+      "evidence": ["tests/identity/activity-detail-tabs.spec.ts:112 (identity ×2, executed)"],
+      "reason": "Address is `/activities?selected=<id>&detailTab=…`; `apps/web/app/activities/[id]/` holds only `edit/`. Tabs exist; media tab is disabled."
+    },
+    {
+      "id": "S09-header",
+      "source": "docs/.pre/01_product_screen_spec.md:135",
+      "quote": "S09 상단은 출처·관측 시각·정정 여부와 거리/시간/페이스/심박 요약이다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/activity-metric-summary.spec.ts:49 asserts pace/elapsed/heart-rate texts (:113-130)"
+      ],
+      "reason": "Source, observed time and an explicit correction state are not asserted by any executed test."
+    },
+    {
+      "id": "S09-tabs",
+      "source": "docs/.pre/01_product_screen_spec.md:135",
+      "quote": "본문 탭은 **개요 / 구간 / 경로 / 영향 / 미디어 / 출처**다.",
+      "verdict": "partial",
+      "evidence": [
+        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:33,87 (unit, executed)"
+      ],
+      "reason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function."
+    },
+    {
+      "id": "S09-split-lazy",
+      "source": "docs/.pre/01_product_screen_spec.md:135",
+      "quote": "큰 그래프와 지도는 데스크톱 split-pane, 모바일은 개별 탭으로 lazy mount한다.",
+      "verdict": "partial",
+      "evidence": ["tests/identity/activity-track-map.spec.ts:272 (layout at boundaries)"],
+      "reason": "Mobile pane stays mounted once loaded (M2-01e); split exists only inside the route tab. Lazy mount per tab not asserted."
+    },
+    {
+      "id": "S09-range-link",
+      "source": "docs/.pre/01_product_screen_spec.md:137",
+      "quote": "차트에서 구간을 선택하면 지도 경로와 lap table의 동일 시간 범위가 강조된다.",
+      "verdict": "partial",
+      "evidence": ["tests/identity/activity-workbench.spec.ts:35 (:157-174 range via UTC inputs)"],
+      "reason": "No drag range on the chart (range is typed); no lap table linked in the route tab; map highlight of the range not asserted."
+    },
+    {
+      "id": "S09-cursor-store",
+      "source": "docs/.pre/01_product_screen_spec.md:137",
+      "quote": "커서 상태는 shared selection store에만 두고 매 움직임을 전역 서버 상태로 저장하지 않는다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/activity-workbench.spec.ts:35 — `expect(writes).toBe(0)` (:209)"
+      ],
+      "reason": "No-write is asserted for clicks/Enter/range apply only; cursor (hover) movement is never exercised; the store identity is not asserted."
+    },
+    {
+      "id": "S09-gps-gap",
+      "source": "docs/.pre/01_product_screen_spec.md:137",
+      "quote": "GPS 끊김은 점선/갭으로 표현하고 직선을 달린 실제 경로로 해석하지 않는다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/experience/geo-kit/tests/geo-kit.test.tsx:87 \"never bridges a gap\" — features split into 2 (:90), second is an insufficient Point (:98-99); fails without break handling (unit, executed)",
+        "packages/modules/activities/tests/stored-track-geometry.test.tsx:31,234 breaks preserved"
+      ],
+      "reason": "Asserted on the feature collection handed to the renderer. The E2E (activity-track-map.spec:193) only checks \"≥1 feature\", so the rendered pixels are not asserted."
+    },
+    {
+      "id": "S09-indoor-tab",
+      "source": "docs/.pre/01_product_screen_spec.md:137",
+      "quote": "실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다.",
+      "verdict": "failed",
+      "evidence": [
+        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:87 asserts the route tab is ENABLED (:94)"
+      ],
+      "reason": "The tab stays enabled and the panel explains ('위치가 기록되지 않은 활동입니다'); activity-detail-tabs.test.tsx:87 asserts ENABLED. Reviewer judgement: not a false pass by M2-01e but an unflagged deviation — M2-01e did not claim the indoor clause, recorded 'route tab opens, only media disabled' as its own acceptance (M2-01e.md:187) and did not mention the spec conflict. The current behaviour (enabled tab + in-panel explanation) makes the explanation more reachable than a disabled tab would, so amending the spec is a reasonable outcome. The decision belongs to the user."
+    },
+    {
+      "id": "S09-impact-split",
+      "source": "docs/.pre/01_product_screen_spec.md:139",
+      "quote": "영향(impact)은 다음을 분리한다.\n| 관측·계산 | 해당 Block의 거리/시간에 기여한 양, 계획 대비 차이, 보고한 RPE |\n| 분류·추정 | 목적/강도 분류와 그 출처·불확실성 |\n| 상담 | 향후 계획에서 검토할 항목과 관련 제안 |",
+      "verdict": "partial",
+      "evidence": ["tests/identity/activity-context.spec.ts:35"],
+      "reason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent."
+    },
+    {
+      "id": "S09-no-causal",
+      "source": "docs/.pre/01_product_screen_spec.md:147",
+      "quote": "“이번 활동 때문에 부상 위험이 12% 증가” 같은 검증되지 않은 인과 수치는 표시하지 않는다. 분모가 불완전하면 기여율 대신 부분 합계로 표시한다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/activity-context.spec.ts:35 — known/missing partial sums (:152-157, :201)"
+      ],
+      "reason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent."
+    },
+    {
+      "id": "S13-crud",
+      "source": "docs/.pre/01_product_screen_spec.md:51",
+      "quote": "| S13 | 코스 목록 `/courses` | 개인 코스 CRUD, GPX, 즐겨찾기 | M2 |",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts create (step 2), read, reroute/pick updates, delete (:809-814 `{deleted:true}` then 404) — fixture ×1 + full suite ×2 + real engine ×3",
+        "tests/identity/courses.spec.ts:118 rename (:181-182 \"이름을 저장했습니다. 현재 수정 번호 2\", then the new name in the delete impact :188)",
+        "packages/modules/courses/tests/course-editor.test.tsx:1089 screen delete path"
+      ],
+      "reason": "CRUD part of the row."
+    },
+    {
+      "id": "S13-gpx",
+      "source": "docs/.pre/01_product_screen_spec.md:51",
+      "quote": "개인 코스 CRUD, GPX, 즐겨찾기",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts steps 5 and 8: UI import creates an `imported-file` course; UI export byte-equal to API, `<rte>` only, rtept count = head geometry"
+      ],
+      "reason": "GPX part of the row."
+    },
+    {
+      "id": "S13-favourite",
+      "source": "docs/.pre/01_product_screen_spec.md:51",
+      "quote": "개인 코스 CRUD, GPX, 즐겨찾기",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-extras.spec.ts:58 — \"즐겨찾기 해제\" visible (:125), API favourite true (:132)"
+      ],
+      "reason": "Favourite part of the row."
+    },
+    {
+      "id": "S13-card-thumbnail",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "S13 코스 카드에 지도 썸네일",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 7 (stored SVG path = geometry, Bob 404)"
+      ],
+      "reason": "Thumbnail is stored and shown in the course detail, not on the list card (M2-01l)."
+    },
+    {
+      "id": "S13-card-distance",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "실제/추정 거리",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "List card shows no distance; detail shows planned line length; engine estimate only in the proposal review. Not asserted on a card."
+    },
+    {
+      "id": "S13-card-elevation",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "고도 데이터 출처",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-extras.spec.ts:192 accepts \"고도 데이터가 배포되어 있지 않습니다\" — NOT counted as evidence"
+      ],
+      "reason": "Only the detail shows it; the E2E passes with no dataset; unit tests use a fake `no_dataset` transport; real dataset has 821 points (effective coverage ~0)."
+    },
+    {
+      "id": "S13-card-surface",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "노면 정보의 확인 상태",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts:413 and course-extras.spec.ts:193 assert \"확인되지 않음\""
+      ],
+      "reason": "The state is a constant \"확인되지 않음\"; there is no surface data source. Detail only, not the card."
+    },
+    {
+      "id": "S13-card-access-memo",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "접근성 메모",
+      "verdict": "missing",
+      "evidence": [],
+      "reason": "No field, contract or UI."
+    },
+    {
+      "id": "S13-card-last-used",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "마지막 사용을 표시한다.",
+      "verdict": "partial",
+      "evidence": ["tests/identity/course-extras.spec.ts:134 `lastUsedAt` not null (API only)"],
+      "reason": "On-screen display not asserted by an executed E2E (seen in Aside capture only)."
+    },
+    {
+      "id": "S13-from-track",
+      "source": "docs/.pre/01_product_screen_spec.md:161",
+      "quote": "활동의 실제 track에서 새 코스를 만들 수 있으나 원본 track과 planned course는 다른 엔터티다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 2 (recorded-segment, lineage=[activityId])",
+        "tests/identity/courses.spec.ts:118 trackRevision stays 1 right after creation (:146-148)"
+      ],
+      "reason": "Track immutability is checked once, after creation; not after edits, and not by content."
+    },
+    {
+      "id": "S14-address",
+      "source": "docs/.pre/01_product_screen_spec.md:52",
+      "quote": "| S14 | 경로 편집 `/courses/new`, `/:id/edit` | 지도 waypoint·보행 경로·고도·저장 | M2 |",
+      "verdict": "missing",
+      "evidence": [],
+      "reason": "No `/courses/new` or `/courses/:id/edit` in apps/web/app/courses or apps/mobile-web; a course cannot be started from an empty map or a place search."
+    },
+    {
+      "id": "S14-flow",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "S14 지도 편집은 검색→시작/경유/도착 지점→foot profile routing→고도/거리 확인→저장이다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 3 (coordinates → routing → review → save, real engine ×3)"
+      ],
+      "reason": "Search works only after opening an existing course; elevation is only readable for the saved head, so \"check elevation → save\" cannot happen in that order."
+    },
+    {
+      "id": "S14-drag-and-buttons",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "왼쪽 waypoint list의 drag와 이동 버튼은 같은 상태를 편집한다.",
+      "verdict": "partial",
+      "evidence": [
+        "packages/modules/courses/tests/course-editor.test.tsx:402-403 move button changes draft revision (unit)"
+      ],
+      "reason": "No drag anywhere (list or map). `course-editor.test.tsx:391` is titled \"usable without a drag\" — it proves the alternative, not drag."
+    },
+    {
+      "id": "S14-undo-redo",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "undo/redo",
+      "verdict": "partial",
+      "evidence": [
+        "packages/modules/courses/tests/course-draft.test.tsx:79-90 revisions/future (unit)",
+        "tests/identity/courses.spec.ts:295 draft revision numbers"
+      ],
+      "reason": "No executed test asserts that undo restores the previous waypoint content or that redo re-applies it; the E2E list count is 3 before and after undo."
+    },
+    {
+      "id": "S14-loop-draft",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "왕복/loop 초안",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-routing-operational.mts real engine: 4 candidates (1,798/2,013/2,323/1,769 m)",
+        "tests/identity/course-acceptance.spec.ts step 4 (real engine ×3)"
+      ],
+      "reason": "Only triangle loop candidates around the start; no out-and-back draft."
+    },
+    {
+      "id": "S14-gpx",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "GPX import/export",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts steps 5 and 8 (UI import; UI export byte-equal to API)"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "S14-lock",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "경유점 잠금",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/courses.spec.ts:295 — alert \"잠긴 경유점입니다\" (:332), list still 3 after a delete attempt (:333-335)",
+        "packages/modules/courses/tests/course-draft.test.tsx:118-126 WAYPOINT_LOCKED ×4, revision unchanged"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "S14-place-search",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "장소 검색을 제공한다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-extras.spec.ts:197-198 accepts \"장소 데이터가 배포되어 있지 않습니다|찾은 장소가 없습니다\" — NOT counted"
+      ],
+      "reason": "No executed test asserts a real search result from the deployed dataset; unit tests use fakes and an in-test document."
+    },
+    {
+      "id": "S14-foot-routing",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "foot profile routing",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts with IDENTITY_E2E_ROUTING=graphhopper ×3 (after the render assertion was added): stored graph c57f12f5975347e8, engineVersion 10.0, identitySource engine",
+        "scripts/probe-routing-operational.mts through createConfiguredApi ×3: KRC-01 route_computed 1,281.8 m"
+      ],
+      "reason": "Computation only. Whether a person can walk it is FUT-07 ④ (not_executed)."
+    },
+    {
+      "id": "S14-elevation-distance-check",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "고도/거리 확인",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Engine distance is shown in the proposal review (seen in Aside); elevation is not available before saving. Neither is asserted by an executed E2E."
+    },
+    {
+      "id": "S14-providers",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "MapLibre는 지도 렌더러이며 routing·geocoder·tiles·elevation은 별도 provider다.",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-routing-operational.mts: routing routes are absent unless the routing deployment is configured (404)"
+      ],
+      "reason": "Routing separation observed; geocoder/elevation/tiles separation is structural (code reading), not asserted."
+    },
+    {
+      "id": "S14-uncomputed-draft",
+      "source": "docs/.pre/01_product_screen_spec.md:165",
+      "quote": "경로 계산 불가 상태에서 직선 연결은 **미계산 초안**으로 표시한다.",
+      "verdict": "missing",
+      "evidence": [],
+      "reason": "No straight uncomputed line and no \"미계산 초안\" label in the product; waypoints are drawn as points only. Safer than the text but not what it says; needs a spec decision."
+    },
+    {
+      "id": "S14-no-confirmation",
+      "source": "docs/.pre/01_product_screen_spec.md:165",
+      "quote": "이를 보행 가능한 코스나 실제 거리로 확정하지 않는다.",
+      "verdict": "passed",
+      "evidence": [
+        "apps/api/tests/course-routes.test.ts:945 — 10 failure outcomes: status, outcome, no `LineString`, `storeRouteProposal` not called (:956-961)",
+        "scripts/probe-routing-operational.mts real config: engine down → 502 engine_unavailable, graph swap → 502 graph_mismatch, revisions unchanged"
+      ],
+      "reason": "Failure outcomes other than engine_unavailable/graph_mismatch/overloaded are stubbed. Partly vacuous: the product never draws an uncomputed straight line at all (S14-uncomputed-draft is missing), so 'not confirming it' is trivially true for that part."
+    },
+    {
+      "id": "S14-safety-notice",
+      "source": "docs/.pre/01_product_screen_spec.md:165",
+      "quote": "지도에서 보인 경로가 안전·통행 허가를 보장하지 않는다.",
+      "verdict": "partial",
+      "evidence": [
+        "Aside snapshot (this node) showed \"지도에 보이는 경로가 통행 허가나 안전을 보장하지 않습니다.\""
+      ],
+      "reason": "No test asserts the text; nothing would catch its removal."
+    },
+    {
+      "id": "S14-privacy-share",
+      "source": "docs/.pre/01_product_screen_spec.md:165",
+      "quote": "정확한 시작·끝 위치 공유에는 privacy trim/확인 화면이 필요하다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 6/8: trimmed revision, exported GPX has no protected coordinates"
+      ],
+      "reason": "Trim works; there is no confirmation step before a GPX export and no sharing feature."
+    },
+    {
+      "id": "S14-tile-policy",
+      "source": "docs/.pre/01_product_screen_spec.md:165",
+      "quote": "공개 tile 서버의 quota/정책을 production 계획에서 별도로 처리한다.",
+      "verdict": "partial",
+      "evidence": ["Aside on /courses: only same-origin resource entries (external [])"],
+      "reason": "Self-hosted locally; production hosting/CDN not built."
+    },
+    {
+      "id": "R-S09",
+      "source": "docs/.pre/07_responsive_layout.md:67",
+      "quote": "| Activity workbench S09 | chart/route/lap/sets 탭; 필요할 때 mount | chart+table 또는 지도 보기; 3개 동시 강제 없음 | linked split-pane, 선택·zoom 공유 |",
+      "verdict": "partial",
+      "evidence": ["tests/identity/activity-track-map.spec.ts:272"],
+      "reason": "Mount-on-demand and zoom sharing not asserted (S09-split-lazy)."
+    },
+    {
+      "id": "R-S13-S14",
+      "source": "docs/.pre/07_responsive_layout.md:70",
+      "quote": "| Courses S13/S14 | 지도+경유점 sheet, 전체 목록 대안 | 지도+접히는 경유점 목록 | 지도+list+세부 정보; 각 최소 폭 검증 |",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/courses.spec.ts:416 (3100 only, layout attributes)",
+        "ad-hoc Playwright (not committed): 3100 and 4200 × 320/767/768/1279/1280 overflowX 0, layout switches"
+      ],
+      "reason": "Committed tests run only on 3100 and check layout, not map rendering or each pane's minimum width; the 4200 measurement is not committed. During F2 these tests were green over a blank map."
+    },
+    {
+      "id": "R-touch-ime",
+      "source": "AGENTS.md:161",
+      "quote": "Check mobile/tablet/desktop, breakpoint boundaries, 320px reflow, narrow containers, keyboard/focus, touch alternatives, IME, and error recovery as relevant.",
+      "verdict": "not_executed",
+      "evidence": [],
+      "reason": "Real touch, rotation and OS IME are M0-06b external gates; the user deferred real-device work."
+    },
+    {
+      "id": "R-state-retention",
+      "source": "docs/implementation/map-implementation-plan.md:121",
+      "quote": "선택·초안은 반응형 renderer 밖에 두고 SDK instance·worker·listener·요청·blob URL을 정리한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Draft retention across layout switches has unit tests (not re-read here); cleanup of SDK/worker/listeners is not asserted."
+    },
+    {
+      "id": "V2-F13",
+      "source": "docs/.pre/05_implementation_requirements.md:91",
+      "quote": "| V2-F13 | Linked workbench | 차트 시간 선택과 route/lap 선택 일치; GPS gaps S09 |",
+      "verdict": "partial",
+      "evidence": ["see S09-range-link, S09-gps-gap"],
+      "reason": "Single-sample round trip only; no range→lap table link."
+    },
+    {
+      "id": "V2-F14",
+      "source": "docs/.pre/05_implementation_requirements.md:92",
+      "quote": "| V2-F14 | Impact semantics | 관측 contribution/추정/상담 분리; 가상 위험확률 금지 S09 |",
+      "verdict": "partial",
+      "evidence": ["see S09-impact-split, S09-no-causal"],
+      "reason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown."
+    },
+    {
+      "id": "V2-F18",
+      "source": "docs/.pre/05_implementation_requirements.md:96",
+      "quote": "| V2-F18 | Course CRUD/version | 원본 track에서 새 코스 생성, 원본 불변 S13 |",
+      "verdict": "partial",
+      "evidence": ["see S13-from-track"],
+      "reason": "\"원본 불변\" asserted once, after creation only."
+    },
+    {
+      "id": "V2-F19",
+      "source": "docs/.pre/05_implementation_requirements.md:97",
+      "quote": "| V2-F19 | Route planning | waypoint/menu+drag, routing stale/error, GPX boundary S14 |",
+      "verdict": "partial",
+      "evidence": ["see S14-drag-and-buttons, V2-A34, V2-A35, S14-gpx"],
+      "reason": "No drag."
+    },
+    {
+      "id": "V2-F31",
+      "source": "docs/.pre/05_implementation_requirements.md:109",
+      "quote": "| V2-F31 | Account/consent/erase | app/provider/AI consent 별도, export/delete 파생물 S22 |",
+      "verdict": "partial",
+      "evidence": ["course scope: see P7-erasure, P7-activity-delete, K-deletion"],
+      "reason": "Course derivatives pass; consent separation (S22) is outside this node and not judged."
+    },
+    {
+      "id": "V2-F35",
+      "source": "docs/.pre/05_implementation_requirements.md:113",
+      "quote": "| V2-F35 | Runtime budgets | lazy heavy plugins, bounded model/tools/retrieval/jobs |",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-routing-operational.mts rate bound",
+        "packages/track-parsing tests/limits.test.ts boundaries"
+      ],
+      "reason": "Single-process limiter; no load measurement; lazy map loading not asserted."
+    },
+    {
+      "id": "V2-F36",
+      "source": "docs/.pre/05_implementation_requirements.md:114",
+      "quote": "| V2-F36 | Audit/evaluation | trace IDs/versions, no raw tokens/no hidden CoT logging |",
+      "verdict": "partial",
+      "evidence": [
+        "apps/worker/tests/course-thumbnail-worker.test.ts:281 (thumbnail worker log has no coordinates/ids)"
+      ],
+      "reason": "Course/routing/track route tests discard the log stream; no assertion on their logs."
+    },
+    {
+      "id": "V2-A17",
+      "source": "docs/.pre/05_implementation_requirements.md:136",
+      "quote": "| V2-A17 | CSV 요약에 route 없음 | route unavailable, 직선 route 생성 금지 |",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/activity-track-map.spec.ts:370 text \"저장된 경로가 없습니다\" (:393)"
+      ],
+      "reason": "Only text is asserted; absence of any drawn path is not."
+    },
+    {
+      "id": "V2-A18",
+      "source": "docs/.pre/05_implementation_requirements.md:137",
+      "quote": "| V2-A18 | GPS gap과 chart range 선택 | gap 보존, 시간 index 일치 |",
+      "verdict": "partial",
+      "evidence": ["see S09-gps-gap, S09-range-link"],
+      "reason": "Gap preservation is asserted at the feature level; a chart range selected across a gap is not asserted against the map."
+    },
+    {
+      "id": "V2-A20",
+      "source": "docs/.pre/05_implementation_requirements.md:139",
+      "quote": "| V2-A20 | 로컬 삭제 후 provider 이벤트 재수신 | suppression 정책에 따라 재등장 방지 |",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 12: re-import of the same source is `suppressed`"
+      ],
+      "reason": "Exercised through the user import API, not a provider event."
+    },
+    {
+      "id": "V2-A34",
+      "source": "docs/.pre/05_implementation_requirements.md:153",
+      "quote": "| V2-A34 | routing quota/error | draft 보존, 직선을 성공 경로로 확정 안 함 |",
+      "verdict": "passed",
+      "evidence": [
+        "packages/modules/courses/tests/course-editor.test.tsx:314 — no review group, same waypoint count, draft revision unchanged, no PATCH (:328-331) for 6 outcomes incl. overloaded",
+        "apps/api/tests/course-routes.test.ts:945 no LineString, nothing stored",
+        "scripts/probe-routing-operational.mts real config: 429 + retry-after, 502 engine_unavailable, revisions unchanged",
+        "packages/modules/courses/tests/course-editor.test.tsx 'keeps the edited draft when the server refuses a proposal over its unsaved bound' (added in M2-01k): the F1 429 ROUTE_PROPOSAL_QUOTA_EXCEEDED keeps the added via waypoint, draft revision 2, no review, no PATCH; a mutation that undoes the last edit on this error fails only this test"
+      ],
+      "reason": "UI part is jsdom with a fake transport; server part observed against the real engine configuration."
+    },
+    {
+      "id": "V2-A35",
+      "source": "docs/.pre/05_implementation_requirements.md:154",
+      "quote": "| V2-A35 | 빠르게 waypoint 연속 수정 | 오래된 route response가 최신 geometry 덮지 않음 |",
+      "verdict": "partial",
+      "evidence": [
+        "packages/modules/courses/tests/course-draft.test.tsx:94, course-editor.test.tsx:280/568/808/843, course-candidates.test.tsx:451/470 (jsdom, fake transport)"
+      ],
+      "reason": "Tests assert a stale answer is discarded; none applies the newest geometry first and then asserts it survives a late older answer; no real-stack test."
+    },
+    {
+      "id": "V2-A37",
+      "source": "docs/.pre/05_implementation_requirements.md:156",
+      "quote": "| V2-A37 | media 삭제 후 thumbnail URL 재조회 | access 차단·파생물 삭제 |",
+      "verdict": "partial",
+      "evidence": [
+        "course analogue: tests/identity/course-acceptance.spec.ts step 11 (thumbnail 404 after reclaim); course-thumbnails.integration:998/984"
+      ],
+      "reason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here."
+    },
+    {
+      "id": "FUT-07-1",
+      "source": "docs/.pre/06_follow_up_backlog.md:279",
+      "quote": "- [ ] 실제 공급자가 반환한 경로와 거리·출처를 표시하고 검토한 결과만 저장한다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts real engine ×3: review shows `route-graph` = c57f12f5975347e8, save disabled until review checkbox, revision unchanged until save"
+      ],
+      "reason": "Distance display is not asserted (seen in Aside only)."
+    },
+    {
+      "id": "FUT-07-2",
+      "source": "docs/.pre/06_follow_up_backlog.md:280",
+      "quote": "- [ ] 빠른 경유점 수정에서 오래된 응답이 최신 결과를 덮어쓰지 않는다.",
+      "verdict": "partial",
+      "evidence": ["see V2-A35"],
+      "reason": "Same as V2-A35: stale answers are discarded (jsdom, fake transport); that the newest result survives a late older answer is not asserted."
+    },
+    {
+      "id": "FUT-07-3",
+      "source": "docs/.pre/06_follow_up_backlog.md:281",
+      "quote": "- [ ] 요청 실패·quota 초과에서도 draft가 보존되며 직선 스케치를 계산 성공으로 표시하지 않는다.",
+      "verdict": "passed",
+      "evidence": ["see V2-A34 (incl. the F1 quota refusal test)"],
+      "reason": "Engine outcomes (stubbed in the UI test) and our own proposal-bound refusal both leave the draft and store nothing; failures observed against the real engine configuration (429 rate bound, 502 engine_unavailable/graph_mismatch) store nothing. On the F1 refusal the screen shows only the generic '경로 계산 결과를 확인하지 못했습니다. 저장된 것은 없습니다.' (no quota message on the compute path)."
+    },
+    {
+      "id": "FUT-07-4",
+      "source": "docs/.pre/06_follow_up_backlog.md:282",
+      "quote": "- [ ] 대표 지역 품질, 이용 조건·표시 의무·credential·좌표 최소화 정책을 검토한다.",
+      "verdict": "not_executed",
+      "evidence": [],
+      "reason": "Korean coverage `not_reviewed`, no independent reviewer (M0-06b gate); ODbL §4.2/§4.6 not carried out."
+    },
+    {
+      "id": "K-oidc",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"실제 OIDC\"",
+      "verdict": "not_executed",
+      "evidence": [
+        "scripts/identity-e2e.mts:244-252 and scripts/probe-routing-operational.mts use the local fixture OIDC provider"
+      ],
+      "reason": "No real identity provider was used. The OIDC code path (discovery, PKCE, token, id_token signature) runs against a fixture, which is not a real OIDC provider."
+    },
+    {
+      "id": "K-db",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"DB\"",
+      "verdict": "passed",
+      "evidence": [
+        "isolated PostgreSQL with the restricted runtime role in the identity harness (157 ×2), the acceptance spec and both probes; pnpm test:integration 524"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "K-object",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"객체\"",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts: stored thumbnail downloaded and compared to geometry; GPX bytes; courses objects through `createLocalFilesystemObjectStorage`"
+      ],
+      "reason": "The only object-storage adapter is the local filesystem; no cloud object store exists to test."
+    },
+    {
+      "id": "K-e2e",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"E2E\"",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts: fixture ×1 + full suite ×2 (157/157) + IDENTITY_E2E_ROUTING=graphhopper ×3, with the render assertion"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "K-recovery",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"복구\"",
+      "verdict": "passed",
+      "evidence": [
+        "pnpm exec tsx scripts/backup-restore-drill.mts --execute: passed, 62 checks, incl. restored_routed_course_revision_keeps_the_graph_that_computed_it, restored_course_thumbnail_object_is_readable_after_restore, restored_activity_deletion_reclaims_derived_courses_and_their_copies"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "K-deletion",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"삭제\"",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts steps 10-13: impact names only A, A unavailable/404/410, B revision/thumbnail/GPX bytes unchanged, B delete → 404",
+        "packages/server/persistence/tests/courses.integration.test.ts:468 (:516-532 other courses stay available), :738 erasure"
+      ],
+      "reason": "Actual object-file removal is covered by course-thumbnails.integration:998/984/1014, not by the E2E."
+    },
+    {
+      "id": "K-performance",
+      "source": "docs/implementation/map-implementation-plan.md:94",
+      "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"성능\"",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)"
+      ],
+      "reason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured."
+    },
+    {
+      "id": "K-graph-rollback",
+      "source": "docs/implementation/map-implementation-plan.md:149",
+      "quote": "원자적 graph 교체·이전 버전 rollback",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-routing-operational.mts ×3 (26 checks), guard-revert of the adapter import_date check makes 2 checks fail"
+      ],
+      "reason": "Replacement is two steps (engine restart, API redeploy), so NOT atomic; `/info`↔`/route` window stays open; graph B is a re-import of the same extract."
+    },
+    {
+      "id": "K-next-map-render",
+      "source": "docs/implementation/map-implementation-plan.md:117",
+      "quote": "지도는 client-only lazy leaf이며 두 shell이 재사용한다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts:314-327 `data-rendered-path-features` > 0 (queryRenderedFeatures over path layers, after idle): fixture ×1, real engine ×3; removing F2 fails at :327 (Received 0)"
+      ],
+      "reason": "Requirement is 'both shells reuse the map leaf'. PROVEN for the Next shell: tests/identity/course-acceptance.spec.ts:314-327 asserts `data-rendered-path-features` > 0 (queryRenderedFeatures over the course source's path layers after idle; basemap tiles cannot count), fixture x1 and real engine x3, and removing F2 makes it fail at :327 (Received 0). NOT PROVEN for the Vite shell: no committed test renders the course map there (ad-hoc Playwright only). Caveat: the counted layers include the point layer, so points alone without a line would also give > 0."
+    },
+    {
+      "id": "K-s14-edit-loop",
+      "source": "docs/.pre/01_product_screen_spec.md:163",
+      "quote": "S14 지도 편집은 검색→시작/경유/도착 지점→foot profile routing→고도/거리 확인→저장이다.",
+      "verdict": "failed",
+      "evidence": [
+        "scripts/probe-routing-operational.mts finding iterative-recompute-refused-by-proposal-quota: 6th recompute 429 ROUTE_PROPOSAL_QUOTA_EXCEEDED after the engine computed"
+      ],
+      "reason": "Judged here: the edit–recompute loop. F1. Unsaved proposals of superseded drafts count against the per-course cap of 5 for the 30 min TTL."
+    },
+    {
+      "id": "M2-01-parent",
+      "source": "docs/implementation/map-implementation-plan.md:95",
+      "quote": "| M2-01 부모 | M1c-04, M0-06b, k | 전체 코스·routing 수용; viewer만으로 완료 금지 |",
+      "verdict": "not_executed",
+      "evidence": [],
+      "reason": "Depends on M0-06b external gates; root decision."
+    },
+    {
+      "id": "P5-thumbnail-policy",
+      "source": "docs/implementation/map-implementation-plan.md:109",
+      "quote": "썸네일은 private 파생 위치 데이터로서 원본 코스의 권한·삭제·export 정책을 따른다.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 7 (Bob 404), step 9 (export v21 courseThumbnails content_hash), step 11 (404 after reclaim)",
+        "course-thumbnails.integration:1014 storage stat null after erasure"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P5-geokit-boundary",
+      "source": "docs/implementation/map-implementation-plan.md:111",
+      "quote": "`experience/geo-kit`은 SDK-free MapPath와 선택 위치·이벤트만 받는다.",
+      "verdict": "partial",
+      "evidence": ["pnpm lint (executed)"],
+      "reason": "Structural; not verified that lint enforces this specific boundary."
+    },
+    {
+      "id": "P5-lazy-two-shells",
+      "source": "docs/implementation/map-implementation-plan.md:117",
+      "quote": "지도는 client-only lazy leaf이며 두 shell이 재사용한다.",
+      "verdict": "partial",
+      "evidence": ["ad-hoc Playwright on 4200 (not committed)"],
+      "reason": "No committed Vite-shell course test."
+    },
+    {
+      "id": "P5-fitbounds",
+      "source": "docs/implementation/map-implementation-plan.md:119",
+      "quote": "fitBounds는 최초/활동 전환/전체 보기 요청에만 수행한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Asserted: first fit, no refit on a selection change, refit only when fitRequest is raised (packages/experience/geo-kit/tests/geo-kit.test.tsx ~:585-616). Not asserted: refit on switching activity/course, and resize doing only resize."
+    },
+    {
+      "id": "P5-logout-clear",
+      "source": "docs/implementation/map-implementation-plan.md:125",
+      "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Abort/destroy not asserted (M2-01b); not re-verified."
+    },
+    {
+      "id": "P5-list-alternative",
+      "source": "docs/implementation/map-implementation-plan.md:129",
+      "quote": "목록으로 같은 위치/경유점 선택, 순서 변경·삭제·좌표 입력이 가능해야 한다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 3: waypoint added by coordinate input (3 list items)",
+        "packages/modules/courses/tests/course-editor.test.tsx:391,402-403 order change by buttons, usable without a map"
+      ],
+      "reason": "Coordinate input is asserted end to end (acceptance step 3). Reordering is not effectively tested: reviewer mutation m10 (moveEarlier made a no-op) failed 0 of the cited tests. Selection and deletion from the list are not asserted as the requirement states."
+    },
+    {
+      "id": "P5-keyboard-ime",
+      "source": "docs/implementation/map-implementation-plan.md:130",
+      "quote": "키보드·single-pointer non-drag·visible focus·IME를 지원하며 지도 실패에도 요약/차트/목록을 사용할 수 있다.",
+      "verdict": "partial",
+      "evidence": [
+        "tests/identity/courses.spec.ts:220 (320px, keyboard, synthetic IME composition)"
+      ],
+      "reason": "IME is synthetic only; OS IME is an external gate."
+    },
+    {
+      "id": "P5-states",
+      "source": "docs/implementation/map-implementation-plan.md:131",
+      "quote": "오류·GPS 없음·부분 기록·배경 없음·WebGL unavailable·미계산·계산 중·stale·저장 실패를 구별한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Several states have unit tests; F3 shows \"ready\" is reported over an empty canvas, so the renderer state is not reliably distinguished."
+    },
+    {
+      "id": "P5-gesture-escape",
+      "source": "docs/implementation/map-implementation-plan.md:132",
+      "quote": "지도 pan이 페이지 스크롤을 영구 가로채지 않도록 제스처와 focus 탈출을 시험한다.",
+      "verdict": "not_executed",
+      "evidence": [],
+      "reason": "No gesture test."
+    },
+    {
+      "id": "P6-self-hosted-basemap",
+      "source": "docs/implementation/map-implementation-plan.md:137",
+      "quote": "배경은 허가된 지역 OSM 추출물에서 생성한 vector tile/스타일 자산을 직접 호스팅하는 방향이다.",
+      "verdict": "partial",
+      "evidence": [
+        "Playwright/Aside on /courses: tiles, style, sprite, glyph fetched from the same origin"
+      ],
+      "reason": "Local deployment only."
+    },
+    {
+      "id": "P6-no-external-runtime",
+      "source": "docs/implementation/map-implementation-plan.md:199",
+      "quote": "외부 runtime 요청 없음",
+      "verdict": "partial",
+      "evidence": ["Aside on /courses: resource entries all same-origin (external [])"],
+      "reason": "Resource timing entries do not capture blocked/failed attempts; one page only this node."
+    },
+    {
+      "id": "P6-engine-choice",
+      "source": "docs/implementation/map-implementation-plan.md:142",
+      "quote": "GraphHopper open-source, Valhalla, OSRM 중 보행·국내 데이터·자원 비용으로 하나를 검증·선정한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Valhalla not measured (M2-01d)."
+    },
+    {
+      "id": "P6-bounded-roundtrip",
+      "source": "docs/implementation/map-implementation-plan.md:144",
+      "quote": "round-trip capability가 없으면 명시 실패 또는 자체 bounded 후보 탐색을 설계하고 직선 성공은 금지한다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/server/courses/tests/candidates.test.ts: bounds toEqual (:208-214), stop reasons attempt/candidate/time/cancelled (:180,205,224,322)",
+        "scripts/probe-routing-operational.mts real engine candidate search (stoppedBecause candidate_limit)"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P6-place-elevation-data",
+      "source": "docs/implementation/map-implementation-plan.md:145",
+      "quote": "장소 검색과 elevation은 자체 데이터/엔진·license·갱신·결손 정책을 j에서 검증한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "See S14-place-search, S13-card-elevation."
+    },
+    {
+      "id": "P6-tenant-limits",
+      "source": "docs/implementation/map-implementation-plan.md:151",
+      "quote": "내부 API도 tenant별 rate/concurrency/waypoint/거리/응답점수/deadline 한도를 둔다.",
+      "verdict": "partial",
+      "evidence": [
+        "scripts/probe-routing-operational.mts: 21st request 429 + retry-after 60, other tenant 200 (real configuration)"
+      ],
+      "reason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter."
+    },
+    {
+      "id": "P6-allowlist",
+      "source": "docs/implementation/map-implementation-plan.md:152",
+      "quote": "데이터 취득은 운영 allowlist로만 수행하며 사용자가 임의 URL을 넣지 못한다.",
+      "verdict": "partial",
+      "evidence": [
+        "apps/api/tests/routing-deployment.test.ts: host outside the loopback allowlist refused"
+      ],
+      "reason": "Data-acquisition allowlist not re-verified here."
+    },
+    {
+      "id": "P6-route-record-no-silent-overwrite",
+      "source": "docs/implementation/map-implementation-plan.md:154",
+      "quote": "RouteRevision에는 실제 사용한 graph/profile/engine·조건·요청 revision·계산 시각·거리·warnings를 저장한다. 오래된 graph로 계산한 저장 코스를 새 graph로 조용히 덮어쓰지 않는다.",
+      "verdict": "passed",
+      "evidence": [
+        "scripts/probe-routing-operational.mts ×3: swap-recomputes-nothing, rollback-recomputes-nothing (content digests unchanged), cross-graph-save-needs-acknowledgement 409",
+        "tests/identity/course-acceptance.spec.ts: stored graphBuildId/engineVersion/identitySource",
+        "drill restored_routed_course_revision_keeps_the_graph_that_computed_it",
+        "packages/server/courses/tests/routed.test.ts:93 generation records engine, graph build/content, engineVersion, conditions, requestRevision, warnings"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P6-latest-request-only",
+      "source": "docs/implementation/map-implementation-plan.md:155",
+      "quote": "최신 요청 ID와 draft revision이 일치할 때만 결과를 반영한다.",
+      "verdict": "partial",
+      "evidence": ["see V2-A35"],
+      "reason": "Request id and draft revision matching is asserted in jsdom with a fake transport (course-editor.test.tsx:280, :568); no real-stack test."
+    },
+    {
+      "id": "P6-cancel-bound",
+      "source": "docs/implementation/map-implementation-plan.md:156",
+      "quote": "취소는 서버 자원 상한과 함께 구현한다.",
+      "verdict": "partial",
+      "evidence": ["apps/api/tests/routing-cancellation.test.ts (stub)"],
+      "reason": "The engine search is not stopped by an abort (M2-01g)."
+    },
+    {
+      "id": "P6-outcomes-distinct",
+      "source": "docs/implementation/map-implementation-plan.md:157",
+      "quote": "NoRoute/coverage 밖/과도한 snap/timeout/과부하를 구별하며 실패해도 미계산 초안을 보존한다.",
+      "verdict": "partial",
+      "evidence": [
+        "packages/server/integrations/tests/routing-adapter.test.ts (failure bodies hand-written)",
+        "probe: overload 429, engine_unavailable, graph_mismatch against the real configuration"
+      ],
+      "reason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test."
+    },
+    {
+      "id": "P6-target-bounds-seed",
+      "source": "docs/implementation/map-implementation-plan.md:159",
+      "quote": "후보 수·시도 수·시간·지역 범위에 상한을 두고 seed와 평가 version을 기록한다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/server/courses/tests/candidates.test.ts: bounds (:208-214), seed determinism (:378-383), evaluationVersion 1 (:574), searchSeed/generatorVersion recorded (:697-699), outside_search_area (:409)"
+      ],
+      "reason": "Unit level with a fake router; real-engine run in the probe."
+    },
+    {
+      "id": "P6-target-display",
+      "source": "docs/implementation/map-implementation-plan.md:160",
+      "quote": "연결성·목표 오차·중복/왕복 구간·알려진 접근 제한·경사 출처를 표시한다.",
+      "verdict": "partial",
+      "evidence": [],
+      "reason": "Display not asserted by an executed test in this node."
+    },
+    {
+      "id": "P6-unknown-not-satisfied",
+      "source": "docs/implementation/map-implementation-plan.md:160",
+      "quote": "누락된 계단/노면/야간 통행 정보는 충족으로 판정하지 않는다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/server/courses/tests/candidates.test.ts:566-574 knowledge all `unknown`",
+        "tests/identity/course-acceptance.spec.ts:413 \"확인되지 않음\""
+      ],
+      "reason": "Holds by construction: every fact is 'unknown' because the contract allows no other value and there is no surface/stairs/night data, so nothing can be judged satisfied. The assertions show that; they do not show handling of real data."
+    },
+    {
+      "id": "P7-parser-bounds",
+      "source": "docs/implementation/map-implementation-plan.md:166",
+      "quote": "파일 bytes·sample/segment 수·XML depth/text·정규화 출력·파싱 시간·메모리·worker 동시성에 구체적 상한과 초과 오류를 a에서 확정하고 각 경계/초과값을 시험한다.",
+      "verdict": "partial",
+      "evidence": [
+        "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)"
+      ],
+      "reason": "Parse time, memory and worker concurrency boundaries not verified here."
+    },
+    {
+      "id": "P7-xxe",
+      "source": "docs/implementation/map-implementation-plan.md:168",
+      "quote": "XML DTD/외부 엔티티·외부 참조는 차단하며",
+      "verdict": "passed",
+      "evidence": [
+        "packages/track-parsing/tests/gpx.test.ts:80 TRACK_XML_DTD_BLOCKED, :84-86 TRACK_XML_ENTITY_BLOCKED",
+        "apps/api/tests/course-extras-routes.test.ts:359-361 422 and nothing created",
+        "tests/identity/course-extras.spec.ts:207"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P7-ownership",
+      "source": "docs/implementation/map-implementation-plan.md:171",
+      "quote": "저장 소유자는 세션에서 도출하고 RLS·CSRF·인증 download를 적용한다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/server/persistence/tests/courses.integration.test.ts:679 (CourseNotFoundError, RLS count 0), :1161, :2161",
+        "tests/identity/course-acceptance.spec.ts:538-546 Bob 404 on thumbnail/read/GPX",
+        "apps/api/tests/course-routes.test.ts:420 'requires CSRF for a cookie session on every write' — POST/PATCH/DELETE 403, repository not called",
+        "apps/api/tests/course-routes.test.ts:1212 thumbnail download needs an authenticated owner (401, object not resolved)"
+      ],
+      "reason": "RLS, CSRF and authenticated download each have an executed assertion (reviewer mutation m12 removing requireCsrf fails 4 tests)."
+    },
+    {
+      "id": "P7-object-keys",
+      "source": "docs/implementation/map-implementation-plan.md:171",
+      "quote": "private 객체 key는 서버가 생성하며 경로 순회·symlink·hash/size 검증을 수행한다.",
+      "verdict": "partial",
+      "evidence": [
+        "packages/server/media/tests/local-filesystem.test.ts:393 traversal key and symlinked path component refused",
+        "packages/server/media/tests/keys-validation.test.ts:236,290 traversal/absolute/bad digest refused for track and thumbnail keys",
+        "packages/server/media/tests/local-filesystem.test.ts:223 publish refused on mismatch"
+      ],
+      "reason": "Traversal and symlink are asserted. hash/size are NOT each asserted: the :223 sample differs in both size (9 vs 8 bytes) and hash, and a temporary mutation in this node showed removing the hash comparison alone, or both size comparisons, leaves all 44 media tests green (packages/server/media/src/local-filesystem.ts:366-375). 'Server generates keys' is structural. (The earlier reason citing the directory race was wrong: it is not in the requirement.)"
+    },
+    {
+      "id": "P7-durable-lifecycle",
+      "source": "docs/implementation/map-implementation-plan.md:172",
+      "quote": "temp/prepared/final 상태를 DB에 먼저 기록하고 publish 실패·DB rollback·중복/동시 upload를 기존 durable cleanup 패턴으로 처리한다.",
+      "verdict": "partial",
+      "evidence": ["pnpm test:integration 524"],
+      "reason": "Sweep dead-letter and shared-directory race are open in M2-01n."
+    },
+    {
+      "id": "P7-activity-delete",
+      "source": "docs/implementation/map-implementation-plan.md:177",
+      "quote": "Activity 삭제는 기존 source/canonical/overlay·suppression 의미를 유지하면서 관련 raw track, 정규화·지도 파생물·cache를 회수한다. 기본 정책은 해당 Activity 좌표에서 파생된 Course revision도 회수하는 것이다.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts steps 10-12",
+        "tests/identity/courses.spec.ts:118 impact shown before delete (:186-189)",
+        "courses.integration:468 (:516-532)",
+        "apps/api/tests/activity-track-lifecycle.integration.test.ts:188 'reclaims every object when the activity is deleted and cleaned up mid-publication'"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P7-no-over-delete",
+      "source": "docs/implementation/map-implementation-plan.md:181",
+      "quote": "다른 독립 원본을 공유하는 객체는 live reference를 확인하여 과잉 삭제하지 않는다.",
+      "verdict": "passed",
+      "evidence": [
+        "packages/server/persistence/tests/course-thumbnails.integration.test.ts:788 'never deletes the object a live course is still showing' — a queued live object survives, receipt REFERENCE_PRESENT, thumbnail still ready",
+        "packages/server/persistence/tests/activity-tracks.integration.test.ts:787 — doomed objects deleted, live raw object survives with REFERENCE_PRESENT",
+        "tests/identity/course-acceptance.spec.ts step 11 (independent course B untouched)"
+      ],
+      "reason": "The live-reference check itself is exercised; the E2E only shows independent courses are untouched."
+    },
+    {
+      "id": "P7-erasure",
+      "source": "docs/implementation/map-implementation-plan.md:182",
+      "quote": "계정 erasure는 모든 코스/파일/파생물/재시도까지 제거하며 restore 후 suppression을 재적용한다.",
+      "verdict": "partial",
+      "evidence": [
+        "courses.integration:738 heads/revisions/lineage 0 (:747), :2058 courses and candidate sets 0",
+        "course-thumbnails.integration:1014 rows 0 and object stat null (:1023-1025)",
+        "course-preferences.integration:688 preferences/zones/courses 0",
+        "drill latest_erasure_replayed_before_runtime_access"
+      ],
+      "reason": "Account erasure removing course data is asserted (integration tests cited). 'restore 후 suppression 재적용' is NOT shown for courses: the drill replays `erase_account` on the restored cluster (scripts/backup-restore-drill.mts:2434) but seeds no course or thumbnail for the erased tenant and asserts nothing about course/thumbnail tables or thumbnail objects after restore; the deletion-ledger replay (:2620-2664) checks only tenant_erasure and activity_canonical. This may be a real defect (an erased account's courses or thumbnail objects coming back after a restore) and is not excluded. Tracked by root as a separate node."
+    },
+    {
+      "id": "P7-export",
+      "source": "docs/implementation/map-implementation-plan.md:183",
+      "quote": "export는 새 collection/version·구버전 호환을 명시하고 권한 확인 시점의 snapshot과 삭제 경합을 시험한다.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 9 (v21 collections)",
+        "packages/contracts/tests/operations-export.test.ts:727-770 (inside the test at :635): v20 and v19 artifacts still parse unchanged, a v20 claiming a v21 collection is refused, required collections enforced",
+        "packages/server/persistence/tests/course-preferences.integration.test.ts:310 'answers from one snapshot when a course is deleted while the export runs' (+ single-statement read test)"
+      ],
+      "reason": "All three parts of the requirement are asserted by executed tests: new collection/version (acceptance step 9, v21), old-version compatibility (operations-export.test.ts:727-770 — v20 and v19 artifacts parse unchanged and a v20 carrying a v21 collection is refused), and a single snapshot under a concurrent delete (course-preferences.integration:310)."
+    },
+    {
+      "id": "P7-no-coordinates-in-logs",
+      "source": "docs/implementation/map-implementation-plan.md:185",
+      "quote": "원본 GPS·정확한 waypoint·객체 key·토큰·본문은 로그/trace에 넣지 않는다.",
+      "verdict": "partial",
+      "evidence": [
+        "apps/worker/tests/course-thumbnail-worker.test.ts:281",
+        "apps/api/tests/app.test.ts:166"
+      ],
+      "reason": "Course/routing/track route tests discard logs; no assertion on them."
+    },
+    {
+      "id": "P7-privacy-trim",
+      "source": "docs/implementation/map-implementation-plan.md:185",
+      "quote": "privacy trim은 원본을 덮어쓰지 않는 명시적 파생 revision으로 만들며 서버 응답·GPX·메타데이터도 함께 처리한다. 출발/끝뿐 아니라 보호 구역 재진입을 검사한다.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-acceptance.spec.ts step 6/8 (derived revision, GPX without protected coordinates)",
+        "packages/server/courses/tests/privacy-trim.test.ts:84,98-99,111-112",
+        "apps/api/tests/course-extras-routes.test.ts:697-714 422 and no update"
+      ],
+      "reason": ""
+    },
+    {
+      "id": "P7-no-public-share",
+      "source": "docs/implementation/map-implementation-plan.md:187",
+      "quote": "공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성이다.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/course-extras.spec.ts:201-204 no '공유'/'링크 복사'/'공개' button on the course screen",
+        "packages/modules/courses/tests/course-workbench.test.tsx:124 'lists private courses and offers no way to share one'",
+        "packages/modules/courses/tests/course-extras.test.tsx:1103 'offers no way to share a course, trimmed or not'",
+        "contract: course visibility is the literal 'private'"
+      ],
+      "reason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them."
+    },
+    {
+      "id": "P8-contract-parser",
+      "source": "docs/implementation/map-implementation-plan.md:194",
+      "quote": "| 계약/parser | FIT/GPX 손상·한도 경계·XXE·좌표 순서·timestamp null/역전·segment·날짜 경계·단일 점·다중 track; 구버전 상세 replay 동일 |",
+      "verdict": "partial",
+      "evidence": ["see P7-parser-bounds, P7-xxe"],
+      "reason": "Old-version replay and date boundaries not re-verified here."
+    },
+    {
+      "id": "P8-simplify",
+      "source": "docs/implementation/map-implementation-plan.md:195",
+      "quote": "| 단순화/분석 | 원본 sample 매핑·gap 불연결, zoom/LOD 변경 전후 실제 요약·집계 동일 |",
+      "verdict": "partial",
+      "evidence": ["see S09-gps-gap"],
+      "reason": "Single Douglas-Peucker level; no zoom LOD test."
+    },
+    {
+      "id": "P8-postgres-object",
+      "source": "docs/implementation/map-implementation-plan.md:196",
+      "quote": "| 실제 PostgreSQL/객체 | tenant/RLS·idempotency·CAS·동시 upload/삭제·publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원 |",
+      "verdict": "partial",
+      "evidence": ["pnpm test:integration 524, drill 62"],
+      "reason": "Individual concurrency cases not re-read here; M2-01n open items."
+    },
+    {
+      "id": "P8-ui-component",
+      "source": "docs/implementation/map-implementation-plan.md:197",
+      "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
+      "verdict": "partial",
+      "evidence": ["pnpm test (3,207)"],
+      "reason": "See V2-A35, P5-logout-clear."
+    },
+    {
+      "id": "P8-real-browser",
+      "source": "docs/implementation/map-implementation-plan.md:198",
+      "quote": "| 실제 브라우저 | Aside 우선 후 불가 사유별 Chrome/Playwright; Next/Vite production, 320px·767/768·1279/1280·420px pane·회전/IME/touch |",
+      "verdict": "partial",
+      "evidence": ["Aside (3100), Playwright 3100+4200 boundaries (ad hoc)"],
+      "reason": "420px pane not re-measured; rotation/IME/touch not executed; 4200 not committed."
+    },
+    {
+      "id": "P8-self-ops",
+      "source": "docs/implementation/map-implementation-plan.md:199",
+      "quote": "| 자체 운영 | 외부 runtime 요청 없음, CSP/worker·asset license·대표 장기 track의 시간/메모리/GPU 측정, graph 갱신/rollback·과부하 |",
+      "verdict": "partial",
+      "evidence": ["probe-routing-operational, probe-course-performance"],
+      "reason": "No GPU/browser long-track measurement; rollback not atomic."
+    },
+    {
+      "id": "P8-coverage",
+      "source": "docs/implementation/map-implementation-plan.md:200",
+      "quote": "| 보행 coverage | graph 신원 고정, 사전 기대 결과와 독립 검토자, 도심/횡단보도/다리/계단/공원/접근시간·음성 대조; HTTP 200만으로 통과 금지 |",
+      "verdict": "not_executed",
+      "evidence": [],
+      "reason": "M0-06b external gate."
+    }
+  ]
+}

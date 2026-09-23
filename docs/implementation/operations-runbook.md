@@ -405,3 +405,28 @@ retrieval cache는 TTL(10분)과 tenant당 50개 상한을 질의 시점에 실�
 백업·복원: DB dump는 이 네 테이블과 열린 cleanup manifest를 함께 담는다. 복원본에서는 gate가 이미
 닫혀 있으므로 삭제·철회된 자료의 발췌가 노출되지 않고, 운영 재개 전에 cleanup worker를 돌려 남은
 manifest를 소진해야 행 자체가 사라진다. 합성 drill이 이 순서를 그대로 검증한다.
+
+## 자체 보행 routing 엔진 배선 (M2-01k)
+
+API는 네 변수가 **모두** 있을 때만 경로 제안·목표 거리 후보·`/routing/walking-routes` 라우트를 등록한다.
+하나도 없으면 라우트가 없고(화면은 "구성되어 있지 않음"), 일부만 있으면 기동을 거절한다.
+graph·jar·profile이 manifest와 맞지 않아도 기동을 거절한다(`apps/api/src/routing-deployment.ts`).
+
+| 변수                           | 값                                                                    |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `ROUTING_ENGINE_URL`           | `http://127.0.0.1:8991/` (경로 없이 origin만)                         |
+| `ROUTING_GRAPH_DIRECTORY`      | **graph 디렉터리 자체**: `.geo-build/routing-graph/foot` (절대 경로)  |
+| `ROUTING_ENGINE_ARTIFACT`      | `.geo-build/graphhopper/graphhopper-web.jar` (절대 경로)              |
+| `ROUTING_PROFILE_CONFIG`       | `.geo-build/routing-graph/config-serving.yml` (절대 경로)             |
+| `ROUTING_ENGINE_ALLOWED_HOSTS` | 선택. 쉼표 구분. 기본은 loopback(`127.0.0.1`, `localhost`, `[::1]`)만 |
+
+함정: `ROUTING_GRAPH_DIRECTORY`에 부모(`.geo-build/routing-graph`)를 주면 그 디렉터리 전체가 해시되어
+`GRAPH_CONTENT_CHANGED`로 거절된다. `routing-graph-manifest.json`이 들어 있는 디렉터리를 준다.
+profile은 M2-01d 측정용 `scripts/geo/graphhopper-foot.yml`이 아니라 serving profile이다
+(다르면 `PROFILE_CONFIG_MISMATCH`).
+
+엔진은 같은 graph·profile로 loopback에 띄운다(`scripts/build-routing-graph.mts`의 `startEngine`과 같은 인자).
+graph를 바꿀 때는 엔진 재시작과 API 재배포 **두 단계**다. 원자적이지 않다. 그 사이에는 API가
+`graph_mismatch`(502)로 계산을 거절하며, 저장된 코스는 재계산되지 않는다. rollback도 같은 두 단계다.
+identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다
+(기본은 fixture 엔진).

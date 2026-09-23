@@ -331,6 +331,33 @@ describe('waypoint editor', () => {
     expect(request.mock.calls.filter(([input]) => input.method === 'PATCH')).toHaveLength(0);
   });
 
+  // M2-01k: the refusal an owner actually meets when iterating (F1) is not an engine
+  // outcome but our own proposal bound. It must leave the edited draft exactly as it was.
+  it('keeps the edited draft when the server refuses a proposal over its unsaved bound', async () => {
+    const { request } = setup((input) =>
+      input.path === `/bff/v1/courses/${courseId}/route-proposals`
+        ? reply({ error: { code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' } }, 429)
+        : null,
+    );
+    await openCourse();
+    await userEvent.type(screen.getByLabelText('경유점 경도'), '126.9795');
+    await userEvent.type(screen.getByLabelText('경유점 위도'), '37.5675');
+    await userEvent.click(screen.getByRole('button', { name: '좌표로 경유점 추가' }));
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
+    const before = screen.getAllByRole('listitem').length;
+    await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
+    // What the screen says today: the compute path has no message for this code (the
+    // quota text exists only among the save errors), so the owner gets the generic line.
+    expect(
+      await screen.findByText(/경로 계산 결과를 확인하지 못했습니다\. 저장된 것은 없습니다/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '계산된 경로 검토' })).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(before);
+    expect(screen.getByText(/37\.56750, 126\.97950/)).toBeInTheDocument();
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
+    expect(request.mock.calls.filter(([input]) => input.method === 'PATCH')).toHaveLength(0);
+  });
+
   it('cancels a computation in flight, and cancels it when the screen goes away', async () => {
     const signals: AbortSignal[] = [];
     const { unmount } = setup((input) =>

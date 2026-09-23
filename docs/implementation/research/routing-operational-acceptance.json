@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k",
+  "measuredAt": "2026-09-23T04:20:48.007Z",
+  "what": "Production API composition (createConfiguredApi) against the self-hosted GraphHopper engine on loopback, fixture OIDC, isolated PostgreSQL. Not a coverage review.",
+  "machine": {
+    "label": "this machine (desktop), single caller",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "node": "v24.12.0"
+  },
+  "graphs": {
+    "A": {
+      "graphBuildId": "c57f12f5975347e8",
+      "graphImportedAt": "2026-09-21T14:09:12.000Z",
+      "graphContentSha256": "c5fbcdecf780a5052c97e6e063ab88294523b38f691b2cf3b6a8629578a12499"
+    },
+    "B": {
+      "graphBuildId": "f2448701c8f6e2da",
+      "graphImportedAt": "2026-09-23T04:11:56.000Z",
+      "graphContentSha256": "420b9cb232d9f315a4d4567aeacc7ad7c4c1279a1b8818ea9d29eeaecd4d2d7f",
+      "builtThisRun": false,
+      "importMilliseconds": null,
+      "note": "Re-import of the same allowlisted extract with the same engine and profile; a distinct build, not newer map data."
+    }
+  },
+  "timingsMilliseconds": {
+    "engine-start-A": [1101, 1127],
+    "engine-rss-mib-after-start-A": [265, 246],
+    "direct-route": [80],
+    "course-proposal": [21, 14, 63, 13, 85, 23],
+    "candidate-search": [108],
+    "engine-start-B": [1140],
+    "engine-rss-mib-after-start-B": [243]
+  },
+  "checks": [
+    {
+      "id": "graph-identities-distinct",
+      "passed": true,
+      "detail": "A c57f12f5975347e8 / B f2448701c8f6e2da"
+    },
+    {
+      "id": "graph-b-same-inputs-different-import",
+      "passed": true,
+      "detail": "import A 2026-09-21T14:09:12.000Z / B 2026-09-23T04:11:56.000Z"
+    },
+    {
+      "id": "unconfigured-routes-absent",
+      "passed": true,
+      "detail": "status 404"
+    },
+    {
+      "id": "half-configured-refuses-start",
+      "passed": true,
+      "detail": "ROUTING_CONFIGURATION_INCOMPLETE: ROUTING_GRAPH_DIRECTORY, ROUTING_ENGINE_ARTIFACT, ROUTING_PROFILE_CONFIG"
+    },
+    {
+      "id": "unverifiable-deployment-refuses-start",
+      "passed": true,
+      "detail": "PROFILE_CONFIG_MISMATCH"
+    },
+    {
+      "id": "configured-direct-route-real-engine",
+      "passed": true,
+      "detail": "status 200 route_computed graph c57f12f5975347e8 distance 1281.8 m vertices 48"
+    },
+    {
+      "id": "import-has-no-graph",
+      "passed": true,
+      "detail": "imported-file"
+    },
+    {
+      "id": "proposal-real-engine-A",
+      "passed": true,
+      "detail": "status 200 route_computed"
+    },
+    {
+      "id": "proposal-changes-nothing",
+      "passed": true,
+      "detail": "revisions 1"
+    },
+    {
+      "id": "reviewed-save-under-A",
+      "passed": true,
+      "detail": "status 200"
+    },
+    {
+      "id": "candidates-real-engine-A",
+      "passed": true,
+      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"c57f12f5975347e8\"],\"attemptsMade\":5,\"elapsedMilliseconds\":91,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
+    },
+    {
+      "id": "candidate-pick-saved-under-A",
+      "passed": true,
+      "detail": "status 200"
+    },
+    {
+      "id": "head-computed-on-A",
+      "passed": true,
+      "detail": "revisions 1:null 2:c57f12f5975347e8 3:c57f12f5975347e8"
+    },
+    {
+      "id": "pinned-api-refuses-replaced-engine",
+      "passed": true,
+      "detail": "status 502 graph_mismatch"
+    },
+    {
+      "id": "mismatch-writes-nothing",
+      "passed": true,
+      "detail": "revisions 3"
+    },
+    {
+      "id": "swap-recomputes-nothing",
+      "passed": true,
+      "detail": "revisions 1:null:d61e21bd 2:c57f12f5975347e8:cb085ed9 3:c57f12f5975347e8:03b94b82"
+    },
+    {
+      "id": "proposal-real-engine-B",
+      "passed": true,
+      "detail": "status 200 route_computed"
+    },
+    {
+      "id": "cross-graph-save-needs-acknowledgement",
+      "passed": true,
+      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"867a6e63-e0f"
+    },
+    {
+      "id": "acknowledged-save-on-B-appends",
+      "passed": true,
+      "detail": "status 200 head 4:f2448701c8f6e2da (was 3)"
+    },
+    {
+      "id": "rollback-engine-refused-by-api-on-B",
+      "passed": true,
+      "detail": "status 502 graph_mismatch"
+    },
+    {
+      "id": "rollback-recomputes-nothing",
+      "passed": true,
+      "detail": "head 4:f2448701c8f6e2da"
+    },
+    {
+      "id": "rollback-returns-exact-graph-A",
+      "passed": true,
+      "detail": "route_computed c57f12f5975347e8"
+    },
+    {
+      "id": "rollback-save-keeps-history",
+      "passed": true,
+      "detail": "1:null 2:c57f12f5975347e8 3:c57f12f5975347e8 4:f2448701c8f6e2da 5:c57f12f5975347e8"
+    },
+    {
+      "id": "tenant-rate-bound",
+      "passed": true,
+      "detail": "statuses 200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,429 retry-after 60"
+    },
+    {
+      "id": "rate-bound-is-per-tenant",
+      "passed": true,
+      "detail": "other tenant status 200"
+    },
+    {
+      "id": "engine-down-is-distinct-and-stores-nothing",
+      "passed": true,
+      "detail": "status 502 engine_unavailable"
+    }
+  ],
+  "findings": [
+    {
+      "id": "iterative-recompute-refused-by-proposal-quota",
+      "requirement": "S14 edit loop (move a waypoint, recompute, review) and V2-A35 rapid successive waypoint edits",
+      "expected": "Each recompute of the latest draft succeeds; only the latest draft can be saved from the editor.",
+      "observed": "Six unsaved recomputes of one course within the 30 min TTL: 1:200:route_computed:16ms 2:200:route_computed:14ms 3:200:route_computed:13ms 4:200:route_computed:13ms 5:200:route_computed:23ms 6:429:ROUTE_PROPOSAL_QUOTA_EXCEEDED:12ms. The refusal comes after the engine computed the route. Unsaved siblings of a picked candidate also keep holding slots: 3 on the routed course."
+    }
+  ],
+  "result": "all_checks_passed"
+}

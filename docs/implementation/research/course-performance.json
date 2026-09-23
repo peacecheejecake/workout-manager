@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k",
+  "measuredAt": "2026-09-23T05:36:35.393Z",
+  "label": "Desktop, this machine, single caller, Fastify inject through createConfiguredApi. Not a device, browser or load result.",
+  "track": {
+    "kind": "synthetic",
+    "samples": 20000,
+    "approximateLengthMeters": "see track-upload-and-server-parse detail",
+    "region": "central Seoul zig-zag, inside the routing graph extract"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "node": "v24.12.0"
+  },
+  "baselineMemory": {
+    "rssMiB": 160,
+    "heapUsedMiB": 44,
+    "externalMiB": 7
+  },
+  "peakRssMiB": 773,
+  "steps": [
+    {
+      "step": "activity-import",
+      "milliseconds": 31,
+      "status": 200,
+      "detail": "",
+      "memoryAfter": {
+        "rssMiB": 465,
+        "heapUsedMiB": 219,
+        "externalMiB": 8
+      }
+    },
+    {
+      "step": "track-reserve",
+      "milliseconds": 9,
+      "status": 200,
+      "detail": "",
+      "memoryAfter": {
+        "rssMiB": 466,
+        "heapUsedMiB": 221,
+        "externalMiB": 8
+      }
+    },
+    {
+      "step": "track-upload-and-server-parse",
+      "milliseconds": 495,
+      "status": 200,
+      "detail": "fit 780044 bytes, 20000 records, 76.0 km",
+      "memoryAfter": {
+        "rssMiB": 575,
+        "heapUsedMiB": 198,
+        "externalMiB": 21
+      }
+    },
+    {
+      "step": "track-finalize",
+      "milliseconds": 9,
+      "status": 200,
+      "detail": "",
+      "memoryAfter": {
+        "rssMiB": 575,
+        "heapUsedMiB": 200,
+        "externalMiB": 21
+      }
+    },
+    {
+      "step": "read-map-path",
+      "milliseconds": 5,
+      "status": 200,
+      "detail": "970464 bytes",
+      "memoryAfter": {
+        "rssMiB": 577,
+        "heapUsedMiB": 201,
+        "externalMiB": 24
+      }
+    },
+    {
+      "step": "read-normalized",
+      "milliseconds": 6,
+      "status": 200,
+      "detail": "5365290 bytes",
+      "memoryAfter": {
+        "rssMiB": 582,
+        "heapUsedMiB": 208,
+        "externalMiB": 39
+      }
+    },
+    {
+      "step": "read-track-head",
+      "milliseconds": 4,
+      "status": 200,
+      "detail": "samples 20000, map path vertices ~20000",
+      "memoryAfter": {
+        "rssMiB": 583,
+        "heapUsedMiB": 214,
+        "externalMiB": 39
+      }
+    },
+    {
+      "step": "course-from-full-segment",
+      "milliseconds": 129,
+      "status": 200,
+      "detail": "20000 vertices, 76435 m planned line",
+      "memoryAfter": {
+        "rssMiB": 579,
+        "heapUsedMiB": 220,
+        "externalMiB": 28
+      }
+    },
+    {
+      "step": "thumbnail-render-in-process",
+      "milliseconds": 7,
+      "status": null,
+      "detail": "5434 bytes image/svg+xml from 400 vertices",
+      "memoryAfter": {
+        "rssMiB": 579,
+        "heapUsedMiB": 241,
+        "externalMiB": 27
+      }
+    },
+    {
+      "step": "gpx-export",
+      "milliseconds": 51,
+      "status": 200,
+      "detail": "980525 bytes",
+      "memoryAfter": {
+        "rssMiB": 583,
+        "heapUsedMiB": 258,
+        "externalMiB": 30
+      }
+    },
+    {
+      "step": "privacy-zone-create",
+      "milliseconds": 6,
+      "status": 200,
+      "detail": "",
+      "memoryAfter": {
+        "rssMiB": 584,
+        "heapUsedMiB": 259,
+        "externalMiB": 30
+      }
+    },
+    {
+      "step": "privacy-trim",
+      "milliseconds": 131,
+      "status": 200,
+      "detail": "19921 vertices after trim",
+      "memoryAfter": {
+        "rssMiB": 586,
+        "heapUsedMiB": 308,
+        "externalMiB": 31
+      }
+    },
+    {
+      "step": "reroute-4-waypoints",
+      "milliseconds": 120,
+      "status": 200,
+      "detail": "route_computed 5801 m, 129 vertices, engine 84 ms",
+      "memoryAfter": {
+        "rssMiB": 585,
+        "heapUsedMiB": 307,
+        "externalMiB": 31
+      }
+    },
+    {
+      "step": "reroute-12-waypoints",
+      "milliseconds": 103,
+      "status": 200,
+      "detail": "route_computed 26400 m, 750 vertices, engine 69 ms",
+      "memoryAfter": {
+        "rssMiB": 591,
+        "heapUsedMiB": 316,
+        "externalMiB": 31
+      }
+    },
+    {
+      "step": "course-copy-for-2000m",
+      "milliseconds": 180,
+      "status": 200,
+      "detail": "19921 vertices copied",
+      "memoryAfter": {
+        "rssMiB": 644,
+        "heapUsedMiB": 361,
+        "externalMiB": 40
+      }
+    },
+    {
+      "step": "candidates-2000m",
+      "milliseconds": 96,
+      "status": 200,
+      "detail": "4 candidates, 4 attempts, search 53 ms, stopped candidate_limit",
+      "memoryAfter": {
+        "rssMiB": 534,
+        "heapUsedMiB": 73,
+        "externalMiB": 7
+      }
+    },
+    {
+      "step": "course-copy-for-10000m",
+      "milliseconds": 160,
+      "status": 200,
+      "detail": "19921 vertices copied",
+      "memoryAfter": {
+        "rssMiB": 540,
+        "heapUsedMiB": 151,
+        "externalMiB": 11
+      }
+    },
+    {
+      "step": "candidates-10000m",
+      "milliseconds": 131,
+      "status": 200,
+      "detail": "4 candidates, 5 attempts, search 95 ms, stopped candidate_limit",
+      "memoryAfter": {
+        "rssMiB": 539,
+        "heapUsedMiB": 138,
+        "externalMiB": 11
+      }
+    },
+    {
+      "step": "course-list",
+      "milliseconds": 2,
+      "status": 200,
+      "detail": "833 bytes",
+      "memoryAfter": {
+        "rssMiB": 539,
+        "heapUsedMiB": 138,
+        "externalMiB": 11
+      }
+    }
+  ],
+  "failures": []
+}

@@ -42,6 +42,7 @@ import { createCourseRepository } from '../packages/server/persistence/src/cours
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
 import { loadGeoDatasets } from '../apps/api/src/geo-datasets.ts';
 import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
+import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deployment.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -113,6 +114,16 @@ const data = join(directory, 'data');
 function run(command: string, args: string[]) {
   const result = spawnSync(command, args, { stdio: 'ignore' });
   if (result.error || result.status !== 0) throw new Error('Isolated PostgreSQL command failed');
+}
+async function identityWalkingRoutes() {
+  const mode = process.env['IDENTITY_E2E_ROUTING'] ?? 'fixture';
+  if (mode === 'fixture') return createFixtureWalkingRoutePort();
+  if (mode !== 'graphhopper') throw new Error(`Unsupported IDENTITY_E2E_ROUTING: ${mode}`);
+  const routing = await createConfiguredWalkingRoutes(process.env);
+  if (routing === null)
+    throw new Error('IDENTITY_E2E_ROUTING=graphhopper needs ROUTING_* settings');
+  console.log(`Identity E2E routing: self-hosted engine, graph ${routing.graphBuildId}.`);
+  return routing.walkingRoutes;
 }
 let started = false;
 const closers: Array<() => Promise<void>> = [];
@@ -428,10 +439,13 @@ try {
       places: geoDatasets.places,
       elevation: geoDatasets.elevation,
     },
-    // A deterministic stand-in for the pedestrian engine. It exercises our side of the
-    // port — bounds, proposal storage, review, explicit save — and is explicitly NOT
+    // By default a deterministic stand-in for the pedestrian engine. It exercises our side
+    // of the port — bounds, proposal storage, review, explicit save — and is explicitly NOT
     // evidence about a real engine, a real graph or pedestrian coverage.
-    walkingRoutes: createFixtureWalkingRoutePort(),
+    // With IDENTITY_E2E_ROUTING=graphhopper (M2-01k) the port comes from the production
+    // factory instead, through the same on-disk verification `configured.ts` uses; the
+    // engine itself is started by the operator on loopback before this harness.
+    walkingRoutes: await identityWalkingRoutes(),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

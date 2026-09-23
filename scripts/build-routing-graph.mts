@@ -118,6 +118,96 @@ export async function stopEngine(engine: EngineHandle): Promise<void> {
   await wait(500);
 }
 
+/**
+ * Import a fresh graph into `graphDirectory` with the deployed serving configuration and
+ * write the manifest that binds it to its inputs. The directory is emptied first. The
+ * engine is started only for the import and stopped before any file is hashed.
+ *
+ * Exported so a second, independent graph build (M2-01k's replacement/rollback run) goes
+ * through this exact manifest writer rather than a copy of it. The caller passes input
+ * hashes it has already checked against the allowlist.
+ *
+ * DESTRUCTIVE: `graphDirectory` is removed recursively (`rm -rf`) before the import. Pass
+ * only a directory this build owns, never a deployed graph that is being served.
+ */
+export async function importRoutingGraph(options: {
+  readonly graphDirectory: string;
+  readonly engineArtifactSha256: string;
+  readonly extractSha256: string;
+  readonly profileConfigSha256: string;
+  readonly extractByteLength: number;
+}): Promise<RoutingGraphManifest> {
+  await rm(options.graphDirectory, { recursive: true, force: true });
+  await mkdir(options.graphDirectory, { recursive: true });
+
+  const engine = startEngine({
+    jarPath,
+    configPath: routingGraphConfig,
+    extractPath,
+    graphPath: options.graphDirectory,
+  });
+  let info: { version: string; import_date: string; data_date: string; profiles: string[] };
+  try {
+    await waitForEngine(engine);
+    const response = await fetch(`http://127.0.0.1:${ENGINE_PORT}/info`);
+    const body: unknown = await response.json();
+    const parsed = body as {
+      version?: unknown;
+      import_date?: unknown;
+      data_date?: unknown;
+      profiles?: { name?: unknown }[];
+    };
+    if (
+      typeof parsed.version !== 'string' ||
+      typeof parsed.import_date !== 'string' ||
+      typeof parsed.data_date !== 'string' ||
+      !Array.isArray(parsed.profiles)
+    )
+      throw new Error('ENGINE_INFO_UNUSABLE');
+    info = {
+      version: parsed.version,
+      import_date: parsed.import_date,
+      data_date: parsed.data_date,
+      profiles: parsed.profiles.map((profile) => String(profile.name)),
+    };
+  } finally {
+    // The graph is only hashed once the engine that wrote it has exited.
+    await stopEngine(engine);
+  }
+
+  const properties = await readGraphProperties(options.graphDirectory);
+  if (
+    Date.parse(properties.graphImportedAt) !== Date.parse(info.import_date) ||
+    Date.parse(properties.roadDataAt) !== Date.parse(info.data_date)
+  )
+    throw new Error('GRAPH_PROPERTIES_DISAGREE_WITH_ENGINE');
+  if (!info.profiles.includes('foot')) throw new Error('ENGINE_PROFILE_MISSING');
+
+  const graphContentSha256 = await hashGraphDirectory(options.graphDirectory);
+  const manifest: RoutingGraphManifest = routingGraphManifestSchema.parse({
+    schemaVersion: 1,
+    engine: 'graphhopper',
+    engineVersion: info.version,
+    engineArtifactSha256: options.engineArtifactSha256,
+    profileId: 'foot-v1',
+    profileConfigSha256: options.profileConfigSha256,
+    profileName: 'foot',
+    extractSha256: options.extractSha256,
+    extractRegion: EXTRACT_REGION,
+    extractByteLength: options.extractByteLength,
+    graphContentSha256,
+    graphImportedAt: properties.graphImportedAt,
+    roadDataAt: properties.roadDataAt,
+    builtAt: new Date().toISOString(),
+  } satisfies RoutingGraphManifest);
+
+  await writeFile(
+    join(options.graphDirectory, ROUTING_GRAPH_MANIFEST_FILE),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return manifest;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const reuse = argv.includes('--reuse');
@@ -194,79 +284,18 @@ async function main() {
   }
 
   await copyFile(servingConfigSource, routingGraphConfig);
-  await rm(routingGraphDirectory, { recursive: true, force: true });
-  await mkdir(routingGraphDirectory, { recursive: true });
-
-  const engine = startEngine({
-    jarPath,
-    configPath: routingGraphConfig,
-    extractPath,
-    graphPath: routingGraphDirectory,
-  });
-  let info: { version: string; import_date: string; data_date: string; profiles: string[] };
-  try {
-    await waitForEngine(engine);
-    const response = await fetch(`http://127.0.0.1:${ENGINE_PORT}/info`);
-    const body: unknown = await response.json();
-    const parsed = body as {
-      version?: unknown;
-      import_date?: unknown;
-      data_date?: unknown;
-      profiles?: { name?: unknown }[];
-    };
-    if (
-      typeof parsed.version !== 'string' ||
-      typeof parsed.import_date !== 'string' ||
-      typeof parsed.data_date !== 'string' ||
-      !Array.isArray(parsed.profiles)
-    )
-      throw new Error('ENGINE_INFO_UNUSABLE');
-    info = {
-      version: parsed.version,
-      import_date: parsed.import_date,
-      data_date: parsed.data_date,
-      profiles: parsed.profiles.map((profile) => String(profile.name)),
-    };
-  } finally {
-    // The graph is only hashed once the engine that wrote it has exited.
-    await stopEngine(engine);
-  }
-
-  const properties = await readGraphProperties(routingGraphDirectory);
-  if (
-    Date.parse(properties.graphImportedAt) !== Date.parse(info.import_date) ||
-    Date.parse(properties.roadDataAt) !== Date.parse(info.data_date)
-  )
-    throw new Error('GRAPH_PROPERTIES_DISAGREE_WITH_ENGINE');
-  if (!info.profiles.includes('foot')) throw new Error('ENGINE_PROFILE_MISSING');
-
-  const graphContentSha256 = await hashGraphDirectory(routingGraphDirectory);
-  const manifest: RoutingGraphManifest = routingGraphManifestSchema.parse({
-    schemaVersion: 1,
-    engine: 'graphhopper',
-    engineVersion: info.version,
+  const manifest = await importRoutingGraph({
+    graphDirectory: routingGraphDirectory,
     engineArtifactSha256: jarIdentity.sha256,
-    profileId: 'foot-v1',
-    profileConfigSha256,
-    profileName: 'foot',
     extractSha256,
-    extractRegion: EXTRACT_REGION,
+    profileConfigSha256,
     extractByteLength,
-    graphContentSha256,
-    graphImportedAt: properties.graphImportedAt,
-    roadDataAt: properties.roadDataAt,
-    builtAt: new Date().toISOString(),
-  } satisfies RoutingGraphManifest);
-
-  await writeFile(
-    join(routingGraphDirectory, ROUTING_GRAPH_MANIFEST_FILE),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-  );
+  });
   console.log(
     JSON.stringify({
       graphDirectory: routingGraphDirectory,
       graphBuildId: graphBuildIdFromManifest(manifest),
-      graphContentSha256,
+      graphContentSha256: manifest.graphContentSha256,
       engineVersion: manifest.engineVersion,
       graphImportedAt: manifest.graphImportedAt,
       roadDataAt: manifest.roadDataAt,
