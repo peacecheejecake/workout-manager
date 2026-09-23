@@ -17,24 +17,18 @@
 
 ## 완료된 최신 작업
 
-[M2-01z](progress/M2-01z.md)를 완료했다. M2-01x tenant prefix purge의 운영 가시성과 처리량을 보강했다(migration 045,
-grant 단계 불필요).
+[M2-01ab](progress/M2-01ab.md)를 완료했다. M2-01x tenant listing의 root swap 시험이 부하에서 "링크를 통해 답함"으로
+실패하던 것은 **목록 가드의 결함이 아니라 시험 쪽 판정 오류**였다. 시험이 답을 받은 뒤 전역 플래그로 판정해,
+마지막 root 확인이 실제 root를 읽은 뒤 swap이 끼어든 경우를 오탐했다. 답의 내용으로 판정하도록 고치고, 80개 호출
+위치마다 swap하는 결정적 시험과 M2-01x에 시험이 없던 dev/ino 재확인 시험을 더했다. 제품 코드는 바뀌지 않았다.
+ABA(가서 돌아오는 swap)는 Node에 `openat`이 없어 막을 수 없고, 그 영향은 이 tenant 자기 key 이름으로 한정되며
+결과는 과소 삭제다(30일 창 밖의 마지막 pass라면 객체가 남은 채 닫힐 수 있음).
 
-- 계정이 남아 있어 lease가 거절한 purge 행에 `INCONSISTENT_LEDGER:IDENTITY_ACCOUNT_PRESENT`를 한 번 적는다.
-  lease·시도 차감·삭제는 없다. 운영자는 runbook의 조회로 찾는다.
-- lease를 잃은 시도는 `LEASE_EXPIRED`, 100번째 시도의 lease 유실은 `DEAD_LETTER:LEASE_EXPIRED`로 끝난다. 표식 없는
-  `attempts=100`은 CHECK가 막는다.
-- worker 1회 실행이 purge를 최대 10회 차례로 돈다(각 run의 삭제 200개 예산·첫 오류 중단 유지). 분당 실행이면
-  30일 창의 말소 tenant 약 600명까지 주기를 지킨다. 실패가 없다는 가정이며, 실행 시간은 벽시계로 묶여 있지 않다.
-- worker JSON 결과 키가 `tenantPurge`(문자열)에서 `tenantPurges`(배열)로 바뀌었다(저장소 안 소비자 없음).
-
-직전 완료: [M2-01aa](progress/M2-01aa.md)(실제 API 진입점이 `process.env`로 기동하지 못하던 결함).
-분리한 후속: M2-01ac(여러 병합 검증에서 반복된 부하 간헐 실패 규명).
+직전 완료: [M2-01z](progress/M2-01z.md)(tenant purge 운영 가시성·처리량, migration 045, grant 단계 불필요).
 
 ## 다음 ready 작업
 
-M2-01q는 rebase 중, M2-01w는 2라운드 검토 중, M2-01y는 차단 지적(복원 후 재-import 억제) 수정 중, M2-01ab는
-규명 중이다. M2-01ac는 ready다. **M2-01t는 사용자 결정이 먼저**다.
+M2-01q는 rebase 뒤 3라운드 검토 중, M2-01w는 승인되어 병합 대기, M2-01y는 차단 지적(복원 후 재-import 억제) 수정 중이다. M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
 
 ## 남은 외부·실환경 gate
 

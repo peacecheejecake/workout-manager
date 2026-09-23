@@ -268,37 +268,44 @@ describe('listing one tenant’s objects (M2-01x)', () => {
   });
 
   it('never answers a listing through a root swapped during the walk', async () => {
-    // As in the M2-01o mid-operation sweep: a fresh store, a copy of it, and the root swapped
-    // ONE WAY for a link to the copy after k other filesystem calls. The copy holds a key the
-    // store does not, so a listing read through the link is visible. If the listing resolved,
-    // its last root check ran before the swap — so it must never resolve with the swap done
-    // and never contain the copy's key.
+    // As in the M2-01o mid-operation sweep: a fresh store, and the root swapped ONE WAY, after
+    // k other filesystem calls, for a link to a directory holding a DISJOINT set of this
+    // tenant's keys. So the answer itself says where it was read: any key the store does not
+    // hold came through the link, and an answer that is exactly the store's keys did not.
+    //
+    // The verdict is read from the answer, never from "was the swap done when the answer
+    // arrived" (M2-01ab). The final root check is an `lstat` run on the thread pool; the swap
+    // can land after that `lstat` has read the real root and before its result reaches the
+    // listing. The swap is then done when the answer arrives, yet every name in the answer
+    // was read before it. The old verdict counted that as "answered through the link" and
+    // failed under machine load; the deterministic positions, that one included, are in
+    // `tenant-listing-root-swap.test.ts`.
     async function attempt(ticks: number): Promise<string> {
       const base = await newRoot();
       const root = join(base, 'store');
-      const copy = join(base, 'copy');
+      const elsewhere = join(base, 'elsewhere');
       const moved = join(base, 'moved');
       const storage = await createLocalFilesystemObjectStorage(root);
-      for (const key of everyKeyOf(tenant)) await place(root, key);
-      await cp(root, copy, { recursive: true });
-      const planted = everyKeyOf(tenant)[1] as ObjectKey;
-      await place(copy, planted);
-      let swapped = false;
+      const own = everyKeyOf(tenant);
+      for (const key of own) await place(root, key);
+      for (const key of everyKeyOf(tenant)) await place(elsewhere, key);
       const [observed] = await Promise.allSettled([
-        storage.listTenantObjects(tenant, 1000).then((listing) => ({ listing, swapped })),
+        storage.listTenantObjects(tenant, 1000),
         (async () => {
-          for (let tick = 0; tick < ticks; tick += 1) await lstat(copy);
+          for (let tick = 0; tick < ticks; tick += 1) await lstat(elsewhere);
           renameSync(root, moved);
-          symlinkSync(copy, root);
-          swapped = true;
+          symlinkSync(elsewhere, root);
         })(),
       ]);
       if (observed.status === 'rejected') {
         const reason = observed.reason as NodeJS.ErrnoException;
         return `error ${reason.code ?? reason.name}`;
       }
-      if (observed.value.swapped || observed.value.listing.keys.includes(planted))
-        return 'ANSWERED THROUGH THE LINK';
+      const answered = [...observed.value.keys].sort();
+      if (answered.some((key) => !own.includes(key))) return 'ANSWERED THROUGH THE LINK';
+      // Nothing foreign, and nothing of the store's missed either: a walk that read part of
+      // the store and then part of the link target is not "from the real store".
+      if (JSON.stringify(answered) !== JSON.stringify([...own].sort())) return 'ANSWERED PARTIALLY';
       return 'answered from the real store';
     }
     const counts: Record<string, number> = {};
@@ -308,6 +315,7 @@ describe('listing one tenant’s objects (M2-01x)', () => {
       counts[outcome] = (counts[outcome] ?? 0) + 1;
     }
     expect(counts['ANSWERED THROUGH THE LINK'] ?? 0, JSON.stringify(counts)).toBe(0);
+    expect(counts['ANSWERED PARTIALLY'] ?? 0, JSON.stringify(counts)).toBe(0);
     expect(counts['answered from the real store'] ?? 0, JSON.stringify(counts)).toBeGreaterThan(0);
     expect(counts['error UNSAFE_STORAGE_PATH'] ?? 0, JSON.stringify(counts)).toBeGreaterThan(0);
   }, 120_000);
