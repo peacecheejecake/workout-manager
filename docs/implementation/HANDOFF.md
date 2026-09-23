@@ -17,18 +17,24 @@
 
 ## 완료된 최신 작업
 
-[M2-01aa](progress/M2-01aa.md)를 완료했다. **실제 API 진입점(`apps/api/src/start.ts`)이 기동하지 못하던 결함**을
-고쳤다. `configured.ts`의 `z.record(...).parse(environment)`가 zod 4에서 `process.env`를 거부했다(`eae0ee1`부터).
-identity E2E harness는 `configured.ts`를 거치지 않아 잡지 못했고, 그동안은 기동 시 OIDC discovery 실패가
-먼저 나서 가려졌다. 환경을 plain object로 복사한 뒤 검사하며 값 검증은 약해지지 않는다(`environmentSchema`가
-원래 값에 먼저 돈다). 실제 `process.env`로 회귀 시험을 두었고 되돌리면 실패한다. M2-01w 구현 중 발견했다.
+[M2-01z](progress/M2-01z.md)를 완료했다. M2-01x tenant prefix purge의 운영 가시성과 처리량을 보강했다(migration 045,
+grant 단계 불필요).
 
-직전 완료: [M2-01x](progress/M2-01x.md)(말소 tenant prefix purge, migration 044). 배포 순서는 migrate →
-`grantOperations`·`grantResourceObjectCleanupWorker` 재실행 → 새 worker.
+- 계정이 남아 있어 lease가 거절한 purge 행에 `INCONSISTENT_LEDGER:IDENTITY_ACCOUNT_PRESENT`를 한 번 적는다.
+  lease·시도 차감·삭제는 없다. 운영자는 runbook의 조회로 찾는다.
+- lease를 잃은 시도는 `LEASE_EXPIRED`, 100번째 시도의 lease 유실은 `DEAD_LETTER:LEASE_EXPIRED`로 끝난다. 표식 없는
+  `attempts=100`은 CHECK가 막는다.
+- worker 1회 실행이 purge를 최대 10회 차례로 돈다(각 run의 삭제 200개 예산·첫 오류 중단 유지). 분당 실행이면
+  30일 창의 말소 tenant 약 600명까지 주기를 지킨다. 실패가 없다는 가정이며, 실행 시간은 벽시계로 묶여 있지 않다.
+- worker JSON 결과 키가 `tenantPurge`(문자열)에서 `tenantPurges`(배열)로 바뀌었다(저장소 안 소비자 없음).
+
+직전 완료: [M2-01aa](progress/M2-01aa.md)(실제 API 진입점이 `process.env`로 기동하지 못하던 결함).
+분리한 후속: M2-01ac(여러 병합 검증에서 반복된 부하 간헐 실패 규명).
 
 ## 다음 ready 작업
 
-M2-01q는 rebase 중, M2-01w는 검토 대응 중, M2-01y는 진행 중, M2-01z는 검토 중, M2-01ab는 규명 중이다. **M2-01t는 사용자 결정이 먼저**다.
+M2-01q는 rebase 중, M2-01w는 2라운드 검토 중, M2-01y는 차단 지적(복원 후 재-import 억제) 수정 중, M2-01ab는
+규명 중이다. M2-01ac는 ready다. **M2-01t는 사용자 결정이 먼저**다.
 
 ## 남은 외부·실환경 gate
 

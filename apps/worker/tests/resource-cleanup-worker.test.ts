@@ -57,8 +57,10 @@ function setup(input: {
   recordFault?: () => Promise<number | null>;
   /** What the store's reachability check raises; absent means the store answers. */
   storeDown?: Error;
-  /** The erased tenant whose prefix purge is due (M2-01x); absent means none. */
+  /** The erased tenant whose prefix purge is due (M2-01x); absent means none. Leased once. */
   purgeLease?: TenantObjectPurgeLease;
+  /** Successive purge leases, one per lease call, then none (M2-01z); overrides `purgeLease`. */
+  purgeLeases?: readonly TenantObjectPurgeLease[];
   /** Successive answers of the tenant listing; the last one repeats. */
   tenantListings?: readonly TenantObjectListing[];
 }) {
@@ -94,7 +96,7 @@ function setup(input: {
     reclaimUnreferencedThumbnailObject: vi.fn(async () => input.thumbnailReclaimQueued ?? false),
     recordThumbnailSweepFault: vi.fn(input.recordFault ?? (async () => 1)),
     clearThumbnailSweepFault: vi.fn(async () => true),
-    leaseTenantObjectPurge: vi.fn(async () => input.purgeLease ?? null),
+    leaseTenantObjectPurge: vi.fn(async () => purgeLeases.shift() ?? null),
     finishTenantObjectPurge: vi.fn(async () => true),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
@@ -107,6 +109,7 @@ function setup(input: {
     throw new Error('unexpected storage operation');
   });
   const listings = [...(input.tenantListings ?? [])];
+  const purgeLeases = [...(input.purgeLeases ?? (input.purgeLease ? [input.purgeLease] : []))];
   const storage: ObjectStorage & StoreReachability & TenantObjectEnumeration = {
     listTenantObjects: vi.fn(
       async () =>
@@ -830,7 +833,7 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         dependencies,
       );
-      expect(result.tenantPurge).toBe('passed');
+      expect(result.tenantPurges).toEqual(['passed', 'empty']);
       expect(storage.listTenantObjects).toHaveBeenCalledWith(erased, 100);
       expect(deleteObject.mock.calls).toEqual([[first], [second]]);
       expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
@@ -847,7 +850,7 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         dependencies,
       );
-      expect(result.tenantPurge).toBe('empty');
+      expect(result.tenantPurges).toEqual(['empty']);
       expect(storage.listTenantObjects).not.toHaveBeenCalled();
       expect(repository.finishTenantObjectPurge).not.toHaveBeenCalled();
     });
@@ -864,7 +867,7 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         dependencies,
       );
-      expect(result.tenantPurge).toBe('retry_scheduled');
+      expect(result.tenantPurges).toEqual(['retry_scheduled']);
       expect(deleteObject).not.toHaveBeenCalled();
       expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
         ok: false,
@@ -884,7 +887,7 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         dependencies,
       );
-      expect(result.tenantPurge).toBe('retry_scheduled');
+      expect(result.tenantPurges).toEqual(['retry_scheduled']);
       expect(deleteObject.mock.calls).toEqual([[first]]);
       expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
         ok: false,
@@ -905,7 +908,7 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         dependencies,
       );
-      expect(result.tenantPurge).toBe('passed');
+      expect(result.tenantPurges).toEqual(['passed', 'empty']);
       expect(storage.stat).toHaveBeenCalledWith(first);
       expect(repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
         ok: true,
@@ -924,11 +927,108 @@ describe('resource object cleanup worker', () => {
         { connectionString, storageRoot },
         still.dependencies,
       );
-      expect(failed.tenantPurge).toBe('retry_scheduled');
+      expect(failed.tenantPurges).toEqual(['retry_scheduled']);
       expect(still.repository.finishTenantObjectPurge).toHaveBeenCalledWith(purgeLease, {
         ok: false,
         errorCode: 'ENOENT',
         purged: 0,
+      });
+    });
+
+    describe('several runs per invocation (M2-01z)', () => {
+      const tenantAt = (index: number) =>
+        `a1d6ca43-36eb-4e86-8e31-${index.toString(16).padStart(12, '0')}`;
+
+      it('runs at most ten leased purges, one after another, when more are due', async () => {
+        const leases = Array.from({ length: 12 }, (_, index) => ({
+          tenantId: tenantAt(index),
+          attempts: 1,
+        }));
+        const { dependencies, repository } = setup({ purgeLeases: leases });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.tenantPurges).toEqual(Array.from({ length: 10 }, () => 'passed'));
+        expect(repository.leaseTenantObjectPurge).toHaveBeenCalledTimes(10);
+        // Each run finished its own lease before the next was taken.
+        const leaseOrder = vi.mocked(repository.leaseTenantObjectPurge).mock.invocationCallOrder;
+        const finishOrder = vi.mocked(repository.finishTenantObjectPurge).mock.invocationCallOrder;
+        for (let run = 0; run < 10; run += 1) {
+          expect(finishOrder[run]).toBeGreaterThan(leaseOrder[run] ?? Infinity);
+          if (run < 9) expect(leaseOrder[run + 1]).toBeGreaterThan(finishOrder[run] ?? Infinity);
+        }
+        expect(repository.finishTenantObjectPurge).toHaveBeenLastCalledWith(leases[9], {
+          ok: true,
+          purged: 0,
+          unrecognized: 0,
+          more: false,
+        });
+      });
+
+      it('stops the batch at the first run that failed and leases nothing after it', async () => {
+        const failing = tenantAt(1);
+        const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+        const { dependencies, repository, deleteObject } = setup({
+          purgeLeases: [0, 1, 2].map((index) => ({ tenantId: tenantAt(index), attempts: 1 })),
+          deleteFailure: unsafe,
+          tenantListings: [listing(), listing(keyOf(failing, '439'))],
+        });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.tenantPurges).toEqual(['passed', 'retry_scheduled']);
+        expect(repository.leaseTenantObjectPurge).toHaveBeenCalledTimes(2);
+        expect(deleteObject).toHaveBeenCalledTimes(1);
+      });
+
+      it('stops the batch at a lost lease', async () => {
+        const { dependencies, repository } = setup({
+          purgeLeases: [0, 1].map((index) => ({ tenantId: tenantAt(index), attempts: 1 })),
+        });
+        vi.mocked(repository.finishTenantObjectPurge).mockResolvedValueOnce(false);
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.tenantPurges).toEqual(['lease_lost']);
+        expect(repository.leaseTenantObjectPurge).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps each run’s own delete budget: a run that used it is due again in the same batch', async () => {
+        const keys = Array.from({ length: 100 }, (_, index) =>
+          keyOf(erased, index.toString(16).padStart(3, '0')),
+        );
+        const { dependencies, repository, deleteObject } = setup({
+          purgeLeases: [purgeLease, purgeLease, purgeLease],
+          // Three full listings for the first run (budget 200: 100 + 100, then stop), one for
+          // the second, then nothing left.
+          tenantListings: [
+            listing(...keys),
+            listing(...keys),
+            listing(...keys.slice(0, 5)),
+            listing(),
+          ],
+        });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.tenantPurges).toEqual(['continuing', 'passed', 'passed', 'empty']);
+        expect(deleteObject).toHaveBeenCalledTimes(205);
+        expect(repository.finishTenantObjectPurge).toHaveBeenNthCalledWith(1, purgeLease, {
+          ok: true,
+          purged: 200,
+          unrecognized: 0,
+          more: true,
+        });
+        expect(repository.finishTenantObjectPurge).toHaveBeenNthCalledWith(2, purgeLease, {
+          ok: true,
+          purged: 5,
+          unrecognized: 0,
+          more: false,
+        });
       });
     });
   });

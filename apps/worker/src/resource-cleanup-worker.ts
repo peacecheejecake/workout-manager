@@ -8,9 +8,10 @@ import {
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
-  processOneTenantObjectPurge,
+  processTenantObjectPurges,
   reconcileActivityTrackObjects,
   reconcileCourseThumbnailObjects,
+  TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION,
   type ResourceObjectCleanupRepository,
   type TenantObjectPurgeResult,
   type TrackReconciliationOutcome,
@@ -27,8 +28,12 @@ import type { ResourceCleanupWorkerConfig } from './config.js';
 export type ResourceCleanupWorkerResult = {
   objects: Awaited<ReturnType<typeof processOneResourceObjectCleanup>>;
   derived: Awaited<ReturnType<typeof processOneResourceDerivedCleanup>>;
-  /** One leased run of an erased tenant's object-prefix purge (M2-01x). */
-  tenantPurge: TenantObjectPurgeResult;
+  /**
+   * The leased runs of erased tenants' object-prefix purges (M2-01x), in order: up to
+   * `TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION`, ending at the first run that did not succeed
+   * (M2-01z).
+   */
+  tenantPurges: readonly TenantObjectPurgeResult[];
   /** Bounded comparison of the track object namespace against the ledger. */
   trackReconciliation: TrackReconciliationOutcome;
   /** The same, for the course-thumbnail namespace (M2-01m). */
@@ -100,13 +105,16 @@ export async function runResourceCleanupWorker(
     // An erased tenant's whole prefix, independently of any row (M2-01x): what a restored
     // archive brought back that no row of the restored database names. Right after the queue,
     // for the same reason: deleting what an erased user left is the point of this worker.
-    const tenantPurge = await processOneTenantObjectPurge(
+    // Several runs per invocation, one lease at a time (M2-01z): each tenant needs one run an
+    // hour for thirty days, and one run per invocation capped that at the scheduler's rate.
+    const tenantPurges = await processTenantObjectPurges(
       repository,
       {
         listTenantObjects: (tenantId, limit) => storage.listTenantObjects(tenantId, limit),
         delete: (key) => storage.delete(validateObjectKey(key)),
         stat: (key) => storage.stat(validateObjectKey(key)),
       },
+      TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION,
       200,
       now,
     );
@@ -131,7 +139,7 @@ export async function runResourceCleanupWorker(
     await repository.pruneCleanupHistory(100);
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);
-    return { objects, tenantPurge, derived, trackReconciliation, thumbnailReconciliation };
+    return { objects, tenantPurges, derived, trackReconciliation, thumbnailReconciliation };
   } finally {
     await Promise.all([repository.close(), derivedRepository.close()]);
   }

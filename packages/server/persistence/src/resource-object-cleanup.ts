@@ -72,7 +72,9 @@ export interface ResourceObjectCleanupRepository {
   pruneCleanupHistory(limit?: number): Promise<number>;
   /**
    * One due tenant purge (M2-01x). Only a tenant in the erasure ledger with no identity
-   * account left is ever returned; the database decides that, not the worker.
+   * account left is ever returned; the database decides that, not the worker. A refused row
+   * is labelled `INCONSISTENT_LEDGER:…` and a last attempt whose lease ran out
+   * `DEAD_LETTER:LEASE_EXPIRED` by the same call (M2-01z, migration 045).
    */
   leaseTenantObjectPurge(now: Date, leaseUntil: Date): Promise<TenantObjectPurgeLease | null>;
   finishTenantObjectPurge(
@@ -691,4 +693,44 @@ export async function processOneTenantObjectPurge(
   if (!(await repository.finishTenantObjectPurge(lease, { ok: true, purged, unrecognized, more })))
     return 'lease_lost';
   return more ? 'continuing' : 'passed';
+}
+
+/**
+ * Leased purge runs one worker invocation performs at most (M2-01z).
+ *
+ * Why more than one: every erased tenant needs one run per hour for thirty days (720 passes),
+ * so with one run per invocation the purge capacity was the scheduler's invocations per hour —
+ * 60 tenants inside any thirty-day window at one invocation a minute — and a larger erased
+ * population, or a restore replay that re-arms every erased tenant at once, fell behind.
+ * Ten runs make that 600 tenants a minute-scheduler can keep on the hourly cadence, while one
+ * invocation still does a bounded amount of work: at most 10 leases and 10 × the per-run
+ * delete budget, before the derived cleanup, the sweeps and housekeeping run. Past that limit
+ * nothing is lost — due rows wait in `available_at` order — only the hourly cadence stretches.
+ */
+export const TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION = 10;
+
+/**
+ * Up to `runs` leased purge runs, one after another (M2-01z). Each run is exactly
+ * `processOneTenantObjectPurge`: its own lease on one purge row, its own delete budget, its own
+ * stop at the first error. The batch goes on only after a run that succeeded (`passed` or
+ * `continuing`) and stops at the first that did not — nothing due (`empty`), a failure
+ * (`retry_scheduled`) or a lost lease — so one broken store costs one failed run per
+ * invocation, as before, not ten. Runs never overlap, so the worker never holds more than one
+ * purge row's lease at a time and locks nothing but purge rows.
+ */
+export async function processTenantObjectPurges(
+  repository: ResourceObjectCleanupRepository,
+  storage: PurgedStorage,
+  runs = TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION,
+  budget = 200,
+  now: () => Date = () => new Date(),
+): Promise<readonly TenantObjectPurgeResult[]> {
+  const boundedRuns = z.number().int().min(1).max(100).parse(runs);
+  const outcomes: TenantObjectPurgeResult[] = [];
+  while (outcomes.length < boundedRuns) {
+    const outcome = await processOneTenantObjectPurge(repository, storage, budget, now);
+    outcomes.push(outcome);
+    if (outcome !== 'passed' && outcome !== 'continuing') break;
+  }
+  return outcomes;
 }

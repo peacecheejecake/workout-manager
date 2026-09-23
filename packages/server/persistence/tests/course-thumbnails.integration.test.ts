@@ -47,7 +47,7 @@ import { createOperationsRepository, type OperationsRepository } from '../src/op
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
-  processOneTenantObjectPurge,
+  processTenantObjectPurges,
   reconcileCourseThumbnailObjects,
   type ResourceObjectCleanupRepository,
 } from '../src/resource-object-cleanup.js';
@@ -914,8 +914,9 @@ describe('M2-01l stored course thumbnails', () => {
           // rather than beside it.
           await reconcileCourseThumbnailObjects(cleanup, storage, 5);
           // M2-01x's prefix purge is one more writer an erasure arms and a worker drains: it
-          // locks its purge row, and deletes through the same store.
-          await processOneTenantObjectPurge(cleanup, {
+          // locks its purge row, and deletes through the same store. As the worker runs it:
+          // several leased runs, one at a time (M2-01z).
+          await processTenantObjectPurges(cleanup, {
             listTenantObjects: (tenantId, limit) => storage.listTenantObjects(tenantId, limit),
             delete: (key) => storage.delete(validateObjectKey(key)),
             stat: (key) => storage.stat(validateObjectKey(key)),

@@ -352,6 +352,42 @@ tenant별 active intent는 20개, prepared/staged raw bytes는 50 MiB, active+fa
 worker는 이 항목을 다시 lease하지 않아 뒤 queue를 계속 처리한다. 운영자는 해당 행과 object provider를
 조사하고 삭제를 실제로 확인한 뒤에만 복구 절차로 상태를 변경해야 한다.
 
+### 말소 tenant prefix purge의 멈춘 행 (M2-01x, M2-01z)
+
+계정 말소는 `tenant_object_purge`에 그 tenant의 `private/v1/tenants/<id>/` purge를 무장하고, 같은
+cleanup worker가 30일 동안 매시간 prefix를 walk해 지운다. worker 역할은 이 표를 읽을 수 없으므로 운영자는
+관리자 연결로 아래 한 질의로 멈춘 행을 찾는다.
+
+```sql
+SELECT athlete_id, attempts, passes, last_error_code, available_at, last_pass_at
+FROM tenant_object_purge
+WHERE completed_at IS NULL
+  AND (last_error_code LIKE 'INCONSISTENT_LEDGER:%' OR last_error_code LIKE 'DEAD_LETTER:%');
+```
+
+- `INCONSISTENT_LEDGER:IDENTITY_ACCOUNT_PRESENT`: 말소 원장에 있는 id에 identity account가 남아 있다.
+  lease가 이 행을 **거절**하고(attempt 미차감, 삭제 0) 표식만 남긴다. 재시도로 풀리지 않는다. 그 id가 정말
+  말소된 사용자인지(원장·복원 순서) 조사한다. 계정이 살아 있어야 하는 사용자라면 purge 행과 원장이 잘못된
+  것이고, prefix 아래 객체는 **절대 수동 삭제하지 않는다**. 계정이 지워진 뒤에는 다음 lease가 이 행을 받지만
+  표식은 그 run이 끝날 때(성공이면 NULL, 실패면 그 code)까지 남으므로, 진행 중인 행이 한 run 동안 이 조회에
+  보일 수 있다.
+- `LEASE_EXPIRED`: 직전 시도가 2분 lease 안에 끝나지 못했다. 재시도는 계속된다(정보용).
+- `DEAD_LETTER:LEASE_EXPIRED`: 100번째 시도까지 lease를 잃었다. `DEAD_LETTER:<code>`: 100번째 시도가 그
+  code로 실패했다. 둘 다 다시 lease되지 않는다. 원인(저장소 속도·루트·권한)을 고친 뒤 그 tenant의 말소를
+  재생(`erase_account`)하면 attempts 0으로 다시 무장된다. `attempts=100`인데 표식이 없는 상태는
+  CHECK(`tenant_object_purge_dead_letter_labelled`)가 막는다.
+
+처리량: worker 1회 실행은 purge를 최대 10회(`TENANT_OBJECT_PURGE_RUNS_PER_INVOCATION`) 차례로 lease하며
+각 run은 삭제 200개 예산과 첫 오류 중단을 그대로 가진다. 실패·lease 유실·빈 queue에서 그 실행의 purge를
+멈춘다. 말소 tenant 하나는 30일 동안 매시간 1 pass(720 pass)가 필요하므로, scheduler를 분당 1회 돌리면
+30일 창 안의 말소 tenant 약 600명(하루 약 20건 말소)까지 매시간 주기를 지킨다. 5분 주기면 약 120명이다. 넘치면
+due 행이 `available_at` 순으로 기다릴 뿐 빠지지 않고, 주기만 늘어난다. 복원 재생은 원장의 모든 tenant를 한꺼번에
+다시 무장하므로 복원 직후에는 이 한도로 소진 시간을 계산한다. 이 수치는 실패가 없다고 가정한다. 특정 tenant에서
+반복 실패하는 purge(예: 그 tenant 디렉터리 안의 link로 `UNSAFE_STORAGE_PATH`)가 due일 때마다 그 실행의 batch가
+1회로 끊기므로, 그런 행이 dead letter가 될 때까지 처리량이 044 수준(시간당 60)으로 내려갈 수 있다. 실행 1회의
+시간은 벽시계로 묶여 있지 않다. run마다 2분 lease 안에 끝나야 하므로 느린 저장소에서는 최대 약 20분까지 늘어나
+뒤이은 derived 정리·스윕·housekeeping을 미룬다.
+
 raw PUT의 `UPLOAD_RESUME_REQUIRED`는 같은 upload ID와 동일 파일로 재전송한다.
 `UPLOAD_RETRY_REQUIRED` 또는 terminal failed reservation은 새 idempotency key로 intent부터 다시 만든다.
 두 경우 모두 파일 선택은 local React state에만 유지하며 storage ref는 브라우저 응답에 포함하지 않는다.

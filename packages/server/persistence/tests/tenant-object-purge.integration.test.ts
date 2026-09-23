@@ -40,6 +40,7 @@ import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
   processOneTenantObjectPurge,
+  processTenantObjectPurges,
   reconcileActivityTrackObjects,
   reconcileCourseThumbnailObjects,
   type PurgedStorage,
@@ -454,14 +455,48 @@ describe('erased tenant object-prefix purge (M2-01x)', () => {
          VALUES($1,clock_timestamp(),clock_timestamp())`,
         [live],
       );
+      const armed = await existingPurgeRow(live);
       await drainPurges();
       expect(await statAll(objects)).toEqual([true, true, true, true]);
-      expect(await purgeRow(live)).toMatchObject({ passes: 0, attempts: 0 });
+      // Refused, and no longer silently (M2-01z): the row says why, and nothing was charged —
+      // no lease, no attempt, no pass, its due time untouched.
+      const refused = await existingPurgeRow(live);
+      expect(refused).toMatchObject({
+        passes: 0,
+        attempts: 0,
+        completed_at: null,
+        last_error_code: 'INCONSISTENT_LEDGER:IDENTITY_ACCOUNT_PRESENT',
+      });
+      expect(refused.available_at.getTime()).toBe(armed.available_at.getTime());
+      const leaseState = await admin.query(
+        'SELECT lease_owner,lease_until FROM tenant_object_purge WHERE athlete_id=$1',
+        [live],
+      );
+      expect(leaseState.rows).toEqual([{ lease_owner: null, lease_until: null }]);
+      // One query finds it with every other kind of stuck purge.
+      const stuck = await admin.query<{ athlete_id: string }>(
+        `SELECT athlete_id FROM tenant_object_purge WHERE completed_at IS NULL
+           AND (last_error_code LIKE 'INCONSISTENT_LEDGER:%' OR last_error_code LIKE 'DEAD_LETTER:%')`,
+      );
+      expect(stuck.rows.map((row) => row.athlete_id)).toContain(live);
+      // Stamped once: another refusal does not write the row again.
+      const version = async () =>
+        (
+          await admin.query<{ xmin: string }>(
+            'SELECT xmin::text FROM tenant_object_purge WHERE athlete_id=$1',
+            [live],
+          )
+        ).rows[0]?.xmin;
+      const stampedVersion = await version();
+      await drainPurges();
+      expect(await version()).toBe(stampedVersion);
 
-      // The same row, once the account is gone, is purged: the refusal above was the account.
+      // The same row, once the account is gone, is purged: the refusal above was the account,
+      // and a finished pass clears the label.
       await admin.query('DELETE FROM identity_private.account WHERE athlete_id::text=$1', [live]);
       await drainPurges();
       expect(await statAll(objects)).toEqual([false, false, false, false]);
+      expect(await purgeRow(live)).toMatchObject({ passes: 1, last_error_code: null });
     });
 
     it('arms nothing for an id that is not canonical, even when it spells a live tenant’s', async () => {
@@ -483,6 +518,234 @@ describe('erased tenant object-prefix purge (M2-01x)', () => {
         ),
       ).rejects.toMatchObject({ code: '23514' });
     });
+  });
+
+  describe('a run that outlives its lease (M2-01z)', () => {
+    /**
+     * A store whose listing takes longer than the lease: the lease is made to run out (on the
+     * database clock, as two minutes would) while the listing is in progress, so the run's
+     * `finish` is refused exactly as a real slow run's would be.
+     */
+    function outlivingStorage(tenantId: string): PurgedStorage {
+      return {
+        ...purgeStorage(storage),
+        listTenantObjects: async (listed, limit) => {
+          await admin.query(
+            `UPDATE tenant_object_purge SET lease_until=clock_timestamp()-interval '1 second'
+             WHERE athlete_id=$1 AND lease_owner IS NOT NULL`,
+            [tenantId],
+          );
+          return storage.listTenantObjects(listed, limit);
+        },
+      };
+    }
+
+    /** Makes this tenant's purge the first due one, at the given attempt count. */
+    async function dueFirst(tenantId: string, attempts: number): Promise<void> {
+      // Everything else that is due runs first; this one is held back meanwhile.
+      await admin.query(
+        `UPDATE tenant_object_purge SET available_at=clock_timestamp()+interval '1 day'
+         WHERE athlete_id=$1`,
+        [tenantId],
+      );
+      await drainPurges();
+      await admin.query(
+        `UPDATE tenant_object_purge SET attempts=$2,
+           available_at=clock_timestamp()-interval '10 years' WHERE athlete_id=$1`,
+        [tenantId, attempts],
+      );
+    }
+
+    type LeaseState = PurgeRow & { lease_owner: string | null; lease_until: Date | null };
+    async function leaseState(tenantId: string): Promise<LeaseState | undefined> {
+      const rows = await admin.query<LeaseState>(
+        `SELECT armed_at,available_at,passes,objects_purged,completed_at,last_error_code,attempts,
+           lease_owner,lease_until FROM tenant_object_purge WHERE athlete_id=$1`,
+        [tenantId],
+      );
+      return rows.rows[0];
+    }
+
+    it('labels the lost attempt when its lease is taken over, and keeps retrying below 100', async () => {
+      const erased = randomUUID();
+      const objects = await rowlessObjects(erased);
+      await operations.eraseAccount(erased);
+      await dueFirst(erased, 0);
+      expect(await processOneTenantObjectPurge(cleanup, outlivingStorage(erased))).toBe(
+        'lease_lost',
+      );
+      // The lost run could not finish: charged, still carrying its stale lease, no label yet.
+      expect(await leaseState(erased)).toMatchObject({ attempts: 1, last_error_code: null });
+      expect((await leaseState(erased))?.lease_owner).not.toBeNull();
+
+      // The next run takes the row over, and the takeover says what happened to the last one.
+      const taken = await cleanup.leaseTenantObjectPurge(new Date(), new Date(Date.now() + 1000));
+      expect(taken).toEqual({ tenantId: erased, attempts: 2 });
+      expect(await leaseState(erased)).toMatchObject({ last_error_code: 'LEASE_EXPIRED' });
+      await admin.query(
+        `UPDATE tenant_object_purge SET lease_until=clock_timestamp()-interval '1 second'
+         WHERE athlete_id=$1`,
+        [erased],
+      );
+      // A run that does finish clears it; the objects go.
+      await drainPurges();
+      expect(await statAll(objects)).toEqual([false, false, false, false]);
+      expect(await leaseState(erased)).toMatchObject({
+        attempts: 0,
+        passes: 1,
+        last_error_code: null,
+        lease_owner: null,
+      });
+    });
+
+    it('dead-letters a purge whose 100th attempt lost its lease, labelled, never NULL', async () => {
+      const erased = randomUUID();
+      const objects = await rowlessObjects(erased);
+      await operations.eraseAccount(erased);
+
+      // The 99th attempt lost: still in rotation, labelled as a lost lease, not a dead letter.
+      await dueFirst(erased, 98);
+      expect(await processOneTenantObjectPurge(cleanup, outlivingStorage(erased))).toBe(
+        'lease_lost',
+      );
+      expect(await leaseState(erased)).toMatchObject({ attempts: 99, last_error_code: null });
+      // The 100th is leased (taking over the 99th) and loses its lease too.
+      expect(await processOneTenantObjectPurge(cleanup, outlivingStorage(erased))).toBe(
+        'lease_lost',
+      );
+      const lost = await leaseState(erased);
+      expect(lost).toMatchObject({ attempts: 100, last_error_code: 'LEASE_EXPIRED' });
+      expect(lost?.lease_owner).not.toBeNull();
+
+      // Any later lease call dead-letters it, labelled, and clears the stale lease.
+      await drainPurges();
+      const dead = await leaseState(erased);
+      expect(dead).toMatchObject({
+        attempts: 100,
+        completed_at: null,
+        passes: 0,
+        last_error_code: 'DEAD_LETTER:LEASE_EXPIRED',
+        lease_owner: null,
+        lease_until: null,
+      });
+      // (The two lost runs did delete what they listed — a slow run is still a run; only its
+      // bookkeeping was refused.) Out of rotation: it is never leased again.
+      expect(await statAll(objects)).toEqual([false, false, false, false]);
+      await admin.query(
+        'UPDATE tenant_object_purge SET available_at=clock_timestamp() WHERE athlete_id=$1',
+        [erased],
+      );
+      expect(await drainPurges()).not.toContain('lease_lost');
+      expect(await leaseState(erased)).toMatchObject({ attempts: 100 });
+
+      // The table itself refuses the silent state: out of attempts, unleased, unlabelled.
+      await expect(
+        admin.query('UPDATE tenant_object_purge SET last_error_code=NULL WHERE athlete_id=$1', [
+          erased,
+        ]),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        admin.query(
+          "UPDATE tenant_object_purge SET last_error_code='LEASE_EXPIRED' WHERE athlete_id=$1",
+          [erased],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+
+      // An erasure replay re-arms it from scratch (the operator's recovery path), and it runs.
+      const restored = await rowlessObjects(erased);
+      await replayErasure(erased);
+      expect(await leaseState(erased)).toMatchObject({ attempts: 0, last_error_code: null });
+      await drainPurges();
+      expect(await statAll(restored)).toEqual([false, false, false, false]);
+      expect(await leaseState(erased)).toMatchObject({ passes: 1, last_error_code: null });
+    });
+
+    it('never dead-letters a 100th attempt whose lease is still running', async () => {
+      const erased = randomUUID();
+      const objects = await rowlessObjects(erased);
+      await operations.eraseAccount(erased);
+      await dueFirst(erased, 99);
+      const now = new Date();
+      const last = await cleanup.leaseTenantObjectPurge(now, new Date(now.getTime() + 60_000));
+      expect(last).toEqual({ tenantId: erased, attempts: 100 });
+      // Another worker's lease call meanwhile: the running last attempt keeps its lease.
+      await drainPurges();
+      expect(await leaseState(erased)).toMatchObject({ attempts: 100, last_error_code: null });
+      expect((await leaseState(erased))?.lease_owner).not.toBeNull();
+      // So it can still finish, and a finished pass puts it back in rotation.
+      for (const key of objects) await storage.delete(key);
+      expect(
+        await cleanup.finishTenantObjectPurge(last ?? { tenantId: erased, attempts: 100 }, {
+          ok: true,
+          purged: 4,
+          unrecognized: 0,
+          more: false,
+        }),
+      ).toBe(true);
+      expect(await leaseState(erased)).toMatchObject({ attempts: 0, passes: 1 });
+    });
+
+    it('still dead-letters a failed 100th attempt with its own code', async () => {
+      const erased = randomUUID();
+      await rowlessObjects(erased);
+      await operations.eraseAccount(erased);
+      await dueFirst(erased, 99);
+      const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+      const failing: PurgedStorage = {
+        ...purgeStorage(storage),
+        delete: async () => Promise.reject(unsafe),
+      };
+      expect(await processOneTenantObjectPurge(cleanup, failing)).toBe('retry_scheduled');
+      expect(await leaseState(erased)).toMatchObject({
+        attempts: 100,
+        last_error_code: 'DEAD_LETTER:UNSAFE_STORAGE_PATH',
+        lease_owner: null,
+      });
+    });
+  });
+
+  it('runs up to ten purges in one invocation, one lease at a time, and stops at a failure (M2-01z)', async () => {
+    await drainPurges();
+    const tenants = Array.from({ length: 12 }, () => randomUUID());
+    const objects = new Map<string, ObjectKey[]>();
+    for (const tenant of tenants) {
+      objects.set(tenant, await rowlessObjects(tenant));
+      await operations.eraseAccount(tenant);
+    }
+    const outcomes = await processTenantObjectPurges(cleanup, purgeStorage(storage));
+    expect(outcomes).toEqual(Array.from({ length: 10 }, () => 'passed'));
+    const gone = await Promise.all(
+      tenants.map(async (tenant) => (await statAll(objects.get(tenant) ?? [])).every((x) => !x)),
+    );
+    expect(gone.filter(Boolean)).toHaveLength(10);
+    // The next invocation takes the other two and stops at "nothing due".
+    expect(await processTenantObjectPurges(cleanup, purgeStorage(storage))).toEqual([
+      'passed',
+      'passed',
+      'empty',
+    ]);
+    for (const tenant of tenants)
+      expect(await statAll(objects.get(tenant) ?? [])).toEqual([false, false, false, false]);
+
+    // A failing run ends the batch: the second tenant is not leased in this invocation.
+    const first = randomUUID();
+    const second = randomUUID();
+    await rowlessObjects(first);
+    await rowlessObjects(second);
+    await operations.eraseAccount(first);
+    await operations.eraseAccount(second);
+    const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+    const failing: PurgedStorage = {
+      ...purgeStorage(storage),
+      delete: async () => Promise.reject(unsafe),
+    };
+    expect(await processTenantObjectPurges(cleanup, failing)).toEqual(['retry_scheduled']);
+    const attempts = await admin.query<{ athlete_id: string; attempts: number }>(
+      'SELECT athlete_id,attempts FROM tenant_object_purge WHERE athlete_id IN ($1,$2)',
+      [first, second],
+    );
+    expect(attempts.rows.map((row) => row.attempts).sort()).toEqual([0, 1]);
+    await drainPurges();
   });
 
   it('stops at a root swapped mid-purge, records why, and deletes nothing outside the root', async () => {
@@ -533,13 +796,42 @@ describe('erased tenant object-prefix purge (M2-01x)', () => {
   });
 
   it('adds no lock-order inversion: erasures, replays, purges and the queue together', async () => {
-    const tenants = Array.from({ length: 12 }, () => randomUUID());
+    // A third of the tenants start with an identity account and an (inconsistent) purge row
+    // already due, so the lease's refusal label (M2-01z) is written while erasures and replays
+    // upsert those same rows. The ledger entry already exists, so erasure never removes
+    // those accounts and the rows stay refused: this covers stamping under contention, not a refused
+    // row becoming leasable (that path is covered serially by the refusal test).
+    const tenants: string[] = [];
+    const accountHeld: ObjectKey[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      if (index % 3 !== 1) {
+        tenants.push(randomUUID());
+        continue;
+      }
+      const account = await admin.query<{ athlete_id: string }>(
+        `INSERT INTO identity_private.account(issuer,subject) VALUES('https://issuer.test',$1)
+         RETURNING athlete_id::text`,
+        [randomUUID()],
+      );
+      const tenant = account.rows[0]?.athlete_id;
+      if (!tenant) throw new Error('account was not created');
+      tenants.push(tenant);
+    }
     for (const [index, tenant] of tenants.entries()) {
       await uploadTrack(tenant);
       // A third hold an open publication fence, so their erasure reads one; the rest are due
       // at once and their purges run inside the contention.
       if (index % 3 === 0) await uploadTrack(tenant, { finalize: false });
-      await rowlessObjects(tenant);
+      const rowless = await rowlessObjects(tenant);
+      if (index % 3 === 1) accountHeld.push(...rowless);
+    }
+    for (const tenant of tenants.filter((_, index) => index % 3 === 1)) {
+      await admin.query('INSERT INTO tenant_erasure(athlete_id) VALUES($1)', [tenant]);
+      await admin.query(
+        `INSERT INTO tenant_object_purge(athlete_id,armed_at,available_at)
+         VALUES($1,clock_timestamp(),clock_timestamp())`,
+        [tenant],
+      );
     }
     const failures: string[] = [];
     const record = (error: unknown) => {
@@ -566,7 +858,8 @@ describe('erased tenant object-prefix purge (M2-01x)', () => {
     const workers = Array.from({ length: 6 }, async () => {
       for (let round = 0; round < 15; round += 1) {
         try {
-          await processOneTenantObjectPurge(cleanup, purgeStorage(storage));
+          // The worker's batch (M2-01z): several leased runs, one at a time.
+          await processTenantObjectPurges(cleanup, purgeStorage(storage));
           await processOneResourceObjectCleanup(cleanup, (ref) =>
             storage.delete(validateObjectKey(ref)),
           );
@@ -578,5 +871,17 @@ describe('erased tenant object-prefix purge (M2-01x)', () => {
     await Promise.all([...erasures, ...writers, ...workers]);
     expect(failures.filter((message) => /40P01|deadlock/i.test(message))).toEqual([]);
     expect(failures).toEqual([]);
+    // The ledger entry already existed, so their erasure never reached the account: still
+    // refused, labelled (a replay's re-arm clears the label; the next lease call restores it),
+    // and every object of theirs is still there.
+    await drainPurges();
+    expect((await statAll(accountHeld)).every(Boolean)).toBe(true);
+    const refused = await admin.query<{ code: string | null }>(
+      'SELECT last_error_code AS code FROM tenant_object_purge WHERE athlete_id=ANY($1)',
+      [tenants.filter((_, index) => index % 3 === 1)],
+    );
+    expect(refused.rows.map((row) => row.code)).toEqual(
+      Array.from({ length: 4 }, () => 'INCONSISTENT_LEDGER:IDENTITY_ACCOUNT_PRESENT'),
+    );
   }, 60_000);
 });

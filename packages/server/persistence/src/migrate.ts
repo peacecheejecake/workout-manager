@@ -47,6 +47,7 @@ const migrationFiles = [
   '042_erasure_queues_watched_object_refs.sql',
   '043_course_accessibility_notes.sql',
   '044_tenant_object_purge.sql',
+  '045_tenant_object_purge_visibility.sql',
 ] as const;
 
 /**

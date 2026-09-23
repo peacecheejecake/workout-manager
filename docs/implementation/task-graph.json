@@ -1247,7 +1247,7 @@
       "title": "활동 단위 suppression의 백업 공백",
       "dependsOn": ["M2-01x"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01x에서 분리. 살아 있는 계정에서 백업 뒤 삭제된 활동의 업로드가 DB dump와 객체 아카이브 복사 사이에 들어오면, 복원 DB에는 그 객체를 가리키는 행이 없고 tenant가 살아 있어 prefix purge도 적용되지 않는다. 복원 후 활동 단위 suppression 재적용이 그 객체까지 지우는 방법을 설계·구현하고, M2-01x와 같은 drill 공백 재현(dump와 cp 사이 실제 업로드)으로 닫혔음을 보인다. 과잉 삭제 금지: 살아 있는 활동과 다른 tenant의 객체는 건드리지 않는다."
     },
     {
@@ -1255,7 +1255,8 @@
       "title": "tenant prefix purge 운영 가시성",
       "dependsOn": ["M2-01x"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01z.md",
       "scope": "M2-01x 독립 검토의 비차단 지적. (1) 계정이 남아 있어 lease가 거절한 purge 행이 조용히 남는다(attempts 0, 오류 코드 없음) — 불일치 원장으로 운영자에게 드러낸다. (2) lease를 잃은(120초 초과) 실행은 오류 코드 없이 attempts만 늘어 100회에 last_error_code NULL로 끝날 수 있다 — DEAD_LETTER 표식을 남긴다. (3) worker 호출당 purge 1회라 말소 tenant가 많으면 30일 동안의 시간당 재무장 pass가 밀린다 — 처리량 한계를 문서화하거나 조정한다. 과잉 삭제 방지 가드는 약화하지 않는다."
     },
     {
@@ -1274,6 +1275,14 @@
       "kind": "task",
       "status": "in_progress",
       "scope": "M2-01z 검증 중 관측. 부하(약 50–75)에서 packages/server/media/tests/tenant-listing.test.ts의 'never answers a listing through a root swapped during the walk'가 6회 중 3회 swap된 link를 통해 1–2건 답했다(main과 같은 코드). listing 계약('swap된 root를 통해 답하지 않는다')의 실제 결함인지 시험 쪽 경합인지 규명하고, 결함이면 고치거나 잔여 위험을 경계 짓고 purge까지의 end-to-end로 root 밖 삭제가 M2-01o가 문서화한 범위를 넘지 않음을 보인다."
+    },
+    {
+      "id": "M2-01ac",
+      "title": "identity·UI 시험의 부하 간헐 실패",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "여러 노드의 병합 검증에서 제품 변경과 무관한 시험이 부하에서 반복 실패했다: tests/identity/planner-operations.spec.ts:129(scrollIntoViewIfNeeded 요소 안정 대기 timeout, load 약 26·45에서 4회 중 2회), dashboard-ui.spec.ts:267(toHaveCount 단언), dashboard-layout.spec.ts:308(로그인 링크 click 5초 timeout), activity-track-map.spec.ts:165(지도 클릭 선택 단계), 그리고 unit의 activity-workbench 20k·data-panels·planning·session-completion-workspace 5초 timeout. 각 실패가 시험 쪽 경쟁인지 제품 결함인지 규명하고, 시험 쪽이면 timeout을 늘리는 대신 기다릴 조건을 바로잡는다. 수용 게이트 증거의 신뢰도에 영향을 준다."
     },
     {
       "id": "M2-01k",
