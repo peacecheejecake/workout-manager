@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createActivityTrackFinalObjectKey,
   createActivityTrackTemporaryObjectKey,
+  createCourseThumbnailFinalObjectKey,
+  createCourseThumbnailTemporaryObjectKey,
   createFinalObjectKey,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
@@ -248,6 +250,56 @@ describe('activity track object keys', () => {
         sha256,
         extension: 'gpx',
       }),
+    ).toThrow(InvalidObjectKeyError);
+  });
+});
+
+describe('course thumbnail object keys', () => {
+  const tenantId = '11111111-1111-4111-8111-111111111111';
+  const courseId = '22222222-2222-4222-8222-222222222222';
+  const revisionId = '33333333-3333-4333-8333-333333333333';
+  const jobId = '44444444-4444-4444-8444-444444444444';
+  const sha256 = 'a'.repeat(64);
+
+  it('puts a thumbnail under its own course and names the revision it depicts', () => {
+    const temporary = createCourseThumbnailTemporaryObjectKey({ tenantId, courseId, jobId });
+    const final = createCourseThumbnailFinalObjectKey({ tenantId, courseId, revisionId, sha256 });
+    expect(temporary).toBe(
+      `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/temporary/${jobId}`,
+    );
+    // The revision is in the key, which is why a picture can never be shared between two
+    // revisions and why over-deleting one cannot take another's bytes with it.
+    expect(final).toBe(
+      `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/revisions/${revisionId}/sha256/${sha256}.svg`,
+    );
+    expect(parseObjectKey(temporary)).toEqual({
+      kind: 'course_thumbnail_temporary',
+      tenantId,
+      courseId,
+      jobId,
+    });
+    expect(parseObjectKey(final)).toEqual({
+      kind: 'course_thumbnail_final',
+      tenantId,
+      courseId,
+      revisionId,
+      sha256,
+    });
+  });
+
+  it('refuses anything that is not one of those two shapes', () => {
+    for (const value of [
+      `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/revisions/${revisionId}/sha256/${sha256}.png`,
+      `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/revisions/${revisionId}/sha256/${'z'.repeat(64)}.svg`,
+      `private/v1/tenants/${tenantId}/courses/../${courseId}/thumbnails/temporary/${jobId}`,
+      `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/temporary/${jobId}/extra`,
+    ])
+      expect(() => parseObjectKey(value)).toThrow(InvalidObjectKeyError);
+    expect(() =>
+      createCourseThumbnailFinalObjectKey({ tenantId, courseId, revisionId, sha256: 'short' }),
+    ).toThrow(InvalidObjectKeyError);
+    expect(() =>
+      createCourseThumbnailTemporaryObjectKey({ tenantId, courseId: 'not-a-uuid', jobId }),
     ).toThrow(InvalidObjectKeyError);
   });
 });

@@ -17,6 +17,7 @@ import {
   courseRouteCandidateSchema,
   courseRouteCandidateSetSchema,
   courseRouteProposalSchema,
+  courseThumbnailStateSchema,
   courseWaypointListSchema,
   courseWaypointSchema,
   targetDistanceLimits,
@@ -29,6 +30,7 @@ import {
   type CourseRouteCandidate,
   type CourseRouteCandidateSet,
   type CourseRouteProposal,
+  type CourseThumbnailState,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
 import {
@@ -281,6 +283,25 @@ export interface CourseRepository {
     courseId: string,
     proposalId: string,
   ): Promise<CourseRouteProposal | null>;
+  /**
+   * Where the head revision's stored thumbnail is, or `null` when there is none to serve.
+   *
+   * Only a `ready` picture of the CURRENT head resolves. A superseded one is a picture of a
+   * line the owner has since changed — after a privacy trim, of a line that crossed a
+   * protected area — so it must not be reachable, and this is the single place the download
+   * route can get a key from at all.
+   */
+  resolveThumbnailObject(
+    athleteId: string,
+    courseId: string,
+  ): Promise<{
+    readonly storageRef: string;
+    readonly courseRevision: number;
+    readonly revisionId: string;
+    readonly contentHash: string;
+    readonly byteSize: number;
+    readonly mediaType: string;
+  } | null>;
   remove(
     athleteId: string,
     courseId: string,
@@ -389,6 +410,72 @@ async function lineageOf(
   );
 }
 
+/**
+ * The stored thumbnail of one revision, as the read model reports it (M2-01l).
+ *
+ * The row is read for the HEAD revision only, which is the whole reason a privacy-trimmed
+ * course cannot show a pre-trim picture: the trim appended a revision, so the head names a
+ * different row, and the previous one was superseded and queued for reclamation inside the
+ * same transaction as the trim.
+ *
+ * The storage key is never part of this. The bytes come through the authenticated download.
+ */
+async function readThumbnail(
+  tx: Transaction,
+  courseId: string,
+  courseRevision: number,
+): Promise<CourseThumbnailState> {
+  const found = await tx.query(
+    `SELECT state,revision_id,content_hash,size_bytes,media_type,viewport,vertex_count,
+       renderer_id,renderer_version,unavailable_reason,failure_code,failure_retryable,
+       attempt_count,created_at,ready_at
+     FROM course_thumbnail WHERE athlete_id=$1 AND course_id=$2 AND course_revision=$3`,
+    [tx.athleteId, courseId, courseRevision],
+  );
+  const row = found.rows[0];
+  if (!row) return courseThumbnailStateSchema.parse({ status: 'none' });
+  const state = z
+    .enum(['queued', 'rendering', 'prepared', 'ready', 'unavailable', 'failed', 'superseded'])
+    .parse(row['state']);
+  if (state === 'ready')
+    return courseThumbnailStateSchema.parse({
+      status: 'ready',
+      courseRevision,
+      revisionId: row['revision_id'],
+      mediaType: row['media_type'],
+      contentHash: row['content_hash'],
+      byteSize: Number(row['size_bytes']),
+      viewport: Number(row['viewport']),
+      vertexCount: Number(row['vertex_count']),
+      rendererId: row['renderer_id'],
+      rendererVersion: Number(row['renderer_version']),
+      createdAt: instant(row['ready_at']),
+    });
+  if (state === 'unavailable')
+    return courseThumbnailStateSchema.parse({
+      status: 'unavailable',
+      courseRevision,
+      reason: row['unavailable_reason'],
+    });
+  if (state === 'failed')
+    return courseThumbnailStateSchema.parse({
+      // Two different answers. A scheduled retry is not the same fact as a render that has
+      // given up, and the screen says so rather than showing one silence for both.
+      status: row['failure_retryable'] === true ? 'retrying' : 'abandoned',
+      courseRevision,
+      attemptCount: Number(row['attempt_count']),
+      failureCode: row['failure_code'],
+    });
+  // `superseded` is reported as `none`: the row is a tombstone for a picture of some other
+  // revision, and this revision has no stored picture of its own.
+  if (state === 'superseded') return courseThumbnailStateSchema.parse({ status: 'none' });
+  return courseThumbnailStateSchema.parse({
+    status: 'pending',
+    courseRevision,
+    queuedAt: instant(row['created_at']),
+  });
+}
+
 async function readCourse(tx: Transaction, courseId: string): Promise<ReadResult> {
   const found = await tx.query(
     `SELECT course_id,name,status,head_revision,revision_id,unavailable_reason,reclaimed_at,
@@ -412,6 +499,7 @@ async function readCourse(tx: Transaction, courseId: string): Promise<ReadResult
     status: 'available',
     course,
     revision: revision(parsed, await lineageOf(tx, courseId, parsed.course_revision)),
+    thumbnail: await readThumbnail(tx, courseId, parsed.course_revision),
   });
 }
 
@@ -1175,6 +1263,45 @@ export function createCourseRepository(database: Database): CourseRepository {
           'course.revision_stored',
         );
         return readCourse(tx, courseId);
+      });
+    },
+
+    resolveThumbnailObject(athleteId, rawCourseId) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawCourseId);
+      return database.tenant(tenantId, async (tx) => {
+        // One statement, joined to the head. Reading the course and the thumbnail
+        // separately would let the head advance between them and serve the previous
+        // revision's picture as the current one.
+        const found = await tx.query(
+          `SELECT t.storage_ref,t.course_revision,t.revision_id,t.content_hash,t.size_bytes,
+             t.media_type
+           FROM course_thumbnail t
+           JOIN course c ON c.athlete_id=t.athlete_id AND c.course_id=t.course_id
+             AND c.status='available' AND c.head_revision=t.course_revision
+           WHERE t.athlete_id=$1 AND t.course_id=$2 AND t.state='ready'`,
+          [tenantId, courseId],
+        );
+        const row = found.rows[0];
+        if (!row) return null;
+        const parsed = z
+          .object({
+            storage_ref: z.string().min(1).max(512),
+            course_revision: z.number().int().positive(),
+            revision_id: uuid,
+            content_hash: z.string().regex(/^[a-f0-9]{64}$/),
+            size_bytes: z.coerce.number().int().positive(),
+            media_type: z.literal('image/svg+xml'),
+          })
+          .parse(row);
+        return {
+          storageRef: parsed.storage_ref,
+          courseRevision: parsed.course_revision,
+          revisionId: parsed.revision_id,
+          contentHash: parsed.content_hash,
+          byteSize: parsed.size_bytes,
+          mediaType: parsed.media_type,
+        };
       });
     },
 

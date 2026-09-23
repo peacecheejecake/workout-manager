@@ -31,6 +31,12 @@ import { createResourceRetrievalRepository } from '../packages/server/persistenc
 import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.ts';
 import { createLocalFilesystemObjectStorage } from '../packages/server/media/src/local-filesystem.ts';
+import {
+  createCourseThumbnailFinalObjectKey,
+  createCourseThumbnailTemporaryObjectKey,
+} from '../packages/server/media/src/keys.ts';
+import { createCourseThumbnailWorkerRepository } from '../packages/server/persistence/src/course-thumbnails.ts';
+import { renderCourseThumbnail } from '../packages/server/courses/src/thumbnail.ts';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
 import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
@@ -66,6 +72,7 @@ import {
   grantGalleryMedia,
   grantActivityTracks,
   grantCourses,
+  grantCourseThumbnailWorker,
   grantResources,
   grantResourceRetrieval,
   grantCoachingRunWorker,
@@ -201,6 +208,13 @@ try {
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
     await grantGarminWorker(adminUrl, 'workout_garmin_worker');
+    // The course thumbnail renderer (M2-01l) runs as its own role with EXECUTE on eight
+    // bounded functions and no table privileges, exactly as it would in production.
+    await admin.query(
+      'CREATE ROLE workout_course_thumbnail_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
+    await grantCourseThumbnailWorker(adminUrl, 'workout_course_thumbnail_worker');
+    await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
     await admin.query(
@@ -264,6 +278,66 @@ try {
   closers.push(async () => {
     clearInterval(timer);
     await workerRun;
+  });
+  // One bounded render per tick, driven by the real lease/prepare/publish/finalize path.
+  // Nothing about the screen knows this is running: it shows the drawn line until a stored
+  // picture exists, which is the fallback this node is required to keep working.
+  const thumbnailRenderer = createCourseThumbnailWorkerRepository({
+    connectionString: `postgresql://workout_course_thumbnail_worker@${endpoint}`,
+  });
+  closers.push(() => thumbnailRenderer.close());
+  let renderRun: Promise<unknown> | undefined;
+  const renderTimer = setInterval(() => {
+    if (renderRun !== undefined) return;
+    renderRun = (async () => {
+      const lease = await thumbnailRenderer.lease(30);
+      if (lease === null) return;
+      const drawn = renderCourseThumbnail(lease.coordinates);
+      const temporaryKey = createCourseThumbnailTemporaryObjectKey({
+        tenantId: lease.athleteId,
+        courseId: lease.courseId,
+        jobId: lease.jobId,
+      });
+      const finalKey = createCourseThumbnailFinalObjectKey({
+        tenantId: lease.athleteId,
+        courseId: lease.courseId,
+        revisionId: lease.revisionId,
+        sha256: drawn.sha256,
+      });
+      await resourceStorage.delete(temporaryKey).catch(() => undefined);
+      await resourceStorage.writeTemporary(
+        temporaryKey,
+        (async function* () {
+          yield drawn.bytes;
+        })(),
+      );
+      if (
+        !(await thumbnailRenderer.prepare(lease, {
+          storageRef: finalKey,
+          sha256: drawn.sha256,
+          byteSize: drawn.byteSize,
+          vertexCount: drawn.vertexCount,
+        }))
+      )
+        return;
+      if (!(await thumbnailRenderer.publicationFenceOpen(lease))) return;
+      await resourceStorage.publishTemporary(temporaryKey, finalKey, {
+        sha256: drawn.sha256,
+        sizeBytes: drawn.byteSize,
+      });
+      if ((await thumbnailRenderer.finalize(lease)) !== 'ready')
+        await thumbnailRenderer.requeueRefs(lease);
+    })()
+      .catch(() => {
+        console.error('Synthetic course thumbnail render retry pending.');
+      })
+      .finally(() => {
+        renderRun = undefined;
+      });
+  }, 250);
+  closers.push(async () => {
+    clearInterval(renderTimer);
+    await renderRun;
   });
   const jointApproval = createJointApprovalRepository(database, {
     policy: { id: 'running-core-v3-joint', version: '1' },

@@ -25,6 +25,7 @@ import type {
   CoursePreference,
   CoursePreferenceUpdate,
   CourseReadResult,
+  CourseThumbnailState,
 } from '@workout/contracts/courses';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
@@ -37,7 +38,7 @@ import { courseExportPath, createCourseApi, CourseRequestError } from './course-
 import { CourseDraftProvider, draftMapPaths, useCourseDraft } from './course-draft-context';
 import { CourseEditor } from './course-editor';
 import { createCourseExtrasApi } from './course-extras-api';
-import { CourseThumbnail } from './course-thumbnail';
+import { CourseThumbnail, StoredCourseThumbnail } from './course-thumbnail';
 import {
   CourseElevationPanel,
   CourseImportPanel,
@@ -469,19 +470,51 @@ function Workbench({
     });
   }
 
+  /**
+   * Six different facts, said six different ways.
+   *
+   * "Not there yet", "cannot be made", "failed and coming back" and "failed for good" are not
+   * the same answer, and the owner is told which one it is rather than being shown one
+   * silence for all of them. In every case but `ready` the picture beside this line is the
+   * drawn one, which is why none of these is an error.
+   */
+  function thumbnailLabel(state: CourseThumbnailState): string {
+    if (state.status === 'ready') return '저장된 썸네일을 보고 있습니다.';
+    if (state.status === 'pending') return '썸네일을 만드는 중입니다. 지금은 직접 그린 그림입니다.';
+    if (state.status === 'unavailable')
+      return '이 선으로는 썸네일을 만들 수 없습니다. 직접 그린 그림입니다.';
+    if (state.status === 'retrying')
+      return `썸네일 만들기가 실패해 다시 시도합니다(${state.attemptCount}번째). 지금은 직접 그린 그림입니다.`;
+    if (state.status === 'abandoned')
+      return '썸네일 만들기를 더 시도하지 않습니다. 직접 그린 그림입니다.';
+    return '저장된 썸네일이 없습니다. 직접 그린 그림입니다.';
+  }
+
   const detailBody =
     current?.status === 'available' ? (
       <div className={styles.detail}>
         <h3>{current.course.name}</h3>
         {/*
-          Drawn from the head revision the owner is looking at, so a privacy-trimmed course
-          shows its trimmed line. Nothing is stored: there is no derived object for a
-          deletion, a permission check or an export to have to reach.
+          The stored picture when there is one for THIS head revision, and the drawn one
+          otherwise. Both come from the same projection and the same coordinates, so a
+          privacy-trimmed course shows its trimmed line either way — and the stored picture
+          of the pre-trim line was superseded and queued for reclamation by the trim itself.
         */}
-        <CourseThumbnail
-          coordinates={current.revision.geometry.coordinates}
-          label={`${current.course.name} 선 미리보기 (수정 번호 ${current.course.headRevision})`}
-        />
+        {current.thumbnail.status === 'ready' ? (
+          <StoredCourseThumbnail
+            courseId={current.course.courseId}
+            sessionId={sessionId}
+            contentHash={current.thumbnail.contentHash}
+            coordinates={current.revision.geometry.coordinates}
+            label={`${current.course.name} 선 미리보기 (수정 번호 ${current.course.headRevision})`}
+          />
+        ) : (
+          <CourseThumbnail
+            coordinates={current.revision.geometry.coordinates}
+            label={`${current.course.name} 선 미리보기 (수정 번호 ${current.course.headRevision})`}
+          />
+        )}
+        <p data-testid="course-thumbnail-state">{thumbnailLabel(current.thumbnail)}</p>
         <dl>
           <dt>현재 수정 번호</dt>
           <dd data-testid="course-revision">{current.course.headRevision}</dd>

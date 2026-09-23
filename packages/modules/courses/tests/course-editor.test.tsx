@@ -204,18 +204,20 @@ function setup(
         total: 2,
       });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
-      return reply({ status: 'available', course: head, revision });
+      return reply({ status: 'available', course: head, revision, thumbnail: { status: 'none' } });
     if (input.path === `/bff/v1/courses/${otherCourseId}` && input.method === 'GET')
       return reply({
         status: 'available',
         course: { ...head, courseId: otherCourseId, name: 'Another loop' },
         revision: { ...revision, courseId: otherCourseId },
+        thumbnail: { status: 'none' },
       });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'PATCH')
       return reply({
         status: 'available',
         course: { ...head, headRevision: 3 },
         revision: { ...revision, courseRevision: 3 },
+        thumbnail: { status: 'none' },
       });
     throw new Error(`unexpected request ${input.method} ${input.path}`);
   });
@@ -620,6 +622,7 @@ function renderWithMovingHead(options: { holdWrites?: boolean } = {}) {
         name: stored.name,
         waypoints: stored.waypoints,
       },
+      thumbnail: { status: 'none' },
     });
   };
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
@@ -633,7 +636,12 @@ function renderWithMovingHead(options: { holdWrites?: boolean } = {}) {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [headNow], total: 1 });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
-      return reply({ status: 'available', course: headNow, revision });
+      return reply({
+        status: 'available',
+        course: headNow,
+        revision,
+        thumbnail: { status: 'none' },
+      });
     if (input.path === `/bff/v1/courses/${courseId}/route-proposals`) return computed(input);
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'PATCH') {
       if (stored.refuseWrites) return reply({ error: { code: 'COURSE_REVISION_CONFLICT' } }, 409);
@@ -996,6 +1004,7 @@ describe('an editor that belongs to one course', () => {
         status: 'available',
         course: { ...head, headRevision: 3 },
         revision: { ...revisionWith(cutGeneration), courseRevision: 3 },
+        thumbnail: { status: 'none' },
       }),
     );
     await waitFor(() =>
@@ -1039,6 +1048,7 @@ describe('writes that belong to the course they were started on', () => {
         status: 'available',
         course: { ...head, headRevision: 3 },
         revision: { ...revisionWith(cutGeneration), courseRevision: 3 },
+        thumbnail: { status: 'none' },
       }),
     );
     await waitFor(() =>

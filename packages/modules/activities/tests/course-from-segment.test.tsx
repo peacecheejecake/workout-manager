@@ -66,6 +66,7 @@ const created = {
     contentDigest: 'b'.repeat(64),
     createdAt,
   },
+  thumbnail: { status: 'none' },
 };
 
 function setup(options: { reply?: Reply; selectedSampleId?: string | null; drawn?: boolean } = {}) {

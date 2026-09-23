@@ -431,6 +431,22 @@ const collections = [
     `zone_id,name,center_longitude,center_latitude,radius_meters,created_at,updated_at`,
     'created_at,zone_id',
   ],
+  // M2-01l. Facts about the stored picture, never the picture and never its key: a
+  // thumbnail is recomputable from the geometry the owner's GPX export already carries, so
+  // exporting the bytes would add a second pictorial copy of their locations to this
+  // artifact and buy nothing a restore cannot rebuild. What is here is enough to verify a
+  // rebuild produced the same picture. Only a live one is exported; a superseded render is
+  // a tombstone for an object on its way out.
+  [
+    'courseThumbnails',
+    `(SELECT t.athlete_id,t.course_id,t.course_revision,t.revision_id,t.content_hash,
+        t.size_bytes,t.media_type,t.viewport,t.vertex_count,t.renderer_id,t.renderer_version,
+        t.created_at,t.ready_at
+      FROM course_thumbnail t WHERE t.state='ready') course_thumbnail`,
+    `course_id,course_revision,revision_id,content_hash,size_bytes,media_type,viewport,
+     vertex_count,renderer_id,renderer_version,created_at,ready_at`,
+    'course_id,course_revision',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -497,7 +513,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 20,
+          schemaVersion: 21,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

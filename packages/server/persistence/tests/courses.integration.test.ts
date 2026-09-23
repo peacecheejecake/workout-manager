@@ -712,7 +712,7 @@ describe('M2-01f private course ledger', () => {
       expectedRevision: imported.revision,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 20) throw new Error('expected v20');
+    if (exported.schemaVersion !== 21) throw new Error('expected v21');
     expect(exported.data.courses).toHaveLength(2);
     const reclaimed = exported.data.courses.find(
       (row) => row['course_id'] === course.course.courseId,

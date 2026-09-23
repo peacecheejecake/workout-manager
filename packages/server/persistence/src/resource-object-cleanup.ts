@@ -19,6 +19,13 @@ export interface ResourceObjectCleanupRepository {
   settleTrackObjectRef(storageRef: string): Promise<boolean>;
   /** Queues one track object the ledger does not account for. */
   reclaimUnreferencedTrackObject(storageRef: string): Promise<boolean>;
+  /**
+   * Course thumbnail renders that stopped being drained (M2-01l): a lease that expired
+   * mid-attempt gets another attempt, a render past its own deadline is abandoned. Both
+   * queue their object references, so an interrupted render leaks nothing.
+   */
+  reapCourseThumbnailRenders(limit?: number): Promise<number>;
+  pruneCourseThumbnailHistory(limit?: number): Promise<number>;
   pruneUploadHistory(limit?: number): Promise<number>;
   pruneCleanupHistory(limit?: number): Promise<number>;
   lease(now: Date, leaseUntil: Date): Promise<ResourceObjectCleanupLease | null>;
@@ -94,6 +101,22 @@ export function createResourceObjectCleanupRepository(options: {
         [z.string().min(1).max(512).parse(storageRef)],
       );
       return result.rows[0]?.['queued'] === true;
+    },
+    async reapCourseThumbnailRenders(limit = 100) {
+      const boundedLimit = z.number().int().min(1).max(100).parse(limit);
+      const result = await pool.query(
+        'SELECT public.reap_course_thumbnail_renders($1) AS affected',
+        [boundedLimit],
+      );
+      return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
+    },
+    async pruneCourseThumbnailHistory(limit = 100) {
+      const boundedLimit = z.number().int().min(1).max(100).parse(limit);
+      const result = await pool.query(
+        'SELECT public.prune_course_thumbnail_history($1) AS affected',
+        [boundedLimit],
+      );
+      return z.number().int().nonnegative().parse(result.rows[0]?.['affected']);
     },
     async pruneUploadHistory(limit = 100) {
       const boundedLimit = z.number().int().min(1).max(100).parse(limit);

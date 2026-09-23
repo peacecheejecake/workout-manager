@@ -48,6 +48,8 @@ function setup(input: {
       : vi.fn(async () => 0),
     pruneUploadHistory: vi.fn(async () => 0),
     pruneCleanupHistory: vi.fn(async () => 0),
+    reapCourseThumbnailRenders: vi.fn(async () => 0),
+    pruneCourseThumbnailHistory: vi.fn(async () => 0),
     reconcileCursor: vi.fn(async () => input.reconcileCursor ?? ''),
     advanceReconcileCursor: vi.fn(async () => undefined),
     reconcileCandidates: vi.fn(async () => input.candidates ?? []),

@@ -30,6 +30,17 @@ const trackFinalKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/activities/(${UUID_PATTERN})/tracks/(${UUID_PATTERN})/(raw|normalized|map_path)/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](fit|gpx|json)$`,
 );
 
+// Course thumbnails are private derived location data of a course revision, so their keys
+// live under the course and name the immutable revision they depict. A picture that is
+// still being rendered has its own temporary name per render job, so an interrupted render
+// always leaves one deterministic ref the cleanup manifest can reclaim by exact key.
+const courseThumbnailTemporaryKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/courses/(${UUID_PATTERN})/thumbnails/temporary/(${UUID_PATTERN})$`,
+);
+const courseThumbnailFinalKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/courses/(${UUID_PATTERN})/thumbnails/revisions/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.]svg$`,
+);
+
 declare const temporaryObjectKeyBrand: unique symbol;
 declare const finalObjectKeyBrand: unique symbol;
 
@@ -189,6 +200,31 @@ export function createActivityTrackFinalObjectKey(input: {
   return `private/v1/tenants/${tenantId}/activities/${activityId}/tracks/${trackId}/${input.artifactKind}/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
 }
 
+export function createCourseThumbnailTemporaryObjectKey(input: {
+  tenantId: string;
+  courseId: string;
+  jobId: string;
+}): TemporaryObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const courseId = normalizeUuid(input.courseId);
+  const jobId = normalizeUuid(input.jobId);
+  return `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/temporary/${jobId}` as TemporaryObjectKey;
+}
+
+export function createCourseThumbnailFinalObjectKey(input: {
+  tenantId: string;
+  courseId: string;
+  revisionId: string;
+  sha256: string;
+}): FinalObjectKey {
+  const tenantId = normalizeUuid(input.tenantId);
+  const courseId = normalizeUuid(input.courseId);
+  const revisionId = normalizeUuid(input.revisionId);
+  const sha256 = input.sha256.toLowerCase();
+  if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/revisions/${revisionId}/sha256/${sha256}.svg` as FinalObjectKey;
+}
+
 export type ParsedObjectKey =
   | {
       kind: 'temporary';
@@ -251,6 +287,19 @@ export type ParsedObjectKey =
       artifactKind: TrackArtifactKind;
       sha256: string;
       extension: TrackArtifactExtension;
+    }
+  | {
+      kind: 'course_thumbnail_temporary';
+      tenantId: string;
+      courseId: string;
+      jobId: string;
+    }
+  | {
+      kind: 'course_thumbnail_final';
+      tenantId: string;
+      courseId: string;
+      revisionId: string;
+      sha256: string;
     };
 
 export function parseObjectKey(value: string): ParsedObjectKey {
@@ -403,6 +452,18 @@ export function parseObjectKey(value: string): ParsedObjectKey {
       sha256,
       extension: extension as TrackArtifactExtension,
     };
+  }
+  const courseThumbnailTemporaryMatch = courseThumbnailTemporaryKeyPattern.exec(value);
+  if (courseThumbnailTemporaryMatch) {
+    const [, tenantId, courseId, jobId] = courseThumbnailTemporaryMatch;
+    if (!tenantId || !courseId || !jobId) throw new InvalidObjectKeyError();
+    return { kind: 'course_thumbnail_temporary', tenantId, courseId, jobId };
+  }
+  const courseThumbnailFinalMatch = courseThumbnailFinalKeyPattern.exec(value);
+  if (courseThumbnailFinalMatch) {
+    const [, tenantId, courseId, revisionId, sha256] = courseThumbnailFinalMatch;
+    if (!tenantId || !courseId || !revisionId || !sha256) throw new InvalidObjectKeyError();
+    return { kind: 'course_thumbnail_final', tenantId, courseId, revisionId, sha256 };
   }
   throw new InvalidObjectKeyError();
 }

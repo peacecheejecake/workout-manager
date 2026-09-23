@@ -1127,13 +1127,22 @@
       "title": "저장되는 지도 썸네일",
       "dependsOn": ["M2-01j"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01l.md",
       "scope": "계획 5절의 저장되는 코스 썸네일 파생물. M2-01j에서 분리했다 — 그 노드는 head revision을 화면에서 그리기만 하고 아무것도 저장하지 않으므로 권한·삭제·export 표면이 늘지 않았다. 저장하는 순간 늘어나므로 소유권·삭제 연쇄·account export·백업 복원을 함께 다뤄야 한다."
+    },
+    {
+      "id": "M2-01m",
+      "title": "썸네일 객체 reconciliation 스윕",
+      "dependsOn": ["M2-01l"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01l에서 분리했다. 계획 7절이 요구하는 기존 durable cleanup 패턴에는 M2-01c의 영속 ref 색인 + keyset 스윕이 포함되는데 썸네일에는 대응물이 없다. 독립 검토가 구멍을 재현했다: fence 경과 후 1시간을 넘겨 잠든 writer가 깨어나 publish하면 고아 객체가 영구히 남는다(reaper·prune·cleanup 재실행해도 0건 회수). 살아 있는 그림을 덮어쓰거나 회수된 key를 되살리지는 못하고, 계정 말소는 fence 재장전으로 결국 회수되므로 노출 경로는 없다. 남는 바이트는 0-100으로 정규화된 형태뿐이어서 절대 위치가 복원되지 않는다."
     },
     {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
-      "dependsOn": ["M2-01i", "M2-01j", "M2-01l"],
+      "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
       "status": "not_started",
       "scope": "S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback"

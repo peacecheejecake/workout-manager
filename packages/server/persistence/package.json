@@ -58,10 +58,12 @@
     "./coaching-candidates": "./src/coaching-candidates.ts",
     "./evidence-snapshots": "./src/evidence-snapshots.ts",
     "./coaching-constraints": "./src/coaching-constraints.ts",
-    "./resource-retrieval": "./src/resource-retrieval.ts"
+    "./resource-retrieval": "./src/resource-retrieval.ts",
+    "./course-thumbnails": "./src/course-thumbnails.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "@workout/server-courses": "workspace:*",
     "@workout/server-media": "workspace:*"
   }
 }

@@ -277,9 +277,15 @@ importers:
 
   apps/worker:
     dependencies:
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@workout/server-coaching':
         specifier: workspace:*
         version: link:../../packages/server/coaching
+      '@workout/server-courses':
+        specifier: workspace:*
+        version: link:../../packages/server/courses
       '@workout/server-media':
         specifier: workspace:*
         version: link:../../packages/server/media
@@ -733,6 +739,9 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      '@workout/server-courses':
+        specifier: workspace:*
+        version: link:../courses
       '@workout/server-media':
         specifier: workspace:*
         version: link:../media

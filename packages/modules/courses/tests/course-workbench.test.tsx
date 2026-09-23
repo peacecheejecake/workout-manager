@@ -83,7 +83,7 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head, reclaimedHead], total: 2 });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
-      return reply({ status: 'available', course: head, revision });
+      return reply({ status: 'available', course: head, revision, thumbnail: { status: 'none' } });
     if (input.path === `/bff/v1/courses/${reclaimedId}` && input.method === 'GET')
       return reply({ status: 'unavailable', course: reclaimedHead });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'PATCH')
@@ -91,6 +91,7 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
         status: 'available',
         course: { ...head, headRevision: 3 },
         revision: { ...revision, courseRevision: 3, name: 'Renamed loop' },
+        thumbnail: { status: 'none' },
       });
     // M2-01j: the screen also reads the owner's own preferences, their protected areas and
     // what the elevation dataset knows, and it records that a course was opened. None of
@@ -106,7 +107,10 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
     if (input.path === '/bff/v1/courses/place-search' && input.method === 'POST')
       return reply({ outcome: 'no_dataset' });
     if (input.path === '/bff/v1/courses/imports' && input.method === 'POST')
-      return reply({ status: 'available', course: head, revision }, 200);
+      return reply(
+        { status: 'available', course: head, revision, thumbnail: { status: 'none' } },
+        200,
+      );
     if (input.method === 'DELETE') return reply({ deleted: true });
     throw new Error(`unexpected request ${input.method} ${input.path}`);
   });

@@ -219,12 +219,17 @@
   gap: var(--space-1, 0.25rem);
 }
 
-/* The drawn course thumbnail (M2-01j). Nothing is stored; this is a rendering. */
+/*
+ * The course thumbnail box. Both the drawn picture (M2-01j) and the stored one (M2-01l)
+ * live in it. The stroke colour is NOT taken from here: a stored picture is embedded
+ * through an `img` element and cannot inherit this element's `color`, so both pictures take
+ * the colour from `courseThumbnailStrokeColor` in the contracts package instead and a swap
+ * between them is invisible.
+ */
 .thumbnail {
   width: 100%;
   max-width: 12rem;
   aspect-ratio: 1 / 1;
-  color: var(--color-accent, #2b6cb0);
   background: var(--color-surface-muted, #f2f4f7);
   border-radius: var(--radius-md, 0.5rem);
 }

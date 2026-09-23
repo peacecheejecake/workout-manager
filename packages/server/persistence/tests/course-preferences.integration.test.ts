@@ -250,7 +250,7 @@ describe('M2-01j course preferences', () => {
   });
 });
 
-describe('M2-01j account export v20', () => {
+describe('M2-01j account export v21', () => {
   it('exports the owner preferences and protected areas, centre included', async () => {
     const { athlete, courseId } = await athleteWithImportedCourse();
     await preferences.write(athlete, courseId, { favourite: true, markUsed: true });
@@ -260,8 +260,8 @@ describe('M2-01j account export v20', () => {
       radiusMeters: 350,
     });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(20);
-    if (artifact.schemaVersion !== 20) throw new Error('expected v20');
+    expect(artifact.schemaVersion).toBe(21);
+    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePreferences[0]).toMatchObject({
       course_id: courseId,
@@ -290,7 +290,7 @@ describe('M2-01j account export v20', () => {
       radiusMeters: 500,
     });
     const artifact = await operations.exportAccount(mine.athlete);
-    if (artifact.schemaVersion !== 20) throw new Error('expected v20');
+    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
     expect(artifact.data.coursePreferences).toEqual([]);
     expect(artifact.data.coursePrivacyZones).toEqual([]);
     expect(JSON.stringify(artifact)).not.toContain('남의 집');
@@ -319,7 +319,7 @@ describe('M2-01j account export v20', () => {
       operations.exportAccount(athlete),
       courses.remove(athlete, courseId, 1),
     ]);
-    if (artifact.schemaVersion !== 20) throw new Error('expected v20');
+    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
     const has = (rows: readonly Record<string, unknown>[]) =>
       rows.some((row) => row['course_id'] === courseId);
     const present = has(artifact.data.courses);
@@ -361,7 +361,7 @@ describe('M2-01j account export v20', () => {
       close: () => Promise.resolve(),
     };
     const artifact = await createOperationsRepository(recording).exportAccount(athlete);
-    if (artifact.schemaVersion !== 20) throw new Error('expected v20');
+    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePrivacyZones).toHaveLength(1);
     const tables = ['course_preference', 'course_privacy_zone', 'course_revision', 'FROM course '];
@@ -447,7 +447,7 @@ describe('M2-01j account export v20', () => {
     await preferences.write(athlete, courseId, { favourite: true });
     await courses.remove(athlete, courseId, 1);
     const artifact = await operations.exportAccount(athlete);
-    if (artifact.schemaVersion !== 20) throw new Error('expected v20');
+    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
     expect(artifact.data.coursePreferences).toEqual([]);
   });
 });

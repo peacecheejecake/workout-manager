@@ -1,9 +1,16 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CoursePosition } from '@workout/contracts/courses';
 
-import { CourseThumbnail, THUMBNAIL_VERTEX_BUDGET } from '../src/course-thumbnail';
+import { courseThumbnailStrokeColor } from '@workout/contracts/courses';
+
+import {
+  CourseThumbnail,
+  courseThumbnailDownloadPath,
+  StoredCourseThumbnail,
+  THUMBNAIL_VERTEX_BUDGET,
+} from '../src/course-thumbnail';
 
 /**
  * The drawn course thumbnail (M2-01j).
@@ -38,6 +45,20 @@ describe('the drawn course thumbnail', () => {
   it('draws nothing at all for a line of fewer than two vertices', () => {
     render(<CourseThumbnail coordinates={[[127.02, 37.5]]} label="코스 미리보기" />);
     expect(screen.queryByTestId('course-thumbnail')).not.toBeInTheDocument();
+  });
+
+  it('draws the line with the same stroke the stored picture uses', () => {
+    // Both pictures occupy the same box and replace one another, so every stroke property
+    // has to match or the swap is visible. The server side asserts the same four values on
+    // the document it writes.
+    const path = draw([
+      [127.0, 37.5],
+      [127.01, 37.51],
+    ]).querySelector('path');
+    expect(path).toHaveAttribute('stroke', courseThumbnailStrokeColor);
+    expect(path).toHaveAttribute('stroke-width', '2');
+    expect(path).toHaveAttribute('stroke-linejoin', 'round');
+    expect(path).toHaveAttribute('stroke-linecap', 'round');
   });
 
   it('draws a due-north-south line without dividing by a zero width', () => {
@@ -121,5 +142,204 @@ describe('the drawn course thumbnail', () => {
     );
     const element = draw(coordinates);
     expect(extent(pathOf(element)).count).toBe(THUMBNAIL_VERTEX_BUDGET);
+  });
+});
+
+/**
+ * The stored thumbnail (M2-01l).
+ *
+ * What matters here is not the picture — the server drew that — but that the private bytes
+ * cannot outlive the thing that asked for them, and that there is always something to show.
+ */
+describe('the stored course thumbnail', () => {
+  const courseId = '22222222-2222-4222-8222-222222222222';
+  const coordinates: readonly CoursePosition[] = [
+    [127.0, 37.5],
+    [127.01, 37.51],
+  ];
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>';
+
+  function mockFetch(handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+    const spy = vi.fn(handler);
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('draws the line while the stored picture is still on its way, then swaps', async () => {
+    let release: (() => void) | undefined;
+    const arrived = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockFetch(async () => {
+      await arrived;
+      return new Response(svg, { status: 200, headers: { 'content-type': 'image/svg+xml' } });
+    });
+    render(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    // Falling back costs nothing: the screen already holds the head revision's coordinates.
+    expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('data-source', 'drawn');
+    release?.();
+    await waitFor(() =>
+      expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('data-source', 'stored'),
+    );
+    expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('alt', '코스 미리보기');
+  });
+
+  it('carries the session header and asks for its own course', async () => {
+    const fetched = mockFetch(async () => new Response(svg, { status: 200 }));
+    render(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    await waitFor(() => expect(fetched).toHaveBeenCalled());
+    const [path, init] = fetched.mock.calls[0] ?? [];
+    expect(path).toBe(courseThumbnailDownloadPath(courseId));
+    expect((init as RequestInit).headers).toEqual({ 'x-workout-session-id': 'session-1' });
+    expect((init as RequestInit).credentials).toBe('same-origin');
+    expect((init as RequestInit).cache).toBe('no-store');
+    expect((init as RequestInit).redirect).toBe('error');
+  });
+
+  it('keeps drawing the line when there is no stored picture to read', async () => {
+    const fetched = mockFetch(async () => new Response('', { status: 404 }));
+    render(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    await waitFor(() => expect(fetched).toHaveBeenCalled());
+    expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('data-source', 'drawn');
+  });
+
+  it('shows the drawn line, never the previous revision picture, while the new one loads', async () => {
+    // What is displayed always belongs to the revision being asked for. The stored bytes
+    // are held together with the hash they are, so there is no state in which the element
+    // could be showing one revision's picture while the props name another — which after a
+    // privacy trim would be the untrimmed line.
+    //
+    // Note what this test can and cannot establish: React Testing Library flushes effects
+    // inside `act`, so the single pre-cleanup frame a real browser can paint is not
+    // observable here, and reverting the identity check does NOT make this test fail. The
+    // fix is a restructuring rather than a guard — the state carries the identity of what
+    // it holds — and that is why it needs no check to be correct.
+    const bodies = new Map([
+      ['a'.repeat(64), '<svg data-which="first"></svg>'],
+      ['b'.repeat(64), '<svg data-which="second"></svg>'],
+    ]);
+    let serve = 'a'.repeat(64);
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holdNext = false;
+    mockFetch(async () => {
+      if (holdNext) await held;
+      return new Response(bodies.get(serve), { status: 200 });
+    });
+    const sources: (string | null)[] = [];
+    function record() {
+      const element = screen.getByTestId('course-thumbnail');
+      sources.push(element.getAttribute('data-source'));
+    }
+    const view = render(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('data-source', 'stored'),
+    );
+    // The second revision's picture is not ready yet: its fetch is held open.
+    holdNext = true;
+    serve = 'b'.repeat(64);
+    view.rerender(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'b'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    record();
+    // The very first painted frame after the revision changed must already be the drawn
+    // line, not the stored picture of the line that was replaced.
+    expect(sources).toEqual(['drawn']);
+    release?.();
+    await waitFor(() =>
+      expect(screen.getByTestId('course-thumbnail')).toHaveAttribute('data-source', 'stored'),
+    );
+  });
+
+  it('cannot leave private bytes behind when the course or session changes', async () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    let next = 0;
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => {
+        next += 1;
+        const value = `blob:thumbnail-${next}`;
+        created.push(value);
+        return value;
+      }),
+      revokeObjectURL: vi.fn((value: string) => revoked.push(value)),
+    });
+    const aborted: boolean[] = [];
+    mockFetch(async (_input, init) => {
+      init?.signal?.addEventListener('abort', () => aborted.push(true));
+      return new Response(svg, { status: 200 });
+    });
+    const view = render(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-1"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    await waitFor(() => expect(created).toHaveLength(1));
+    // A different session is a different owner. The object URL of the previous one is
+    // revoked by the effect run that created it, not by a check somewhere else.
+    view.rerender(
+      <StoredCourseThumbnail
+        courseId={courseId}
+        sessionId="session-2"
+        contentHash={'a'.repeat(64)}
+        coordinates={coordinates}
+        label="코스 미리보기"
+      />,
+    );
+    await waitFor(() => expect(created).toHaveLength(2));
+    expect(revoked).toContain(created[0]);
+    view.unmount();
+    await waitFor(() => expect(revoked).toEqual(expect.arrayContaining(created)));
+    expect(aborted.length).toBeGreaterThan(0);
   });
 });

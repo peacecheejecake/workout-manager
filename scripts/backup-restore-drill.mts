@@ -42,6 +42,7 @@ import {
   grantGalleryMedia,
   grantActivityTracks,
   grantCourses,
+  grantCourseThumbnailWorker,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
@@ -72,6 +73,11 @@ import {
   createCourseRepository,
 } from '../packages/server/persistence/src/courses.ts';
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
+import {
+  createCourseThumbnailWorkerRepository,
+  type CourseThumbnailLease,
+} from '../packages/server/persistence/src/course-thumbnails.ts';
+import { renderCourseThumbnail } from '../packages/server/courses/src/thumbnail.ts';
 import { createResourceFileUploadRepository } from '../packages/server/persistence/src/resource-file-uploads.js';
 import {
   createResourceUrlIngestionRepository,
@@ -81,6 +87,8 @@ import { createLocalFilesystemObjectStorage } from '../packages/server/media/src
 import {
   createActivityTrackFinalObjectKey,
   createActivityTrackTemporaryObjectKey,
+  createCourseThumbnailFinalObjectKey,
+  createCourseThumbnailTemporaryObjectKey,
   createGalleryFinalObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
@@ -563,6 +571,12 @@ async function execute() {
     await admin.query(
       'CREATE ROLE drill_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
+    // The thumbnail renderer is its own least-privilege login, as in production: it may
+    // execute the render lifecycle functions and nothing else — no table of its own, and
+    // none of the runtime role's reach.
+    await admin.query(
+      'CREATE ROLE drill_thumbnailer LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
     await admin.query('CREATE DATABASE drill_source');
     await admin.query('CREATE DATABASE drill_restore');
     await migrate(url('drill_source'));
@@ -588,6 +602,7 @@ async function execute() {
     await grantGalleryMedia(url('drill_source'), 'drill_runtime');
     await grantActivityTracks(url('drill_source'), 'drill_runtime');
     await grantCourses(url('drill_source'), 'drill_runtime');
+    await grantCourseThumbnailWorker(url('drill_source'), 'drill_thumbnailer');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
     const retainedAthlete = randomUUID();
@@ -927,7 +942,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 20);
+      assert.equal(before.schemaVersion, 21);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -989,7 +1004,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 20) throw new Error('Expected coaching export v20');
+      if (coachingExport.schemaVersion !== 21) throw new Error('Expected coaching export v21');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1060,6 +1075,7 @@ async function execute() {
         courseRevisions: _courseRevisions,
         coursePreferences: _coursePreferences,
         coursePrivacyZones: _coursePrivacyZones,
+        courseThumbnails: _courseThumbnails,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1163,7 +1179,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 20) throw new Error('Expected candidate export v20');
+      if (candidateExport.schemaVersion !== 21) throw new Error('Expected candidate export v21');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1769,6 +1785,97 @@ async function execute() {
         },
       ],
     });
+
+    // M2-01l: the stored picture of each course. A thumbnail is a derivative object —
+    // drawn by its own least-privilege worker, published through the same private object
+    // store as every other private object, and pointed at by a row the runtime owns. A
+    // restore therefore has to bring back the row *and* the bytes, and a deletion has to
+    // take both away again; neither is true of anything the earlier course checks cover.
+    const thumbnailWorker = createCourseThumbnailWorkerRepository({
+      connectionString: url('drill_source', 'drill_thumbnailer'),
+    });
+    const drawnThumbnails = new Map<
+      string,
+      {
+        storageRef: string;
+        sha256: string;
+        byteSize: number;
+        vertexCount: number;
+        rendererId: string;
+        rendererVersion: string;
+      }
+    >();
+    try {
+      const renderOneLease = async (lease: CourseThumbnailLease) => {
+        const drawn = renderCourseThumbnail(lease.coordinates);
+        const temporaryKey = createCourseThumbnailTemporaryObjectKey({
+          tenantId: lease.athleteId,
+          courseId: lease.courseId,
+          jobId: lease.jobId,
+        });
+        const finalKey = createCourseThumbnailFinalObjectKey({
+          tenantId: lease.athleteId,
+          courseId: lease.courseId,
+          revisionId: lease.revisionId,
+          sha256: drawn.sha256,
+        });
+        await sourceObjectStorage.writeTemporary(
+          temporaryKey,
+          (async function* () {
+            yield drawn.bytes;
+          })(),
+        );
+        // Prepare first, publish second, finalize last: the database decides whether these
+        // bytes may become the course's picture before the store makes them visible.
+        assert.ok(
+          await thumbnailWorker.prepare(lease, {
+            storageRef: finalKey,
+            sha256: drawn.sha256,
+            byteSize: drawn.byteSize,
+            vertexCount: drawn.vertexCount,
+          }),
+        );
+        await sourceObjectStorage.publishTemporary(temporaryKey, finalKey, {
+          sha256: drawn.sha256,
+          sizeBytes: drawn.byteSize,
+        });
+        assert.equal(await thumbnailWorker.finalize(lease), 'ready');
+        drawnThumbnails.set(`${lease.courseId}:${lease.courseRevision}`, {
+          storageRef: finalKey,
+          sha256: drawn.sha256,
+          byteSize: drawn.byteSize,
+          vertexCount: drawn.vertexCount,
+          rendererId: drawn.rendererId,
+          rendererVersion: drawn.rendererVersion,
+        });
+      };
+      // The render queue is deliberately tenant-blind — one worker drains every tenant —
+      // so drain it whole and look each course up afterwards rather than assuming the next
+      // lease is the one this drill just queued.
+      for (let attempt = 0; ; attempt += 1) {
+        if (attempt >= 200) throw new Error('COURSE_THUMBNAIL_QUEUE_DID_NOT_DRAIN');
+        const lease = await thumbnailWorker.lease(60);
+        if (lease === null) break;
+        await renderOneLease(lease);
+      }
+    } finally {
+      await thumbnailWorker.close();
+    }
+    const retainedThumbnail = drawnThumbnails.get(`${retainedCourse.course.courseId}:1`);
+    const doomedThumbnail = drawnThumbnails.get(`${doomedCourse.course.courseId}:1`);
+    assert.ok(retainedThumbnail, 'the retained course was queued for a thumbnail');
+    assert.ok(doomedThumbnail, 'the course of the doomed activity was queued for a thumbnail');
+    assert.notEqual(retainedThumbnail.storageRef, doomedThumbnail.storageRef);
+    for (const thumbnail of [retainedThumbnail, doomedThumbnail]) {
+      const stored = await sourceObjectStorage.stat(validateObjectKey(thumbnail.storageRef));
+      assert.ok(stored);
+      assert.equal(stored.sizeBytes, thumbnail.byteSize);
+    }
+    const sourceThumbnailObject = await courseRepo.resolveThumbnailObject(
+      retainedAthlete,
+      retainedCourse.course.courseId,
+    );
+    assert.equal(sourceThumbnailObject?.storageRef, retainedThumbnail.storageRef);
 
     // Reviewed, explicitly coach-enabled resources. `RESTOREDRILLTOKEN` is a
     // single lexical token so the 'simple' text search matches both bodies.
@@ -2710,7 +2817,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 20);
+    assert.ok(constraintExport.schemaVersion === 21);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -2745,7 +2852,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 20) throw new Error('Expected evidence export v20');
+    if (withdrawnExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -2797,7 +2904,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 20) throw new Error('Expected evidence export v20');
+    if (absentExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -2963,6 +3070,10 @@ async function execute() {
     );
     // The replayed suppression also queued the restored objects. The real cleanup worker
     // reclaims them from the restored object store, and leaves the retained track alone.
+    // Both course pictures came back in the object archive; the queue the replay filled is
+    // what has to take the reclaimed one away again.
+    assert.ok(await restoredObjectStorage.stat(validateObjectKey(doomedThumbnail.storageRef)));
+    assert.ok(await restoredObjectStorage.stat(validateObjectKey(retainedThumbnail.storageRef)));
     const restoreCleanup = createResourceObjectCleanupRepository({
       connectionString: url('drill_restore'),
       max: 1,
@@ -2981,6 +3092,17 @@ async function execute() {
       assert.equal(await restoredObjectStorage.stat(artifact.storageRef), null);
     for (const artifact of retainedTrack.artifacts)
       assert.ok(await restoredObjectStorage.stat(artifact.storageRef));
+    // The same replayed suppression reclaims the stored picture of every course cut from
+    // that recording. The worker that just emptied the queue deleted those objects too,
+    // while the retained course's picture — which nothing deleted — is still there.
+    assert.equal(
+      await restoredObjectStorage.stat(validateObjectKey(doomedThumbnail.storageRef)),
+      null,
+    );
+    assert.ok(await restoredObjectStorage.stat(validateObjectKey(retainedThumbnail.storageRef)));
+    checks.push(
+      'restored_activity_deletion_reclaims_course_thumbnail_objects_through_the_cleanup_worker',
+    );
     // Courses restored with the cluster. The retained one is intact; the two derived from
     // the deleted activity were reclaimed by the replayed suppression, and what is left is
     // an explicitly unavailable reference with no geometry and no revisions.
@@ -3000,6 +3122,34 @@ async function execute() {
       { activityId: retainedFixture.activityId, trackId: retainedTrackId, trackRevision: 1 },
     ]);
     checks.push('private_course_head_revision_geometry_and_lineage_restored_together');
+    // M2-01l: the picture is a separate object, so the restore has to have brought back
+    // both the row that points at it and the bytes it points at.
+    const restoredThumbnailObject = await restoredCourses.resolveThumbnailObject(
+      retainedAthlete,
+      retainedCourse.course.courseId,
+    );
+    assert.ok(restoredThumbnailObject);
+    assert.equal(restoredThumbnailObject.storageRef, retainedThumbnail.storageRef);
+    assert.equal(restoredThumbnailObject.contentHash, retainedThumbnail.sha256);
+    assert.equal(restoredThumbnailObject.byteSize, retainedThumbnail.byteSize);
+    assert.equal(restoredThumbnailObject.courseRevision, 1);
+    assert.equal(restoredThumbnailObject.mediaType, 'image/svg+xml');
+    const restoredThumbnailStat = await restoredObjectStorage.stat(
+      validateObjectKey(restoredThumbnailObject.storageRef),
+    );
+    assert.ok(restoredThumbnailStat);
+    assert.equal(restoredThumbnailStat.sizeBytes, retainedThumbnail.byteSize);
+    const restoredThumbnailBody = await restoredObjectStorage.open(
+      validateObjectKey(restoredThumbnailObject.storageRef),
+    );
+    assert.ok(restoredThumbnailBody);
+    const restoredThumbnailChunks: Uint8Array[] = [];
+    for await (const chunk of restoredThumbnailBody.body) restoredThumbnailChunks.push(chunk);
+    assert.equal(
+      createHash('sha256').update(Buffer.concat(restoredThumbnailChunks)).digest('hex'),
+      retainedThumbnail.sha256,
+    );
+    checks.push('restored_course_thumbnail_object_is_readable_after_restore');
     // The owner's own facts survive with the cluster, and they are still not revisions.
     const restoredPreferences = createCoursePreferenceRepository(restoreDb);
     const restoredPreference = (await restoredPreferences.list(retainedAthlete)).preferences.find(
@@ -3105,7 +3255,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 20) throw new Error('Expected resource export v20');
+    if (retainedExport.schemaVersion !== 21) throw new Error('Expected resource export v21');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -3212,6 +3362,37 @@ async function execute() {
     assert.equal(retainedExport.data.coursePrivacyZones[0]?.['center_longitude'], 127.02);
     assert.equal(retainedExport.data.coursePrivacyZones[0]?.['radius_meters'], 300);
     checks.push('restored_course_preferences_and_protected_areas_reproduced_in_export_v20');
+    // v21: a thumbnail is a *derivative*, recomputable from geometry the owner's own GPX
+    // export already carries. So the export carries exactly what lets a restored
+    // deployment redraw the picture and check it got the same one — the revision, the
+    // renderer identity, the content hash, the byte size and the drawn vertex count — and
+    // neither the bytes nor the object key.
+    const exportedThumbnails = retainedExport.data.courseThumbnails;
+    assert.deepEqual(
+      [...new Set(exportedThumbnails.map((row) => row['course_id']))].sort(),
+      [retainedCourse.course.courseId, routedCourse.course.courseId].sort(),
+    );
+    const exportedRetainedThumbnail = exportedThumbnails.find(
+      (row) => row['course_id'] === retainedCourse.course.courseId,
+    );
+    assert.ok(exportedRetainedThumbnail);
+    assert.equal(exportedRetainedThumbnail['course_revision'], 1);
+    assert.equal(exportedRetainedThumbnail['content_hash'], retainedThumbnail.sha256);
+    assert.equal(Number(exportedRetainedThumbnail['size_bytes']), retainedThumbnail.byteSize);
+    assert.equal(exportedRetainedThumbnail['vertex_count'], retainedThumbnail.vertexCount);
+    assert.equal(exportedRetainedThumbnail['renderer_id'], retainedThumbnail.rendererId);
+    assert.equal(exportedRetainedThumbnail['renderer_version'], retainedThumbnail.rendererVersion);
+    assert.equal(exportedRetainedThumbnail['media_type'], 'image/svg+xml');
+    assert.ok(exportedRetainedThumbnail['ready_at']);
+    // The reclaimed course's row is a tombstone for an object on its way out, not a live
+    // picture, so it is not in the export at all.
+    assert.ok(!exportedThumbnails.some((row) => row['course_id'] === doomedCourse.course.courseId));
+    const serializedRetainedExport = JSON.stringify(retainedExport);
+    assert.ok(!serializedRetainedExport.includes('<svg'));
+    assert.ok(!serializedRetainedExport.includes('private/v1'));
+    assert.ok(!serializedRetainedExport.includes(retainedThumbnail.storageRef));
+    assert.ok(!serializedRetainedExport.includes(doomedThumbnail.storageRef));
+    checks.push('restored_course_thumbnail_reproduced_in_export_v21_without_bytes_or_storage_refs');
     checks.push('restored_activity_track_reproduced_in_export_v20_without_storage_refs');
     checks.push('restored_access_shares_audit_and_gallery_media_reproduced_in_export');
     checks.push('restored_retrieval_passages_grounding_and_citations_reproduced_without_bodies');
@@ -3483,7 +3664,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 20) throw new Error('Expected coaching export v20');
+    if (retainedExport.schemaVersion !== 21) throw new Error('Expected coaching export v21');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -3615,7 +3796,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 20) throw new Error('Expected coaching export v20');
+    if (coachingAfterReplay.schemaVersion !== 21) throw new Error('Expected coaching export v21');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -3791,7 +3972,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 20) throw new Error('Expected evidence export v20');
+    if (scrubbedExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

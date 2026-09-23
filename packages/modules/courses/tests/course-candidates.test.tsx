@@ -281,12 +281,13 @@ function setup(overrides: (input: TransportRequest) => Reply | Promise<Reply> | 
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head], total: 1 });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
-      return reply({ status: 'available', course: head, revision });
+      return reply({ status: 'available', course: head, revision, thumbnail: { status: 'none' } });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'PATCH')
       return reply({
         status: 'available',
         course: { ...head, headRevision: 3 },
         revision: { ...revision, courseRevision: 3 },
+        thumbnail: { status: 'none' },
       });
     throw new Error(`unexpected request ${input.method} ${input.path}`);
   });

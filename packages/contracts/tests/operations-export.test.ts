@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 20,
+    schemaVersion: 21,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -694,9 +694,10 @@ it('parses the currently integrated export version without dropping access facts
       courseRevisions: [],
       coursePreferences: [],
       coursePrivacyZones: [],
+      courseThumbnails: [],
     },
   });
-  if (current.schemaVersion !== 20) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 21) throw new Error('Expected the integrated export version');
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
   expect(current.data.resourcePassages).toEqual([]);
@@ -720,6 +721,7 @@ it('parses the currently integrated export version without dropping access facts
     'courseRevisions',
     'coursePreferences',
     'coursePrivacyZones',
+    'courseThumbnails',
   ] as const)
     expect(
       accountExportSchema.safeParse({
@@ -727,13 +729,39 @@ it('parses the currently integrated export version without dropping access facts
         data: { ...current.data, [missing]: undefined },
       }).success,
     ).toBe(false);
+  // A v20 artifact is still read unchanged and never gains a manufactured thumbnail
+  // collection (M2-01l, export v21).
+  const twenty = accountExportSchema.parse({
+    ...current,
+    schemaVersion: 20,
+    data: Object.fromEntries(
+      Object.entries(current.data).filter(([key]) => key !== 'courseThumbnails'),
+    ),
+  });
+  expect(twenty.schemaVersion).toBe(20);
+  expect(twenty.data).not.toHaveProperty('courseThumbnails');
+  // And v20's `data` is strict: an artifact that CLAIMS to be v20 while carrying the v21
+  // collection is refused rather than read with an unvalidated extra field.
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      schemaVersion: 20,
+      data: { ...twenty.data, courseThumbnails: [] },
+    }).success,
+  ).toBe(false);
+  // A v21 artifact that claims to be one version older is refused in the other direction
+  // too: the collection is required, not optional.
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 20 }).success).toBe(false);
+  if (twenty.schemaVersion !== 20) throw new Error('Expected the previous export version');
+  expect(twenty.data.coursePreferences).toEqual([]);
+
   // A v19 artifact is still read unchanged and never gains manufactured preference rows.
   const nineteen = accountExportSchema.parse({
     ...current,
     schemaVersion: 19,
     data: Object.fromEntries(
       Object.entries(current.data).filter(
-        ([key]) => !['coursePreferences', 'coursePrivacyZones'].includes(key),
+        ([key]) => !['coursePreferences', 'coursePrivacyZones', 'courseThumbnails'].includes(key),
       ),
     ),
   });
@@ -763,7 +791,13 @@ it('parses the currently integrated export version without dropping access facts
     data: Object.fromEntries(
       Object.entries(current.data).filter(
         ([key]) =>
-          !['courses', 'courseRevisions', 'coursePreferences', 'coursePrivacyZones'].includes(key),
+          ![
+            'courses',
+            'courseRevisions',
+            'coursePreferences',
+            'coursePrivacyZones',
+            'courseThumbnails',
+          ].includes(key),
       ),
     ),
   });
@@ -783,6 +817,7 @@ it('parses the currently integrated export version without dropping access facts
             'courseRevisions',
             'coursePreferences',
             'coursePrivacyZones',
+            'courseThumbnails',
           ].includes(key),
       ),
     ),
@@ -807,6 +842,7 @@ it('parses the currently integrated export version without dropping access facts
             'courseRevisions',
             'coursePreferences',
             'coursePrivacyZones',
+            'courseThumbnails',
           ].includes(key),
       ),
     ),

@@ -313,14 +313,19 @@ function setup(
   const storage = storageFixture();
   const courses: CourseRepository = {
     replayCommand: vi.fn().mockResolvedValue(null),
+    resolveThumbnailObject: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue({
       status: 'available',
       course: courseHead,
       revision: courseRevision,
+      thumbnail: { status: 'none' },
     }),
-    read: vi
-      .fn()
-      .mockResolvedValue({ status: 'available', course: courseHead, revision: courseRevision }),
+    read: vi.fn().mockResolvedValue({
+      status: 'available',
+      course: courseHead,
+      revision: courseRevision,
+      thumbnail: { status: 'none' },
+    }),
     list: vi.fn().mockResolvedValue({ courses: [courseHead], total: 1 }),
     headContent: vi.fn().mockResolvedValue({
       courseId,
@@ -335,6 +340,7 @@ function setup(
       status: 'available',
       course: { ...courseHead, headRevision: 2 },
       revision: { ...courseRevision, courseRevision: 2 },
+      thumbnail: { status: 'none' },
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
     storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),
@@ -703,6 +709,7 @@ describe('course command idempotency at the API boundary', () => {
               ...courseRevision,
               courseRevision: previous?.courseRevision ?? headRevision,
             },
+            thumbnail: { status: 'none' as const },
           };
         }
         if (expected !== headRevision) throw new CourseStateError('COURSE_REVISION_CONFLICT');
@@ -713,6 +720,7 @@ describe('course command idempotency at the API boundary', () => {
           status: 'available' as const,
           course: { ...courseHead, headRevision },
           revision: { ...courseRevision, courseRevision: headRevision },
+          thumbnail: { status: 'none' as const },
         };
       },
     );
@@ -722,6 +730,7 @@ describe('course command idempotency at the API boundary', () => {
         status: 'available' as const,
         course: { ...courseHead, headRevision },
         revision: { ...courseRevision, courseRevision: headRevision },
+        thumbnail: { status: 'none' as const },
       })),
       list: vi.fn(),
       headContent: vi.fn(async () => ({
@@ -1103,5 +1112,111 @@ describe('course route proposals', () => {
     });
     expect(missing.statusCode).toBe(404);
     expect(courses.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The stored thumbnail download (M2-01l).
+ *
+ * Private derived location data: the key is resolved from the head on the server, checked
+ * against the tenant, the course, the revision and the content hash, and never returned.
+ */
+describe('the stored course thumbnail download', () => {
+  const revisionId = '99999999-9999-4999-8999-999999999999';
+  const contentHash = 'b'.repeat(64);
+  const thumbnailRef = `private/v1/tenants/${athleteId}/courses/${courseId}/thumbnails/revisions/${revisionId}/sha256/${contentHash}.svg`;
+  const svg = new TextEncoder().encode(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>',
+  );
+
+  function resolved(overrides: Record<string, unknown> = {}) {
+    return {
+      storageRef: thumbnailRef,
+      courseRevision: 1,
+      revisionId,
+      contentHash,
+      byteSize: svg.byteLength,
+      mediaType: 'image/svg+xml',
+      ...overrides,
+    };
+  }
+
+  it('answers "there is no picture" rather than an error when nothing is stored', async () => {
+    const { app } = setup();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/thumbnail`,
+      headers: baseHeaders,
+    });
+    // The screen already knows how to handle this: it draws the line itself.
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: { code: 'COURSE_THUMBNAIL_NOT_FOUND' } });
+  });
+
+  it('serves the bytes privately, uncached and under a policy that can run nothing', async () => {
+    const { app, courses, storage } = setup();
+    vi.mocked(courses.resolveThumbnailObject).mockResolvedValue(resolved());
+    storage.objects.set(thumbnailRef, svg);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/thumbnail`,
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('image/svg+xml');
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    // Three reductions, each load-bearing on its own: a policy that can load and run
+    // nothing, no sniffing, and `attachment` so opening the address directly downloads the
+    // document instead of rendering it at the top level. The renderer emits no style at all,
+    // so the policy carries no style allowance to soften it.
+    expect(response.headers['content-security-policy']).toBe("default-src 'none'");
+    expect(response.headers['content-disposition']).toContain('attachment');
+    expect(response.rawPayload.equals(Buffer.from(svg))).toBe(true);
+    // The owner is derived from the session, never from the path or a query parameter.
+    expect(vi.mocked(courses.resolveThumbnailObject).mock.calls[0]).toEqual([athleteId, courseId]);
+  });
+
+  it('refuses to open a reference that does not describe this course and revision', async () => {
+    const { app, courses, storage } = setup();
+    const foreignRef = thumbnailRef.replace(courseId, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+    vi.mocked(courses.resolveThumbnailObject).mockResolvedValue(
+      resolved({ storageRef: foreignRef }),
+    );
+    storage.objects.set(foreignRef, svg);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/thumbnail`,
+      headers: baseHeaders,
+    });
+    // A stored reference that names another course is a server fault, not a download.
+    expect(response.statusCode).toBe(500);
+  });
+
+  it('tells a missing object apart from an absent picture', async () => {
+    const { app, courses } = setup();
+    vi.mocked(courses.resolveThumbnailObject).mockResolvedValue(resolved());
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/thumbnail`,
+      headers: baseHeaders,
+    });
+    // The ledger says there is a picture and the store does not have it. That is an
+    // operational fault, and it must not read as "this course has no thumbnail".
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      error: { code: 'COURSE_THUMBNAIL_CONTENT_UNAVAILABLE' },
+    });
+  });
+
+  it('needs an authenticated owner', async () => {
+    const { app, courses } = setup({ authenticated: false });
+    vi.mocked(courses.resolveThumbnailObject).mockResolvedValue(resolved());
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/thumbnail`,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(courses.resolveThumbnailObject).not.toHaveBeenCalled();
   });
 });

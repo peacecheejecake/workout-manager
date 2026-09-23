@@ -199,6 +199,34 @@ const accountExportV20Schema = accountExportV19Schema.extend({
     coursePrivacyZones: rows,
   }),
 });
+/**
+ * v21 adds the stored course thumbnails (M2-01l).
+ *
+ * **Facts about the picture, never the picture.** A thumbnail is a *derivative*: it is
+ * recomputable, byte for byte, from the revision's geometry by the renderer this artifact
+ * names, and the owner's authenticated GPX export already carries those coordinates. So
+ * exporting the bytes would put a second, pictorial copy of the owner's locations into the
+ * most sensitive artifact this product produces, and it would buy nothing a restore cannot
+ * rebuild. That is the opposite trade to v20's protected-area centres, which are **not**
+ * derived — nothing can recompute what the owner typed in, so leaving them out would make
+ * the export lossy. Same rule, two answers: export what cannot be rebuilt.
+ *
+ * The storage reference is absent for the same reason it is absent from v16 and v18: an
+ * object key is not a fact about the owner's data, and the bytes are behind an
+ * authenticated download either way. What IS carried is enough to *verify* a rebuild — the
+ * revision the picture belongs to, the renderer identity, the content hash, the byte size
+ * and the drawn vertex count — so a restored deployment can regenerate the picture and
+ * check that it got the same one.
+ *
+ * Only live pictures appear. A superseded or abandoned render is a tombstone for an object
+ * on its way out, and the read model already reports those revisions as having no picture.
+ */
+const accountExportV21Schema = accountExportV20Schema.extend({
+  schemaVersion: z.literal(21),
+  data: accountExportV20Schema.shape.data.extend({
+    courseThumbnails: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -220,6 +248,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV18Schema,
   accountExportV19Schema,
   accountExportV20Schema,
+  accountExportV21Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

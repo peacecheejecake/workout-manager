@@ -38,6 +38,7 @@ import {
 import { parseObjectKey, validateObjectKey } from '@workout/server-media/keys';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
 import { randomBytes } from 'node:crypto';
+import { Readable } from 'node:stream';
 import type { ActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import {
   CourseNotFoundError,
@@ -777,6 +778,64 @@ export function registerCourseRoutes(
           ),
         )
         .send(body);
+    });
+
+    /**
+     * The stored map thumbnail of this course (M2-01l).
+     *
+     * Authenticated, tenant-derived and head-only. The key is never supplied by the caller
+     * and never returned to one: the repository resolves it from the head revision, and the
+     * parsed key must still describe this tenant, this course, that revision and that
+     * content hash before a byte is opened. A reference that does not is a server fault,
+     * not a download.
+     *
+     * Head-only is what makes this safe after a privacy trim. The trim appended a revision,
+     * so the picture of the pre-trim line is not the head's any more and cannot be named
+     * here at all — and it was queued for reclamation inside the trim's own transaction.
+     *
+     * 404 means "no stored picture", which the screen already knows how to handle: it draws
+     * the line itself. 503 means the ledger has one and the store does not, which is an
+     * operational fault and not an empty answer.
+     */
+    courseRoutes.get('/courses/:courseId/thumbnail', async (request, reply) => {
+      input(emptyQuery, request.query);
+      const athleteId = principal(request).athleteId;
+      const { courseId } = input(courseParamsSchema, request.params);
+      const resolved = await execute(() =>
+        services.courses.resolveThumbnailObject(athleteId, courseId),
+      );
+      if (resolved === null) throw new ProductRequestError(404, 'COURSE_THUMBNAIL_NOT_FOUND');
+      const objectKey = validateObjectKey(resolved.storageRef);
+      const parsedKey = parseObjectKey(objectKey);
+      if (
+        parsedKey.kind !== 'course_thumbnail_final' ||
+        parsedKey.tenantId !== athleteId ||
+        parsedKey.courseId !== courseId ||
+        parsedKey.revisionId !== resolved.revisionId ||
+        parsedKey.sha256 !== resolved.contentHash
+      )
+        throw new Error('INVALID_COURSE_THUMBNAIL_STORAGE_REF');
+      const object = await services.storage.open(objectKey);
+      if (object === null || object.sizeBytes !== resolved.byteSize)
+        throw new ProductRequestError(503, 'COURSE_THUMBNAIL_CONTENT_UNAVAILABLE');
+      return (
+        reply
+          .header('content-type', resolved.mediaType)
+          .header('content-length', object.sizeBytes)
+          .header('cache-control', 'private, no-store')
+          .header('x-content-type-options', 'nosniff')
+          // SVG served from our own origin is a document, so it gets three separate
+          // reductions rather than one. The renderer writes one `path` of validated numbers
+          // with no user text, no `style` element and no `style` attribute — which is why
+          // the policy needs no style allowance at all. The policy itself can load nothing
+          // and run nothing. And `attachment` keeps the browser from rendering it as a
+          // top-level document if the address is ever opened directly; the screen does not
+          // navigate to it — it reads it with an authenticated `fetch` and embeds the bytes
+          // as a blob in an `img`, which never runs script either way.
+          .header('content-security-policy', "default-src 'none'")
+          .header('content-disposition', contentDisposition(`course-thumbnail.svg`))
+          .send(Readable.from(object.body))
+      );
     });
 
     /**

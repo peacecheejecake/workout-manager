@@ -4,6 +4,7 @@ const ATHLETE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const WORKER_ROLE = 'workout_coaching_worker';
 const RESOURCE_CLEANUP_WORKER_ROLE = 'workout_resource_cleanup_worker';
+const COURSE_THUMBNAIL_WORKER_ROLE = 'workout_course_thumbnail_worker';
 
 export interface FixtureWorkerConfig {
   athleteId: string;
@@ -13,6 +14,11 @@ export interface FixtureWorkerConfig {
 }
 
 export interface ResourceCleanupWorkerConfig {
+  connectionString: string;
+  storageRoot: string;
+}
+
+export interface CourseThumbnailWorkerConfig {
   connectionString: string;
   storageRoot: string;
 }
@@ -107,6 +113,45 @@ export function parseResourceCleanupWorkerConfig(
       RESOURCE_CLEANUP_WORKER_ROLE
   ) {
     throw new Error('RESOURCE_CLEANUP_DATABASE_ROLE_NOT_SEPARATE');
+  }
+  const storageRoot = environment['RESOURCE_STORAGE_ROOT'];
+  if (!storageRoot || storageRoot.includes('\0') || !isAbsolute(storageRoot)) {
+    throw new Error('INVALID_RESOURCE_STORAGE_ROOT');
+  }
+  const normalizedStorageRoot = resolve(storageRoot);
+  if (normalizedStorageRoot === parse(normalizedStorageRoot).root) {
+    throw new Error('INVALID_RESOURCE_STORAGE_ROOT');
+  }
+  return { connectionString, storageRoot: normalizedStorageRoot };
+}
+
+/**
+ * The course-thumbnail render worker (M2-01l).
+ *
+ * Its own database role, separate from the API's and from the cleanup worker's, because it
+ * is the only process that turns a private course line into a stored object. The role holds
+ * EXECUTE on eight bounded functions and no table privileges at all.
+ */
+export function parseCourseThumbnailWorkerConfig(
+  args: readonly string[],
+  environment: Readonly<Record<string, string | undefined>>,
+): CourseThumbnailWorkerConfig {
+  if (args.length !== 0) throw new Error('INVALID_COURSE_THUMBNAIL_WORKER_ARGUMENTS');
+  const connectionString = environment['COURSE_THUMBNAIL_DATABASE_URL'];
+  if (
+    !connectionString ||
+    databaseUser(connectionString, 'INVALID_COURSE_THUMBNAIL_DATABASE_URL') !==
+      COURSE_THUMBNAIL_WORKER_ROLE
+  ) {
+    throw new Error('INVALID_COURSE_THUMBNAIL_DATABASE_ROLE');
+  }
+  const apiConnectionString = environment['DATABASE_URL'];
+  if (
+    apiConnectionString &&
+    databaseUser(apiConnectionString, 'INVALID_COURSE_THUMBNAIL_API_DATABASE_URL') ===
+      COURSE_THUMBNAIL_WORKER_ROLE
+  ) {
+    throw new Error('COURSE_THUMBNAIL_DATABASE_ROLE_NOT_SEPARATE');
   }
   const storageRoot = environment['RESOURCE_STORAGE_ROOT'];
   if (!storageRoot || storageRoot.includes('\0') || !isAbsolute(storageRoot)) {

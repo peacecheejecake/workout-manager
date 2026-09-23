@@ -1,19 +1,27 @@
 'use client';
 
-import { useMemo } from 'react';
-import type { CoursePosition } from '@workout/contracts/courses';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  courseThumbnailLimits,
+  courseThumbnailPath,
+  courseThumbnailStrokeColor,
+  type CoursePosition,
+} from '@workout/contracts/courses';
 
 import styles from './courses.module.css';
 
 /**
- * A small picture of a course line (M2-01j, plan section 5's S13 thumbnail).
+ * A small picture of a course line (plan section 5's S13 thumbnail).
  *
- * It is **drawn, not stored**. The plan calls a thumbnail "private derived location data"
- * that must follow the course's permission, deletion and export policy; the cheapest way
- * to satisfy every one of those rules is to keep no derived artefact at all. This renders
- * the head revision the owner is already looking at, in their own browser, from
- * coordinates the screen already holds. There is no object, no key, no cache entry and
- * nothing extra for a deletion or an export to reach.
+ * This is the **drawn** thumbnail. M2-01j introduced it as the whole feature; M2-01l added
+ * a **stored** one beside it, and this component is now what the screen falls back to
+ * whenever there is no stored picture yet — queued, impossible to draw, or failing and
+ * retrying. It costs nothing to fall back to, because the screen already holds the head
+ * revision's coordinates.
+ *
+ * Both pictures come from `courseThumbnailPath` in the contracts package, which is the one
+ * definition of this projection. The stored SVG and this one therefore cannot disagree
+ * about the shape of a line.
  *
  * Because it draws the head, a privacy-trimmed course shows the **trimmed** line: the
  * picture cannot disagree with the response and the GPX about where the owner has been.
@@ -21,68 +29,127 @@ import styles from './courses.module.css';
  * It is decoration for a sighted reader, so it carries a label and the real facts stay in
  * the list beside it; a reader who cannot see it loses nothing.
  */
-export const THUMBNAIL_VERTEX_BUDGET = 400;
+export const THUMBNAIL_VERTEX_BUDGET = courseThumbnailLimits.vertexBudget;
 
 export interface CourseThumbnailProps {
   readonly coordinates: readonly CoursePosition[];
   readonly label: string;
 }
 
-/** Evenly spaced sample of a long line. A course may carry 20,000 vertices. */
-function sample(coordinates: readonly CoursePosition[]): readonly CoursePosition[] {
-  if (coordinates.length <= THUMBNAIL_VERTEX_BUDGET) return coordinates;
-  const step = (coordinates.length - 1) / (THUMBNAIL_VERTEX_BUDGET - 1);
-  const sampled: CoursePosition[] = [];
-  for (let index = 0; index < THUMBNAIL_VERTEX_BUDGET; index += 1) {
-    const position = coordinates[Math.round(index * step)];
-    if (position !== undefined) sampled.push(position);
-  }
-  return sampled;
-}
-
 export function CourseThumbnail({ coordinates, label }: CourseThumbnailProps) {
-  const path = useMemo(() => {
-    if (coordinates.length < 2) return null;
-    const points = sample(coordinates);
-    const longitudes = points.map((position) => position[0]);
-    const latitudes = points.map((position) => position[1]);
-    const west = Math.min(...longitudes);
-    const east = Math.max(...longitudes);
-    const south = Math.min(...latitudes);
-    const north = Math.max(...latitudes);
-    // A degree of longitude is shorter than a degree of latitude everywhere but the
-    // equator, so drawing both at the same scale stretches the picture sideways — about
-    // 27% at Seoul's latitude, which is enough to turn a there-and-back into a shape the
-    // owner does not recognise. One cosine at the middle latitude of this course is all it
-    // takes for the picture to have the proportions of the real route.
-    const shrinkX = Math.cos((((north + south) / 2) * Math.PI) / 180);
-    // A course can be a straight north-south line, so neither span may divide by zero.
-    const spanX = (east - west) * shrinkX || 1e-6;
-    const spanY = north - south || 1e-6;
-    const scale = Math.min(96 / spanX, 96 / spanY);
-    const offsetX = (100 - spanX * scale) / 2;
-    const offsetY = (100 - spanY * scale) / 2;
-    return points
-      .map((position, index) => {
-        const x = offsetX + (position[0] - west) * shrinkX * scale;
-        // SVG y grows downward; north belongs at the top.
-        const y = offsetY + (north - position[1]) * scale;
-        return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
-      })
-      .join(' ');
-  }, [coordinates]);
+  const drawn = useMemo(() => courseThumbnailPath(coordinates), [coordinates]);
 
-  if (path === null) return null;
+  if (drawn === null) return null;
   return (
     <svg
       className={styles.thumbnail}
-      viewBox="0 0 100 100"
+      viewBox={`0 0 ${courseThumbnailLimits.viewport} ${courseThumbnailLimits.viewport}`}
       role="img"
       aria-label={label}
       data-testid="course-thumbnail"
-      data-vertices={Math.min(coordinates.length, THUMBNAIL_VERTEX_BUDGET)}
+      data-source="drawn"
+      data-vertices={drawn.vertexCount}
     >
-      <path d={path} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" />
+      <path
+        d={drawn.path}
+        fill="none"
+        stroke={courseThumbnailStrokeColor}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        // The stored document sets this too. Left at the SVG default the drawn line ends a
+        // device pixel short of the stored one, which is the swap becoming visible again.
+        strokeLinecap="round"
+      />
     </svg>
+  );
+}
+
+/** Where the owner's authenticated thumbnail download lives. Same origin, no object key. */
+export function courseThumbnailDownloadPath(courseId: string): string {
+  return `/bff/v1/courses/${encodeURIComponent(courseId)}/thumbnail`;
+}
+
+export interface StoredCourseThumbnailProps extends CourseThumbnailProps {
+  readonly courseId: string;
+  readonly sessionId: string;
+  /** Identity of the stored picture. A different revision's picture is a different fetch. */
+  readonly contentHash: string;
+}
+
+/**
+ * The STORED thumbnail, with the drawn one underneath it (M2-01l).
+ *
+ * The bytes are private, so they are not an `img src` pointing at the API: a plain image
+ * request cannot carry the session header the API requires for a cookie session. The read
+ * is an authenticated fetch and the bytes become an object URL, embedded through `img` so
+ * the SVG is rendered as an image and never as a document.
+ *
+ * **The object URL cannot outlive what owns it.** It is created inside one effect run and
+ * revoked by that run's own cleanup, which also aborts the request and clears the state.
+ * So a course change, a revision change, a session change or an unmount all take the
+ * previous picture with them; there is no path by which a late reply installs bytes under
+ * a course the screen has moved away from, because the run that asked for them is already
+ * torn down.
+ *
+ * Until the fetch lands — and for good if it never does — this renders the drawn picture.
+ * Falling back costs nothing: the screen already holds the head revision's coordinates.
+ */
+export function StoredCourseThumbnail({
+  courseId,
+  sessionId,
+  contentHash,
+  coordinates,
+  label,
+}: StoredCourseThumbnailProps) {
+  // The bytes are stored WITH the identity of the picture they are, not beside it. A
+  // rendered frame therefore cannot show a picture that belongs to a different revision:
+  // the state is only believed while its hash is the hash being asked for. Clearing in the
+  // effect cleanup is not enough — cleanup runs after paint, so a revision change would
+  // display the previous revision's picture for one frame, and after a privacy trim that
+  // frame is the untrimmed line.
+  const [stored, setStored] = useState<{ hash: string; url: string } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let live = true;
+    let created: string | null = null;
+    void (async () => {
+      try {
+        const response = await fetch(courseThumbnailDownloadPath(courseId), {
+          method: 'GET',
+          headers: { 'x-workout-session-id': sessionId },
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        if (!live) return;
+        created = URL.createObjectURL(blob);
+        setStored({ hash: contentHash, url: created });
+      } catch {
+        // A missing or unreadable stored picture is not an error the owner has to see:
+        // the drawn one says the same thing about the same line.
+      }
+    })();
+    return () => {
+      live = false;
+      controller.abort();
+      setStored(null);
+      if (created !== null) URL.revokeObjectURL(created);
+    };
+  }, [courseId, sessionId, contentHash]);
+
+  if (stored === null || stored.hash !== contentHash)
+    return <CourseThumbnail coordinates={coordinates} label={label} />;
+  return (
+    <img
+      className={styles.thumbnail}
+      src={stored.url}
+      alt={label}
+      data-testid="course-thumbnail"
+      data-source="stored"
+    />
   );
 }

@@ -156,7 +156,8 @@ export async function createLocalFilesystemObjectStorage(
         parsedKey.kind !== 'temporary' &&
         parsedKey.kind !== 'url_temporary' &&
         parsedKey.kind !== 'gallery_temporary' &&
-        parsedKey.kind !== 'track_temporary'
+        parsedKey.kind !== 'track_temporary' &&
+        parsedKey.kind !== 'course_thumbnail_temporary'
       )
         throw new UnsafeStoragePathError();
       const path = keyPath(key);
@@ -202,11 +203,13 @@ export async function createLocalFilesystemObjectStorage(
         (parsedTemporaryKey.kind !== 'temporary' &&
           parsedTemporaryKey.kind !== 'url_temporary' &&
           parsedTemporaryKey.kind !== 'gallery_temporary' &&
-          parsedTemporaryKey.kind !== 'track_temporary') ||
+          parsedTemporaryKey.kind !== 'track_temporary' &&
+          parsedTemporaryKey.kind !== 'course_thumbnail_temporary') ||
         (parsedFinalKey.kind !== 'final' &&
           parsedFinalKey.kind !== 'url_final' &&
           parsedFinalKey.kind !== 'gallery_final' &&
-          parsedFinalKey.kind !== 'track_final')
+          parsedFinalKey.kind !== 'track_final' &&
+          parsedFinalKey.kind !== 'course_thumbnail_final')
       )
         throw new ObjectStorageConflictError();
       const uploadPair =
@@ -231,20 +234,30 @@ export async function createLocalFilesystemObjectStorage(
         parsedTemporaryKey.uploadId === parsedFinalKey.uploadId &&
         parsedTemporaryKey.trackId === parsedFinalKey.trackId &&
         parsedTemporaryKey.artifactKind === parsedFinalKey.artifactKind;
+      // A course thumbnail's temporary name belongs to the render job and its final name to
+      // the revision it depicts, so the two cannot be matched on an upload id. What must
+      // agree is the course, checked as the owner id below, and the tenant.
+      const courseThumbnailPair =
+        parsedTemporaryKey.kind === 'course_thumbnail_temporary' &&
+        parsedFinalKey.kind === 'course_thumbnail_final';
       const temporaryOwnerId =
         parsedTemporaryKey.kind === 'gallery_temporary'
           ? parsedTemporaryKey.mediaItemId
           : parsedTemporaryKey.kind === 'track_temporary'
             ? parsedTemporaryKey.activityId
-            : parsedTemporaryKey.resourceId;
+            : parsedTemporaryKey.kind === 'course_thumbnail_temporary'
+              ? parsedTemporaryKey.courseId
+              : parsedTemporaryKey.resourceId;
       const finalOwnerId =
         parsedFinalKey.kind === 'gallery_final'
           ? parsedFinalKey.mediaItemId
           : parsedFinalKey.kind === 'track_final'
             ? parsedFinalKey.activityId
-            : parsedFinalKey.resourceId;
+            : parsedFinalKey.kind === 'course_thumbnail_final'
+              ? parsedFinalKey.courseId
+              : parsedFinalKey.resourceId;
       if (
-        (!uploadPair && !urlPair && !galleryPair && !trackPair) ||
+        (!uploadPair && !urlPair && !galleryPair && !trackPair && !courseThumbnailPair) ||
         parsedTemporaryKey.tenantId !== parsedFinalKey.tenantId ||
         temporaryOwnerId !== finalOwnerId ||
         parsedFinalKey.sha256 !== expectation.sha256

@@ -273,12 +273,16 @@ function setup(
 ) {
   const courses: CourseRepository = {
     replayCommand: vi.fn().mockResolvedValue(null),
+    resolveThumbnailObject: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockRejectedValue(new Error('not used')),
-    read: vi
-      .fn()
-      .mockResolvedValue(
-        options.read ?? { status: 'available', course: courseHead, revision: courseRevision },
-      ),
+    read: vi.fn().mockResolvedValue(
+      options.read ?? {
+        status: 'available',
+        course: courseHead,
+        revision: courseRevision,
+        thumbnail: { status: 'none' },
+      },
+    ),
     list: vi.fn().mockResolvedValue({ courses: [courseHead], total: 1 }),
     headContent: vi.fn().mockResolvedValue({
       courseId,
@@ -293,6 +297,7 @@ function setup(
       status: 'available',
       course: { ...courseHead, headRevision: 2 },
       revision: { ...courseRevision, courseRevision: 2 },
+      thumbnail: { status: 'none' },
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
     storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),

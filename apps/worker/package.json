@@ -9,10 +9,13 @@
     "test": "vitest run --config vitest.config.ts",
     "coaching:fixture": "tsx src/start.ts",
     "resources:cleanup": "node --import tsx src/resource-cleanup.ts",
-    "resources:url-ingest": "node --import tsx src/url-ingestion.ts"
+    "resources:url-ingest": "node --import tsx src/url-ingestion.ts",
+    "courses:thumbnails": "node --import tsx src/course-thumbnail.ts"
   },
   "dependencies": {
+    "@workout/contracts": "workspace:*",
     "@workout/server-coaching": "workspace:*",
+    "@workout/server-courses": "workspace:*",
     "@workout/server-media": "workspace:*",
     "@workout/server-persistence": "workspace:*",
     "@workout/server-resource-ingestion": "workspace:*"

@@ -40,6 +40,7 @@ const migrationFiles = [
   '035_course_route_proposal.sql',
   '036_course_target_distance_candidates.sql',
   '037_course_preferences_and_privacy_zones.sql',
+  '038_course_thumbnails.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -230,6 +231,9 @@ export async function grantOperations(
     // The account export reads the owner's own preferences and protected areas (M2-01j,
     // export v20). Read only: the export never writes either of them.
     await pool.query(`GRANT SELECT ON course_preference,course_privacy_zone TO "${runtimeRole}"`);
+    // Stored thumbnail facts (M2-01l, export v21). Read only, and the projection carries no
+    // storage reference and no bytes.
+    await pool.query(`GRANT SELECT ON course_thumbnail TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -441,6 +445,37 @@ export async function grantResourceUrlIngestionWorker(
   }
 }
 
+/**
+ * The course-thumbnail render worker (M2-01l).
+ *
+ * It gets EXECUTE on eight bounded functions and **no table access at all**, so the only
+ * thing it can see of a tenant is the line it has been handed to draw, and the only things
+ * it can do with it are prepare, publish, refuse or fail. It cannot read a course name, a
+ * protected area, another tenant's row or an object key it was not given.
+ */
+export async function grantCourseThumbnailWorker(
+  connectionString: string,
+  workerRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(workerRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.lease_course_thumbnail_render(uuid,interval),
+       public.prepare_course_thumbnail(uuid,uuid,text,text,bigint,integer),
+       public.course_thumbnail_publication_fence_open(uuid,uuid),
+       public.finalize_course_thumbnail(uuid,uuid),
+       public.release_course_thumbnail_render(uuid,uuid),
+       public.mark_course_thumbnail_unavailable(uuid,uuid,text),
+       public.fail_course_thumbnail(uuid,uuid,text,boolean,interval),
+       public.requeue_course_thumbnail_refs(uuid)
+       TO "${workerRole}"`,
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 /** Cleanup workers see only leased opaque refs through bounded functions. */
 export async function grantResourceObjectCleanupWorker(
   connectionString: string,
@@ -465,7 +500,9 @@ export async function grantResourceObjectCleanupWorker(
        public.advance_activity_track_reconcile_cursor(text),
        public.reclaim_unreferenced_activity_track_object(text),
        public.purge_resource_derived_store(uuid,uuid,text),
-       public.prune_resource_retrieval_cache(integer)
+       public.prune_resource_retrieval_cache(integer),
+       public.reap_course_thumbnail_renders(integer),
+       public.prune_course_thumbnail_history(integer)
        TO "${workerRole}"`,
     );
   } finally {
@@ -836,6 +873,13 @@ export async function grantCourses(connectionString: string, runtimeRole: string
     // ids and radii but NOT centres: a moved centre would leave the digest unchanged and
     // an acknowledged-set guard would pass over it.
     await pool.query(`GRANT SELECT,INSERT,DELETE ON course_privacy_zone TO "${runtimeRole}"`);
+    // Stored thumbnails (M2-01l). The runtime role READS this ledger and nothing more: it
+    // has no INSERT, no UPDATE and no DELETE, and a trigger on the table refuses a write
+    // from anyone but the owner, so a future grant mistake cannot open a second path. The
+    // render is enqueued by a trigger inside the revision's own transaction and advanced
+    // only by the bounded functions the worker executes, which is also why no object key
+    // can be chosen, published or reclaimed from an API request.
+    await pool.query(`GRANT SELECT ON course_thumbnail TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

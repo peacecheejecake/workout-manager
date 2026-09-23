@@ -64,6 +64,116 @@ export const courseLimits = {
 } as const;
 
 /**
+ * Bounds for the STORED map thumbnail of a course revision (M2-01l, plan section 5).
+ *
+ * A thumbnail is private derived location data: it is a picture of where its owner has
+ * been, so it follows the permission, deletion and export policy of the course it was
+ * drawn from. Everything about it that could grow is fixed here rather than negotiated
+ * per request — the picture has one viewport, one vertex budget and one byte ceiling, and
+ * none of the three is client-supplied.
+ *
+ * It is an SVG and not a raster image on purpose. The projection that draws this line is
+ * right here, shared by the browser and the server; emitting the same path as markup needs
+ * no rasteriser and no new native runtime dependency in the worker, and it produces a
+ * byte-stable artefact for a given revision, which is what makes a content hash mean
+ * anything. The markup this product writes is one `path` element built from validated
+ * finite numbers, with no user text in it at all.
+ */
+export const courseThumbnailLimits = {
+  /** Square viewport, in SVG user units. The drawn line is centred inside `span`. */
+  viewport: 100,
+  span: 96,
+  /** Vertices the picture may draw. A course may carry 20,000. */
+  vertexBudget: 400,
+  /** Hard ceiling on one stored thumbnail. The renderer's own output is far below it. */
+  maxBytes: 64 * 1024,
+  /** Stored thumbnail bytes one tenant may hold. */
+  tenantBytes: 16 * 1024 * 1024,
+  /** Render attempts one revision's thumbnail gets before it is abandoned. */
+  maxAttempts: 5,
+  /** How long a queued render may stay unfinished before it is reaped. */
+  jobTtlSeconds: 60 * 60,
+} as const;
+/** Stored thumbnails are SVG. See `courseThumbnailLimits` for why. */
+export const courseThumbnailMediaType = 'image/svg+xml';
+/**
+ * The colour both thumbnails draw the line in.
+ *
+ * It is a literal here rather than `currentColor` because the stored picture is embedded
+ * through an `img` element, which makes it an independent document: `currentColor` there
+ * resolves to that document's initial colour — black — not to the page's. The drawn
+ * fallback used to inherit the page colour, so the two pictures changed appearance the
+ * moment one replaced the other. Now both take the colour from here, which is the same
+ * definition, so a swap cannot be visible.
+ */
+export const courseThumbnailStrokeColor = '#2b6cb0';
+/** Identity of the renderer that produced a stored thumbnail. */
+export const courseThumbnailRendererId = 'course-thumbnail-svg-v1';
+export const courseThumbnailRendererVersion = 1;
+
+/**
+ * Evenly spaced sample of a long line, down to the vertex budget.
+ *
+ * Deterministic by construction: the same coordinates always yield the same sample, which
+ * is what lets a stored picture be content-addressed.
+ */
+export function sampleCourseThumbnailVertices(
+  coordinates: readonly CoursePosition[],
+): readonly CoursePosition[] {
+  const budget = courseThumbnailLimits.vertexBudget;
+  if (coordinates.length <= budget) return coordinates;
+  const step = (coordinates.length - 1) / (budget - 1);
+  const sampled: CoursePosition[] = [];
+  for (let index = 0; index < budget; index += 1) {
+    const position = coordinates[Math.round(index * step)];
+    if (position !== undefined) sampled.push(position);
+  }
+  return sampled;
+}
+
+/**
+ * The one definition of how a course line becomes a thumbnail path.
+ *
+ * The browser draws it inline and the worker stores it as markup; both call this, so the
+ * stored picture and the fallback the screen draws when there is none cannot disagree
+ * about the shape of a line. `null` means the line is too short to draw — a single vertex
+ * is a point, and stretching a point into a picture would invent a shape nobody recorded.
+ */
+export function courseThumbnailPath(
+  coordinates: readonly CoursePosition[],
+): { readonly path: string; readonly vertexCount: number } | null {
+  if (coordinates.length < 2) return null;
+  const points = sampleCourseThumbnailVertices(coordinates);
+  const longitudes = points.map((position) => position[0]);
+  const latitudes = points.map((position) => position[1]);
+  const west = Math.min(...longitudes);
+  const east = Math.max(...longitudes);
+  const south = Math.min(...latitudes);
+  const north = Math.max(...latitudes);
+  // A degree of longitude is shorter than a degree of latitude everywhere but the equator,
+  // so drawing both at the same scale stretches the picture sideways — about 27% at
+  // Seoul's latitude, enough to turn a there-and-back into a shape the owner does not
+  // recognise. One cosine at the middle latitude gives the picture the real proportions.
+  const shrinkX = Math.cos((((north + south) / 2) * Math.PI) / 180);
+  // A course can be a straight north-south line, so neither span may divide by zero.
+  const spanX = (east - west) * shrinkX || 1e-6;
+  const spanY = north - south || 1e-6;
+  const { viewport, span } = courseThumbnailLimits;
+  const scale = Math.min(span / spanX, span / spanY);
+  const offsetX = (viewport - spanX * scale) / 2;
+  const offsetY = (viewport - spanY * scale) / 2;
+  const path = points
+    .map((position, index) => {
+      const x = offsetX + (position[0] - west) * shrinkX * scale;
+      // SVG y grows downward; north belongs at the top.
+      const y = offsetY + (north - position[1]) * scale;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+  return { path, vertexCount: points.length };
+}
+
+/**
  * Bounds for one target-distance candidate search (M2-01i).
  *
  * A target distance is an APPROXIMATION, not a specification. Everything about the search
@@ -530,11 +640,75 @@ export const courseHeadSchema = z.discriminatedUnion('status', [
 ]);
 export type CourseHead = z.infer<typeof courseHeadSchema>;
 
+/**
+ * What the owner may know about the stored thumbnail of the course they are reading.
+ *
+ * These are six different facts and the screen must not confuse them. "Not there yet" is
+ * not "cannot be made", and neither is "the render failed and is being retried". Every
+ * state but `ready` means the screen falls back to drawing the head revision itself, which
+ * it can always do because it already holds the coordinates.
+ *
+ * The state names a **revision**, never just a course. A stored thumbnail belongs to the
+ * immutable revision it was drawn from, so a picture can never be a stale view of a line
+ * that has since been edited or privacy-trimmed: a new revision gets a new thumbnail, and
+ * the superseded one is reclaimed rather than kept.
+ *
+ * There is no storage key here. The bytes come through the owner's authenticated download
+ * of their own course, exactly as a recorded track's geometry does.
+ */
+export const courseThumbnailStateSchema = z.discriminatedUnion('status', [
+  /** No render was ever asked for — a revision written before this feature existed. */
+  z.strictObject({ status: z.literal('none') }),
+  /** Asked for, not finished. The picture does not exist yet. */
+  z.strictObject({
+    status: z.literal('pending'),
+    courseRevision: revisionSchema.min(1),
+    queuedAt: instantSchema,
+  }),
+  z.strictObject({
+    status: z.literal('ready'),
+    courseRevision: revisionSchema.min(1),
+    revisionId: uuid,
+    mediaType: z.literal(courseThumbnailMediaType),
+    contentHash: sha256Schema,
+    byteSize: z.number().int().min(1).max(courseThumbnailLimits.maxBytes),
+    viewport: z.literal(courseThumbnailLimits.viewport),
+    /** Vertices actually drawn, which is the course's count capped at the budget. */
+    vertexCount: z.number().int().min(2).max(courseThumbnailLimits.vertexBudget),
+    rendererId: z.literal(courseThumbnailRendererId),
+    rendererVersion: z.literal(courseThumbnailRendererVersion),
+    createdAt: instantSchema,
+  }),
+  /** A picture of this revision cannot be made, and retrying would not change that. */
+  z.strictObject({
+    status: z.literal('unavailable'),
+    courseRevision: revisionSchema.min(1),
+    reason: z.literal('line_too_short_to_draw'),
+  }),
+  /** The render failed and another attempt is scheduled. */
+  z.strictObject({
+    status: z.literal('retrying'),
+    courseRevision: revisionSchema.min(1),
+    attemptCount: z.number().int().min(1).max(courseThumbnailLimits.maxAttempts),
+    failureCode: z.string().min(1).max(100),
+  }),
+  /** The render failed and no further attempt will be made. */
+  z.strictObject({
+    status: z.literal('abandoned'),
+    courseRevision: revisionSchema.min(1),
+    attemptCount: z.number().int().min(0).max(courseThumbnailLimits.maxAttempts),
+    failureCode: z.string().min(1).max(100),
+  }),
+]);
+export type CourseThumbnailState = z.infer<typeof courseThumbnailStateSchema>;
+
 export const courseReadResultSchema = z.discriminatedUnion('status', [
   z.strictObject({
     status: z.literal('available'),
     course: availableCourseHeadSchema,
     revision: courseRevisionSchema,
+    /** State of the stored derivative, never its storage key. */
+    thumbnail: courseThumbnailStateSchema,
   }),
   z.strictObject({
     status: z.literal('unavailable'),

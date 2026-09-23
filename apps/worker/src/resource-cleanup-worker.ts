@@ -78,6 +78,9 @@ export async function runResourceCleanupWorker(
   try {
     const now = dependencies.now ?? (() => new Date());
     await repository.reapExpired(now(), 100);
+    // Abandoned course-thumbnail renders join the same reaping pass, so there is still one
+    // reaper, one bound and one schedule for every private object of a tenant.
+    await repository.reapCourseThumbnailRenders(100);
     const objects = await processOneResourceObjectCleanup(
       repository,
       (storageRef) => storage.delete(validateObjectKey(storageRef)),
@@ -96,6 +99,7 @@ export async function runResourceCleanupWorker(
     // this worker; reclaiming history and expired cache entries must never
     // delay it, even when a prune has to wait for its own bounded timeout.
     await repository.pruneUploadHistory(100);
+    await repository.pruneCourseThumbnailHistory(100);
     await repository.pruneCleanupHistory(100);
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);

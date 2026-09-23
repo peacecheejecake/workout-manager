@@ -142,12 +142,13 @@ function setup(options: Options = {}) {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head, otherHead], total: 2 });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
-      return reply({ status: 'available', course: head, revision });
+      return reply({ status: 'available', course: head, revision, thumbnail: { status: 'none' } });
     if (input.path === `/bff/v1/courses/${otherId}` && input.method === 'GET')
       return reply({
         status: 'available',
         course: otherHead,
         revision: { ...revision, courseId: otherId, name: '다른 코스' },
+        thumbnail: { status: 'none' },
       });
     if (input.path === '/bff/v1/courses/preferences' && input.method === 'GET')
       return reply({
@@ -197,7 +198,7 @@ function setup(options: Options = {}) {
       return reply(
         chosen?.body ?? {
           outcome: 'imported',
-          course: { status: 'available', course: head, revision },
+          course: { status: 'available', course: head, revision, thumbnail: { status: 'none' } },
         },
         chosen?.status ?? 200,
       );
@@ -208,6 +209,7 @@ function setup(options: Options = {}) {
           status: 'available',
           course: { ...head, headRevision: 3 },
           revision: { ...revision, courseRevision: 3 },
+          thumbnail: { status: 'none' },
         },
         options.trimReply?.status ?? 200,
       );
@@ -632,6 +634,7 @@ describe('the course thumbnail', () => {
           status: 'available',
           course: { ...head, headRevision: 3 },
           revision: trimmedRevision,
+          thumbnail: { status: 'none' },
         });
       if (input.path === '/bff/v1/courses/preferences') return reply({ preferences: [], total: 0 });
       if (input.path === '/bff/v1/courses/privacy-zones')
