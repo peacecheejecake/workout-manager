@@ -120,6 +120,10 @@ describe('tenant object purge migration upgrade of a populated database', () => 
     expect(await granteesOf('erase_account_before_tenant_object_purge')).toEqual([]);
     // Until the grant helper runs again, the runtime cannot erase (the deployment note).
     expect(await granteesOf('erase_account')).toEqual([]);
+    // Grant helpers name the objects of every migration, so they run on a fully migrated
+    // database only (a later migration, such as M2-01y's 045, adds objects they grant).
+    await migrate(upgradeUrl());
+    expect(await granteesOf('erase_account')).toEqual([]);
     await grantOperations(upgradeUrl(), runtimeRole);
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
     expect(await granteesOf('erase_account_before_tenant_object_purge')).toEqual([]);

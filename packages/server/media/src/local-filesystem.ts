@@ -16,14 +16,18 @@ import { dirname, isAbsolute, parse, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import {
+  isObjectKeyOfScope,
+  objectScopePrefix,
   parseObjectKey,
   tenantObjectPrefix,
+  type ObjectScope,
   type ParsedObjectKey,
   type FinalObjectKey,
   type ObjectKey,
   type TemporaryObjectKey,
 } from './keys.js';
 import type {
+  ObjectScopeEnumeration,
   ObjectStorage,
   OpenedStoredObject,
   PublishExpectation,
@@ -144,6 +148,16 @@ function unitPrivateDirectoryDepth(parsed: ParsedObjectKey): number {
  */
 const TENANT_DIRECTORY_DEPTH = 8;
 
+/**
+ * The same bound below one scope's own directory (M2-01y). An activity's deepest keys are its
+ * track's final objects, `tracks/T/<kind>/uploads/U/sha256/` and then the file: six levels. A
+ * course's are its pictures, `thumbnails/revisions/R/sha256/` and then the file: four.
+ */
+const SCOPE_DIRECTORY_DEPTH: Readonly<Record<ObjectScope['kind'], number>> = {
+  activity: 6,
+  course: 4,
+};
+
 /** Whether a path the walk found is an object key, and one of this tenant's (M2-01x). */
 function isObjectKeyOfTenant(key: string, tenantId: string): boolean {
   try {
@@ -155,7 +169,7 @@ function isObjectKeyOfTenant(key: string, tenantId: string): boolean {
 
 export async function createLocalFilesystemObjectStorage(
   rootDirectory: string,
-): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration> {
+): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration & ObjectScopeEnumeration> {
   if (!isAbsolute(rootDirectory)) throw new UnsafeStoragePathError();
   const absoluteRoot = resolve(rootDirectory);
   if (absoluteRoot === parse(absoluteRoot).root) throw new UnsafeStoragePathError();
@@ -398,10 +412,43 @@ export async function createLocalFilesystemObjectStorage(
    */
   async function listTenantObjects(tenantId: string, limit: number): Promise<TenantObjectListing> {
     const prefix = tenantObjectPrefix(tenantId);
+    return listObjectsBelow(prefix, limit, TENANT_DIRECTORY_DEPTH, (key) =>
+      isObjectKeyOfTenant(key, tenantId),
+    );
+  }
+
+  /**
+   * Every object key under one activity's or one course's prefix, up to `limit` (M2-01y).
+   *
+   * The tenant walk above, with a narrower directory and a narrower test: the walk starts at
+   * `private/v1/tenants/<tenant>/activities/<activity>` (or `…/courses/<course>`), reached
+   * component by component from the root under the same guards, descends no deeper than any
+   * key of that scope goes, and reports only a file that parses as a key of that scope's own
+   * families naming that same tenant and that same activity or course. Everything else under
+   * the directory is counted as unrecognized and left alone.
+   */
+  async function listScopeObjects(scope: ObjectScope, limit: number): Promise<TenantObjectListing> {
+    const prefix = objectScopePrefix(scope);
+    return listObjectsBelow(prefix, limit, SCOPE_DIRECTORY_DEPTH[scope.kind], (key) =>
+      isObjectKeyOfScope(key, scope),
+    );
+  }
+
+  /**
+   * The walk both listings share (M2-01x, generalized by M2-01y without changing a guard):
+   * `prefix` is an already validated canonical prefix, `maxDepth` the deepest directory level
+   * below it any key reaches, and `belongs` whether a file found there is a key to report.
+   */
+  async function listObjectsBelow(
+    prefix: string,
+    limit: number,
+    maxDepth: number,
+    belongs: (key: string) => boolean,
+  ): Promise<TenantObjectListing> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
-      throw new RangeError('Tenant listing limit must be an integer from 1 to 1000.');
-    const tenantDirectory = resolve(canonicalRoot, ...prefix.split('/'));
-    if (!tenantDirectory.startsWith(`${canonicalRoot}${sep}`)) throw new UnsafeStoragePathError();
+      throw new RangeError('Listing limit must be an integer from 1 to 1000.');
+    const prefixDirectory = resolve(canonicalRoot, ...prefix.split('/'));
+    if (!prefixDirectory.startsWith(`${canonicalRoot}${sep}`)) throw new UnsafeStoragePathError();
     await assertRootIntact();
     let current = canonicalRoot;
     for (const part of prefix.split('/')) {
@@ -431,18 +478,18 @@ export async function createLocalFilesystemObjectStorage(
         if (stat.isSymbolicLink()) throw new UnsafeStoragePathError();
         const key = `${keyPrefix}/${name}`;
         if (stat.isDirectory()) {
-          if (depth + 1 > TENANT_DIRECTORY_DEPTH) unrecognized += 1;
+          if (depth + 1 > maxDepth) unrecognized += 1;
           else await visit(path, key, depth + 1);
           if (truncated) return;
         } else if (stat.isFile()) {
-          if (isObjectKeyOfTenant(key, tenantId)) keys.push(key as ObjectKey);
+          if (belongs(key)) keys.push(key as ObjectKey);
           else unrecognized += 1;
         } else {
           throw new UnsafeStoragePathError();
         }
       }
     };
-    await visit(tenantDirectory, prefix, 0);
+    await visit(prefixDirectory, prefix, 0);
     // Before the answer (M2-01o): names read through a root swapped mid-walk are not this
     // store's, and an empty listing read that way is not "nothing left".
     await assertRootIntact();
@@ -451,6 +498,7 @@ export async function createLocalFilesystemObjectStorage(
 
   return {
     listTenantObjects,
+    listScopeObjects,
 
     async writeTemporary(key, body) {
       const parsedKey = parseObjectKey(key);

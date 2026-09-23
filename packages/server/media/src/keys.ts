@@ -95,6 +95,69 @@ export function tenantObjectPrefix(tenantId: string): string {
   return `private/v1/tenants/${tenantId}`;
 }
 
+/**
+ * One owner inside a tenant whose objects all live under a directory of their own (M2-01y):
+ * an activity's recorded tracks under `activities/<activity>`, a course's pictures under
+ * `courses/<course>`. Nothing else is ever written below either directory.
+ */
+export type ObjectScope =
+  | { readonly kind: 'activity'; readonly tenantId: string; readonly activityId: string }
+  | { readonly kind: 'course'; readonly tenantId: string; readonly courseId: string };
+
+/**
+ * The directory every object of one scope lives under (M2-01y), e.g.
+ * `private/v1/tenants/<tenant>/activities/<activity>`.
+ *
+ * Exactly as strict as `tenantObjectPrefix`, for the same reason and for both ids: a scope
+ * prefix is what a purge deletes beneath, so only the canonical lowercase spelling of each id
+ * is accepted and nothing is normalized onto some other directory.
+ */
+export function objectScopePrefix(scope: ObjectScope): string {
+  const tenantPrefix = tenantObjectPrefix(scope.tenantId);
+  const canonical = new RegExp(`^${UUID_PATTERN}$`);
+  switch (scope.kind) {
+    case 'activity':
+      if (!canonical.test(scope.activityId)) throw new InvalidObjectKeyError();
+      return `${tenantPrefix}/activities/${scope.activityId}`;
+    case 'course':
+      if (!canonical.test(scope.courseId)) throw new InvalidObjectKeyError();
+      return `${tenantPrefix}/courses/${scope.courseId}`;
+    default:
+      throw new InvalidObjectKeyError();
+  }
+}
+
+/**
+ * Whether a key is an object of this scope (M2-01y): it parses as a key, of the scope's own
+ * families (a track's for an activity, a thumbnail's for a course), naming the same tenant and
+ * the same activity or course. Anything else — including a key of that tenant from another
+ * family — is not.
+ */
+export function isObjectKeyOfScope(key: string, scope: ObjectScope): boolean {
+  let parsed: ParsedObjectKey;
+  try {
+    parsed = parseObjectKey(key);
+  } catch {
+    return false;
+  }
+  if (parsed.tenantId !== scope.tenantId) return false;
+  switch (scope.kind) {
+    case 'activity':
+      return (
+        (parsed.kind === 'track_temporary' || parsed.kind === 'track_final') &&
+        parsed.activityId === scope.activityId
+      );
+    case 'course':
+      return (
+        (parsed.kind === 'course_thumbnail_temporary' ||
+          parsed.kind === 'course_thumbnail_final') &&
+        parsed.courseId === scope.courseId
+      );
+    default:
+      return false;
+  }
+}
+
 export function createTemporaryObjectKey(input: {
   tenantId: string;
   resourceId: string;

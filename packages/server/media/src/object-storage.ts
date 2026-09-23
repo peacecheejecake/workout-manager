@@ -1,4 +1,4 @@
-import type { FinalObjectKey, ObjectKey, TemporaryObjectKey } from './keys.js';
+import type { FinalObjectKey, ObjectKey, ObjectScope, TemporaryObjectKey } from './keys.js';
 
 export interface StoredObjectStat {
   readonly key: ObjectKey;
@@ -76,4 +76,21 @@ export interface TenantObjectListing {
  */
 export interface TenantObjectEnumeration {
   listTenantObjects(tenantId: string, limit: number): Promise<TenantObjectListing>;
+}
+
+/**
+ * Enumerating what one activity or one course has in the store, independently of any database
+ * row (M2-01y).
+ *
+ * It exists for one caller: the purge that deleting an activity arms (and the course
+ * reclamation that deletion causes). A track uploaded, or a picture drawn, between a backup's
+ * database dump and its object-archive copy has no row in a restored database, so nothing
+ * row-based can name it — and its tenant is alive, so no tenant purge covers it. The scope's
+ * prefix still names it.
+ *
+ * Listing is advisory, exactly as for a tenant: it returns names of that scope's keys only and
+ * never deletes.
+ */
+export interface ObjectScopeEnumeration {
+  listScopeObjects(scope: ObjectScope, limit: number): Promise<TenantObjectListing>;
 }

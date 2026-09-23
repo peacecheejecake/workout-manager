@@ -155,6 +155,9 @@ describe('migration 039 upgrade of a populated 038 database', () => {
         // M2-01x: the erased-tenant prefix purge's two calls.
         'lease_tenant_object_purge(uuid,timestamp with time zone,timestamp with time zone)',
         'finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean)',
+        // M2-01y: the deleted-activity and reclaimed-course prefix purge's two calls.
+        'lease_object_scope_purge(uuid,timestamp with time zone,timestamp with time zone)',
+        'finish_object_scope_purge(text,text,uuid,uuid,boolean,text,integer,integer,boolean)',
       ]),
     );
   });

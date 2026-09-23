@@ -1248,7 +1248,8 @@
       "title": "활동 단위 suppression의 백업 공백",
       "dependsOn": ["M2-01x"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01y.md",
       "scope": "M2-01x에서 분리. 살아 있는 계정에서 백업 뒤 삭제된 활동의 업로드가 DB dump와 객체 아카이브 복사 사이에 들어오면, 복원 DB에는 그 객체를 가리키는 행이 없고 tenant가 살아 있어 prefix purge도 적용되지 않는다. 복원 후 활동 단위 suppression 재적용이 그 객체까지 지우는 방법을 설계·구현하고, M2-01x와 같은 drill 공백 재현(dump와 cp 사이 실제 업로드)으로 닫혔음을 보인다. 과잉 삭제 금지: 살아 있는 활동과 다른 tenant의 객체는 건드리지 않는다."
     },
     {

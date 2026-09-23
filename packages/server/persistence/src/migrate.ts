@@ -48,6 +48,7 @@ const migrationFiles = [
   '043_course_accessibility_notes.sql',
   '044_tenant_object_purge.sql',
   '045_tenant_object_purge_visibility.sql',
+  '046_object_scope_purge.sql',
 ] as const;
 
 /**
@@ -566,7 +567,9 @@ export async function grantResourceObjectCleanupWorker(
        public.settle_course_thumbnail_object_ref(text),
        public.reclaim_unreferenced_course_thumbnail_object(text),
        public.lease_tenant_object_purge(uuid,timestamptz,timestamptz),
-       public.finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean)
+       public.finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean),
+       public.lease_object_scope_purge(uuid,timestamptz,timestamptz),
+       public.finish_object_scope_purge(text,text,uuid,uuid,boolean,text,integer,integer,boolean)
        TO "${workerRole}"`,
     );
     // Superseded by the fault-carrying windows (M2-01n, migration 040). An older helper

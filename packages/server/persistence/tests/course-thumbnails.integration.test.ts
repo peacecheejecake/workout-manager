@@ -15,6 +15,7 @@ import {
   validateObjectKey,
   type ObjectStorage,
   type StoreReachability,
+  type ObjectScopeEnumeration,
   type TenantObjectEnumeration,
 } from '@workout/server-media';
 import { renderCourseThumbnail } from '@workout/server-courses/thumbnail';
@@ -46,6 +47,7 @@ import {
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import {
   createResourceObjectCleanupRepository,
+  processObjectScopePurges,
   processOneResourceObjectCleanup,
   processTenantObjectPurges,
   reconcileCourseThumbnailObjects,
@@ -63,7 +65,7 @@ let activities: ActivityRepository;
 let operations: OperationsRepository;
 let renderer: CourseThumbnailWorkerRepository;
 let cleanup: ResourceObjectCleanupRepository;
-let storage: ObjectStorage & StoreReachability & TenantObjectEnumeration;
+let storage: ObjectStorage & StoreReachability & TenantObjectEnumeration & ObjectScopeEnumeration;
 let objectRoot: string;
 // Two least-privilege roles, as in production: one draws, one deletes. Neither is the
 // runtime role, and neither can do the other's job.
@@ -918,6 +920,13 @@ describe('M2-01l stored course thumbnails', () => {
           // several leased runs, one at a time (M2-01z).
           await processTenantObjectPurges(cleanup, {
             listTenantObjects: (tenantId, limit) => storage.listTenantObjects(tenantId, limit),
+            delete: (key) => storage.delete(validateObjectKey(key)),
+            stat: (key) => storage.stat(validateObjectKey(key)),
+          });
+          // And M2-01y's, one directory lower, batched the same way: it too locks only its own
+          // purge row.
+          await processObjectScopePurges(cleanup, {
+            listScopeObjects: (scope, limit) => storage.listScopeObjects(scope, limit),
             delete: (key) => storage.delete(validateObjectKey(key)),
             stat: (key) => storage.stat(validateObjectKey(key)),
           });

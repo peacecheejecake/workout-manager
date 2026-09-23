@@ -1,10 +1,12 @@
 import type {
+  ObjectScopeEnumeration,
   ObjectStorage,
   StoreReachability,
   TenantObjectEnumeration,
   TenantObjectListing,
 } from '@workout/server-media';
 import type {
+  ObjectScopePurgeLease,
   ResourceObjectCleanupLease,
   ResourceObjectCleanupRepository,
   TenantObjectPurgeLease,
@@ -63,12 +65,21 @@ function setup(input: {
   purgeLeases?: readonly TenantObjectPurgeLease[];
   /** Successive answers of the tenant listing; the last one repeats. */
   tenantListings?: readonly TenantObjectListing[];
+  /** The deleted activity or reclaimed course whose prefix purge is due (M2-01y). */
+  scopePurgeLease?: ObjectScopePurgeLease;
+  /** Successive scope leases, one per lease call, then none; overrides `scopePurgeLease`. */
+  scopePurgeLeases?: readonly ObjectScopePurgeLease[];
+  /** Successive answers of the scope listing; the last one repeats. */
+  scopeListings?: readonly TenantObjectListing[];
 }) {
   const window = (references: readonly string[]) =>
     references.map((storageRef) => ({
       storageRef,
       ...(input.windowFaults?.get(storageRef) ?? { sweepAttempts: 0, deferred: false }),
     }));
+  const scopeLeases = [
+    ...(input.scopePurgeLeases ?? (input.scopePurgeLease ? [input.scopePurgeLease] : [])),
+  ];
   const deleteObject = input.deleteFailure
     ? vi.fn(async () => Promise.reject(input.deleteFailure))
     : vi.fn(async () => undefined);
@@ -98,6 +109,8 @@ function setup(input: {
     clearThumbnailSweepFault: vi.fn(async () => true),
     leaseTenantObjectPurge: vi.fn(async () => purgeLeases.shift() ?? null),
     finishTenantObjectPurge: vi.fn(async () => true),
+    leaseObjectScopePurge: vi.fn(async () => scopeLeases.shift() ?? null),
+    finishObjectScopePurge: vi.fn(async () => true),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
       input.authorized === undefined ? leased : input.authorized,
@@ -110,7 +123,19 @@ function setup(input: {
   });
   const listings = [...(input.tenantListings ?? [])];
   const purgeLeases = [...(input.purgeLeases ?? (input.purgeLease ? [input.purgeLease] : []))];
-  const storage: ObjectStorage & StoreReachability & TenantObjectEnumeration = {
+  const scopeListings = [...(input.scopeListings ?? [])];
+  const storage: ObjectStorage &
+    StoreReachability &
+    TenantObjectEnumeration &
+    ObjectScopeEnumeration = {
+    listScopeObjects: vi.fn(
+      async () =>
+        (scopeListings.length > 1 ? scopeListings.shift() : scopeListings[0]) ?? {
+          keys: [],
+          unrecognized: 0,
+          truncated: false,
+        },
+    ),
     listTenantObjects: vi.fn(
       async () =>
         (listings.length > 1 ? listings.shift() : listings[0]) ?? {
@@ -1028,6 +1053,278 @@ describe('resource object cleanup worker', () => {
           purged: 5,
           unrecognized: 0,
           more: false,
+        });
+      });
+    });
+  });
+  describe('a deleted activity’s or reclaimed course’s prefix purge (M2-01y)', () => {
+    const tenant = 'a1d6ca43-36eb-4e86-8e31-e4e75afab3fa';
+    const activity = '4d6cc1ce-0643-4c53-b055-9df458fec594';
+    const course = '5e7dd2df-1754-4d64-a166-0ae569e1a5a5';
+    const activityLease: ObjectScopePurgeLease = {
+      scope: { kind: 'activity', tenantId: tenant, activityId: activity },
+      attempts: 1,
+    };
+    const courseLease: ObjectScopePurgeLease = {
+      scope: { kind: 'course', tenantId: tenant, courseId: course },
+      attempts: 1,
+    };
+    const trackKey = (tenantPart: string, activityPart: string, hex: string) =>
+      `private/v1/tenants/${tenantPart}/activities/${activityPart}/tracks/db985aaa-b96e-4aef-871a-c99a16183439/temporary/db985aaa-b96e-4aef-871a-c99a16183${hex}/raw` as never;
+    const first = trackKey(tenant, activity, '439');
+    const second = trackKey(tenant, activity, '43a');
+    const listing = (...keys: never[]): TenantObjectListing => ({
+      keys,
+      unrecognized: 0,
+      truncated: false,
+    });
+
+    it('deletes every listed key of the leased activity through the guarded delete, then passes', async () => {
+      const { dependencies, repository, deleteObject, storage } = setup({
+        scopePurgeLease: activityLease,
+        scopeListings: [listing(first, second), listing()],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['passed', 'empty']);
+      expect(storage.listScopeObjects).toHaveBeenCalledWith(activityLease.scope, 100);
+      expect(deleteObject.mock.calls).toEqual([[first], [second]]);
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(activityLease, {
+        ok: true,
+        purged: 2,
+        unrecognized: 0,
+        more: false,
+      });
+    });
+
+    it('purges a reclaimed course’s pictures under the course’s own directory', async () => {
+      const picture =
+        `private/v1/tenants/${tenant}/courses/${course}/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183439` as never;
+      const { dependencies, repository, deleteObject } = setup({
+        scopePurgeLease: courseLease,
+        scopeListings: [listing(picture), listing()],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['passed', 'empty']);
+      expect(deleteObject.mock.calls).toEqual([[picture]]);
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(courseLease, {
+        ok: true,
+        purged: 1,
+        unrecognized: 0,
+        more: false,
+      });
+    });
+
+    it('stops before deleting anything when a course listing names an id that starts with the course id', async () => {
+      const picture =
+        `private/v1/tenants/${tenant}/courses/${course}/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183439` as never;
+      const lookalike =
+        `private/v1/tenants/${tenant}/courses/${course}0/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183439` as never;
+      const { dependencies, repository, deleteObject } = setup({
+        scopePurgeLease: courseLease,
+        scopeListings: [listing(picture, lookalike)],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['retry_scheduled']);
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(courseLease, {
+        ok: false,
+        errorCode: 'FOREIGN_KEY_LISTED',
+        purged: 0,
+      });
+    });
+
+    it('does nothing at all when no scope purge is due', async () => {
+      const { dependencies, repository, storage } = setup({});
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['empty']);
+      expect(storage.listScopeObjects).not.toHaveBeenCalled();
+      expect(repository.finishObjectScopePurge).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an id that starts with the activity id', trackKey(tenant, `${activity}0`, '43b')],
+      [
+        'a sibling activity of the same tenant',
+        trackKey(tenant, 'db985aaa-b96e-4aef-871a-c99a16183439', '43b'),
+      ],
+      [
+        'the same activity id under another tenant',
+        trackKey('b1d6ca43-36eb-4e86-8e31-e4e75afab3fa', activity, '43b'),
+      ],
+      [
+        'the tenant’s course of the same id',
+        `private/v1/tenants/${tenant}/courses/${activity}/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183439` as never,
+      ],
+    ])('stops before deleting anything when a listing names %s', async (_label, foreign: never) => {
+      const { dependencies, repository, deleteObject } = setup({
+        scopePurgeLease: activityLease,
+        scopeListings: [listing(first, foreign)],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['retry_scheduled']);
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(activityLease, {
+        ok: false,
+        errorCode: 'FOREIGN_KEY_LISTED',
+        purged: 0,
+      });
+    });
+
+    it('stops at the first failed delete and records its code instead of going on to the next key', async () => {
+      const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+      const { dependencies, repository, deleteObject } = setup({
+        scopePurgeLease: activityLease,
+        deleteFailure: unsafe,
+        scopeListings: [listing(first, second)],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['retry_scheduled']);
+      expect(deleteObject.mock.calls).toEqual([[first]]);
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(activityLease, {
+        ok: false,
+        errorCode: 'UNSAFE_STORAGE_PATH',
+        purged: 0,
+      });
+    });
+
+    it('treats a key another deleter removed first as gone only when stat says so', async () => {
+      const gone = Object.assign(new Error('unlink'), { code: 'ENOENT' });
+      const { dependencies, repository, storage } = setup({
+        scopePurgeLease: activityLease,
+        deleteFailure: gone,
+        statResult: null,
+        scopeListings: [listing(first), listing()],
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(result.scopePurges).toEqual(['passed', 'empty']);
+      expect(storage.stat).toHaveBeenCalledWith(first);
+      expect(repository.finishObjectScopePurge).toHaveBeenCalledWith(activityLease, {
+        ok: true,
+        purged: 1,
+        unrecognized: 0,
+        more: false,
+      });
+
+      const still = setup({
+        scopePurgeLease: activityLease,
+        deleteFailure: gone,
+        statResult: { key: first, sizeBytes: 1, modifiedAt: new Date(0) },
+        scopeListings: [listing(first)],
+      });
+      const failed = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        still.dependencies,
+      );
+      expect(failed.scopePurges).toEqual(['retry_scheduled']);
+      expect(still.repository.finishObjectScopePurge).toHaveBeenCalledWith(activityLease, {
+        ok: false,
+        errorCode: 'ENOENT',
+        purged: 0,
+      });
+    });
+    describe('several runs per invocation (N4)', () => {
+      const activityAt = (index: number) =>
+        `4d6cc1ce-0643-4c53-b055-${index.toString(16).padStart(12, '0')}`;
+      const leaseAt = (index: number): ObjectScopePurgeLease => ({
+        scope: { kind: 'activity', tenantId: tenant, activityId: activityAt(index) },
+        attempts: 1,
+      });
+
+      it('runs at most twenty leased scope purges, one after another, when more are due', async () => {
+        const leases = Array.from({ length: 25 }, (_, index) => leaseAt(index));
+        const { dependencies, repository } = setup({ scopePurgeLeases: leases });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.scopePurges).toEqual(Array.from({ length: 20 }, () => 'passed'));
+        expect(repository.leaseObjectScopePurge).toHaveBeenCalledTimes(20);
+        const leaseOrder = vi.mocked(repository.leaseObjectScopePurge).mock.invocationCallOrder;
+        const finishOrder = vi.mocked(repository.finishObjectScopePurge).mock.invocationCallOrder;
+        for (let run = 0; run < 20; run += 1) {
+          expect(finishOrder[run]).toBeGreaterThan(leaseOrder[run] ?? Infinity);
+          if (run < 19) expect(leaseOrder[run + 1]).toBeGreaterThan(finishOrder[run] ?? Infinity);
+        }
+        expect(repository.finishObjectScopePurge).toHaveBeenLastCalledWith(leases[19], {
+          ok: true,
+          purged: 0,
+          unrecognized: 0,
+          more: false,
+        });
+      });
+
+      it('stops the batch at the first failed run and leases nothing after it', async () => {
+        const unsafe = Object.assign(new Error('root swapped'), { code: 'UNSAFE_STORAGE_PATH' });
+        const { dependencies, repository, deleteObject } = setup({
+          scopePurgeLeases: [0, 1, 2].map(leaseAt),
+          deleteFailure: unsafe,
+          scopeListings: [listing(), listing(trackKey(tenant, activityAt(1), '439'))],
+        });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.scopePurges).toEqual(['passed', 'retry_scheduled']);
+        expect(repository.leaseObjectScopePurge).toHaveBeenCalledTimes(2);
+        expect(deleteObject).toHaveBeenCalledTimes(1);
+      });
+
+      it('stops the batch at a lost lease', async () => {
+        const { dependencies, repository } = setup({ scopePurgeLeases: [0, 1].map(leaseAt) });
+        vi.mocked(repository.finishObjectScopePurge).mockResolvedValueOnce(false);
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.scopePurges).toEqual(['lease_lost']);
+        expect(repository.leaseObjectScopePurge).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps each run’s own delete budget: a run that used it goes on in the same batch', async () => {
+        const keys = Array.from({ length: 100 }, (_, index) =>
+          trackKey(tenant, activity, index.toString(16).padStart(3, '0')),
+        );
+        const { dependencies, repository, deleteObject } = setup({
+          scopePurgeLeases: [activityLease, activityLease],
+          scopeListings: [
+            listing(...keys),
+            listing(...keys),
+            listing(...keys.slice(0, 5)),
+            listing(),
+          ],
+        });
+        const result = await runResourceCleanupWorker(
+          { connectionString, storageRoot },
+          dependencies,
+        );
+        expect(result.scopePurges).toEqual(['continuing', 'passed', 'empty']);
+        expect(deleteObject).toHaveBeenCalledTimes(205);
+        expect(repository.finishObjectScopePurge).toHaveBeenNthCalledWith(1, activityLease, {
+          ok: true,
+          purged: 200,
+          unrecognized: 0,
+          more: true,
         });
       });
     });

@@ -1,12 +1,15 @@
 import {
   createLocalFilesystemObjectStorage,
   validateObjectKey,
+  type ObjectScopeEnumeration,
   type ObjectStorage,
   type StoreReachability,
   type TenantObjectEnumeration,
 } from '@workout/server-media';
 import {
   createResourceObjectCleanupRepository,
+  OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION,
+  processObjectScopePurges,
   processOneResourceObjectCleanup,
   processTenantObjectPurges,
   reconcileActivityTrackObjects,
@@ -34,6 +37,12 @@ export type ResourceCleanupWorkerResult = {
    * (M2-01z).
    */
   tenantPurges: readonly TenantObjectPurgeResult[];
+  /**
+   * The leased runs of deleted activities' and reclaimed courses' prefix purges (M2-01y), in
+   * order: up to `OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION`, ending at the first run that did not
+   * succeed.
+   */
+  scopePurges: readonly TenantObjectPurgeResult[];
   /** Bounded comparison of the track object namespace against the ledger. */
   trackReconciliation: TrackReconciliationOutcome;
   /** The same, for the course-thumbnail namespace (M2-01m). */
@@ -43,7 +52,7 @@ export type ResourceCleanupWorkerResult = {
 export interface ResourceCleanupWorkerDependencies {
   createStorage(
     rootDirectory: string,
-  ): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration>;
+  ): Promise<ObjectStorage & StoreReachability & TenantObjectEnumeration & ObjectScopeEnumeration>;
   createRepository(options: {
     connectionString: string;
     max: number;
@@ -118,6 +127,22 @@ export async function runResourceCleanupWorker(
       200,
       now,
     );
+    // The same, one directory lower, for a live tenant (M2-01y): what a restored archive
+    // brought back under an activity deleted after the backup, or under a course that deletion
+    // reclaimed, that no row of the restored database names.
+    // Several runs per invocation, as for tenants (N4): each scope needs one complete pass, and
+    // the migration's backfill arms one for every activity ever deleted.
+    const scopePurges = await processObjectScopePurges(
+      repository,
+      {
+        listScopeObjects: (scope, limit) => storage.listScopeObjects(scope, limit),
+        delete: (key) => storage.delete(validateObjectKey(key)),
+        stat: (key) => storage.stat(validateObjectKey(key)),
+      },
+      OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION,
+      200,
+      now,
+    );
     const derived = await processOneResourceDerivedCleanup(
       derivedRepository,
       (dependencies.derivedPurge ?? configuredDerivedStorePurge)(derivedRepository),
@@ -139,7 +164,14 @@ export async function runResourceCleanupWorker(
     await repository.pruneCleanupHistory(100);
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);
-    return { objects, tenantPurges, derived, trackReconciliation, thumbnailReconciliation };
+    return {
+      objects,
+      tenantPurges,
+      scopePurges,
+      derived,
+      trackReconciliation,
+      thumbnailReconciliation,
+    };
   } finally {
     await Promise.all([repository.close(), derivedRepository.close()]);
   }

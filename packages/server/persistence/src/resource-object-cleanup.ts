@@ -27,6 +27,20 @@ export type TenantObjectPurgeRunOutcome =
     }
   | { ok: false; errorCode: string; purged: number };
 
+/**
+ * One activity or one course whose own object-storage directory a worker holds the lease to
+ * purge (M2-01y). The same shape as the store's `ObjectScope`, spelled out here so this module
+ * keeps no runtime dependency on the store.
+ */
+export type ObjectScopePurgeScope =
+  | { readonly kind: 'activity'; readonly tenantId: string; readonly activityId: string }
+  | { readonly kind: 'course'; readonly tenantId: string; readonly courseId: string };
+
+export type ObjectScopePurgeLease = {
+  scope: ObjectScopePurgeScope;
+  attempts: number;
+};
+
 /** One watched reference in a reconciliation window, with its recorded sweep fault (M2-01n). */
 export type ReconcileCandidate = {
   storageRef: string;
@@ -81,6 +95,16 @@ export interface ResourceObjectCleanupRepository {
     lease: TenantObjectPurgeLease,
     outcome: TenantObjectPurgeRunOutcome,
   ): Promise<boolean>;
+  /**
+   * One due activity or course purge (M2-01y). A row whose activity is present and not
+   * deleted, or whose course is present and available, is never returned; the database
+   * decides that, not the worker.
+   */
+  leaseObjectScopePurge(now: Date, leaseUntil: Date): Promise<ObjectScopePurgeLease | null>;
+  finishObjectScopePurge(
+    lease: ObjectScopePurgeLease,
+    outcome: TenantObjectPurgeRunOutcome,
+  ): Promise<boolean>;
   lease(now: Date, leaseUntil: Date): Promise<ResourceObjectCleanupLease | null>;
   authorize(
     lease: ResourceObjectCleanupLease,
@@ -119,6 +143,13 @@ function recordedAttempts(value: unknown): number | null {
 
 const purgeLeaseRow = z.object({
   athlete_id: z.uuid(),
+  attempts: z.number().int().positive(),
+});
+
+const scopePurgeLeaseRow = z.object({
+  athlete_id: z.uuid(),
+  scope_kind: z.enum(['activity', 'course']),
+  scope_id: z.uuid(),
   attempts: z.number().int().positive(),
 });
 
@@ -296,6 +327,38 @@ export function createResourceObjectCleanupRepository(options: {
         'SELECT public.finish_tenant_object_purge($1,$2,$3,$4,$5,$6,$7) AS finished',
         [
           z.uuid().parse(lease.tenantId),
+          workerId,
+          outcome.ok,
+          outcome.ok ? null : sweepFaultCode.parse(outcome.errorCode),
+          count.parse(outcome.purged),
+          outcome.ok ? count.parse(outcome.unrecognized) : 0,
+          outcome.ok ? outcome.more : false,
+        ],
+      );
+      return result.rows[0]?.['finished'] === true;
+    },
+    async leaseObjectScopePurge(now, leaseUntil) {
+      const result = await pool.query('SELECT * FROM public.lease_object_scope_purge($1,$2,$3)', [
+        workerId,
+        now.toISOString(),
+        leaseUntil.toISOString(),
+      ]);
+      if (!result.rows[0]) return null;
+      const row = scopePurgeLeaseRow.parse(result.rows[0]);
+      const scope: ObjectScopePurgeScope =
+        row.scope_kind === 'activity'
+          ? { kind: 'activity', tenantId: row.athlete_id, activityId: row.scope_id }
+          : { kind: 'course', tenantId: row.athlete_id, courseId: row.scope_id };
+      return { scope, attempts: row.attempts };
+    },
+    async finishObjectScopePurge(lease, outcome) {
+      const count = z.number().int().min(0).max(1_000_000);
+      const result = await pool.query(
+        'SELECT public.finish_object_scope_purge($1,$2,$3,$4,$5,$6,$7,$8,$9) AS finished',
+        [
+          z.uuid().parse(lease.scope.tenantId),
+          lease.scope.kind,
+          z.uuid().parse(scopeOwnerId(lease.scope)),
           workerId,
           outcome.ok,
           outcome.ok ? null : sweepFaultCode.parse(outcome.errorCode),
@@ -729,6 +792,153 @@ export async function processTenantObjectPurges(
   const outcomes: TenantObjectPurgeResult[] = [];
   while (outcomes.length < boundedRuns) {
     const outcome = await processOneTenantObjectPurge(repository, storage, budget, now);
+    outcomes.push(outcome);
+    if (outcome !== 'passed' && outcome !== 'continuing') break;
+  }
+  return outcomes;
+}
+
+/** The activity's or the course's own id. */
+function scopeOwnerId(scope: ObjectScopePurgeScope): string {
+  return scope.kind === 'activity' ? scope.activityId : scope.courseId;
+}
+
+/**
+ * The directory of one scope, WITH its trailing separator (M2-01y): what every key the store
+ * lists for that scope must begin with. Built here from the lease, independently of the store.
+ */
+function scopeKeyPrefix(scope: ObjectScopePurgeScope): string {
+  const tenant = `private/v1/tenants/${scope.tenantId}`;
+  return scope.kind === 'activity'
+    ? `${tenant}/activities/${scope.activityId}/`
+    : `${tenant}/courses/${scope.courseId}/`;
+}
+
+/**
+ * What a scope purge needs from the object store (M2-01y): the listing of one scope's
+ * directory, the ordinary guarded `delete`, and `stat` — the tenant purge's needs, one level
+ * narrower.
+ */
+export interface ScopePurgedStorage {
+  listScopeObjects(
+    scope: ObjectScopePurgeScope,
+    limit: number,
+  ): Promise<{ readonly keys: readonly string[]; readonly unrecognized: number }>;
+  delete(key: string): Promise<void>;
+  stat(key: string): Promise<unknown>;
+}
+
+/**
+ * One leased run of a deleted activity's (or a reclaimed course's) prefix purge (M2-01y).
+ *
+ * Why it exists: every other deletion of such an activity's objects starts from a database
+ * row, and a track uploaded — or a picture drawn — between a backup's dump and its archive copy
+ * has none in the restored cluster. The tenant is alive, so M2-01x's tenant purge is not armed
+ * for it. The activity's (or course's) own key prefix still names it.
+ *
+ * It is `processOneTenantObjectPurge` one directory lower, with the same guards in the same
+ * order and nothing weakened:
+ *
+ * - Whose. The database leases only a scope whose activity is deleted or absent, or whose
+ *   course is reclaimed or absent (`lease_object_scope_purge`), and an activity tombstone is
+ *   terminal; the store lists only that canonical directory, by directory, and only keys of
+ *   that scope's families naming that same tenant and owner (`listScopeObjects`); and here
+ *   every listed key must begin with that directory INCLUDING its trailing separator, or the
+ *   run stops before deleting anything of that listing.
+ * - How. Each key goes through the store's own `delete`. Nothing is deleted any other way.
+ * - When it stops. At the first error of any kind, recorded and retried with backoff. The one
+ *   exception is a key another deleter removed first (the queue works the same keys): ENOENT
+ *   from `delete`, confirmed absent by `stat` under the same guards.
+ *
+ * Bounded: at most `budget` deletions per run. Only a run that listed nothing left is a pass,
+ * and for a scope the first pass closes the purge.
+ */
+export async function processOneObjectScopePurge(
+  repository: ResourceObjectCleanupRepository,
+  storage: ScopePurgedStorage,
+  budget = 200,
+  now: () => Date = () => new Date(),
+): Promise<TenantObjectPurgeResult> {
+  const boundedBudget = z.number().int().min(1).max(1000).parse(budget);
+  const leasedAt = now();
+  const lease = await repository.leaseObjectScopePurge(
+    leasedAt,
+    new Date(leasedAt.getTime() + 120_000),
+  );
+  if (!lease) return 'empty';
+  const prefix = scopeKeyPrefix(lease.scope);
+  let purged = 0;
+  let unrecognized = 0;
+  let more = false;
+  try {
+    for (;;) {
+      const remaining = boundedBudget - purged;
+      if (remaining <= 0) {
+        more = true;
+        break;
+      }
+      const listing = await storage.listScopeObjects(lease.scope, Math.min(remaining, 100));
+      unrecognized = listing.unrecognized;
+      if (listing.keys.length === 0) break;
+      for (const key of listing.keys)
+        if (!key.startsWith(prefix)) throw new ForeignKeyListedError();
+      for (const key of listing.keys) {
+        try {
+          await storage.delete(key);
+        } catch (error) {
+          if ((error as { code?: unknown } | null)?.code !== 'ENOENT') throw error;
+          if ((await storage.stat(key)) !== null) throw error;
+        }
+        purged += 1;
+      }
+    }
+  } catch (error) {
+    return (await repository.finishObjectScopePurge(lease, {
+      ok: false,
+      errorCode: sweepFaultCodeOf(error),
+      purged,
+    }))
+      ? 'retry_scheduled'
+      : 'lease_lost';
+  }
+  if (!(await repository.finishObjectScopePurge(lease, { ok: true, purged, unrecognized, more })))
+    return 'lease_lost';
+  return more ? 'continuing' : 'passed';
+}
+
+/**
+ * Leased scope-purge runs one worker invocation performs at most (M2-01y, N4).
+ *
+ * Why more than one: every deleted activity and every course that deletion reclaims arms one
+ * scope purge, and migration 046 arms one for every activity already deleted and every course
+ * already unavailable when it runs. Each needs exactly one complete pass. With one run per
+ * invocation the backlog drained at the scheduler's rate — 60 scopes an hour at one invocation
+ * a minute — so a history of, say, 50,000 deleted activities took about 35 days. Twenty runs
+ * make that 1,200 scopes an hour (28,800 a day; the same 50,000 in under two days), while one
+ * invocation stays bounded: at most 20 leases and 20 × the per-run delete budget, and a scope
+ * with nothing stored costs a handful of `lstat`s. Past that nothing is lost; due rows wait in
+ * `available_at` order.
+ */
+export const OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION = 20;
+
+/**
+ * Up to `runs` leased scope-purge runs, one after another (M2-01y, N4) — the same rule as
+ * `processTenantObjectPurges`: each run is exactly `processOneObjectScopePurge` with its own
+ * lease on one purge row, its own delete budget and its own stop at the first error; the batch
+ * goes on only after `passed` or `continuing` and stops at the first other outcome. Runs never
+ * overlap, so the worker holds at most one scope-purge lease at a time.
+ */
+export async function processObjectScopePurges(
+  repository: ResourceObjectCleanupRepository,
+  storage: ScopePurgedStorage,
+  runs = OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION,
+  budget = 200,
+  now: () => Date = () => new Date(),
+): Promise<readonly TenantObjectPurgeResult[]> {
+  const boundedRuns = z.number().int().min(1).max(100).parse(runs);
+  const outcomes: TenantObjectPurgeResult[] = [];
+  while (outcomes.length < boundedRuns) {
+    const outcome = await processOneObjectScopePurge(repository, storage, budget, now);
     outcomes.push(outcome);
     if (outcome !== 'passed' && outcome !== 'continuing') break;
   }

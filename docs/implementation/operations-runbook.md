@@ -52,6 +52,44 @@ Garmin OAuth 추가 후에는 백업 안의 모든 Garmin credential·미완료 
 검증 근거: [PostgreSQL pg_dump](https://www.postgresql.org/docs/15/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/15/app-pgrestore.html).
 
+### 활동 삭제 원장 재적용과 객체 purge (M2-01y)
+
+백업 이후 삭제된 활동은 최신 활동 삭제 원장(활동 id, 삭제 시 activity revision, source kind·source id,
+source head의 source revision·content hash)으로 재적용한다. **재적용은 runtime 접근을 열기 전에만 한다.**
+원장 재생의 SQL은 repository와 달리 앞에서 command lock을 잡지 않으므로, 라이브 writer와 겹치면
+`40P01`이 날 수 있다(M2-01y 스트레스 시험에서 관측). 재적용은 RLS를 우회하는 복원 관리자 role로 한다.
+다른 tenant의 활동 id·말소 기록·identity 계정을 확인하는 검사는 그 role에서만 다른 tenant 행을 볼 수 있다
+(우회하지 않는 role이면 purge 행 쓰기에서 실패하므로 여전히 fail closed다). dump 뒤에 생긴 계정의 항목은
+`ACTIVITY_REPLAY_TENANT_UNKNOWN`으로 복원 전체를 막으므로, 계정 원장을 먼저 재적용한다.
+항목마다 그 tenant 세션(`app.athlete_id`)으로:
+
+1. 말소된 tenant의 항목은 말소 재생이 이미 만족시킨다(계수만 한다).
+2. 복원 cluster에 활동 행이 **있으면** suppression 행을 넣고 묘비 UPDATE(`deleted=true`, 원장 revision,
+   복원 행이 원장보다 앞서 있으면 fail closed)를 한다. 묘비 trigger가 활동 디렉터리와, 그 삭제가 회수한
+   코스마다 코스 디렉터리의 객체 purge를 무장한다.
+3. 복원 cluster에 활동 행이 **없으면**(dump 뒤 생성·원장 전 삭제)
+   `SELECT public.replay_absent_activity_deletion(tenant, activity, kind, source_id, source_revision, revision, content_hash)`
+   를 부른다. 활동 값이 없는 삭제된 canonical 행, source head, suppression 행을 되살리고 purge를 무장한다.
+   그래서 복원 뒤 기기 재동기화가 같은 source를 보내도 `suppressed`로 거절되고 새 활동이 생기지 않는다.
+   세션 불일치, 형식이 틀린 항목, 비-canonical id, 말소되었거나 identity 계정이 없는 tenant, 복원 cluster가
+   이미 가진 활동 id(자기 것이든 다른 tenant 것이든), 다른 활동으로 이미 알려진 source는 모두 **예외로 재적용
+   전체를 rollback**한다. 조용히 건너뛰는 경로는 없다. 원장에 source revision·content hash가 없으면 이 항목을
+   재적용할 수 없으므로 복원을 재개하지 않는다.
+
+운영 순서: migrate 046 → `grantResourceObjectCleanupWorker` 재실행 → 새 cleanup worker 배포. worker는 매
+run에서 말소 tenant purge 뒤에 활동·코스 purge를 최대 20건 차례로 lease해 그 디렉터리만 walk하고 guarded delete로
+지운다. grant 전에는 그 호출이 `42501`/`42883`으로 실패해 같은 run의 뒤 단계도 돌지 않는다. 046은
+rename이 없어 `grantOperations`를 다시 돌릴 필요는 없다.
+
+처리량: worker는 한 번 호출에 활동·코스 purge를 최대 20건(`OBJECT_SCOPE_PURGE_RUNS_PER_INVOCATION`) 차례로
+돌린다. run마다 자기 lease·삭제 예산(200)·첫 오류 중단을 따르고, 실패·lease 유실·빈 queue에서 멈춘다. 1분마다
+부르면 시간당 1,200 scope다. **046은 적용 시점의 삭제된 활동 전부와 unavailable 코스 전부를 무장**하므로, 그 수를
+1,200으로 나눈 시간만큼 backfill이 걸린다. 멈춘 작업은 `object_scope_purge`에서
+`last_error_code LIKE 'DEAD_LETTER:%' OR last_error_code LIKE 'INCONSISTENT_LEDGER:%'`로 찾는다.
+`INCONSISTENT_LEDGER:ACTIVITY_LIVE`·`INCONSISTENT_LEDGER:COURSE_AVAILABLE`은 살아 있는 소유자에게 purge가 무장된,
+시스템이 만들지 않는 원장 상태다. 재시도로 고쳐지지 않으므로 사람이 조사한다. 자세한 근거는
+[M2-01y 기록](progress/M2-01y.md).
+
 ## 체크인 저장 이후의 내보내기·복구
 
 M1-04a에서 export artifact `schemaVersion: 2`를 도입했다. 기존 v1 다운로드 파일은 변경하지 않으며

@@ -65,6 +65,7 @@ import {
 import { createGalleryMediaRepository } from '../packages/server/persistence/src/gallery-media.js';
 import {
   createResourceObjectCleanupRepository,
+  processOneObjectScopePurge,
   processOneResourceObjectCleanup,
   processOneTenantObjectPurge,
   reconcileActivityTrackObjects,
@@ -2338,6 +2339,27 @@ async function execute() {
     checks.push(
       'erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup',
     );
+    // M2-01y: an activity of the live tenant that is in the dump with no track yet. Its
+    // track arrives between the dump and the archive copy, and the activity is deleted after
+    // the backup, so the restored cluster knows the activity but not one row of its track.
+    const liveGapImport = await createActivityRepository(sourceDb).importActivity(retainedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: randomUUID(),
+        revision: 1,
+        contentHash: 'e'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic run tracked between dump and archive copy, deleted after backup',
+        kind: 'running',
+        startedAt: '2026-09-19T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
     run(bin, 'pg_dump', [
       '-h',
       directory,
@@ -2379,6 +2401,62 @@ async function execute() {
       deletedAthlete,
     );
     const gapObjects = gapTrack.artifacts.map((artifact) => artifact.storageRef);
+    // M2-01y: the same gap on the live tenant, for three things the tenant deletes after the
+    // backup, each through the real lifecycle:
+    //  (a) the track of an activity that is in the dump (`liveGapImport`);
+    //  (b) an activity recorded and tracked entirely inside the gap (`bornGapImport`);
+    //  (c) a second revision of a course cut from the doomed activity, and its picture.
+    // None of their objects is named by any row of the dump, and none is under an erased
+    // tenant's prefix, so the M2-01x purge does not reach them either.
+    const liveGapTrack = await seedTrack(
+      liveGapImport.activityId,
+      liveGapImport.revision,
+      'live-gap-upload',
+    );
+    const bornGapSourceId = randomUUID();
+    const bornGapImport = await createActivityRepository(sourceDb).importActivity(retainedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: bornGapSourceId,
+        revision: 1,
+        contentHash: 'f'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic run recorded between dump and archive copy, deleted after backup',
+        kind: 'running',
+        startedAt: '2026-09-20T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
+    const bornGapTrack = await seedTrack(
+      bornGapImport.activityId,
+      bornGapImport.revision,
+      'born-gap-upload',
+    );
+    const doomedCourseV2 = await courseRepo.update(
+      retainedAthlete,
+      doomedCourse.course.courseId,
+      1,
+      courseContent(doomedImport.activityId, doomedTrackId, 'Doomed drill course renamed', {
+        kind: 'renamed',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (doomedCourseV2.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    await drainThumbnailQueue();
+    const gapThumbnail = drawnThumbnails.get(`${doomedCourse.course.courseId}:2`);
+    assert.ok(gapThumbnail, 'the renamed doomed course was drawn inside the gap');
+    const liveGapObjects = [
+      ...liveGapTrack.artifacts.map((artifact) => artifact.storageRef),
+      ...bornGapTrack.artifacts.map((artifact) => artifact.storageRef),
+      gapThumbnail.storageRef,
+    ];
+    for (const ref of liveGapObjects)
+      assert.ok(await sourceObjectStorage.stat(validateObjectKey(ref)));
     await cp(sourceObjectRoot, objectArchive, { recursive: true, errorOnExist: true });
     await constraintRepo.update(retainedAthlete, oldConstraint.id, {
       expectedHeadRevision: 1,
@@ -2458,8 +2536,13 @@ async function execute() {
         revision: number;
         kind: string;
         source_id: string;
+        source_revision: number;
+        content_hash: string;
       }>(
-        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id
+        // The source head's revision and content hash travel with each entry (M2-01y): they
+        // are what the restored cluster needs to suppress a source it has never seen.
+        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id,
+           s.source_revision,s.content_hash
          FROM activity_canonical c JOIN activity_source_head s
            ON s.athlete_id=c.athlete_id AND s.activity_id=c.id
          WHERE c.athlete_id=$1 AND c.deleted`,
@@ -2626,6 +2709,13 @@ async function execute() {
       doomedImport.activityId,
       { expectedRevision: doomedImport.revision },
     );
+    // M2-01y: the two activities whose tracks arrived inside the gap are deleted too.
+    for (const gapActivity of [liveGapImport, bornGapImport])
+      await createActivityRepository(sourceDb).deleteActivity(
+        retainedAthlete,
+        gapActivity.activityId,
+        { expectedRevision: gapActivity.revision },
+      );
     const activityDeletionLedger = (
       await source.query<{
         athlete_id: string;
@@ -2633,16 +2723,21 @@ async function execute() {
         revision: number;
         kind: string;
         source_id: string;
+        source_revision: number;
+        content_hash: string;
       }>(
-        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id
+        // The source head's revision and content hash travel with each entry (M2-01y): they
+        // are what the restored cluster needs to suppress a source it has never seen.
+        `SELECT c.athlete_id,c.id AS activity_id,c.revision,s.kind,s.source_id,
+           s.source_revision,s.content_hash
          FROM activity_canonical c JOIN activity_source_head s
            ON s.athlete_id=c.athlete_id AND s.activity_id=c.id
          WHERE c.deleted ORDER BY c.athlete_id,c.id`,
       )
     ).rows;
     assert.deepEqual(
-      activityDeletionLedger.map((row) => row.activity_id),
-      [doomedImport.activityId],
+      activityDeletionLedger.map((row) => row.activity_id).sort(),
+      [doomedImport.activityId, liveGapImport.activityId, bornGapImport.activityId].sort(),
     );
     // The erased tenant's rows are gone from the source, so its entry is carried from the
     // capture taken before the erasure. The ledger therefore overlaps the erasure ledger.
@@ -2706,6 +2801,55 @@ async function execute() {
     ).rows[0]?.count;
     assert.equal(gapRowCount, 0);
     checks.push('gap_upload_between_dump_and_archive_copy_restored_with_objects_and_no_row');
+    // M2-01y: the live tenant's gap objects came back too, and nothing in the restored
+    // database names them. The activity tracked in the gap is there, live and trackless; the
+    // activity born in the gap is not there at all; the doomed course is at its first revision.
+    for (const ref of liveGapObjects)
+      assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
+    const liveGapRowCount = (
+      await restored.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM (
+           SELECT storage_ref FROM activity_track_object WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT storage_ref FROM activity_track_object_ref
+             WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT storage_ref FROM course_thumbnail_object_ref
+             WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT storage_ref FROM resource_object_cleanup
+             WHERE storage_ref=ANY($1::text[])
+           UNION ALL SELECT x.ref FROM course_thumbnail t CROSS JOIN LATERAL
+             (VALUES(t.temporary_ref),(t.storage_ref)) x(ref) WHERE x.ref=ANY($1::text[])
+           UNION ALL SELECT x.ref FROM activity_track_revision r CROSS JOIN LATERAL
+             (VALUES(r.raw_storage_ref),(r.normalized_storage_ref),(r.map_path_storage_ref)) x(ref)
+             WHERE x.ref=ANY($1::text[])
+           UNION ALL SELECT x.ref FROM activity_track_upload_intent i CROSS JOIN LATERAL
+             (VALUES(i.raw_temporary_ref),(i.normalized_temporary_ref),(i.map_path_temporary_ref),
+               (i.raw_storage_ref),(i.normalized_storage_ref),(i.map_path_storage_ref)) x(ref)
+             WHERE x.ref=ANY($1::text[])
+           UNION ALL SELECT activity_id::text FROM activity_track
+             WHERE activity_id=ANY($2::uuid[])
+           UNION ALL SELECT course_id::text FROM course_revision
+             WHERE course_id=$3 AND course_revision>1
+         ) rows`,
+        [
+          liveGapObjects,
+          [liveGapImport.activityId, bornGapImport.activityId],
+          doomedCourse.course.courseId,
+        ],
+      )
+    ).rows[0]?.count;
+    assert.equal(liveGapRowCount, 0);
+    assert.deepEqual(
+      (
+        await restored.query<{ id: string; deleted: boolean }>(
+          'SELECT id::text,deleted FROM activity_canonical WHERE id=ANY($1::uuid[])',
+          [[liveGapImport.activityId, bornGapImport.activityId]],
+        )
+      ).rows,
+      [{ id: liveGapImport.activityId, deleted: false }],
+    );
+    checks.push(
+      'live_tenant_gap_uploads_of_later_deleted_activities_restored_with_objects_and_no_row',
+    );
     // Admin inspection only: the runtime has not connected to the restored database yet.
     const restoredOldEvidence = await restored.query<{ body: unknown; purged_reason: unknown }>(
       'SELECT body,purged_reason FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$2',
@@ -2984,6 +3128,7 @@ async function execute() {
       assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
       let replayedDeletions = 0;
       let erasureSatisfiedDeletions = 0;
+      let absentDeletions = 0;
       for (const entry of activityDeletionJson) {
         assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
         const row = entry as Record<string, unknown>;
@@ -2992,6 +3137,8 @@ async function execute() {
         const kind = row['kind'];
         const sourceId = row['source_id'];
         const revision = row['revision'];
+        const sourceRevision = row['source_revision'];
+        const contentHash = row['content_hash'];
         assert.ok(
           typeof owner === 'string' &&
             typeof activityId === 'string' &&
@@ -2999,7 +3146,11 @@ async function execute() {
             typeof sourceId === 'string' &&
             typeof revision === 'number' &&
             Number.isInteger(revision) &&
-            revision > 0,
+            revision > 0 &&
+            typeof sourceRevision === 'number' &&
+            Number.isInteger(sourceRevision) &&
+            sourceRevision > 0 &&
+            typeof contentHash === 'string',
         );
         await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
         const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
@@ -3021,6 +3172,31 @@ async function execute() {
           erasureSatisfiedDeletions += 1;
           continue;
         }
+        const present = await restored.query(
+          'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+          [owner, activityId],
+        );
+        if (present.rowCount === 0) {
+          // M2-01y: an activity recorded after the dump and deleted before the ledger was
+          // captured. The restored cluster has no row for it — no canonical row, no source
+          // head — so there is nothing to tombstone and no source to suppress. Skipping it
+          // would let a device re-sync import the deleted activity again as a new one. The
+          // replay rebuilds exactly what suppression needs from the ledger (a deleted
+          // canonical row with no activity values, the source head, the suppression row) and
+          // arms the purge of the activity's object directory; the function refuses — and so
+          // rolls the whole replay back — anything it cannot verify.
+          assert.deepEqual(
+            (
+              await restored.query<{ replayed: boolean }>(
+                'SELECT public.replay_absent_activity_deletion($1,$2,$3,$4,$5,$6,$7) AS replayed',
+                [owner, activityId, kind, sourceId, sourceRevision, revision, contentHash],
+              )
+            ).rows,
+            [{ replayed: true }],
+          );
+          absentDeletions += 1;
+          continue;
+        }
         await restored.query(
           `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
            ON CONFLICT DO NOTHING`,
@@ -3035,8 +3211,12 @@ async function execute() {
         assert.equal(applied.rowCount, 1);
         replayedDeletions += 1;
       }
-      assert.equal(replayedDeletions + erasureSatisfiedDeletions, activityDeletionJson.length);
+      assert.equal(
+        replayedDeletions + erasureSatisfiedDeletions + absentDeletions,
+        activityDeletionJson.length,
+      );
       assert.equal(erasureSatisfiedDeletions, 1);
+      assert.equal(absentDeletions, 1);
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
@@ -3464,6 +3644,59 @@ async function execute() {
       },
     });
     assert.equal(reimported.outcome, 'suppressed');
+    // M2-01y: the activity born in the gap and deleted after the backup is suppressed too. A
+    // device re-sync after the restore sends its source again — the very same identity and
+    // revision — and the restored database answers `suppressed` with that same activity id,
+    // creating no activity row: the replay rebuilt the source head and the suppression.
+    const activityRowsBeforeGapReimport = (
+      await restored.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM activity_canonical WHERE athlete_id=$1',
+        [retainedAthlete],
+      )
+    ).rows[0]?.count;
+    const gapReimported = await restoredActivities.importActivity(retainedAthlete, {
+      idempotencyKey: randomUUID(),
+      source: {
+        kind: 'fixture',
+        sourceId: bornGapSourceId,
+        revision: 1,
+        contentHash: 'f'.repeat(64),
+      },
+      activity: {
+        title: 'Synthetic run recorded between dump and archive copy, deleted after backup',
+        kind: 'running',
+        startedAt: '2026-09-20T08:00:00+09:00',
+        timezone: 'Asia/Seoul',
+        durationSeconds: null,
+        durationKind: 'unknown',
+        distanceMeters: 0,
+      },
+    });
+    assert.equal(gapReimported.outcome, 'suppressed');
+    assert.equal(gapReimported.activityId, bornGapImport.activityId);
+    assert.equal(
+      (
+        await restored.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM activity_canonical WHERE athlete_id=$1',
+          [retainedAthlete],
+        )
+      ).rows[0]?.count,
+      activityRowsBeforeGapReimport,
+    );
+    assert.deepEqual(
+      (
+        await restored.query<{ deleted: boolean; original: unknown }>(
+          'SELECT deleted,original FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+          [retainedAthlete, bornGapImport.activityId],
+        )
+      ).rows,
+      [{ deleted: true, original: {} }],
+    );
+    assert.equal(
+      await restoredActivities.getActivity(retainedAthlete, bornGapImport.activityId),
+      null,
+    );
+    checks.push('restored_gap_born_deleted_activity_reimport_is_suppressed_without_a_new_activity');
     await assert.rejects(() =>
       createActivityTrackRepository(restoreDb).reserve(
         retainedAthlete,
@@ -3613,6 +3846,118 @@ async function execute() {
     assert.deepEqual(purgedRow, { passes: 1, objects_purged: '3', open: true });
     checks.push(
       'erased_tenant_prefix_purge_armed_by_replay_reclaims_gap_upload_and_spares_every_other_object',
+    );
+    // M2-01y: the live tenant's gap objects are what none of that reaches. The replayed
+    // suppression tombstoned the activity that is in the dump and reclaimed the doomed
+    // course, the queue is drained, both sweeps read their indexes to the end and the erased
+    // tenant's prefix is purged — and all seven objects are still in the restored store: no
+    // restored row names them, and the tenant is alive, so no tenant purge is armed for it.
+    assert.deepEqual(
+      (
+        await restored.query<{ deleted: boolean }>(
+          'SELECT deleted FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+          [retainedAthlete, liveGapImport.activityId],
+        )
+      ).rows,
+      [{ deleted: true }],
+    );
+    assert.equal(
+      (
+        await restored.query('SELECT 1 FROM tenant_object_purge WHERE athlete_id=$1', [
+          retainedAthlete,
+        ])
+      ).rowCount,
+      0,
+    );
+    for (const ref of liveGapObjects)
+      assert.ok(await restoredObjectStorage.stat(validateObjectKey(ref)));
+    checks.push(
+      'live_tenant_gap_uploads_survive_suppression_replay_queue_drain_sweeps_and_tenant_purge',
+    );
+    // M2-01y: what names them is the activity's (or the course's) own key prefix. The replayed
+    // tombstone armed a purge of the activity that is in the dump, and the course reclamation
+    // it caused armed one for each reclaimed course; the replay armed the activity it could
+    // not tombstone by id. The cleanup worker's scope purge walks each directory and deletes
+    // through the store's guarded delete — and the files it removes are exactly the seven gap
+    // objects: nothing of the live activity, the live course, the tenant or anyone else.
+    const expectedScopes = [
+      { scope_kind: 'activity', scope_id: doomedImport.activityId },
+      { scope_kind: 'activity', scope_id: liveGapImport.activityId },
+      { scope_kind: 'activity', scope_id: bornGapImport.activityId },
+      { scope_kind: 'course', scope_id: doomedCourse.course.courseId },
+      { scope_kind: 'course', scope_id: doomedCourseCopy.course.courseId },
+    ];
+    const armedScopes = (
+      await restored.query<{ scope_kind: string; scope_id: string; due: boolean }>(
+        `SELECT scope_kind,scope_id::text,available_at<=clock_timestamp() AS due
+         FROM object_scope_purge WHERE athlete_id=$1 AND completed_at IS NULL`,
+        [retainedAthlete],
+      )
+    ).rows;
+    for (const expected of expectedScopes)
+      assert.ok(
+        armedScopes.some(
+          (row) =>
+            row.scope_kind === expected.scope_kind && row.scope_id === expected.scope_id && row.due,
+        ),
+        `scope purge armed and due: ${expected.scope_kind}`,
+      );
+    // No purge under anything the retained tenant still has.
+    assert.equal(
+      armedScopes.filter(
+        (row) =>
+          row.scope_id === retainedFixture.activityId ||
+          row.scope_id === retainedCourse.course.courseId,
+      ).length,
+      0,
+    );
+    const filesBeforeScopePurge = await storedFiles();
+    const restoreScopePurge = createResourceObjectCleanupRepository({
+      connectionString: url('drill_restore'),
+      max: 1,
+    });
+    const scopeOutcomes: string[] = [];
+    try {
+      for (let run = 0; run < 200; run += 1) {
+        const outcome = await processOneObjectScopePurge(restoreScopePurge, {
+          listScopeObjects: (scope, limit) => restoredObjectStorage.listScopeObjects(scope, limit),
+          delete: (key) => restoredObjectStorage.delete(validateObjectKey(key)),
+          stat: (key) => restoredObjectStorage.stat(validateObjectKey(key)),
+        });
+        if (outcome === 'empty') break;
+        scopeOutcomes.push(outcome);
+      }
+    } finally {
+      await restoreScopePurge.close();
+    }
+    assert.ok(scopeOutcomes.length >= expectedScopes.length);
+    assert.ok(scopeOutcomes.every((outcome) => outcome === 'passed'));
+    for (const ref of liveGapObjects)
+      assert.equal(await restoredObjectStorage.stat(validateObjectKey(ref)), null);
+    const filesAfterScopePurge = new Set(await storedFiles());
+    assert.deepEqual(
+      filesBeforeScopePurge.filter((file) => !filesAfterScopePurge.has(file)).sort(),
+      [...liveGapObjects].sort(),
+    );
+    for (const artifact of retainedTrack.artifacts)
+      assert.ok(await restoredObjectStorage.stat(artifact.storageRef));
+    assert.ok(await restoredObjectStorage.stat(validateObjectKey(retainedThumbnail.storageRef)));
+    const scopeRows = (
+      await restored.query<{ scope_id: string; passes: number; objects_purged: string }>(
+        `SELECT scope_id::text,passes,objects_purged FROM object_scope_purge
+         WHERE athlete_id=$1 AND scope_id=ANY($2::uuid[]) AND completed_at IS NOT NULL
+         ORDER BY scope_id`,
+        [retainedAthlete, expectedScopes.map((scope) => scope.scope_id)],
+      )
+    ).rows;
+    const purgedBy = new Map(scopeRows.map((row) => [row.scope_id, row]));
+    assert.equal(scopeRows.length, expectedScopes.length);
+    for (const row of scopeRows) assert.equal(row.passes, 1);
+    assert.equal(purgedBy.get(liveGapImport.activityId)?.objects_purged, '3');
+    assert.equal(purgedBy.get(bornGapImport.activityId)?.objects_purged, '3');
+    assert.equal(purgedBy.get(doomedCourse.course.courseId)?.objects_purged, '1');
+    checks.push(
+      'deleted_activity_and_reclaimed_course_scope_purges_armed_by_replay_reclaim_live_tenant_gap_uploads_and_spare_every_other_object',
     );
     // Courses restored with the cluster. The retained one is intact; the two derived from
     // the deleted activity were reclaimed by the replayed suppression, and what is left is
@@ -4567,6 +4912,7 @@ async function execute() {
     trustedArchive: true,
     restoreBeforeRuntimeAccess: [
       'replay_latest_external_erasure_ledger',
+      'replay_latest_activity_deletion_ledger_rebuilding_suppression_for_absent_activities',
       'replay_latest_complete_external_constraint_ledger_before_runtime_access',
       'replay_latest_external_evidence_withdrawal_ledger_and_current_ai_consent',
       'invalidate_all_restored_sessions_and_login_attempts',
@@ -4581,6 +4927,7 @@ async function execute() {
       'Requires an independently retained, complete and current evidence withdrawal ledger with explicit exists/absent AI consent states covering backup owners, current consent owners and snapshot owners captured together; a missing, incomplete or stale ledger cannot authorize production restoration.',
       'Model output is untrusted and capped at 1 MiB per row; account export remains capped at 8 MiB. The restore replay uses the evidence withdrawal trigger to purge output before runtime access.',
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
+      'An activity recorded after the database dump and deleted before the ledger capture is absent from the restored cluster; its ledger entry must carry the source revision and content hash, from which the replay rebuilds a value-less deleted canonical row, the source head and the suppression row, and arms the purge of its object directory. An entry that cannot be verified (malformed, foreign id, unknown or erased tenant, conflicting source) aborts the replay.',
       'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
     ],
     sources: [
