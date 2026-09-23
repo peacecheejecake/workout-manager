@@ -13,10 +13,25 @@
     "probe-course-performance",
     "course-acceptance.spec fixture x1, real engine x3 (after render assertion), F2 revert fails"
   ],
+  "amendments": [
+    {
+      "node": "M2-01t",
+      "date": "2026-09-23",
+      "rows": ["S09-indoor-tab"],
+      "decision": "User amended the spec to match the implementation (\"M2-01t는 현재 구현에 맞게 스펙을 고쳐\"); product behaviour unchanged.",
+      "change": "S09-indoor-tab failed -> passed; quote replaced with the amended spec sentence; counts passed 27 -> 28, failed 2 -> 1.",
+      "executed": [
+        "tests/identity/activity-track-no-position.spec.ts, Next and Vite shells, x3 each",
+        "mutations M1, M2, M2b, M3 each fail in both shells, restored with cmp",
+        "pnpm test:identity"
+      ],
+      "note": "The header fields node, baseHead and executedThisNode above describe M2-01k only. Rows listed here were re-judged by the amending node on its own executed evidence; see docs/implementation/progress/M2-01t.md."
+    }
+  ],
   "counts": {
     "partial": 72,
-    "passed": 27,
-    "failed": 2,
+    "passed": 28,
+    "failed": 1,
     "missing": 3,
     "not_executed": 6
   },
@@ -90,12 +105,15 @@
     {
       "id": "S09-indoor-tab",
       "source": "docs/.pre/01_product_screen_spec.md:137",
-      "quote": "실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다.",
-      "verdict": "failed",
+      "quote": "실내·GPS 없는 기록도 경로 탭은 비활성화하지 않는다. 탭 안에서 위치가 기록되지 않았음을 설명하고, 지도를 그리지 않은 채 요약을 보여 주며, 없는 위치로 경로를 만들어 내지 않는다.",
+      "verdict": "passed",
       "evidence": [
-        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:87 asserts the route tab is ENABLED (:94)"
+        "tests/identity/activity-track-no-position.spec.ts \"Next shell: an indoor recording keeps the route tab reachable and draws no path\" and \"Vite shell: an indoor recording keeps the route tab reachable and draws no path\" (M2-01t; real OIDC session, API, PostgreSQL and object storage; synthetic position-less FIT; x3 per shell and in pnpm test:identity x2, executed)",
+        "M2-01t mutations, each restored and confirmed with cmp, all failing in both shells: M1 no-location notice removed fails at the notice; M2 map leaf mounted instead of the 'no coordinates' notice fails at that notice; M2b map leaf mounted AND the notice kept fails at the map pane's single-child check (received 4), and with that check removed from the spec fails at the settled region count (received 1); M3 route tab removed from the enabled list fails at toBeEnabled",
+        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:87 \"enables the route tab and renders its panel content\" (unit)",
+        "packages/modules/activities/tests/activity-track-panel.test.tsx:262 \"reports a recording with no fix and still shows the summary\" (unit, mocked API)"
       ],
-      "reason": "The tab stays enabled and the panel explains ('위치가 기록되지 않은 활동입니다'); activity-detail-tabs.test.tsx:87 asserts ENABLED. Reviewer judgement: not a false pass by M2-01e but an unflagged deviation — M2-01e did not claim the indoor clause, recorded 'route tab opens, only media disabled' as its own acceptance (M2-01e.md:187) and did not mention the spec conflict. The current behaviour (enabled tab + in-panel explanation) makes the explanation more reachable than a disabled tab would, so amending the spec is a reasonable outcome. The decision belongs to the user."
+      "reason": "Spec amended by explicit user decision on 2026-09-23 (\"M2-01t는 현재 구현에 맞게 스펙을 고쳐\"); product behaviour unchanged. This row was failed (M2-01k) against the previous clause '실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다.', because the tab is enabled; an independent reviewer judged the enabled tab with an in-panel explanation more accessible than a disabled tab. The E2E asserts in both shells: the route tab is enabled and selectable from another tab; the panel shows the no-location explanation; after the geometry query has resolved (the map pane's 'no coordinates' notice is visible, rendered in the same commit that would mount the map leaf) the map pane holds exactly one child, the notice, with no map loading fallback; after network idle the pane still holds one child and there is no map region, canvas or rendered path feature, and start/end are disabled; the stored map_path has no coordinates; the recording summary (50초, 640m) and the activity summary are visible. Each map check is shown to fail under a map-mounting mutation (M2, M2b, M2b with the structural check removed). Not proven: pixels (nothing is drawn to check), and a map mounted only after network idle."
     },
     {
       "id": "S09-impact-split",

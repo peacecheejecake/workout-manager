@@ -17,22 +17,19 @@
 
 ## 완료된 최신 작업
 
-[M2-01q](progress/M2-01q.md)를 완료했다. 지도 화면이 실제로 그리지 못했는데 "표시했습니다"라고 하거나, 그렸는데
-"그리지 못했습니다"라고 하던 거짓 상태를 없앴다.
+[M2-01t](progress/M2-01t.md)를 완료했다. **사용자 결정(2026-09-23): 현재 구현에 맞게 사양을 고친다.**
+`docs/.pre/01_product_screen_spec.md` §7.2의 "실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다"를, 경로 탭은
+비활성화하지 않고 탭 안에서 위치가 기록되지 않았음을 설명하며 지도를 그리지 않고 요약을 보여 주는 현재 동작으로
+바꿨다(`docs/.pre/CHANGELOG.md`에 기록, 제품 코드 변경 없음). 위치 없는 합성 FIT로 두 shell에서 실제 브라우저 E2E를
+더했고, 지도가 마운트되면 실패함을 변이로 보였다. 매트릭스 `S09-indoor-tab`은 failed → passed이며 헤더
+`amendments`에 이 변경을 적었다.
 
-- 상태는 렌더러가 실제 그린 feature와 경로 세대(`data-paths-generation`/`data-evidence-generation`)로 판정한다.
-  한 번도 그리지 못한 렌더러만 `not-drawn`, 이미 그린 렌더러의 확인 지연은 `unconfirmed`, 화면 밖은
-  `out-of-view`다. 이전 경로에 대한 `drawn`은 편집 뒤 최대 1.5초만 남는다.
-- M2-01r의 미계산 점선(`geo-kit-path-uncomputed`)도 선으로 센다(`/courses/new` 거짓 음성 수정).
-- 실패 알림은 지도 상태 줄 하나로만 나간다. 컨테이너 쿼리 미지원 브라우저 fallback은 실제 미지원 브라우저에서
-  실행하지 못했다.
-- 비차단 후속 지적은 M2-01q.md §11에 남겼다. 매트릭스 판정은 M2-01k 재실행에서 반영한다.
-
-직전 완료: [M2-01y](progress/M2-01y.md)(활동·코스 단위 객체 purge와 복원 뒤 재-import 억제, migration 046).
+직전 완료: [M2-01q](progress/M2-01q.md)(지도가 실제로 그린 것만 보고하는 상태 판정).
 
 ## 다음 ready 작업
 
-M2-01t는 사용자가 2026-09-23에 "현재 구현에 맞게 스펙을 고친다"로 결정했고 진행 중이다. M2-01ac는 ready다.
+M2-01ac는 ready다. M2-01k는 외부 gate EXT-OIDC만 남았다. 내부 공백 노드(M2-01l–y, aa, ab, t)가 모두 닫혔으므로
+수용 매트릭스를 다시 돌려 갱신할 수 있으나, `K-oidc`는 EXT-OIDC까지 not_executed이고 노드는 그때까지 완료되지 않는다.
 
 ## 남은 외부·실환경 gate
 
