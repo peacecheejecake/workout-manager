@@ -1259,6 +1259,23 @@
       "scope": "M2-01x 독립 검토의 비차단 지적. (1) 계정이 남아 있어 lease가 거절한 purge 행이 조용히 남는다(attempts 0, 오류 코드 없음) — 불일치 원장으로 운영자에게 드러낸다. (2) lease를 잃은(120초 초과) 실행은 오류 코드 없이 attempts만 늘어 100회에 last_error_code NULL로 끝날 수 있다 — DEAD_LETTER 표식을 남긴다. (3) worker 호출당 purge 1회라 말소 tenant가 많으면 30일 동안의 시간당 재무장 pass가 밀린다 — 처리량 한계를 문서화하거나 조정한다. 과잉 삭제 방지 가드는 약화하지 않는다."
     },
     {
+      "id": "M2-01aa",
+      "title": "API 실제 진입점 기동 실패(zod record가 process.env 거부)",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01aa.md",
+      "scope": "M2-01w 구현 중 발견, 독립 검토가 재현. apps/api/src/start.ts가 process.env를 createConfiguredApi에 넘기는데 configured.ts의 z.record(z.string(), z.unknown()).parse가 zod 4에서 process.env를 거부해 실제 API가 기동하지 못했다(eae0ee1부터). identity E2E harness는 configured.ts를 거치지 않아 잡지 못했다. 환경을 plain object로 복사한 뒤 검사하고, 실제 process.env로 회귀 시험을 둔다."
+    },
+    {
+      "id": "M2-01ab",
+      "title": "tenant listing root swap 경합 규명",
+      "dependsOn": ["M2-01x"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "M2-01z 검증 중 관측. 부하(약 50–75)에서 packages/server/media/tests/tenant-listing.test.ts의 'never answers a listing through a root swapped during the walk'가 6회 중 3회 swap된 link를 통해 1–2건 답했다(main과 같은 코드). listing 계약('swap된 root를 통해 답하지 않는다')의 실제 결함인지 시험 쪽 경합인지 규명하고, 결함이면 고치거나 잔여 위험을 경계 짓고 purge까지의 end-to-end로 root 밖 삭제가 M2-01o가 문서화한 범위를 넘지 않음을 보인다."
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [

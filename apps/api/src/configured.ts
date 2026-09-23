@@ -70,6 +70,18 @@ const environmentSchema = z.object({
     .refine((value) => isAbsolute(value) && resolve(value) !== parse(value).root),
 });
 
+/**
+ * `process.env` is not a plain object (its prototype is not `Object.prototype`), and a zod 4
+ * record refuses it with "expected record", so passing it straight through stopped the real
+ * entrypoint from booting (M2-01aa). Copy its own entries into a plain object at the boundary.
+ * Anything that is not a non-array object is left as it is, for the schema to refuse.
+ */
+function plainEnvironment(environment: unknown): unknown {
+  return typeof environment === 'object' && environment !== null && !Array.isArray(environment)
+    ? Object.fromEntries(Object.entries(environment))
+    : environment;
+}
+
 /** The supplied database role must be the restricted runtime role, never the migration owner. */
 export async function createConfiguredApi(environment: unknown) {
   const env = environmentSchema.parse(environment);
@@ -112,7 +124,7 @@ export async function createConfiguredApi(environment: unknown) {
     // route can be computed. Unset leaves the routing routes unregistered; half-set or
     // unverifiable refuses to start rather than serving under an unchecked identity.
     const routing = await createConfiguredWalkingRoutes(
-      z.record(z.string(), z.unknown()).parse(environment),
+      z.record(z.string(), z.unknown()).parse(plainEnvironment(environment)),
     );
     const identity = createIdentityService({
       store,

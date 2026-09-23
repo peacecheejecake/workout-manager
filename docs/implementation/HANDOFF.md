@@ -17,23 +17,18 @@
 
 ## 완료된 최신 작업
 
-[M2-01x](progress/M2-01x.md)를 완료했다. 말소 완결성의 구멍을 닫았다. drill 순서가 DB dump → 객체 아카이브
-복사라서, 그 사이 업로드된 객체는 복원 DB에 어떤 행도 없어 말소 재생·큐·두 스윕이 모두 지나쳤다(실제
-PostgreSQL·파일시스템에서 재현, drill 검사로 고정).
+[M2-01aa](progress/M2-01aa.md)를 완료했다. **실제 API 진입점(`apps/api/src/start.ts`)이 기동하지 못하던 결함**을
+고쳤다. `configured.ts`의 `z.record(...).parse(environment)`가 zod 4에서 `process.env`를 거부했다(`eae0ee1`부터).
+identity E2E harness는 `configured.ts`를 거치지 않아 잡지 못했고, 그동안은 기동 시 OIDC discovery 실패가
+먼저 나서 가려졌다. 환경을 plain object로 복사한 뒤 검사하며 값 검증은 약해지지 않는다(`environmentSchema`가
+원래 값에 먼저 돈다). 실제 `process.env`로 회귀 시험을 두었고 되돌리면 실패한다. M2-01w 구현 중 발견했다.
 
-- migration 044가 `erase_account`에 새 outermost 링크를 달아 tenant prefix purge를 durable하게 무장한다.
-  worker가 DB와 무관하게 `private/v1/tenants/<id>/`를 디렉터리 단위로 걷고, 삭제는 기존 guarded `delete`로만
-  한다. lease는 identity 계정이 없는 말소 tenant만 받는다. 복원 재생도 같은 경로로 다시 무장한다.
-- 과잉 삭제 가드는 anchor를 하나씩 빼 실패를 확인했고, 빼도 실패하지 않는 중복 방어는 주장하지 않는다.
-  독립 검토가 살아 있는 tenant·이웃 UUID·root swap 경로를 추적해 과잉 삭제 경로를 찾지 못했다. root swap
-  잔여 위험(한 번의 한 방향 swap에 최대 1건)은 M2-01o에서 물려받는다.
-- **배포 순서**: migrate → `grantOperations`와 `grantResourceObjectCleanupWorker` 둘 다 다시 실행 → 새 worker.
-  그 전에는 말소가 `42501`로 실패하고 worker 실행도 매번 실패한다.
-- 분리한 후속: M2-01y(살아 있는 계정의 활동 단위 suppression에 같은 공백), M2-01z(purge 운영 가시성·처리량).
+직전 완료: [M2-01x](progress/M2-01x.md)(말소 tenant prefix purge, migration 044). 배포 순서는 migrate →
+`grantOperations`·`grantResourceObjectCleanupWorker` 재실행 → 새 worker.
 
 ## 다음 ready 작업
 
-M2-01q는 검토 대응 중, M2-01w는 진행 중이다. M2-01y·z는 ready다. **M2-01t는 사용자 결정이 먼저**다.
+M2-01q는 rebase 중, M2-01w는 검토 대응 중, M2-01y는 진행 중, M2-01z는 검토 중, M2-01ab는 규명 중이다. **M2-01t는 사용자 결정이 먼저**다.
 
 ## 남은 외부·실환경 gate
 
