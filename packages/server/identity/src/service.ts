@@ -30,7 +30,16 @@ export interface IdentityStore {
 }
 
 export interface OidcProvider {
-  authorizationUrl(input: { state: string; nonce: string; verifier: string }): Promise<string>;
+  /**
+   * `reauthenticate` asks the provider to authenticate the End-User again (`prompt=login`)
+   * instead of answering from its own single sign-on session.
+   */
+  authorizationUrl(input: {
+    state: string;
+    nonce: string;
+    verifier: string;
+    reauthenticate: boolean;
+  }): Promise<string>;
   exchange(
     url: URL,
     checks: { state: string; nonce: string; verifier: string },
@@ -58,6 +67,17 @@ function readCookie(header: string | undefined, name: string): string | null {
   return value !== undefined && tokenPattern.test(value) ? value : null;
 }
 
+/**
+ * Presence only, deliberately lenient: any copy of the cookie, valid or not, counts. A header
+ * too large to read (the same bound `readCookie` refuses) cannot show that the cookie is
+ * absent, so it counts as present — undecidable means asking the provider again.
+ */
+function hasCookie(header: string | undefined, name: string): boolean {
+  if (header === undefined) return false;
+  if (header.length > 8192) return true;
+  return header.split(';').some((part) => part.trim().startsWith(`${name}=`));
+}
+
 export interface IdentityOptions {
   store: IdentityStore;
   provider: OidcProvider;
@@ -78,17 +98,34 @@ export function createIdentityService(options: IdentityOptions) {
   const secure = !insecure;
   const sessionName = secure ? '__Host-workout_session' : 'workout_session';
   const attemptName = secure ? '__Host-workout_login' : 'workout_login';
+  // Set by an app sign-out, cleared by the next completed sign-in. The provider keeps its
+  // own SSO session after an app sign-out, so without this the next "sign in" would silently
+  // return the previous account — on a shared browser, to the next person.
+  const signedOutName = secure ? '__Host-workout_signed_out' : 'workout_signed_out';
   const now = options.now ?? (() => new Date());
   const cookie = (name: string, value: string, seconds: number) =>
     `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure ? '; Secure' : ''}`;
 
+  const signedOutMarker = () => cookie(signedOutName, token(), 2_592_000);
+
   return {
-    async beginLogin() {
+    /**
+     * A sign-in from a browser that is already signed in (an account switch) or that signed
+     * out of this app asks the provider to authenticate again. A first sign-in keeps the
+     * provider's single sign-on.
+     */
+    async beginLogin(header?: string) {
       const state = token();
       const browser = token();
       const nonce = token();
       const verifier = token();
-      const location = await options.provider.authorizationUrl({ state, nonce, verifier });
+      const reauthenticate = hasCookie(header, sessionName) || hasCookie(header, signedOutName);
+      const location = await options.provider.authorizationUrl({
+        state,
+        nonce,
+        verifier,
+        reauthenticate,
+      });
       await options.store.createAttempt({
         stateHash: hash(state),
         browserHash: hash(browser),
@@ -131,7 +168,11 @@ export function createIdentityService(options: IdentityOptions) {
       });
       return {
         location: '/account',
-        cookies: [cookie(sessionName, sessionToken, 28_800), cookie(attemptName, '', 0)],
+        cookies: [
+          cookie(sessionName, sessionToken, 28_800),
+          cookie(attemptName, '', 0),
+          cookie(signedOutName, '', 0),
+        ],
       };
     },
     async authenticate(credentials: { cookie?: string; authorization?: string }) {
@@ -146,8 +187,15 @@ export function createIdentityService(options: IdentityOptions) {
     async logout(header?: string) {
       const value = readCookie(header, sessionName);
       if (value !== null) await options.store.revokeSession(hash(value));
-      return [cookie(sessionName, '', 0), cookie(attemptName, '', 0)];
+      return [cookie(sessionName, '', 0), cookie(attemptName, '', 0), signedOutMarker()];
     },
+    /**
+     * Only the sign-out marker — never a session or attempt cookie deletion. For a sign-out
+     * the API could not authenticate: a SameSite=Lax session cookie is withheld from a
+     * cross-site POST, so "no session" there can be a signed-in user whose cookies must not
+     * be touched. A leftover invalid session cookie already makes the next sign-in ask again.
+     */
+    signedOutMarker,
   };
 }
 

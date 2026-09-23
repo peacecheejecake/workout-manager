@@ -65,6 +65,14 @@
       "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정"
     },
     {
+      "id": "EXT-OIDC",
+      "title": "운영 OIDC identity provider 확보",
+      "dependsOn": ["M2-01u"],
+      "kind": "external",
+      "status": "not_started",
+      "scope": "외부 조건(M2-01u에서 분리): 운영 IdP 선택 — prompt=login을 지키고 서명 키를 사전 공개해야 한다(Google의 prompt=login 지원 여부는 미검증) · HTTPS 도메인과 redirect https://<host>/bff/v1/auth/callback 등록 · OIDC_ISSUER/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET을 secret manager로 · 시험 계정 둘(하나는 MFA) · 실제 브라우저 체크리스트(로그인, 로그아웃 후 다른 계정 로그인, 계정 전환, 취소, 8시간 만료). M2-01u는 OpenID Certified OP(panva oidc-provider)를 운영 등록과 같은 설정으로 로컬에서 띄워 수용했으나 그것은 운영 IdP의 증거가 아니다. M2-01k의 K-oidc 행은 이 gate까지 not_executed다."
+    },
+    {
       "id": "M0-06b",
       "title": "UI·지도 spike",
       "dependsOn": ["M0-04", "M0-06a"],
@@ -1203,7 +1211,8 @@
       "title": "실제 OIDC 수용",
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01u.md",
       "scope": "M2-01k 수용 not_executed(K-oidc). 계획 4절 M2-01k 행의 '실제 OIDC/DB/객체/E2E' 중 OIDC는 fixture provider만 썼다(scripts/identity-e2e.mts:244-252). 실제 identity provider에 대한 로그인·세션·계정 전환·로그아웃 E2E가 필요하다. 외부 IdP 계정·설정이 필요하면 외부 gate로 기록한다."
     },
     {
@@ -1213,6 +1222,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "전체 identity 스위트에서만 서로 다른 spec이 간헐 실패한다: tests/identity/oidc.spec.ts:55(page.waitForResponse 30초 타임아웃, M2-01m 커밋 전 4회 중 1회)와 planned-completion-status.spec.ts:184(5초 안에 '완료 보고 조회 중'에 머묾, M2-01k 4회 중 1회). 둘 다 단독 실행 4/4 통과. 독립 검토 가설(미확증): identity-e2e.mts:275, 301에서 Garmin revocation poller와 M2-01l이 들인 썸네일 렌더 poller가 250 ms 간격으로 API와 같은 프로세스에서 돌고, workers:1 알파벳 순서라 코스 spec(#27~31)이 먼저 돌아 렌더 job을 쌓는다. '코스 5개 → oidc → planned-completion' 3회로는 재현되지 않았다. 수용 게이트의 증거 신뢰도에 영향을 준다."
+    },
+    {
+      "id": "M2-01w",
+      "title": "OIDC 운영 견고성",
+      "dependsOn": ["M2-01u"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01u에서 분리한 비차단 넷. (1) API가 기동 시에만 OP를 discovery해 OP가 내려가 있으면 API 전체가 뜨지 않는다(fail-closed). (2) back-channel/RP-initiated logout이 없어 OP에서 비활성화·로그아웃된 계정이 최대 8시간 앱 세션을 유지한다. (3) 사용자 취소·OP 오류 시 브라우저에 날것의 401 JSON이 보인다. (4) RP가 auth_time을 확인하지 않아 OP가 prompt=login을 실제로 따랐는지 알 수 없다 — migration 없이 코드만으로 가능하다(max_age=0 + authorizationCodeGrant(..., { maxAge: 0 }), 독립 검토 실측)지만 운영 IdP가 prompt=login/max_age를 지원하지 않으면 로그아웃 뒤 로그인이 아예 실패하므로 EXT-OIDC의 IdP 선택에 달렸다."
     },
     {
       "id": "M2-01k",
@@ -1227,7 +1244,8 @@
         "M2-01r",
         "M2-01s",
         "M2-01t",
-        "M2-01u"
+        "M2-01u",
+        "EXT-OIDC"
       ],
       "kind": "task",
       "status": "in_progress",

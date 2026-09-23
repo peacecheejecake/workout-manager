@@ -118,7 +118,11 @@ Cookie 세션의 consent GET/PUT 및 logout POST는 `x-workout-session-id`가 �
 `idempotency-key`를 사용한다. 과거 성공의 재시도 영수증은 최신 상태가 아니므로 GET으로 확인한다.
 
 만료는 DB에서도 검사한다. 브라우저 cookie 삭제만으로 로그아웃을 처리하지 않는다.
-이 앱 로그아웃은 공급자 SSO logout을 의미하지 않는다. 실제 배포 전 공급자/TLS 설정과
+이 앱 로그아웃은 공급자 SSO logout을 의미하지 않는다. 대신 로그아웃은 HttpOnly 표식
+`__Host-workout_signed_out`(30일)을 남기고(세션이 이미 없어 401인 로그아웃도 **허용된 origin에서 온 경우** 표식만 남긴다 — 세션 쿠키는 지우지 않는다), 표식이나 현재 세션 쿠키가 있는 브라우저의 다음 로그인은
+공급자에 `prompt=login`을 보내 다시 인증하게 한다(계정 전환·공유 브라우저). 표식이 없는 첫 로그인은
+공급자 SSO를 그대로 쓴다. 공급자는 `prompt=login`을 지켜야 한다([M2-01u](progress/M2-01u.md)).
+실제 배포 전 공급자/TLS 설정과
 로그인·만료·세션 교체·철회 경로를 배포 환경에서 검증해야 한다.
 
 ## 로컬 E2E API 포트 충돌

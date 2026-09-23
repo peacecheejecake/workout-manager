@@ -115,7 +115,7 @@ async function providerFixture() {
     nonce: randomBytes(32).toString('base64url'),
     verifier: randomBytes(32).toString('base64url'),
   };
-  const authorize = new URL(await provider.authorizationUrl(checks));
+  const authorize = new URL(await provider.authorizationUrl({ ...checks, reauthenticate: false }));
   expectedChallenge = authorize.searchParams.get('code_challenge') ?? '';
   nonce = checks.nonce;
   return {
@@ -151,6 +151,15 @@ describe('standard OIDC adapter using a real local signed provider protocol', ()
       await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).rejects.toThrow();
     },
   );
+  it('asks the provider to re-authenticate only when requested', async () => {
+    const fixture = await providerFixture();
+    expect(fixture.authorize.searchParams.has('prompt')).toBe(false);
+    expect(fixture.authorize.searchParams.has('max_age')).toBe(false);
+    const again = new URL(
+      await fixture.provider.authorizationUrl({ ...fixture.checks, reauthenticate: true }),
+    );
+    expect(again.searchParams.getAll('prompt')).toEqual(['login']);
+  });
   it('rejects incorrect state and PKCE verifier', async () => {
     const fixture = await providerFixture();
     await expect(

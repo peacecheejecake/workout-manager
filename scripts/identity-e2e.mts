@@ -85,6 +85,8 @@ import {
 import { createIdentityService } from '../packages/server/identity/src/service.ts';
 import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
+import { startCertifiedOidc } from './fixtures/oidc-certified-provider.ts';
+import { certifiedOidcContextPath } from './fixtures/certified-oidc-context.ts';
 import { fixtureGarmin, startFixtureGarmin } from './fixtures/garmin-provider.ts';
 import {
   createGarminStore,
@@ -241,15 +243,40 @@ try {
     { mode: 0o600 },
   );
   closers.push(() => rm(coachingWorkerContextPath, { force: true }));
-  const providerServer = await startFixtureOidc();
-  closers.push(() => providerServer.close());
+  // IDENTITY_E2E_OIDC=certified (opt-in, M2-01u) swaps the hand-written fixture for a
+  // locally hosted OpenID Certified OP on the same issuer. Only
+  // tests/identity/oidc-certified.spec.ts runs in that mode; every other spec signs in
+  // through the fixture's account chooser.
+  const oidcMode = process.env['IDENTITY_E2E_OIDC'] ?? 'fixture';
+  if (oidcMode !== 'fixture' && oidcMode !== 'certified')
+    throw new Error(`Unsupported IDENTITY_E2E_OIDC: ${oidcMode}`);
+  let oidcSettings: typeof fixtureOidc = fixtureOidc;
+  if (oidcMode === 'certified') {
+    const certified = await startCertifiedOidc();
+    closers.push(() => certified.close());
+    await rm(certifiedOidcContextPath, { force: true });
+    await writeFile(certifiedOidcContextPath, JSON.stringify({ passwords: certified.passwords }), {
+      mode: 0o600,
+    });
+    closers.push(() => rm(certifiedOidcContextPath, { force: true }));
+    oidcSettings = {
+      issuer: certified.issuer,
+      clientId: certified.clientId,
+      clientSecret: certified.clientSecret,
+      redirectUri: certified.redirectUri,
+    };
+    console.log('Identity E2E OIDC: locally hosted certified OP (oidc-provider).');
+  } else {
+    const providerServer = await startFixtureOidc();
+    closers.push(() => providerServer.close());
+  }
   const garminServer = await startFixtureGarmin();
   closers.push(() => garminServer.close());
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
   closers.push(() => database.close());
-  const provider = await createOidcProvider({ ...fixtureOidc, allowInsecureLocalhost: true });
+  const provider = await createOidcProvider({ ...oidcSettings, allowInsecureLocalhost: true });
   const identity = createIdentityService({
     store,
     provider,

@@ -170,7 +170,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {
       parseInput(emptyQuerySchema, request.query);
-      const result = await identity.beginLogin();
+      const result = await identity.beginLogin(request.headers.cookie);
       return reply.header('set-cookie', result.cookie).redirect(result.location);
     });
     app.get('/bff/v1/auth/callback', async (request, reply) => {
@@ -182,7 +182,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
   app.register(
     async (routes) => {
       const authenticated = new WeakMap<FastifyRequest, Principal>();
-      routes.addHook('preValidation', async (request) => {
+      routes.addHook('preValidation', async (request, reply) => {
         if (
           ['/bff/v1/session', '/bff/v1/auth/logout', '/bff/v1/consents/:kind'].includes(
             request.routeOptions.url ?? '',
@@ -192,7 +192,26 @@ export function createApi(options: ApiOptions): FastifyInstance {
         const result = principalSchema.safeParse(
           await options.auth.authenticate(credentials(request)),
         );
-        if (!result.success) throw new BoundaryError(401, 'UNAUTHENTICATED');
+        if (!result.success) {
+          // A sign-out the API could not authenticate is answered 401, which the screen
+          // treats as signed out (an expired session). It leaves the sign-out marker so the
+          // next sign-in is not answered silently from the provider's SSO session — but ONLY
+          // the marker, and only for an allowed Origin. The session cookie is SameSite=Lax,
+          // so a cross-site POST arrives without it: "no session" here can be a signed-in
+          // victim, and a top-level cross-site form navigation applies Lax cookies set by
+          // this response. Deleting the session cookie here was a forced cross-site sign-out
+          // (reproduced in Chromium; scripts/logout-csrf-browser-check.mts). The app's own
+          // same-origin fetch always sends Origin.
+          const origin = request.headers.origin;
+          if (
+            options.identity !== undefined &&
+            request.routeOptions.url === '/bff/v1/auth/logout' &&
+            typeof origin === 'string' &&
+            origins.has(origin)
+          )
+            reply.header('set-cookie', options.identity.signedOutMarker());
+          throw new BoundaryError(401, 'UNAUTHENTICATED');
+        }
         authenticated.set(request, result.data);
         if (
           result.data.method === 'cookie' &&

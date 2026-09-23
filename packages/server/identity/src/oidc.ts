@@ -54,8 +54,9 @@ export async function createOidcProvider(input: unknown): Promise<OidcProvider> 
     checkUrl(new URL(endpoint));
   }
   return {
-    async authorizationUrl({ state, nonce, verifier }) {
+    async authorizationUrl({ state, nonce, verifier, reauthenticate }) {
       return client.buildAuthorizationUrl(config, {
+        ...(reauthenticate ? { prompt: 'login' } : {}),
         redirect_uri: redirect.href,
         response_type: 'code',
         scope: 'openid',

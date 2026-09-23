@@ -38,8 +38,8 @@ function fixture() {
   };
   const provider = {
     authorizationUrl: vi.fn(
-      async (input: { state: string; nonce: string; verifier: string }) =>
-        `https://provider.example/authorize?state=${input.state}`,
+      async (input: { state: string; nonce: string; verifier: string; reauthenticate: boolean }) =>
+        `https://provider.example/authorize?state=${input.state}${input.reauthenticate ? '&prompt=login' : ''}`,
     ),
     exchange: vi.fn(async () => ({ issuer: 'https://provider.example', subject: 'subject' })),
   };
@@ -49,8 +49,8 @@ function fixture() {
     publicOrigin: 'https://workout.example',
     now: () => now,
   });
-  async function login() {
-    const start = await service.beginLogin();
+  async function login(header?: string) {
+    const start = await service.beginLogin(header);
     const state = new URL(start.location).searchParams.get('state');
     return {
       start,
@@ -149,6 +149,46 @@ describe('opaque session lifecycle and browser-bound one-use login', () => {
       }),
     ).toBeNull();
     expect(data.sessions.size).toBe(1);
+  });
+  it('re-authenticates at the provider after an app sign-out or on a switch, never on a first sign-in', async () => {
+    const data = fixture();
+    const reauthenticated = () =>
+      data.provider.authorizationUrl.mock.lastCall?.[0].reauthenticate ?? null;
+    const first = await data.login();
+    expect(reauthenticated()).toBe(false);
+    const result = await data.service.completeLogin(first.callback, first.cookie);
+    const session = result.cookies[0]?.split(';')[0] ?? '';
+    // Signed in → a new sign-in is an account switch.
+    await data.login(session);
+    expect(reauthenticated()).toBe(true);
+    // Signed out → the sign-out marker outlives the session and asks again.
+    const cleared = await data.service.logout(session);
+    const marker = cleared.find((line) => line.startsWith('__Host-workout_signed_out='));
+    expect(marker).toMatch(
+      /^__Host-workout_signed_out=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/,
+    );
+    const markerPair = marker?.split(';')[0] ?? '';
+    const afterLogout = await data.login(markerPair);
+    expect(reauthenticated()).toBe(true);
+    expect(afterLogout.start.location).toContain('prompt=login');
+    // Any copy, even a malformed one, counts: failing towards asking again.
+    await data.login('__Host-workout_signed_out=x');
+    expect(reauthenticated()).toBe(true);
+    // An oversized header cannot be read, so it cannot show there is no marker: ask again.
+    await data.login(`pad=${'x'.repeat(8200)}`);
+    expect(reauthenticated()).toBe(true);
+    await data.login(`pad=${'x'.repeat(8000)}; ${markerPair}`);
+    expect(reauthenticated()).toBe(true);
+    // The next completed sign-in clears the marker.
+    const completed = await data.service.completeLogin(
+      afterLogout.callback,
+      `${afterLogout.cookie}; ${markerPair}`,
+    );
+    expect(completed.cookies).toContain(
+      '__Host-workout_signed_out=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure',
+    );
+    await data.login('unrelated=1');
+    expect(reauthenticated()).toBe(false);
   });
   it('refuses insecure non-loopback origins and credentials embedded in an origin', () => {
     const data = fixture();

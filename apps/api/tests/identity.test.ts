@@ -54,7 +54,8 @@ function fixture() {
     store,
     publicOrigin: 'https://workout.example',
     provider: {
-      authorizationUrl: async ({ state }) => `https://provider.example/authorize?state=${state}`,
+      authorizationUrl: async ({ state, reauthenticate }) =>
+        `https://provider.example/authorize?state=${state}${reauthenticate ? '&prompt=login' : ''}`,
       exchange,
     },
   });
@@ -129,6 +130,14 @@ describe('M1-01 browser authentication boundary', () => {
     expect(
       (await data.app.inject('/bff/v1/auth/login?returnTo=https://attacker.example')).statusCode,
     ).toBe(400);
+    expect(String((await data.app.inject('/bff/v1/auth/login')).headers.location)).not.toContain(
+      'prompt=',
+    );
+    const switching = await data.app.inject({
+      url: '/bff/v1/auth/login',
+      headers: { cookie: login.cookie },
+    });
+    expect(String(switching.headers.location)).toContain('&prompt=login');
   });
   it('requires same-origin CSRF on logout and consent, then invalidates the captured cookie', async () => {
     const data = fixture();
@@ -181,6 +190,71 @@ describe('M1-01 browser authentication boundary', () => {
       (await data.app.inject({ url: '/bff/v1/session', headers: { cookie: login.cookie } }))
         .statusCode,
     ).toBe(401);
+  });
+  it('a sign-out that finds no live session still makes the next sign-in re-authenticate', async () => {
+    const data = fixture();
+    const login = await data.login();
+    // The session is gone (expired or revoked elsewhere) when the user presses sign-out.
+    await data.app.inject({
+      method: 'POST',
+      url: '/bff/v1/auth/logout',
+      headers: {
+        cookie: login.cookie,
+        origin: 'https://workout.example',
+        'x-csrf-token': login.csrfToken,
+        'x-workout-session-id': 'session-a',
+      },
+    });
+    for (const cookie of [login.cookie, '']) {
+      const stale = await data.app.inject({
+        method: 'POST',
+        url: '/bff/v1/auth/logout',
+        headers: { cookie, origin: 'https://workout.example' },
+      });
+      expect(stale.statusCode).toBe(401);
+      const set = [stale.headers['set-cookie']].flat().map(String);
+      // Only the marker: an unauthenticated response never deletes session or attempt cookies.
+      expect(set).toHaveLength(1);
+      const marker = set.find((line) => line.startsWith('__Host-workout_signed_out='));
+      expect(marker).toMatch(/^__Host-workout_signed_out=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly/);
+      const next = await data.app.inject({
+        url: '/bff/v1/auth/login',
+        headers: { cookie: marker?.split(';')[0] ?? '' },
+      });
+      expect(String(next.headers.location)).toContain('&prompt=login');
+    }
+    // Other unauthenticated routes set nothing.
+    const session = await data.app.inject({ url: '/bff/v1/session' });
+    expect(session.statusCode).toBe(401);
+    expect(session.headers['set-cookie']).toBeUndefined();
+  });
+  it('a cross-site sign-out (Lax withholds the session cookie) sets and deletes no cookie', async () => {
+    const data = fixture();
+    const login = await data.login();
+    // What the victim's browser sends for a top-level cross-site text/plain form: no
+    // SameSite=Lax session cookie, a foreign Origin, a body Fastify accepts.
+    for (const headers of [
+      { origin: 'https://attacker.example', 'content-type': 'text/plain' },
+      { origin: 'null', 'content-type': 'text/plain' },
+      { 'content-type': 'text/plain' },
+    ]) {
+      const forced = await data.app.inject({
+        method: 'POST',
+        url: '/bff/v1/auth/logout',
+        headers,
+        payload: 'x=y',
+      });
+      expect(forced.statusCode).toBe(401);
+      const set = [forced.headers['set-cookie'] ?? []].flat().map(String);
+      expect(set.filter((line) => line.startsWith('__Host-workout_session='))).toEqual([]);
+      expect(set.filter((line) => line.startsWith('__Host-workout_login='))).toEqual([]);
+      expect(set.filter((line) => line.startsWith('__Host-workout_signed_out='))).toEqual([]);
+    }
+    // The victim's session is untouched.
+    expect(
+      (await data.app.inject({ url: '/bff/v1/session', headers: { cookie: login.cookie } }))
+        .statusCode,
+    ).toBe(200);
   });
   it('fails closed on provider refusal and never logs the provider error', async () => {
     const data = fixture();
