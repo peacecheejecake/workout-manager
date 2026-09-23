@@ -14,6 +14,7 @@ import {
   createLocalFilesystemObjectStorage,
   validateObjectKey,
   type ObjectStorage,
+  type StoreReachability,
 } from '@workout/server-media';
 import { renderCourseThumbnail } from '@workout/server-courses/thumbnail';
 
@@ -60,7 +61,7 @@ let activities: ActivityRepository;
 let operations: OperationsRepository;
 let renderer: CourseThumbnailWorkerRepository;
 let cleanup: ResourceObjectCleanupRepository;
-let storage: ObjectStorage;
+let storage: ObjectStorage & StoreReachability;
 let objectRoot: string;
 // Two least-privilege roles, as in production: one draws, one deletes. Neither is the
 // runtime role, and neither can do the other's job.
@@ -1675,7 +1676,9 @@ describe('M2-01m thumbnail object reconciliation', () => {
     expect((await watchedRef(render.finalKey))?.['settled_at']).toBeInstanceOf(Date);
     // Settled means out of the window: the candidate query no longer offers it at all.
     expect(
-      await cleanup.thumbnailReconcileCandidates(render.finalKey.slice(0, -1), 1),
+      (await cleanup.thumbnailReconcileWindow(render.finalKey.slice(0, -1), 1)).map(
+        (candidate) => candidate.storageRef,
+      ),
     ).not.toContain(render.finalKey);
   });
 

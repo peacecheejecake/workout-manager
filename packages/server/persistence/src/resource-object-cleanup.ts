@@ -8,23 +8,40 @@ export type ResourceObjectCleanupLease = {
   attempts: number;
 };
 
+/** One watched reference in a reconciliation window, with its recorded sweep fault (M2-01n). */
+export type ReconcileCandidate = {
+  storageRef: string;
+  /** Consecutive `stat` failures on record for this reference; 0 when it has none. */
+  sweepAttempts: number;
+  /** True while a recorded fault's backoff has not run out, on the database clock. */
+  deferred: boolean;
+};
+
 export interface ResourceObjectCleanupRepository {
   reapExpired(now: Date, limit?: number): Promise<number>;
   /** Resumable cursor for the bounded track-object reconciliation sweep. */
   reconcileCursor(): Promise<string>;
   advanceReconcileCursor(key: string): Promise<void>;
   /** One bounded, ordered window of watched references after the cursor. */
-  reconcileCandidates(cursor: string, limit: number): Promise<readonly string[]>;
+  reconcileWindow(cursor: string, limit: number): Promise<readonly ReconcileCandidate[]>;
   /** Stop watching a reference whose object is absent and can no longer be created. */
   settleTrackObjectRef(storageRef: string): Promise<boolean>;
   /** Queues one track object the ledger does not account for. */
   reclaimUnreferencedTrackObject(storageRef: string): Promise<boolean>;
+  /**
+   * Records that one reference's `stat` raised (M2-01n). Answers the attempt count on record,
+   * or null when there is no watched row to record against.
+   */
+  recordTrackSweepFault(storageRef: string, errorCode: string): Promise<number | null>;
+  clearTrackSweepFault(storageRef: string): Promise<boolean>;
   /** The same surface, for the course-thumbnail namespace (M2-01m). Its own cursor. */
   thumbnailReconcileCursor(): Promise<string>;
   advanceThumbnailReconcileCursor(key: string): Promise<void>;
-  thumbnailReconcileCandidates(cursor: string, limit: number): Promise<readonly string[]>;
+  thumbnailReconcileWindow(cursor: string, limit: number): Promise<readonly ReconcileCandidate[]>;
   settleThumbnailObjectRef(storageRef: string): Promise<boolean>;
   reclaimUnreferencedThumbnailObject(storageRef: string): Promise<boolean>;
+  recordThumbnailSweepFault(storageRef: string, errorCode: string): Promise<number | null>;
+  clearThumbnailSweepFault(storageRef: string): Promise<boolean>;
   /**
    * Course thumbnail renders that stopped being drained (M2-01l): a lease that expired
    * mid-attempt gets another attempt, a render past its own deadline is abandoned. Both
@@ -45,6 +62,29 @@ export interface ResourceObjectCleanupRepository {
     now: Date,
   ): Promise<boolean>;
   close(): Promise<void>;
+}
+
+const windowRow = z.object({
+  storage_ref: z.string().min(1).max(512),
+  sweep_attempts: z.number().int().nonnegative(),
+  deferred: z.boolean(),
+});
+
+function windowRows(rows: readonly unknown[]): ReconcileCandidate[] {
+  return rows.map((row) => {
+    const parsed = windowRow.parse(row);
+    return {
+      storageRef: parsed.storage_ref,
+      sweepAttempts: parsed.sweep_attempts,
+      deferred: parsed.deferred,
+    };
+  });
+}
+
+const sweepFaultCode = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
+
+function recordedAttempts(value: unknown): number | null {
+  return value === null || value === undefined ? null : z.number().int().positive().parse(value);
 }
 
 const leaseRow = z.object({
@@ -87,12 +127,13 @@ export function createResourceObjectCleanupRepository(options: {
         z.string().max(512).parse(key),
       ]);
     },
-    async reconcileCandidates(cursor, limit) {
+    async reconcileWindow(cursor, limit) {
       const result = await pool.query(
-        'SELECT storage_ref FROM public.activity_track_reconcile_candidates($1,$2)',
+        `SELECT storage_ref,sweep_attempts,deferred
+         FROM public.activity_track_reconcile_window($1,$2)`,
         [z.string().max(512).parse(cursor), z.number().int().min(1).max(1000).parse(limit)],
       );
-      return result.rows.map((row) => z.string().min(1).max(512).parse(row['storage_ref']));
+      return windowRows(result.rows);
     },
     async settleTrackObjectRef(storageRef) {
       const result = await pool.query(
@@ -108,6 +149,20 @@ export function createResourceObjectCleanupRepository(options: {
       );
       return result.rows[0]?.['queued'] === true;
     },
+    async recordTrackSweepFault(storageRef, errorCode) {
+      const result = await pool.query(
+        'SELECT public.record_activity_track_sweep_fault($1,$2) AS attempts',
+        [z.string().min(1).max(512).parse(storageRef), sweepFaultCode.parse(errorCode)],
+      );
+      return recordedAttempts(result.rows[0]?.['attempts']);
+    },
+    async clearTrackSweepFault(storageRef) {
+      const result = await pool.query(
+        'SELECT public.clear_activity_track_sweep_fault($1) AS cleared',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['cleared'] === true;
+    },
     async thumbnailReconcileCursor() {
       const result = await pool.query(
         'SELECT public.course_thumbnail_reconcile_cursor() AS cursor',
@@ -122,12 +177,13 @@ export function createResourceObjectCleanupRepository(options: {
         z.string().max(512).parse(key),
       ]);
     },
-    async thumbnailReconcileCandidates(cursor, limit) {
+    async thumbnailReconcileWindow(cursor, limit) {
       const result = await pool.query(
-        'SELECT storage_ref FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        `SELECT storage_ref,sweep_attempts,deferred
+         FROM public.course_thumbnail_reconcile_window($1,$2)`,
         [z.string().max(512).parse(cursor), z.number().int().min(1).max(1000).parse(limit)],
       );
-      return result.rows.map((row) => z.string().min(1).max(512).parse(row['storage_ref']));
+      return windowRows(result.rows);
     },
     async settleThumbnailObjectRef(storageRef) {
       const result = await pool.query(
@@ -142,6 +198,20 @@ export function createResourceObjectCleanupRepository(options: {
         [z.string().min(1).max(512).parse(storageRef)],
       );
       return result.rows[0]?.['queued'] === true;
+    },
+    async recordThumbnailSweepFault(storageRef, errorCode) {
+      const result = await pool.query(
+        'SELECT public.record_course_thumbnail_sweep_fault($1,$2) AS attempts',
+        [z.string().min(1).max(512).parse(storageRef), sweepFaultCode.parse(errorCode)],
+      );
+      return recordedAttempts(result.rows[0]?.['attempts']);
+    },
+    async clearThumbnailSweepFault(storageRef) {
+      const result = await pool.query(
+        'SELECT public.clear_course_thumbnail_sweep_fault($1) AS cleared',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['cleared'] === true;
     },
     async reapCourseThumbnailRenders(limit = 100) {
       const boundedLimit = z.number().int().min(1).max(100).parse(limit);
@@ -218,8 +288,148 @@ export interface TrackReconciliationOutcome {
   readonly inspected: number;
   /** References whose object was found on the store and had nothing referencing it. */
   readonly queued: number;
+  /**
+   * References whose `stat` raised in this run, each recorded against that reference with its
+   * error code, attempt count and next attempt time (M2-01n). Never settled, never queued.
+   */
+  readonly faulted: number;
+  /** References skipped without a `stat` because a recorded fault's backoff has not run out. */
+  readonly deferred: number;
   /** True when the window ended the ledger scan and the cursor went back to the start. */
   readonly wrapped: boolean;
+}
+
+/**
+ * The error code a sweep fault is recorded under: the error's own code when it has one (an
+ * errno such as `EACCES`, or `UNSAFE_STORAGE_PATH` from the symlink guard), a generic one
+ * otherwise. Only the code is kept — never the message, which can carry a filesystem path.
+ */
+export function sweepFaultCodeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
+    ? code
+    : 'OBJECT_STAT_FAILED';
+}
+
+/**
+ * What a sweep needs from the object store: one `stat` per reference, and — once per run,
+ * before any reference — whether the store can answer at all.
+ */
+export interface SweptStorage {
+  stat(key: never): Promise<unknown>;
+  assertReachable(): Promise<void>;
+}
+
+/** One namespace's half of the repository, as the shared sweep below uses it. */
+interface SweepNamespace {
+  cursor(): Promise<string>;
+  window(cursor: string, limit: number): Promise<readonly ReconcileCandidate[]>;
+  advance(key: string): Promise<void>;
+  settle(storageRef: string): Promise<boolean>;
+  reclaim(storageRef: string): Promise<boolean>;
+  recordFault(storageRef: string, errorCode: string): Promise<number | null>;
+  clearFault(storageRef: string): Promise<boolean>;
+}
+
+/**
+ * One bounded window of one namespace's sweep.
+ *
+ * Errors are isolated to the reference that raised them, and only there (M2-01n). Before
+ * this, a reference whose `stat` always raised — an unreadable directory, a planted symbolic
+ * link — ended every run at that reference: the cursor never advanced past it, the references
+ * behind it in the window were never examined, and the housekeeping after the sweep never ran.
+ *
+ * Why this is not the "catch it and call it absent" defect the worker deliberately avoids:
+ *
+ * - The `try` covers the one `stat` call and nothing else. A failure of the database — the
+ *   window read, settle, reclaim, the cursor — still ends the run, because none of those is
+ *   about one reference and none of them has anywhere else to be recorded.
+ * - A raised `stat` is never read as an answer. It does not become "absent" (which could
+ *   settle a reference whose object is really there) and it does not become "present" (which
+ *   could queue a live picture or track for deletion). Neither settle nor reclaim is called
+ *   for it at all — so a fault can never lead to a deletion, which is plan section 7.
+ * - The error is kept, not dropped: its code, the attempt count and the next attempt time are
+ *   written to the reference's own index row in the database, and the run reports how many
+ *   references faulted. If that write finds no watched row to record against, the original
+ *   error is re-raised and ends the run exactly as before.
+ * - Isolation is for one bad reference, not for a dead store: when every reference the run
+ *   asked raised, the run still ends with the first error (see the end of the loop).
+ *
+ * A reference with a fault on record is re-examined when its backoff runs out; the database
+ * decides when that is. When its `stat` answers again it is handled exactly like any other
+ * reference, and only then is its fault cleared.
+ */
+async function sweepWindow(
+  namespace: SweepNamespace,
+  storage: SweptStorage,
+  limit: number,
+): Promise<TrackReconciliationOutcome> {
+  const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
+  // Whether the store answers at all is a fact about this run, not about any reference, so it
+  // is asked on every run and never backed off. A dead store ends the run here — before the
+  // window is read and before any fault is recorded, since no reference is at fault and a
+  // recorded fault would only delay those references after the store comes back. Without
+  // this, a store that stayed down failed only the first run: its faults then put every
+  // reference into backoff, and the runs in between reported success with `deferred: N`.
+  await storage.assertReachable();
+  const cursor = await namespace.cursor();
+  const candidates = await namespace.window(cursor, boundedLimit);
+  let queued = 0;
+  let faulted = 0;
+  let deferred = 0;
+  let asked = 0;
+  let firstFault: unknown = undefined;
+  for (const candidate of candidates) {
+    const reference = candidate.storageRef;
+    if (candidate.deferred) {
+      // Waiting out a recorded fault: it costs this row read and nothing else.
+      deferred += 1;
+      continue;
+    }
+    let stat: unknown;
+    asked += 1;
+    try {
+      // The object store is asked once per reference. A reference whose object is absent is
+      // exactly the normal case and costs nothing further.
+      stat = await storage.stat(reference as never);
+    } catch (error) {
+      if ((await namespace.recordFault(reference, sweepFaultCodeOf(error))) === null) throw error;
+      if (faulted === 0) firstFault = error;
+      faulted += 1;
+      continue;
+    }
+    if (stat === null) {
+      // Absent, and possibly absent for good: the database decides whether anything could
+      // still create it and stops watching only then.
+      await namespace.settle(reference);
+    } else if (await namespace.reclaim(reference)) {
+      queued += 1;
+    }
+    if (candidate.sweepAttempts > 0) await namespace.clearFault(reference);
+  }
+  // Every reference the store was asked about raised. The root answered (checked above), so
+  // this is the other outage: the store is up but nothing under it can be read — a
+  // permission accident across the namespace, a subtree on a failed device. Reporting that
+  // run as a success with `faulted: N` would be the per-reference isolation turned into the
+  // global version of "an error treated as a known outcome", and it would silence exactly the
+  // failure M2-01m's catch-less worker made loud. So the run ends with the first error, as it
+  // did before M2-01n, and the cursor stays where it was.
+  //
+  // "All", not a ratio: one answer is proof the store is reachable, so any window with a
+  // single answer is a partial failure and the per-reference records are the right signal;
+  // a ratio would need a threshold nothing here can justify, and would fail runs that did
+  // real work. The faults are recorded BEFORE the run ends, so the references that raised
+  // are deferred on the next run and the window can still be passed — the permanent stall
+  // this node fixed cannot come back through this path. A lone poisoned reference that is the
+  // only one asked in its window does fail the run once per backoff step; that is a loud
+  // false positive at a doubling interval, which is the conservative side to err on.
+  if (asked > 0 && faulted === asked) throw firstFault;
+  const last = candidates.at(-1);
+  // A short window means the end of the ledger: start again from the beginning next time, so
+  // nothing stays unvisited because it sorts before the cursor.
+  const next = candidates.length === boundedLimit && last !== undefined ? last.storageRef : '';
+  await namespace.advance(next);
+  return { inspected: candidates.length, queued, faulted, deferred, wrapped: next === '' };
 }
 
 /**
@@ -231,37 +441,29 @@ export interface TrackReconciliationOutcome {
  *
  * What is bounded, exactly: one run reads at most `limit` rows from the reference index — an
  * index range scan over a keyset window, resumed from a stored cursor — and performs at most
- * one `stat` and one bounded statement per row. No directory is walked and no ledger table is
- * scanned, so empty directories, unrelated files and the size of the upload history all cost
- * nothing. Reaching the end of the index resets the cursor, so the next run starts again from
- * the beginning.
+ * one `stat` and one bounded statement per row (two for a reference whose fault it records
+ * or clears). No directory is walked and no ledger table is scanned, so empty directories,
+ * unrelated files and the size of the upload history all cost nothing. Reaching the end of
+ * the index resets the cursor, so the next run starts again from the beginning.
  */
 export async function reconcileActivityTrackObjects(
   repository: ResourceObjectCleanupRepository,
-  storage: { stat(key: never): Promise<unknown> },
+  storage: SweptStorage,
   limit = 200,
 ): Promise<TrackReconciliationOutcome> {
-  const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
-  const cursor = await repository.reconcileCursor();
-  const candidates = await repository.reconcileCandidates(cursor, boundedLimit);
-  let queued = 0;
-  for (const reference of candidates) {
-    // The object store is asked once per reference. A reference whose object is absent is
-    // exactly the normal case and costs nothing further.
-    if ((await storage.stat(reference as never)) === null) {
-      // Absent, and possibly absent for good: the database decides whether anything could
-      // still create it and stops watching only then.
-      await repository.settleTrackObjectRef(reference);
-      continue;
-    }
-    if (await repository.reclaimUnreferencedTrackObject(reference)) queued += 1;
-  }
-  const last = candidates.at(-1);
-  // A short window means the end of the ledger: start again from the beginning next time, so
-  // nothing stays unvisited because it sorts before the cursor.
-  const next = candidates.length === boundedLimit && last !== undefined ? last : '';
-  await repository.advanceReconcileCursor(next);
-  return { inspected: candidates.length, queued, wrapped: next === '' };
+  return sweepWindow(
+    {
+      cursor: () => repository.reconcileCursor(),
+      window: (cursor, size) => repository.reconcileWindow(cursor, size),
+      advance: (key) => repository.advanceReconcileCursor(key),
+      settle: (reference) => repository.settleTrackObjectRef(reference),
+      reclaim: (reference) => repository.reclaimUnreferencedTrackObject(reference),
+      recordFault: (reference, code) => repository.recordTrackSweepFault(reference, code),
+      clearFault: (reference) => repository.clearTrackSweepFault(reference),
+    },
+    storage,
+    limit,
+  );
 }
 
 /**
@@ -274,38 +476,28 @@ export async function reconcileActivityTrackObjects(
  * look at that key again. Reproduced on real PostgreSQL before this was written, and the
  * reproduction is an integration test.
  *
- * What is bounded, exactly: one run reads at most `limit` rows from the reference index — an
- * index range scan over a keyset window, resumed from a stored cursor — and performs at most
- * one `stat` and one bounded statement per row. No directory is walked and no ledger table is
- * scanned. Reaching the end of the index resets the cursor, so the next run starts again from
- * the beginning.
- *
- * It is deliberately the same shape as `reconcileActivityTrackObjects` rather than a merged
- * pass over both indexes: each namespace keeps its own cursor, so neither sweep's progress can
- * starve or skip the other's.
+ * Bounded exactly as `reconcileActivityTrackObjects` is, and run by the same window logic —
+ * but over its own index, with its own cursor, so neither sweep's progress can starve or skip
+ * the other's.
  */
 export async function reconcileCourseThumbnailObjects(
   repository: ResourceObjectCleanupRepository,
-  storage: { stat(key: never): Promise<unknown> },
+  storage: SweptStorage,
   limit = 200,
 ): Promise<TrackReconciliationOutcome> {
-  const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
-  const cursor = await repository.thumbnailReconcileCursor();
-  const candidates = await repository.thumbnailReconcileCandidates(cursor, boundedLimit);
-  let queued = 0;
-  for (const reference of candidates) {
-    if ((await storage.stat(reference as never)) === null) {
-      // Absent, and possibly absent for good: the database decides whether any render could
-      // still create it and stops watching only then.
-      await repository.settleThumbnailObjectRef(reference);
-      continue;
-    }
-    if (await repository.reclaimUnreferencedThumbnailObject(reference)) queued += 1;
-  }
-  const last = candidates.at(-1);
-  const next = candidates.length === boundedLimit && last !== undefined ? last : '';
-  await repository.advanceThumbnailReconcileCursor(next);
-  return { inspected: candidates.length, queued, wrapped: next === '' };
+  return sweepWindow(
+    {
+      cursor: () => repository.thumbnailReconcileCursor(),
+      window: (cursor, size) => repository.thumbnailReconcileWindow(cursor, size),
+      advance: (key) => repository.advanceThumbnailReconcileCursor(key),
+      settle: (reference) => repository.settleThumbnailObjectRef(reference),
+      reclaim: (reference) => repository.reclaimUnreferencedThumbnailObject(reference),
+      recordFault: (reference, code) => repository.recordThumbnailSweepFault(reference, code),
+      clearFault: (reference) => repository.clearThumbnailSweepFault(reference),
+    },
+    storage,
+    limit,
+  );
 }
 
 /** Object deletion runs between the lease and finish transactions. */

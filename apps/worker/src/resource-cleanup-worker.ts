@@ -2,6 +2,7 @@ import {
   createLocalFilesystemObjectStorage,
   validateObjectKey,
   type ObjectStorage,
+  type StoreReachability,
 } from '@workout/server-media';
 import {
   createResourceObjectCleanupRepository,
@@ -30,7 +31,7 @@ export type ResourceCleanupWorkerResult = {
 };
 
 export interface ResourceCleanupWorkerDependencies {
-  createStorage(rootDirectory: string): Promise<ObjectStorage>;
+  createStorage(rootDirectory: string): Promise<ObjectStorage & StoreReachability>;
   createRepository(options: {
     connectionString: string;
     max: number;

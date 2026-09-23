@@ -42,6 +42,7 @@ const migrationFiles = [
   '037_course_preferences_and_privacy_zones.sql',
   '038_course_thumbnails.sql',
   '039_course_thumbnail_reconciliation.sql',
+  '040_reconcile_sweep_faults.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -496,7 +497,9 @@ export async function grantResourceObjectCleanupWorker(
        public.release_resource_derived_cleanup(uuid,uuid,text),
        public.prune_resource_derived_cleanup_history(integer),
        public.activity_track_reconcile_cursor(),
-       public.activity_track_reconcile_candidates(text,integer),
+       public.activity_track_reconcile_window(text,integer),
+       public.record_activity_track_sweep_fault(text,text),
+       public.clear_activity_track_sweep_fault(text),
        public.settle_activity_track_object_ref(text),
        public.advance_activity_track_reconcile_cursor(text),
        public.reclaim_unreferenced_activity_track_object(text),
@@ -506,10 +509,19 @@ export async function grantResourceObjectCleanupWorker(
        public.prune_course_thumbnail_history(integer),
        public.course_thumbnail_reconcile_cursor(),
        public.advance_course_thumbnail_reconcile_cursor(text),
-       public.course_thumbnail_reconcile_candidates(text,integer),
+       public.course_thumbnail_reconcile_window(text,integer),
+       public.record_course_thumbnail_sweep_fault(text,text),
+       public.clear_course_thumbnail_sweep_fault(text),
        public.settle_course_thumbnail_object_ref(text),
        public.reclaim_unreferenced_course_thumbnail_object(text)
        TO "${workerRole}"`,
+    );
+    // Superseded by the fault-carrying windows (M2-01n, migration 040). An older helper
+    // granted these; re-running this one takes them away again, so an older worker build can
+    // never sweep without fault isolation after this helper has run.
+    await pool.query(
+      `REVOKE EXECUTE ON FUNCTION public.activity_track_reconcile_candidates(text,integer),
+       public.course_thumbnail_reconcile_candidates(text,integer) FROM "${workerRole}"`,
     );
   } finally {
     await pool.end();
@@ -746,7 +758,19 @@ export async function grantActivityTracks(
   try {
     await pool.query(
       `GRANT SELECT,INSERT ON activity_track,activity_track_revision,activity_track_object,
-       activity_track_upload_intent,activity_track_object_ref TO "${runtimeRole}"`,
+       activity_track_upload_intent TO "${runtimeRole}"`,
+    );
+    // The reference index: recording a reference needs three columns, and nothing more. Its
+    // settle and sweep-fault state belong to the cleanup worker's functions alone (M2-01n),
+    // so a tenant cannot insert a reference already settled or deferred and hide it.
+    //
+    // Revoke first: an older helper gave whole-row INSERT, and a GRANT alone would leave it in
+    // place, so re-running this helper is what repairs a database an older one touched. The
+    // order matters — revoking table-level INSERT also revokes the column-level grants.
+    await pool.query(`REVOKE INSERT ON activity_track_object_ref FROM "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT,INSERT(storage_ref,athlete_id,recorded_at) ON activity_track_object_ref
+       TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT UPDATE(track_revision,revision_id,updated_at) ON activity_track TO "${runtimeRole}"`,

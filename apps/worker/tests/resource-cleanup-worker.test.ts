@@ -1,4 +1,4 @@
-import type { ObjectStorage } from '@workout/server-media';
+import type { ObjectStorage, StoreReachability } from '@workout/server-media';
 import type {
   ResourceObjectCleanupLease,
   ResourceObjectCleanupRepository,
@@ -43,7 +43,20 @@ function setup(input: {
   thumbnailStatResult?: unknown;
   thumbnailReclaimQueued?: boolean;
   thumbnailSettled?: boolean;
+  /** References whose `stat` raises, and what it raises (M2-01n). */
+  statFailures?: ReadonlyMap<string, Error>;
+  /** Fault state the window reports per reference; absent means none on record. */
+  windowFaults?: ReadonlyMap<string, { sweepAttempts: number; deferred: boolean }>;
+  /** What recording a fault answers; a function so a test can make it fail. */
+  recordFault?: () => Promise<number | null>;
+  /** What the store's reachability check raises; absent means the store answers. */
+  storeDown?: Error;
 }) {
+  const window = (references: readonly string[]) =>
+    references.map((storageRef) => ({
+      storageRef,
+      ...(input.windowFaults?.get(storageRef) ?? { sweepAttempts: 0, deferred: false }),
+    }));
   const deleteObject = input.deleteFailure
     ? vi.fn(async () => Promise.reject(input.deleteFailure))
     : vi.fn(async () => undefined);
@@ -57,16 +70,20 @@ function setup(input: {
     pruneCourseThumbnailHistory: vi.fn(async () => 0),
     reconcileCursor: vi.fn(async () => input.reconcileCursor ?? ''),
     advanceReconcileCursor: vi.fn(async () => undefined),
-    reconcileCandidates: vi.fn(async () => input.candidates ?? []),
+    reconcileWindow: vi.fn(async () => window(input.candidates ?? [])),
     settleTrackObjectRef: vi.fn(async () => input.settled ?? false),
     reclaimUnreferencedTrackObject: vi.fn(async () => input.reclaimQueued ?? false),
+    recordTrackSweepFault: vi.fn(input.recordFault ?? (async () => 1)),
+    clearTrackSweepFault: vi.fn(async () => true),
     thumbnailReconcileCursor: vi.fn(async () => ''),
     advanceThumbnailReconcileCursor: vi.fn(async () => undefined),
-    thumbnailReconcileCandidates: input.thumbnailSweepFailure
+    thumbnailReconcileWindow: input.thumbnailSweepFailure
       ? vi.fn(async () => Promise.reject(input.thumbnailSweepFailure))
-      : vi.fn(async () => input.thumbnailCandidates ?? []),
+      : vi.fn(async () => window(input.thumbnailCandidates ?? [])),
     settleThumbnailObjectRef: vi.fn(async () => input.thumbnailSettled ?? false),
     reclaimUnreferencedThumbnailObject: vi.fn(async () => input.thumbnailReclaimQueued ?? false),
+    recordThumbnailSweepFault: vi.fn(input.recordFault ?? (async () => 1)),
+    clearThumbnailSweepFault: vi.fn(async () => true),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
       input.authorized === undefined ? leased : input.authorized,
@@ -77,18 +94,24 @@ function setup(input: {
   const notUsed = vi.fn(async () => {
     throw new Error('unexpected storage operation');
   });
-  const storage: ObjectStorage = {
+  const storage: ObjectStorage & StoreReachability = {
+    assertReachable: vi.fn(async () => {
+      if (input.storeDown) throw input.storeDown;
+    }),
     writeTemporary: notUsed,
     publishTemporary: notUsed,
     open: notUsed,
     // Each namespace's window has its own store answer, so one sweep's arrangement cannot
     // silently decide the other's outcome.
-    stat: vi.fn(
-      async (key: string) =>
-        ((input.thumbnailCandidates ?? []).includes(key)
+    stat: vi.fn(async (key: string) => {
+      const failure = input.statFailures?.get(key);
+      if (failure) throw failure;
+      return (
+        (input.thumbnailCandidates ?? []).includes(key)
           ? (input.thumbnailStatResult ?? null)
-          : (input.statResult ?? null)) as never,
-    ),
+          : (input.statResult ?? null)
+      ) as never;
+    }),
     delete: deleteObject,
   };
   const derivedRepository: ResourceDerivedCleanupRepository = {
@@ -139,10 +162,16 @@ describe('resource object cleanup worker', () => {
     });
     const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
     // The window comes from the ledger, and the store is asked once per reference.
-    expect(repository.reconcileCandidates).toHaveBeenCalledWith('', 200);
+    expect(repository.reconcileWindow).toHaveBeenCalledWith('', 200);
     expect(storage.stat).toHaveBeenCalledWith(trackKey);
     expect(repository.reclaimUnreferencedTrackObject).toHaveBeenCalledWith(trackKey);
-    expect(result.trackReconciliation).toEqual({ inspected: 1, queued: 1, wrapped: true });
+    expect(result.trackReconciliation).toEqual({
+      inspected: 1,
+      queued: 1,
+      faulted: 0,
+      deferred: 0,
+      wrapped: true,
+    });
     // A short window ended the ledger scan, so the cursor goes back to the start.
     expect(repository.advanceReconcileCursor).toHaveBeenCalledWith('');
   });
@@ -155,7 +184,13 @@ describe('resource object cleanup worker', () => {
     expect(repository.reclaimUnreferencedTrackObject).not.toHaveBeenCalled();
     // An absent object is offered for settling instead; the database decides.
     expect(repository.settleTrackObjectRef).toHaveBeenCalledWith(absent);
-    expect(result.trackReconciliation).toEqual({ inspected: 1, queued: 0, wrapped: true });
+    expect(result.trackReconciliation).toEqual({
+      inspected: 1,
+      queued: 0,
+      faulted: 0,
+      deferred: 0,
+      wrapped: true,
+    });
   });
 
   it('sweeps the thumbnail namespace in its own bounded window, with its own cursor', async () => {
@@ -167,10 +202,16 @@ describe('resource object cleanup worker', () => {
       thumbnailStatResult: { key: thumbnailKey, sizeBytes: 298, modifiedAt: new Date(0) },
     });
     const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
-    expect(repository.thumbnailReconcileCandidates).toHaveBeenCalledWith('', 200);
+    expect(repository.thumbnailReconcileWindow).toHaveBeenCalledWith('', 200);
     expect(storage.stat).toHaveBeenCalledWith(thumbnailKey);
     expect(repository.reclaimUnreferencedThumbnailObject).toHaveBeenCalledWith(thumbnailKey);
-    expect(result.thumbnailReconciliation).toEqual({ inspected: 1, queued: 1, wrapped: true });
+    expect(result.thumbnailReconciliation).toEqual({
+      inspected: 1,
+      queued: 1,
+      faulted: 0,
+      deferred: 0,
+      wrapped: true,
+    });
     expect(repository.advanceThumbnailReconcileCursor).toHaveBeenCalledWith('');
     // The two namespaces are swept independently: neither cursor nor budget is shared.
     expect(repository.reclaimUnreferencedTrackObject).not.toHaveBeenCalled();
@@ -186,7 +227,13 @@ describe('resource object cleanup worker', () => {
     const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
     expect(repository.reclaimUnreferencedThumbnailObject).not.toHaveBeenCalled();
     expect(repository.settleThumbnailObjectRef).toHaveBeenCalledWith(absent);
-    expect(result.thumbnailReconciliation).toEqual({ inspected: 1, queued: 0, wrapped: true });
+    expect(result.thumbnailReconciliation).toEqual({
+      inspected: 1,
+      queued: 0,
+      faulted: 0,
+      deferred: 0,
+      wrapped: true,
+    });
   });
 
   it('lets a sweep failure end the run rather than reporting a sweep that did not happen', async () => {
@@ -200,6 +247,11 @@ describe('resource object cleanup worker', () => {
     // as a claim: the deletion the user actually asked for has already happened, and only the
     // idempotent housekeeping is skipped — it runs again on the next tick, and the cursor not
     // advancing means the same window is retried, which is the correct resume.
+    //
+    // This stays true after M2-01n. What M2-01n added is narrower: a `stat` that raises for one
+    // reference is recorded against that reference in the database (the tests below), which is
+    // keeping the error, not swallowing it. A failure with nowhere to be recorded — this one,
+    // the window itself — still ends the run.
     const { dependencies, repository, derivedRepository, deleteObject } = setup({
       leased: lease,
       thumbnailSweepFailure: new Error('EACCES: permission denied'),
@@ -222,6 +274,249 @@ describe('resource object cleanup worker', () => {
     // The pools are still released.
     expect(repository.close).toHaveBeenCalledTimes(1);
     expect(derivedRepository.close).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a reference whose stat always raises (M2-01n)', () => {
+    const tenant = 'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa';
+    const poisoned = `${tenant}/courses/4d6cc1ce-0643-4c53-b055-9df458fec594/thumbnails/temporary/00000000-0000-4000-8000-000000000001`;
+    const orphan = `${tenant}/courses/4d6cc1ce-0643-4c53-b055-9df458fec594/thumbnails/temporary/00000000-0000-4000-8000-000000000002`;
+    const unsafe = Object.assign(new Error('Storage path … contains a symbolic link.'), {
+      code: 'UNSAFE_STORAGE_PATH',
+    });
+
+    it('is recorded against that one reference, and the rest of the window and the run go on', async () => {
+      const { dependencies, repository, derivedRepository, storage } = setup({
+        leased: lease,
+        thumbnailCandidates: [poisoned, orphan],
+        thumbnailStatResult: { key: orphan, sizeBytes: 298, modifiedAt: new Date(0) },
+        thumbnailReclaimQueued: true,
+        statFailures: new Map([[poisoned, unsafe]]),
+      });
+
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+
+      // The fault is written down with its code — never the message, which can carry a path.
+      expect(repository.recordThumbnailSweepFault).toHaveBeenCalledWith(
+        poisoned,
+        'UNSAFE_STORAGE_PATH',
+      );
+      // A raised stat is not an answer: nothing is settled or queued on its strength.
+      expect(repository.settleThumbnailObjectRef).not.toHaveBeenCalledWith(poisoned);
+      expect(repository.reclaimUnreferencedThumbnailObject).not.toHaveBeenCalledWith(poisoned);
+      // The reference behind it in the same window is still examined and reclaimed.
+      expect(storage.stat).toHaveBeenCalledWith(orphan);
+      expect(repository.reclaimUnreferencedThumbnailObject).toHaveBeenCalledWith(orphan);
+      expect(result.thumbnailReconciliation).toEqual({
+        inspected: 2,
+        queued: 1,
+        faulted: 1,
+        deferred: 0,
+        wrapped: true,
+      });
+      // The cursor moves, and the housekeeping after the sweep runs.
+      expect(repository.advanceThumbnailReconcileCursor).toHaveBeenCalledTimes(1);
+      expect(repository.pruneUploadHistory).toHaveBeenCalledWith(100);
+      expect(repository.pruneCourseThumbnailHistory).toHaveBeenCalledWith(100);
+      expect(repository.pruneCleanupHistory).toHaveBeenCalledWith(100);
+      expect(derivedRepository.pruneHistory).toHaveBeenCalledWith(100);
+      expect(derivedRepository.pruneRetrievalCache).toHaveBeenCalledWith(500);
+    });
+
+    it('is recorded the same way in the track namespace, with an errno code', async () => {
+      const trackKey =
+        'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa/activities/4d6cc1ce-0643-4c53-b055-9df458fec594/tracks/db985aaa-b96e-4aef-871a-c99a16183439/temporary/db985aaa-b96e-4aef-871a-c99a16183439/raw';
+      const denied = Object.assign(new Error('EACCES: permission denied, lstat /secret/path'), {
+        code: 'EACCES',
+      });
+      // A second, answering reference: the store is reachable, so this is one bad reference.
+      const healthy = trackKey.replace('/raw', '/normalized');
+      const { dependencies, repository } = setup({
+        candidates: [trackKey, healthy],
+        statFailures: new Map([[trackKey, denied]]),
+      });
+
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+
+      expect(repository.recordTrackSweepFault).toHaveBeenCalledWith(trackKey, 'EACCES');
+      expect(repository.settleTrackObjectRef).not.toHaveBeenCalledWith(trackKey);
+      expect(repository.settleTrackObjectRef).toHaveBeenCalledWith(healthy);
+      expect(repository.reclaimUnreferencedTrackObject).not.toHaveBeenCalled();
+      expect(result.trackReconciliation).toMatchObject({ inspected: 2, faulted: 1, queued: 0 });
+    });
+
+    it('records an error without a usable code under a generic one', async () => {
+      const { dependencies, repository } = setup({
+        thumbnailCandidates: [poisoned, orphan],
+        statFailures: new Map([[poisoned, new Error('no code at all')]]),
+      });
+      await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+      expect(repository.recordThumbnailSweepFault).toHaveBeenCalledWith(
+        poisoned,
+        'OBJECT_STAT_FAILED',
+      );
+    });
+
+    it('ends the run before reading any window when the store itself does not answer', async () => {
+      // Asked on every run, never backed off, and not a reference's fault: nothing is read
+      // and nothing is recorded, so the references are not delayed once the store is back.
+      const missing = Object.assign(new Error('ENOENT: no such file or directory'), {
+        code: 'ENOENT',
+      });
+      const { dependencies, repository, storage } = setup({
+        leased: lease,
+        candidates: [orphan],
+        thumbnailCandidates: [poisoned],
+        storeDown: missing,
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      ).rejects.toBe(missing);
+      expect(repository.reconcileWindow).not.toHaveBeenCalled();
+      expect(repository.thumbnailReconcileWindow).not.toHaveBeenCalled();
+      expect(storage.stat).not.toHaveBeenCalled();
+      expect(repository.recordTrackSweepFault).not.toHaveBeenCalled();
+      expect(repository.recordThumbnailSweepFault).not.toHaveBeenCalled();
+      expect(repository.advanceReconcileCursor).not.toHaveBeenCalled();
+      expect(repository.pruneUploadHistory).not.toHaveBeenCalled();
+      expect(repository.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks whether the store answers on every run, whatever the window holds', async () => {
+      // Even a window of nothing but deferred references — the state a lasting outage leaves
+      // behind — is preceded by the check, so the outage keeps failing runs.
+      const down = Object.assign(new Error('EIO'), { code: 'EIO' });
+      const { dependencies, storage } = setup({
+        thumbnailCandidates: [poisoned],
+        windowFaults: new Map([[poisoned, { sweepAttempts: 3, deferred: true }]]),
+        storeDown: down,
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      ).rejects.toBe(down);
+      expect(storage.assertReachable).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends the run with the first error when every reference asked raised — the store is down', async () => {
+      // Per-reference isolation must not turn a dead store into a successful run with
+      // `faulted: N`. Each fault is still recorded first, so the next run defers them and the
+      // window cannot stall for good; but this run fails, as it did before M2-01n.
+      const other = Object.assign(new Error('EIO'), { code: 'EIO' });
+      const { dependencies, repository } = setup({
+        leased: lease,
+        thumbnailCandidates: [poisoned, orphan],
+        statFailures: new Map([
+          [poisoned, unsafe],
+          [orphan, other],
+        ]),
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      ).rejects.toBe(unsafe);
+      expect(repository.recordThumbnailSweepFault).toHaveBeenCalledWith(
+        poisoned,
+        'UNSAFE_STORAGE_PATH',
+      );
+      expect(repository.recordThumbnailSweepFault).toHaveBeenCalledWith(orphan, 'EIO');
+      expect(repository.advanceThumbnailReconcileCursor).not.toHaveBeenCalled();
+      expect(repository.pruneUploadHistory).not.toHaveBeenCalled();
+      expect(repository.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts only references actually asked: deferred ones neither rescue nor sink a run', async () => {
+      // One deferred reference plus one that raises: the only reference asked raised.
+      const { dependencies: failing } = setup({
+        thumbnailCandidates: [poisoned, orphan],
+        statFailures: new Map([[orphan, unsafe]]),
+        windowFaults: new Map([[poisoned, { sweepAttempts: 2, deferred: true }]]),
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, failing),
+      ).rejects.toBe(unsafe);
+      // A window of nothing but deferred references asked nothing, so it is not an outage.
+      const { dependencies: resting } = setup({
+        thumbnailCandidates: [poisoned],
+        windowFaults: new Map([[poisoned, { sweepAttempts: 2, deferred: true }]]),
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, resting),
+      ).resolves.toMatchObject({ thumbnailReconciliation: { deferred: 1, faulted: 0 } });
+    });
+
+    it('still ends the run with the original error when the fault cannot be recorded', async () => {
+      // No watched row to record against: the error has nowhere to go, so it is not hidden.
+      const { dependencies, repository } = setup({
+        thumbnailCandidates: [poisoned, orphan],
+        statFailures: new Map([[poisoned, unsafe]]),
+        recordFault: async () => null,
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      ).rejects.toBe(unsafe);
+      expect(repository.advanceThumbnailReconcileCursor).not.toHaveBeenCalled();
+      expect(repository.pruneUploadHistory).not.toHaveBeenCalled();
+      expect(repository.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('still ends the run when the database refuses to record the fault', async () => {
+      const refused = new Error('connection terminated');
+      const { dependencies, repository } = setup({
+        thumbnailCandidates: [poisoned],
+        statFailures: new Map([[poisoned, unsafe]]),
+        recordFault: async () => Promise.reject(refused),
+      });
+      await expect(
+        runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+      ).rejects.toBe(refused);
+      expect(repository.advanceThumbnailReconcileCursor).not.toHaveBeenCalled();
+    });
+
+    it('is not asked again while its backoff runs, and costs no statement at all', async () => {
+      const { dependencies, repository, storage } = setup({
+        thumbnailCandidates: [poisoned],
+        windowFaults: new Map([[poisoned, { sweepAttempts: 3, deferred: true }]]),
+      });
+      const result = await runResourceCleanupWorker(
+        { connectionString, storageRoot },
+        dependencies,
+      );
+      expect(storage.stat).not.toHaveBeenCalledWith(poisoned);
+      expect(repository.recordThumbnailSweepFault).not.toHaveBeenCalled();
+      expect(repository.settleThumbnailObjectRef).not.toHaveBeenCalled();
+      expect(repository.reclaimUnreferencedThumbnailObject).not.toHaveBeenCalled();
+      expect(repository.clearThumbnailSweepFault).not.toHaveBeenCalled();
+      expect(result.thumbnailReconciliation).toMatchObject({ inspected: 1, deferred: 1 });
+    });
+
+    it('is handled like any reference once its stat answers again, and only then cleared', async () => {
+      const { dependencies, repository } = setup({
+        thumbnailCandidates: [orphan],
+        thumbnailStatResult: { key: orphan, sizeBytes: 298, modifiedAt: new Date(0) },
+        thumbnailReclaimQueued: true,
+        windowFaults: new Map([[orphan, { sweepAttempts: 12, deferred: false }]]),
+      });
+      await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+      expect(repository.reclaimUnreferencedThumbnailObject).toHaveBeenCalledWith(orphan);
+      expect(repository.clearThumbnailSweepFault).toHaveBeenCalledWith(orphan);
+      const reclaimed = vi.mocked(repository.reclaimUnreferencedThumbnailObject).mock
+        .invocationCallOrder[0];
+      const cleared = vi.mocked(repository.clearThumbnailSweepFault).mock.invocationCallOrder[0];
+      expect(reclaimed).toBeLessThan(cleared ?? 0);
+    });
+
+    it('clears nothing for a reference that had no fault on record', async () => {
+      const { dependencies, repository } = setup({
+        thumbnailCandidates: [orphan],
+        thumbnailStatResult: null,
+      });
+      await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+      expect(repository.clearThumbnailSweepFault).not.toHaveBeenCalled();
+    });
   });
 
   it('returns an empty one-shot result without attempting deletion or finish', async () => {

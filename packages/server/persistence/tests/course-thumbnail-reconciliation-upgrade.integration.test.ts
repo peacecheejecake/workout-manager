@@ -86,7 +86,8 @@ describe('migration 039 upgrade of a populated 038 database', () => {
     expect(grantedAt038).toContain('erase_account(text)');
     expect(grantedAt038).not.toContain('reclaim_unreferenced_course_thumbnail_object(text)');
 
-    await expect(migrate(upgradeUrl())).resolves.toBeUndefined();
+    // Up to 039 exactly, so this suite keeps testing 039 whatever later migrations add.
+    await expect(migrate(upgradeUrl(), 39)).resolves.toBeUndefined();
 
     const after = await checksums();
     expect(after.size).toBe(versionsThrough038 + 1);
@@ -117,14 +118,19 @@ describe('migration 039 upgrade of a populated 038 database', () => {
     expect(outermost.rows).toHaveLength(1);
     expect(outermost.rows[0]?.body).toContain('course_thumbnail_object_ref');
 
-    // Re-granting on the upgraded database adds exactly the five sweep functions.
+    // Re-granting needs the head schema: the grant helper names what later migrations add
+    // (040 replaced the two candidate functions with fault-carrying windows, M2-01n). So the
+    // surface below is the current worker surface, reached from a 038 database.
+    await expect(migrate(upgradeUrl())).resolves.toBeUndefined();
     await grantResourceObjectCleanupWorker(upgradeUrl(), workerRole);
     const grantedNow = await granted();
     expect(new Set(grantedNow.filter((entry) => !grantedAt038.includes(entry)))).toEqual(
       new Set([
         'course_thumbnail_reconcile_cursor()',
         'advance_course_thumbnail_reconcile_cursor(text)',
-        'course_thumbnail_reconcile_candidates(text,integer)',
+        'course_thumbnail_reconcile_window(text,integer)',
+        'record_course_thumbnail_sweep_fault(text,text)',
+        'clear_course_thumbnail_sweep_fault(text)',
         'settle_course_thumbnail_object_ref(text)',
         'reclaim_unreferenced_course_thumbnail_object(text)',
         'lease_resource_object_cleanup(uuid,timestamp with time zone,timestamp with time zone)',
@@ -137,7 +143,9 @@ describe('migration 039 upgrade of a populated 038 database', () => {
         'release_resource_derived_cleanup(uuid,uuid,text)',
         'prune_resource_derived_cleanup_history(integer)',
         'activity_track_reconcile_cursor()',
-        'activity_track_reconcile_candidates(text,integer)',
+        'activity_track_reconcile_window(text,integer)',
+        'record_activity_track_sweep_fault(text,text)',
+        'clear_activity_track_sweep_fault(text)',
         'settle_activity_track_object_ref(text)',
         'advance_activity_track_reconcile_cursor(text)',
         'reclaim_unreferenced_activity_track_object(text)',

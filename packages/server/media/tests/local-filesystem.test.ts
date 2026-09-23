@@ -1,13 +1,30 @@
+import { fork } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  createActivityTrackFinalObjectKey,
   createActivityTrackTemporaryObjectKey,
+  createCourseThumbnailFinalObjectKey,
+  createCourseThumbnailTemporaryObjectKey,
   createFinalObjectKey,
+  createGalleryFinalObjectKey,
+  createGalleryTemporaryObjectKey,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
@@ -434,8 +451,16 @@ describe('deleting an object does not leave its directories behind', () => {
         (await lstat(join(root, second.slice(0, second.lastIndexOf('/'))))).isDirectory(),
       ).toBe(true);
       await storage.delete(second);
-      // With nothing left, the pruning walks up to — but never removes — the root.
-      await expect(lstat(join(root, 'private'))).rejects.toMatchObject({ code: 'ENOENT' });
+      // With nothing left, the upload directory goes too — but the `temporary/` directory the
+      // two uploads shared stays, and so does everything above it (M2-01n): another upload of
+      // the same track may be writing into it at this very moment.
+      await expect(
+        lstat(join(root, second.slice(0, second.lastIndexOf('/')))),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      const shared = second.slice(0, second.lastIndexOf('/'));
+      expect(
+        (await lstat(join(root, shared.slice(0, shared.lastIndexOf('/'))))).isDirectory(),
+      ).toBe(true);
       expect((await lstat(root)).isDirectory()).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -484,5 +509,235 @@ describe('deleting an object does not leave its directories behind', () => {
       }
     }
     expect(new Set(outcomes)).toEqual(new Set(['answered']));
+  });
+});
+
+describe('a delete never removes a directory a sibling write may need (M2-01n)', () => {
+  const sha256 = createHash('sha256').update('sibling').digest('hex');
+  const owner = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const unit = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const base = `private/v1/tenants/${tenantId}`;
+
+  // Each shape's object, the directory siblings share (which must survive the delete) and
+  // the directory named by the unit itself (which must not). Written out rather than derived
+  // from the implementation, so a changed floor has to change this table too.
+  const shapes: readonly {
+    name: string;
+    key: ObjectKey;
+    shared: string;
+    unitDirectory: string | null;
+  }[] = [
+    {
+      name: 'resource temporary',
+      key: createTemporaryObjectKey({ tenantId, resourceId: owner, uploadId: unit }),
+      shared: `${base}/resources/${owner}/temporary`,
+      unitDirectory: null,
+    },
+    {
+      name: 'resource final',
+      key: createFinalObjectKey({
+        tenantId,
+        resourceId: owner,
+        uploadId: unit,
+        sha256,
+        extension: 'md',
+      }),
+      shared: `${base}/resources/${owner}/objects/uploads`,
+      unitDirectory: `${base}/resources/${owner}/objects/uploads/${unit}`,
+    },
+    {
+      name: 'gallery temporary',
+      key: createGalleryTemporaryObjectKey({ tenantId, mediaItemId: owner, uploadId: unit }),
+      shared: `${base}/gallery/${owner}/temporary`,
+      unitDirectory: null,
+    },
+    {
+      name: 'gallery final',
+      key: createGalleryFinalObjectKey({
+        tenantId,
+        mediaItemId: owner,
+        uploadId: unit,
+        sha256,
+        extension: 'png',
+      }),
+      shared: `${base}/gallery/${owner}/objects/uploads`,
+      unitDirectory: `${base}/gallery/${owner}/objects/uploads/${unit}`,
+    },
+    {
+      name: 'URL temporary',
+      key: createUrlTemporaryObjectKey({
+        tenantId,
+        resourceId: owner,
+        ingestionId: unit,
+        artifactKind: 'raw',
+      }),
+      shared: `${base}/resources/${owner}/url-ingestions`,
+      unitDirectory: `${base}/resources/${owner}/url-ingestions/${unit}`,
+    },
+    {
+      name: 'URL final',
+      key: createUrlFinalObjectKey({
+        tenantId,
+        resourceId: owner,
+        ingestionId: unit,
+        artifactKind: 'raw',
+        sha256,
+        extension: 'txt',
+      }),
+      shared: `${base}/resources/${owner}/url-ingestions`,
+      unitDirectory: `${base}/resources/${owner}/url-ingestions/${unit}`,
+    },
+    {
+      name: 'track temporary',
+      key: createActivityTrackTemporaryObjectKey({
+        tenantId,
+        activityId: owner,
+        trackId: owner,
+        uploadId: unit,
+        artifactKind: 'raw',
+      }),
+      shared: `${base}/activities/${owner}/tracks/${owner}/temporary`,
+      unitDirectory: `${base}/activities/${owner}/tracks/${owner}/temporary/${unit}`,
+    },
+    {
+      name: 'track final',
+      key: createActivityTrackFinalObjectKey({
+        tenantId,
+        activityId: owner,
+        trackId: owner,
+        uploadId: unit,
+        artifactKind: 'raw',
+        sha256,
+        extension: 'gpx',
+      }),
+      shared: `${base}/activities/${owner}/tracks/${owner}/raw/uploads`,
+      unitDirectory: `${base}/activities/${owner}/tracks/${owner}/raw/uploads/${unit}`,
+    },
+    {
+      name: 'course thumbnail temporary',
+      key: createCourseThumbnailTemporaryObjectKey({ tenantId, courseId: owner, jobId: unit }),
+      shared: `${base}/courses/${owner}/thumbnails/temporary`,
+      unitDirectory: null,
+    },
+    {
+      name: 'course thumbnail final',
+      key: createCourseThumbnailFinalObjectKey({
+        tenantId,
+        courseId: owner,
+        revisionId: unit,
+        sha256,
+      }),
+      shared: `${base}/courses/${owner}/thumbnails/revisions`,
+      unitDirectory: `${base}/courses/${owner}/thumbnails/revisions/${unit}`,
+    },
+  ];
+
+  it.each(shapes)(
+    'keeps the shared directory of a $name object and prunes only its own',
+    async ({ key, shared, unitDirectory }) => {
+      const root = await newRoot();
+      const storage = await createLocalFilesystemObjectStorage(root);
+      // Placed directly, so the final shapes need no temporary of their own: the object
+      // exists at its key with nothing else in the store.
+      const path = join(root, ...String(key).split('/'));
+      await mkdir(join(path, '..'), { recursive: true, mode: 0o700 });
+      await writeFile(path, 'sibling', { mode: 0o600 });
+
+      await storage.delete(key);
+
+      await expect(storage.stat(key)).resolves.toBeNull();
+      if (unitDirectory !== null)
+        await expect(lstat(join(root, ...unitDirectory.split('/')))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      // The last object is gone and the shared directory is empty, and still it stays: that
+      // emptiness is exactly the moment a sibling's `prepareParents` may be walking through it.
+      expect((await lstat(join(root, ...shared.split('/')))).isDirectory()).toBe(true);
+    },
+  );
+
+  it('lets siblings write and delete side by side in several processes without one failure', async () => {
+    // The race, reproduced with several processes the way several workers share one store.
+    // See the progress note for the measured failure counts with the floor reverted.
+    //
+    // It can under-detect on a differently-timed machine; it cannot fail spuriously, because
+    // with the floor in place no delete removes a directory any sibling unit can be using.
+    const root = await newRoot();
+    const script = fileURLToPath(new URL('./sibling-churn-process.ts', import.meta.url));
+    type Report = { operations: number; failures: Record<string, number> };
+    const reports = await Promise.all(
+      Array.from(
+        { length: 4 },
+        () =>
+          new Promise<Report>((resolveReport, reject) => {
+            const child = fork(script, [], {
+              env: { ...process.env, CHURN_ROOT: root, CHURN_ROUNDS: '25' },
+              execArgv: ['--import', 'tsx'],
+              stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+            });
+            child.once('message', (message) => resolveReport(message as Report));
+            child.once('error', reject);
+            child.once('exit', (code) => {
+              if (code !== 0) reject(new Error(`churn process exited ${String(code)}`));
+            });
+          }),
+      ),
+    );
+    const failures: Record<string, number> = {};
+    let operations = 0;
+    for (const report of reports) {
+      operations += report.operations;
+      for (const [label, count] of Object.entries(report.failures))
+        failures[label] = (failures[label] ?? 0) + count;
+    }
+    // 4 processes × 25 rounds × 5 key shapes × (write, publish, delete) when nothing fails.
+    expect(failures).toEqual({});
+    expect(operations).toBe(4 * 25 * 5 * 3);
+  }, 60_000);
+});
+
+describe('whether the store answers at all (M2-01n)', () => {
+  it('resolves for a readable root, where a missing key is still just absent', async () => {
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    await expect(storage.assertReachable()).resolves.toBeUndefined();
+    await expect(
+      storage.stat(createTemporaryObjectKey({ tenantId, resourceId, uploadId: temporaryUploadId })),
+    ).resolves.toBeNull();
+  });
+
+  it('rejects a root that is gone — a missing store is not an empty one', async () => {
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    await rm(root, { recursive: true, force: true });
+    await expect(storage.assertReachable()).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects a root it may not read or search', async () => {
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    await chmod(root, 0o000);
+    try {
+      await expect(storage.assertReachable()).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      await chmod(root, 0o700);
+    }
+    // Readable but not searchable: the directory opens, yet no `stat` below it could work.
+    await chmod(root, 0o400);
+    try {
+      await expect(storage.assertReachable()).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      await chmod(root, 0o700);
+    }
+  });
+
+  it('rejects a root that was swapped for a symbolic link', async () => {
+    const root = await newRoot();
+    const elsewhere = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    await rm(root, { recursive: true, force: true });
+    await symlink(elsewhere, root);
+    await expect(storage.assertReachable()).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await unlink(root);
   });
 });
