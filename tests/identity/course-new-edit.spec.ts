@@ -282,7 +282,10 @@ test('starts a course on an empty map and edits it by address, from the list alo
 
   // ── Bob: the address of Alice's course shows him nothing, and he can write nothing to it.
   await page.goto('/account');
+  // Sign-out is an async request from this page; navigating before it lands can cancel it
+  // and leave the previous account signed in.
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
   const bob = await login(page, 'Bob');
   await page.goto(`/courses/${courseId}/edit`);
   const bobBench = page.getByRole('region', { name: '내 코스' });

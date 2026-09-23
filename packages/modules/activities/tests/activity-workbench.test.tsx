@@ -22,6 +22,20 @@ const activity: Activity = {
   overlay: {},
 };
 const start = Date.parse('2026-09-17T00:00:00Z');
+// A chart page draws up to 500 points per metric, each an SVG circle with role="button". A
+// document-wide role query computes the name and visibility of all ~1000 of them — about half a
+// second per query in jsdom, so a handful of them used up the whole 5 s test budget on a loaded
+// machine. The large-record tests therefore look controls up inside the group that owns them.
+const recordTable = () => within(screen.getByRole('table', { name: '원본 관측 표' }));
+const selection = () => within(screen.getByRole('region', { name: '관측 선택 요약' }));
+const rangeControls = () => within(screen.getByRole('region', { name: '관측 구간 선택' }));
+const views = () => within(screen.getByRole('navigation', { name: '원본 상세 보기' }));
+/** The pager whose status reads "<label> n / m페이지". */
+function pager(label: string) {
+  const status = screen.getByText(new RegExp(`^${label} \\d+ / \\d+페이지`));
+  if (!status.parentElement) throw new Error(`Pager ${label} missing`);
+  return within(status.parentElement);
+}
 function read(count = 3): ActivityDetailsRead {
   return {
     activityId: activity.id,
@@ -74,13 +88,13 @@ describe('activity detail workbench', () => {
     data.details.laps = Array.from({ length: 21 }, (_, index) => ({ ...lap, index }));
     const view = render(<ActivityWorkbench activity={activity} read={data} panel="intervals" />);
     expect(screen.queryByRole('button', { name: '상세 출처' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '관측 0 선택' }));
-    await user.click(screen.getByRole('button', { name: '관측 표 다음 페이지' }));
-    await user.click(screen.getByRole('button', { name: '차트 다음 페이지' }));
+    await user.click(recordTable().getByRole('button', { name: '관측 0 선택' }));
+    await user.click(pager('관측 표').getByRole('button', { name: '관측 표 다음 페이지' }));
+    await user.click(pager('차트').getByRole('button', { name: '차트 다음 페이지' }));
     fireEvent.change(screen.getByLabelText('구간 시작 (UTC)'), {
       target: { value: '2026-09-17T00:00:04' },
     });
-    await user.click(screen.getByRole('button', { name: '구간 적용' }));
+    await user.click(rangeControls().getByRole('button', { name: '구간 적용' }));
     expect(screen.getByRole('alert')).toBeVisible();
     view.rerender(<ActivityWorkbench activity={activity} read={data} panel="inactive" />);
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
@@ -94,20 +108,16 @@ describe('activity detail workbench', () => {
     expect(screen.getByLabelText('구간 시작 (UTC)')).toHaveValue('2026-09-17T00:00:04.000');
     expect(screen.getByRole('alert')).toBeVisible();
     expect(screen.getByText(/차트 원본 순번 범위: 500–999/)).toBeVisible();
-    expect(screen.getByRole('button', { name: '관측 20 선택' })).toBeVisible();
-    expect(
-      within(screen.getByRole('region', { name: '관측 선택 요약' })).getByText(/선택한 관측 0/),
-    ).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '랩' }));
+    expect(recordTable().getByRole('button', { name: '관측 20 선택' })).toBeVisible();
+    expect(selection().getByText(/선택한 관측 0/)).toBeVisible();
+    await user.click(views().getByRole('button', { name: '랩' }));
     await user.click(screen.getByRole('button', { name: '랩 0 선택' }));
     await user.click(screen.getByRole('button', { name: '랩 표 다음 페이지' }));
     view.rerender(<ActivityWorkbench activity={activity} read={data} panel="inactive" />);
     view.rerender(<ActivityWorkbench activity={activity} read={data} panel="intervals" />);
-    expect(screen.getByRole('button', { name: '랩' })).toHaveAttribute('aria-pressed', 'true');
+    expect(views().getByRole('button', { name: '랩' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '랩 20 선택' })).toBeVisible();
-    expect(
-      within(screen.getByRole('region', { name: '관측 선택 요약' })).getByText(/선택한 랩 0/),
-    ).toBeVisible();
+    expect(selection().getByText(/선택한 랩 0/)).toBeVisible();
     const revised = { ...activity, revision: 2 };
     view.rerender(
       <ActivityWorkbench
@@ -118,7 +128,7 @@ describe('activity detail workbench', () => {
     );
     expect(screen.getByLabelText('구간 시작 (UTC)')).toHaveValue('');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '관측 개요' })).toHaveAttribute(
+    expect(views().getByRole('button', { name: '관측 개요' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -153,19 +163,15 @@ describe('activity detail workbench', () => {
     render(<ActivityWorkbench activity={activity} read={read(20_000)} />);
     const chart = await screen.findByRole('img', { name: '원본 거리 (m) 차트' });
     expect(chart.querySelectorAll('circle')).toHaveLength(499);
-    expect(
-      within(screen.getByRole('table', { name: '원본 관측 표' })).getAllByRole('row'),
-    ).toHaveLength(21);
-    await user.click(screen.getByRole('button', { name: '관측 0 선택' }));
-    await user.click(screen.getByRole('button', { name: '차트 다음 페이지' }));
+    expect(recordTable().getAllByRole('row')).toHaveLength(21);
+    await user.click(recordTable().getByRole('button', { name: '관측 0 선택' }));
+    await user.click(pager('차트').getByRole('button', { name: '차트 다음 페이지' }));
     expect(screen.getByText(/차트 원본 순번 범위: 500–999/)).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '관측 표 다음 페이지' }));
-    expect(screen.getByRole('button', { name: '관측 20 선택' })).toBeVisible();
-    expect(
-      within(screen.getByRole('region', { name: '관측 선택 요약' })).getByText(/선택한 관측 0/),
-    ).toHaveTextContent('거리 0 m · 심박 0 bpm');
-    await user.click(screen.getByRole('button', { name: '선택한 관측 페이지로 이동' }));
-    expect(screen.getByRole('button', { name: '관측 0 선택' })).toHaveAttribute(
+    await user.click(pager('관측 표').getByRole('button', { name: '관측 표 다음 페이지' }));
+    expect(recordTable().getByRole('button', { name: '관측 20 선택' })).toBeVisible();
+    expect(selection().getByText(/선택한 관측 0/)).toHaveTextContent('거리 0 m · 심박 0 bpm');
+    await user.click(selection().getByRole('button', { name: '선택한 관측 페이지로 이동' }));
+    expect(recordTable().getByRole('button', { name: '관측 0 선택' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );

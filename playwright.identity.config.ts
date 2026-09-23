@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
@@ -25,6 +26,12 @@ const geoDataDirectory = join(import.meta.dirname, '.geo-build/geo-data');
 const geoDataEnv = existsSync(join(geoDataDirectory, 'places.json'))
   ? { GEO_DATA_DIR: geoDataDirectory }
   : {};
+
+/**
+ * One id per run, inherited by the harness (webServer) and the spec workers: the files they
+ * hand each other are named after it, so another harness on this machine cannot remove them.
+ */
+process.env.IDENTITY_E2E_RUN_ID ??= randomUUID();
 
 export default defineConfig({
   testDir: './tests/identity',

@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Activity } from '@workout/contracts/activity';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
@@ -78,6 +78,14 @@ function props(overrides: Partial<ActivityBrowserProps> = {}): ActivityBrowserPr
 }
 
 describe('route tab wiring in the activity browser', () => {
+  // The route tab lazy-loads the track panel. Its first import in a worker compiles the panel
+  // and its dependencies (≈185 ms at load 8), and the first test's findBy window is 1 s, so
+  // on a loaded machine that window ran out while the compiler, not the screen, was working.
+  // Loading the module here keeps the lazy boundary (React still awaits the same import)
+  // but takes compile time out of what the assertions wait for.
+  beforeAll(async () => {
+    await import('../src/activity-track-panel');
+  });
   it('reaches the stored track through the route tab and scopes its cache to the athlete', async () => {
     const request = vi.fn((input: TransportRequest) => Promise.resolve(handler(input)));
     const view = render(<ActivityBrowser {...props({ transport: { request } })} />);

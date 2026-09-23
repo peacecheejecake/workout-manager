@@ -1286,8 +1286,17 @@
       "title": "identity·UI 시험의 부하 간헐 실패",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01ac.md",
       "scope": "여러 노드의 병합 검증에서 제품 변경과 무관한 시험이 부하에서 반복 실패했다: tests/identity/planner-operations.spec.ts:129(scrollIntoViewIfNeeded 요소 안정 대기 timeout, load 약 26·45에서 4회 중 2회), dashboard-ui.spec.ts:267(toHaveCount 단언), dashboard-layout.spec.ts:308(로그인 링크 click 5초 timeout), activity-track-map.spec.ts:165(지도 클릭 선택 단계), 그리고 unit의 activity-workbench 20k·data-panels·planning·session-completion-workspace 5초 timeout. 각 실패가 시험 쪽 경쟁인지 제품 결함인지 규명하고, 시험 쪽이면 timeout을 늘리는 대신 기다릴 조건을 바로잡는다. 수용 게이트 증거의 신뢰도에 영향을 준다."
+    },
+    {
+      "id": "M2-01ad",
+      "title": "남은 시험 불안정 요인",
+      "dependsOn": ["M2-01ac"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01ac와 그 독립 검토에서 남은 것. (1) 미해명 renderer 정지: planner-operations.spec.ts:129·activity-tags가 setViewportSize 직후 브라우저 안에서 멈춤(stable 대기·scrollIntoView 무응답). 재발 시 DEBUG=pw:protocol과 시스템 CPU·메모리 압박을 함께 기록해 원인을 가린다. dashboard-ui.spec.ts:267, activity-track-map.spec.ts:165도 미해명. (2) vitest가 timeout된 시험 본문을 멈추지 않아 남은 동작이 다음 시험의 DOM에 닿는다(M2-01ac의 499/500 연쇄) — 구조적 차단. (3) coaching-acceptance.spec.ts:231이 Alice의 전체 활동 수를 세어 activity-track-map이 먼저 돌면 실패하는 순서 의존 — 자기 계정이나 자기 활동만 세도록. (4) harness가 SIGKILL되면 run id별 handoff 파일(DB URL 포함, 0600)이 tmpdir에 남는다 — 오래된 파일 정리. timeout 상향은 해결로 치지 않는다."
     },
     {
       "id": "M2-01k",

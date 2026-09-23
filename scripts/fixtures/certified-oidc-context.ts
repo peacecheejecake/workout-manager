@@ -1,6 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { identityApiPort } from './identity-api-port.js';
+import { identityE2eRunId } from './identity-e2e-run.js';
 
 /**
  * Where `IDENTITY_E2E_OIDC=certified` leaves the generated account passwords for the
@@ -8,5 +9,5 @@ import { identityApiPort } from './identity-api-port.js';
  */
 export const certifiedOidcContextPath = join(
   tmpdir(),
-  `workout-certified-oidc-e2e-${identityApiPort}.json`,
+  `workout-certified-oidc-e2e-${identityApiPort}-${identityE2eRunId}.json`,
 );

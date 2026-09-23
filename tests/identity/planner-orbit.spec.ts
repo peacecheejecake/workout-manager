@@ -356,7 +356,10 @@ test('missing selection and invalid draft recover explicitly without exposing th
   let refreshedHeaders: Awaited<ReturnType<typeof login>>;
   try {
     await page.goto('/account');
+    // Sign-out is an async request from this page; navigating before it lands can cancel it
+    // and leave the previous account signed in.
     await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
     const bobHeaders = await login(page, 'Bob');
     const before = await page.request.get('/bff/v1/plans/current', { headers: bobHeaders });
     expect(before.status()).toBe(200);
@@ -374,7 +377,10 @@ test('missing selection and invalid draft recover explicitly without exposing th
     await page.goto('/account');
     const logout = page.getByRole('button', { name: '로그아웃', exact: true });
     await expect(logout.or(page.getByRole('link', { name: 'OIDC로 로그인' }))).toBeVisible();
-    if (await logout.isVisible()) await logout.click();
+    if (await logout.isVisible()) {
+      await logout.click();
+      await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+    }
     refreshedHeaders = await login(page);
     cleanupHeaders.set(page, refreshedHeaders);
   }

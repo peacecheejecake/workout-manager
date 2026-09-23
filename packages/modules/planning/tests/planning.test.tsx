@@ -15,6 +15,14 @@ import { readPlannerSearch, updatePlannerSearch } from '../src/lens';
 import { actualRange } from '../src/actual-activities';
 import { validationGuidance } from '../src/validation-guidance';
 
+// The planning workspace renders several hundred elements, and jsdom resolves every labelable
+// element's labels and every button's accessible name by walking the whole document. A
+// document-wide query therefore costs 150–350 ms here; the editor queries below are scoped to
+// the region that owns the control, which is what the user would be looking at anyway.
+const sessionEditor = () => within(screen.getByRole('region', { name: '계획 세션 초안' }));
+const draftEditor = () => within(screen.getByRole('region', { name: '계획 초안' }));
+const preview = () => within(screen.getByRole('region', { name: '변경 미리보기' }));
+
 const draft: PlanDraft = {
   title: '봄 시즌',
   timezone: 'Asia/Seoul',
@@ -130,12 +138,12 @@ describe('planning lifetime and manual confirmation', () => {
     const transport = host();
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    const title = screen.getByRole('textbox', { name: '계획 제목' });
+    const title = draftEditor().getByRole('textbox', { name: '계획 제목' });
     await user.clear(title);
     await user.type(title, '변경된 계획');
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
     expect(transport.spy.mock.calls.filter(([r]) => r.method === 'PUT')).toHaveLength(0);
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await screen.findByText('계획 버전 2 저장 완료');
     const request = transport.spy.mock.calls.find(([r]) => r.method === 'PUT')?.[0];
     expect(request).toMatchObject({
@@ -188,11 +196,11 @@ describe('planning lifetime and manual confirmation', () => {
     });
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await screen.findByText(/저장 결과를 확인할 수 없습니다/);
-    expect(screen.getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌');
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    expect(draftEditor().getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌');
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await screen.findByText('계획 버전 2 저장 완료');
     const requests = transport.spy.mock.calls.filter(([r]) => r.method === 'PUT').map(([r]) => r);
     expect(requests).toHaveLength(2);
@@ -203,12 +211,12 @@ describe('planning lifetime and manual confirmation', () => {
     const transport = host(async () => reply({ error: 'PLAN_STALE' }, 409));
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await user.type(screen.getByRole('textbox', { name: '계획 제목' }), ' 초안');
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await user.type(draftEditor().getByRole('textbox', { name: '계획 제목' }), ' 초안');
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await screen.findByText(/다른 변경과 충돌/);
-    expect(screen.getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌 초안');
-    expect(screen.getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeDisabled();
+    expect(draftEditor().getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌 초안');
+    expect(preview().getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeDisabled();
     expect(transport.spy.mock.calls.filter(([r]) => r.method === 'PUT')).toHaveLength(1);
   });
   it('drops private draft and cached plan immediately on session replacement', async () => {
@@ -216,7 +224,7 @@ describe('planning lifetime and manual confirmation', () => {
     const transport = host();
     const { rerender } = render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await user.type(screen.getByRole('textbox', { name: '계획 제목' }), ' private');
+    await user.type(draftEditor().getByRole('textbox', { name: '계획 제목' }), ' private');
     const nextTransport: AuthenticatedTransport = { request: () => new Promise(() => {}) };
     rerender(<StatefulHost {...base} sessionId="session-b" transport={nextTransport} />);
     expect(screen.queryByRole('textbox', { name: '계획 제목' })).not.toBeInTheDocument();
@@ -228,11 +236,11 @@ describe('planning lifetime and manual confirmation', () => {
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
     expect(screen.getByRole('spinbutton', { name: '거리 (m, 미정 가능)' })).toHaveValue(0);
     expect(screen.getByRole('spinbutton', { name: '시간 (초, 미정 가능)' })).toHaveValue(null);
-    fireEvent.change(screen.getByRole('textbox', { name: '계획 제목' }), {
+    fireEvent.change(draftEditor().getByRole('textbox', { name: '계획 제목' }), {
       target: { value: '다른 제목' },
     });
-    await user.click(screen.getByRole('button', { name: '실행 취소' }));
-    expect(screen.getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌');
+    await user.click(draftEditor().getByRole('button', { name: '실행 취소' }));
+    expect(draftEditor().getByRole('textbox', { name: '계획 제목' })).toHaveValue('봄 시즌');
     expect(
       within(screen.getByRole('region', { name: '일별 계획' })).getAllByText(
         /실제 휴식 여부 미확인/,
@@ -268,8 +276,8 @@ describe('idempotent receipt versus authoritative head', () => {
     };
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await waitFor(() => expect(reads).toBe(2));
     expect(screen.queryByText(/현재 버전:/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '계획 초안 편집' })).not.toBeInTheDocument();
@@ -311,8 +319,8 @@ describe('idempotent receipt versus authoritative head', () => {
     };
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
-    await user.click(screen.getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
     await screen.findByText('계획 버전 2 저장 완료');
     expect(screen.getByText(/계획을 확인할 수 없습니다/)).toBeInTheDocument();
     expect(screen.queryByText(/현재 버전:/)).not.toBeInTheDocument();
@@ -334,20 +342,20 @@ describe('plan editor constraints', () => {
       <StatefulHost {...base} createId={() => `generated-${++ids}`} transport={{ request }} />,
     );
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled();
+    expect(draftEditor().getByRole('button', { name: '변경 미리보기' })).toBeDisabled();
     for (const level of ['season', 'wave', 'phase', 'block'])
       await user.click(screen.getByRole('button', { name: `${level} 추가` }));
     await user.click(screen.getByRole('button', { name: '세션 추가' }));
     await user.click(screen.getByRole('button', { name: '단계 추가' }));
-    await user.click(screen.getByRole('button', { name: '세션 복제' }));
+    await user.click(sessionEditor().getByRole('button', { name: '세션 복제' }));
     expect(screen.getAllByRole('textbox', { name: '세션 제목' })).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: '계획 세션 선택 해제' }));
     expect(screen.getAllByRole('textbox', { name: '세션 제목' })).toHaveLength(2);
-    const deleteButtons = screen.getAllByRole('button', { name: '세션 삭제' });
+    const deleteButtons = sessionEditor().getAllByRole('button', { name: '세션 삭제' });
     const duplicateDelete = deleteButtons.at(1);
     if (!duplicateDelete) throw new Error('Expected duplicate action');
     await user.click(duplicateDelete);
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
     expect(screen.getByRole('region', { name: '변경 미리보기' })).toHaveTextContent(
       '기간 4개, 계획 세션 1개',
     );
@@ -374,13 +382,13 @@ describe('plan editor constraints', () => {
     };
     render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    expect(screen.getByLabelText('세션 날짜')).toBeDisabled();
-    expect(screen.getByLabelText('계획 시간대')).toBeDisabled();
+    expect(sessionEditor().getByLabelText('세션 날짜')).toBeDisabled();
+    expect(draftEditor().getByLabelText('계획 시간대')).toBeDisabled();
     expect(screen.getByRole('spinbutton', { name: '거리 (m, 미정 가능)' })).toBeDisabled();
     await user.click(screen.getByRole('checkbox', { name: 'intensity 잠금' }));
     expect(screen.getByRole('spinbutton', { name: '거리 (m, 미정 가능)' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '세션 삭제' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeEnabled();
+    expect(sessionEditor().getByRole('button', { name: '세션 삭제' })).toBeDisabled();
+    expect(draftEditor().getByRole('button', { name: '변경 미리보기' })).toBeEnabled();
   });
   it('reports unknown URL period rather than crashing or selecting an invented period', async () => {
     render(
@@ -535,13 +543,13 @@ describe('saved-plan actual activity range', () => {
     await within(region).findByText('실제 기록');
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
-    fireEvent.change(screen.getByLabelText('계획 제목'), { target: { value: '보존 초안' } });
-    fireEvent.change(screen.getByLabelText('계획 시간대'), {
+    fireEvent.change(draftEditor().getByLabelText('계획 제목'), { target: { value: '보존 초안' } });
+    fireEvent.change(draftEditor().getByLabelText('계획 시간대'), {
       target: { value: 'America/New_York' },
     });
     await user.click(within(region).getByRole('button', { name: '다음 실제 활동' }));
     await within(region).findByText(/2페이지/);
-    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    expect(draftEditor().getByLabelText('계획 제목')).toHaveValue('보존 초안');
     const actualRequests = request.mock.calls.filter(([input]) =>
       input.path.startsWith('/bff/v1/activities?'),
     );
@@ -559,11 +567,11 @@ describe('saved-plan actual activity range', () => {
     await user.click(within(region).getByRole('button', { name: '실제 활동 다시 확인' }));
     await within(region).findByText(/아래는 마지막 조회 결과/);
     expect(within(region).getByText('실제 기록')).toBeVisible();
-    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    expect(draftEditor().getByLabelText('계획 제목')).toHaveValue('보존 초안');
     fireEvent.change(screen.getByLabelText('Rolling 기준일'), { target: { value: '2026-09-11' } });
     await within(region).findByText(/실제 활동 최신 확인 실패/);
     expect(within(region).queryByText('실제 기록')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('계획 제목')).toHaveValue('보존 초안');
+    expect(draftEditor().getByLabelText('계획 제목')).toHaveValue('보존 초안');
     failed = false;
     await user.click(within(region).getByRole('button', { name: '실제 활동 다시 확인' }));
     await within(region).findByText('실제 기록');
@@ -643,10 +651,10 @@ describe('shared planned-session views', () => {
       'true',
     );
     await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
-    const date = screen.getByLabelText('세션 날짜');
+    const date = sessionEditor().getByLabelText('세션 날짜');
     fireEvent.change(date, { target: { value: '2026-09-10' } });
     await user.click(screen.getByRole('button', { name: '계획 표 보기' }));
-    expect(screen.getByLabelText('세션 날짜')).toBe(date);
+    expect(sessionEditor().getByLabelText('세션 날짜')).toBe(date);
     const table = screen.getByRole('table', { name: '계획 세션 표' });
     const selected = within(table)
       .getAllByRole('row')
@@ -656,8 +664,8 @@ describe('shared planned-session views', () => {
       '미저장 초안',
     );
     expect(transport.spy.mock.calls.some(([input]) => input.method === 'PUT')).toBe(false);
-    await user.click(screen.getByRole('button', { name: '실행 취소' }));
-    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2026-09-09');
+    await user.click(draftEditor().getByRole('button', { name: '실행 취소' }));
+    expect(sessionEditor().getByLabelText('세션 날짜')).toHaveValue('2026-09-09');
     expect(selected).toHaveTextContent('2026-09-09');
   });
   it('keeps out-of-range selection and never substitutes saved views for an invalid draft', async () => {
@@ -669,13 +677,15 @@ describe('shared planned-session views', () => {
       '현재 조회 범위 밖',
     );
     await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
-    fireEvent.change(screen.getByLabelText('세션 날짜'), { target: { value: '2026-12-25' } });
+    fireEvent.change(sessionEditor().getByLabelText('세션 날짜'), {
+      target: { value: '2026-12-25' },
+    });
     expect(screen.getByText(/초안이 유효하지 않아 날짜별 보기를 표시할 수 없습니다/)).toBeVisible();
     expect(screen.queryByRole('button', { name: '계획: 쉬운 달리기' })).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: '선택한 계획 세션' })).toHaveTextContent(
       '2026-12-25',
     );
-    expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeDisabled();
+    expect(draftEditor().getByRole('button', { name: '변경 미리보기' })).toBeDisabled();
   });
 });
 

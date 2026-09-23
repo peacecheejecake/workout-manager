@@ -63,6 +63,9 @@ const list = sessionCompletionListSchema.parse({
     },
   ],
 });
+const sessionEditor = () => within(screen.getByRole('region', { name: '계획 세션 초안' }));
+const draftEditor = () => within(screen.getByRole('region', { name: '계획 초안' }));
+const preview = () => within(screen.getByRole('region', { name: '변경 미리보기' }));
 function setup(
   readList: () => Promise<unknown>,
   saved = head,
@@ -107,7 +110,7 @@ describe('completion scheduling guards in planning workspace', () => {
     await act(async () => resolve(list));
     await table.findByText('사용자 완료 확인');
     await user.click(screen.getByRole('button', { name: '계획 초안 편집' }));
-    await user.type(screen.getByLabelText('세션 메모'), '유지할 초안');
+    await user.type(sessionEditor().getByLabelText('세션 메모'), '유지할 초안');
     read = async () => {
       throw new Error('offline');
     };
@@ -130,7 +133,7 @@ describe('completion scheduling guards in planning workspace', () => {
     });
     await user.click(screen.getByRole('button', { name: '완료 상태 다시 확인' }));
     await table.findByText('완료 확인 철회');
-    expect(screen.getByLabelText('세션 메모')).toHaveValue('유지할 초안');
+    expect(sessionEditor().getByLabelText('세션 메모')).toHaveValue('유지할 초안');
     expect(table.getByRole('button', { name: '계획: Reported run' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -158,11 +161,11 @@ describe('completion scheduling guards in planning workspace', () => {
     await user.click(panel.getByRole('button', { name: '확인하고 기간 이동 초안 적용' }));
     expect(block.getByLabelText('기간 시작일')).toHaveValue('2080-01-02');
     expect(block.getByLabelText('기간 종료일 (미포함)')).toHaveValue('2080-02-02');
-    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2080-01-03');
-    await user.click(screen.getByRole('button', { name: '실행 취소' }));
+    expect(sessionEditor().getByLabelText('세션 날짜')).toHaveValue('2080-01-03');
+    await user.click(draftEditor().getByRole('button', { name: '실행 취소' }));
     expect(block.getByLabelText('기간 시작일')).toHaveValue('2080-01-01');
     expect(block.getByLabelText('기간 종료일 (미포함)')).toHaveValue('2080-02-01');
-    expect(screen.getByLabelText('세션 날짜')).toBeDisabled();
+    expect(sessionEditor().getByLabelText('세션 날짜')).toBeDisabled();
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
   });
 
@@ -186,13 +189,13 @@ describe('completion scheduling guards in planning workspace', () => {
     const user = userEvent.setup();
     const request = setup(async () => list);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    await waitFor(() => expect(screen.getByLabelText('세션 날짜')).toBeDisabled());
-    expect(screen.getByLabelText('계획 시간대')).toBeDisabled();
-    expect(screen.getByRole('button', { name: '세션 삭제' })).toBeDisabled();
-    expect(screen.getByLabelText('세션 제목')).toBeEnabled();
-    await user.type(screen.getByLabelText('세션 제목'), ' content edit');
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
-    expect(screen.getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeEnabled();
+    await waitFor(() => expect(sessionEditor().getByLabelText('세션 날짜')).toBeDisabled());
+    expect(draftEditor().getByLabelText('계획 시간대')).toBeDisabled();
+    expect(sessionEditor().getByRole('button', { name: '세션 삭제' })).toBeDisabled();
+    expect(sessionEditor().getByLabelText('세션 제목')).toBeEnabled();
+    await user.type(sessionEditor().getByLabelText('세션 제목'), ' content edit');
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    expect(preview().getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeEnabled();
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
   });
 
@@ -204,19 +207,21 @@ describe('completion scheduling guards in planning workspace', () => {
     });
     const request = setup(() => pending);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
-    fireEvent.change(screen.getByLabelText('세션 날짜'), { target: { value: '2080-01-04' } });
-    await user.click(screen.getByRole('button', { name: '변경 미리보기' }));
+    fireEvent.change(sessionEditor().getByLabelText('세션 날짜'), {
+      target: { value: '2080-01-04' },
+    });
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
     await act(async () => resolve(list));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeDisabled(),
+      expect(preview().getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeDisabled(),
     );
     expect(screen.getByText(/초안이 사용자 완료 확인으로 고정된 일정과 충돌/)).toBeVisible();
-    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2080-01-04');
-    await user.click(screen.getByRole('button', { name: '편집으로 돌아가기' }));
-    await user.click(screen.getByRole('button', { name: '실행 취소' }));
-    expect(screen.getByLabelText('세션 날짜')).toHaveValue('2080-01-03');
-    expect(screen.getByLabelText('세션 날짜')).toBeDisabled();
-    expect(screen.getByRole('button', { name: '변경 미리보기' })).toBeEnabled();
+    expect(sessionEditor().getByLabelText('세션 날짜')).toHaveValue('2080-01-04');
+    await user.click(preview().getByRole('button', { name: '편집으로 돌아가기' }));
+    await user.click(draftEditor().getByRole('button', { name: '실행 취소' }));
+    expect(sessionEditor().getByLabelText('세션 날짜')).toHaveValue('2080-01-03');
+    expect(sessionEditor().getByLabelText('세션 날짜')).toBeDisabled();
+    expect(draftEditor().getByRole('button', { name: '변경 미리보기' })).toBeEnabled();
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
   });
 });

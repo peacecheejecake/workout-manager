@@ -72,7 +72,11 @@ describe('real table/editor with chart boundary stub', () => {
     await user.click(screen.getByRole('button', { name: '대량 1000행' }));
     expect(screen.getByText('표시 1000개 · 선택 없음')).toBeInTheDocument();
     const table = screen.getByRole('table', { name: '가상 활동 표' });
-    expect(within(table).getAllByRole('rowheader')).toHaveLength(1000);
+    // Counting 1000 row headers with the default visibility filter walks every header's
+    // ancestors through jsdom's getComputedStyle — over a second of CPU on its own, which blew
+    // the 5 s budget on a loaded machine. Nothing in this table is hidden, so `hidden: true`
+    // counts the same rows (the filtered count below still uses the default).
+    expect(within(table).getAllByRole('rowheader', { hidden: true })).toHaveLength(1000);
     fireEvent.change(screen.getByRole('textbox', { name: '활동 검색' }), {
       target: { value: '1000' },
     });
