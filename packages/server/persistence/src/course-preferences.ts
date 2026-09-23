@@ -2,11 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import {
+  courseAccessibilityNoteListSchema,
+  courseAccessibilityNoteSchema,
+  courseAccessibilityNoteWriteSchema,
   courseLimits,
   courseNameSchema,
   coursePositionSchema,
   coursePreferenceListSchema,
   coursePrivacyZoneSchema,
+  type CourseAccessibilityNote,
+  type CourseAccessibilityNoteList,
+  type CourseAccessibilityNoteWrite,
   type CoursePreference,
   type CoursePreferenceList,
   type CoursePreferenceUpdate,
@@ -45,6 +51,17 @@ export class CoursePreferenceError extends Error {
   }
 }
 
+/**
+ * A note cannot be written against the course as the caller asked: it is not available (it
+ * has no head to be written against) or its head is not the one the screen was showing.
+ */
+export class CourseAccessibilityNoteStateError extends Error {
+  constructor(readonly code: 'COURSE_UNAVAILABLE' | 'COURSE_REVISION_CONFLICT') {
+    super(code);
+    this.name = 'CourseAccessibilityNoteStateError';
+  }
+}
+
 const instant = (value: unknown) =>
   value instanceof Date ? value.toISOString() : new Date(z.string().parse(value)).toISOString();
 
@@ -72,6 +89,23 @@ function zone(row: z.infer<typeof zoneRowSchema>): CoursePrivacyZone {
     radiusMeters: row.radius_meters,
     createdAt: instant(row.created_at),
     updatedAt: instant(row.updated_at),
+  });
+}
+
+const noteRowSchema = z.object({
+  course_id: uuid,
+  note: z.string(),
+  written_at_revision: z.number().int(),
+  updated_at: z.union([z.date(), z.string()]),
+});
+
+function accessibilityNote(row: unknown): CourseAccessibilityNote {
+  const parsed = noteRowSchema.parse(row);
+  return courseAccessibilityNoteSchema.parse({
+    courseId: parsed.course_id,
+    note: parsed.note,
+    writtenAtRevision: parsed.written_at_revision,
+    updatedAt: instant(parsed.updated_at),
   });
 }
 
@@ -112,6 +146,17 @@ export interface CoursePreferenceRepository {
     input: { name: string; center: readonly [number, number]; radiusMeters: number },
   ): Promise<CoursePrivacyZone[]>;
   removePrivacyZone(athleteId: string, zoneId: string): Promise<CoursePrivacyZone[]>;
+  /** Every accessibility note this owner has written (M2-01r). */
+  listAccessibilityNotes(athleteId: string): Promise<CourseAccessibilityNoteList>;
+  /**
+   * Write or clear one accessibility note. It appends no revision and touches no digest.
+   * The course must be this owner's, available, and at the head the caller was showing.
+   */
+  writeAccessibilityNote(
+    athleteId: string,
+    courseId: string,
+    write: CourseAccessibilityNoteWrite,
+  ): Promise<CourseAccessibilityNote | null>;
 }
 
 export function createCoursePreferenceRepository(database: Database): CoursePreferenceRepository {
@@ -176,6 +221,72 @@ export function createCoursePreferenceRepository(database: Database): CoursePref
           favourite: parsed.favourite,
           lastUsedAt: parsed.last_used_at === null ? null : instant(parsed.last_used_at),
         };
+      });
+    },
+
+    listAccessibilityNotes(athleteId) {
+      const tenantId = uuid.parse(athleteId);
+      return database.tenant(tenantId, async (tx) => {
+        const rows = await tx.query(
+          `SELECT course_id,note,written_at_revision,updated_at FROM course_accessibility_note
+           WHERE athlete_id=$1 ORDER BY course_id LIMIT $2`,
+          [tenantId, courseLimits.coursesPerTenant],
+        );
+        const notes = rows.rows.map((row) => accessibilityNote(row));
+        return courseAccessibilityNoteListSchema.parse({ notes, total: notes.length });
+      });
+    },
+
+    // Async so a refused input is a rejected promise, never a throw the caller did not await.
+    async writeAccessibilityNote(athleteId, rawCourseId, rawWrite) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawCourseId);
+      const write = courseAccessibilityNoteWriteSchema.parse(rawWrite);
+      return database.tenant(tenantId, async (tx) => {
+        // The tenant command lock, before any row: every course write takes it in the same
+        // place, so the head read below and the note written against it are one decision.
+        // A reroute that lands between them would otherwise leave a note recorded against
+        // a revision the owner never saw.
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tenantId]);
+        const course = await tx.query(
+          'SELECT status,head_revision FROM course WHERE athlete_id=$1 AND course_id=$2',
+          [tenantId, courseId],
+        );
+        const head = z
+          .object({
+            status: z.enum(['available', 'unavailable']),
+            head_revision: z.number().nullable(),
+          })
+          .optional()
+          .parse(course.rows[0]);
+        if (head === undefined) throw new CoursePreferenceError();
+        // Removing the owner's own words is always possible, even from a course reclaimed
+        // with its recording: that is taking data away, and it needs no head to be read
+        // against. Writing one needs the head the owner was looking at.
+        const clearing = write.note === null;
+        if (!clearing && (head.status !== 'available' || head.head_revision === null))
+          throw new CourseAccessibilityNoteStateError('COURSE_UNAVAILABLE');
+        if (head.status === 'available' && head.head_revision !== write.expectedRevision)
+          throw new CourseAccessibilityNoteStateError('COURSE_REVISION_CONFLICT');
+        if (write.note === null) {
+          await tx.query(
+            'DELETE FROM course_accessibility_note WHERE athlete_id=$1 AND course_id=$2',
+            [tenantId, courseId],
+          );
+          return null;
+        }
+        const at = await databaseNow(tx);
+        const written = await tx.query(
+          `INSERT INTO course_accessibility_note(athlete_id,course_id,note,written_at_revision,
+             created_at,updated_at)
+           VALUES($1,$2,$3,$4,$5,$5)
+           ON CONFLICT (athlete_id,course_id) DO UPDATE
+             SET note=EXCLUDED.note,written_at_revision=EXCLUDED.written_at_revision,
+                 updated_at=EXCLUDED.updated_at
+           RETURNING course_id,note,written_at_revision,updated_at`,
+          [tenantId, courseId, write.note, head.head_revision, at],
+        );
+        return accessibilityNote(written.rows[0]);
       });
     },
 

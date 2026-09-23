@@ -1265,3 +1265,217 @@ describe('the stored course thumbnail download', () => {
     expect(courses.resolveThumbnailObject).not.toHaveBeenCalled();
   });
 });
+
+describe('a course started on an empty map (M2-01r, /courses/new)', () => {
+  const previewBody = { requestId: 'new-draft-1', draftRevision: 4, waypoints: draftWaypoints };
+  const reviewedSha = createHash('sha256').update(JSON.stringify(routedCoordinates)).digest('hex');
+  const routedCreate = (overrides: Record<string, unknown> = {}) => ({
+    name: '새 코스',
+    from: {
+      kind: 'routed-waypoints',
+      waypoints: draftWaypoints,
+      draftRevision: 4,
+      reviewedGeometrySha256: reviewedSha,
+      acknowledgedGraph: { previous: null, next: '0123456789abcdef' },
+      ...overrides,
+    },
+  });
+
+  it('offers no preview route at all when no engine is configured', async () => {
+    const { app } = setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses/route-previews',
+      headers: baseHeaders,
+      payload: previewBody,
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('previews a route with the server digest of its line and stores nothing', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses/route-previews',
+      headers: baseHeaders,
+      payload: previewBody,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      outcome: string;
+      preview: { geometrySha256: string; draftRevision: number; requestId: string };
+    };
+    expect(body.outcome).toBe('route_computed');
+    expect(body.preview).toMatchObject({ draftRevision: 4, requestId: 'new-draft-1' });
+    expect(body.preview.geometrySha256).toBe(reviewedSha);
+    expect(walkingRoutes.compute.mock.calls[0]?.[1]).toMatchObject({
+      requestRevision: 4,
+      profileId: 'foot-v1',
+      waypoints: [
+        [127.02, 37.5],
+        [127.0201, 37.5001],
+      ],
+    });
+    for (const write of [
+      courses.create,
+      courses.update,
+      courses.storeRouteProposal,
+      courses.storeRouteCandidateSet,
+    ])
+      expect(write).not.toHaveBeenCalled();
+  });
+
+  it('refuses a waypoint that claims a recorded sample, before the engine runs', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    const claimed = draftWaypoints.map((waypoint, index) =>
+      index === 0 ? { ...waypoint, sourceSampleId: '0:0' } : waypoint,
+    );
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses/route-previews',
+      headers: baseHeaders,
+      payload: { ...previewBody, waypoints: claimed },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses',
+      headers: commandHeaders,
+      payload: routedCreate({ waypoints: claimed }),
+    });
+    expect([preview.statusCode, created.statusCode]).toEqual([400, 400]);
+    expect(walkingRoutes.compute).not.toHaveBeenCalled();
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+
+  it('passes each refusal through as a named outcome, storing nothing', async () => {
+    for (const [outcome, status] of [
+      ['no_route', 200],
+      ['overloaded', 429],
+      ['timeout', 504],
+      ['engine_unavailable', 502],
+    ] as const) {
+      const { app, courses } = setup({ walkingRoutes: walkingRouteFixture(outcome) });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/route-previews',
+        headers: baseHeaders,
+        payload: previewBody,
+      });
+      expect([response.statusCode, (response.json() as { outcome: string }).outcome]).toEqual([
+        status,
+        outcome,
+      ]);
+      expect(courses.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('writes the server recomputation, with no lineage, when it is the reviewed line', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses',
+      headers: commandHeaders,
+      payload: routedCreate(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(walkingRoutes.compute).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(courses.create).mock.calls[0]?.[1];
+    expect(content).toMatchObject({
+      name: '새 코스',
+      coordinates: routedCoordinates,
+      lineage: [],
+      edit: { kind: 'created' },
+      generation: {
+        kind: 'routed-waypoints',
+        waypointCount: 2,
+        computation: { requestRevision: 4, graph: { graphBuildId: '0123456789abcdef' } },
+      },
+    });
+  });
+
+  it('refuses a save whose recomputed line is not the one reviewed', async () => {
+    const { app, courses } = setup({ walkingRoutes: walkingRouteFixture() });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses',
+      headers: commandHeaders,
+      payload: routedCreate({ reviewedGeometrySha256: 'e'.repeat(64) }),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'ROUTE_PREVIEW_CHANGED' } });
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a save acknowledging a graph the engine is no longer on', async () => {
+    const { app, courses } = setup({ walkingRoutes: walkingRouteFixture() });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses',
+      headers: commandHeaders,
+      payload: routedCreate({ acknowledgedGraph: { previous: null, next: 'fedcba9876543210' } }),
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: { code: 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE' },
+    });
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the engine status when the recomputation itself fails', async () => {
+    for (const [outcome, status] of [
+      ['no_route', 409],
+      ['overloaded', 429],
+      ['engine_unavailable', 502],
+    ] as const) {
+      const { app, courses } = setup({ walkingRoutes: walkingRouteFixture(outcome) });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses',
+        headers: commandHeaders,
+        payload: routedCreate(),
+      });
+      expect([
+        response.statusCode,
+        (response.json() as { error: { code: string } }).error.code,
+      ]).toEqual([status, 'ROUTE_PREVIEW_NOT_REPRODUCED']);
+      expect(courses.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('says the routing engine is not configured rather than creating anything', async () => {
+    const { app, courses } = setup();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses',
+      headers: commandHeaders,
+      payload: routedCreate(),
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: { code: 'ROUTING_NOT_CONFIGURED' } });
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a geometry or a previous graph smuggled into the create request', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    for (const payload of [
+      routedCreate({ geometry: { type: 'LineString', coordinates: routedCoordinates } }),
+      routedCreate({
+        acknowledgedGraph: { previous: '0123456789abcdef', next: '0123456789abcdef' },
+      }),
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses',
+        headers: commandHeaders,
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(walkingRoutes.compute).not.toHaveBeenCalled();
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+});

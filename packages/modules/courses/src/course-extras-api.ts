@@ -2,10 +2,13 @@ import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import { transportReplySchema } from '@workout/contracts/core';
 import {
+  courseAccessibilityNoteListSchema,
+  courseAccessibilityNoteWriteResultSchema,
   courseImportResultSchema,
   coursePreferenceListSchema,
   coursePreferenceSchema,
   coursePrivacyZoneListSchema,
+  type CourseAccessibilityNoteWrite,
   type CourseImportRequest,
   type CoursePosition,
   type CoursePreferenceUpdate,
@@ -114,6 +117,26 @@ export function createCourseExtrasApi(transport: AuthenticatedTransport) {
         courseId,
         update,
       });
+    },
+    /** The owner's accessibility notes (M2-01r). Their own words, not course content. */
+    accessibilityNotes(signal?: AbortSignal) {
+      return request(
+        '/bff/v1/courses/accessibility-notes',
+        'GET',
+        courseAccessibilityNoteListSchema,
+        null,
+        null,
+        signal,
+      );
+    },
+    /** Write or clear one note, against the head revision the screen was showing. */
+    writeAccessibilityNote(courseId: string, write: CourseAccessibilityNoteWrite) {
+      return request(
+        `/bff/v1/courses/${encodeURIComponent(courseId)}/accessibility-note`,
+        'PUT',
+        courseAccessibilityNoteWriteResultSchema,
+        write,
+      );
     },
     privacyZones(signal?: AbortSignal) {
       return request(

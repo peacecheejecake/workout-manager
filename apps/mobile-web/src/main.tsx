@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-candidates';
 import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
 import { integratedCandidateV4Schema } from '@workout/contracts/integrated-coaching';
+import { availableCourseHeadSchema } from '@workout/contracts/courses';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
 import './styles.css';
 
@@ -71,6 +72,12 @@ const integratedProposalPath = location.pathname.match(/^\/integrated-proposals\
 const integratedProposalCandidateId = integratedProposalPath
   ? integratedCandidateV4Schema.shape.id.safeParse(integratedProposalPath)
   : null;
+// S14 (M2-01r): `/courses/new` and `/courses/:id/edit`. An id that is not a course id is
+// refused here; whether a well-formed one is the caller's course is the API's answer.
+const courseEditPath = location.pathname.match(/^\/courses\/([^/]+)\/edit\/?$/)?.[1];
+const courseEditId = courseEditPath
+  ? availableCourseHeadSchema.shape.courseId.safeParse(courseEditPath)
+  : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 createRoot(root).render(
@@ -119,6 +126,24 @@ createRoot(root).render(
           </nav>
           <CoursePage />
         </Suspense>
+      ) : location.pathname === '/courses/new' || location.pathname === '/courses/new/' ? (
+        <Suspense fallback={<p role="status">새 코스 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/courses">코스</a> · <a href="/activities">활동</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <CoursePage screen={{ kind: 'new' }} />
+        </Suspense>
+      ) : courseEditId?.success ? (
+        <Suspense fallback={<p role="status">코스 편집 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/courses">코스</a> · <a href="/activities">활동</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <CoursePage screen={{ kind: 'edit', courseId: courseEditId.data }} />
+        </Suspense>
+      ) : courseEditPath ? (
+        <p role="alert">코스 주소가 올바르지 않습니다.</p>
       ) : location.pathname === '/activities' ? (
         <Suspense fallback={<p role="status">활동 목록 준비 중</p>}>
           <nav aria-label="주요 화면">

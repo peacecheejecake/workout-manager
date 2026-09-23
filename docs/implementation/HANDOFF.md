@@ -17,21 +17,23 @@
 
 ## 완료된 최신 작업
 
-[M2-01v](progress/M2-01v.md)를 완료했다. identity·통합 스위트의 간헐 실패를 규명했다.
+[M2-01r](progress/M2-01r.md)를 완료했다. M2-01k 수용 매트릭스에서 빠져 있던 S13/S14 기능을 채웠다.
 
-- `oidc.spec.ts:55`의 30초 타임아웃은 **시험 쪽 경쟁 조건**이다. 계정 전환 뒤 세 읽기(동의·Garmin·ops)가
-  모두 409를 받는데, 먼저 도착한 409가 계정 트리를 해체하며 나머지를 abort해 동의 409가 브라우저에 오지
-  않았다. 61회 기록에서 Alice 세션 동의 읽기가 409 외의 응답을 받은 적은 없어 **보안 결함이 아니다.**
-  두 패널 읽기도 해제 시점까지 붙잡도록 시험만 고쳤다. 독립 검토가 실제 브라우저에서 수정 시험 3/3 통과,
-  세션 검사를 통과시키는 변이에서 2/2 실패를 확인했다.
-- 통합 스위트의 "전부 통과, exit 1"(57P01)은 격리 DB drop의 teardown 경쟁이었다. backend가 나갈 때까지
-  기다린 뒤 지우는 helper(`drop-isolated-database.ts`)를 upgrade 시험 다섯 파일에 적용했다(두 파일은 rebase 뒤 독립 검토가 찾음).
-- poller 가설은 기각했다(이벤트 루프 지연 최대 41 ms). 기계 포화 때의 브라우저 정지 2건은 분류만 했고,
-  `planned-completion-status.spec.ts:184`와 `activity-tags.spec.ts:104`는 재현되지 않아 **미분류**로 남는다.
+- `/courses/new`·`/courses/:id/edit`(두 shell). 빈 지도에서 코스를 시작하는 경로가 아예 없었다. 미리보기는
+  저장하지 않고(`POST /bff/v1/courses/route-previews`), 저장 때 서버가 엔진에 다시 물어 graph와 선 digest가
+  검토한 것과 같을 때만 쓴다. 요청에는 geometry가 없다. **실제 GraphHopper에서 재계산 digest가 일치하는지는
+  미실측**이며, E2E 저장은 fixture 엔진으로만 돌았다.
+- S13 접근성 메모를 코스 content 밖의 새 표(migration 043, RLS FORCE, 컬럼 한정 UPDATE grant, head CAS)에
+  저장한다. 계정 삭제는 course cascade로 지워지고 잠금 순서는 바뀌지 않았다. export v22.
+- "미계산 초안" 상태와 geo-kit `uncomputed` 점선, 목록에서의 선택·순서 변경·삭제를 내용 기반 시험과 변이로
+  고정했다.
+- 매트릭스 판정 제안(§6)은 적용하지 않았다. M2-01k 재실행 때 반영하되, `S14-address`에는 위 미실측을 적는다.
+- 병합 때 migration 목록을 042(M2-01s) 뒤 043으로 놓고, foundation 시험에 version 43을 더했으며, 새 upgrade
+  시험에 M2-01v의 drop helper를 적용했다.
 
 ## 다음 ready 작업
 
-M2-01q는 검토 대응 중, M2-01r·w·x는 진행 중이다. **M2-01t는 사용자 결정이 먼저**다.
+M2-01q는 검토 대응 중, M2-01w·x는 진행 중이다. **M2-01t는 사용자 결정이 먼저**다.
 
 ## 남은 외부·실환경 gate
 

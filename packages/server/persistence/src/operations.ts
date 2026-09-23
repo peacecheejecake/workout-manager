@@ -447,6 +447,14 @@ const collections = [
      vertex_count,renderer_id,renderer_version,created_at,ready_at`,
     'course_id,course_revision',
   ],
+  // M2-01r. The owner's own words about getting along a course, and the head revision
+  // they were written against. Nothing derived and nothing rebuildable, so it is exported.
+  [
+    'courseAccessibilityNotes',
+    'course_accessibility_note',
+    'course_id,note,written_at_revision,created_at,updated_at',
+    'course_id',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -513,7 +521,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 21,
+          schemaVersion: 22,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

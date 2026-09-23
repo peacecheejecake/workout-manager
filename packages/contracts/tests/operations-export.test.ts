@@ -634,7 +634,7 @@ it('requires resource access collections in v15 while preserving v14 artifacts',
 
 it('parses the currently integrated export version without dropping access facts', () => {
   const current = accountExportSchema.parse({
-    schemaVersion: 21,
+    schemaVersion: 22,
     athleteId: legacy.athleteId,
     exportedAt: legacy.exportedAt,
     data: {
@@ -695,9 +695,11 @@ it('parses the currently integrated export version without dropping access facts
       coursePreferences: [],
       coursePrivacyZones: [],
       courseThumbnails: [],
+      courseAccessibilityNotes: [],
     },
   });
-  if (current.schemaVersion !== 21) throw new Error('Expected the integrated export version');
+  if (current.schemaVersion !== 22) throw new Error('Expected the integrated export version');
+  expect(current.data.courseAccessibilityNotes).toEqual([]);
   expect(current.data.resourceShares).toEqual([]);
   expect(current.data.resourceAccessAudit).toEqual([]);
   expect(current.data.resourcePassages).toEqual([]);
@@ -722,6 +724,7 @@ it('parses the currently integrated export version without dropping access facts
     'coursePreferences',
     'coursePrivacyZones',
     'courseThumbnails',
+    'courseAccessibilityNotes',
   ] as const)
     expect(
       accountExportSchema.safeParse({
@@ -729,13 +732,38 @@ it('parses the currently integrated export version without dropping access facts
         data: { ...current.data, [missing]: undefined },
       }).success,
     ).toBe(false);
+  // A v21 artifact is still read unchanged and never gains a manufactured accessibility
+  // note collection (M2-01r, export v22).
+  const twentyOne = accountExportSchema.parse({
+    ...current,
+    schemaVersion: 21,
+    data: Object.fromEntries(
+      Object.entries(current.data).filter(([key]) => key !== 'courseAccessibilityNotes'),
+    ),
+  });
+  expect(twentyOne.schemaVersion).toBe(21);
+  expect(twentyOne.data).not.toHaveProperty('courseAccessibilityNotes');
+  if (twentyOne.schemaVersion !== 21) throw new Error('Expected the previous export version');
+  expect(twentyOne.data.courseThumbnails).toEqual([]);
+  // v21's `data` is strict: claiming v21 while carrying the v22 collection is refused, and
+  // a v22 artifact that claims to be v21 is refused in the other direction too.
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      schemaVersion: 21,
+      data: { ...twentyOne.data, courseAccessibilityNotes: [] },
+    }).success,
+  ).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 21 }).success).toBe(false);
   // A v20 artifact is still read unchanged and never gains a manufactured thumbnail
   // collection (M2-01l, export v21).
   const twenty = accountExportSchema.parse({
     ...current,
     schemaVersion: 20,
     data: Object.fromEntries(
-      Object.entries(current.data).filter(([key]) => key !== 'courseThumbnails'),
+      Object.entries(current.data).filter(
+        ([key]) => !['courseThumbnails', 'courseAccessibilityNotes'].includes(key),
+      ),
     ),
   });
   expect(twenty.schemaVersion).toBe(20);
@@ -751,7 +779,7 @@ it('parses the currently integrated export version without dropping access facts
   ).toBe(false);
   // A v21 artifact that claims to be one version older is refused in the other direction
   // too: the collection is required, not optional.
-  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 20 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...twentyOne, schemaVersion: 20 }).success).toBe(false);
   if (twenty.schemaVersion !== 20) throw new Error('Expected the previous export version');
   expect(twenty.data.coursePreferences).toEqual([]);
 
@@ -761,7 +789,13 @@ it('parses the currently integrated export version without dropping access facts
     schemaVersion: 19,
     data: Object.fromEntries(
       Object.entries(current.data).filter(
-        ([key]) => !['coursePreferences', 'coursePrivacyZones', 'courseThumbnails'].includes(key),
+        ([key]) =>
+          ![
+            'coursePreferences',
+            'coursePrivacyZones',
+            'courseThumbnails',
+            'courseAccessibilityNotes',
+          ].includes(key),
       ),
     ),
   });
@@ -797,6 +831,7 @@ it('parses the currently integrated export version without dropping access facts
             'coursePreferences',
             'coursePrivacyZones',
             'courseThumbnails',
+            'courseAccessibilityNotes',
           ].includes(key),
       ),
     ),
@@ -818,6 +853,7 @@ it('parses the currently integrated export version without dropping access facts
             'coursePreferences',
             'coursePrivacyZones',
             'courseThumbnails',
+            'courseAccessibilityNotes',
           ].includes(key),
       ),
     ),
@@ -843,6 +879,7 @@ it('parses the currently integrated export version without dropping access facts
             'coursePreferences',
             'coursePrivacyZones',
             'courseThumbnails',
+            'courseAccessibilityNotes',
           ].includes(key),
       ),
     ),

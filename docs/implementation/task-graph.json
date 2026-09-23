@@ -1188,7 +1188,7 @@
       "title": "S13/S14 누락 기능",
       "dependsOn": ["M2-01i", "M2-01j", "M2-01l", "M2-01m"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "M2-01k 수용 missing 3행과 P5-list-alternative partial. /courses/new·/courses/:id/edit 라우트 없음, S13 접근성 메모 없음, '미계산 초안' 표시 없음(S14-no-confirmation 행이 이 때문에 일부 공허). 목록에서 선택·순서 변경·삭제 대안 중 좌표 입력만 단언된다 — 검토자 변이 moveEarlier no-op에서 인용 시험 0 failed."
     },
     {

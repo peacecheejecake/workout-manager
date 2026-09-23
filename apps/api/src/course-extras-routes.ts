@@ -1,4 +1,7 @@
 import {
+  courseAccessibilityNoteListSchema,
+  courseAccessibilityNoteWriteResultSchema,
+  courseAccessibilityNoteWriteSchema,
   courseImportRequestSchema,
   courseImportResultSchema,
   courseLimits,
@@ -25,6 +28,7 @@ import {
 import { privacyZoneSetDigest } from '@workout/server-courses/privacy-trim';
 import type { ElevationIndex, PlaceIndex } from '@workout/server-courses/geo-data';
 import {
+  CourseAccessibilityNoteStateError,
   CoursePreferenceError,
   PrivacyZoneStateError,
   type CoursePreferenceRepository,
@@ -88,6 +92,8 @@ function extrasError(error: unknown): ProductRequestError | undefined {
   if (error instanceof CourseNotFoundError) return new ProductRequestError(404, 'COURSE_NOT_FOUND');
   if (error instanceof CoursePreferenceError)
     return new ProductRequestError(404, 'COURSE_NOT_FOUND');
+  if (error instanceof CourseAccessibilityNoteStateError)
+    return new ProductRequestError(error.code === 'COURSE_UNAVAILABLE' ? 410 : 409, error.code);
   if (error instanceof PrivacyZoneStateError)
     return new ProductRequestError(error.code === 'PRIVACY_ZONE_NOT_FOUND' ? 404 : 429, error.code);
   if (error instanceof CourseImportError) return new ProductRequestError(422, error.code);
@@ -247,6 +253,39 @@ export function registerCourseExtrasRoutes(
         ),
       );
     });
+
+    /**
+     * The owner's accessibility notes (M2-01r, S13). Their own words, kept beside the
+     * ledger: listing them reads no course content and writing one appends no revision.
+     */
+    extras.get('/courses/accessibility-notes', async (request) => {
+      input(emptyQuery, request.query);
+      return courseAccessibilityNoteListSchema.parse(
+        await execute(() =>
+          services.preferences.listAccessibilityNotes(principal(request).athleteId),
+        ),
+      );
+    });
+
+    /**
+     * Write or clear one note. The head revision the screen was showing travels with it and
+     * the note is recorded against that revision, so a note can never be attached to a line
+     * the owner has not seen. A course that is not the caller's is 404, exactly as for every
+     * other course route: nothing here says whether it exists for someone else.
+     */
+    extras.put(
+      '/courses/:courseId/accessibility-note',
+      { bodyLimit: SMALL_BODY_LIMIT },
+      async (request) => {
+        input(emptyQuery, request.query);
+        const { courseId } = input(courseParamsSchema, request.params);
+        const body = input(courseAccessibilityNoteWriteSchema, request.body);
+        const note = await execute(() =>
+          services.preferences.writeAccessibilityNote(principal(request).athleteId, courseId, body),
+        );
+        return courseAccessibilityNoteWriteResultSchema.parse({ courseId, note });
+      },
+    );
 
     extras.get('/courses/privacy-zones', async (request) => {
       input(emptyQuery, request.query);

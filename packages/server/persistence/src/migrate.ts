@@ -45,6 +45,7 @@ const migrationFiles = [
   '040_reconcile_sweep_faults.sql',
   '041_course_route_proposal_supersession.sql',
   '042_erasure_queues_watched_object_refs.sql',
+  '043_course_accessibility_notes.sql',
 ] as const;
 
 /**
@@ -282,6 +283,8 @@ export async function grantOperations(
     // Stored thumbnail facts (M2-01l, export v21). Read only, and the projection carries no
     // storage reference and no bytes.
     await pool.query(`GRANT SELECT ON course_thumbnail TO "${runtimeRole}"`);
+    // The owner's accessibility notes (M2-01r, export v22). Read only.
+    await pool.query(`GRANT SELECT ON course_accessibility_note TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -969,6 +972,15 @@ export async function grantCourses(connectionString: string, runtimeRole: string
     // only by the bounded functions the worker executes, which is also why no object key
     // can be chosen, published or reclaimed from an API request.
     await pool.query(`GRANT SELECT ON course_thumbnail TO "${runtimeRole}"`);
+    // Accessibility notes (M2-01r). The owner writes, rewrites and clears their own note;
+    // the text and the revision it was written against are the only columns an UPDATE may
+    // touch, so a note can never be moved onto another course or another owner. A note
+    // otherwise leaves with its course, through the foreign key.
+    await pool.query(`GRANT SELECT,INSERT,DELETE ON course_accessibility_note TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(note,written_at_revision,updated_at) ON course_accessibility_note
+       TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

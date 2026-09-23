@@ -18,6 +18,7 @@ import {
   type CourseRepository,
   type PreparedCourseContent,
 } from '../src/courses.js';
+import { createCoursePreferenceRepository } from '../src/course-preferences.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { grantActivityTracks, grantCourses, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
@@ -661,6 +662,43 @@ describe('M2-01f private course ledger', () => {
     expect(list.courses.map((entry) => entry.status)).toEqual(['unavailable']);
   });
 
+  /**
+   * The accessibility note on a reclaimed course (M2-01r). The course row survives as an
+   * unavailable reference with its name, and so does the owner's note beside it — both are
+   * the owner's words, neither is a coordinate of the recording. What reclamation removes is
+   * every coordinate; a new note cannot be written because there is no head to write it
+   * against.
+   */
+  it('keeps the owner note on a reclaimed course, refuses a new one, and lets it go', async () => {
+    const notes = createCoursePreferenceRepository(database);
+    const { athlete, imported, course } = await athleteWithCourse();
+    await notes.writeAccessibilityNote(athlete, course.course.courseId, {
+      expectedRevision: 1,
+      note: '계단 12개',
+    });
+    await activities.deleteActivity(athlete, imported.activityId, {
+      expectedRevision: imported.revision,
+    });
+    expect((await courses.read(athlete, course.course.courseId)).status).toBe('unavailable');
+    expect((await notes.listAccessibilityNotes(athlete)).notes).toMatchObject([
+      { courseId: course.course.courseId, note: '계단 12개', writtenAtRevision: 1 },
+    ]);
+    await expect(
+      notes.writeAccessibilityNote(athlete, course.course.courseId, {
+        expectedRevision: 1,
+        note: '바뀐 메모',
+      }),
+    ).rejects.toMatchObject({ code: 'COURSE_UNAVAILABLE' });
+    // Taking the owner's words away needs no head, and is always possible.
+    expect(
+      await notes.writeAccessibilityNote(athlete, course.course.courseId, {
+        expectedRevision: 1,
+        note: null,
+      }),
+    ).toBeNull();
+    expect((await notes.listAccessibilityNotes(athlete)).notes).toEqual([]);
+  });
+
   it('removes a course the owner deletes and refuses a stale expectation', async () => {
     const { athlete, course } = await athleteWithCourse();
     await expect(courses.remove(athlete, course.course.courseId, 2)).rejects.toThrowError(
@@ -712,7 +750,7 @@ describe('M2-01f private course ledger', () => {
       expectedRevision: imported.revision,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 21) throw new Error('expected v21');
+    if (exported.schemaVersion !== 22) throw new Error('expected v22');
     expect(exported.data.courses).toHaveLength(2);
     const reclaimed = exported.data.courses.find(
       (row) => row['course_id'] === course.course.courseId,

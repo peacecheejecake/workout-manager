@@ -942,7 +942,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 21);
+      assert.equal(before.schemaVersion, 22);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -1004,7 +1004,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 21) throw new Error('Expected coaching export v21');
+      if (coachingExport.schemaVersion !== 22) throw new Error('Expected coaching export v22');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1076,6 +1076,7 @@ async function execute() {
         coursePreferences: _coursePreferences,
         coursePrivacyZones: _coursePrivacyZones,
         courseThumbnails: _courseThumbnails,
+        courseAccessibilityNotes: _courseAccessibilityNotes,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1179,7 +1180,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 21) throw new Error('Expected candidate export v21');
+      if (candidateExport.schemaVersion !== 22) throw new Error('Expected candidate export v22');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1540,6 +1541,15 @@ async function execute() {
       (preference) => preference.courseId === retainedCourse.course.courseId,
     );
     assert.ok(seededPreference?.lastUsedAt);
+    // M2-01r: the owner's accessibility note. Text nothing can rebuild, written against the
+    // head the owner was looking at; a restore must bring back both the words and that
+    // revision, or an old note would read as a description of whatever line is there now.
+    const seededNote = await preferenceRepo.writeAccessibilityNote(
+      retainedAthlete,
+      retainedCourse.course.courseId,
+      { expectedRevision: 1, note: 'Drill accessibility note: 12 steps, handrail' },
+    );
+    assert.equal(seededNote?.writtenAtRevision, 1);
 
     // A course whose head was computed by our own pedestrian engine (M2-01h), plus one
     // reviewed-but-unsaved proposal. Both carry private planned coordinates, and the
@@ -3152,7 +3162,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 21);
+    assert.ok(constraintExport.schemaVersion === 22);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -3187,7 +3197,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
+    if (withdrawnExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -3239,7 +3249,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
+    if (absentExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -3508,6 +3518,9 @@ async function execute() {
     assert.deepEqual(restoredZones[0]?.center, [127.02, 37.5]);
     assert.equal(restoredZones[0]?.radiusMeters, 300);
     checks.push('restored_course_favourite_last_used_and_protected_areas_survive_intact');
+    const restoredNotes = await restoredPreferences.listAccessibilityNotes(retainedAthlete);
+    assert.deepEqual(restoredNotes.notes, [seededNote]);
+    checks.push('restored_course_accessibility_note_survives_with_its_revision');
     // The routed head comes back with the record of what computed it, and the proposal the
     // owner had not saved is still there to be reviewed — or to expire.
     const restoredRouted = await restoredCourses.read(
@@ -3599,7 +3612,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 21) throw new Error('Expected resource export v21');
+    if (retainedExport.schemaVersion !== 22) throw new Error('Expected resource export v22');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -3706,6 +3719,18 @@ async function execute() {
     assert.equal(retainedExport.data.coursePrivacyZones[0]?.['center_longitude'], 127.02);
     assert.equal(retainedExport.data.coursePrivacyZones[0]?.['radius_meters'], 300);
     checks.push('restored_course_preferences_and_protected_areas_reproduced_in_export_v20');
+    // v22: the accessibility note, its words and the revision it was written against.
+    assert.equal(retainedExport.data.courseAccessibilityNotes.length, 1);
+    assert.equal(
+      retainedExport.data.courseAccessibilityNotes[0]?.['course_id'],
+      retainedCourse.course.courseId,
+    );
+    assert.equal(
+      retainedExport.data.courseAccessibilityNotes[0]?.['note'],
+      'Drill accessibility note: 12 steps, handrail',
+    );
+    assert.equal(retainedExport.data.courseAccessibilityNotes[0]?.['written_at_revision'], 1);
+    checks.push('restored_course_accessibility_note_reproduced_in_export_v22');
     // v21: a thumbnail is a *derivative*, recomputable from geometry the owner's own GPX
     // export already carries. So the export carries exactly what lets a restored
     // deployment redraw the picture and check it got the same one — the revision, the
@@ -4008,7 +4033,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 21) throw new Error('Expected coaching export v21');
+    if (retainedExport.schemaVersion !== 22) throw new Error('Expected coaching export v22');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -4140,7 +4165,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 21) throw new Error('Expected coaching export v21');
+    if (coachingAfterReplay.schemaVersion !== 22) throw new Error('Expected coaching export v22');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -4316,7 +4341,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 21) throw new Error('Expected evidence export v21');
+    if (scrubbedExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

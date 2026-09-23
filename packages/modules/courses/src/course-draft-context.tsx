@@ -1,12 +1,22 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useStore } from 'zustand';
 import type { CourseWaypoint } from '@workout/contracts/courses';
-import type { MapPath } from '@workout/geo-kit/map-path';
+import type { MapPath, MapSelection } from '@workout/geo-kit/map-path';
 import {
   createCourseDraftStore,
   currentRoute,
+  draftRouteStatus,
   pickedCandidate,
   type CourseDraftState,
   type CourseDraftStore,
@@ -71,13 +81,55 @@ export function useCourseDraft<T>(selector: (state: CourseDraftState) => T): T {
   return useStore(useCourseDraftStore(), selector);
 }
 
+/** The map path whose vertices are the draft's waypoints, one point each. */
+const waypointPathId = 'course-waypoints';
+
+/**
+ * The map's selection, shared with the waypoint list (M2-01r, plan section 5: "목록으로 같은
+ * 위치/경유점 선택").
+ *
+ * A waypoint selected on the map is the waypoint selected in the list and the other way
+ * round: there is one selection, held by the draft, and both views read it. A vertex of any
+ * other line — the stored course, a computed proposal — is a map-only selection and clears
+ * the waypoint selection rather than pretending to be one.
+ */
+export function useDraftMapSelection(): readonly [
+  MapSelection | null,
+  (next: MapSelection | null) => void,
+] {
+  const store = useCourseDraftStore();
+  const waypoints = useCourseDraft((state) => state.waypoints);
+  const selectedWaypointId = useCourseDraft((state) => state.selectedWaypointId);
+  const [other, setOther] = useState<MapSelection | null>(null);
+  const index = waypoints.findIndex((waypoint) => waypoint.id === selectedWaypointId);
+  const selection: MapSelection | null =
+    index >= 0 ? { pathId: waypointPathId, vertexIndex: index } : other;
+  const select = useCallback(
+    (next: MapSelection | null) => {
+      if (next !== null && next.pathId === waypointPathId) {
+        const waypoint = store.getState().waypoints[next.vertexIndex];
+        store.getState().selectWaypoint(waypoint ? waypoint.id : null);
+        setOther(null);
+        return;
+      }
+      store.getState().selectWaypoint(null);
+      setOther(next);
+    },
+    [store],
+  );
+  return [selection, select] as const;
+}
+
 /**
  * What the map draws for one draft.
  *
- * Three distinct things, never merged into one line: the course as it is stored, the
- * waypoints the owner has placed (points, not a line — joining waypoints with a straight
- * line is exactly the uncomputed-draft shape the plan forbids presenting as a route), and
- * the computed proposal, which appears only while it belongs to the draft as it is now.
+ * Distinct things, never merged into one line: the course as it is stored, the waypoints
+ * the owner has placed (points), the computed proposal, which appears only while it belongs
+ * to the draft as it is now — and, only while nothing computed belongs to the draft, the
+ * uncomputed draft: the waypoints joined straight, in the renderer's dashed `uncomputed`
+ * role (M2-01r). That line is the S14 "미계산 초안". It is never drawn in a route's style,
+ * never measured, and never offered for saving; the plan forbids presenting it as a route,
+ * and the spec asks for it to be shown as exactly what it is.
  */
 export function draftMapPaths(input: {
   readonly state: CourseDraftState;
@@ -109,9 +161,23 @@ export function draftMapPaths(input: {
       revision: `candidate:${candidate.proposalId}`,
       positions: candidate.coordinates.map((position) => [position[0], position[1]] as const),
     });
+  // The uncomputed draft (S14 "미계산 초안", M2-01r): the waypoints joined in order by
+  // straight lines, drawn ONLY while nothing computed belongs to this draft and in the
+  // renderer's own dashed `uncomputed` style. The editor says in words, and to a screen
+  // reader, that this is not a route and not a distance. Nothing measures this line.
+  const status = draftRouteStatus(input.state, { computing: false });
+  if (status === 'uncomputed' || status === 'stale')
+    paths.push({
+      id: 'course-uncomputed',
+      role: 'uncomputed',
+      revision: `uncomputed:${input.state.revision}`,
+      positions: input.state.waypoints.map(
+        (waypoint) => [waypoint.position[0], waypoint.position[1]] as const,
+      ),
+    });
   if (input.state.waypoints.length > 0)
     paths.push({
-      id: 'course-waypoints',
+      id: waypointPathId,
       role: 'planned',
       revision: `draft:${input.state.revision}`,
       positions: input.state.waypoints.map(

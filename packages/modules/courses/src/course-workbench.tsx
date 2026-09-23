@@ -29,13 +29,22 @@ import type {
 } from '@workout/contracts/courses';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
-import type { MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import { Button } from '@workout/ui-foundation/button';
 import { getLayoutMode, type LayoutMode } from '@workout/ui-foundation/responsive';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { courseExportPath, createCourseApi, CourseRequestError } from './course-api';
-import { CourseDraftProvider, draftMapPaths, useCourseDraft } from './course-draft-context';
+import {
+  CourseDraftProvider,
+  draftMapPaths,
+  useCourseDraft,
+  useDraftMapSelection,
+} from './course-draft-context';
+import {
+  accessibilityNoteSummary,
+  CourseAccessibilityNotePanel,
+  useAccessibilityNotes,
+} from './course-accessibility-note';
 import { CourseEditor } from './course-editor';
 import { createCourseExtrasApi } from './course-extras-api';
 import { CourseThumbnail, StoredCourseThumbnail } from './course-thumbnail';
@@ -75,6 +84,12 @@ export interface CourseWorkbenchProps {
   /** Injected by tests; production uses the module-scope lazy renderer. */
   mapView?: ComponentType<MapViewProps>;
   createMapAdapter?: MapAdapterFactory;
+  /**
+   * The course named by the address, for `/courses/:id/edit` (M2-01r, S14). The screen opens
+   * with it selected; whether it exists and is the caller's is the server's answer, shown as
+   * such, never assumed from the address.
+   */
+  initialCourseId?: string;
 }
 
 export function CourseWorkbench(props: CourseWorkbenchProps) {
@@ -139,7 +154,7 @@ function subscribeToViewport(onChange: () => void) {
  * into this package and never from the user agent. The server snapshot is the narrowest
  * mode, so the first paint is the one that fits everywhere.
  */
-function useLayoutModeFromViewport(): LayoutMode {
+export function useLayoutModeFromViewport(): LayoutMode {
   return useSyncExternalStore(
     subscribeToViewport,
     () => getLayoutMode(window.innerWidth),
@@ -198,7 +213,7 @@ async function downloadCourseGpx(input: {
  * without the surrounding screen re-deriving anything, and the renderer itself is created
  * once per mounted pane rather than per layout.
  */
-function CourseMapPane({
+export function CourseMapPane({
   storedCoordinates,
   basemap,
   mapView,
@@ -214,7 +229,9 @@ function CourseMapPane({
   readonly fitRequest: number;
 }) {
   const state = useCourseDraft((value) => value);
-  const [selection, setSelection] = useState<MapSelection | null>(null);
+  // One selection shared with the waypoint list (M2-01r): picking a waypoint here selects
+  // it there, and the list's select button marks it here.
+  const [selection, setSelection] = useDraftMapSelection();
   const [status, setStatus] = useState<MapViewStatus>('preparing');
   const paths = draftMapPaths({ state, storedCoordinates });
   // What the renderer actually drew at its last idle, not what it said about itself:
@@ -266,6 +283,7 @@ function Workbench({
   mapWorkerUrl,
   mapView,
   createMapAdapter,
+  initialCourseId,
 }: CourseWorkbenchProps) {
   // Created once for this screen. Held in state rather than a ref because it is read
   // during render to compose the editor, which a ref may not be.
@@ -313,7 +331,7 @@ function Workbench({
   const queries = useQueryClient();
   const layout = useLayoutModeFromViewport();
   const scope = ['users', athleteId, 'sessions', sessionId, 'courses'] as const;
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialCourseId ?? null);
   // Which course is open right now, readable from a callback that was created earlier. A
   // write started on one course must not report itself — or act — on whichever course
   // happens to be open when it lands.
@@ -467,6 +485,29 @@ function Workbench({
     });
   }, [list.data, preferenceOf, order]);
   const current = detail.data ?? null;
+  // The course named by the address has no list click to carry its name into the rename
+  // field, so it is taken from the course once it has been read — once, so it never
+  // overwrites what the owner has started typing.
+  const [namedFromAddress, setNamedFromAddress] = useState(false);
+  if (
+    !namedFromAddress &&
+    initialCourseId !== undefined &&
+    current?.status === 'available' &&
+    current.course.courseId === initialCourseId
+  ) {
+    setNamedFromAddress(true);
+    setName(current.course.name);
+  }
+  // Opening a course by its address is opening it, exactly as a list click is: the moment
+  // is the server's own. Only once the server has answered that the course is this owner's
+  // and available — an address naming someone else's course is a "not found", not a use.
+  const markUsed = writePreference.mutate;
+  const openedFromAddress = namedFromAddress ? initialCourseId : undefined;
+  useEffect(() => {
+    if (openedFromAddress !== undefined)
+      markUsed({ courseId: openedFromAddress, update: { markUsed: true } });
+  }, [openedFromAddress, markUsed]);
+  const accessibilityNotes = useAccessibilityNotes(extrasApi, scope);
 
   const onSaved = useCallback(() => {
     void queries.invalidateQueries({ queryKey: scope });
@@ -616,6 +657,9 @@ function Workbench({
       <p className={styles.note}>
         코스는 비공개입니다. 공개 공유 기능은 없으며, 내보내기는 본인 인증 다운로드입니다.
       </p>
+      <p>
+        <a href="/courses/new">새 코스 만들기</a>
+      </p>
       {message ? <p role="status">{message}</p> : null}
       {list.isPending ? <p role="status">코스를 불러오는 중입니다.</p> : null}
       {list.isError ? (
@@ -627,7 +671,10 @@ function Workbench({
         </div>
       ) : null}
       {list.isSuccess && courses.length === 0 ? (
-        <p>아직 저장한 코스가 없습니다. 활동 상세의 경로 탭에서 구간을 골라 만들 수 있습니다.</p>
+        <p>
+          아직 저장한 코스가 없습니다. 활동 상세의 경로 탭에서 구간을 고르거나, 새 코스 만들기에서
+          지도에 지점을 놓아 만들 수 있습니다.
+        </p>
       ) : null}
 
       <CourseDraftProvider
@@ -744,6 +791,11 @@ function Workbench({
                           preferenceOf.get(course.courseId)?.lastUsedAt ?? '',
                         ).toLocaleDateString('ko-KR')}`
                       : ' · 사용 기록 없음'}
+                    {` · ${accessibilityNoteSummary(
+                      accessibilityNotes.byCourse.get(course.courseId),
+                      course.status === 'available' ? course.headRevision : null,
+                      accessibilityNotes,
+                    )}`}
                   </span>
                 </li>
               ))}
@@ -767,6 +819,9 @@ function Workbench({
             ) : null}
             {detail.isPending && selected !== null ? (
               <p role="status">코스를 여는 중입니다.</p>
+            ) : null}
+            {detail.isError && selected !== null ? (
+              <p role="alert">{readableError(detail.error)}</p>
             ) : null}
             {current?.status === 'unavailable' ? (
               <div role="group" aria-label="사용할 수 없는 코스">
@@ -808,6 +863,13 @@ function Workbench({
                     setPicked(position);
                     setMessage(`선택한 장소: ${placeName}`);
                   }}
+                />
+                <CourseAccessibilityNotePanel
+                  key={`accessibility-note:${current.course.courseId}`}
+                  api={extrasApi}
+                  scope={scope}
+                  courseId={current.course.courseId}
+                  headRevision={current.course.headRevision}
                 />
                 <CourseElevationPanel
                   api={extrasApi}

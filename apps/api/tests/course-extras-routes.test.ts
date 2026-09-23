@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 
 import type { CoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import {
+  CourseAccessibilityNoteStateError,
   CoursePreferenceError,
   PrivacyZoneStateError,
 } from '@workout/server-persistence/course-preferences';
@@ -243,6 +244,16 @@ function setup(
     listPrivacyZones: vi.fn().mockResolvedValue(zones),
     createPrivacyZone: vi.fn().mockResolvedValue(zones),
     removePrivacyZone: vi.fn().mockResolvedValue([]),
+    listAccessibilityNotes: vi.fn().mockResolvedValue({
+      notes: [{ courseId, note: '계단 12개', writtenAtRevision: 1, updatedAt: createdAt }],
+      total: 1,
+    }),
+    writeAccessibilityNote: vi.fn().mockResolvedValue({
+      courseId,
+      note: '계단 12개',
+      writtenAtRevision: 1,
+      updatedAt: createdAt,
+    }),
   };
   const app = createApi({
     allowedOrigins: ['https://workout.example'],
@@ -842,5 +853,109 @@ describe('self-hosted place search and elevation', () => {
       headers: baseHeaders,
     });
     expect(elevation.statusCode).toBe(401);
+  });
+});
+
+describe('accessibility notes (M2-01r, S13)', () => {
+  const noteUrl = `/bff/v1/courses/${courseId}/accessibility-note`;
+
+  it('lists the owner notes for the course cards', async () => {
+    const { app, preferences } = setup();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/accessibility-notes',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      notes: [{ courseId, note: '계단 12개', writtenAtRevision: 1, updatedAt: createdAt }],
+      total: 1,
+    });
+    expect(preferences.listAccessibilityNotes).toHaveBeenCalledWith(athleteId);
+  });
+
+  it('writes a note against the head the screen showed, and appends no revision', async () => {
+    const { app, preferences, courses } = setup();
+    const response = await app.inject({
+      method: 'PUT',
+      url: noteUrl,
+      headers: baseHeaders,
+      payload: { expectedRevision: 1, note: '계단 12개' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ courseId, note: { note: '계단 12개' } });
+    expect(preferences.writeAccessibilityNote).toHaveBeenCalledWith(athleteId, courseId, {
+      expectedRevision: 1,
+      note: '계단 12개',
+    });
+    // A note is not course content: nothing on the ledger is written.
+    expect(courses.update).not.toHaveBeenCalled();
+    expect(courses.create).not.toHaveBeenCalled();
+  });
+
+  it('clears a note with null', async () => {
+    const { app, preferences } = setup();
+    vi.mocked(preferences.writeAccessibilityNote).mockResolvedValueOnce(null);
+    const response = await app.inject({
+      method: 'PUT',
+      url: noteUrl,
+      headers: baseHeaders,
+      payload: { expectedRevision: 1, note: null },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ courseId, note: null });
+  });
+
+  it('refuses unsafe or padded text before it reaches storage', async () => {
+    const { app, preferences } = setup();
+    for (const note of ['<b>계단</b>', ' 계단', 'a'.repeat(257), '', '계단\u202e']) {
+      const response = await app.inject({
+        method: 'PUT',
+        url: noteUrl,
+        headers: baseHeaders,
+        payload: { expectedRevision: 1, note: JSON.parse(`"${note}"`) as string },
+      });
+      expect(response.statusCode, note).toBe(400);
+    }
+    expect(preferences.writeAccessibilityNote).not.toHaveBeenCalled();
+  });
+
+  it('requires the CSRF token on a cookie session', async () => {
+    const { app, preferences } = setup();
+    const { 'x-csrf-token': _token, ...withoutToken } = baseHeaders;
+    const response = await app.inject({
+      method: 'PUT',
+      url: noteUrl,
+      headers: withoutToken,
+      payload: { expectedRevision: 1, note: '계단' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(preferences.writeAccessibilityNote).not.toHaveBeenCalled();
+  });
+
+  it('says missing, unavailable and stale apart', async () => {
+    const { app, preferences } = setup();
+    const write = vi.mocked(preferences.writeAccessibilityNote);
+    write.mockRejectedValueOnce(new CoursePreferenceError());
+    write.mockRejectedValueOnce(new CourseAccessibilityNoteStateError('COURSE_UNAVAILABLE'));
+    write.mockRejectedValueOnce(new CourseAccessibilityNoteStateError('COURSE_REVISION_CONFLICT'));
+    const answers = [];
+    for (let index = 0; index < 3; index += 1) {
+      const response = await app.inject({
+        method: 'PUT',
+        url: noteUrl,
+        headers: baseHeaders,
+        payload: { expectedRevision: 1, note: '계단' },
+      });
+      answers.push([
+        response.statusCode,
+        (response.json() as { error: { code: string } }).error.code,
+      ]);
+    }
+    expect(answers).toEqual([
+      [404, 'COURSE_NOT_FOUND'],
+      [410, 'COURSE_UNAVAILABLE'],
+      [409, 'COURSE_REVISION_CONFLICT'],
+    ]);
   });
 });

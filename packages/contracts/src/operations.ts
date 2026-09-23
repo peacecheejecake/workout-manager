@@ -227,6 +227,21 @@ const accountExportV21Schema = accountExportV20Schema.extend({
     courseThumbnails: rows,
   }),
 });
+/**
+ * v22 adds the owner's accessibility notes about their courses (M2-01r, S13 "접근성 메모").
+ *
+ * A note is text the owner typed, not something derived: nothing can rebuild it, so an
+ * export without it cannot restore what they had. It carries the head revision it was
+ * written against so a restore keeps "this note was written for revision N" as it was.
+ * Earlier artifacts are read unchanged and are never given an empty collection they did
+ * not have.
+ */
+const accountExportV22Schema = accountExportV21Schema.extend({
+  schemaVersion: z.literal(22),
+  data: accountExportV21Schema.shape.data.extend({
+    courseAccessibilityNotes: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -249,6 +264,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV19Schema,
   accountExportV20Schema,
   accountExportV21Schema,
+  accountExportV22Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

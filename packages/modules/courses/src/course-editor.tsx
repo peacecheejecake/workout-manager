@@ -17,9 +17,10 @@ import {
   currentRoute,
   draftRequestWaypoints,
   pickedCandidate,
-  type DraftProblem,
+  type ComputedDraftRoute,
 } from './course-draft';
 import { useCourseDraft, useCourseDraftStore } from './course-draft-context';
+import { WaypointListEditor } from './course-waypoint-list';
 import styles from './courses.module.css';
 
 /**
@@ -45,17 +46,9 @@ import styles from './courses.module.css';
  *    timeout, an overload and a cancellation are six different facts, each said in words,
  *    and none of them changes a waypoint or draws a substitute line.
  */
-const refusals: Record<DraftProblem, string> = {
-  WAYPOINT_LOCKED: '잠긴 경유점입니다. 잠금을 풀어야 옮기거나 지울 수 있습니다.',
-  WAYPOINT_LIMIT_REACHED: '경유점을 더 추가할 수 없습니다.',
-  WAYPOINT_MINIMUM_REACHED: '시작과 끝은 지울 수 없습니다.',
-  WAYPOINT_POSITION_INVALID: '좌표 값이 올바르지 않습니다. 경도 -180~180, 위도 -90~90.',
-  WAYPOINT_NOT_FOUND: '해당 경유점을 찾지 못했습니다.',
-  DRAFT_LIMIT_REACHED: '이 편집 세션의 변경 횟수 상한에 도달했습니다.',
-};
 
 /** Each outcome is a different fact, and none of them is "we drew a straight line". */
-const outcomes: Record<string, string> = {
+export const outcomes: Record<string, string> = {
   no_route: '두 지점을 잇는 보행 경로를 찾지 못했습니다. 경유점을 옮기거나 추가해 보세요.',
   outside_coverage:
     '경유점 중 하나가 보행 네트워크 범위 밖입니다. 이 지역은 경로를 계산할 수 없습니다.',
@@ -153,7 +146,7 @@ const proposalQuotaMessage = `저장하지 않은 경로 제안이 한도(모든
  * answer says nothing about whether the revision was written, so the command — body and
  * idempotency key together — is kept and the retry is the same command.
  */
-function provesNothingWasStored(status: number): boolean {
+export function provesNothingWasStored(status: number): boolean {
   return status >= 400 && status < 500 && ![408, 425, 429].includes(status);
 }
 
@@ -207,7 +200,6 @@ export function CourseEditor({
     proposalId: string;
     draftRevision: number;
   } | null>(null);
-  const [manual, setManual] = useState({ longitude: '', latitude: '' });
   const [generating, setGenerating] = useState(false);
   const [target, setTarget] = useState('5000');
   /**
@@ -540,7 +532,6 @@ export function CourseEditor({
         저장해야 코스 수정본이 됩니다. 지도에 보이는 경로가 통행 허가나 안전을 보장하지 않습니다.
       </p>
       {message ? <p role="status">{message}</p> : null}
-      {state.refusal ? <p role="alert">{refusals[state.refusal]}</p> : null}
       {state.headConflict ? (
         <div role="group" aria-label="초안 충돌" data-testid="draft-conflict">
           <p role="alert">
@@ -557,119 +548,7 @@ export function CourseEditor({
         </div>
       ) : null}
 
-      <div className={styles.actions}>
-        <Button
-          variant="secondary"
-          onClick={() => store.getState().undo()}
-          disabled={state.past.length === 0}
-        >
-          되돌리기
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => store.getState().redo()}
-          disabled={state.future.length === 0}
-        >
-          다시 실행
-        </Button>
-        <span data-testid="draft-revision">초안 변경 번호 {state.revision}</span>
-      </div>
-
-      <ol className={styles.waypoints} aria-label="경유점 목록">
-        {state.waypoints.map((waypoint, index) => (
-          <li key={waypoint.id} data-role={waypoint.role}>
-            <span>
-              {index + 1}.{' '}
-              {waypoint.role === 'start' ? '시작' : waypoint.role === 'finish' ? '끝' : '경유'}
-              {waypoint.locked ? ' · 잠김' : ''}
-            </span>
-            <span className={styles.coordinate}>
-              {waypoint.position[1].toFixed(5)}, {waypoint.position[0].toFixed(5)}
-            </span>
-            <TextField
-              label={`${index + 1}번 경유점 이름`}
-              value={waypoint.name ?? ''}
-              maxLength={120}
-              onChange={(event) => store.getState().rename(waypoint.id, event.target.value)}
-            />
-            <Button
-              variant="secondary"
-              aria-pressed={waypoint.locked}
-              onClick={() => store.getState().setLocked(waypoint.id, !waypoint.locked)}
-            >
-              {waypoint.locked ? `${index + 1}번 잠금 해제` : `${index + 1}번 잠그기`}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={index === 0}
-              onClick={() => store.getState().moveEarlier(waypoint.id)}
-            >
-              {index + 1}번 앞으로
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={index === state.waypoints.length - 1}
-              onClick={() => store.getState().moveLater(waypoint.id)}
-            >
-              {index + 1}번 뒤로
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={pickedPosition === null}
-              onClick={() =>
-                pickedPosition && store.getState().movePosition(waypoint.id, pickedPosition)
-              }
-            >
-              {index + 1}번을 선택한 위치로 이동
-            </Button>
-            <Button variant="danger" onClick={() => store.getState().remove(waypoint.id)}>
-              {index + 1}번 삭제
-            </Button>
-          </li>
-        ))}
-      </ol>
-
-      <div className={styles.actions}>
-        <Button
-          variant="secondary"
-          disabled={pickedPosition === null}
-          onClick={() => pickedPosition && store.getState().addVia(pickedPosition)}
-        >
-          선택한 위치를 경유점으로 추가
-        </Button>
-      </div>
-
-      {/*
-        The list is complete without the map: a waypoint can be placed by typing its
-        coordinates, so neither a drag nor a pointer on a rendered map is ever required.
-      */}
-      <form
-        className={styles.actions}
-        onSubmit={(event) => {
-          event.preventDefault();
-          const longitude = Number(manual.longitude);
-          const latitude = Number(manual.latitude);
-          if (manual.longitude.trim() === '' || manual.latitude.trim() === '') return;
-          store.getState().addVia([longitude, latitude]);
-          setManual({ longitude: '', latitude: '' });
-        }}
-      >
-        <TextField
-          label="경유점 경도"
-          value={manual.longitude}
-          inputMode="decimal"
-          onChange={(event) => setManual((value) => ({ ...value, longitude: event.target.value }))}
-        />
-        <TextField
-          label="경유점 위도"
-          value={manual.latitude}
-          inputMode="decimal"
-          onChange={(event) => setManual((value) => ({ ...value, latitude: event.target.value }))}
-        />
-        <Button type="submit" variant="secondary">
-          좌표로 경유점 추가
-        </Button>
-      </form>
+      <WaypointListEditor pickedPosition={pickedPosition} computing={computing || generating} />
 
       <div className={styles.actions}>
         {/*
@@ -864,40 +743,10 @@ export function CourseEditor({
         ) : null}
       </section>
 
-      {state.route && route === null ? (
-        <p role="status">
-          계산한 경로는 이전 초안의 것입니다. 초안이 바뀌었으므로 다시 계산해야 저장할 수 있습니다.
-        </p>
-      ) : null}
-
       {route ? (
         <div className={styles.review} role="group" aria-label="계산된 경로 검토">
           <h4>계산된 경로 (제안)</h4>
-          <dl className={styles.summary}>
-            <dt>경로 계산 예상 거리</dt>
-            <dd data-testid="route-engine-distance">{metres(route.engineDistanceMeters)}</dd>
-            <dt>경로 계산 예상 시간</dt>
-            <dd>{minutes(route.engineDurationSeconds)}</dd>
-            <dt>경유점 이동 거리(최대)</dt>
-            <dd>{metres(route.maxSnapDistanceMeters)}</dd>
-            <dt>사용한 지도 데이터</dt>
-            <dd data-testid="route-graph">{route.graphBuildId}</dd>
-            <dt>엔진 버전</dt>
-            <dd>{route.engineVersion ?? '알 수 없음'}</dd>
-            <dt>계산 시각</dt>
-            <dd>{route.computedAt}</dd>
-          </dl>
-          <p className={styles.note}>
-            이 거리는 경로 계산 엔진의 예상값입니다. 기기 보고 거리·GPS 재계산 거리·저장되는 계획 선
-            길이와 다른 값입니다.
-          </p>
-          {route.warnings.length > 0 ? (
-            <ul aria-label="경로 계산 경고">
-              {route.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          ) : null}
+          <RouteReviewSummary route={route} />
           {graphChanged ? (
             <p role="alert" data-testid="graph-changed">
               이 코스는 다른 지도 데이터({headGraph})로 계산되어 있었습니다. 저장하면 새 지도
@@ -938,5 +787,43 @@ export function CourseEditor({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * What the owner reads before saving a computed route: the engine's own estimates, how far
+ * the waypoints were moved onto the network, which graph and engine answered, when, and
+ * with which warnings. Shared by the editor of a stored course and the new-course screen
+ * (M2-01r), so the two reviews cannot say different things about the same kind of answer.
+ */
+export function RouteReviewSummary({ route }: { readonly route: ComputedDraftRoute }) {
+  return (
+    <>
+      <dl className={styles.summary}>
+        <dt>경로 계산 예상 거리</dt>
+        <dd data-testid="route-engine-distance">{metres(route.engineDistanceMeters)}</dd>
+        <dt>경로 계산 예상 시간</dt>
+        <dd>{minutes(route.engineDurationSeconds)}</dd>
+        <dt>경유점 이동 거리(최대)</dt>
+        <dd>{metres(route.maxSnapDistanceMeters)}</dd>
+        <dt>사용한 지도 데이터</dt>
+        <dd data-testid="route-graph">{route.graphBuildId}</dd>
+        <dt>엔진 버전</dt>
+        <dd>{route.engineVersion ?? '알 수 없음'}</dd>
+        <dt>계산 시각</dt>
+        <dd>{route.computedAt}</dd>
+      </dl>
+      <p className={styles.note}>
+        이 거리는 경로 계산 엔진의 예상값입니다. 기기 보고 거리·GPS 재계산 거리·저장되는 계획 선
+        길이와 다른 값입니다.
+      </p>
+      {route.warnings.length > 0 ? (
+        <ul aria-label="경로 계산 경고">
+          {route.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+    </>
   );
 }

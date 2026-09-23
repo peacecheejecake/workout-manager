@@ -13,7 +13,12 @@
 /** WGS84 `[longitude, latitude]`. Altitude, time and heart rate are never packed in here. */
 export type GeoPosition = readonly [longitude: number, latitude: number];
 
-export type MapPathRole = 'recorded' | 'planned' | 'candidate';
+/**
+ * `uncomputed` is a line nobody computed: an owner's waypoints joined in order, drawn only so
+ * the order can be seen. The renderer draws it dashed and apart from every other line, and a
+ * caller that uses it must say in words what it is — it is never a route and never a distance.
+ */
+export type MapPathRole = 'recorded' | 'planned' | 'candidate' | 'uncomputed';
 
 export interface MapPath {
   readonly id: string;

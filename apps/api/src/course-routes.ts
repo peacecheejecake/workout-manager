@@ -11,6 +11,8 @@ import {
   courseRouteCandidateResultSchema,
   courseRouteProposalRequestSchema,
   courseRouteProposalResultSchema,
+  courseRoutePreviewRequestSchema,
+  courseRoutePreviewResultSchema,
   targetDistanceLimits,
   courseUpdateRequestSchema,
   type CourseEdit,
@@ -37,7 +39,7 @@ import {
 } from '@workout/server-courses/segment';
 import { parseObjectKey, validateObjectKey } from '@workout/server-media/keys';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { ActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import {
@@ -63,6 +65,7 @@ import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 import { cancellationSignal } from './request-cancellation.js';
 import type { WalkingRoutePort } from './routing-routes.js';
+import type { WalkingRouteResult } from '@workout/contracts/routing';
 import { RoutingRequestError } from '@workout/server-integrations/routing';
 
 const COURSE_BODY_LIMIT = 4 * 1024;
@@ -375,6 +378,79 @@ function courseFromProposal(
 }
 
 /**
+ * Compute a route for waypoints that are not a course yet (M2-01r, `/courses/new`).
+ *
+ * The one path both the preview and the save take to the engine, so the two cannot drift:
+ * the same bounded port with its tenant rate, concurrency, waypoint, distance and deadline
+ * limits, the same `foot-v1` profile and the waypoints exactly as the owner placed them.
+ */
+async function computeNewCourseRoute(
+  walkingRoutes: WalkingRoutePort,
+  athleteId: string,
+  input: {
+    readonly requestId: string;
+    readonly draftRevision: number;
+    readonly waypoints: readonly CourseWaypoint[];
+  },
+  reply: FastifyReply,
+) {
+  const cancellation = cancellationSignal(reply);
+  try {
+    return await walkingRoutes.compute(
+      athleteId,
+      {
+        schemaVersion: 1,
+        requestId: input.requestId,
+        requestRevision: input.draftRevision,
+        profileId: 'foot-v1',
+        waypoints: input.waypoints.map((waypoint) => waypoint.position),
+      },
+      { signal: cancellation.signal },
+    );
+  } catch (error) {
+    if (error instanceof RoutingRequestError) throw new ProductRequestError(422, error.code);
+    throw error;
+  } finally {
+    cancellation.dispose();
+  }
+}
+
+/**
+ * The content of a course started on an empty map, from the engine's own answer.
+ *
+ * There is no recording behind it, so the lineage is empty: deleting an activity never
+ * reaches a course whose coordinates were never one of its samples. The geometry is the
+ * server's own computation, never a line the client sent, and the caller has already
+ * compared it with the line the owner reviewed.
+ */
+function courseFromNewRoute(
+  name: string,
+  waypoints: readonly CourseWaypoint[],
+  computed: Extract<WalkingRouteResult, { outcome: 'route_computed' }>,
+): PreparedCourseContent {
+  const coordinates = computed.geometry.coordinates.map(
+    (position) => [position[0], position[1]] as CoursePosition,
+  );
+  const generation = routedCourseGeneration({
+    computation: computed.computation,
+    coordinates,
+    waypoints,
+    engineDistanceMeters: computed.distanceMeters,
+    engineDurationSeconds: computed.durationSeconds,
+    snappedWaypoints: computed.snappedWaypoints,
+  });
+  return prepared({
+    name,
+    coordinates,
+    waypoints,
+    generation,
+    edit: { kind: 'created' },
+    lineage: [],
+    distanceMeters: plannedLineLengthMeters(coordinates),
+  });
+}
+
+/**
  * Turn the one candidate the owner picked into the content of the next revision.
  *
  * Exactly like a reviewed reroute: the geometry and the waypoints come from the stored
@@ -511,30 +587,74 @@ export function registerCourseRoutes(
   principal: (request: FastifyRequest) => Principal,
 ) {
   routes.register(async (courseRoutes) => {
-    courseRoutes.post('/courses', { bodyLimit: COURSE_BODY_LIMIT }, async (request) => {
-      input(emptyQuery, request.query);
-      const athleteId = principal(request).athleteId;
-      const body = input(courseCreateRequestSchema, request.body);
-      const key = input(idempotencyKeySchema, request.headers['idempotency-key']);
-      // The receipt is read before anything is derived: a resend of a command that already
-      // succeeded is not derived or written again. The reply is the course **as it is
-      // now** — a later edit is visible in it — not a snapshot of the moment the command
-      // ran. What the replay guarantees is exactly-once application, not a frozen answer.
-      const command = { kind: 'course_create', body };
-      const replayed = await execute(() => services.courses.replayCommand(athleteId, key, command));
-      if (replayed)
-        return courseReadResultSchema.parse(
-          await execute(() => services.courses.read(athleteId, replayed.courseId)),
+    courseRoutes.post(
+      '/courses',
+      { bodyLimit: COURSE_BODY_LIMIT },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        input(emptyQuery, request.query);
+        const athleteId = principal(request).athleteId;
+        const body = input(courseCreateRequestSchema, request.body);
+        const key = input(idempotencyKeySchema, request.headers['idempotency-key']);
+        // The receipt is read before anything is derived: a resend of a command that already
+        // succeeded is not derived or written again. The reply is the course **as it is
+        // now** — a later edit is visible in it — not a snapshot of the moment the command
+        // ran. What the replay guarantees is exactly-once application, not a frozen answer.
+        const command = { kind: 'course_create', body };
+        const replayed = await execute(() =>
+          services.courses.replayCommand(athleteId, key, command),
         );
-      const from = body.from;
-      const content =
-        from.kind === 'recorded-segment'
-          ? await courseFromRecordedSegment(services, athleteId, body.name, from)
-          : await courseFromCopy(services, athleteId, body.name, from);
-      return courseReadResultSchema.parse(
-        await execute(() => services.courses.create(athleteId, content, key, command)),
-      );
-    });
+        if (replayed)
+          return courseReadResultSchema.parse(
+            await execute(() => services.courses.read(athleteId, replayed.courseId)),
+          );
+        const from = body.from;
+        if (from.kind === 'routed-waypoints') {
+          // A course started on an empty map (M2-01r). Nothing was stored for its preview, so
+          // the engine is asked again and ITS answer is what gets written — but only when it
+          // is the line the owner reviewed, on the graph they were shown. Any difference is a
+          // refusal that stores nothing: the owner has to look at the new answer first.
+          const walkingRoutes = services.walkingRoutes;
+          if (!walkingRoutes) throw new ProductRequestError(404, 'ROUTING_NOT_CONFIGURED');
+          const computation = await computeNewCourseRoute(
+            walkingRoutes,
+            athleteId,
+            {
+              requestId: randomUUID(),
+              draftRevision: from.draftRevision,
+              waypoints: from.waypoints,
+            },
+            reply,
+          );
+          const result = computation.result;
+          if (result.outcome !== 'route_computed')
+            throw new ProductRequestError(
+              // A refusal the engine answered for certain (no route, outside coverage, too far
+              // to snap) contradicts the preview the owner saw: that is a conflict. A timeout
+              // or an engine problem keeps its own status, so "try again" stays distinguishable
+              // from "this is not the line you reviewed".
+              proposalOutcomeStatus(result.outcome) === 200
+                ? 409
+                : proposalOutcomeStatus(result.outcome),
+              'ROUTE_PREVIEW_NOT_REPRODUCED',
+            );
+          if (result.computation.graph.graphBuildId !== from.acknowledgedGraph.next)
+            throw new ProductRequestError(409, 'COURSE_GRAPH_ACKNOWLEDGEMENT_STALE');
+          const content = courseFromNewRoute(body.name, from.waypoints, result);
+          if (courseGeometrySha256(content.coordinates) !== from.reviewedGeometrySha256)
+            throw new ProductRequestError(409, 'ROUTE_PREVIEW_CHANGED');
+          return courseReadResultSchema.parse(
+            await execute(() => services.courses.create(athleteId, content, key, command)),
+          );
+        }
+        const content =
+          from.kind === 'recorded-segment'
+            ? await courseFromRecordedSegment(services, athleteId, body.name, from)
+            : await courseFromCopy(services, athleteId, body.name, from);
+        return courseReadResultSchema.parse(
+          await execute(() => services.courses.create(athleteId, content, key, command)),
+        );
+      },
+    );
 
     courseRoutes.get('/courses', async (request) => {
       input(emptyQuery, request.query);
@@ -930,6 +1050,64 @@ export function registerCourseRoutes(
             courseRouteProposalResultSchema.parse({
               outcome: 'route_computed',
               proposal: stored,
+            }),
+          );
+        },
+      );
+    }
+
+    /**
+     * A route for a draft that is not a course yet (M2-01r, `/courses/new`).
+     *
+     * **Nothing is stored.** There is no course for a proposal to belong to, be reclaimed with
+     * or be erased with, so the answer goes back to the owner and nowhere else. The digest of
+     * the line is the server's own, and it is what a later save must match: saving asks the
+     * engine again and writes that answer only if it is this line.
+     *
+     * The same bounds as every other engine call: the tenant's rate and concurrency limits,
+     * the waypoint and distance limits, the deadline, and a dropped connection cancelling
+     * the computation. None of the refusals returns a substitute geometry.
+     */
+    if (services.walkingRoutes) {
+      const walkingRoutes = services.walkingRoutes;
+      courseRoutes.post(
+        '/courses/route-previews',
+        { bodyLimit: COURSE_BODY_LIMIT },
+        async (request: FastifyRequest, reply: FastifyReply) => {
+          input(emptyQuery, request.query);
+          const athleteId = principal(request).athleteId;
+          const body = input(courseRoutePreviewRequestSchema, request.body);
+          const computation = await computeNewCourseRoute(walkingRoutes, athleteId, body, reply);
+          if (computation.retryAfterSeconds !== null)
+            reply.header('retry-after', String(computation.retryAfterSeconds));
+          const result = computation.result;
+          if (result.outcome !== 'route_computed')
+            return reply.code(proposalOutcomeStatus(result.outcome)).send(
+              courseRoutePreviewResultSchema.parse({
+                outcome: result.outcome,
+                computation: result.computation,
+                draftRevision: body.draftRevision,
+              }),
+            );
+          // Measured the way the save will measure it, so a preview that would not survive
+          // being written is refused here rather than after the owner has reviewed it.
+          const content = await execute(async () =>
+            courseFromNewRoute('preview', body.waypoints, result),
+          );
+          return reply.code(200).send(
+            courseRoutePreviewResultSchema.parse({
+              outcome: 'route_computed',
+              preview: {
+                requestId: body.requestId,
+                draftRevision: body.draftRevision,
+                waypoints: body.waypoints,
+                geometry: { type: 'LineString', coordinates: content.coordinates },
+                geometrySha256: courseGeometrySha256(content.coordinates),
+                engineDistanceMeters: result.distanceMeters,
+                engineDurationSeconds: result.durationSeconds,
+                snappedWaypoints: result.snappedWaypoints,
+                computation: result.computation,
+              },
             }),
           );
         },

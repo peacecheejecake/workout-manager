@@ -170,7 +170,7 @@ describe('M2-04b private file resource persistence', () => {
     ).rejects.toBeTruthy();
 
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(21);
+    expect(exported.schemaVersion).toBe(22);
     const serialized = JSON.stringify(exported);
     expect(serialized).toContain('notes.markdown');
     expect(serialized).not.toContain(storageRef);

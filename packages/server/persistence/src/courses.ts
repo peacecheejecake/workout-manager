@@ -812,7 +812,8 @@ function validateContent(content: PreparedCourseContent): PreparedCourseContent 
         }),
       )
       // Empty only for a course whose coordinates never came from one of our recordings:
-      // an imported file (M2-01j). Everything derived from a recording still names it, so
+      // an imported file (M2-01j) or a route computed from waypoints placed on an empty map
+      // (M2-01r). Everything derived from a recording still names it, so
       // reclamation on activity deletion is unchanged.
       .max(courseLimits.waypoints)
       .parse(content.lineage),

@@ -33,7 +33,7 @@ import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-pat
 
 const pathSourceId = 'geo-kit-paths';
 const selectionSourceId = 'geo-kit-selection';
-const pathLayerIds = ['geo-kit-path-line', 'geo-kit-path-point'];
+const pathLayerIds = ['geo-kit-path-line', 'geo-kit-path-uncomputed', 'geo-kit-path-point'];
 
 /** A style that never arrives or never loads must not hang initialisation forever. */
 const styleLoadTimeoutMs = 20_000;
@@ -236,7 +236,11 @@ async function initialise(
       id: 'geo-kit-path-line',
       type: 'line',
       source: pathSourceId,
-      filter: ['==', ['geometry-type'], 'LineString'],
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'LineString'],
+        ['!=', ['get', 'role'], 'uncomputed'],
+      ],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-width': 4,
@@ -250,6 +254,20 @@ async function initialise(
           '#6256b8',
         ],
       },
+    });
+    map.addLayer({
+      // A line nobody computed. Thin, grey and dashed, in its own layer, so it cannot be
+      // mistaken for a route even before anyone reads the words the caller puts beside it.
+      id: 'geo-kit-path-uncomputed',
+      type: 'line',
+      source: pathSourceId,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'LineString'],
+        ['==', ['get', 'role'], 'uncomputed'],
+      ],
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-width': 2, 'line-color': '#6b6f78', 'line-dasharray': [2, 2] },
     });
     map.addLayer({
       // A path with a single sample is a point, never a line joined across a gap.

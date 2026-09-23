@@ -577,7 +577,8 @@ export const courseRevisionSchema = z
     edit: courseEditSchema,
     /**
      * Empty only for a course whose coordinates never came from one of our recordings — an
-     * imported file is the one such case (M2-01j). Every course derived from a recording
+     * imported file (M2-01j), or a route computed from waypoints placed on an empty map
+     * (M2-01r). Every course derived from a recording
      * still names it, and a revision derived from such a course inherits that lineage, so
      * reclamation on activity deletion is unchanged.
      */
@@ -724,12 +725,50 @@ export const courseListSchema = z.strictObject({
 export type CourseList = z.infer<typeof courseListSchema>;
 
 /**
+ * The waypoints of a course started on an empty map (M2-01r, S14 `/courses/new`).
+ *
+ * Nothing about them came from a recording, so no waypoint may name a recorded sample: a
+ * sample id here would claim an observation for a position the owner simply placed, and a
+ * course started this way has no lineage for such a claim to point at.
+ */
+export const courseNewWaypointListSchema = courseWaypointListSchema.superRefine(
+  (waypoints, context) => {
+    for (const [index, waypoint] of waypoints.entries())
+      if (waypoint.sourceSampleId !== null)
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'sourceSampleId'],
+          message: 'A waypoint placed on an empty map names no recorded sample',
+        });
+  },
+);
+
+/**
  * Creating a course names a selection, never geometry. The server reads its own stored
  * derivative for the coordinates: a client cannot hand in a line and have it recorded.
+ *
+ * `routed-waypoints` (M2-01r) is the one kind with no stored derivative behind it: a course
+ * started on an empty map from waypoints the owner placed. It still carries no geometry.
+ * The server computes the route again with its own engine and writes **its own answer**,
+ * and only if that answer is the line the owner reviewed — `reviewedGeometrySha256` is the
+ * digest the preview reported, and `acknowledgedGraph.next` the graph it was computed on.
+ * A different line or a different graph is refused rather than saved in place of the one
+ * that was read.
  */
 export const courseCreateRequestSchema = z.strictObject({
   name: courseNameSchema,
   from: z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('routed-waypoints'),
+      waypoints: courseNewWaypointListSchema,
+      /** The draft revision the reviewed preview was computed for. Recorded, not trusted. */
+      draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+      reviewedGeometrySha256: sha256Schema,
+      acknowledgedGraph: z.strictObject({
+        previous: z.null(),
+        next: routingGraphIdentitySchema.shape.graphBuildId,
+      }),
+    }),
     z.strictObject({
       kind: z.literal('recorded-segment'),
       activityId: uuid,
@@ -931,6 +970,67 @@ export const courseRouteProposalResultSchema = z.discriminatedUnion('outcome', [
   routeProposalFailure('graph_mismatch'),
 ]);
 export type CourseRouteProposalResult = z.infer<typeof courseRouteProposalResultSchema>;
+
+/**
+ * Asking for a route under a draft that is not a course yet (M2-01r, `/courses/new`).
+ *
+ * Same shape as a proposal request, but the waypoints must be ones the owner placed: none
+ * of them may name a recorded sample.
+ */
+export const courseRoutePreviewRequestSchema = z.strictObject({
+  requestId: idSchema.max(128),
+  draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+  waypoints: courseNewWaypointListSchema,
+});
+export type CourseRoutePreviewRequest = z.infer<typeof courseRoutePreviewRequestSchema>;
+
+/**
+ * A computed route for a course that does not exist yet.
+ *
+ * **Nothing is stored.** A preview has no id, no owner row and no expiry because there is no
+ * row: a new draft has no course for a stored proposal to belong to, to be reclaimed with or
+ * erased with, and storing private coordinates with nothing to hang them on is exactly what
+ * the proposal table refuses to do. Saving a new course therefore asks the engine again and
+ * writes that answer, and only when its digest equals `geometrySha256` — the digest of this
+ * line, computed by the server, which the owner reviewed.
+ */
+export const courseRoutePreviewSchema = z.strictObject({
+  requestId: idSchema.max(128),
+  draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+  waypoints: courseNewWaypointListSchema,
+  geometry: z.strictObject({
+    type: z.literal('LineString'),
+    coordinates: z.array(coursePositionSchema).min(2).max(courseLimits.vertices),
+  }),
+  geometrySha256: sha256Schema,
+  engineDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxRouteDistanceMeters),
+  engineDurationSeconds: z
+    .number()
+    .finite()
+    .nonnegative()
+    .max(30 * 24 * 3600),
+  snappedWaypoints: z.array(snappedWaypointSchema).min(2).max(courseLimits.waypoints),
+  computation: routeComputationRecordSchema,
+});
+export type CourseRoutePreview = z.infer<typeof courseRoutePreviewSchema>;
+
+export const courseRoutePreviewResultSchema = z.discriminatedUnion('outcome', [
+  z.strictObject({
+    outcome: z.literal('route_computed'),
+    preview: courseRoutePreviewSchema,
+  }),
+  routeProposalFailure('no_route'),
+  routeProposalFailure('outside_coverage'),
+  routeProposalFailure('snap_too_far'),
+  routeProposalFailure('timeout'),
+  routeProposalFailure('cancelled'),
+  routeProposalFailure('overloaded'),
+  routeProposalFailure('compute_budget_exceeded'),
+  routeProposalFailure('engine_unavailable'),
+  routeProposalFailure('engine_contract_violation'),
+  routeProposalFailure('graph_mismatch'),
+]);
+export type CourseRoutePreviewResult = z.infer<typeof courseRoutePreviewResultSchema>;
 
 /**
  * Asking for target-distance candidates under the current draft (M2-01i).
@@ -1287,3 +1387,59 @@ export const coursePrivacyZoneListSchema = z.strictObject({
   zoneSetDigest: sha256Schema,
 });
 export type CoursePrivacyZoneList = z.infer<typeof coursePrivacyZoneListSchema>;
+
+/**
+ * The owner's accessibility note about a course (M2-01r, S13 "접근성 메모").
+ *
+ * Something the owner wrote down about getting along this course — stairs, a steep ramp, a
+ * gate that is locked at night — in their own words. It is **stored data**, private to the
+ * owner, and it is not course content: writing it appends no revision, moves no head and
+ * enters no content digest, and it is not part of the GPX export. It is a claim by the
+ * owner, never a fact the product checked, and the screen says so.
+ *
+ * It names the head revision it was written against. The course can change afterwards —
+ * a reroute or a privacy trim moves the line — and a note about stairs on the old line is
+ * not a note about the new one. The screen compares the two and says when the note was
+ * written for a line that is no longer the head, rather than letting it read as current.
+ *
+ * One line of text under the same rule as a course name: control, bidirectional-override
+ * and angle-bracket characters are refused, not escaped somewhere downstream.
+ */
+export const courseAccessibilityNoteTextSchema = trackTextSchema.refine(
+  (value) => value === value.trim(),
+  'Leading or trailing whitespace is not stored',
+);
+
+export const courseAccessibilityNoteSchema = z.strictObject({
+  courseId: uuid,
+  note: courseAccessibilityNoteTextSchema,
+  /** The head revision the owner was looking at when they wrote it. */
+  writtenAtRevision: revisionSchema.min(1),
+  updatedAt: instantSchema,
+});
+export type CourseAccessibilityNote = z.infer<typeof courseAccessibilityNoteSchema>;
+
+export const courseAccessibilityNoteListSchema = z.strictObject({
+  notes: z.array(courseAccessibilityNoteSchema).max(courseLimits.coursesPerTenant),
+  total: z.number().int().min(0).max(courseLimits.coursesPerTenant),
+});
+export type CourseAccessibilityNoteList = z.infer<typeof courseAccessibilityNoteListSchema>;
+
+/**
+ * Write or clear one note. `expectedRevision` is the head the screen was showing: a note
+ * written while looking at revision 3 of a course that is now at revision 4 is refused,
+ * because the owner has not seen the line it would be recorded against. `null` clears it.
+ */
+export const courseAccessibilityNoteWriteSchema = z.strictObject({
+  expectedRevision: revisionSchema.min(1),
+  note: courseAccessibilityNoteTextSchema.nullable(),
+});
+export type CourseAccessibilityNoteWrite = z.infer<typeof courseAccessibilityNoteWriteSchema>;
+
+export const courseAccessibilityNoteWriteResultSchema = z.strictObject({
+  courseId: uuid,
+  note: courseAccessibilityNoteSchema.nullable(),
+});
+export type CourseAccessibilityNoteWriteResult = z.infer<
+  typeof courseAccessibilityNoteWriteResultSchema
+>;

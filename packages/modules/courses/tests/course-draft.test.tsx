@@ -4,8 +4,10 @@ import {
   createCourseDraftStore,
   currentRoute,
   draftRequestWaypoints,
+  draftRouteStatus,
   type ComputedDraftRoute,
 } from '../src/course-draft';
+import { draftMapPaths } from '../src/course-draft-context';
 
 const seed: CourseWaypoint[] = [
   {
@@ -206,5 +208,120 @@ describe('waypoint draft', () => {
       },
     ]);
     expect(JSON.stringify(sent)).not.toContain(via.id);
+  });
+});
+
+describe('a draft started on an empty map (M2-01r, /courses/new)', () => {
+  const empty = () => createCourseDraftStore({ courseId: 'new', headRevision: 0, waypoints: [] });
+
+  it('makes the first point the start and the second the finish, in the order placed', () => {
+    const store = empty();
+    store.getState().addVia([127.0, 37.5]);
+    store.getState().addVia([127.01, 37.51]);
+    store.getState().addVia([127.02, 37.52]);
+    expect(
+      store.getState().waypoints.map((waypoint) => [waypoint.role, waypoint.position]),
+    ).toEqual([
+      ['start', [127.0, 37.5]],
+      // The third point is a via before the finish, exactly as on a stored course.
+      ['via', [127.02, 37.52]],
+      ['finish', [127.01, 37.51]],
+    ]);
+    // No point placed on an empty map claims a recorded sample.
+    expect(draftRequestWaypoints(store.getState().waypoints).map((w) => w.sourceSampleId)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it('lets every point of a new draft be taken back, but keeps a stored course two ends', () => {
+    const store = empty();
+    store.getState().addVia([127.0, 37.5]);
+    store.getState().addVia([127.01, 37.51]);
+    for (const waypoint of [...store.getState().waypoints]) store.getState().remove(waypoint.id);
+    expect(store.getState().waypoints).toEqual([]);
+    expect(store.getState().refusal).toBeNull();
+
+    const stored = draft();
+    const first = stored.getState().waypoints[0];
+    if (!first) throw new Error('missing waypoint');
+    stored.getState().remove(first.id);
+    expect(stored.getState().refusal).toBe('WAYPOINT_MINIMUM_REACHED');
+    expect(stored.getState().waypoints).toHaveLength(2);
+  });
+});
+
+describe('the uncomputed draft status (M2-01r, S14 "미계산 초안")', () => {
+  it('tells stored, uncomputed, computing, computed and stale apart', () => {
+    const store = draft();
+    const status = (computing = false) => draftRouteStatus(store.getState(), { computing });
+    expect(status()).toBe('stored');
+    store.getState().addVia([126.9789, 37.5668]);
+    expect(status()).toBe('uncomputed');
+    expect(status(true)).toBe('computing');
+    store.getState().applyRoute(route(store.getState().revision));
+    expect(status()).toBe('computed');
+    const via = store.getState().waypoints[1];
+    if (!via) throw new Error('missing waypoint');
+    store.getState().rename(via.id, '편의점');
+    expect(status()).toBe('stale');
+    // Undoing back to exactly what is stored is not an uncomputed draft.
+    store.getState().undo();
+    store.getState().undo();
+    expect(status()).toBe('stored');
+  });
+
+  it('says a new draft with fewer than two points has nothing to compute', () => {
+    const store = createCourseDraftStore({ courseId: 'new', headRevision: 0, waypoints: [] });
+    expect(draftRouteStatus(store.getState(), { computing: false })).toBe('incomplete');
+    store.getState().addVia([127.0, 37.5]);
+    expect(draftRouteStatus(store.getState(), { computing: false })).toBe('incomplete');
+    store.getState().addVia([127.01, 37.51]);
+    expect(draftRouteStatus(store.getState(), { computing: false })).toBe('uncomputed');
+  });
+
+  it('draws the waypoints joined straight only while the draft is uncomputed, in its own role', () => {
+    const store = draft();
+    const stored: [number, number][] = [
+      [126.9779, 37.5665],
+      [126.9799, 37.5671],
+    ];
+    const line = () =>
+      draftMapPaths({ state: store.getState(), storedCoordinates: stored }).find(
+        (path) => path.id === 'course-uncomputed',
+      );
+    expect(line()).toBeUndefined();
+    store.getState().addVia([126.9789, 37.5668]);
+    expect(line()).toMatchObject({
+      role: 'uncomputed',
+      positions: [
+        [126.9779, 37.5665],
+        [126.9789, 37.5668],
+        [126.9799, 37.5671],
+      ],
+    });
+    // A straight line between points is never broken into points and never a route role.
+    expect(line()?.breaks).toBeUndefined();
+    store.getState().applyRoute(route(store.getState().revision));
+    expect(line()).toBeUndefined();
+    const via = store.getState().waypoints[1];
+    if (!via) throw new Error('missing waypoint');
+    store.getState().moveEarlier(via.id);
+    expect(line()?.role).toBe('uncomputed');
+  });
+
+  it('selects without editing: no revision, no history, and never a missing waypoint', () => {
+    const store = draft();
+    const before = store.getState().revision;
+    const first = store.getState().waypoints[0];
+    if (!first) throw new Error('missing waypoint');
+    store.getState().selectWaypoint(first.id);
+    expect(store.getState().selectedWaypointId).toBe(first.id);
+    expect(store.getState().revision).toBe(before);
+    expect(store.getState().past).toHaveLength(0);
+    store.getState().selectWaypoint('not-a-waypoint');
+    expect(store.getState().refusal).toBe('WAYPOINT_NOT_FOUND');
+    expect(store.getState().selectedWaypointId).toBe(first.id);
   });
 });

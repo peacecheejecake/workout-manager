@@ -7,7 +7,9 @@ import {
   courseReadResultSchema,
   courseRouteCandidateResultSchema,
   courseRouteProposalResultSchema,
+  courseRoutePreviewResultSchema,
   type CourseCreateRequest,
+  type CourseRoutePreviewRequest,
   type CourseRouteCandidateRequest,
   type CourseRouteProposalRequest,
   type CourseUpdateRequest,
@@ -121,6 +123,31 @@ export function createCourseApi(transport: AuthenticatedTransport) {
       // a reply that is not a known outcome at all becomes a request error, so "the engine
       // refused and stored nothing" is never collapsed into "something went wrong".
       const outcome = courseRouteProposalResultSchema.safeParse(reply.body);
+      if (outcome.success) return outcome.data;
+      const parsed = errorSchema.safeParse(reply.body);
+      throw new CourseRequestError(
+        reply.status,
+        parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
+      );
+    },
+    /**
+     * Ask for a route under a draft that is not a course yet (M2-01r, `/courses/new`).
+     *
+     * Nothing is stored for it, on any outcome. The answer carries the server's digest of
+     * the line, which is what a later save sends back: the save computes again and writes
+     * only if it gets this line. A named outcome is an answer, exactly as for a proposal.
+     */
+    async previewRoute(input: CourseRoutePreviewRequest, signal?: AbortSignal) {
+      const reply = transportReplySchema.parse(
+        await transport.request({
+          path: '/bff/v1/courses/route-previews',
+          method: 'POST',
+          body: z.json().parse(input),
+          idempotencyKey: null,
+          ...(signal ? { signal } : {}),
+        }),
+      );
+      const outcome = courseRoutePreviewResultSchema.safeParse(reply.body);
       if (outcome.success) return outcome.data;
       const parsed = errorSchema.safeParse(reply.body);
       throw new CourseRequestError(

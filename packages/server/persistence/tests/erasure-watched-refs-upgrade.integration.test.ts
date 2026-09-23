@@ -120,6 +120,9 @@ describe('erasure watched-ref migration upgrade of a populated database', () => 
     // The new outermost link is a new function: the grant did not travel to it either, so
     // erasure is re-granted deliberately by the grant helper.
     expect(await granteesOf('erase_account')).toEqual([]);
+    // The grant helpers name tables from every migration, so they run on a fully migrated
+    // schema, as in deployment (migrate, then grant).
+    await migrate(upgradeUrl());
     await grantOperations(upgradeUrl(), runtimeRole);
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
     expect(await granteesOf('erase_account_before_watched_ref_queue')).toEqual([]);

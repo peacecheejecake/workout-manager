@@ -1183,3 +1183,223 @@ describe('failures that belong to the course they were started on', () => {
     }
   });
 });
+
+/**
+ * The list alternative the plan requires (section 5, M2-01r P5-list-alternative): "목록으로
+ * 같은 위치/경유점 선택, 순서 변경·삭제·좌표 입력". Every assertion here is about what the
+ * draft actually IS afterwards — the order of the coordinates in the list and in the request
+ * the engine receives — never about a revision counter moving, which a no-op would also do.
+ */
+describe('the waypoint list as a complete alternative to the map (M2-01r)', () => {
+  const start = '37.56650, 126.97790';
+  const via = '37.56680, 126.97890';
+  const finish = '37.56710, 126.97990';
+
+  /** The coordinates the list shows, in list order. */
+  function listed(): string[] {
+    const list = screen.getByRole('list', { name: '경유점 목록' });
+    return Array.from(list.querySelectorAll('li')).map(
+      (item) => item.querySelector('[class*="coordinate"]')?.textContent ?? '',
+    );
+  }
+
+  /** The positions of the most recent route request, in the order the engine is asked. */
+  function asked(request: ReturnType<typeof setup>['request']): string[] {
+    const calls = request.mock.calls.filter(([input]) => input.path.endsWith('/route-proposals'));
+    const body = calls.at(-1)?.[0].body as {
+      waypoints: { role: string; position: [number, number] }[];
+    };
+    return body.waypoints.map(
+      (waypoint) =>
+        `${waypoint.role}:${waypoint.position[1].toFixed(5)}, ${waypoint.position[0].toFixed(5)}`,
+    );
+  }
+
+  async function addViaByCoordinates() {
+    await userEvent.type(screen.getByLabelText('경유점 경도'), '126.9789');
+    await userEvent.type(screen.getByLabelText('경유점 위도'), '37.5668');
+    await userEvent.click(screen.getByRole('button', { name: '좌표로 경유점 추가' }));
+  }
+
+  it('reorders from the list, and the engine is asked for exactly that order', async () => {
+    const { request } = setup((input) =>
+      input.path === `/bff/v1/courses/${courseId}/route-proposals` ? computed(input) : null,
+    );
+    await openCourse();
+    await addViaByCoordinates();
+    expect(listed()).toEqual([start, via, finish]);
+
+    await userEvent.click(screen.getByRole('button', { name: '2번 앞으로' }));
+    expect(listed()).toEqual([via, start, finish]);
+    // Roles are positional: the moved point is now the start.
+    expect(
+      screen.getByRole('list', { name: '경유점 목록' }).querySelector('li')?.dataset['role'],
+    ).toBe('start');
+
+    await userEvent.click(screen.getByRole('button', { name: '1번 뒤로' }));
+    expect(listed()).toEqual([start, via, finish]);
+
+    await userEvent.click(screen.getByRole('button', { name: '3번 앞으로' }));
+    expect(listed()).toEqual([start, finish, via]);
+
+    await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
+    await screen.findByRole('group', { name: '계산된 경로 검토' });
+    expect(asked(request)).toEqual([`start:${start}`, `via:${finish}`, `finish:${via}`]);
+  });
+
+  it('removes the waypoint named in the list and no other', async () => {
+    const { request } = setup((input) =>
+      input.path === `/bff/v1/courses/${courseId}/route-proposals` ? computed(input) : null,
+    );
+    await openCourse();
+    await addViaByCoordinates();
+    // The middle one: removing "the last" or "the first" instead would not pass.
+    await userEvent.click(screen.getByRole('button', { name: '2번 삭제' }));
+    expect(listed()).toEqual([start, finish]);
+    await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
+    await screen.findByRole('group', { name: '계산된 경로 검토' });
+    expect(asked(request)).toEqual([`start:${start}`, `finish:${finish}`]);
+  });
+
+  it('selects a waypoint from the list and the map marks the same one, and back', async () => {
+    setup();
+    await openCourse();
+    await addViaByCoordinates();
+    await userEvent.click(screen.getByRole('button', { name: '2번 선택' }));
+    expect(screen.getByRole('button', { name: '2번 선택' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('map-selection')).toHaveTextContent('course-waypoints:1');
+    // Moving it in the list keeps the same waypoint selected, wherever it now is.
+    await userEvent.click(screen.getByRole('button', { name: '2번 뒤로' }));
+    expect(screen.getByTestId('map-selection')).toHaveTextContent('course-waypoints:2');
+    expect(screen.getByRole('button', { name: '3번 선택' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Any other vertex on the map is not a waypoint and ends the waypoint selection.
+    await userEvent.click(screen.getByRole('button', { name: '지도에서 정점 선택' }));
+    expect(screen.getByTestId('map-selection')).toHaveTextContent('course-stored:1');
+    for (const index of [1, 2, 3])
+      expect(screen.getByRole('button', { name: `${index}번 선택` })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    // Selecting is not an edit: the draft did not advance for any of it.
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 3');
+  });
+});
+
+/**
+ * S14 "경로 계산 불가 상태에서 직선 연결은 미계산 초안으로 표시한다" (M2-01r). The uncomputed
+ * draft is told apart from a stored course, a computation in flight, a computed proposal and
+ * a proposal that no longer belongs to the draft — in words a screen reader receives, and on
+ * the map as a line in its own `uncomputed` role that is never a route's.
+ */
+describe('the uncomputed draft (M2-01r)', () => {
+  function recordingMap(seen: { paths: MapViewProps['paths'] }) {
+    return function RecordingMap(props: MapViewProps) {
+      seen.paths = props.paths;
+      return <p>지도 대역</p>;
+    };
+  }
+
+  function setupWithMap(
+    overrides: (input: TransportRequest) => Reply | Promise<Reply> | null,
+    seen: { paths: MapViewProps['paths'] },
+  ) {
+    const revision = revisionWith(cutGeneration);
+    const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
+      const override = overrides(input);
+      if (override) return await override;
+      if (input.path === '/bff/v1/courses' && input.method === 'GET')
+        return reply({ courses: [head], total: 1 });
+      if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
+        return reply({
+          status: 'available',
+          course: head,
+          revision,
+          thumbnail: { status: 'none' },
+        });
+      return reply({ error: { code: 'NOT_IN_THIS_TEST' } }, 404);
+    });
+    render(
+      <CourseWorkbench
+        athleteId="athlete-1"
+        sessionId="session-1"
+        transport={{ request }}
+        mapView={recordingMap(seen)}
+      />,
+    );
+    return { request };
+  }
+
+  const status = () => screen.getByTestId('draft-route-status');
+  const uncomputedLine = (seen: { paths: MapViewProps['paths'] }) =>
+    seen.paths.find((path) => path.id === 'course-uncomputed');
+
+  it('says which of stored, uncomputed, computed and stale the draft is', async () => {
+    const seen: { paths: MapViewProps['paths'] } = { paths: [] };
+    let answer: ((value: Reply) => void) | undefined;
+    setupWithMap(
+      (input) =>
+        input.path === `/bff/v1/courses/${courseId}/route-proposals`
+          ? new Promise<Reply>((resolve) => {
+              answer = (value) => resolve(value);
+            }).then(() => computed(input))
+          : null,
+      seen,
+    );
+    await openCourse();
+    expect(status()).toHaveAttribute('data-status', 'stored');
+    expect(uncomputedLine(seen)).toBeUndefined();
+
+    await userEvent.type(screen.getByLabelText('경유점 경도'), '126.9789');
+    await userEvent.type(screen.getByLabelText('경유점 위도'), '37.5668');
+    await userEvent.click(screen.getByRole('button', { name: '좌표로 경유점 추가' }));
+    // Uncomputed: said in a live region, read with the list, and drawn as its own line.
+    expect(status()).toHaveAttribute('data-status', 'uncomputed');
+    expect(status()).toHaveAttribute('role', 'status');
+    expect(status()).toHaveTextContent('미계산 초안');
+    expect(status()).toHaveTextContent('걸을 수 있는 경로도 실제 거리도 아닙니다');
+    expect(screen.getByRole('list', { name: '경유점 목록' })).toHaveAccessibleDescription(
+      /미계산 초안/,
+    );
+    expect(uncomputedLine(seen)).toMatchObject({
+      role: 'uncomputed',
+      positions: [
+        [126.9779, 37.5665],
+        [126.9789, 37.5668],
+        [126.9799, 37.5671],
+      ],
+    });
+    // The uncomputed line is not a route: nothing on screen offers to save it, and no
+    // distance is reported for it.
+    expect(screen.queryByRole('button', { name: '검토한 경로 저장' })).toBeNull();
+    expect(status().textContent ?? '').not.toMatch(/\d+(\.\d+)?\s?(km|m)\b/);
+
+    await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
+    expect(status()).toHaveAttribute('data-status', 'computing');
+    await waitFor(() => expect(answer).toBeDefined());
+    answer?.(reply({}));
+    await screen.findByRole('group', { name: '계산된 경로 검토' });
+    expect(status()).toHaveAttribute('data-status', 'computed');
+    expect(uncomputedLine(seen)).toBeUndefined();
+    expect(seen.paths.find((path) => path.id === 'course-proposal')?.role).toBe('candidate');
+
+    // An edit after the computation: the answer no longer belongs to the draft.
+    await userEvent.click(screen.getByRole('button', { name: '2번 앞으로' }));
+    expect(status()).toHaveAttribute('data-status', 'stale');
+    expect(status()).toHaveTextContent('미계산 초안');
+    expect(status()).toHaveTextContent('이전 초안의 것');
+    expect(uncomputedLine(seen)?.role).toBe('uncomputed');
+    expect(seen.paths.find((path) => path.id === 'course-proposal')).toBeUndefined();
+
+    // Back to exactly what is stored: nothing is uncomputed any more.
+    await userEvent.click(screen.getByRole('button', { name: '1번 뒤로' }));
+    await userEvent.click(screen.getByRole('button', { name: '2번 삭제' }));
+    expect(status()).toHaveAttribute('data-status', 'stored');
+    expect(uncomputedLine(seen)).toBeUndefined();
+  });
+});

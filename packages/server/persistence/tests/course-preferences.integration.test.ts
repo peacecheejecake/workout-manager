@@ -260,8 +260,8 @@ describe('M2-01j account export v21', () => {
       radiusMeters: 350,
     });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(21);
-    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
+    expect(artifact.schemaVersion).toBe(22);
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePreferences[0]).toMatchObject({
       course_id: courseId,
@@ -290,7 +290,7 @@ describe('M2-01j account export v21', () => {
       radiusMeters: 500,
     });
     const artifact = await operations.exportAccount(mine.athlete);
-    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
     expect(artifact.data.coursePreferences).toEqual([]);
     expect(artifact.data.coursePrivacyZones).toEqual([]);
     expect(JSON.stringify(artifact)).not.toContain('남의 집');
@@ -319,7 +319,7 @@ describe('M2-01j account export v21', () => {
       operations.exportAccount(athlete),
       courses.remove(athlete, courseId, 1),
     ]);
-    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
     const has = (rows: readonly Record<string, unknown>[]) =>
       rows.some((row) => row['course_id'] === courseId);
     const present = has(artifact.data.courses);
@@ -361,7 +361,7 @@ describe('M2-01j account export v21', () => {
       close: () => Promise.resolve(),
     };
     const artifact = await createOperationsRepository(recording).exportAccount(athlete);
-    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePrivacyZones).toHaveLength(1);
     const tables = ['course_preference', 'course_privacy_zone', 'course_revision', 'FROM course '];
@@ -447,7 +447,7 @@ describe('M2-01j account export v21', () => {
     await preferences.write(athlete, courseId, { favourite: true });
     await courses.remove(athlete, courseId, 1);
     const artifact = await operations.exportAccount(athlete);
-    if (artifact.schemaVersion !== 21) throw new Error('expected v21');
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
     expect(artifact.data.coursePreferences).toEqual([]);
   });
 });
@@ -710,5 +710,246 @@ describe('M2-01j protected areas', () => {
       [athlete],
     );
     expect(left.rows[0]).toEqual({ preferences: 0, zones: 0, courses: 0 });
+  });
+});
+
+/**
+ * The owner's accessibility note (M2-01r, S13 "접근성 메모") against real PostgreSQL: the
+ * facts a repository fake cannot show — row-level security between tenants, the grant that
+ * limits what an UPDATE may touch, the foreign key that takes a note with its course,
+ * erasure, the export, and that writing one is not an edit of the course.
+ */
+describe('M2-01r accessibility notes', () => {
+  it('writes, rewrites and clears a note against the head the caller showed', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    expect(await preferences.listAccessibilityNotes(athlete)).toEqual({ notes: [], total: 0 });
+    const first = await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단 12개, 난간 있음',
+    });
+    expect(first).toMatchObject({ courseId, note: '계단 12개, 난간 있음', writtenAtRevision: 1 });
+    const second = await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '경사로 1곳',
+    });
+    expect(second?.note).toBe('경사로 1곳');
+    expect((await preferences.listAccessibilityNotes(athlete)).notes).toEqual([second]);
+    expect(
+      await preferences.writeAccessibilityNote(athlete, courseId, {
+        expectedRevision: 1,
+        note: null,
+      }),
+    ).toBeNull();
+    expect(await preferences.listAccessibilityNotes(athlete)).toEqual({ notes: [], total: 0 });
+  });
+
+  it('refuses a note written while looking at a head that is no longer the head', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    await courses.update(
+      athlete,
+      courseId,
+      1,
+      { ...importedContent('새 이름'), edit: { kind: 'renamed' } },
+      `rename-${randomUUID()}`,
+    );
+    await expect(
+      preferences.writeAccessibilityNote(athlete, courseId, { expectedRevision: 1, note: '계단' }),
+    ).rejects.toMatchObject({ code: 'COURSE_REVISION_CONFLICT' });
+    const written = await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 2,
+      note: '계단',
+    });
+    expect(written?.writtenAtRevision).toBe(2);
+  });
+
+  it('is not an edit of the course: no revision, no head move, no digest change', async () => {
+    const { athlete, courseId, head } = await athleteWithImportedCourse();
+    if (head.status !== 'available') throw new Error('unreachable');
+    await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단',
+    });
+    const read = await courses.read(athlete, courseId);
+    if (read.status !== 'available') throw new Error('unreachable');
+    expect(read.course.headRevision).toBe(1);
+    expect(read.revision.contentDigest).toBe(head.revision.contentDigest);
+    expect(JSON.stringify(read)).not.toContain('계단');
+  });
+
+  it('keeps one tenant out of another tenant notes, through the repository and RLS', async () => {
+    const mine = await athleteWithImportedCourse();
+    const theirs = await athleteWithImportedCourse('다른 사람 코스');
+    await preferences.writeAccessibilityNote(mine.athlete, mine.courseId, {
+      expectedRevision: 1,
+      note: '내 메모',
+    });
+    // Writing to someone else's course is "no such course", not a write.
+    await expect(
+      preferences.writeAccessibilityNote(theirs.athlete, mine.courseId, {
+        expectedRevision: 1,
+        note: '남의 코스에 쓰기',
+      }),
+    ).rejects.toBeInstanceOf(CoursePreferenceError);
+    expect((await preferences.listAccessibilityNotes(theirs.athlete)).notes).toEqual([]);
+    const runtime = new Pool({ connectionString: runtimeUrl, max: 1 });
+    try {
+      await runtime.query('BEGIN');
+      await runtime.query('SELECT set_config($1,$2,true)', ['app.athlete_id', theirs.athlete]);
+      expect((await runtime.query('SELECT note FROM course_accessibility_note')).rows).toEqual([]);
+      // Inserting a row for another tenant is refused by the policy's WITH CHECK.
+      await expect(
+        runtime.query(
+          `INSERT INTO course_accessibility_note(athlete_id,course_id,note,written_at_revision,
+             created_at,updated_at) VALUES($1,$2,'끼워 넣기',1,now(),now())`,
+          [mine.athlete, mine.courseId],
+        ),
+      ).rejects.toThrow(/row-level security/i);
+      await runtime.query('ROLLBACK');
+    } finally {
+      await runtime.end();
+    }
+    const policy = await admin.query(
+      `SELECT relrowsecurity,relforcerowsecurity FROM pg_class
+       WHERE oid='public.course_accessibility_note'::regclass`,
+    );
+    expect(policy.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+  });
+
+  it('lets the runtime role update the text and its revision and nothing else', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    const other = await athleteWithImportedCourse('두 번째 코스');
+    await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단',
+    });
+    const runtime = new Pool({ connectionString: runtimeUrl, max: 1 });
+    try {
+      for (const assignment of [
+        `course_id='${other.courseId}'`,
+        `athlete_id='${other.athlete}'`,
+        'created_at=now()',
+      ]) {
+        await runtime.query('BEGIN');
+        await runtime.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+        await expect(
+          runtime.query(`UPDATE course_accessibility_note SET ${assignment} WHERE athlete_id=$1`, [
+            athlete,
+          ]),
+        ).rejects.toThrow(/permission denied/i);
+        await runtime.query('ROLLBACK');
+      }
+    } finally {
+      await runtime.end();
+    }
+    expect((await preferences.listAccessibilityNotes(athlete)).notes).toMatchObject([
+      { courseId, note: '계단' },
+    ]);
+  });
+
+  it('refuses text the contract refuses, in the database too', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    await expect(
+      preferences.writeAccessibilityNote(athlete, courseId, {
+        expectedRevision: 1,
+        note: '<b>계단</b>',
+      }),
+    ).rejects.toThrow();
+    // Whitespace padding is refused by the table even from a direct write.
+    await expect(
+      admin.query(
+        `INSERT INTO course_accessibility_note(athlete_id,course_id,note,written_at_revision,
+           created_at,updated_at) VALUES($1,$2,' 계단',1,now(),now())`,
+        [athlete, courseId],
+      ),
+    ).rejects.toThrow(/check constraint/i);
+    expect((await preferences.listAccessibilityNotes(athlete)).notes).toEqual([]);
+  });
+
+  it('takes the note with the course it is about', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단',
+    });
+    await courses.remove(athlete, courseId, 1);
+    expect(await preferences.listAccessibilityNotes(athlete)).toEqual({ notes: [], total: 0 });
+  });
+
+  it('erases every note with the account', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단',
+    });
+    const runtime = new Pool({ connectionString: runtimeUrl, max: 1 });
+    try {
+      await runtime.query('BEGIN');
+      await runtime.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
+      await runtime.query('SELECT public.erase_account($1)', [athlete]);
+      await runtime.query('COMMIT');
+    } finally {
+      await runtime.end();
+    }
+    const left = await admin.query(
+      'SELECT count(*)::integer AS notes FROM course_accessibility_note WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(left.rows[0]).toEqual({ notes: 0 });
+  });
+
+  /**
+   * Erasure and a note write, racing on the same account. The note write takes the account
+   * lock shared and then the tenant lock, like every writer; erasure takes the account lock
+   * exclusive first (migration 037). Neither may lose a deadlock (40P01 has been observed
+   * around `erase_account` in this repository more than once).
+   */
+  it('erases without deadlocking against a note write holding the account', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    let erase: Promise<unknown> = Promise.resolve();
+    await database.tenant(athlete, async (tx) => {
+      erase = database.tenant(athlete, (inner) =>
+        inner.query('SELECT public.erase_account($1)', [athlete]),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+      await tx.query(
+        `INSERT INTO course_accessibility_note(athlete_id,course_id,note,written_at_revision,
+           created_at,updated_at) VALUES($1,$2,'계단',1,now(),now())`,
+        [athlete, courseId],
+      );
+    });
+    await expect(erase).resolves.toBeDefined();
+    const left = await admin.query(
+      'SELECT count(*)::integer AS notes FROM course_accessibility_note WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(left.rows[0]).toEqual({ notes: 0 });
+  });
+
+  it('exports the note, and nothing of another tenant, in export v22', async () => {
+    const { athlete, courseId } = await athleteWithImportedCourse();
+    const theirs = await athleteWithImportedCourse('다른 사람 코스');
+    await preferences.writeAccessibilityNote(athlete, courseId, {
+      expectedRevision: 1,
+      note: '계단 12개',
+    });
+    await preferences.writeAccessibilityNote(theirs.athlete, theirs.courseId, {
+      expectedRevision: 1,
+      note: '남의 메모',
+    });
+    const artifact = await operations.exportAccount(athlete);
+    expect(artifact.schemaVersion).toBe(22);
+    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    expect(artifact.data.courseAccessibilityNotes).toEqual([
+      expect.objectContaining({ course_id: courseId, note: '계단 12개', written_at_revision: 1 }),
+    ]);
+    expect(Object.keys(artifact.data.courseAccessibilityNotes[0] ?? {}).sort()).toEqual([
+      'course_id',
+      'created_at',
+      'note',
+      'updated_at',
+      'written_at_revision',
+    ]);
+    expect(JSON.stringify(artifact)).not.toContain('남의 메모');
   });
 });

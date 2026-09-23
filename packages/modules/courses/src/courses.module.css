@@ -233,3 +233,19 @@
   background: var(--color-surface-muted, #f2f4f7);
   border-radius: var(--radius-md, 0.5rem);
 }
+
+/*
+ * `/courses/new` (M2-01r): the map and the draft, one above the other on a narrow screen and
+ * side by side on a desktop. Same generated layout mode as the list screen, no breakpoint
+ * copied in.
+ */
+.newPanes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4, 1rem);
+  min-width: 0;
+}
+.newPanes[data-layout='desktop'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 28rem);
+  align-items: start;
+}

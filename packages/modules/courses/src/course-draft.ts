@@ -166,6 +166,11 @@ export interface CourseDraftState {
   pickedCandidateId: string | null;
   /** Why the last attempted change was refused, so the screen can say it in words. */
   refusal: DraftProblem | null;
+  /**
+   * The waypoint the owner has selected, from the list or on the map — one selection, two
+   * ways to make it. Selecting is not an edit: it advances no revision and has no history.
+   */
+  selectedWaypointId: string | null;
   /** The stored revision this draft was seeded from, and the waypoints it was seeded with. */
   seededRevision: number;
   seededWaypoints: readonly CourseWaypoint[];
@@ -190,6 +195,8 @@ export interface CourseDraftState {
   undo(): void;
   redo(): void;
   clearRefusal(): void;
+  /** Select one waypoint, or none. Changes nothing about the draft itself. */
+  selectWaypoint(id: string | null): void;
   /**
    * The stored course as it is now. Called whenever the screen reads a head revision.
    * A clean draft, a head this draft itself wrote, and a change that leaves the stored
@@ -323,6 +330,7 @@ export function createCourseDraftStore(input: {
       candidates: null,
       pickedCandidateId: null,
       refusal: null,
+      selectedWaypointId: null,
       seededRevision: input.headRevision,
       seededWaypoints: input.waypoints,
       dirty: false,
@@ -334,21 +342,24 @@ export function createCourseDraftStore(input: {
         if (!isValidPosition(position)) return refuse('WAYPOINT_POSITION_INVALID');
         const waypoints = get().waypoints;
         if (waypoints.length >= courseLimits.waypoints) return refuse('WAYPOINT_LIMIT_REACHED');
+        const added = {
+          id: nextId(),
+          role: 'via' as const,
+          position,
+          name: null,
+          sourceSampleId: null,
+          locked: false,
+        };
+        // A draft started on an empty map (M2-01r) has no ends yet. Its first two points
+        // are the start and the finish, in the order they were placed; putting the second
+        // one before the first would make the point placed first the finish.
+        if (waypoints.length < 2) {
+          change([...waypoints, added]);
+          return;
+        }
         // A via waypoint goes before the finish, so the start and the finish keep their
         // roles. Reordering afterwards is the list's job, not a side effect of adding.
-        const next = [
-          ...waypoints.slice(0, -1),
-          {
-            id: nextId(),
-            role: 'via' as const,
-            position,
-            name: null,
-            sourceSampleId: null,
-            locked: false,
-          },
-          ...waypoints.slice(-1),
-        ];
-        change(next);
+        change([...waypoints.slice(0, -1), added, ...waypoints.slice(-1)]);
       },
 
       movePosition: (id, position) => {
@@ -424,7 +435,10 @@ export function createCourseDraftStore(input: {
         const current = waypoints[index];
         if (!current) return refuse('WAYPOINT_NOT_FOUND');
         if (current.locked) return refuse('WAYPOINT_LOCKED');
-        if (waypoints.length <= 2) return refuse('WAYPOINT_MINIMUM_REACHED');
+        // A stored course always keeps its two ends. A draft started on an empty map has no
+        // stored ends to keep, so its points can all be taken back.
+        if (get().seededWaypoints.length >= 2 && waypoints.length <= 2)
+          return refuse('WAYPOINT_MINIMUM_REACHED');
         change(waypoints.filter((waypoint) => waypoint.id !== id));
       },
 
@@ -453,6 +467,11 @@ export function createCourseDraftStore(input: {
       },
 
       clearRefusal: () => set({ refusal: null }),
+
+      selectWaypoint: (id) => {
+        if (id !== null && find(id) < 0) return refuse('WAYPOINT_NOT_FOUND');
+        set({ selectedWaypointId: id });
+      },
 
       /**
        * A result is applied only to the draft it was computed for.
@@ -592,4 +611,41 @@ export function pickedCandidate(state: CourseDraftState): DraftCandidate | null 
   const set = currentCandidates(state);
   if (!set || state.pickedCandidateId === null) return null;
   return set.candidates.find((c) => c.proposalId === state.pickedCandidateId) ?? null;
+}
+
+/**
+ * What the owner is looking at, as one of the distinct states the plan names (section 5:
+ * "미계산·계산 중·stale" are told apart, and none of them is an error).
+ *
+ * - `stored`: the waypoints are exactly the ones saved. Nothing to compute.
+ * - `incomplete`: a draft started on an empty map with fewer than two points. There is no
+ *   start and finish yet, so there is nothing to join and nothing to compute.
+ * - `uncomputed`: the waypoints differ from what is saved and no route has been computed for
+ *   them. This is the **uncomputed draft** (S14 "미계산 초안"): whatever joins them on the map
+ *   is a straight line nobody computed, and it is neither a walkable course nor a distance.
+ * - `stale`: a route was computed, but for an earlier arrangement. It no longer belongs to the
+ *   waypoints on screen, so the draft is uncomputed again — said differently because the
+ *   owner did compute something and has to know it no longer applies.
+ * - `computing`: a computation or a search for this draft is in flight.
+ * - `computed`: a route or a picked candidate belongs to the draft as it is now.
+ *
+ * `computing` is the caller's to say — the store does not know about requests.
+ */
+export type DraftRouteStatus =
+  'stored' | 'incomplete' | 'uncomputed' | 'stale' | 'computing' | 'computed';
+
+export function draftRouteStatus(
+  state: CourseDraftState,
+  options: { readonly computing: boolean },
+): DraftRouteStatus {
+  if (options.computing) return 'computing';
+  if (currentRoute(state) !== null || pickedCandidate(state) !== null) return 'computed';
+  if (state.waypoints.length < 2) return 'incomplete';
+  if (
+    state.seededWaypoints.length >= 2 &&
+    sameStoredWaypoints(draftRequestWaypoints(state.waypoints), state.seededWaypoints)
+  )
+    return 'stored';
+  if (state.route !== null || state.candidates !== null) return 'stale';
+  return 'uncomputed';
 }
