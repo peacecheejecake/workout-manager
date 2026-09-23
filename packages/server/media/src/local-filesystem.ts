@@ -141,7 +141,54 @@ export async function createLocalFilesystemObjectStorage(
     return path;
   }
 
+  /**
+   * The root itself, `lstat`ed on every walk (M2-01o).
+   *
+   * Every walk below starts at `canonicalRoot` and `lstat`s the components under it, but the
+   * root is a non-final component of each of those paths, so the kernel follows it. A root
+   * swapped for a symbolic link after this store was created was therefore followed without a
+   * word — measured before this check: with the root pointing at an empty directory, `stat`,
+   * `open` and `delete` answered "absent" for an object that exists; `writeTemporary` created
+   * the whole key path and the object inside the link's target; and with the root pointing at
+   * a copy, `publishTemporary` published into the copy and `delete` removed the copy's object. "The root moved" was being reported as "the
+   * object is not there", which a reconciliation sweep then acts on.
+   *
+   * Unlike a reference's own components, a missing root is not "absent" and does not go
+   * through `lstatIfPresent`: ENOENT here means the store is gone — an unmounted volume, a
+   * wrong path — and rejects like EACCES or EIO, the same line `assertReachable` draws.
+   *
+   * `lstat` never reports a symbolic link as a directory, so `!isDirectory()` refuses a link,
+   * a regular file and anything else alike.
+   *
+   * What this cannot prevent, only report. Every operation here is path-based — the walk's
+   * `lstat`s, `mkdir`, `chmod`, `open`, `link`, `unlink` — and Node has no `openat` to anchor
+   * them to a root descriptor. So a swap that lands after this check and before an
+   * operation's last path call is followed by every call after it, and a ONE-WAY swap is
+   * enough; no swap back is needed. The window is not "one walk": it spans many event-loop
+   * turns and thread-pool calls (about eleven `lstat`s, then `mkdir`, `chmod`, `open` …).
+   * Measured by the independent review against the first version of this check (root swapped
+   * once, for a link to a copy of the store, after k = 0..40 `setImmediate` ticks; 615
+   * attempts per operation): `writeTemporary` wrote into the copy 471 times, `publishTemporary`
+   * published into it 267 times, `delete` removed the copy's object 193 times, and `stat`
+   * returned the copy's object 579 times.
+   *
+   * What is done about it: every operation asks again AFTER its last path call — after the
+   * write, the link, the unlink, the open of a body — and rejects with this error if the root
+   * is no longer intact. The side effect outside the root has then already happened and is
+   * NOT undone: undoing it would be another path-based call through the same link, touching
+   * the outside again. What this buys is that no swap that persists past the operation ends
+   * in a silent success. The one case it cannot see is a root swapped away and back again
+   * inside a single operation — the same directory to any path-based check (measured with a
+   * loop swapping continuously under load: 3 of 72,000 `stat`s read as absent, 0 of 24,000
+   * unloaded).
+   */
+  async function assertRootIntact(): Promise<void> {
+    const stat = await lstat(canonicalRoot);
+    if (!stat.isDirectory()) throw new UnsafeStoragePathError();
+  }
+
   async function prepareParents(path: string): Promise<void> {
+    await assertRootIntact();
     const relativeParts = dirname(path)
       .slice(canonicalRoot.length + 1)
       .split(sep);
@@ -164,6 +211,7 @@ export async function createLocalFilesystemObjectStorage(
   async function assertSafeExistingFile(
     path: string,
   ): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+    await assertRootIntact();
     const relativeParts = path.slice(canonicalRoot.length + 1).split(sep);
     let current = canonicalRoot;
     for (const part of relativeParts) {
@@ -171,14 +219,28 @@ export async function createLocalFilesystemObjectStorage(
       // One `lstat`, not an existence probe followed by a second one: the gap between those
       // two was itself the window a concurrent delete fell into.
       const stat = await lstatIfPresent(current);
-      if (stat === null) return null;
+      if (stat === null) return absentUnderIntactRoot();
       if (stat.isSymbolicLink()) throw new UnsafeStoragePathError();
       if (current !== path && !stat.isDirectory()) throw new UnsafeStoragePathError();
       if (current === path && !stat.isFile()) throw new UnsafeStoragePathError();
     }
     // The walk proved this path safe a moment ago; a delete can still have landed since, and
     // that makes the object absent rather than the call an error.
-    return lstatIfPresent(path);
+    const stat = await lstatIfPresent(path);
+    // Either answer was read through the root's path, so the root is asked again before it
+    // is given: an object seen through a root swapped mid-walk is not this store's (M2-01o).
+    await assertRootIntact();
+    return stat;
+  }
+
+  /**
+   * "Absent" is the one answer a caller acts on without touching the object — a sweep settles
+   * on it — so it is only given after the root is asked again: an absence seen through a root
+   * that was swapped mid-walk rejects instead (M2-01o). Costs one `lstat`, on this path only.
+   */
+  async function absentUnderIntactRoot(): Promise<null> {
+    await assertRootIntact();
+    return null;
   }
 
   async function objectStat(key: ObjectKey): Promise<StoredObjectStat | null> {
@@ -192,6 +254,9 @@ export async function createLocalFilesystemObjectStorage(
     const hash = createHash('sha256');
     let sizeBytes = 0;
     try {
+      // The handle is bound to whatever the path named at `open`; if the root was intact
+      // after that, the bytes read through it are this store's (M2-01o).
+      await assertRootIntact();
       for await (const chunk of handle.createReadStream({ autoClose: false })) {
         sizeBytes += chunk.byteLength;
         hash.update(chunk);
@@ -205,6 +270,7 @@ export async function createLocalFilesystemObjectStorage(
   async function* readFileBody(path: string): AsyncGenerator<Uint8Array> {
     const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
+      await assertRootIntact(); // as in `hashFile` (M2-01o)
       for await (const chunk of handle.createReadStream({ autoClose: false })) yield chunk;
     } finally {
       await handle.close();
@@ -285,6 +351,10 @@ export async function createLocalFilesystemObjectStorage(
       }
       await handle.close();
       const stat = await lstat(path);
+      // After the last path call (M2-01o): a root swapped since `prepareParents` means the
+      // object may have been written through the link. Nothing is undone — an unlink would
+      // follow the same link — but the write does not report success.
+      await assertRootIntact();
       return { key, sizeBytes, modifiedAt: stat.mtime };
     },
 
@@ -381,6 +451,10 @@ export async function createLocalFilesystemObjectStorage(
         // not turn a successful publish into an ambiguous error that a caller cannot compensate
         // without risking deletion of another worker's content-addressed object.
         await unlink(temporaryPath).catch(() => undefined);
+        // After the link and unlink (M2-01o): see `writeTemporary`. A publish through a swapped
+        // root does not report success; its final name is already recorded by the caller's
+        // durable manifest, which is what reclaims an object this leaves behind.
+        await assertRootIntact();
         return { key: finalKey, outcome: 'published', ...expectation };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
@@ -393,6 +467,7 @@ export async function createLocalFilesystemObjectStorage(
           throw new ObjectStorageConflictError();
         }
         await unlink(temporaryPath).catch(() => undefined);
+        await assertRootIntact(); // as after a publish (M2-01o)
         return { key: finalKey, outcome: 'already_present', ...expectation };
       }
     },
@@ -412,15 +487,28 @@ export async function createLocalFilesystemObjectStorage(
     stat: objectStat,
 
     /**
-     * The root, asked directly and through the same guards as every other path: `lstat`
-     * refuses a root that became a symbolic link, `open` with `O_NOFOLLOW | O_DIRECTORY`
-     * refuses one swapped in between, and `access` asks for exactly what a `stat` below the
-     * root needs — search and read. Nothing is absorbed: ENOENT here means the store is
-     * missing, not empty, and it rejects like EACCES or EIO.
+     * The root, asked directly and through the same guards as every other path. Nothing is
+     * absorbed: ENOENT here means the store is missing, not empty, and it rejects like EACCES
+     * or EIO.
+     *
+     * Order (M2-01o): `lstat` refuses a root that is a symbolic link or not a directory; then
+     * `access`; then `open` with `O_NOFOLLOW | O_DIRECTORY` and `fstat` on that handle. `access`
+     * works by path and follows a link — Node has no descriptor-based `faccessat` — so it goes
+     * before the `open`, and the last, authoritative check is on the directory actually opened
+     * rather than on whatever the path named after the handle was closed.
+     *
+     * What is asked of the root: search (`X_OK`) is what every operation below it needs — a
+     * `stat` of an object needs only search on the directories above it, not read. Read
+     * (`R_OK`) is also required, deliberately: the `open(O_RDONLY | O_DIRECTORY)` that makes
+     * the last check descriptor-based needs it (there is no `O_SEARCH` in Node), and a root
+     * this store created `0o700` and has since lost read on was changed by someone after
+     * start. So a search-only (`0o100`) root is refused although a `stat` below it would work
+     * — an error on the side of reporting the store unreachable, never on the side of reading
+     * an unreadable store as empty.
      */
     async assertReachable(): Promise<void> {
-      const rootStat = await lstat(canonicalRoot);
-      if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new UnsafeStoragePathError();
+      await assertRootIntact();
+      await access(canonicalRoot, constants.R_OK | constants.X_OK);
       const handle = await open(
         canonicalRoot,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -430,7 +518,6 @@ export async function createLocalFilesystemObjectStorage(
       } finally {
         await handle.close();
       }
-      await access(canonicalRoot, constants.R_OK | constants.X_OK);
     },
 
     async delete(key): Promise<void> {
@@ -439,6 +526,9 @@ export async function createLocalFilesystemObjectStorage(
       if (!stat) return;
       await unlink(path);
       await pruneEmptyParents(path, key);
+      // After the unlink and the prune (M2-01o): a delete through a swapped root removed
+      // something outside this store and must not report success.
+      await assertRootIntact();
     },
   };
 }

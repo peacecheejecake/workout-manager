@@ -1,11 +1,15 @@
 import { fork } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { renameSync, symlinkSync } from 'node:fs';
 import {
   chmod,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
+  rename,
   rm,
   symlink,
   unlink,
@@ -240,6 +244,74 @@ describe('private local filesystem object storage', () => {
     await expect(
       storage.publishTemporary(temporary, final, { sizeBytes: expected.byteLength, sha256 }),
     ).rejects.toBeInstanceOf(ObjectStorageConflictError);
+  });
+
+  // The sample above differs from what is expected in size AND hash, so it is caught by either
+  // check alone: removing the hash comparison, or both size comparisons, left it passing
+  // (M2-01k acceptance). The two below each differ in one respect only, so each check has a
+  // test that fails when it alone regresses (M2-01o, F6).
+  //
+  // A rejected publish creates nothing at the final key and leaves the temporary object as it
+  // was: publishing does not own the temporary — by the time it runs, the caller has recorded
+  // it durably (`onPrepared`), and that record is what reclaims it.
+  async function rejectedPublish(
+    stored: string,
+    expectation: (bytes: { sizeBytes: number; sha256: string }) => {
+      sizeBytes: number;
+      sha256: string;
+    },
+    expected = stored,
+  ) {
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    const temporary = createTemporaryObjectKey({
+      tenantId,
+      resourceId,
+      uploadId: temporaryUploadId,
+    });
+    await storage.writeTemporary(temporary, chunks(stored));
+    const bytes = Buffer.from(expected);
+    const declared = expectation({
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    const final = createFinalObjectKey({
+      tenantId,
+      resourceId,
+      uploadId: temporaryUploadId,
+      sha256: declared.sha256,
+      extension: 'md',
+    });
+    await expect(storage.publishTemporary(temporary, final, declared)).rejects.toBeInstanceOf(
+      ObjectStorageConflictError,
+    );
+    await expect(storage.stat(final)).resolves.toBeNull();
+    await expect(
+      lstat(join(root, 'private', 'v1', 'tenants', tenantId, 'resources', resourceId, 'objects')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.stat(temporary)).resolves.toMatchObject({
+      sizeBytes: Buffer.byteLength(stored),
+    });
+    const opened = await storage.open(temporary);
+    if (!opened) throw new Error('Expected the temporary object to remain.');
+    expect(await readBody(opened.body)).toBe(stored);
+  }
+
+  it('rejects publish when the bytes have the declared size but not the declared hash', async () => {
+    // Same length (8 bytes each), different content: only the hash comparison can see it.
+    await rejectedPublish('tampered', (declared) => declared, 'expected');
+  });
+
+  it('rejects publish when the bytes have the declared hash but not the declared size', async () => {
+    // The right bytes under a wrong size: only a size comparison can see it.
+    await rejectedPublish('expected', (declared) => ({
+      ...declared,
+      sizeBytes: declared.sizeBytes + 1,
+    }));
+    await rejectedPublish('expected', (declared) => ({
+      ...declared,
+      sizeBytes: declared.sizeBytes - 1,
+    }));
   });
 
   it('rejects publishing a temporary object into another tenant or upload namespace', async () => {
@@ -740,4 +812,316 @@ describe('whether the store answers at all (M2-01n)', () => {
     await expect(storage.assertReachable()).rejects.toBeInstanceOf(UnsafeStoragePathError);
     await unlink(root);
   });
+
+  it('refuses a search-only root although a stat below it would work (M2-01o)', async () => {
+    // Deliberately conservative: `stat` needs only search on the root, but `assertReachable`
+    // also asks for read, because its last check opens the root as a directory. A root this
+    // store created 0o700 and that has since lost read was changed by someone; that is
+    // reported as unreachable rather than read past.
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    const key = createTemporaryObjectKey({ tenantId, resourceId, uploadId: temporaryUploadId });
+    await storage.writeTemporary(key, chunks('x'));
+    await chmod(root, 0o100);
+    try {
+      await expect(storage.stat(key)).resolves.toMatchObject({ sizeBytes: 1 });
+      await expect(storage.assertReachable()).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      await chmod(root, 0o700);
+    }
+  });
+});
+
+describe('the root is checked on every walk, not only by assertReachable (M2-01o)', () => {
+  // Each walk used to `lstat` only the components under the root; the root, a non-final
+  // component of every path, was followed by the kernel. Reproduced on the real filesystem
+  // before the check: with the root swapped for a link to an empty directory, `stat` and
+  // `open` answered null and `delete` resolved for an object that exists, and
+  // `writeTemporary` wrote the object inside the link's target. A swapped root is now an
+  // error on every operation.
+
+  async function storedObject() {
+    const base = await newRoot();
+    const root = join(base, 'store');
+    const storage = await createLocalFilesystemObjectStorage(root);
+    const key = createTemporaryObjectKey({ tenantId, resourceId, uploadId: temporaryUploadId });
+    await storage.writeTemporary(key, chunks('kept'));
+    const fresh = createTemporaryObjectKey({ tenantId, resourceId, uploadId: randomUUID() });
+    return { root, storage, key, fresh };
+  }
+
+  it('refuses a root swapped for a link to an empty directory instead of answering absent', async () => {
+    const { root, storage, key, fresh } = await storedObject();
+    const empty = await newRoot();
+    await rename(root, `${root}.moved`);
+    await symlink(empty, root);
+
+    await expect(storage.stat(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(storage.open(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(storage.delete(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(storage.writeTemporary(fresh, chunks('escaped'))).rejects.toBeInstanceOf(
+      UnsafeStoragePathError,
+    );
+    // Nothing was created through the link, and the object is still where it was.
+    expect(await readdir(empty)).toEqual([]);
+    await expect(readFile(join(`${root}.moved`, ...String(key).split('/')), 'utf8')).resolves.toBe(
+      'kept',
+    );
+  });
+
+  it('refuses a root swapped for a link to a copy, and deletes nothing there', async () => {
+    const { root, storage, key } = await storedObject();
+    const copy = await newRoot();
+    await cp(root, copy, { recursive: true });
+    await rename(root, `${root}.moved`);
+    await symlink(copy, root);
+
+    await expect(storage.stat(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(storage.delete(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(readFile(join(copy, ...String(key).split('/')), 'utf8')).resolves.toBe('kept');
+  });
+
+  it('refuses to publish through a swapped root', async () => {
+    const { root, storage } = await storedObject();
+    const body = 'published body';
+    const sha256 = createHash('sha256').update(body).digest('hex');
+    const uploadId = randomUUID();
+    const temporaryKey = createTemporaryObjectKey({ tenantId, resourceId, uploadId });
+    await storage.writeTemporary(temporaryKey, chunks(body));
+    const finalKey = createFinalObjectKey({
+      tenantId,
+      resourceId,
+      uploadId,
+      sha256,
+      extension: 'md',
+    });
+    const empty = await newRoot();
+    await rename(root, `${root}.moved`);
+    await symlink(empty, root);
+    await expect(
+      storage.publishTemporary(temporaryKey, finalKey, { sha256, sizeBytes: body.length }),
+    ).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    expect(await readdir(empty)).toEqual([]);
+  });
+
+  it('rejects rather than answers absent when the root is gone', async () => {
+    // Not `lstatIfPresent`: a missing reference is absent, a missing root is a missing store.
+    const { root, storage, key, fresh } = await storedObject();
+    await rename(root, `${root}.moved`);
+
+    await expect(storage.stat(key)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.open(key)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.delete(key)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.writeTemporary(fresh, chunks('x'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('refuses a root replaced by a regular file', async () => {
+    const { root, storage, key } = await storedObject();
+    await rename(root, `${root}.moved`);
+    await writeFile(root, 'not a directory');
+    await expect(storage.stat(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+    await expect(storage.delete(key)).rejects.toBeInstanceOf(UnsafeStoragePathError);
+  });
+
+  it('still answers absent for a missing key under an intact root', async () => {
+    const { storage, fresh } = await storedObject();
+    await expect(storage.stat(fresh)).resolves.toBeNull();
+    await expect(storage.open(fresh)).resolves.toBeNull();
+    await expect(storage.delete(fresh)).resolves.toBeUndefined();
+  });
+
+  it('never answers absent for an existing object when the root is swapped inside the walk', async () => {
+    // The root is checked before each walk and asked again before "absent" is answered, so a
+    // swap landing inside a walk can make `stat` fail but never report the object missing.
+    //
+    // Each attempt swaps the root once — for a link to an empty directory — after a tuned
+    // number of filesystem operations, so the swap lands at every point of a concurrent
+    // `stat` of an object that exists; the root is restored only after both finish. Allowed
+    // outcomes: the object, or a rejection. Like the delete race above, this can under-detect
+    // on a differently-timed machine but cannot fail spuriously: the root does not come back
+    // during the `stat`, so the re-check before "absent" always sees the swap.
+    //
+    // Deliberately one-way. A root swapped away AND back inside one walk is not detectable
+    // by any check of the root's path (it is the same directory again), and a loop that swaps
+    // back and forth continuously does, under load, produce "absent" here (see M2-01o.md).
+    const { root, storage, key } = await storedObject();
+    const empty = await newRoot();
+    const moved = `${root}.moved`;
+    const outcomes: Record<string, number> = {};
+    for (let ticks = 0; ticks <= 12; ticks += 1) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const [observed] = await Promise.allSettled([
+          storage.stat(key),
+          (async () => {
+            for (let tick = 0; tick < ticks; tick += 1) await lstat(empty);
+            await rename(root, moved);
+            await symlink(empty, root);
+          })(),
+        ]);
+        await unlink(root);
+        await rename(moved, root);
+        const outcome =
+          observed.status === 'fulfilled'
+            ? observed.value === null
+              ? 'ABSENT'
+              : 'present'
+            : observed.reason instanceof UnsafeStoragePathError
+              ? 'unsafe'
+              : `threw ${(observed.reason as NodeJS.ErrnoException).code ?? 'unknown'}`;
+        outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
+      }
+    }
+    expect(outcomes['ABSENT']).toBeUndefined();
+    // The sweep covered both sides of the walk: some swaps landed after it, some before.
+    expect(outcomes['present']).toBeGreaterThan(0);
+    expect((outcomes['unsafe'] ?? 0) + (outcomes['threw ENOENT'] ?? 0)).toBeGreaterThan(0);
+  });
+
+  it('ends every operation through a root swapped mid-operation in an error, never a silent success', async () => {
+    // What this node guarantees, and what it does not. Every call here is path-based and Node
+    // has no `openat`, so a ONE-WAY swap landing after an operation's root check is followed
+    // by the calls after it: a write, publish or delete can act on the link's target, and a
+    // read can see the target's object. That is not prevented (and this test counts it). What
+    // is guaranteed is that the operation then fails — each asks again after its last path
+    // call — so no swap that outlasts an operation ends in a silent success.
+    //
+    // Each attempt starts from a fresh store and a copy of it whose object differs, then swaps
+    // the root for a link to the copy after k other filesystem calls (k = 0..150, which spans
+    // the longest operation, a publish) and never swaps it back during the operation. That is why this cannot fail spuriously: if the operation
+    // resolved, its re-check saw the real root, so the swap came after every path call and
+    // the effect is in the real store. A swap away and back inside one operation (ABA) is the
+    // known limit and is deliberately not generated.
+    // `republish` publishes onto a final object that is already there (the `already_present`
+    // branch), whose last path call is the unlink of the temporary.
+    type Operation = 'write' | 'publish' | 'republish' | 'delete' | 'stat' | 'open';
+    const body = 'published body';
+    const sha256 = createHash('sha256').update(body).digest('hex');
+
+    async function attempt(operation: Operation, ticks: number): Promise<string> {
+      const base = await newRoot();
+      const root = join(base, 'store');
+      const copy = join(base, 'copy');
+      const moved = join(base, 'moved');
+      const storage = await createLocalFilesystemObjectStorage(root);
+      const uploadId = randomUUID();
+      const temporary = createTemporaryObjectKey({ tenantId, resourceId, uploadId });
+      const final = createFinalObjectKey({
+        tenantId,
+        resourceId,
+        uploadId,
+        sha256,
+        extension: 'md',
+      });
+      const fresh = createTemporaryObjectKey({ tenantId, resourceId, uploadId: randomUUID() });
+      const expectation = { sha256, sizeBytes: Buffer.byteLength(body) };
+      await storage.writeTemporary(temporary, chunks(body));
+      if (operation === 'republish') {
+        await storage.publishTemporary(temporary, final, expectation);
+        await storage.writeTemporary(temporary, chunks(body));
+      }
+      await cp(root, copy, { recursive: true });
+      // For the reads, the copy's object differs in size and bytes, so a read through the
+      // link is visible.
+      if (operation === 'stat' || operation === 'open')
+        await writeFile(join(copy, ...String(temporary).split('/')), 'the copy');
+      const at = (directory: string, key: ObjectKey) =>
+        lstat(join(directory, ...String(key).split('/'))).then(
+          () => true,
+          () => false,
+        );
+
+      const run = async (): Promise<'real' | 'copy'> => {
+        switch (operation) {
+          case 'write':
+            await storage.writeTemporary(fresh, chunks('new'));
+            return 'real';
+          case 'publish':
+          case 'republish':
+            await storage.publishTemporary(temporary, final, expectation);
+            return 'real';
+          case 'delete':
+            await storage.delete(temporary);
+            return 'real';
+          case 'stat': {
+            const stat = await storage.stat(temporary);
+            return stat?.sizeBytes === Buffer.byteLength(body) ? 'real' : 'copy';
+          }
+          case 'open': {
+            const opened = await storage.open(temporary);
+            if (!opened) return 'copy';
+            return (await readBody(opened.body)) === body ? 'real' : 'copy';
+          }
+        }
+      };
+      const [observed] = await Promise.allSettled([
+        run(),
+        (async () => {
+          for (let tick = 0; tick < ticks; tick += 1) await lstat(copy);
+          // Synchronously, so no call of the operation is scheduled between the two steps and
+          // the swap is one-way and clean: the root is the store, then the link.
+          renameSync(root, moved);
+          symlinkSync(copy, root);
+        })(),
+      ]);
+
+      // Where did the side effect land?
+      const escaped =
+        operation === 'write'
+          ? await at(copy, fresh)
+          : operation === 'publish'
+            ? await at(copy, final)
+            : operation === 'delete' || operation === 'republish'
+              ? !(await at(copy, temporary))
+              : false;
+      const inside =
+        operation === 'write'
+          ? await at(moved, fresh)
+          : operation === 'publish'
+            ? await at(moved, final)
+            : operation === 'delete' || operation === 'republish'
+              ? !(await at(moved, temporary))
+              : true;
+      if (observed.status === 'rejected') {
+        const reason = observed.reason as NodeJS.ErrnoException;
+        return `error ${reason.code ?? reason.name}${escaped ? ' (escaped)' : ''}`;
+      }
+      if (escaped || observed.value === 'copy') return 'SILENT ESCAPE';
+      if (!inside) return 'SILENT NO-OP';
+      return 'success in the real store';
+    }
+
+    const outcomes: Record<string, Record<string, number>> = {};
+    for (const operation of ['write', 'publish', 'republish', 'delete', 'stat', 'open'] as const) {
+      const counts: Record<string, number> = {};
+      // A delete's and a body read's window through the link is one or two calls wide, so
+      // those two are tried three times per delay.
+      const repeats = operation === 'delete' || operation === 'open' ? 3 : 1;
+      for (let ticks = 0; ticks <= 150; ticks += 1) {
+        for (let repeat = 0; repeat < repeats; repeat += 1) {
+          const outcome = await attempt(operation, ticks);
+          counts[outcome] = (counts[outcome] ?? 0) + 1;
+        }
+      }
+      outcomes[operation] = counts;
+    }
+    const silent = Object.entries(outcomes).filter(
+      ([, counts]) => (counts['SILENT ESCAPE'] ?? 0) + (counts['SILENT NO-OP'] ?? 0) > 0,
+    );
+    expect(silent, JSON.stringify(outcomes)).toEqual([]);
+    // The sweep covered both sides: some swaps landed inside operations, some after them.
+    const total = (label: string) =>
+      Object.values(outcomes).reduce((sum, counts) => sum + (counts[label] ?? 0), 0);
+    expect(total('success in the real store'), JSON.stringify(outcomes)).toBeGreaterThan(0);
+    const errors = Object.values(outcomes).reduce(
+      (sum, counts) =>
+        sum +
+        Object.entries(counts)
+          .filter(([label]) => label.startsWith('error'))
+          .reduce((inner, [, count]) => inner + count, 0),
+      0,
+    );
+    expect(errors, JSON.stringify(outcomes)).toBeGreaterThan(0);
+  }, 120_000);
 });

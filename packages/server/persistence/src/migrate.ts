@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
 const migrationFiles = [
   '001_foundation.sql',
@@ -55,34 +55,70 @@ const migrationFiles = [
 // onto the array migrate() applies from. Review measured that (length 41 -> 42).
 export const migrationFileNames: readonly string[] = Object.freeze([...migrationFiles]);
 
+/**
+ * Run a grant helper's revoke-and-regrant as one transaction on one connection (M2-01o).
+ *
+ * Narrowing a table-level grant to columns has a forced order — revoking at table level also
+ * revokes the column grants, so the REVOKE must come first — and as separate autocommit
+ * statements that order leaves a moment in which the role holds neither. The helpers are run
+ * against live databases (re-running them is how a database an older helper touched is
+ * repaired), so every runtime statement landing in that moment failed with `42501`: measured,
+ * 223–283 failed probes per 150 re-runs of `grantActivityTracks`. GRANT and REVOKE are
+ * transactional in PostgreSQL, and a concurrent statement checks privileges against the
+ * committed ACL, so inside one transaction the role goes from the old grant to the new one
+ * with nothing in between. A failure part-way rolls back to the old grant.
+ */
+async function inOneGrantTransaction(
+  pool: Pool,
+  work: (client: PoolClient) => Promise<void>,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await work(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
-  await pool.query(
+  await inOneGrantTransaction(pool, (client) =>
+    grantSafeResourceUrlReadColumnsIn(client, runtimeRole),
+  );
+}
+
+async function grantSafeResourceUrlReadColumnsIn(client: PoolClient, runtimeRole: string) {
+  await client.query(
     `REVOKE SELECT ON resource_url_ingestion,resource_url_ingestion_attempt,resource_url_fetch_hop,
      resource_url_artifact,resource_url_provenance,resource_url_locator FROM "${runtimeRole}"`,
   );
-  await pool.query(
+  await client.query(
     `GRANT SELECT(athlete_id,request_id,idempotency_key,request_digest,operation,resource_id,version_id,
        expected_current_version_id,display_url,title,category,metadata,tags,favorite,state,failure_code,
        failure_phase,failure_retryable,failed_at,retry_at,attempt_count,parser_name,parser_version,
        created_at,updated_at,expires_at,finalized_at) ON resource_url_ingestion TO "${runtimeRole}"`,
   );
-  await pool.query(
+  await client.query(
     `GRANT SELECT(athlete_id,request_id,attempt_no,phase,status,failure_code,started_at,completed_at)
        ON resource_url_ingestion_attempt TO "${runtimeRole}"`,
   );
-  await pool.query(
+  await client.query(
     `GRANT SELECT(athlete_id,request_id,attempt_no,hop_index,display_url,response_status,policy_version,observed_at)
        ON resource_url_fetch_hop TO "${runtimeRole}"`,
   );
-  await pool.query(
+  await client.query(
     `GRANT SELECT(athlete_id,artifact_id,resource_id,version_id,request_id,kind,content_hash,size_bytes,
        media_type,derived_from_artifact_id,created_at) ON resource_url_artifact TO "${runtimeRole}"`,
   );
-  await pool.query(
+  await client.query(
     `GRANT SELECT(athlete_id,resource_id,version_id,request_id,successful_attempt_no,display_url,
        final_display_url,fetch_policy_version,fetched_at) ON resource_url_provenance TO "${runtimeRole}"`,
   );
-  await pool.query(`GRANT SELECT ON resource_url_locator TO "${runtimeRole}"`);
+  await client.query(`GRANT SELECT ON resource_url_locator TO "${runtimeRole}"`);
 }
 
 /** Run with deployment credentials; runtime credentials receive only table DML grants. */
@@ -777,11 +813,15 @@ export async function grantActivityTracks(
     // Revoke first: an older helper gave whole-row INSERT, and a GRANT alone would leave it in
     // place, so re-running this helper is what repairs a database an older one touched. The
     // order matters — revoking table-level INSERT also revokes the column-level grants.
-    await pool.query(`REVOKE INSERT ON activity_track_object_ref FROM "${runtimeRole}"`);
-    await pool.query(
-      `GRANT SELECT,INSERT(storage_ref,athlete_id,recorded_at) ON activity_track_object_ref
-       TO "${runtimeRole}"`,
-    );
+    // Both in one transaction (M2-01o): as two autocommit statements, the runtime held no
+    // INSERT at all between them and M2-01c's reference records failed with 42501.
+    await inOneGrantTransaction(pool, async (client) => {
+      await client.query(`REVOKE INSERT ON activity_track_object_ref FROM "${runtimeRole}"`);
+      await client.query(
+        `GRANT SELECT,INSERT(storage_ref,athlete_id,recorded_at) ON activity_track_object_ref
+         TO "${runtimeRole}"`,
+      );
+    });
     await pool.query(
       `GRANT UPDATE(track_revision,revision_id,updated_at) ON activity_track TO "${runtimeRole}"`,
     );

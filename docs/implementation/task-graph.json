@@ -1162,7 +1162,8 @@
       "title": "공유 저장소 루트 경로 가드와 grant 헬퍼 원자성",
       "dependsOn": ["M2-01n"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01o.md",
       "scope": "M2-01n 독립 검토에서 분리했다. 모두 M2-01n 이전부터 있던 성질이다. (1) 참조 경로 검증(assertSafeExistingFile)이 canonicalRoot 아래 성분만 lstat하고 루트 자체는 커널이 따라가므로, 실행 도중 저장소 루트가 symlink로 바뀌면 참조 stat이 오류가 아니라 null(부재)을 답한다. 전부-실패 검사가 발화하지 않고 settle이 호출되지만 DB settle 하한(7일·원장 없음·살아 있는 upload 없음)이 reclaim까지 막으므로 결과는 삭제가 아니라 누수다. 검토자 권고: 참조를 걸을 때마다 루트 자체를 lstat한다. assertReachable의 access()가 핸들을 닫은 뒤 경로로 호출돼 symlink를 따라가는 작은 창도 여기에 포함된다. (2) grantActivityTracks의 REVOKE INSERT와 열 단위 GRANT가 별도 autocommit이라 운영 DB에서 헬퍼를 돌리면 수 ms 동안 M2-01c 기록이 42501로 실패할 수 있다 — 한 transaction으로 묶는다. (3) assertReachable 주석의 'stat이 필요로 하는 search와 read'는 부정확하다(stat은 search만 필요, 0o100 루트에서 stat은 성공하지만 assertReachable은 EACCES로 거절 — 보수적 쪽 오류). isSymbolicLink() 항은 !isDirectory()가 이미 거절하므로 중복이다."
     },
     {
