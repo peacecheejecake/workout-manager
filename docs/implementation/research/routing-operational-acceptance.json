@@ -27,34 +27,13 @@
     }
   },
   "timingsMilliseconds": {
-    "engine-start-A": [
-      1236,
-      1164
-    ],
-    "engine-rss-mib-after-start-A": [
-      270,
-      273
-    ],
-    "direct-route": [
-      87
-    ],
-    "course-proposal": [
-      22,
-      15,
-      75,
-      15,
-      77,
-      20
-    ],
-    "candidate-search": [
-      111
-    ],
-    "engine-start-B": [
-      1157
-    ],
-    "engine-rss-mib-after-start-B": [
-      273
-    ]
+    "engine-start-A": [1236, 1164],
+    "engine-rss-mib-after-start-A": [270, 273],
+    "direct-route": [87],
+    "course-proposal": [22, 15, 75, 15, 77, 20],
+    "candidate-search": [111],
+    "engine-start-B": [1157],
+    "engine-rss-mib-after-start-B": [273]
   },
   "checks": [
     {
