@@ -1136,8 +1136,17 @@
       "title": "썸네일 객체 reconciliation 스윕",
       "dependsOn": ["M2-01l"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01m.md",
       "scope": "M2-01l에서 분리했다. 계획 7절이 요구하는 기존 durable cleanup 패턴에는 M2-01c의 영속 ref 색인 + keyset 스윕이 포함되는데 썸네일에는 대응물이 없다. 독립 검토가 구멍을 재현했다: fence 경과 후 1시간을 넘겨 잠든 writer가 깨어나 publish하면 고아 객체가 영구히 남는다(reaper·prune·cleanup 재실행해도 0건 회수). 살아 있는 그림을 덮어쓰거나 회수된 key를 되살리지는 못하고, 계정 말소는 fence 재장전으로 결국 회수되므로 노출 경로는 없다. 남는 바이트는 0-100으로 정규화된 형태뿐이어서 절대 위치가 복원되지 않는다."
+    },
+    {
+      "id": "M2-01n",
+      "title": "공유 저장소 디렉터리 경합과 스윕 dead-letter",
+      "dependsOn": ["M2-01l", "M2-01m"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "두 건을 함께 다룬다. (1) `pruneEmptyParents`가 공유 디렉터리를 비우는 동안 `prepareParents`의 mkdir·lstat·chmod가 터진다. 독립 검토가 M2-01l 시대 연산만으로 재현했다(형제 임시 객체 write/delete 400쌍 → 800 연산 중 269건 실패: ENOENT@mkdir 116, ENOENT@lstat 81, ENOENT@chmod 38, EINVAL@mkdir 34). M2-01m 코드 경로가 하나도 없으므로 이 노드가 원인이 아니며 빈도만 올린다. 쓰기 실패는 재시도 5회 안에서 흡수되고 소진되면 abandoned로 화면이 선을 직접 그리므로 데이터 손실·과잉 삭제·privacy 실패가 아니지만, gallery·track·resource가 같은 prepareParents/pruneEmptyParents를 공유하므로 blast radius가 썸네일보다 넓다. 수정에는 mkdir의 EINVAL을 무엇으로 볼지와 재시도 정책 결정이 필요하다. 검토자 제안: 가장 좁은 봉쇄는 구조적으로 공유인 층(tenant/course 레벨) 디렉터리를 pruneEmptyParents가 아예 지우지 않게 하는 것이며 재시도 정책보다 결정 범위가 작다. (2) reconciliation 스윕에 참조 단위 오류 격리와 dead-letter가 없다. 항상 오류를 올리는 참조(영구 EACCES 디렉터리, 감시 경로에 심어진 symlink → UnsafeStoragePathError)를 만나면 스윕이 그 창에 영구히 걸려 커서가 전진하지 않고 매 tick prune 다섯 개가 건너뛰어진다. 계획 7절의 dead-letter는 cleanup 큐에는 충족되지만 스윕 자체에는 없다. 기존 track 스윕과 같은 모양이므로 M2-01m이 들인 것은 아니다."
     },
     {
       "id": "M2-01k",

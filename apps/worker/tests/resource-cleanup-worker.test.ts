@@ -38,6 +38,11 @@ function setup(input: {
   candidates?: readonly string[];
   statResult?: unknown;
   settled?: boolean;
+  thumbnailSweepFailure?: Error;
+  thumbnailCandidates?: readonly string[];
+  thumbnailStatResult?: unknown;
+  thumbnailReclaimQueued?: boolean;
+  thumbnailSettled?: boolean;
 }) {
   const deleteObject = input.deleteFailure
     ? vi.fn(async () => Promise.reject(input.deleteFailure))
@@ -55,6 +60,13 @@ function setup(input: {
     reconcileCandidates: vi.fn(async () => input.candidates ?? []),
     settleTrackObjectRef: vi.fn(async () => input.settled ?? false),
     reclaimUnreferencedTrackObject: vi.fn(async () => input.reclaimQueued ?? false),
+    thumbnailReconcileCursor: vi.fn(async () => ''),
+    advanceThumbnailReconcileCursor: vi.fn(async () => undefined),
+    thumbnailReconcileCandidates: input.thumbnailSweepFailure
+      ? vi.fn(async () => Promise.reject(input.thumbnailSweepFailure))
+      : vi.fn(async () => input.thumbnailCandidates ?? []),
+    settleThumbnailObjectRef: vi.fn(async () => input.thumbnailSettled ?? false),
+    reclaimUnreferencedThumbnailObject: vi.fn(async () => input.thumbnailReclaimQueued ?? false),
     lease: vi.fn(async () => input.leased ?? null),
     authorize: vi.fn(async (leased) =>
       input.authorized === undefined ? leased : input.authorized,
@@ -69,7 +81,14 @@ function setup(input: {
     writeTemporary: notUsed,
     publishTemporary: notUsed,
     open: notUsed,
-    stat: vi.fn(async () => (input.statResult ?? null) as never),
+    // Each namespace's window has its own store answer, so one sweep's arrangement cannot
+    // silently decide the other's outcome.
+    stat: vi.fn(
+      async (key: string) =>
+        ((input.thumbnailCandidates ?? []).includes(key)
+          ? (input.thumbnailStatResult ?? null)
+          : (input.statResult ?? null)) as never,
+    ),
     delete: deleteObject,
   };
   const derivedRepository: ResourceDerivedCleanupRepository = {
@@ -137,6 +156,72 @@ describe('resource object cleanup worker', () => {
     // An absent object is offered for settling instead; the database decides.
     expect(repository.settleTrackObjectRef).toHaveBeenCalledWith(absent);
     expect(result.trackReconciliation).toEqual({ inspected: 1, queued: 0, wrapped: true });
+  });
+
+  it('sweeps the thumbnail namespace in its own bounded window, with its own cursor', async () => {
+    const thumbnailKey =
+      'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa/courses/4d6cc1ce-0643-4c53-b055-9df458fec594/thumbnails/revisions/db985aaa-b96e-4aef-871a-c99a16183439/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.svg';
+    const { dependencies, repository, storage } = setup({
+      thumbnailCandidates: [thumbnailKey],
+      thumbnailReclaimQueued: true,
+      thumbnailStatResult: { key: thumbnailKey, sizeBytes: 298, modifiedAt: new Date(0) },
+    });
+    const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+    expect(repository.thumbnailReconcileCandidates).toHaveBeenCalledWith('', 200);
+    expect(storage.stat).toHaveBeenCalledWith(thumbnailKey);
+    expect(repository.reclaimUnreferencedThumbnailObject).toHaveBeenCalledWith(thumbnailKey);
+    expect(result.thumbnailReconciliation).toEqual({ inspected: 1, queued: 1, wrapped: true });
+    expect(repository.advanceThumbnailReconcileCursor).toHaveBeenCalledWith('');
+    // The two namespaces are swept independently: neither cursor nor budget is shared.
+    expect(repository.reclaimUnreferencedTrackObject).not.toHaveBeenCalled();
+  });
+
+  it('offers an absent thumbnail reference for settling instead of queueing a deletion', async () => {
+    const absent =
+      'private/v1/tenants/a1d6ca43-36eb-4e86-8e31-e4e75afab3fa/courses/4d6cc1ce-0643-4c53-b055-9df458fec594/thumbnails/temporary/db985aaa-b96e-4aef-871a-c99a16183439';
+    const { dependencies, repository } = setup({
+      thumbnailCandidates: [absent],
+      thumbnailStatResult: null,
+    });
+    const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+    expect(repository.reclaimUnreferencedThumbnailObject).not.toHaveBeenCalled();
+    expect(repository.settleThumbnailObjectRef).toHaveBeenCalledWith(absent);
+    expect(result.thumbnailReconciliation).toEqual({ inspected: 1, queued: 0, wrapped: true });
+  });
+
+  it('lets a sweep failure end the run rather than reporting a sweep that did not happen', async () => {
+    // A deliberate absence of `catch`. The sweep reads a real object store, and the errors it
+    // can raise are the ones that must not be swallowed: `UnsafeStoragePathError` is the
+    // symlink guard firing, and EACCES/EIO mean the store is not answering. Turning any of
+    // those into "swept nothing, all clear" is this repository's recurring "treat an error as
+    // a known outcome" defect, so the run fails and says so.
+    //
+    // What that costs is bounded, and this test is what fixes the cost rather than leaving it
+    // as a claim: the deletion the user actually asked for has already happened, and only the
+    // idempotent housekeeping is skipped — it runs again on the next tick, and the cursor not
+    // advancing means the same window is retried, which is the correct resume.
+    const { dependencies, repository, derivedRepository, deleteObject } = setup({
+      leased: lease,
+      thumbnailSweepFailure: new Error('EACCES: permission denied'),
+    });
+
+    await expect(
+      runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+    ).rejects.toThrow('EACCES');
+
+    // Already done before the sweep: the withdrawal this worker exists for.
+    expect(deleteObject).toHaveBeenCalledWith(storageRef);
+    expect(repository.finish).toHaveBeenCalledWith(lease, { ok: true }, expect.any(Date));
+    // Skipped, and safe to skip: bounded housekeeping and the cursor advance.
+    expect(repository.pruneUploadHistory).not.toHaveBeenCalled();
+    expect(repository.pruneCourseThumbnailHistory).not.toHaveBeenCalled();
+    expect(repository.pruneCleanupHistory).not.toHaveBeenCalled();
+    expect(derivedRepository.pruneHistory).not.toHaveBeenCalled();
+    expect(derivedRepository.pruneRetrievalCache).not.toHaveBeenCalled();
+    expect(repository.advanceThumbnailReconcileCursor).not.toHaveBeenCalled();
+    // The pools are still released.
+    expect(repository.close).toHaveBeenCalledTimes(1);
+    expect(derivedRepository.close).toHaveBeenCalledTimes(1);
   });
 
   it('returns an empty one-shot result without attempting deletion or finish', async () => {

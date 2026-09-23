@@ -41,6 +41,7 @@ const migrationFiles = [
   '036_course_target_distance_candidates.sql',
   '037_course_preferences_and_privacy_zones.sql',
   '038_course_thumbnails.sql',
+  '039_course_thumbnail_reconciliation.sql',
 ] as const;
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
@@ -502,7 +503,12 @@ export async function grantResourceObjectCleanupWorker(
        public.purge_resource_derived_store(uuid,uuid,text),
        public.prune_resource_retrieval_cache(integer),
        public.reap_course_thumbnail_renders(integer),
-       public.prune_course_thumbnail_history(integer)
+       public.prune_course_thumbnail_history(integer),
+       public.course_thumbnail_reconcile_cursor(),
+       public.advance_course_thumbnail_reconcile_cursor(text),
+       public.course_thumbnail_reconcile_candidates(text,integer),
+       public.settle_course_thumbnail_object_ref(text),
+       public.reclaim_unreferenced_course_thumbnail_object(text)
        TO "${workerRole}"`,
     );
   } finally {

@@ -19,6 +19,12 @@ export interface ResourceObjectCleanupRepository {
   settleTrackObjectRef(storageRef: string): Promise<boolean>;
   /** Queues one track object the ledger does not account for. */
   reclaimUnreferencedTrackObject(storageRef: string): Promise<boolean>;
+  /** The same surface, for the course-thumbnail namespace (M2-01m). Its own cursor. */
+  thumbnailReconcileCursor(): Promise<string>;
+  advanceThumbnailReconcileCursor(key: string): Promise<void>;
+  thumbnailReconcileCandidates(cursor: string, limit: number): Promise<readonly string[]>;
+  settleThumbnailObjectRef(storageRef: string): Promise<boolean>;
+  reclaimUnreferencedThumbnailObject(storageRef: string): Promise<boolean>;
   /**
    * Course thumbnail renders that stopped being drained (M2-01l): a lease that expired
    * mid-attempt gets another attempt, a render past its own deadline is abandoned. Both
@@ -98,6 +104,41 @@ export function createResourceObjectCleanupRepository(options: {
     async reclaimUnreferencedTrackObject(storageRef) {
       const result = await pool.query(
         'SELECT public.reclaim_unreferenced_activity_track_object($1) AS queued',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['queued'] === true;
+    },
+    async thumbnailReconcileCursor() {
+      const result = await pool.query(
+        'SELECT public.course_thumbnail_reconcile_cursor() AS cursor',
+      );
+      return z
+        .string()
+        .max(512)
+        .parse(result.rows[0]?.['cursor'] ?? '');
+    },
+    async advanceThumbnailReconcileCursor(key) {
+      await pool.query('SELECT public.advance_course_thumbnail_reconcile_cursor($1)', [
+        z.string().max(512).parse(key),
+      ]);
+    },
+    async thumbnailReconcileCandidates(cursor, limit) {
+      const result = await pool.query(
+        'SELECT storage_ref FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        [z.string().max(512).parse(cursor), z.number().int().min(1).max(1000).parse(limit)],
+      );
+      return result.rows.map((row) => z.string().min(1).max(512).parse(row['storage_ref']));
+    },
+    async settleThumbnailObjectRef(storageRef) {
+      const result = await pool.query(
+        'SELECT public.settle_course_thumbnail_object_ref($1) AS settled',
+        [z.string().min(1).max(512).parse(storageRef)],
+      );
+      return result.rows[0]?.['settled'] === true;
+    },
+    async reclaimUnreferencedThumbnailObject(storageRef) {
+      const result = await pool.query(
+        'SELECT public.reclaim_unreferenced_course_thumbnail_object($1) AS queued',
         [z.string().min(1).max(512).parse(storageRef)],
       );
       return result.rows[0]?.['queued'] === true;
@@ -220,6 +261,50 @@ export async function reconcileActivityTrackObjects(
   // nothing stays unvisited because it sorts before the cursor.
   const next = candidates.length === boundedLimit && last !== undefined ? last : '';
   await repository.advanceReconcileCursor(next);
+  return { inspected: candidates.length, queued, wrapped: next === '' };
+}
+
+/**
+ * Compare the thumbnail reference index against the object store and queue whatever nothing
+ * accounts for (M2-01m).
+ *
+ * This is the part of M2-01l's guarantee that does not depend on a receipt still being open.
+ * A render that resumes after its lease, its publication fence and the fence's grace have all
+ * passed publishes an object whose every receipt is already closed; nothing receipt-based will
+ * look at that key again. Reproduced on real PostgreSQL before this was written, and the
+ * reproduction is an integration test.
+ *
+ * What is bounded, exactly: one run reads at most `limit` rows from the reference index — an
+ * index range scan over a keyset window, resumed from a stored cursor — and performs at most
+ * one `stat` and one bounded statement per row. No directory is walked and no ledger table is
+ * scanned. Reaching the end of the index resets the cursor, so the next run starts again from
+ * the beginning.
+ *
+ * It is deliberately the same shape as `reconcileActivityTrackObjects` rather than a merged
+ * pass over both indexes: each namespace keeps its own cursor, so neither sweep's progress can
+ * starve or skip the other's.
+ */
+export async function reconcileCourseThumbnailObjects(
+  repository: ResourceObjectCleanupRepository,
+  storage: { stat(key: never): Promise<unknown> },
+  limit = 200,
+): Promise<TrackReconciliationOutcome> {
+  const boundedLimit = z.number().int().min(1).max(1000).parse(limit);
+  const cursor = await repository.thumbnailReconcileCursor();
+  const candidates = await repository.thumbnailReconcileCandidates(cursor, boundedLimit);
+  let queued = 0;
+  for (const reference of candidates) {
+    if ((await storage.stat(reference as never)) === null) {
+      // Absent, and possibly absent for good: the database decides whether any render could
+      // still create it and stops watching only then.
+      await repository.settleThumbnailObjectRef(reference);
+      continue;
+    }
+    if (await repository.reclaimUnreferencedThumbnailObject(reference)) queued += 1;
+  }
+  const last = candidates.at(-1);
+  const next = candidates.length === boundedLimit && last !== undefined ? last : '';
+  await repository.advanceThumbnailReconcileCursor(next);
   return { inspected: candidates.length, queued, wrapped: next === '' };
 }
 

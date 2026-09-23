@@ -45,6 +45,7 @@ import { createOperationsRepository, type OperationsRepository } from '../src/op
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
+  reconcileCourseThumbnailObjects,
   type ResourceObjectCleanupRepository,
 } from '../src/resource-object-cleanup.js';
 
@@ -375,6 +376,109 @@ async function drainCleanup(): Promise<number> {
     drained += 1;
   }
   throw new Error('the cleanup queue did not drain');
+}
+
+/**
+ * Drive the M2-01m sweep deterministically: the cursor is parked immediately before the
+ * reference under test, so one bounded window examines exactly that reference regardless of
+ * what any other test left in the global index. A window that comes back empty means the
+ * reference stopped being watched, which is itself an outcome worth asserting.
+ */
+async function sweepThumbnailReference(reference: string) {
+  await cleanup.advanceThumbnailReconcileCursor(reference.slice(0, -1));
+  // A window of one that comes back full does not wrap: the cursor advances to this
+  // reference, which is asserted directly in the reproduction below.
+  return reconcileCourseThumbnailObjects(cleanup, storage, 1);
+}
+
+/** Take a render as far as `prepared`, without publishing anything. */
+async function preparedRender(courseId: string) {
+  const lease = await leaseFor(courseId);
+  const drawn = renderCourseThumbnail(lease.coordinates);
+  const temporaryKey = createCourseThumbnailTemporaryObjectKey({
+    tenantId: lease.athleteId,
+    courseId: lease.courseId,
+    jobId: lease.jobId,
+  });
+  const finalKey = createCourseThumbnailFinalObjectKey({
+    tenantId: lease.athleteId,
+    courseId: lease.courseId,
+    revisionId: lease.revisionId,
+    sha256: drawn.sha256,
+  });
+  const prepared = await renderer.prepare(lease, {
+    storageRef: finalKey,
+    sha256: drawn.sha256,
+    byteSize: drawn.byteSize,
+    vertexCount: drawn.vertexCount,
+  });
+  if (!prepared) throw new Error('preparation was refused');
+  return { lease, drawn, temporaryKey, finalKey };
+}
+
+/**
+ * The two storage calls of a writer that is past every gate: exactly what a render that
+ * resumed after its lease, its fence and the fence's grace had all expired would do, because
+ * no gate can reach a call that is already in flight.
+ */
+async function publishDrawn(
+  temporaryKey: ReturnType<typeof createCourseThumbnailTemporaryObjectKey>,
+  finalKey: ReturnType<typeof createCourseThumbnailFinalObjectKey>,
+  drawn: ReturnType<typeof renderCourseThumbnail>,
+) {
+  await storage.writeTemporary(
+    temporaryKey,
+    (async function* () {
+      yield drawn.bytes;
+    })(),
+  );
+  await storage.publishTemporary(temporaryKey, finalKey, {
+    sha256: drawn.sha256,
+    sizeBytes: drawn.byteSize,
+  });
+}
+
+/** Push one render's lease, fence and deadline into the past, as a real stall would. */
+async function stallRender(jobId: string, hours: number) {
+  await admin.query(
+    `UPDATE course_thumbnail
+       SET created_at=clock_timestamp()-make_interval(hours=>$2+1),
+           updated_at=clock_timestamp()-make_interval(hours=>$2+1),
+           lease_until=clock_timestamp()-make_interval(hours=>$2),
+           publication_lease_until=clock_timestamp()-make_interval(hours=>$2),
+           expires_at=clock_timestamp()-make_interval(hours=>$2)
+     WHERE job_id=$1`,
+    [jobId, hours],
+  );
+}
+
+/** Age a closed render past the seven days `prune_course_thumbnail_history` waits. */
+async function ageClosedRender(jobId: string, days: number) {
+  await admin.query(
+    `UPDATE course_thumbnail
+       SET created_at=clock_timestamp()-make_interval(days=>$2+1),
+           expires_at=clock_timestamp()-make_interval(days=>$2)-interval '1 hour',
+           publication_lease_until=clock_timestamp()-make_interval(days=>$2)-interval '2 hours',
+           updated_at=clock_timestamp()-make_interval(days=>$2)
+     WHERE job_id=$1`,
+    [jobId, days],
+  );
+}
+
+async function pendingCleanupRows(storageRef: string): Promise<number> {
+  const rows = await admin.query(
+    'SELECT count(*)::int AS total FROM resource_object_cleanup WHERE storage_ref=$1 AND completed_at IS NULL',
+    [storageRef],
+  );
+  return Number(rows.rows[0]?.['total']);
+}
+
+async function watchedRef(storageRef: string) {
+  const rows = await admin.query(
+    'SELECT athlete_id,recorded_at,settled_at FROM course_thumbnail_object_ref WHERE storage_ref=$1',
+    [storageRef],
+  );
+  return rows.rows[0] ?? null;
 }
 
 describe('M2-01l stored course thumbnails', () => {
@@ -802,6 +906,10 @@ describe('M2-01l stored course thumbnails', () => {
           await processOneResourceObjectCleanup(cleanup, (storageRef) =>
             storage.delete(validateObjectKey(storageRef)),
           );
+          // M2-01m's sweep is a new writer of the shared cleanup queue and of the reference
+          // index, and it runs under no advisory lock at all. It belongs in this contention
+          // rather than beside it.
+          await reconcileCourseThumbnailObjects(cleanup, storage, 5);
         } catch (error) {
           record(error);
         }
@@ -1412,5 +1520,361 @@ describe('M2-01l stored course thumbnails', () => {
     const artifact = await operations.exportAccount(athlete);
     if (artifact.schemaVersion !== 21) throw new Error('expected the current export version');
     expect(artifact.data.courseThumbnails).toEqual([]);
+  });
+});
+
+describe('M2-01m thumbnail object reconciliation', () => {
+  it('reclaims an object a stalled render published after every receipt for it closed', async () => {
+    // The hole M2-01l left, reproduced here before it is closed. A render prepares, then
+    // stalls for three hours — past its lease, past its publication fence, and past the
+    // hour-long grace the queued receipt holds its key back for.
+    const { athlete, course } = await athleteWithCourse('Stalled writer');
+    const render = await preparedRender(course.course.courseId);
+    expect(await watchedRef(render.finalKey)).toMatchObject({ athlete_id: athlete });
+    await stallRender(render.lease.jobId, 3);
+
+    // The reaper abandons the render and queues both of its references; the queue drains
+    // them; the render's row is now closed and every receipt naming its key is completed.
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    const closed = await admin.query(
+      'SELECT completed_at IS NOT NULL AS completed FROM resource_object_cleanup WHERE storage_ref=$1',
+      [render.finalKey],
+    );
+    expect(closed.rows[0]?.['completed']).toBe(true);
+
+    // Now the writer wakes up and finishes the two storage calls it was in the middle of.
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    expect(await storage.stat(validateObjectKey(render.finalKey))).not.toBeNull();
+
+    // This is the measured failure: re-running every receipt-based path reclaims nothing.
+    await cleanup.reapCourseThumbnailRenders(100);
+    await cleanup.pruneCourseThumbnailHistory(100);
+    await drainCleanup();
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+    expect(await storage.stat(validateObjectKey(render.finalKey))).not.toBeNull();
+
+    // The sweep is the path that does not depend on a receipt being open. One bounded
+    // window, one reference, one deletion queued.
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({
+      inspected: 1,
+      queued: 1,
+    });
+    expect(await pendingCleanupRows(render.finalKey)).toBe(1);
+    // The window was full, so the sweep resumes after this reference rather than restarting.
+    expect(await cleanup.thumbnailReconcileCursor()).toBe(render.finalKey);
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+  });
+
+  it('still finds the orphan after housekeeping deleted the ledger row that named it', async () => {
+    // Why the index is a table of its own rather than a scan of `course_thumbnail`: the row
+    // that carries the reference is deleted seven days after its receipts close, and the
+    // whole table cascades away when the course goes. The index outlives both.
+    const { athlete, course } = await athleteWithCourse('Pruned row');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    await ageClosedRender(render.lease.jobId, 8);
+    await cleanup.pruneCourseThumbnailHistory(100);
+    const rows = await admin.query(
+      'SELECT count(*)::int AS total FROM course_thumbnail WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(rows.rows[0]?.['total']).toBe(0);
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 1 });
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+  });
+
+  it('never reclaims the picture a live course is still showing', async () => {
+    // The most dangerous failure this node could introduce. The sweep walks straight over a
+    // ready thumbnail's object and must leave it, and its bytes, alone.
+    const { athlete, course } = await athleteWithCourse('Live picture');
+    const rendered = await renderedFor(course.course.courseId);
+    expect(rendered.outcome).toBe('ready');
+    expect(await sweepThumbnailReference(rendered.storageRef)).toMatchObject({
+      inspected: 1,
+      queued: 0,
+    });
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(rendered.storageRef))).not.toBeNull();
+    const resolved = await courses.resolveThumbnailObject(athlete, course.course.courseId);
+    expect(resolved?.storageRef).toBe(rendered.storageRef);
+    const state = await thumbnailState(athlete, course.course.courseId);
+    expect(state.status).toBe('ready');
+  });
+
+  it('leaves a published key alone while its render can still be publishing', async () => {
+    // A writer inside its fence has an object on the store that nothing references yet. That
+    // is not an orphan, and queueing it would delete a picture about to become live.
+    const { course } = await athleteWithCourse('Mid publication');
+    const render = await preparedRender(course.course.courseId);
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({
+      inspected: 1,
+      queued: 0,
+    });
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+    // And it stays a candidate, so the sweep comes back to it.
+    expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
+    expect(await renderer.finalize(render.lease)).toBe('ready');
+    expect(await storage.stat(validateObjectKey(render.finalKey))).not.toBeNull();
+  });
+
+  it('holds a closed render key back for the grace after its fence, then reclaims it', async () => {
+    // The grace is the same hour `queue_course_thumbnail_refs` holds a queued receipt back
+    // for, and for the same reason: neither gate can reach a storage call already in flight.
+    const { course } = await athleteWithCourse('Inside the grace');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    // Move the closed render's fence back inside the grace: minutes ago, not hours.
+    await admin.query(
+      `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '2 minutes'
+       WHERE job_id=$1`,
+      [render.lease.jobId],
+    );
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+    await admin.query(
+      `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '61 minutes'
+       WHERE job_id=$1`,
+      [render.lease.jobId],
+    );
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 1 });
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+  });
+
+  it('stops watching an absent reference only after seven days with every path closed', async () => {
+    const { course } = await athleteWithCourse('Settling');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    // Nothing was ever published, so the object is absent and no receipt is open.
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+    // Inside the seven days the reference keeps being watched: a writer can still resume.
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({
+      inspected: 1,
+      queued: 0,
+    });
+    expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
+    await admin.query(
+      `UPDATE course_thumbnail_object_ref SET recorded_at=clock_timestamp()-interval '8 days'
+       WHERE storage_ref=$1`,
+      [render.finalKey],
+    );
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
+    expect((await watchedRef(render.finalKey))?.['settled_at']).toBeInstanceOf(Date);
+    // Settled means out of the window: the candidate query no longer offers it at all.
+    expect(
+      await cleanup.thumbnailReconcileCandidates(render.finalKey.slice(0, -1), 1),
+    ).not.toContain(render.finalKey);
+  });
+
+  it('keeps watching a live picture whose object went missing, however old the reference', async () => {
+    // An object can disappear from the store without this server doing it. The reference is
+    // still live — the course is showing that picture — so the sweep must keep watching it
+    // rather than quietly forgetting a key the owner's course still names.
+    const { athlete, course } = await athleteWithCourse('Missing but live');
+    const rendered = await renderedFor(course.course.courseId);
+    await storage.delete(validateObjectKey(rendered.storageRef));
+    // Age the whole thing: the picture was drawn a month ago, so the render's own deadline
+    // and every lease of it are long past. Being the live picture is the only thing left
+    // keeping this reference in the window.
+    await admin.query(
+      `UPDATE course_thumbnail
+         SET created_at=clock_timestamp()-interval '30 days',
+             updated_at=clock_timestamp()-interval '30 days'+interval '1 hour',
+             ready_at=clock_timestamp()-interval '30 days'+interval '1 hour',
+             expires_at=clock_timestamp()-interval '30 days'+interval '1 hour'
+       WHERE storage_ref=$1`,
+      [rendered.storageRef],
+    );
+    await admin.query(
+      `UPDATE course_thumbnail_object_ref SET recorded_at=clock_timestamp()-interval '30 days'
+       WHERE storage_ref=$1`,
+      [rendered.storageRef],
+    );
+    expect(await sweepThumbnailReference(rendered.storageRef)).toMatchObject({ queued: 0 });
+    expect(await watchedRef(rendered.storageRef)).toMatchObject({ settled_at: null });
+    expect((await thumbnailState(athlete, course.course.courseId)).status).toBe('ready');
+  });
+
+  it('keeps watching an absent reference inside the grace after a closed render fence', async () => {
+    // Nothing was published and every receipt is closed, but the render's fence passed only
+    // minutes ago: a call already in flight can still create this object, so seven days of age
+    // is not enough to stop watching it.
+    const { course } = await athleteWithCourse('Absent inside the grace');
+    const render = await preparedRender(course.course.courseId);
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    await drainCleanup();
+    expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
+    expect(await pendingCleanupRows(render.finalKey)).toBe(0);
+    await admin.query(
+      `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '2 minutes'
+       WHERE job_id=$1`,
+      [render.lease.jobId],
+    );
+    await admin.query(
+      `UPDATE course_thumbnail_object_ref SET recorded_at=clock_timestamp()-interval '30 days'
+       WHERE storage_ref=$1`,
+      [render.finalKey],
+    );
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
+    expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
+    // Past the grace, with everything else closed, it settles.
+    await admin.query(
+      `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '61 minutes'
+       WHERE job_id=$1`,
+      [render.lease.jobId],
+    );
+    await sweepThumbnailReference(render.finalKey);
+    expect((await watchedRef(render.finalKey))?.['settled_at']).toBeInstanceOf(Date);
+  });
+
+  it('reports nothing queued for a key whose receipt is already open, and leaves it alone', async () => {
+    // The course is deleted while a render holds an open fence, so the receipt is queued with
+    // its availability an hour out. The object then appears. The sweep must not report this as
+    // something it queued, and must not pull the receipt's availability forward — doing so
+    // would let the drain delete the object out from under the writer still publishing it.
+    const { athlete, course } = await athleteWithCourse('Receipt already open');
+    const render = await preparedRender(course.course.courseId);
+    await courses.remove(athlete, course.course.courseId, 1);
+    await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
+    const before = await admin.query(
+      'SELECT available_at FROM resource_object_cleanup WHERE storage_ref=$1',
+      [render.finalKey],
+    );
+    expect(await pendingCleanupRows(render.finalKey)).toBe(1);
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
+    const after = await admin.query(
+      'SELECT available_at,reason FROM resource_object_cleanup WHERE storage_ref=$1',
+      [render.finalKey],
+    );
+    expect(after.rows[0]?.['available_at']).toEqual(before.rows[0]?.['available_at']);
+    expect(after.rows[0]?.['reason']).toBe('course_deleted');
+  });
+
+  it('keeps watching an aged reference whose render can still publish, or whose receipt is open', async () => {
+    const { course } = await athleteWithCourse('Aged but open');
+    const render = await preparedRender(course.course.courseId);
+    await admin.query(
+      `UPDATE course_thumbnail_object_ref SET recorded_at=clock_timestamp()-interval '30 days'
+       WHERE storage_ref IN ($1,$2)`,
+      [render.finalKey, render.temporaryKey],
+    );
+    // Age alone must not settle anything: this render is `prepared` and holds a live fence.
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ inspected: 1 });
+    expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
+    // Closing the render queues both keys, and an open receipt keeps the watch too.
+    await stallRender(render.lease.jobId, 3);
+    await cleanup.reapCourseThumbnailRenders(100);
+    expect(await pendingCleanupRows(render.finalKey)).toBe(1);
+    expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ inspected: 1 });
+    expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
+  });
+
+  it('reads exactly one index row per candidate and touches no ledger table', async () => {
+    // A window of N candidates must cost N rows. This measures what the database actually
+    // read inside one transaction, not what the plan looked like.
+    await athleteWithCourse('Bounded window');
+    const watched = await admin.query(
+      'SELECT count(*)::int AS count FROM course_thumbnail_object_ref WHERE settled_at IS NULL',
+    );
+    expect(watched.rows[0]?.['count']).toBeGreaterThan(5);
+    const client = await admin.connect();
+    try {
+      await client.query('BEGIN');
+      const counters = async () =>
+        (
+          await client.query<{ ledger: string; refs: string }>(
+            `SELECT
+               pg_stat_get_xact_tuples_returned('course_thumbnail'::regclass)
+                 +pg_stat_get_xact_tuples_fetched('course_thumbnail'::regclass) AS ledger,
+               pg_stat_get_xact_tuples_returned('course_thumbnail_object_ref'::regclass)
+                 +pg_stat_get_xact_tuples_fetched('course_thumbnail_object_ref'::regclass) AS refs`,
+          )
+        ).rows[0];
+      const before = await counters();
+      const window = await client.query(
+        'SELECT * FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        ['', 1],
+      );
+      const after = await counters();
+      await client.query('ROLLBACK');
+      expect(window.rows).toHaveLength(1);
+      const read = (key: 'ledger' | 'refs') =>
+        Number(after?.[key] ?? 0) - Number(before?.[key] ?? 0);
+      expect(read('ledger')).toBe(0);
+      expect(read('refs')).toBeLessThanOrEqual(1);
+    } finally {
+      client.release();
+    }
+    // The window size is clamped in the database, not trusted from the caller.
+    const clamped = await admin.query(
+      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+      ['', 100000],
+    );
+    expect(Number(clamped.rows[0]?.['total'])).toBeLessThanOrEqual(1000);
+    const atLeastOne = await admin.query(
+      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+      ['', 0],
+    );
+    expect(Number(atLeastOne.rows[0]?.['total'])).toBe(1);
+  });
+
+  it('gives the runtime role no reach into the reference index at all', async () => {
+    // The index is written by a trigger inside the database, so no role outside it needs a
+    // grant — and the runtime role, which owns every course write, has none.
+    const grants = await admin.query(
+      `SELECT count(*)::int AS total FROM information_schema.role_table_grants
+       WHERE table_name IN ('course_thumbnail_object_ref','course_thumbnail_reconcile_state')
+         AND grantee<>'workout_admin'`,
+    );
+    expect(Number(grants.rows[0]?.['total'])).toBe(0);
+    await expect(
+      database.tenant(randomUUID(), (tx) =>
+        tx.query('SELECT count(*) FROM course_thumbnail_object_ref'),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
+
+  it('removes the tenant reference index on erasure and keeps the erasure fence', async () => {
+    const { athlete, course } = await athleteWithCourse('Erased index');
+    const rendered = await renderedFor(course.course.courseId);
+    expect(await watchedRef(rendered.storageRef)).toMatchObject({ athlete_id: athlete });
+    await operations.eraseAccount(athlete);
+    expect(await watchedRef(rendered.storageRef)).toBeNull();
+    // The object is still queued, and the thirty-day erasure fence is what covers a late
+    // writer now that the index no longer watches this key.
+    const queued = await admin.query(
+      'SELECT reason,completed_at FROM resource_object_cleanup WHERE storage_ref=$1',
+      [rendered.storageRef],
+    );
+    expect(queued.rows[0]?.['reason']).toBe('account_erased');
+  });
+
+  it('adds no export surface: the index is internal operating state', async () => {
+    // M2-01l settled that a recomputable fact does not go into the export (v21); M2-01j that
+    // an owner-entered, non-recomputable one does (v20). This table is neither owner input
+    // nor user data: it is a worker's cursor over object keys, and the keys themselves are
+    // exactly what the export has always refused to carry. So the export is unchanged, and
+    // its version stays 21.
+    const { athlete, course } = await athleteWithCourse('Nothing to export');
+    const rendered = await renderedFor(course.course.courseId);
+    expect(await watchedRef(rendered.storageRef)).toMatchObject({ athlete_id: athlete });
+    const artifact = await operations.exportAccount(athlete);
+    expect(artifact.schemaVersion).toBe(21);
+    expect(JSON.stringify(artifact)).not.toContain(rendered.storageRef);
+    expect(JSON.stringify(artifact)).not.toContain('settled_at');
   });
 });

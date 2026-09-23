@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -440,5 +440,49 @@ describe('deleting an object does not leave its directories behind', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('answers absent, not an error, when a delete lands inside a concurrent stat', async () => {
+    // Several cleanup workers drain and sweep the same namespace at once — the queue is a
+    // lease plus `SKIP LOCKED` design — so one process reading a key while another deletes it
+    // is ordinary operation. Before the ENOENT guards in `assertSafeExistingFile`, that threw:
+    // measured on this filesystem, 2 of 5,000 sequential `stat`/`delete` pairs raised
+    // `ENOENT: … lstat` out of `stat`, and the M2-01m sweep made it a 4-in-8 failure of the
+    // course-thumbnail lock-order suite.
+    //
+    // The delete is deliberately delayed by a tuned number of filesystem operations so it
+    // lands inside the walk instead of before or after it; sweeping the delay covers the
+    // whole window. This test can under-detect on a differently-timed machine, but it can
+    // never fail spuriously: with the guard in place there is no input for which `stat`
+    // throws ENOENT.
+    const root = await newRoot();
+    const storage = await createLocalFilesystemObjectStorage(root);
+    const outcomes: string[] = [];
+    for (let ticks = 10; ticks <= 20; ticks += 1) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const key = createActivityTrackTemporaryObjectKey({
+          tenantId,
+          activityId: resourceId,
+          trackId: temporaryUploadId,
+          uploadId: randomUUID(),
+          artifactKind: 'raw',
+        });
+        await storage.writeTemporary(key, chunks('x'));
+        const path = resolve(root, ...String(key).split('/'));
+        const [observed] = await Promise.allSettled([
+          storage.stat(key),
+          (async () => {
+            for (let tick = 0; tick < ticks; tick += 1) await lstat(root);
+            await unlink(path);
+          })(),
+        ]);
+        outcomes.push(
+          observed.status === 'rejected'
+            ? `THREW ${(observed.reason as NodeJS.ErrnoException).code ?? 'UNKNOWN'}`
+            : 'answered',
+        );
+      }
+    }
+    expect(new Set(outcomes)).toEqual(new Set(['answered']));
   });
 });

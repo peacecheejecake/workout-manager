@@ -36,6 +36,32 @@ export class UnsafeStoragePathError extends Error {
   }
 }
 
+/**
+ * `lstat`, answering "not there" instead of throwing when the path has gone.
+ *
+ * Every reader of this store races every deleter of it: the cleanup worker is a lease plus
+ * `SKIP LOCKED` design, so several processes drain and sweep the same namespace at once, and
+ * `delete` prunes the directories above an object as well as the object itself. A reader
+ * walking a path while a deleter unlinks under it is normal operation, not an anomaly — and
+ * the truthful answer to "is this object there" in that moment is "no", not an exception.
+ *
+ * Reproduced on the real filesystem before this existed: 5,000 `stat`/`delete` pairs on the
+ * same key produced 2 `ENOENT: … lstat` throws out of `assertSafeExistingFile`, and driving
+ * the race deliberately (below, in the media tests) hits it on roughly a third of attempts.
+ *
+ * ONLY `ENOENT` is absorbed. `EACCES`, `ELOOP`, `EIO` and the rest still throw: this function
+ * sits inside the symlink and permission guard of `assertSafeExistingFile`, and turning any
+ * of those into "absent" would disable the guard silently instead of failing loudly.
+ */
+async function lstatIfPresent(path: string): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 async function missing(path: string): Promise<boolean> {
   try {
     await lstat(path);
@@ -92,13 +118,17 @@ export async function createLocalFilesystemObjectStorage(
     let current = canonicalRoot;
     for (const part of relativeParts) {
       current = resolve(current, part);
-      if (await missing(current)) return null;
-      const stat = await lstat(current);
+      // One `lstat`, not an existence probe followed by a second one: the gap between those
+      // two was itself the window a concurrent delete fell into.
+      const stat = await lstatIfPresent(current);
+      if (stat === null) return null;
       if (stat.isSymbolicLink()) throw new UnsafeStoragePathError();
       if (current !== path && !stat.isDirectory()) throw new UnsafeStoragePathError();
       if (current === path && !stat.isFile()) throw new UnsafeStoragePathError();
     }
-    return lstat(path);
+    // The walk proved this path safe a moment ago; a delete can still have landed since, and
+    // that makes the object absent rather than the call an error.
+    return lstatIfPresent(path);
   }
 
   async function objectStat(key: ObjectKey): Promise<StoredObjectStat | null> {
