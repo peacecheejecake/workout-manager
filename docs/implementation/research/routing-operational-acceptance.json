@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k",
-  "measuredAt": "2026-09-23T04:20:48.007Z",
+  "measuredAt": "2026-09-23T10:06:53.947Z",
   "what": "Production API composition (createConfiguredApi) against the self-hosted GraphHopper engine on loopback, fixture OIDC, isolated PostgreSQL. Not a coverage review.",
   "machine": {
     "label": "this machine (desktop), single caller",
@@ -27,13 +27,34 @@
     }
   },
   "timingsMilliseconds": {
-    "engine-start-A": [1101, 1127],
-    "engine-rss-mib-after-start-A": [265, 246],
-    "direct-route": [80],
-    "course-proposal": [21, 14, 63, 13, 85, 23],
-    "candidate-search": [108],
-    "engine-start-B": [1140],
-    "engine-rss-mib-after-start-B": [243]
+    "engine-start-A": [
+      1236,
+      1164
+    ],
+    "engine-rss-mib-after-start-A": [
+      270,
+      273
+    ],
+    "direct-route": [
+      87
+    ],
+    "course-proposal": [
+      22,
+      15,
+      75,
+      15,
+      77,
+      20
+    ],
+    "candidate-search": [
+      111
+    ],
+    "engine-start-B": [
+      1157
+    ],
+    "engine-rss-mib-after-start-B": [
+      273
+    ]
   },
   "checks": [
     {
@@ -89,7 +110,7 @@
     {
       "id": "candidates-real-engine-A",
       "passed": true,
-      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"c57f12f5975347e8\"],\"attemptsMade\":5,\"elapsedMilliseconds\":91,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
+      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"c57f12f5975347e8\"],\"attemptsMade\":5,\"elapsedMilliseconds\":94,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
     },
     {
       "id": "candidate-pick-saved-under-A",
@@ -124,7 +145,7 @@
     {
       "id": "cross-graph-save-needs-acknowledgement",
       "passed": true,
-      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"867a6e63-e0f"
+      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"1846b607-b99"
     },
     {
       "id": "acknowledged-save-on-B-appends",
@@ -167,13 +188,6 @@
       "detail": "status 502 engine_unavailable"
     }
   ],
-  "findings": [
-    {
-      "id": "iterative-recompute-refused-by-proposal-quota",
-      "requirement": "S14 edit loop (move a waypoint, recompute, review) and V2-A35 rapid successive waypoint edits",
-      "expected": "Each recompute of the latest draft succeeds; only the latest draft can be saved from the editor.",
-      "observed": "Six unsaved recomputes of one course within the 30 min TTL: 1:200:route_computed:16ms 2:200:route_computed:14ms 3:200:route_computed:13ms 4:200:route_computed:13ms 5:200:route_computed:23ms 6:429:ROUTE_PROPOSAL_QUOTA_EXCEEDED:12ms. The refusal comes after the engine computed the route. Unsaved siblings of a picked candidate also keep holding slots: 3 on the routed course."
-    }
-  ],
+  "findings": [],
   "result": "all_checks_passed"
 }

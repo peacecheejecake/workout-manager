@@ -227,6 +227,7 @@ function setup(
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
     storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),
+    assertRouteProposalRoom: vi.fn().mockResolvedValue(undefined),
     readRouteProposal: vi.fn().mockResolvedValue(null),
     storeRouteCandidateSet: vi.fn().mockRejectedValue(new Error('not used')),
     readRouteCandidate: vi.fn().mockResolvedValue(null),

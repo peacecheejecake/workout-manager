@@ -740,7 +740,9 @@ async function main() {
       throw new Error('SECOND_IMPORT_FAILED');
     const iterativeId = secondCourse.course.course.courseId;
     const iterative: string[] = [];
-    for (let edit = 1; edit <= 6; edit += 1) {
+    // Twice the per-course bound and then some (M2-01p): before the fix the sixth was refused.
+    const edits = 12;
+    for (let edit = 1; edit <= edits; edit += 1) {
       const started = performance.now();
       const response = await (current as Api).inject({
         method: 'POST',
@@ -772,7 +774,7 @@ async function main() {
           'S14 edit loop (move a waypoint, recompute, review) and V2-A35 rapid successive waypoint edits',
         expected:
           'Each recompute of the latest draft succeeds; only the latest draft can be saved from the editor.',
-        observed: `Six unsaved recomputes of one course within the 30 min TTL: ${iterative.join(' ')}. The refusal comes after the engine computed the route. Unsaved siblings of a picked candidate also keep holding slots: ${siblingsHeld} on the routed course.`,
+        observed: `${edits} unsaved recomputes of one course within the 30 min TTL: ${iterative.join(' ')}. The refusal comes after the engine computed the route. Unsaved siblings of a picked candidate also keep holding slots: ${siblingsHeld} on the routed course.`,
       });
 
     // ---- 5. The tenant admission bound, with the engine up, then the engine down.

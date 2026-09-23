@@ -301,6 +301,7 @@ function setup(
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
     storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),
+    assertRouteProposalRoom: vi.fn().mockResolvedValue(undefined),
     readRouteProposal: vi.fn().mockResolvedValue(null),
     storeRouteCandidateSet: vi.fn(async (_tenant: string, input: StoredCandidateSetInput) => ({
       candidateSetId: setId,
@@ -550,6 +551,31 @@ describe('target-distance candidate route', () => {
     });
     expect(response.statusCode).toBe(410);
     expect(engine.compute).not.toHaveBeenCalled();
+  });
+
+  it('spends no engine time when the largest search could not be stored (M2-01p)', async () => {
+    const engine = engineFixture();
+    const { app, courses } = setup({ engine });
+    courses.assertRouteProposalRoom = vi
+      .fn()
+      .mockRejectedValue(new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED'));
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-candidates`,
+      headers: baseHeaders,
+      payload: candidateRequest,
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json().error.code).toBe('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+    expect(engine.compute).not.toHaveBeenCalled();
+    expect(courses.storeRouteCandidateSet).not.toHaveBeenCalled();
+    // Room for the largest search this route may produce, for this draft, as a search.
+    expect(courses.assertRouteProposalRoom).toHaveBeenCalledWith(expect.any(String), {
+      courseId,
+      draftRevision: 4,
+      kind: 'candidates',
+      adding: targetDistanceLimits.maxCandidates,
+    });
   });
 
   it('offers no candidate route at all when no engine is configured', async () => {

@@ -270,6 +270,16 @@ export interface CourseRepository {
     athleteId: string,
     input: StoredCandidateSetInput,
   ): Promise<CourseRouteCandidateSet>;
+  /**
+   * Refuse an answer that could not be stored, before anything computes it (M2-01p).
+   *
+   * Counts what would still hold a seat once storing `adding` rows of this kind for this
+   * draft had reaped and superseded what it will, and throws
+   * `ROUTE_PROPOSAL_QUOTA_EXCEEDED` when they would not fit. A read without the tenant
+   * lock: the store checks again under the lock, so this can only refuse early, never
+   * admit something the store would refuse.
+   */
+  assertRouteProposalRoom(athleteId: string, input: RouteProposalRoomInput): Promise<void>;
   /** One stored candidate, or `null` when it is unknown, expired or already saved. */
   readRouteCandidate(
     athleteId: string,
@@ -644,6 +654,62 @@ async function tenantLock(tx: Transaction) {
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
 }
 
+export interface RouteProposalRoomInput {
+  readonly courseId: string;
+  readonly draftRevision: number;
+  /** What is about to be stored: one route, or one search of up to `adding` candidates. */
+  readonly kind: 'route' | 'candidates';
+  readonly adding: number;
+}
+
+/**
+ * Whether `adding` more unsaved rows fit under both proposal bounds, counting only what
+ * storing them would leave behind (migration 042's `course_route_proposal_room`). Called
+ * before the engine runs and again inside the storing transaction, after the reapers and
+ * the supersession, so the two checks are the same rule and cannot disagree about it.
+ */
+async function assertProposalRoom(
+  tx: Transaction,
+  courseId: string,
+  draftRevision: number,
+  kind: RouteProposalRoomInput['kind'],
+  adding: number,
+) {
+  const room = await tx.query(
+    'SELECT for_course,for_tenant FROM public.course_route_proposal_room($1,$2,$3)',
+    [courseId, draftRevision, kind === 'candidates'],
+  );
+  const counts = z
+    .object({ for_course: z.number().int(), for_tenant: z.number().int() })
+    .parse(room.rows[0]);
+  if (
+    counts.for_course + adding > courseLimits.openRouteProposalsPerCourse ||
+    counts.for_tenant + adding > courseLimits.openRouteProposalsPerTenant
+  )
+    throw new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+}
+
+/**
+ * Remove the unsaved answers of this course that a new one replaces (migration 042), in
+ * the one order every writer of these rows follows: the search reaper first, then the
+ * supersession (searches, then plain proposals), then the proposal reaper. Searches before
+ * the proposals that may be their candidates, every time.
+ */
+async function reapAndSupersede(
+  tx: Transaction,
+  courseId: string,
+  draftRevision: number,
+  kind: RouteProposalRoomInput['kind'],
+) {
+  await tx.query('SELECT public.reap_course_route_candidate_sets()');
+  await tx.query('SELECT public.supersede_course_route_proposals($1,$2,$3)', [
+    courseId,
+    draftRevision,
+    kind === 'candidates',
+  ]);
+  await tx.query('SELECT public.reap_course_route_proposals()');
+}
+
 async function databaseNow(tx: Transaction) {
   return instant((await tx.query('SELECT statement_timestamp() AS at')).rows[0]?.['at']);
 }
@@ -868,9 +934,6 @@ export function createCourseRepository(database: Database): CourseRepository {
       const ttlSeconds = z.number().int().min(1).max(86_400).parse(rawInput.ttlSeconds);
       return database.tenant(tenantId, async (tx) => {
         await tenantLock(tx);
-        // Expired and already-saved rows go first, so an owner who keeps recomputing does
-        // not accumulate private coordinates and the bound below measures live drafts.
-        await tx.query('SELECT public.reap_course_route_proposals()');
         const course = await tx.query(
           'SELECT status FROM course WHERE athlete_id=$1 AND course_id=$2',
           [tenantId, courseId],
@@ -878,21 +941,12 @@ export function createCourseRepository(database: Database): CourseRepository {
         if (!course.rows[0]) throw new CourseNotFoundError();
         if (course.rows[0]['status'] !== 'available')
           throw new CourseStateError('COURSE_UNAVAILABLE');
-        const open = await tx.query(
-          `SELECT count(*) FILTER (WHERE course_id=$2)::integer AS for_course,
-                  count(*)::integer AS for_tenant
-           FROM course_route_proposal
-           WHERE athlete_id=$1 AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
-          [tenantId, courseId],
-        );
-        const counts = z
-          .object({ for_course: z.number().int(), for_tenant: z.number().int() })
-          .parse(open.rows[0]);
-        if (
-          counts.for_course >= courseLimits.openRouteProposalsPerCourse ||
-          counts.for_tenant >= courseLimits.openRouteProposalsPerTenant
-        )
-          throw new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+        // Expired, saved and spent rows go first, and so do the answers this one replaces —
+        // the previous route of this course and any search of another draft — so an owner
+        // who keeps recomputing does not accumulate private coordinates and the bound below
+        // measures only what the editor can still use (M2-01p).
+        await reapAndSupersede(tx, courseId, draftRevision, 'route');
+        await assertProposalRoom(tx, courseId, draftRevision, 'route', 1);
         const proposalId = randomUUID();
         const inserted = await tx.query(
           `INSERT INTO course_route_proposal(athlete_id,proposal_id,course_id,draft_revision,
@@ -983,11 +1037,6 @@ export function createCourseRepository(database: Database): CourseRepository {
         });
       return database.tenant(tenantId, async (tx) => {
         await tenantLock(tx);
-        // Expired searches and the candidates cascading from them go first, for the same
-        // reason the proposal reaper runs here: an owner who keeps generating must not
-        // accumulate private coordinates, and the bound below has to measure live rows.
-        await tx.query('SELECT public.reap_course_route_candidate_sets()');
-        await tx.query('SELECT public.reap_course_route_proposals()');
         const course = await tx.query(
           'SELECT status FROM course WHERE athlete_id=$1 AND course_id=$2',
           [tenantId, courseId],
@@ -995,24 +1044,16 @@ export function createCourseRepository(database: Database): CourseRepository {
         if (!course.rows[0]) throw new CourseNotFoundError();
         if (course.rows[0]['status'] !== 'available')
           throw new CourseStateError('COURSE_UNAVAILABLE');
-        const open = await tx.query(
-          `SELECT count(*) FILTER (WHERE course_id=$2)::integer AS for_course,
-                  count(*)::integer AS for_tenant
-           FROM course_route_proposal
-           WHERE athlete_id=$1 AND consumed_at IS NULL AND expires_at>statement_timestamp()`,
-          [tenantId, courseId],
-        );
-        const counts = z
-          .object({ for_course: z.number().int(), for_tenant: z.number().int() })
-          .parse(open.rows[0]);
+        // Expired and spent searches and the candidates cascading from them go first, and
+        // so do the answers this search replaces — every earlier search of this course and
+        // a route of another draft — for the same reason as a reroute: an owner who keeps
+        // generating must not accumulate private coordinates, and the bound below has to
+        // measure only what the editor can still use.
+        await reapAndSupersede(tx, courseId, draftRevision, 'candidates');
         // A whole search has to fit inside the same proposal bound a single reroute does.
         // Candidates are proposals; letting a search write past the bound would be a way
         // around it.
-        if (
-          counts.for_course + candidates.length > courseLimits.openRouteProposalsPerCourse ||
-          counts.for_tenant + candidates.length > courseLimits.openRouteProposalsPerTenant
-        )
-          throw new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+        await assertProposalRoom(tx, courseId, draftRevision, 'candidates', candidates.length);
         const candidateSetId = randomUUID();
         const insertedSet = await tx.query(
           `INSERT INTO course_route_candidate_set(athlete_id,candidate_set_id,course_id,
@@ -1087,6 +1128,27 @@ export function createCourseRepository(database: Database): CourseRepository {
           expiresAt: instant(setRow.expires_at),
         });
       });
+    },
+
+    assertRouteProposalRoom(athleteId, rawInput) {
+      const tenantId = uuid.parse(athleteId);
+      const courseId = uuid.parse(rawInput.courseId);
+      const draftRevision = z
+        .number()
+        .int()
+        .min(1)
+        .max(courseLimits.maxDraftRevision)
+        .parse(rawInput.draftRevision);
+      const kind = z.enum(['route', 'candidates']).parse(rawInput.kind);
+      const adding = z
+        .number()
+        .int()
+        .min(1)
+        .max(targetDistanceLimits.maxCandidates)
+        .parse(rawInput.adding);
+      return database.tenant(tenantId, (tx) =>
+        assertProposalRoom(tx, courseId, draftRevision, kind, adding),
+      );
     },
 
     readRouteCandidate(athleteId, rawCourseId, rawSetId, rawProposalId) {

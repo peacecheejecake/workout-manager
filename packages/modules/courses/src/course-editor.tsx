@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CoursePosition } from '@workout/contracts/courses';
 import {
   courseGenerationGraphBuildId,
+  courseLimits,
   targetDistanceLimits,
   type CourseReadResult,
   type CourseUpdateRequest,
@@ -134,9 +135,18 @@ const saveErrors: Record<string, string> = {
   ROUTE_PROPOSAL_ALREADY_SAVED: '이 경로 제안은 이미 저장되었습니다.',
   ROUTE_PROPOSAL_STALE_DRAFT: '그 사이 초안이 바뀌었습니다. 경로를 다시 계산한 뒤 저장하세요.',
   COURSE_UNAVAILABLE: '원본 기록이 삭제되어 이 코스는 더 이상 편집할 수 없습니다.',
-  ROUTE_PROPOSAL_QUOTA_EXCEEDED:
-    '저장하지 않은 경로 제안이 너무 많습니다. 잠시 후 다시 시도하세요.',
 };
+
+/**
+ * The unsaved-proposal bound, as a computation or a search meets it (M2-01p).
+ *
+ * Only those two can meet it: they are what creates a proposal, and a save only ever
+ * consumes one. The server refuses before the engine runs, so nothing was computed and
+ * nothing was stored. A newer answer on the same course replaces the older ones, so what
+ * is still holding seats is unsaved work on other courses, and the only thing that frees a
+ * seat without the owner saving is expiry — which is why the wait is stated as what it is.
+ */
+const proposalQuotaMessage = `저장하지 않은 경로 제안이 한도(모든 코스 합쳐 ${courseLimits.openRouteProposalsPerTenant}개)에 찼습니다. 제안이 만료되는 대로 자리가 나며, 늦어도 ${Math.round(courseLimits.routeProposalTtlSeconds / 60)}분 뒤에는 다시 계산할 수 있습니다. 저장된 것은 없습니다.`;
 
 /**
  * Did this answer prove nothing was stored? Only our own refusals do. A gateway or overload
@@ -320,6 +330,10 @@ export function CourseEditor({
         setMessage('이 서버에는 경로 계산 기능이 구성되어 있지 않습니다.');
         return;
       }
+      if (error instanceof CourseRequestError && error.code === 'ROUTE_PROPOSAL_QUOTA_EXCEEDED') {
+        setMessage(proposalQuotaMessage);
+        return;
+      }
       setMessage('경로 계산 결과를 확인하지 못했습니다. 저장된 것은 없습니다.');
     } finally {
       // And the cleanup asks it too. `setComputing(false)` used to run unconditionally, so
@@ -433,6 +447,10 @@ export function CourseEditor({
       if (error instanceof CourseRequestError) {
         if (error.status === 404) {
           setMessage('이 서버에는 경로 계산 기능이 구성되어 있지 않습니다.');
+          return;
+        }
+        if (error.code === 'ROUTE_PROPOSAL_QUOTA_EXCEEDED') {
+          setMessage(proposalQuotaMessage);
           return;
         }
         if (provesNothingWasStored(error.status)) {

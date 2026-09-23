@@ -346,11 +346,14 @@ describe('waypoint editor', () => {
     expect(screen.getByTestId('draft-revision')).toHaveTextContent('초안 변경 번호 2');
     const before = screen.getAllByRole('listitem').length;
     await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
-    // What the screen says today: the compute path has no message for this code (the
-    // quota text exists only among the save errors), so the owner gets the generic line.
+    // M2-01p: the owner is told it is the bound, and how long the wait can be — not the
+    // generic "could not confirm the result", which says neither.
     expect(
-      await screen.findByText(/경로 계산 결과를 확인하지 못했습니다\. 저장된 것은 없습니다/),
+      await screen.findByText(
+        /저장하지 않은 경로 제안이 한도\(모든 코스 합쳐 20개\)에 찼습니다\. 제안이 만료되는 대로 자리가 나며, 늦어도 30분 뒤에는 다시 계산할 수 있습니다\. 저장된 것은 없습니다/,
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/경로 계산 결과를 확인하지 못했습니다/)).toBeNull();
     expect(screen.queryByRole('group', { name: '계산된 경로 검토' })).toBeNull();
     expect(screen.getAllByRole('listitem')).toHaveLength(before);
     expect(screen.getByText(/37\.56750, 126\.97950/)).toBeInTheDocument();

@@ -43,7 +43,16 @@ const migrationFiles = [
   '038_course_thumbnails.sql',
   '039_course_thumbnail_reconciliation.sql',
   '040_reconcile_sweep_faults.sql',
+  '041_course_route_proposal_supersession.sql',
 ] as const;
+
+/**
+ * The migration files in the order `migrate` applies them; version N is entry N-1. Read-only,
+ * for upgrade tests that have to find one migration by name rather than by number.
+ */
+// A frozen copy, not the list itself: exporting migrationFiles directly let a caller push
+// onto the array migrate() applies from. Review measured that (length 41 -> 42).
+export const migrationFileNames: readonly string[] = Object.freeze([...migrationFiles]);
 
 async function grantSafeResourceUrlReadColumns(pool: Pool, runtimeRole: string) {
   await pool.query(
@@ -887,6 +896,15 @@ export async function grantCourses(connectionString: string, runtimeRole: string
       `GRANT EXECUTE ON FUNCTION
        public.consume_course_route_candidate(uuid,uuid,uuid,integer,text,integer),
        public.reap_course_route_candidate_sets() TO "${runtimeRole}"`,
+    );
+    // M2-01p: storing a new answer removes the unsaved answers of the same course the
+    // editor can no longer use, and the API asks how much room is left before it spends
+    // engine time. Both are bounded to the caller's own rows; neither widens what the role
+    // may write directly.
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION
+       public.supersede_course_route_proposals(uuid,integer,boolean),
+       public.course_route_proposal_room(uuid,integer,boolean) TO "${runtimeRole}"`,
     );
     // Per-owner preferences (M2-01j). Two columns may be written and nothing else: the
     // allowlist is a grant, not a convention. There is no DELETE — a preference row leaves

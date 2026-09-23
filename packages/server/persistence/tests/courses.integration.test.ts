@@ -875,6 +875,17 @@ function routedContent(
   };
 }
 
+/** Unsaved, unexpired proposal rows of one course — candidates included — as stored. */
+async function openProposalRows(athlete: string, courseId: string): Promise<number> {
+  const rows = await admin.query(
+    `SELECT count(*)::int AS total FROM course_route_proposal
+     WHERE athlete_id=$1 AND course_id=$2 AND consumed_at IS NULL
+       AND expires_at>clock_timestamp()`,
+    [athlete, courseId],
+  );
+  return Number(rows.rows[0]?.['total']);
+}
+
 describe('M2-01h route proposals', () => {
   it('stores a computed route without changing the course at all', async () => {
     const { athlete, course } = await athleteWithCourse('Routed loop');
@@ -1149,13 +1160,149 @@ describe('M2-01h route proposals', () => {
     ).toEqual({ total: 0 });
   });
 
-  it('bounds how many unsaved proposals one course may hold', async () => {
+  // M2-01p (M2-01k F1, K-s14-edit-loop). This test used to store drafts 1…5 and expect the
+  // sixth to be refused: the proposals of drafts the editor had already moved past held
+  // their seats for 30 minutes, and that was pinned here as the bound working. The edit
+  // loop — move a waypoint, recompute, move again — has no such limit now, because each new
+  // route REMOVES the one it replaces, and the removed one cannot be saved any more either.
+  it('replaces the route a recompute supersedes, so the edit loop never meets the bound', async () => {
     const { athlete, course } = await athleteWithCourse('Routed loop');
-    for (let index = 0; index < courseLimits.openRouteProposalsPerCourse; index += 1)
-      await courses.storeRouteProposal(athlete, proposalInput(course.course.courseId, index + 1));
+    const courseId = course.course.courseId;
+    const stored: { proposalId: string; draftRevision: number }[] = [];
+    // Well past the per-course bound, inside one TTL.
+    const rounds = courseLimits.openRouteProposalsPerCourse * 3;
+    for (let draft = 1; draft <= rounds; draft += 1)
+      stored.push(await courses.storeRouteProposal(athlete, proposalInput(courseId, draft)));
+    expect(await openProposalRows(athlete, courseId)).toBe(1);
+    // A recompute of the same draft replaces too: the editor holds one route, and the review
+    // of the previous one does not carry over.
+    const again = await courses.storeRouteProposal(athlete, proposalInput(courseId, rounds));
+    expect(await openProposalRows(athlete, courseId)).toBe(1);
+    // What was replaced is gone for the server as well as for the editor: it cannot be read
+    // and it cannot be saved, even by a client that names its own draft revision.
+    const replaced = stored[0];
+    if (!replaced) throw new Error('nothing stored');
+    expect(await courses.readRouteProposal(athlete, courseId, replaced.proposalId)).toBeNull();
+    const head = await courses.headContent(athlete, courseId);
+    if (!head) throw new Error('missing head');
+    const replacedInput = proposalInput(courseId, replaced.draftRevision);
     await expect(
-      courses.storeRouteProposal(athlete, proposalInput(course.course.courseId, 99)),
+      courses.update(
+        athlete,
+        courseId,
+        1,
+        routedContent(head, replacedInput),
+        `save-${randomUUID()}`,
+        { kind: 'reroute', replaced: true },
+        {
+          consumeProposal: {
+            proposalId: replaced.proposalId,
+            draftRevision: replaced.draftRevision,
+            geometrySha256: courseGeometrySha256(replacedInput.coordinates),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_NOT_FOUND' });
+    // The latest one is the one that saves.
+    expect(await courses.readRouteProposal(athlete, courseId, again.proposalId)).not.toBeNull();
+  });
+
+  it('replaces nothing on another course or of another owner', async () => {
+    const { athlete, imported, stored: track, course } = await athleteWithCourse('Routed loop');
+    const sibling = await courses.create(
+      athlete,
+      content({ activityId: imported.activityId, trackId: track.trackId, name: 'Second' }),
+      `course-${randomUUID()}`,
+    );
+    if (sibling.status !== 'available') throw new Error('course was not created');
+    const other = await athleteWithCourse('Someone else');
+    const kept = await courses.storeRouteProposal(
+      athlete,
+      proposalInput(course.course.courseId, 3),
+    );
+    const theirs = await courses.storeRouteProposal(
+      other.athlete,
+      proposalInput(other.course.course.courseId, 3),
+    );
+    await courses.storeRouteProposal(athlete, proposalInput(sibling.course.courseId, 4));
+    await courses.storeRouteProposal(athlete, proposalInput(sibling.course.courseId, 5));
+    expect(
+      await courses.readRouteProposal(athlete, course.course.courseId, kept.proposalId),
+    ).not.toBeNull();
+    expect(
+      await courses.readRouteProposal(
+        other.athlete,
+        other.course.course.courseId,
+        theirs.proposalId,
+      ),
+    ).not.toBeNull();
+    expect(await openProposalRows(athlete, sibling.course.courseId)).toBe(1);
+  });
+
+  it('still bounds the unsaved proposals one owner holds across courses', async () => {
+    // The bound is not gone. Each course now holds at most one route and one search, and the
+    // tenant-wide bound is what an owner editing many courses inside one TTL can meet.
+    const { athlete, imported, stored: track } = await athleteWithCourse('Routed loop');
+    const perCourse = courseLimits.openRouteProposalsPerCourse;
+    const filled = courseLimits.openRouteProposalsPerTenant / perCourse;
+    const courseIds: string[] = [];
+    for (let index = 0; index <= filled; index += 1) {
+      const created = await courses.create(
+        athlete,
+        content({ activityId: imported.activityId, trackId: track.trackId, name: `C${index}` }),
+        `course-${randomUUID()}`,
+      );
+      if (created.status !== 'available') throw new Error('course was not created');
+      courseIds.push(created.course.courseId);
+    }
+    for (const courseId of courseIds.slice(0, filled)) {
+      await courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+      await courses.storeRouteCandidateSet(athlete, candidateSetInput(courseId, { count: 4 }));
+      expect(await openProposalRows(athlete, courseId)).toBe(perCourse);
+    }
+    const last = courseIds[filled];
+    if (!last) throw new Error('missing course');
+    await expect(courses.storeRouteProposal(athlete, proposalInput(last, 2))).rejects.toMatchObject(
+      { code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' },
+    );
+    await expect(
+      courses.storeRouteCandidateSet(athlete, candidateSetInput(last, { count: 1 })),
     ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' });
+    // The early check the API makes before spending engine time agrees with the store.
+    await expect(
+      courses.assertRouteProposalRoom(athlete, {
+        courseId: last,
+        draftRevision: 2,
+        kind: 'route',
+        adding: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' });
+    // A recompute on a full course replaces its own route, so it still fits: the owner at
+    // the bound can keep editing what they already have open.
+    const first = courseIds[0];
+    if (!first) throw new Error('missing course');
+    await expect(
+      courses.assertRouteProposalRoom(athlete, {
+        courseId: first,
+        draftRevision: 2,
+        kind: 'route',
+        adding: 1,
+      }),
+    ).resolves.toBeUndefined();
+    await courses.storeRouteProposal(athlete, proposalInput(first, 2));
+    // …but a recompute for a NEW draft of it also drops that course's search of the old
+    // draft, which frees four seats for the course that was refused.
+    await courses.storeRouteProposal(athlete, proposalInput(first, 3));
+    expect(await openProposalRows(athlete, first)).toBe(1);
+    await expect(
+      courses.assertRouteProposalRoom(athlete, {
+        courseId: last,
+        draftRevision: 2,
+        kind: 'route',
+        adding: 1,
+      }),
+    ).resolves.toBeUndefined();
+    await courses.storeRouteProposal(athlete, proposalInput(last, 2));
   });
 
   it('refuses to compute for a reclaimed course and keeps one tenant out of another', async () => {
@@ -1531,9 +1678,23 @@ describe('M2-01i target-distance candidates', () => {
     const { athlete, course } = await athleteWithCourse('Target loop');
     const input = candidateSetInput(course.course.courseId);
     const stored = await courses.storeRouteCandidateSet(athlete, input);
-    const other = await courses.storeRouteCandidateSet(
-      athlete,
-      candidateSetInput(course.course.courseId, { count: 1 }),
+    // Two live searches on one course cannot come from the product any more: a new search
+    // replaces the previous one (M2-01p). The pick function's own refusal still guards the
+    // case, so the second search is written directly, as the table owner.
+    const other = { candidateSetId: randomUUID() };
+    await admin.query(
+      `INSERT INTO course_route_candidate_set(athlete_id,candidate_set_id,course_id,
+         draft_revision,request_id,target_distance_meters,search_seed,generator_version,
+         evaluation_version,bounds,search,created_at,expires_at)
+       VALUES($1,$2,$3,2,'req-other',5000,'feedfacefeedface','target-distance-loop-v1',1,
+         $4::jsonb,$5::jsonb,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
+      [
+        athlete,
+        other.candidateSetId,
+        course.course.courseId,
+        JSON.stringify(input.bounds),
+        JSON.stringify(input.search),
+      ],
     );
     const first = stored.candidates[0];
     const source = input.candidates[0];
@@ -1713,18 +1874,125 @@ describe('M2-01i target-distance candidates', () => {
     ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_EXPIRED' });
   });
 
-  it('bounds how many unsaved candidates one course may hold', async () => {
+  // M2-01p. This used to expect a second four-candidate search on the same course to be
+  // refused: the first search's candidates held four of the five seats for 30 minutes even
+  // though the editor had replaced them on screen. A new search now replaces the previous
+  // one, and its candidates stop being offered or saveable.
+  it('replaces the previous search of the course with a new one', async () => {
     const { athlete, course } = await athleteWithCourse('Target loop');
-    await courses.storeRouteCandidateSet(
+    const courseId = course.course.courseId;
+    const firstInput = candidateSetInput(courseId, { count: 4 });
+    const first = await courses.storeRouteCandidateSet(athlete, firstInput);
+    const second = await courses.storeRouteCandidateSet(
       athlete,
-      candidateSetInput(course.course.courseId, { count: 4 }),
+      candidateSetInput(courseId, { count: 4 }),
+    );
+    expect(second.candidates).toHaveLength(4);
+    expect(await openProposalRows(athlete, courseId)).toBe(4);
+    const old = first.candidates[0];
+    const oldSource = firstInput.candidates[0];
+    if (!old || !oldSource) throw new Error('no candidate');
+    expect(
+      await courses.readRouteCandidate(athlete, courseId, first.candidateSetId, old.proposalId),
+    ).toBeNull();
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      first,
+      oldSource,
     );
     await expect(
-      courses.storeRouteCandidateSet(
-        athlete,
-        candidateSetInput(course.course.courseId, { count: 4 }),
-      ),
-    ).rejects.toMatchObject({ code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' });
+      courses.update(athlete, courseId, 1, content, `pick-${randomUUID()}`, undefined, {
+        consumeCandidate: {
+          proposalId: old.proposalId,
+          candidateSetId: first.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(content.coordinates),
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'ROUTE_CANDIDATE_SET_MISMATCH' });
+    const sets = await admin.query(
+      'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
+      [athlete],
+    );
+    expect(sets.rows[0]?.['total']).toBe(1);
+  });
+
+  it('keeps a route and a search side by side only while they are for the same draft', async () => {
+    // The editor shows a computed route and a search together only for the draft on screen.
+    // One of each is five rows, which is exactly the per-course bound: it is an invariant
+    // of the replacement now, and this is the sequence that would break it if it were not.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const courseId = course.course.courseId;
+    const route = await courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+    const search = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(courseId, { count: 4, draftRevision: 2 }),
+    );
+    expect(await openProposalRows(athlete, courseId)).toBe(
+      courseLimits.openRouteProposalsPerCourse,
+    );
+    // Both still saveable: neither replaced the other.
+    expect(await courses.readRouteProposal(athlete, courseId, route.proposalId)).not.toBeNull();
+    const kept = search.candidates[0];
+    if (!kept) throw new Error('no candidate');
+    expect(
+      await courses.readRouteCandidate(athlete, courseId, search.candidateSetId, kept.proposalId),
+    ).not.toBeNull();
+    // A recompute for the same draft replaces the route and keeps the search.
+    await courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+    expect(await openProposalRows(athlete, courseId)).toBe(
+      courseLimits.openRouteProposalsPerCourse,
+    );
+    expect(
+      await courses.readRouteCandidate(athlete, courseId, search.candidateSetId, kept.proposalId),
+    ).not.toBeNull();
+    // A route for the next draft drops the search of the previous one.
+    await courses.storeRouteProposal(athlete, proposalInput(courseId, 3));
+    expect(await openProposalRows(athlete, courseId)).toBe(1);
+    expect(
+      await courses.readRouteCandidate(athlete, courseId, search.candidateSetId, kept.proposalId),
+    ).toBeNull();
+    // And a search for a further draft drops that route.
+    await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(courseId, { count: 4, draftRevision: 4 }),
+    );
+    expect(await openProposalRows(athlete, courseId)).toBe(4);
+  });
+
+  it('stops counting the siblings of a picked candidate before the next reroute', async () => {
+    // M2-01k F1's second half. Picking one candidate spends the search, and the three
+    // siblings can never be saved — but the reroute path only reaped plain proposals, so
+    // the siblings kept their seats for 30 minutes: two recomputes after a pick, and the
+    // next search was refused. A reroute for the SAME draft is the case the replacement
+    // does not reach (it keeps searches of its own draft), so this is the set reaper's job.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const courseId = course.course.courseId;
+    const input = candidateSetInput(courseId, { count: 4 });
+    const stored = await courses.storeRouteCandidateSet(athlete, input);
+    const first = stored.candidates[0];
+    const firstSource = input.candidates[0];
+    if (!first || !firstSource) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      firstSource,
+    );
+    await courses.update(athlete, courseId, 1, content, `pick-${randomUUID()}`, undefined, {
+      consumeCandidate: {
+        proposalId: first.proposalId,
+        candidateSetId: stored.candidateSetId,
+        draftRevision: 2,
+        geometrySha256: courseGeometrySha256(content.coordinates),
+      },
+    });
+    await courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+    const rows = await admin.query(
+      `SELECT count(*)::int AS total FROM course_route_proposal
+       WHERE athlete_id=$1 AND course_id=$2`,
+      [athlete, courseId],
+    );
+    expect(rows.rows[0]?.['total']).toBe(1);
   });
 
   it('reclaims unsaved searches with the activity the course came from', async () => {
@@ -2156,6 +2424,220 @@ describe('M2-01i target-distance candidates', () => {
       [athlete],
     );
     expect(left.rows[0]?.['total']).toBe(0);
+  });
+
+  it('takes a search before its candidates when a reroute reaps it (M2-01p)', async () => {
+    // A reroute now reaps spent and expired searches too, and supersedes searches of other
+    // drafts. Both have to take the search row before its candidate rows, as the reaper,
+    // the tombstone, the pick and course deletion do. `reaperSide` stands where the search
+    // reaper stands: search locked, cascade about to reach the candidates. A reroute that
+    // reached the expired candidates directly first — the proposal reaper does, if it runs
+    // before the search reaper — would hold them while waiting for the search: 40P01.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const courseId = course.course.courseId;
+    const stored = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(courseId, { count: 4, ttlSeconds: 1 }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const reaperSide = await admin.connect();
+    try {
+      await reaperSide.query('BEGIN');
+      await reaperSide.query(
+        `SELECT 1 FROM course_route_candidate_set
+         WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
+        [athlete, stored.candidateSetId],
+      );
+      const reroute = courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+      const settled: string[] = [];
+      void reroute.then(
+        () => settled.push('stored'),
+        (error: unknown) => settled.push(String((error as Error).message)),
+      );
+      // Let the reroute take whatever it is going to take before the reaper side moves on.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await reaperSide.query(
+        'DELETE FROM course_route_proposal WHERE athlete_id=$1 AND candidate_set_id=$2',
+        [athlete, stored.candidateSetId],
+      );
+      await reaperSide.query(
+        'DELETE FROM course_route_candidate_set WHERE athlete_id=$1 AND candidate_set_id=$2',
+        [athlete, stored.candidateSetId],
+      );
+      await reaperSide.query('COMMIT');
+      await expect(reroute).resolves.toMatchObject({ draftRevision: 2 });
+    } finally {
+      await reaperSide.query('ROLLBACK').catch(() => undefined);
+      reaperSide.release();
+    }
+    expect(await openProposalRows(athlete, courseId)).toBe(1);
+  });
+
+  it('supersedes a search before the plain route it also replaces (M2-01p)', async () => {
+    // Inside `supersede_course_route_proposals` the order is the same rule again: searches
+    // first, plain proposals second. `otherSide` takes them in that order without the tenant
+    // lock — search row, then the route row. A supersession that removed the route first
+    // would hold it while waiting for the search: 40P01.
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const courseId = course.course.courseId;
+    const route = await courses.storeRouteProposal(athlete, proposalInput(courseId, 2));
+    const search = await courses.storeRouteCandidateSet(
+      athlete,
+      candidateSetInput(courseId, { count: 2, draftRevision: 2 }),
+    );
+    const otherSide = await admin.connect();
+    try {
+      await otherSide.query('BEGIN');
+      await otherSide.query(
+        `SELECT 1 FROM course_route_candidate_set
+         WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
+        [athlete, search.candidateSetId],
+      );
+      // A route for the next draft replaces both the route and the search of draft 2.
+      const next = courses.storeRouteProposal(athlete, proposalInput(courseId, 3));
+      void next.catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await otherSide.query(
+        'SELECT 1 FROM course_route_proposal WHERE athlete_id=$1 AND proposal_id=$2 FOR UPDATE',
+        [athlete, route.proposalId],
+      );
+      await otherSide.query('COMMIT');
+      await expect(next).resolves.toMatchObject({ draftRevision: 3 });
+    } finally {
+      await otherSide.query('ROLLBACK').catch(() => undefined);
+      otherSide.release();
+    }
+    expect(await openProposalRows(athlete, courseId)).toBe(1);
+  });
+
+  it('stays deadlock-free while stores, saves, reaping and deletion race on one tenant', async () => {
+    // Every application writer here takes the tenant lock, so they queue; what this watches
+    // for is a path that does not, meeting one that does, across the rows 042 now removes.
+    const { athlete, imported, stored: track, course } = await athleteWithCourse('Target loop');
+    const second = await courses.create(
+      athlete,
+      content({ activityId: imported.activityId, trackId: track.trackId, name: 'Second' }),
+      `course-${randomUUID()}`,
+    );
+    if (second.status !== 'available') throw new Error('course was not created');
+    const courseIds = [course.course.courseId, second.course.courseId];
+    const failures: string[] = [];
+    const tolerated = new Set([
+      'ROUTE_PROPOSAL_NOT_FOUND',
+      'ROUTE_PROPOSAL_ALREADY_SAVED',
+      'ROUTE_PROPOSAL_STALE_DRAFT',
+      'ROUTE_PROPOSAL_EXPIRED',
+      'ROUTE_CANDIDATE_SET_MISMATCH',
+      'ROUTE_CANDIDATE_ALREADY_CHOSEN',
+      'COURSE_REVISION_CONFLICT',
+      'COURSE_UNAVAILABLE',
+      // The course removed or the account erased under a store still in flight.
+      'COURSE_NOT_FOUND',
+    ]);
+    const done = { stores: 0, routeSaves: 0, candidateSaves: 0 };
+    const record = (error: unknown) => {
+      const code = (error as { code?: string }).code ?? (error as Error).message;
+      if (!tolerated.has(code)) failures.push(code);
+    };
+    const worker = async (seed: number) => {
+      for (let step = 0; step < 12; step += 1) {
+        const courseId = courseIds[(seed + step) % courseIds.length] as string;
+        const draft = 1 + ((seed * 7 + step) % 3);
+        try {
+          if ((seed + step) % 3 === 0) {
+            const input = candidateSetInput(courseId, {
+              count: 1 + (step % 4),
+              draftRevision: draft,
+            });
+            const set = await courses.storeRouteCandidateSet(athlete, input);
+            done.stores += 1;
+            const pick = set.candidates[0];
+            const source = input.candidates[0];
+            const head = await courses.read(athlete, courseId);
+            if (!pick || !source || head.status !== 'available') continue;
+            const picked = candidateContent(
+              { name: head.revision.name, lineage: head.revision.lineage },
+              set,
+              source,
+            );
+            await courses.update(
+              athlete,
+              courseId,
+              head.course.headRevision,
+              picked,
+              `pick-${randomUUID()}`,
+              undefined,
+              {
+                consumeCandidate: {
+                  proposalId: pick.proposalId,
+                  candidateSetId: set.candidateSetId,
+                  draftRevision: draft,
+                  geometrySha256: courseGeometrySha256(picked.coordinates),
+                },
+              },
+            );
+            done.candidateSaves += 1;
+          } else {
+            const input = proposalInput(courseId, draft);
+            const proposal = await courses.storeRouteProposal(athlete, input);
+            done.stores += 1;
+            if (step % 2 === 0) continue;
+            const head = await courses.headContent(athlete, courseId);
+            const read = await courses.read(athlete, courseId);
+            if (!head || read.status !== 'available') continue;
+            await courses.update(
+              athlete,
+              courseId,
+              read.course.headRevision,
+              { ...routedContent(head, input), contentDigest: hashOf(randomUUID()) },
+              `save-${randomUUID()}`,
+              { kind: 'reroute', seed, step },
+              {
+                consumeProposal: {
+                  proposalId: proposal.proposalId,
+                  draftRevision: draft,
+                  geometrySha256: courseGeometrySha256(input.coordinates),
+                },
+              },
+            );
+            done.routeSaves += 1;
+          }
+        } catch (error) {
+          record(error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, (_, seed) => worker(seed)));
+    // Then the three removals that reach these rows from outside the store path, racing the
+    // stores that are still going.
+    const tail = Promise.all(Array.from({ length: 3 }, (_, seed) => worker(seed + 10)));
+    const read = await courses.read(athlete, courseIds[1] as string);
+    await Promise.allSettled([
+      read.status === 'available'
+        ? courses.remove(athlete, courseIds[1] as string, read.course.headRevision)
+        : Promise.resolve(),
+      activities.deleteActivity(athlete, imported.activityId, {
+        expectedRevision: imported.revision,
+      }),
+    ]).then((results) =>
+      results.forEach((result) => {
+        if (result.status === 'rejected') record(result.reason);
+      }),
+    );
+    await tail;
+    await createOperationsRepository(database)
+      .eraseAccount(athlete)
+      .catch((error: unknown) => record(error));
+    expect(failures.filter((code) => /deadlock|40P01/i.test(code))).toEqual([]);
+    expect(failures).toEqual([]);
+    // The race actually ran: the stores and saves it was meant to interleave happened. Most
+    // saves lose — to a concurrent store replacing what they picked, or to the revision
+    // CAS — which is the point; a few have to win for the consume paths to be in the race.
+    expect(done.stores).toBeGreaterThan(30);
+    // Both consume paths, counted apart: one kind of save alone would leave the other
+    // function out of the race.
+    expect(done.routeSaves).toBeGreaterThan(0);
+    expect(done.candidateSaves).toBeGreaterThan(0);
   });
 
   it('keeps one tenant out of another tenant search', async () => {

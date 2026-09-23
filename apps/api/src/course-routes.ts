@@ -867,6 +867,17 @@ export function registerCourseRoutes(
           const course = await execute(() => services.courses.read(athleteId, courseId));
           if (course.status !== 'available')
             throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
+          // And an owner already at the unsaved-proposal bound buys none either: the answer
+          // could not be stored, so computing it would only throw engine time away. The
+          // store checks again under the tenant lock, which is what closes the gap.
+          await execute(() =>
+            services.courses.assertRouteProposalRoom(athleteId, {
+              courseId,
+              draftRevision: body.draftRevision,
+              kind: 'route',
+              adding: 1,
+            }),
+          );
           const cancellation = cancellationSignal(reply);
           let computation;
           try {
@@ -958,6 +969,17 @@ export function registerCourseRoutes(
           const course = await execute(() => services.courses.read(athleteId, courseId));
           if (course.status !== 'available')
             throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
+          // Room for the largest search this route can produce, before any of it runs. A
+          // search that would find fewer might have fitted; refusing it here costs the owner
+          // the same wait the store would have imposed, and costs the engine nothing.
+          await execute(() =>
+            services.courses.assertRouteProposalRoom(athleteId, {
+              courseId,
+              draftRevision: body.draftRevision,
+              kind: 'candidates',
+              adding: targetDistanceLimits.maxCandidates,
+            }),
+          );
           // The seed is the caller's only when they are replaying a recorded one. Otherwise
           // the server draws it, so a caller cannot steer the search into a chosen shape by
           // grinding seeds against somebody else's engine time.

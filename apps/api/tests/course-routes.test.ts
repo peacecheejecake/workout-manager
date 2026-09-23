@@ -344,6 +344,7 @@ function setup(
     }),
     remove: vi.fn().mockResolvedValue({ deleted: true }),
     storeRouteProposal: vi.fn().mockRejectedValue(new Error('not used')),
+    assertRouteProposalRoom: vi.fn().mockResolvedValue(undefined),
     readRouteProposal: vi.fn().mockResolvedValue(null),
     storeRouteCandidateSet: vi.fn().mockRejectedValue(new Error('not used')),
     readRouteCandidate: vi.fn().mockResolvedValue(null),
@@ -928,6 +929,50 @@ describe('course route proposals', () => {
     });
     expect(response.statusCode).toBe(410);
     expect(walkingRoutes.compute).not.toHaveBeenCalled();
+  });
+
+  it('spends no engine time when the answer could not be stored (M2-01p)', async () => {
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    courses.storeRouteProposal = vi.fn();
+    courses.assertRouteProposalRoom = vi
+      .fn()
+      .mockRejectedValue(new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED'));
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json().error.code).toBe('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+    expect(walkingRoutes.compute).not.toHaveBeenCalled();
+    expect(courses.storeRouteProposal).not.toHaveBeenCalled();
+    expect(courses.assertRouteProposalRoom).toHaveBeenCalledWith(expect.any(String), {
+      courseId,
+      draftRevision: 3,
+      kind: 'route',
+      adding: 1,
+    });
+  });
+
+  it('still refuses at the store when the room went between the check and the write', async () => {
+    // The early check is a read without the tenant lock. What closes the gap is the store
+    // checking again under it, and its refusal must reach the owner as the same answer.
+    const walkingRoutes = walkingRouteFixture();
+    const { app, courses } = setup({ walkingRoutes });
+    courses.storeRouteProposal = vi
+      .fn()
+      .mockRejectedValue(new CourseStateError('ROUTE_PROPOSAL_QUOTA_EXCEEDED'));
+    const response = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/courses/${courseId}/route-proposals`,
+      headers: commandHeaders,
+      payload: computeBody,
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json().error.code).toBe('ROUTE_PROPOSAL_QUOTA_EXCEEDED');
+    expect(walkingRoutes.compute).toHaveBeenCalledTimes(1);
   });
 
   it.each([

@@ -408,6 +408,28 @@ describe('target-distance candidates on screen', () => {
     expect(screen.getByTestId('map-paths').textContent).not.toContain('course-candidate');
   });
 
+  // M2-01p: a search is the other thing that creates proposals, so it is the other place
+  // the unsaved-proposal bound can be met. The owner is told which bound and how long.
+  it('says a search was refused by the unsaved-proposal bound, and how long it lasts', async () => {
+    const { request } = setup((input) =>
+      input.path === candidatesPath
+        ? reply({ error: { code: 'ROUTE_PROPOSAL_QUOTA_EXCEEDED' } }, 429)
+        : null,
+    );
+    await openCourse();
+    const before = screen.getByTestId('draft-revision').textContent;
+    await userEvent.click(screen.getByRole('button', { name: '목표 거리 후보 생성' }));
+    expect(
+      await screen.findByText(
+        /한도\(모든 코스 합쳐 20개\)에 찼습니다\. 제안이 만료되는 대로 자리가 나며, 늦어도 30분 뒤에는 다시 계산할 수 있습니다/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/후보 생성 결과를 확인하지 못했습니다/)).toBeNull();
+    expect(screen.queryByTestId('candidate-set')).toBeNull();
+    expect(screen.getByTestId('draft-revision')).toHaveTextContent(before ?? '');
+    expect(patches(request)).toHaveLength(0);
+  });
+
   it('does not carry a review confirmation onto a different candidate', async () => {
     const { request } = setup((input) =>
       input.path === candidatesPath ? generatedSet(input) : null,

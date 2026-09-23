@@ -1705,9 +1705,13 @@ async function execute() {
       vertexCount: candidateLoop.length,
     };
     const candidateRequestId = `req-${randomUUID()}`;
+    // The same draft as the unsaved route above. Since M2-01p a new answer replaces the
+    // unsaved answers of the course the editor has moved past, and a search for another
+    // draft would remove that route before the backup ever saw it. Route and search of one
+    // draft sit side by side, as they do on the editor's screen.
     const candidateSet = await courseRepo.storeRouteCandidateSet(retainedAthlete, {
       courseId: routedCourse.course.courseId,
-      draftRevision: 6,
+      draftRevision: 5,
       requestId: candidateRequestId,
       targetDistanceMeters: 5_000,
       searchSeed: 'feedfacefeedface',
@@ -1778,8 +1782,8 @@ async function execute() {
             snapDistanceMeters: 2,
           })),
           computation: {
-            ...drillComputation(candidateRequestId, 6),
-            conditions: { ...drillComputation(candidateRequestId, 6).conditions, waypointCount: 3 },
+            ...drillComputation(candidateRequestId, 5),
+            conditions: { ...drillComputation(candidateRequestId, 5).conditions, waypointCount: 3 },
           },
           evaluation: candidateEvaluation,
         },
@@ -3213,7 +3217,7 @@ async function execute() {
     assert.ok(restoredCandidateSet);
     assert.equal(restoredCandidateSet.searchSeed, 'feedfacefeedface');
     assert.equal(restoredCandidateSet.targetDistanceMeters, 5_000);
-    assert.equal(restoredCandidateSet.draftRevision, 6);
+    assert.equal(restoredCandidateSet.draftRevision, 5);
     assert.equal(restoredCandidateSet.candidate.candidateSeed, '0000000000000000');
     assert.equal(restoredCandidateSet.candidate.evaluation.evaluationVersion, 1);
     assert.equal(restoredCandidateSet.candidate.evaluation.knowledge.surface, 'unknown');
