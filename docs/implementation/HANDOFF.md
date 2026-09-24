@@ -17,17 +17,17 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-k](progress/M2-01k-k.md)를 완료했다(사용자 결정: S09 주소 별칭을 만든다). 두 shell에서
-`/activities/:id?tab=<tab>`이 현재 주소(`/activities?selected=<id>&detailTab=<tab>`)로 넘어간다(Next 307, Vite
-`history.replaceState`). 별칭은 주소만 바꾸고 조회하지 않아 존재 여부를 흘리지 않으며, 잘못된 tab·id·남의 활동은
-화면의 기존 오류 상태가 판단한다. 독립 검토가 open redirect·header injection·형제 경로·뒤로 가기를 실측했다.
-매트릭스 S09-address를 passed로 올렸다(passed 40 → 41).
+[M2-01ae](progress/M2-01ae.md)를 완료했다. 공개 저장소의 CI 실패 artifact가 세션 id·CSRF·cookie·OIDC 값을 담은
+Playwright trace를 올리던 것을 막았다. CI에서는 trace를 끄고(`process.env.CI`), identity job은 가린 진단(실패 시험별
+`protocol.log`·`pressure.log`·`summary.txt`)과 스크린샷·`error-context.md`만 올린다. CI 모사에서 옛 설정은 trace.zip에
+실제 값 58건, 새 설정은 0건이었다. 진단의 `sessionId` 가림을 앱 세션 id 모양(UUID)으로 좁혀 CDP target sessionId를 다시
+읽을 수 있게 했다. key 없이 전달된 세션 값은 여전히 가리지 않는다(문서화, 현재 그런 spec 없음).
 
-직전 완료: [M2-01k-h](progress/M2-01k-h.md)(영속 수명주기 조건별 시험과 변이, P7·P8 passed).
+직전 완료: [M2-01k-k](progress/M2-01k-k.md)(S09 주소 별칭, S09-address passed).
 
 ## 다음 ready 작업
 
-M2-01ae는 ready다. `M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
+`M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
 뒤이며 코드 전에 사용자 승인이 필요하다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate

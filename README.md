@@ -162,8 +162,9 @@ pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
 
 ### Identity E2E diagnostics
 
-재현되지 않는 브라우저 정지를 추적할 때만 켭니다. 끄면(기본) 설정 파일이 진단 모듈을 import만 하고 설치하지 않으며,
-reporter도 추가하지 않으므로 실행이 느려지지 않습니다.
+재현되지 않는 브라우저 정지를 추적할 때 켭니다. CI의 identity job은 항상 켭니다(trace 대신 실패 증거로 씀, 아래).
+끄면(로컬 기본) 설정 파일이 진단 모듈을 import만 하고 설치하지 않으며, reporter도 추가하지 않으므로 실행이
+느려지지 않습니다.
 
 ```bash
 IDENTITY_E2E_DIAGNOSTICS=1 pnpm test:identity [spec.ts:line ...]
@@ -173,13 +174,20 @@ IDENTITY_E2E_DIAGNOSTICS=1 pnpm test:identity [spec.ts:line ...]
   worker event-loop 지연을 `playwright-report/identity-diagnostics/<run id>/protocol-<pid>.log`에 남깁니다.
   CDP가 옮기는 응답 본문·`page.evaluate` 인자와 결과도 함께 기록되며, 한 줄(메시지 하나)은 2,000자까지 남깁니다.
   cookie·CSRF·session·token·password 값과 OIDC code·state·nonce는 가립니다(`tests/identity/diagnostics/protocol-lines.ts`).
+  key가 `sessionId`인 값은 앱 세션 id 모양(UUID)일 때만 가립니다. CDP target의 32자리 hex `sessionId`와 계획 훈련의
+  `sessionId`(예: `session-a`)는 그대로 읽힙니다. UUID인 계획 훈련 id는 함께 가려집니다.
+  key 없이 전달된 세션 값(bare `page.evaluate` 인자, URL 인코딩된 JSON)은 가리지 않습니다.
   가리지 못하는 형태가 있을 수 있으므로 결과를 공유하기 전에 확인하세요.
 - reporter가 2초마다 load average, 여유 메모리, OS 메모리 압박 수준, CPU 상위 프로세스를 기록합니다.
 - 실패한 시험마다 `<run id>/<spec>-<line>-<title>-retry<n>/`에 `protocol.log`(그 시험의 줄만),
   `pressure.log`(시작 30초 전부터 끝까지), `summary.txt`를 씁니다. `summary.txt`에는 응답이 없던 CDP 명령,
   1초 이상 걸린 CDP 명령, worker의 최대 event-loop 지연, 압박 최고치, trace 경로가 들어갑니다.
-  trace는 설정의 `retain-on-failure`로 `test-results/`에 남습니다. **trace에는 진단과 별개로 session cookie 등이 가려지지
-  않은 채 들어 있습니다**(Playwright 기본 동작).
+  로컬 run의 trace는 설정의 `retain-on-failure`로 `test-results/`에 남습니다. **trace에는 진단과 별개로 session
+  cookie·CSRF token·session id·OIDC 값이 가려지지 않은 채 들어 있습니다**(Playwright 기본 동작). 공유하지 마세요.
+- CI(`CI` 설정)는 trace를 만들지 않습니다. 저장소가 공개라 실패 artifact를 누구나 받을 수 있기 때문입니다. 실패 시
+  artifact에는 실패한 시험별 진단 디렉터리(`protocol.log`·`pressure.log`·`summary.txt`), 스크린숏(`*.png`),
+  `error-context.md`만 올립니다. `test-results/`·`playwright-report/` 전체와 run 전체의 원본 `protocol-*.log`는
+  올리지 않습니다(`.github/workflows/ci.yml`).
 - 판독: CDP 명령이 보내졌는데 답이 없고 worker 지연이 작으면 브라우저(renderer) 쪽 정지이고, worker 지연이
   크면 test worker 프로세스가 CPU를 받지 못한 것입니다. 압박 기록으로 기계 전체의 부하를 함께 봅니다.
 - 명령줄에 `--reporter`를 주면 설정의 reporter 목록이 대체되어 진단 reporter가 빠집니다(worker 기록은 남지만

@@ -43,6 +43,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      # The fixture app has no sign-in, cookie or token, so its trace carries no session
+      # material (checked in M2-01ae) and the whole report is uploaded. Revisit this before
+      # a fixture test signs in: the identity job below shows what to upload instead.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -138,13 +141,25 @@ jobs:
       - name: Verify login, tenant consent isolation and logout
         # The harness owns a new private UNIX-socket database; it ignores inherited DB URLs.
         run: pnpm test:identity
+        env:
+          # Per-failure evidence in place of a trace (README "Identity E2E diagnostics").
+          IDENTITY_E2E_DIAGNOSTICS: '1'
+      # This repository is public, so anyone signed in can download these artifacts. A
+      # Playwright trace keeps the session cookie, CSRF token, session id and OIDC values
+      # unredacted: CI records none (playwright.identity.config.ts), and only the files listed
+      # here are uploaded — never test-results/ or playwright-report/ as a whole.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: identity-e2e-failures
+          # Each failed test's redacted protocol.log, pressure.log and summary.txt, its
+          # screenshot and error context. The run-wide raw protocol logs (about 1 MB per test,
+          # redacted the same way) stay on the runner.
           path: |
-            playwright-report/
-            test-results/
+            playwright-report/identity-diagnostics/
+            !playwright-report/identity-diagnostics/*/protocol-*.log
+            test-results/**/*.png
+            test-results/**/error-context.md
           retention-days: 7
           if-no-files-found: ignore
 

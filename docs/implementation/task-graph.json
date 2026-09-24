@@ -1434,7 +1434,8 @@
       "title": "CI 시험 artifact의 세션 값과 진단 redaction 정밀도",
       "dependsOn": ["M2-01ad"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01ae.md",
       "scope": "M2-01ad 독립 검토에서 분리. (1) Playwright retain-on-failure trace.zip이 세션 id·CSRF token·session cookie·OIDC state/nonce/code를 redaction 없이 담고, .github/workflows/ci.yml(약 46–53, 141–148행)이 실패 시 playwright-report/·test-results/를 7일 보관 artifact로 올린다. 저장소는 public이라 로그인한 누구나 받을 수 있다. 값은 runner 안 합성 fixture 계정·일회용 DB의 것이라 재사용할 곳은 없지만, 재생 가능한 모양의 token을 공개 artifact에 두지 않도록 CI에서 trace를 끄거나 snapshots를 빼고 redaction하거나 test-results/ 업로드를 빼는 방법을 결정·구현하고, fixture E2E job(playwright.config)의 trace도 같은 기준으로 확인한다. (2) 진단 redaction이 key `sessionId`를 일괄로 가려 CDP flattened-mode의 32자 hex target sessionId와 계획 훈련 도메인 sessionId까지 숨긴다 — 앱 세션 UUID 모양만 가리도록 좁히고, 줄어든 범위가 실제 앱 세션 값을 흘리지 않음을 기존 end-to-end probe로 다시 보인다."
     },
     {

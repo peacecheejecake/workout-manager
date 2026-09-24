@@ -65,7 +65,11 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL: 'http://127.0.0.1:3100',
-    trace: 'retain-on-failure',
+    // A trace keeps the session cookie, CSRF token, session id and OIDC code/state/nonce
+    // unredacted, and CI failure artifacts of this public repository are downloadable by
+    // anyone signed in. CI records no trace; its failures upload the redacted diagnostics and
+    // screenshots instead (.github/workflows/ci.yml, M2-01ae). Local runs keep the trace.
+    trace: process.env.CI ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   webServer: [

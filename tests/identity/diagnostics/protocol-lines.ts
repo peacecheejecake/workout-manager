@@ -23,7 +23,6 @@ const sensitiveKeys = [
   'x-csrf-token',
   'x-workout-session-id',
   'csrfToken',
-  'sessionId',
   'accessToken',
   'refreshToken',
   'idToken',
@@ -34,25 +33,52 @@ const sensitiveKeys = [
 const q = String.raw`\\*["']`;
 const value = String.raw`[^"'\\]*`;
 
-export const redactionRules: readonly RedactionRule[] = [
-  {
-    // Objects as JSON, escaped JSON or script source: "x-csrf-token":"…", \"csrfToken\":\"…\",
-    // csrfToken: '…' — CDP headers, response bodies, returnByValue results, evaluate source.
-    name: 'key-value',
-    pattern: new RegExp(
-      String.raw`((?:${q}|\b)(?:${sensitiveKeys})(?:${q})?\s*:\s*${q})${value}`,
-      'gi',
-    ),
-  },
-  {
-    // Playwright's serialized evaluate arguments and results:
-    // {"k":"x-csrf-token","v":"…"} or {"k":"csrfToken","v":{"s":"…"}}
-    name: 'serialized-property',
-    pattern: new RegExp(
-      String.raw`(${q}k${q}\s*:\s*${q}(?:${sensitiveKeys})${q}\s*,\s*${q}v${q}\s*:\s*(?:\{\s*${q}s${q}\s*:\s*)?${q})${value}`,
-      'gi',
-    ),
-  },
+/**
+ * `sessionId` is not always this app's session. CDP names its flattened-mode target
+ * sessions `sessionId` (32 upper-case hex digits), and the training domain names planned
+ * sessions `sessionId`. The app's session id is PostgreSQL's `gen_random_uuid()`
+ * (`identity_private.session.session_id`), so a `sessionId` is hidden only when its whole
+ * value has that shape. A planned session whose id happens to be a UUID is hidden too: the
+ * safe side to be wrong on. `x-workout-session-id` carries only the app's id and is always
+ * hidden.
+ */
+export const appSessionIdValue = String.raw`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`;
+
+/**
+ * The rules, hiding a `sessionId` whose value matches `sessionIdValue` (a regex source).
+ * Only tests pass anything else, to show what a wider or narrower `sessionId` rule would do.
+ */
+export function buildRedactionRules(
+  sessionIdValue: string = appSessionIdValue,
+): readonly RedactionRule[] {
+  // A sensitive key, given what separates it from its value; `sessionId` only when the
+  // value after that separator is a whole app session id.
+  const key = (separator: string) =>
+    String.raw`(?:${sensitiveKeys}|sessionId(?=${separator}(?:${sessionIdValue})${q}))`;
+  const keyValue = String.raw`(?:${q})?\s*:\s*${q}`;
+  const property = String.raw`${q}\s*,\s*${q}v${q}\s*:\s*(?:\{\s*${q}s${q}\s*:\s*)?${q}`;
+  return [
+    {
+      // Objects as JSON, escaped JSON or script source: "x-csrf-token":"…", \"csrfToken\":\"…\",
+      // csrfToken: '…' — CDP headers, response bodies, returnByValue results, evaluate source.
+      name: 'key-value',
+      pattern: new RegExp(String.raw`((?:${q}|\b)${key(keyValue)}${keyValue})${value}`, 'gi'),
+    },
+    {
+      // Playwright's serialized evaluate arguments and results:
+      // {"k":"x-csrf-token","v":"…"} or {"k":"csrfToken","v":{"s":"…"}}
+      name: 'serialized-property',
+      pattern: new RegExp(
+        String.raw`(${q}k${q}\s*:\s*${q}${key(property)}${property})${value}`,
+        'gi',
+      ),
+    },
+    ...fixedRules,
+  ];
+}
+
+/** The rules that do not depend on the `sessionId` value. */
+const fixedRules: readonly RedactionRule[] = [
   {
     // Cookie jars and CDP header arrays: {"name":"…","value":"…"}
     name: 'name-value',
@@ -78,6 +104,8 @@ export const redactionRules: readonly RedactionRule[] = [
     pattern: /([?&#](?:code|state|nonce|session_state|code_verifier)=)[^&"'\s\\#]+/gi,
   },
 ];
+
+export const redactionRules: readonly RedactionRule[] = buildRedactionRules();
 
 export function sanitizeLine(text: string, rules: readonly RedactionRule[] = redactionRules) {
   let line = text.replace(ansiEscapes, '').replaceAll('\n', ' ');

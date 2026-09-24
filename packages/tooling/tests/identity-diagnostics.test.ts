@@ -1,11 +1,18 @@
 import { expect, it } from 'vitest';
 import {
+  buildRedactionRules,
   commandLatency,
   redactionRules,
   sanitizeLine,
   stripAnsi,
   worstLoopDelay,
 } from '../../../tests/identity/diagnostics/protocol-lines';
+
+/** An app session id: `gen_random_uuid()` in `identity_private.session`. */
+const appSession = '5e551017-c0de-4a7b-9c21-0d6e7f809a1b';
+/** A CDP flattened-mode target session id, as Chromium writes it. */
+const cdpSession = '8C0F5D1E3A7B4C2D9E6F1A0B3C5D7E9F';
+const leaks = (line: string) => line.includes('SECRET') || line.toLowerCase().includes(appSession);
 
 /**
  * Every shape session material takes in the capture. `rule` names the only rule that
@@ -24,7 +31,7 @@ const forms: ReadonlyArray<{ rule: string | null; line: string }> = [
   // Response body as CDP carries it (escaped JSON)
   {
     rule: 'key-value',
-    line: String.raw`pw:protocol ◀ RECV {"id":3,"result":{"body":"{\"athleteId\":\"a1\",\"sessionId\":\"SECRET-d\",\"csrfToken\":\"SECRET-b\"}"}}`,
+    line: String.raw`pw:protocol ◀ RECV {"id":3,"result":{"body":"{\"athleteId\":\"a1\",\"sessionId\":\"${appSession}\",\"csrfToken\":\"SECRET-b\"}"}}`,
   },
   // Doubly escaped (JSON inside a JSON string inside the message)
   {
@@ -34,7 +41,7 @@ const forms: ReadonlyArray<{ rule: string | null; line: string }> = [
   // returnByValue result, unescaped
   {
     rule: 'key-value',
-    line: 'pw:protocol ◀ RECV {"id":5,"result":{"result":{"type":"object","value":{"athleteId":"a1","sessionId":"SECRET-d","csrfToken":"SECRET-b","password":"SECRET-h","code_verifier":"SECRET-i"}}}}',
+    line: `pw:protocol ◀ RECV {"id":5,"result":{"result":{"type":"object","value":{"athleteId":"a1","sessionId":"${appSession}","csrfToken":"SECRET-b","password":"SECRET-h","code_verifier":"SECRET-i"}}}}`,
   },
   // Script source in Runtime.evaluate / callFunctionOn
   {
@@ -52,7 +59,7 @@ const forms: ReadonlyArray<{ rule: string | null; line: string }> = [
   },
   {
     rule: 'serialized-property',
-    line: String.raw`pw:protocol SEND ► {"id":9,"params":{"expression":"f({\"o\":[{\"k\":\"sessionId\",\"v\":{\"s\":\"SECRET-d\"}}]})"}}`,
+    line: String.raw`pw:protocol SEND ► {"id":9,"params":{"expression":"f({\"o\":[{\"k\":\"sessionId\",\"v\":{\"s\":\"${appSession}\"}}]})"}}`,
   },
   // Cookie jars and header arrays
   {
@@ -90,7 +97,7 @@ const forms: ReadonlyArray<{ rule: string | null; line: string }> = [
 it('redacts session material in every form the capture sees it', () => {
   for (const { line } of forms) {
     const safe = sanitizeLine(line);
-    expect(safe, line).not.toContain('SECRET');
+    expect(leaks(safe), line).toBe(false);
     expect(safe).toContain('[redacted]');
   }
   // What is not session material stays readable.
@@ -108,11 +115,65 @@ it('needs every redaction rule: without it, its forms leak', () => {
     expect(covered.length, rule.name).toBeGreaterThan(0);
     const without = redactionRules.filter((other) => other !== rule);
     for (const { line } of covered)
-      expect(sanitizeLine(line, without), rule.name).toContain('SECRET');
+      expect(leaks(sanitizeLine(line, without)), rule.name).toBe(true);
   }
   expect(new Set(forms.map(({ rule }) => rule).filter(Boolean))).toEqual(
     new Set(redactionRules.map(({ name }) => name)),
   );
+});
+
+/** The app's session id under the key `sessionId`, in every form the capture carries it. */
+const appSessionForms: readonly string[] = [
+  // Response body and returnByValue result
+  `pw:protocol ◀ RECV {"id":20,"result":{"result":{"type":"object","value":{"sessionId":"${appSession}"}}}}`,
+  // Escaped once (response body) and twice (JSON source inside an evaluate expression)
+  String.raw`pw:protocol ◀ RECV {"id":21,"result":{"body":"{\"sessionId\":\"${appSession}\"}"}}`,
+  String.raw`pw:protocol SEND ► {"id":22,"params":{"expression":"JSON.parse(\"{\\\"sessionId\\\":\\\"${appSession}\\\"}\")"}}`,
+  // Script source, quoted and bare keys
+  `pw:protocol SEND ► {"id":23,"params":{"expression":"f({ 'sessionId': '${appSession}' })"}}`,
+  `pw:protocol SEND ► {"id":24,"params":{"expression":"f({ sessionId: '${appSession}' })"}}`,
+  // Playwright's serialized arguments and results, plain and escaped
+  `pw:protocol SEND ► {"id":25,"params":{"arguments":[{"value":{"o":[{"k":"sessionId","v":"${appSession}"}]}}]}}`,
+  `pw:protocol ◀ RECV {"id":26,"result":{"result":{"value":{"o":[{"k":"sessionId","v":{"s":"${appSession}"}}]}}}}`,
+  String.raw`pw:protocol SEND ► {"id":27,"params":{"expression":"f({\"o\":[{\"k\":\"sessionId\",\"v\":\"${appSession}\"}]})"}}`,
+  // Upper-case hex is the same UUID
+  `pw:protocol ◀ RECV {"id":28,"result":{"result":{"value":{"sessionId":"${appSession.toUpperCase()}"}}}}`,
+];
+
+/** `sessionId`s that are not the app's session: CDP targets and planned training sessions. */
+const otherSessionForms: readonly string[] = [
+  // CDP flattened mode: every command and event for a page target
+  `pw:protocol SEND ► {"id":30,"method":"Runtime.callFunctionOn","params":{"functionDeclaration":"() => 1"},"sessionId":"${cdpSession}"}`,
+  `pw:protocol ◀ RECV {"method":"Target.attachedToTarget","params":{"sessionId":"${cdpSession}","targetInfo":{"type":"page"}}}`,
+  // Planned training sessions in a response body, a result, a serialized result, script source
+  String.raw`pw:protocol ◀ RECV {"id":31,"result":{"body":"{\"items\":[{\"sessionId\":\"session-a\",\"status\":\"done\"}]}"}}`,
+  'pw:protocol ◀ RECV {"id":32,"result":{"result":{"value":{"planLink":{"sessionId":"easy-run"}}}}}',
+  'pw:protocol ◀ RECV {"id":33,"result":{"result":{"value":{"o":[{"k":"sessionId","v":{"s":"long-ride"}}]}}}}',
+  `pw:protocol SEND ► {"id":34,"params":{"expression":"f({ sessionId: 'strength-session' })"}}`,
+  // A UUID with more after it is not a whole app session id
+  `pw:protocol ◀ RECV {"id":35,"result":{"result":{"value":{"sessionId":"${appSession}-copy"}}}}`,
+];
+
+it('hides the app session id under sessionId in every serialized form', () => {
+  for (const line of appSessionForms) {
+    const safe = sanitizeLine(line);
+    expect(leaks(safe), line).toBe(false);
+    expect(safe, line).toContain('[redacted]');
+  }
+});
+
+it('keeps CDP target and training-domain sessionIds readable', () => {
+  for (const line of otherSessionForms) expect(sanitizeLine(line)).toBe(line);
+  expect(sanitizeLine(otherSessionForms[0] ?? '')).toContain(`"sessionId":"${cdpSession}"`);
+});
+
+it('needs the sessionId shape: a narrower rule leaks the app id, a wider one hides the others', () => {
+  // Narrower: sessionId never hidden — every app form comes back.
+  const never = buildRedactionRules('(?!)');
+  for (const line of appSessionForms) expect(leaks(sanitizeLine(line, never)), line).toBe(true);
+  // Wider (M2-01ad's rule): any sessionId value hidden — every other form is rewritten.
+  const any = buildRedactionRules(String.raw`[^"'\\]*`);
+  for (const line of otherSessionForms) expect(sanitizeLine(line, any), line).not.toBe(line);
 });
 
 it('bounds and flattens a captured line', () => {
