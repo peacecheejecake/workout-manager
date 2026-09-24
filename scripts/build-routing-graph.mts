@@ -31,6 +31,7 @@ import {
 } from '../packages/server/integrations/src/routing/index.js';
 // The allowlist is the only way data acquisition happens; it takes ids, never URLs.
 import { verifyAllowedSourceFile } from './geo/sources.mjs';
+import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
@@ -66,18 +67,17 @@ export function startEngine(options: {
   graphPath: string;
   heapMegabytes?: number;
 }): EngineHandle {
+  // One command line for every launch: it carries the request-log override that keeps
+  // waypoints out of the engine's log (M2-01k-c2, scripts/geo/graphhopper-launch.mjs).
   const child = spawn(
     'java',
-    [
-      `-Xmx${options.heapMegabytes ?? 2048}m`,
-      '-Xms512m',
-      `-Ddw.graphhopper.datareader.file=${options.extractPath}`,
-      `-Ddw.graphhopper.graph.location=${options.graphPath}`,
-      '-jar',
-      options.jarPath,
-      'server',
-      options.configPath,
-    ],
+    graphhopperJavaArguments({
+      jarPath: options.jarPath,
+      configPath: options.configPath,
+      extractPath: options.extractPath,
+      graphPath: options.graphPath,
+      ...(options.heapMegabytes === undefined ? {} : { heapMegabytes: options.heapMegabytes }),
+    }),
     { stdio: ['ignore', 'pipe', 'pipe'], cwd: dirname(options.jarPath) },
   );
   let log = '';

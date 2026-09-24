@@ -21,6 +21,19 @@ export interface ResourceCleanupWorkerConfig {
 export interface CourseThumbnailWorkerConfig {
   connectionString: string;
   storageRoot: string;
+  /** The deployed build, logged as `version` on the run's event (M2-01k-c2). */
+  release: string;
+}
+
+/** The `version` a worker logs when no release was configured. */
+export const unreleasedVersion = 'unreleased';
+const RELEASE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+
+/** `WORKOUT_RELEASE`, the same bounded release name the API logs. */
+function parseRelease(value: string | undefined): string {
+  if (value === undefined) return unreleasedVersion;
+  if (!RELEASE_PATTERN.test(value)) throw new Error('INVALID_WORKOUT_RELEASE');
+  return value;
 }
 
 function databaseUser(value: string, invalidUrlCode: string): string {
@@ -161,5 +174,9 @@ export function parseCourseThumbnailWorkerConfig(
   if (normalizedStorageRoot === parse(normalizedStorageRoot).root) {
     throw new Error('INVALID_RESOURCE_STORAGE_ROOT');
   }
-  return { connectionString, storageRoot: normalizedStorageRoot };
+  return {
+    connectionString,
+    storageRoot: normalizedStorageRoot,
+    release: parseRelease(environment['WORKOUT_RELEASE']),
+  };
 }

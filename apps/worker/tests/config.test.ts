@@ -167,7 +167,19 @@ describe('course thumbnail render worker configuration', () => {
     expect(parseCourseThumbnailWorkerConfig([], thumbnails)).toEqual({
       connectionString: thumbnails.COURSE_THUMBNAIL_DATABASE_URL,
       storageRoot: '/var/lib/workout/objects',
+      release: 'unreleased',
     });
+  });
+
+  it('logs the configured release, and only a bounded release name (M2-01k-c2)', () => {
+    expect(
+      parseCourseThumbnailWorkerConfig([], { ...thumbnails, WORKOUT_RELEASE: '2026.09.24+abc1234' })
+        .release,
+    ).toBe('2026.09.24+abc1234');
+    for (const WORKOUT_RELEASE of ['', ' ', 'a b', 'x'.repeat(65), 'token=secret', '-leading'])
+      expect(() =>
+        parseCourseThumbnailWorkerConfig([], { ...thumbnails, WORKOUT_RELEASE }),
+      ).toThrow('INVALID_WORKOUT_RELEASE');
   });
 
   it('refuses to run as any role but its own, and never as the API role', () => {

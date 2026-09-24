@@ -8,6 +8,14 @@ import type {
 } from '@workout/server-persistence/course-thumbnails';
 
 import {
+  auditLogLines,
+  coordinateProbes,
+  createLogCapture,
+  formatLogFindings,
+  valueProbes,
+} from '@workout/server-courses/log-audit';
+
+import {
   runCourseThumbnailWorker,
   type ClosableObjectStorage,
 } from '../src/course-thumbnail-worker.js';
@@ -21,6 +29,13 @@ const coordinates: readonly CoursePosition[] = [
   [126.93, 37.53],
 ];
 const temporaryRef = `private/v1/tenants/${tenantId}/courses/${courseId}/thumbnails/temporary/${jobId}`;
+const leaseToken = '55555555-5555-4555-8555-555555555555';
+const workerRelease = 'test-release-c2';
+const workerConfig = {
+  connectionString: 'postgresql://ignored@localhost/ignored',
+  storageRoot: '/ignored',
+  release: workerRelease,
+};
 
 function leaseFixture(overrides: Partial<CourseThumbnailLease> = {}): CourseThumbnailLease {
   return {
@@ -29,7 +44,7 @@ function leaseFixture(overrides: Partial<CourseThumbnailLease> = {}): CourseThum
     courseRevision: 2,
     revisionId,
     jobId,
-    leaseToken: '55555555-5555-4555-8555-555555555555',
+    leaseToken,
     temporaryRef,
     coordinates,
     ...overrides,
@@ -110,14 +125,11 @@ function run(
   storage: ClosableObjectStorage,
   events: unknown[] = [],
 ) {
-  return runCourseThumbnailWorker(
-    { connectionString: 'postgresql://ignored@localhost/ignored', storageRoot: '/ignored' },
-    {
-      createStorage: async () => storage,
-      createRepository: () => repository,
-      logger: (event) => events.push(event),
-    },
-  );
+  return runCourseThumbnailWorker(workerConfig, {
+    createStorage: async () => storage,
+    createRepository: () => repository,
+    logger: (event) => events.push(event),
+  });
 }
 
 describe('course thumbnail render worker', () => {
@@ -233,14 +245,11 @@ describe('course thumbnail render worker', () => {
     const stopping = new AbortController();
     stopping.abort();
     expect(
-      await runCourseThumbnailWorker(
-        { connectionString: 'postgresql://ignored@localhost/ignored', storageRoot: '/ignored' },
-        {
-          createStorage: async () => fixture.storage,
-          createRepository: () => repository,
-          shutdownSignal: stopping.signal,
-        },
-      ),
+      await runCourseThumbnailWorker(workerConfig, {
+        createStorage: async () => fixture.storage,
+        createRepository: () => repository,
+        shutdownSignal: stopping.signal,
+      }),
     ).toBe('released');
     // Nothing was drawn, nothing was recorded, and the attempt was handed back with the
     // lease — a few restarts must not be able to spend a render's five attempts.
@@ -264,14 +273,11 @@ describe('course thumbnail render worker', () => {
       return write(key, body);
     });
     expect(
-      await runCourseThumbnailWorker(
-        { connectionString: 'postgresql://ignored@localhost/ignored', storageRoot: '/ignored' },
-        {
-          createStorage: async () => fixture.storage,
-          createRepository: () => repository,
-          shutdownSignal: stopping.signal,
-        },
-      ),
+      await runCourseThumbnailWorker(workerConfig, {
+        createStorage: async () => fixture.storage,
+        createRepository: () => repository,
+        shutdownSignal: stopping.signal,
+      }),
     ).toBe('released');
     expect(repository.prepare).not.toHaveBeenCalled();
     expect(fixture.storage.publishTemporary).not.toHaveBeenCalled();
@@ -287,5 +293,128 @@ describe('course thumbnail render worker', () => {
     expect(serialized).toContain('course_thumbnail_render_finished');
     for (const secret of ['126.9', '37.5', tenantId, courseId, revisionId, 'private/v1'])
       expect(serialized).not.toContain(secret);
+  });
+
+  it('logs every outcome with a run id and the release, and nothing of the lease', async () => {
+    // Every way a run can end, each with its own lease, storage and stop signal. The lease
+    // token is a UUID, so a leak of it is caught by its probe rather than by its shape.
+    const stopped = new AbortController();
+    stopped.abort();
+    const scenarios = [
+      { expected: 'empty', repository: repositoryFixture({ lease: null }), storage: {} },
+      { expected: 'ready', repository: repositoryFixture(), storage: {} },
+      {
+        expected: 'superseded',
+        repository: repositoryFixture({ finalize: 'superseded' }),
+        storage: {},
+      },
+      {
+        expected: 'unavailable',
+        repository: repositoryFixture({ lease: leaseFixture({ coordinates: [[126.92, 37.52]] }) }),
+        storage: {},
+      },
+      { expected: 'lease_lost', repository: repositoryFixture({ prepared: false }), storage: {} },
+      {
+        expected: 'failed',
+        repository: repositoryFixture(),
+        storage: { publishFailure: new Error(`store unavailable at ${temporaryRef}`) },
+      },
+      {
+        expected: 'released',
+        repository: repositoryFixture(),
+        storage: {},
+        shutdownSignal: stopped.signal,
+      },
+    ] as const;
+    const capture = createLogCapture();
+    const results: string[] = [];
+    for (const scenario of scenarios) {
+      results.push(
+        await runCourseThumbnailWorker(workerConfig, {
+          createStorage: async () => storageFixture(scenario.storage).storage,
+          createRepository: () => scenario.repository,
+          logger: capture.sink,
+          ...('shutdownSignal' in scenario ? { shutdownSignal: scenario.shutdownSignal } : {}),
+        }),
+      );
+    }
+    expect(results).toEqual(scenarios.map((scenario) => scenario.expected));
+
+    const lines = capture.lines();
+    const findings = auditLogLines(lines, {
+      traceField: 'runId',
+      version: workerRelease,
+      probes: [
+        ...coordinateProbes([...coordinates, [126.92, 37.52]]),
+        ...valueProbes('object_key', [temporaryRef, 'thumbnails/revisions', '/ignored']),
+        ...valueProbes('token', [leaseToken]),
+      ],
+      minRecords: scenarios.length,
+    });
+    expect(findings, formatLogFindings(findings)).toEqual([]);
+    // One line per run, each run traced by its own id.
+    expect(lines).toHaveLength(scenarios.length);
+    const runIds = lines.map((line) => (JSON.parse(line) as { runId: string }).runId);
+    expect(new Set(runIds).size).toBe(scenarios.length);
+  });
+
+  it('takes its lease under the run id it logs, so a line joins to the ledger row', async () => {
+    const repository = repositoryFixture();
+    const created: { workerId?: string }[] = [];
+    const capture = createLogCapture();
+    await runCourseThumbnailWorker(workerConfig, {
+      createStorage: async () => storageFixture().storage,
+      createRepository: (options) => {
+        created.push(options);
+        return repository;
+      },
+      logger: capture.sink,
+    });
+    const [line] = capture.lines();
+    expect(created).toHaveLength(1);
+    expect(created[0]?.workerId).toBe((JSON.parse(line ?? '{}') as { runId: string }).runId);
+  });
+
+  it('leaves one correlated line when it cannot start, without the error text', async () => {
+    const secret = `postgres://thumbs:hunter2@db/workout at ${temporaryRef}`;
+    const capture = createLogCapture();
+    const unreachableDatabase = repositoryFixture();
+    unreachableDatabase.lease = vi.fn(async () => {
+      throw new Error(secret);
+    });
+    await expect(
+      runCourseThumbnailWorker(workerConfig, {
+        createStorage: async () => storageFixture().storage,
+        createRepository: () => unreachableDatabase,
+        logger: capture.sink,
+      }),
+    ).rejects.toThrow(secret);
+    // The pool is still released.
+    expect(unreachableDatabase.close).toHaveBeenCalled();
+    await expect(
+      runCourseThumbnailWorker(workerConfig, {
+        createStorage: async () => {
+          throw new Error(secret);
+        },
+        createRepository: () => repositoryFixture(),
+        logger: capture.sink,
+      }),
+    ).rejects.toThrow(secret);
+
+    const lines = capture.lines();
+    const findings = auditLogLines(lines, {
+      traceField: 'runId',
+      version: workerRelease,
+      probes: [
+        ...valueProbes('object_key', [temporaryRef]),
+        ...valueProbes('token', ['hunter2', secret]),
+      ],
+      minRecords: 2,
+    });
+    expect(findings, formatLogFindings(findings)).toEqual([]);
+    expect(lines.map((line) => (JSON.parse(line) as { result: string }).result)).toEqual([
+      'error',
+      'error',
+    ]);
   });
 });

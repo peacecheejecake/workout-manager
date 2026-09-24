@@ -16,8 +16,12 @@ async function main(): Promise<void> {
   // Parsing belongs inside the guarded path: a rejected configuration carries the
   // connection string it rejected, and an unguarded throw would print it with a stack.
   const config = parseCourseThumbnailWorkerConfig(process.argv.slice(2), process.env);
-  const result = await runCourseThumbnailWorker(config, { shutdownSignal: shutdown.signal });
-  process.stdout.write(`${JSON.stringify({ kind: 'course_thumbnail_worker_result', result })}\n`);
+  // The run's one event is its log line: outcome, run id and release (M2-01k-c2). It used
+  // to be a separate `{kind, result}` line with neither a trace id nor a version.
+  await runCourseThumbnailWorker(config, {
+    shutdownSignal: shutdown.signal,
+    logger: (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
+  });
 }
 
 try {

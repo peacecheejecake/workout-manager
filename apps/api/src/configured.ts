@@ -67,6 +67,12 @@ const environmentSchema = z.object({
   OIDC_PROVIDER_LOGOUT: z.enum(['true', 'false']).default('true'),
   COACHING_FIXTURE_ENABLED: z.enum(['true', 'false']).default('false'),
   COACHING_FIXTURE_ID: z.string().optional(),
+  // M2-01k-c2. The deployed build, logged as `version` on every line. A bounded token so
+  // the value can never carry anything but a release name.
+  WORKOUT_RELEASE: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/)
+    .optional(),
   PRIVATE_RESOURCE_STORAGE_ROOT: z
     .string()
     .min(1)
@@ -153,6 +159,7 @@ export async function createConfiguredApi(environment: unknown) {
       allowInsecureLocalhost,
     });
     const app = createApi({
+      ...(env.WORKOUT_RELEASE === undefined ? {} : { version: env.WORKOUT_RELEASE }),
       auth: identity,
       identity,
       garmin:

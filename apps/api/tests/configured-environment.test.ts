@@ -38,6 +38,7 @@ beforeEach(async () => {
     'ROUTING_ENGINE_ARTIFACT',
     'ROUTING_PROFILE_CONFIG',
     'ROUTING_ENGINE_ALLOWED_HOSTS',
+    'WORKOUT_RELEASE',
   ])
     vi.stubEnv(key, undefined);
 });
@@ -66,5 +67,14 @@ describe('createConfiguredApi given the real process environment (M2-01aa)', () 
     await expect(createConfiguredApi(process.env)).rejects.toThrow(
       'ROUTING_CONFIGURATION_INCOMPLETE',
     );
+  });
+
+  it('starts with a bounded release name and refuses anything else (M2-01k-c2)', async () => {
+    vi.stubEnv('WORKOUT_RELEASE', '2026.09.24+abc1234');
+    const app = await createConfiguredApi(process.env);
+    await app.close();
+    // The release is written into every log line, so it may hold nothing but a name.
+    vi.stubEnv('WORKOUT_RELEASE', 'token=secret value');
+    await expect(createConfiguredApi(process.env)).rejects.toThrow();
   });
 });

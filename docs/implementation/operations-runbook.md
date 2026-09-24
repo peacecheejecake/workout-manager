@@ -499,7 +499,40 @@ graph·jar·profile이 manifest와 맞지 않아도 기동을 거절한다(`apps
 profile은 M2-01d 측정용 `scripts/geo/graphhopper-foot.yml`이 아니라 serving profile이다
 (다르면 `PROFILE_CONFIG_MISMATCH`).
 
-엔진은 같은 graph·profile로 loopback에 띄운다(`scripts/build-routing-graph.mts`의 `startEngine`과 같은 인자).
+엔진은 같은 graph·profile로 loopback에 띄운다. 인자는 `scripts/geo/graphhopper-launch.mjs`의
+`graphhopperJavaArguments`가 만든다. 저장소의 모든 기동 경로(`startEngine`, probe들)가 이 함수를 쓴다.
+손으로 띄울 때도 같은 인자를 쓴다:
+
+```sh
+java -Xmx2048m -Xms512m \
+  -Ddw.graphhopper.datareader.file=<.geo-build/source/region.osm.pbf> \
+  -Ddw.graphhopper.graph.location=<.geo-build/routing-graph/foot> \
+  -Ddw.server.request_log.type=external \
+  -jar <.geo-build/graphhopper/graphhopper-web.jar> server <.geo-build/routing-graph/config-serving.yml>
+```
+
+**`-Ddw.server.request_log.type=external`은 빼면 안 된다(M2-01k-c2).** adapter는 모든 waypoint를 요청 줄
+(`GET /route?...&point=lat,lon`)에 담는다. Dropwizard 기본 request log는 그 줄을 stdout에 쓰므로, 이 인자가
+없으면 정확한 waypoint가 엔진 로그에 남는다. 보호는 **두 겹**이고 어느 하나만으로는 부족하다.
+
+1. **이 기동 인자.** `external` 형식은 jar 안에서 `CustomRequestLog(Slf4jRequestLogWriter, ClassicLogFormat)`를
+   만든다(`logback-access.xml`은 읽지 않는다). 그래서 요청 줄은 애플리케이션 logger
+   `org.eclipse.jetty.server.RequestLog`에 INFO로 가고, **경로만 담고 query string은 담지 않는다.**
+2. **serving profile 콘솔 appender의 `threshold: WARN`.** 1의 INFO 요청 줄을 떨어뜨린다. GraphHopper
+   `com.graphhopper.resources.RouteResource`가 route 요청마다 INFO로 **waypoint 자체**
+   (`[37.57…,126.97…, …]`)를 찍는데, 그 줄을 막는 것은 이 threshold뿐이다. 그러므로 INFO 수준 appender를
+   더하지 않는다: file appender, 더 낮은 threshold, `-Ddw.logging.appenders[0].threshold=INFO` 같은 기동 인자
+   모두 안 된다. 하나라도 더하면 waypoint가 샌다.
+
+profile 파일에 `server.request_log.appenders: []`를 직접 넣는 것은 **다음 graph 재빌드 때** 한다(M2-01k-e가
+준비 중). profile 해시가 graph manifest(`profileConfigSha256`)와 graph id에 묶여 있어서, 지금 파일을
+고치면 배포된 graph가 `PROFILE_CONFIG_MISMATCH`로 거절된다. 그전까지는 위 두 겹(기동 인자와 WARN
+threshold)이 보호다. `RouteResource` logger를 WARN/OFF로 고정하는 일과 `POST /route` 검토는 후속 노드에서
+한다. profile이 request log를 스스로 끄면 helper는 기동 인자를 자동으로 뺀다.
+
+검증은 `node --import tsx scripts/probe-routing-engine-logs.mts --execute`다. 실제 jar를 이 helper로
+띄우고, 심은 좌표가 엔진 stdout/stderr에 0건이어야 PASS다. `--console-threshold INFO`를 붙이면 기동 인자만의
+보장을 본다. 요청 줄은 query를 담지 않아야 PASS이고, 이때 `RouteResource` 줄의 waypoint는 보고만 한다.
 graph를 바꿀 때는 엔진 재시작과 API 재배포 **두 단계**다. 원자적이지 않다. 그 사이에는 API가
 `graph_mismatch`(502)로 계산을 거절하며, 저장된 코스는 재계산되지 않는다. rollback도 같은 두 단계다.
 identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다

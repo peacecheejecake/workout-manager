@@ -1,10 +1,11 @@
 import { connect } from 'node:net';
-import { Writable } from 'node:stream';
 
 import type { WalkingRouteResult } from '@workout/contracts/routing';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 import type { WalkingRoutePort } from '../src/routing-routes.js';
 
 /**
@@ -57,6 +58,21 @@ const body = JSON.stringify({
 
 const apps: ReturnType<typeof createApi>[] = [];
 
+// Every app's log stream is kept and audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(
+  [
+    ...coordinateProbes(
+      [
+        [126.9769, 37.5759],
+        [126.9779, 37.5663],
+      ],
+      'waypoint',
+    ),
+    ...valueProbes('token', ['c'.repeat(43)]),
+  ],
+  2,
+);
+
 interface Observation {
   aborted: boolean;
   abortedAt: 'never' | 'during' | 'after';
@@ -90,11 +106,7 @@ async function listening(computeDelayMilliseconds: number) {
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     walkingRoutes: { compute },
     allowedOrigins: ['https://workout.example'],
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
   apps.push(app);
   const address = await app.listen({ host: '127.0.0.1', port: 0 });

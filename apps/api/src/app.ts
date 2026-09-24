@@ -7,6 +7,7 @@ import {
 } from './product-routes.js';
 import { IdentityError, type IdentityService } from '@workout/server-identity/service';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { hostname } from 'node:os';
 import type { Writable } from 'node:stream';
 import Fastify, { LogController, type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -29,8 +30,17 @@ export interface ApiOptions extends ProductRepositories {
   consent: ConsentPort;
   allowedOrigins: readonly string[];
   logStream?: Writable;
+  /**
+   * The deployed build this process runs (M2-01k-c2, V2-F36). Every log line carries it as
+   * `version`, next to the per-request trace id `reqId`, so an operational line can be
+   * traced to the code that wrote it. Defaults to {@link unreleasedVersion}.
+   */
+  version?: string;
   close?: () => Promise<void>;
 }
+
+/** The `version` a process logs when no release was configured. */
+export const unreleasedVersion = 'unreleased';
 
 class BoundaryError extends Error {
   constructor(
@@ -151,6 +161,12 @@ export function createApi(options: ApiOptions): FastifyInstance {
     logController: new LogController({ disableRequestLogging: true }),
     logger: {
       level: 'info',
+      // pino's default bindings plus the release, on every line including request children.
+      base: {
+        pid: process.pid,
+        hostname: hostname(),
+        version: options.version ?? unreleasedVersion,
+      },
       ...(options.logStream === undefined ? {} : { stream: options.logStream }),
       serializers: {
         req: () => ({}),

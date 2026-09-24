@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   createCourseThumbnailFinalObjectKey,
   createCourseThumbnailTemporaryObjectKey,
@@ -32,11 +34,25 @@ import type { CourseThumbnailWorkerConfig } from './config.js';
  * drawing the line itself.
  *
  * **Nothing is logged about the line.** No coordinate, no course name, no object key and no
- * storage path appears in any event this worker emits. The outcome and the tenant-free job
- * identity are the whole story.
+ * storage path appears in any event this worker emits. The event is the outcome, a fresh
+ * run id to trace this one run by, and the release that ran it (M2-01k-c2, V2-F36) — none
+ * of which is derived from the lease, so none of it can point at a tenant, a course or an
+ * object.
  */
 export type CourseThumbnailWorkerResult =
   'empty' | 'ready' | 'superseded' | 'unavailable' | 'failed' | 'released' | 'lease_lost';
+
+/**
+ * The one event a run emits. Every field is fixed vocabulary, a random id or the release.
+ * `error` is a run that threw before it reached an outcome (storage or the database could
+ * not be reached); the run still rethrows.
+ */
+export interface CourseThumbnailWorkerEvent {
+  readonly event: 'course_thumbnail_render_finished';
+  readonly result: CourseThumbnailWorkerResult | 'error';
+  readonly runId: string;
+  readonly version: string;
+}
 
 export interface ClosableObjectStorage extends ObjectStorage {
   close?(): Promise<void>;
@@ -48,10 +64,7 @@ export interface CourseThumbnailWorkerDependencies {
     connectionString: string;
     workerId?: string;
   }): CourseThumbnailWorkerRepository;
-  logger?: (event: {
-    event: 'course_thumbnail_render_finished';
-    result: CourseThumbnailWorkerResult;
-  }) => void;
+  logger?: (event: CourseThumbnailWorkerEvent) => void;
   /**
    * Fired when the process is asked to stop. A render that has not yet recorded an object
    * reference hands its lease straight back, so a restart does not hold the work for the
@@ -191,27 +204,50 @@ export async function runCourseThumbnailWorker(
   overrides: Partial<CourseThumbnailWorkerDependencies> = {},
 ): Promise<CourseThumbnailWorkerResult> {
   const dependencies = { ...defaultDependencies, ...overrides };
-  const storage = await dependencies.createStorage(config.storageRoot);
-  const repository = dependencies.createRepository({ connectionString: config.connectionString });
+  // The run's trace id: fresh per run and derived from nothing the lease holds. It is also
+  // the worker id the lease is taken under, so a log line joins to the ledger row it held.
+  const runId = randomUUID();
+  let reported = false;
+  const finished = (result: CourseThumbnailWorkerEvent['result']) => {
+    reported = true;
+    dependencies.logger?.({
+      event: 'course_thumbnail_render_finished',
+      result,
+      runId,
+      version: config.release,
+    });
+  };
+  let storage: ClosableObjectStorage | undefined;
+  let repository: CourseThumbnailWorkerRepository | undefined;
   let result: CourseThumbnailWorkerResult = 'empty';
   try {
+    storage = await dependencies.createStorage(config.storageRoot);
+    repository = dependencies.createRepository({
+      connectionString: config.connectionString,
+      workerId: runId,
+    });
     const lease = await repository.lease();
     if (lease === null) {
-      dependencies.logger?.({ event: 'course_thumbnail_render_finished', result });
+      finished(result);
       return result;
     }
     // Asked to stop before any work began: give the lease back rather than hold it for its
     // whole term, and give the attempt back with it.
     if (dependencies.shutdownSignal?.aborted === true && (await repository.release(lease))) {
       result = 'released';
-      dependencies.logger?.({ event: 'course_thumbnail_render_finished', result });
+      finished(result);
       return result;
     }
     result = await renderOne(lease, repository, storage, dependencies.shutdownSignal);
-    dependencies.logger?.({ event: 'course_thumbnail_render_finished', result });
+    finished(result);
     return result;
+  } catch (error) {
+    // Every run leaves one correlated line, including a run that could not start. The
+    // error itself is not logged: it can carry SQL, a connection string or a storage path.
+    if (!reported) finished('error');
+    throw error;
   } finally {
-    await repository.close();
-    await storage.close?.();
+    await repository?.close();
+    await storage?.close?.();
   }
 }

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Writable } from 'node:stream';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -26,7 +25,10 @@ import {
 } from '@workout/server-persistence/resource-object-cleanup';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
+
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -56,6 +58,18 @@ const gpxBytes = Buffer.from(
     `</trkseg></trk></gpx>`,
   'utf8',
 );
+
+// The real parse host, storage and database behind the routes; their log stream is kept and
+// audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(() => [
+  ...coordinateProbes([
+    [127.02, 37.5],
+    [127.0201, 37.5001],
+    [127.0202, 37.5002],
+  ]),
+  ...valueProbes('object_key', [objectRoot]),
+  ...valueProbes('token', [csrfToken, 'session=fixture']),
+]);
 
 beforeAll(async () => {
   await migrate(adminUrl);
@@ -159,11 +173,7 @@ function setup(storage: ObjectStorage) {
         maxOldGenerationSizeMb: 256,
       }),
     },
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
 }
 

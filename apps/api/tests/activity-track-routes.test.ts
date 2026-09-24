@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Readable, Writable } from 'node:stream';
+import { Readable } from 'node:stream';
 
 import { createActivityTrackFinalObjectKey } from '@workout/server-media/keys';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
@@ -10,7 +10,9 @@ import type {
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 
 const athleteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const otherAthleteId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -88,6 +90,20 @@ const track = {
 };
 
 const instances: ReturnType<typeof createApi>[] = [];
+
+// Every app's log stream is kept and audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(
+  [
+    ...coordinateProbes([
+      [127.02, 37.5],
+      [127.0201, 37.5001],
+      [127.0202, 37.5002],
+    ]),
+    ...valueProbes('token', [csrfToken, 'session=fixture']),
+    ...valueProbes('body', ['아침', 'run.gpx', encodeURIComponent('아침 러닝.gpx')]),
+  ],
+  20,
+);
 
 function storageFixture(): ObjectStorage & { objects: Map<string, Uint8Array> } {
   const objects = new Map<string, Uint8Array>();
@@ -171,11 +187,7 @@ function setup(options: { authenticated?: boolean } = {}) {
         maxOldGenerationSizeMb: 256,
       }),
     },
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
   instances.push(app);
   return { app, tracks, storage };

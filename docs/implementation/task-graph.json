@@ -1328,7 +1328,8 @@
       "title": "로그 redaction 단언",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01k-c2.md",
       "scope": "코스·routing·track 라우트와 worker의 로그 stream을 버리지 않고 모아, 좌표·waypoint·객체 key·토큰·본문이 없고 trace id·version은 있음을 단언한다. 각 필드를 로그에 넣는 변이로 실패를 보인다 닫을 매트릭스 행: P7-no-coordinates-in-logs, V2-F36. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
     },
     {
@@ -1437,6 +1438,14 @@
       "status": "completed",
       "evidence": "docs/implementation/progress/M2-01ae.md",
       "scope": "M2-01ad 독립 검토에서 분리. (1) Playwright retain-on-failure trace.zip이 세션 id·CSRF token·session cookie·OIDC state/nonce/code를 redaction 없이 담고, .github/workflows/ci.yml(약 46–53, 141–148행)이 실패 시 playwright-report/·test-results/를 7일 보관 artifact로 올린다. 저장소는 public이라 로그인한 누구나 받을 수 있다. 값은 runner 안 합성 fixture 계정·일회용 DB의 것이라 재사용할 곳은 없지만, 재생 가능한 모양의 token을 공개 artifact에 두지 않도록 CI에서 trace를 끄거나 snapshots를 빼고 redaction하거나 test-results/ 업로드를 빼는 방법을 결정·구현하고, fixture E2E job(playwright.config)의 trace도 같은 기준으로 확인한다. (2) 진단 redaction이 key `sessionId`를 일괄로 가려 CDP flattened-mode의 32자 hex target sessionId와 계획 훈련 도메인 sessionId까지 숨긴다 — 앱 세션 UUID 모양만 가리도록 좁히고, 줄어든 범위가 실제 앱 세션 값을 흘리지 않음을 기존 end-to-end probe로 다시 보인다."
+    },
+    {
+      "id": "M2-01af",
+      "title": "routing 엔진 serving profile 로그 강화와 graph 재구축",
+      "dependsOn": ["M2-01k-c2", "M2-01k-e"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01k-c2에서 분리. 지금 routing 엔진의 waypoint 로그 보호는 두 가지에만 기대고 있다: 저장소 안 실행 경로의 -Ddw.server.request_log.type=external override(요청 줄에서 query 제거)와 모든 logging appender의 WARN threshold(GraphHopper RouteResource의 INFO 줄에 waypoint가 있음). 다음 graph 재구축에서 serving profile 파일 자체에 server.request_log.appenders: []를 넣고 com.graphhopper.resources.RouteResource logger를 WARN 또는 OFF로 고정한다. profile SHA-256이 graph manifest의 profileConfigSha256에 묶여 있으므로 전체 재import와 graph id 변경, 코스의 graph 인정 재확인이 따른다(M2-01k-e의 blue/green 교체 절차로). 저장소 밖 실행도 막도록 adapter를 POST /route(JSON body)로 바꾸는 것을 검토한다. guard 시험(packages/tooling/tests/graphhopper-launch.test.mjs)의 엄격한 profile 문법을 같은 변경에서 확장하고, scripts/probe-routing-engine-logs.mts로 새 profile에서 실제 엔진이 waypoint를 쓰지 않음을 보인다."
     },
     {
       "id": "M2-01k",

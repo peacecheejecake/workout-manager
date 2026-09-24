@@ -17,7 +17,8 @@
     "./privacy-trim": "./src/privacy-trim.ts",
     "./geo-data": "./src/geo-data.ts",
     "./candidates": "./src/candidates.ts",
-    "./thumbnail": "./src/thumbnail.ts"
+    "./thumbnail": "./src/thumbnail.ts",
+    "./log-audit": "./src/log-audit.ts"
   },
   "dependencies": {
     "@workout/contracts": "workspace:*",

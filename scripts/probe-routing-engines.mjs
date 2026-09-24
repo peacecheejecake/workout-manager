@@ -24,6 +24,7 @@ import {
   sha256File,
   verifyAllowedSourceFile,
 } from './geo/sources.mjs';
+import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
@@ -361,20 +362,18 @@ async function measureGraphHopper() {
   const port = 8991;
   const steps = [];
   const importStarted = performance.now();
+  // Only the data paths (and the request-log override every launch carries, M2-01k-c2) are
+  // overridden. The loopback ports live in the YAML.
   const server = spawn(
     'java',
-    [
-      '-Xmx4g',
-      '-Xms1g',
-      // Only the data paths are overridden. The loopback ports live in the YAML, whose
-      // Dropwizard key style differs from the JVM override syntax.
-      `-Ddw.graphhopper.datareader.file=${extractPath}`,
-      `-Ddw.graphhopper.graph.location=${graphLocation}`,
-      '-jar',
-      jar,
-      'server',
+    graphhopperJavaArguments({
+      jarPath: jar,
       configPath,
-    ],
+      extractPath,
+      graphPath: graphLocation,
+      heapMegabytes: 4096,
+      initialHeapMegabytes: 1024,
+    }),
     { stdio: ['ignore', 'pipe', 'pipe'], cwd: directory },
   );
   let log = '';

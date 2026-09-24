@@ -17,18 +17,21 @@
 
 ## 완료된 최신 작업
 
-[M2-01ae](progress/M2-01ae.md)를 완료했다. 공개 저장소의 CI 실패 artifact가 세션 id·CSRF·cookie·OIDC 값을 담은
-Playwright trace를 올리던 것을 막았다. CI에서는 trace를 끄고(`process.env.CI`), identity job은 가린 진단(실패 시험별
-`protocol.log`·`pressure.log`·`summary.txt`)과 스크린샷·`error-context.md`만 올린다. CI 모사에서 옛 설정은 trace.zip에
-실제 값 58건, 새 설정은 0건이었다. 진단의 `sessionId` 가림을 앱 세션 id 모양(UUID)으로 좁혀 CDP target sessionId를 다시
-읽을 수 있게 했다. key 없이 전달된 세션 값은 여전히 가리지 않는다(문서화, 현재 그런 spec 없음).
+[M2-01k-c2](progress/M2-01k-c2.md)를 완료했다. 코스·routing·track API와 썸네일 worker의 실제 로그 stream을 버리지 않고
+검사하는 `@workout/server-courses/log-audit` helper를 만들어, 좌표·waypoint·객체 key·토큰·본문이 없고 trace id·version이
+모든 줄에 있음을 변이로 보였다. **독립 검토가 실제 누출을 찾았다**: routing 엔진(GraphHopper)의 기본 access log가
+`GET /route?...&point=lat,lon`으로 정확한 waypoint를 stdout에 썼다. 저장소 안의 모든 엔진 실행을 한 helper로 모아
+`-Ddw.server.request_log.type=external`을 넘기고, 실제 엔진에서 0건임을 보였다. 보호는 이 override와 모든 appender의
+WARN threshold 두 가지에 기대며(GraphHopper RouteResource INFO 줄에 waypoint가 있음), guard 시험이 엄격한 profile 문법으로
+두 조건을 지킨다(검토가 찾은 profile YAML 우회 7가지와 실행 우회 1가지 모두 거절). profile 파일 자체의 강화는 graph 재구축이 필요해 M2-01af로 분리했다.
+매트릭스 P7-no-coordinates-in-logs를 한계와 함께 passed로 올렸다(passed 41 → 42). 운영에서는 `WORKOUT_RELEASE`를
+설정해야 로그의 version이 `unreleased`가 아니다.
 
-직전 완료: [M2-01k-k](progress/M2-01k-k.md)(S09 주소 별칭, S09-address passed).
+직전 완료: [M2-01ae](progress/M2-01ae.md)(공개 CI artifact에서 세션 값 제거).
 
 ## 다음 ready 작업
 
-`M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
-뒤이며 코드 전에 사용자 승인이 필요하다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
+`M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 이제 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01af는 M2-01k-e 뒤다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

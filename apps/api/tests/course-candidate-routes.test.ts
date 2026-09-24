@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import type { WalkingRouteResult } from '@workout/contracts/routing';
 import { targetDistanceLimits } from '@workout/contracts/courses';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
@@ -11,7 +9,9 @@ import {
 } from '@workout/server-persistence/courses';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 
 /**
  * The target-distance candidate endpoint (M2-01i).
@@ -103,6 +103,16 @@ const courseRevision = {
 };
 
 const instances: ReturnType<typeof createApi>[] = [];
+
+// Every app's log stream is kept and audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(
+  [
+    ...coordinateProbes([origin, [126.98, 37.567]]),
+    ...valueProbes('token', [csrfToken, 'session=fixture']),
+    ...valueProbes('body', ['Seoul loop']),
+  ],
+  30,
+);
 
 function bentLine(waypoints: readonly [number, number][]): [number, number][] {
   const first = waypoints[0];
@@ -356,11 +366,7 @@ function setup(
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     courses: { courses, tracks, storage },
     ...(options.engine ? { walkingRoutes: options.engine } : {}),
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
   instances.push(app);
   return { app, courses, engine: options.engine };

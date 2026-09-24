@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import type { CoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import {
   CourseAccessibilityNoteStateError,
@@ -12,7 +10,9 @@ import { createElevationIndex, createPlaceIndex } from '@workout/server-courses/
 import { privacyZoneSetDigest } from '@workout/server-courses/privacy-trim';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 
 /**
  * The M2-01j API boundary: import, preferences, protected areas, place search, elevation
@@ -168,6 +168,21 @@ const elevationIndex = createElevationIndex({
 
 const instances: ReturnType<typeof createApi>[] = [];
 
+// Every app's log stream is kept and audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(
+  [
+    ...coordinateProbes([
+      [127.02, 37.5],
+      [127.04, 37.52],
+      [127.021, 37.501],
+      [126.9882, 37.5512],
+    ]),
+    ...valueProbes('token', [csrfToken, 'session=fixture']),
+    ...valueProbes('body', ['가져온 경로', '남산', 'course.gpx', 'test-writer']),
+  ],
+  90,
+);
+
 function setup(
   options: {
     authenticated?: boolean;
@@ -281,11 +296,7 @@ function setup(
       places: options.datasets === false ? null : placeIndex,
       elevation: options.datasets === false ? null : elevationIndex,
     },
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
   instances.push(app);
   return { app, courses, preferences, zones };

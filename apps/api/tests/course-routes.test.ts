@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Readable, Writable } from 'node:stream';
+import { Readable } from 'node:stream';
 
 import type { WalkingRouteResult } from '@workout/contracts/routing';
 import type { MapPath } from '@workout/contracts/tracks';
@@ -10,7 +10,9 @@ import { CourseStateError, type CourseRepository } from '@workout/server-persist
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { coordinateProbes, valueProbes } from '@workout/server-courses/log-audit';
 import { createApi } from '../src/app.js';
+import { auditRouteLogs } from './log-audit-support.js';
 
 const athleteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const activityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -151,6 +153,17 @@ const courseRevision = {
 };
 
 const instances: ReturnType<typeof createApi>[] = [];
+
+// Every app's log stream is kept and audited after each test (M2-01k-c2).
+const logs = auditRouteLogs(
+  [
+    ...coordinateProbes(mapPath.geometry.coordinates.flat()),
+    ...valueProbes('object_key', [mapPathRef]),
+    ...valueProbes('token', [csrfToken, 'session=fixture']),
+    ...valueProbes('body', ['Seoul loop', 'Renamed']),
+  ],
+  100,
+);
 
 function storageFixture(): ObjectStorage & { objects: Map<string, Uint8Array> } {
   const objects = new Map<string, Uint8Array>([[mapPathRef, mapPathBytes]]);
@@ -380,11 +393,7 @@ function setup(
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     courses: { courses, tracks, storage },
     ...(options.walkingRoutes ? { walkingRoutes: options.walkingRoutes } : {}),
-    logStream: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
+    ...logs.options(),
   });
   instances.push(app);
   return { app, courses, tracks, storage, walkingRoutes: options.walkingRoutes };
@@ -766,11 +775,7 @@ describe('course command idempotency at the API boundary', () => {
       },
       consent: { getConsent: vi.fn(), setConsent: vi.fn() },
       courses: { courses, tracks: setup().tracks, storage: setup().storage },
-      logStream: new Writable({
-        write(_chunk, _encoding, callback) {
-          callback();
-        },
-      }),
+      ...logs.options(),
     });
     instances.push(app);
     return { app, courses, update };

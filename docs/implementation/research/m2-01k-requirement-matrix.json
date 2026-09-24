@@ -56,6 +56,20 @@
         "independent review probes: open redirect, header injection, sibling routes, history"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-k.md."
+    },
+    {
+      "node": "M2-01k-c2",
+      "date": "2026-09-24",
+      "rows": ["P7-no-coordinates-in-logs", "V2-F36"],
+      "decision": "Gap node M2-01k-c2 audited real log streams and closed a live routing-engine waypoint leak; V2-F36 stays partial (product-wide quote, V2-F31 precedent) with map-scope evidence recorded.",
+      "change": "P7-no-coordinates-in-logs partial -> passed (with limits); V2-F36 evidence only; counts passed 41 -> 42, partial 63 -> 62.",
+      "executed": [
+        "log audit helper @workout/server-courses/log-audit over real API/worker streams: six route test files (per-file minimum lines), course-log-redaction with leaky adapters, course-lifecycle and activity-track-lifecycle integration, thumbnail worker (7 outcomes + failure event)",
+        "17 code mutants (MA1-MA9, MW1-MW7, MI1) each fail",
+        "real GraphHopper 10.0 probe scripts/probe-routing-engine-logs.mts through the shared launch helper: 0 planted coordinates; EM1 (override removed) and EM2/EM4 (threshold INFO) fail",
+        "guard test packages/tooling/tests/graphhopper-launch.test.mjs 9/9: every launch path uses the helper, every appender threshold WARN or higher, strict fail-closed profile grammar; independent review bypasses X1-X3, B1-B3, U1, U3 all refused"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and six rounds of independent review; see docs/implementation/progress/M2-01k-c2.md."
     }
   ],
   "rounds": [
@@ -177,8 +191,8 @@
     }
   ],
   "counts": {
-    "partial": 63,
-    "passed": 41,
+    "partial": 62,
+    "passed": 42,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1046,9 +1060,10 @@
       "quote": "| V2-F36 | Audit/evaluation | trace IDs/versions, no raw tokens/no hidden CoT logging |",
       "verdict": "partial",
       "evidence": [
-        "apps/worker/tests/course-thumbnail-worker.test.ts:281 (thumbnail worker log has no coordinates/ids)"
+        "apps/worker/tests/course-thumbnail-worker.test.ts:281 (thumbnail worker log has no coordinates/ids)",
+        "map scope only (M2-01k-c2): trace id (reqId/runId) and version on every API and thumbnail-worker line, no raw tokens, asserted with mutants; not judged for coaching or other workers"
       ],
-      "reason": "Course/routing/track route tests discard the log stream; no assertion on their logs.",
+      "reason": "Map scope asserted (M2-01k-c2: trace id and version on every API and thumbnail-worker line, no raw tokens, with mutants); the quote is product-wide (coaching CoT logging, other workers) and is not judged here (V2-F31 precedent).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2052,18 +2067,34 @@
       "id": "P7-no-coordinates-in-logs",
       "source": "docs/implementation/map-implementation-plan.md:185",
       "quote": "원본 GPS·정확한 waypoint·객체 key·토큰·본문은 로그/trace에 넣지 않는다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "apps/worker/tests/course-thumbnail-worker.test.ts:281",
-        "apps/api/tests/app.test.ts:166"
+        "apps/api/tests/app.test.ts:166",
+        "docs/implementation/progress/M2-01k-c2.md",
+        "scripts/probe-routing-engine-logs.mts",
+        "packages/tooling/tests/graphhopper-launch.test.mjs",
+        "packages/server/courses/src/log-audit.ts"
       ],
-      "reason": "Course/routing/track route tests discard logs; no assertion on them.",
+      "reason": "M2-01k-c2 amendment: passed with limits. The API and thumbnail worker log streams are audited (no coordinate, waypoint, object key, token or body; trace id and version on every line), each forbidden kind killed by a mutant. Independent review found the routing engine's default Dropwizard access log wrote exact waypoints (GET /route?...&point=lat,lon); every in-repo engine launch now passes -Ddw.server.request_log.type=external through one helper, proven on the real engine. Limits: protection depends on two things until the serving profile is rebuilt (M2-01af): the launch override on in-repo launch paths (request lines keep the path only) AND the WARN threshold on every logging appender (the only thing that stops GraphHopper's RouteResource INFO line, which carries the waypoints). Launches outside the repo are not controlled.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c2",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Course/routing/track route tests discard logs; no assertion on them.",
+        "executed": [
+          "log audit helper @workout/server-courses/log-audit over real API/worker streams: six route test files (per-file minimum lines), course-log-redaction with leaky adapters, course-lifecycle and activity-track-lifecycle integration, thumbnail worker (7 outcomes + failure event)",
+          "17 code mutants (MA1-MA9, MW1-MW7, MI1) each fail",
+          "real GraphHopper 10.0 probe scripts/probe-routing-engine-logs.mts through the shared launch helper: 0 planted coordinates; EM1 (override removed) and EM2/EM4 (threshold INFO) fail",
+          "guard test packages/tooling/tests/graphhopper-launch.test.mjs 9/9: every launch path uses the helper, every appender threshold WARN or higher, strict fail-closed profile grammar; independent review bypasses X1-X3, B1-B3, U1, U3 all refused"
+        ]
+      }
     },
     {
       "id": "P7-privacy-trim",
