@@ -108,9 +108,8 @@ const tabs = [
   ['intervals', '구간', '원본 관측 워크벤치'],
   ['route', '경로', '저장된 경로'],
   ['impact', '영향', '계획 연결과 관측 영향'],
-  // The media panel is still being built (M2-01k-l); its tab being the selected one is the
-  // alias's part, whatever the panel then says.
-  ['media', '미디어', null],
+  // The media panel (M2-01k-l) is the gallery's activity media region.
+  ['media', '미디어', '활동 미디어'],
   ['source', '출처', '상세 출처'],
 ] as const;
 
@@ -143,8 +142,7 @@ for (const [shell, origin] of shells) {
           .getByRole('region', { name: '선택한 활동 상세', exact: true })
           .getByRole('heading', { name: title, exact: true }),
       ).toBeVisible();
-      if (region !== null)
-        await expect(page.getByRole('region', { name: region, exact: true })).toBeVisible();
+      await expect(page.getByRole('region', { name: region, exact: true })).toBeVisible();
     }
 
     // Without `tab` the alias opens the screen's default tab.

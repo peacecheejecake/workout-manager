@@ -19,7 +19,9 @@
 
 .header h1,
 .panel h2,
-.card h3 {
+.panel h4,
+.card h3,
+.card h5 {
   margin-block: 0 0.5rem;
 }
 

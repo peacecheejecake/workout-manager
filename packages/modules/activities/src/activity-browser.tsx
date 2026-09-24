@@ -73,6 +73,11 @@ export interface ActivityBrowserProps {
   planDayHref?: (date: string) => string;
   editHref?: (id: string) => string;
   renderActivityDetails?: (activityId: string) => ReactNode;
+  /**
+   * The media tab's panel (M2-01k-l). Media belongs to the gallery, so the shell composes
+   * the gallery's panel here; a shell that composes none keeps the media tab disabled.
+   */
+  renderMediaTab?: (activityId: string) => ReactNode;
   /** Self-hosted background map for the route tab; `null` draws the path with no background. */
   basemap?: BasemapDescriptor | null;
   /** Same-origin MapLibre worker served by the shell. */
@@ -92,6 +97,9 @@ function Lifetime(props: ActivityBrowserProps) {
     </QueryClientProvider>
   );
 }
+const mediaTabUnavailable = {
+  media: '현재 활동 상세에서 미디어 연결을 제공하지 않습니다.',
+};
 const qualityLabels = {
   missing_distance: '거리 미입력',
   missing_duration: '시간 미입력',
@@ -119,6 +127,7 @@ function Workspace({
   planDayHref,
   linkedBlockHref,
   renderActivityDetails,
+  renderMediaTab,
   basemap = null,
   mapWorkerUrl,
 }: ActivityBrowserProps) {
@@ -607,6 +616,7 @@ function Workspace({
                 <ActivityDetailTabs
                   value={parsed.detailTab}
                   onChange={(detailTab) => change({ detailTab })}
+                  unavailable={renderMediaTab ? {} : mediaTabUnavailable}
                 >
                   {parsed.detailTab === 'overview' && detail.isSuccess && !detail.isFetching ? (
                     <BrowserDetail activity={detail.data.activity} />
@@ -630,6 +640,12 @@ function Workspace({
                       </Suspense>
                     </TrackPanelBoundary>
                   ) : null}
+                  {/* Gated on a successful read only: the panel is keyed by the activity id and
+                      reads nothing from the detail, so a background refetch of the same activity
+                      must not remount it and clear its media cache. */}
+                  {parsed.detailTab === 'media' && renderMediaTab && detail.isSuccess
+                    ? renderMediaTab(detail.data.activity.id)
+                    : null}
                   {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
                     <ActivityContextPanel
                       context={detail.data}

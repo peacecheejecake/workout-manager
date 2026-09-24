@@ -17,13 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-g](progress/M2-01k-g.md)를 완료했다. S09 머리글(출처·관측 시각·정정 여부), 공유 cursor store, 요약 전용 활동의 경로
-부재, LOD, parser 날짜 경계와 구버전 replay, 코스 쓰기 전반(원 코스 삭제 포함) 뒤 원본 track의 byte 불변을 변이와 함께
-단언했다. geo-kit 경계 lint 규칙이 실제로는 경계를 강제하지 않던 결함을 고쳤다(지도 SDK는 adapter만 import, 재export
-금지, UI 층의 track-parsing import 금지). 매트릭스 8행을 passed로 올렸다(passed 55 → 63). S09-cursor-store는 제품에 hover
-cursor가 없다는 한계, V2-A17은 CSV importer가 없어 요약 전용 활동으로 대신했다는 대체를 적었다.
+[M2-01k-l](progress/M2-01k-l.md)를 완료했다. S09 미디어 탭을 두 shell에 열었다. 활동에 연결된 미디어 목록, 소유자 gallery에서
+연결·해제, session transfer로 원본 받기, `/activities/:id?tab=media` 주소를 지원한다. 연결은 새 표 없이 기존
+`gallery_media_item.activity_id`(복합 FK·FORCE RLS·revision PATCH)를 쓰므로 삭제·export·erase 규칙을 그대로 따른다. 다른 계정은
+404와 빈 목록을 받는다. media 삭제 뒤 thumbnail·원본 주소는 404이고 두 객체가 정리 대기열에 들어간다. 매트릭스 2행을
+passed로 올렸다(passed 63 → 65). 항목 하나는 활동 하나에만 연결된다. 삭제된 활동에 남는 연결을 지울지는 제품 결정으로 남겼다.
 
-직전 완료: [M2-01k-f](progress/M2-01k-f.md)(장기 track 성능 예산, F1은 M2-01ai).
+직전 완료: [M2-01k-g](progress/M2-01k-g.md)(S09·track 단언 공백, geo-kit lint 경계 수정).
 
 ## 운영 메모
 
@@ -33,11 +33,11 @@ cursor가 없다는 한계, V2-A17은 CSV importer가 없어 요약 전용 활�
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-i, M2-01k-j, M2-01k-l, M2-01k-m,
-M2-01k-n, M2-01af, M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-d·i·l, M2-01af, M2-01ah, M2-01ai는 이 세션의 병렬 agent가 작업 중이며
-(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는
-M2-01k-i와 동시에 진행하지 않는다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이
-gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-i, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af,
+M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-a·d·i, M2-01af, M2-01ah, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph
+상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01k-b·j와 M2-01ag는 같은 코스
+편집기를 바꾸는 M2-01k-i 뒤에, M2-01k-m·n은 같은 S09 화면을 바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이
+풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

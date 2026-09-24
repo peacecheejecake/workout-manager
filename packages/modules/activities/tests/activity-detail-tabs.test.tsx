@@ -10,6 +10,8 @@ import {
   type ActivityDetailTab,
 } from '../src/browser-search';
 
+const mediaUnavailable = { media: '현재 활동 상세에서 미디어 연결을 제공하지 않습니다.' };
+
 describe('URL-owned activity detail tabs', () => {
   it('keeps the list view/filter/page/selection independent and rejects only the unknown detail tab', () => {
     const search =
@@ -34,7 +36,7 @@ describe('URL-owned activity detail tabs', () => {
     function Host() {
       const [value, setValue] = useState<ActivityDetailTab>('overview');
       return (
-        <ActivityDetailTabs value={value} onChange={setValue}>
+        <ActivityDetailTabs value={value} onChange={setValue} unavailable={mediaUnavailable}>
           <p>{value}</p>
         </ActivityDetailTabs>
       );
@@ -70,7 +72,7 @@ describe('URL-owned activity detail tabs', () => {
     async (value) => {
       const changed = vi.fn();
       render(
-        <ActivityDetailTabs value={value} onChange={changed}>
+        <ActivityDetailTabs value={value} onChange={changed} unavailable={mediaUnavailable}>
           <span />
         </ActivityDetailTabs>,
       );
@@ -94,5 +96,31 @@ describe('URL-owned activity detail tabs', () => {
     expect(screen.getByRole('tab', { name: '경로', selected: true })).toBeEnabled();
     expect(screen.getByRole('tabpanel')).toHaveTextContent('저장된 경로 패널');
     expect(screen.queryByRole('button', { name: '개요로 이동' })).toBeNull();
+  });
+  // M2-01k-l: a host that composes a media panel gets a reachable media tab in the
+  // keyboard order, and its panel content instead of the "not provided" explanation.
+  it('enables the media tab when the host serves it and renders its panel', async () => {
+    function Host() {
+      const [value, setValue] = useState<ActivityDetailTab>('impact');
+      return (
+        <ActivityDetailTabs value={value} onChange={setValue}>
+          <p>{value === 'media' ? '활동 미디어 패널' : value}</p>
+        </ActivityDetailTabs>
+      );
+    }
+    render(<Host />);
+    expect(screen.getByRole('tab', { name: '미디어' })).toBeEnabled();
+    expect(screen.queryByText(/미디어 연결을 제공하지 않습니다/)).toBeNull();
+    const user = userEvent.setup();
+    await user.tab();
+    expect(screen.getByRole('tab', { name: '영향' })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: '미디어', selected: true })).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: '미디어' })).toHaveTextContent('활동 미디어 패널');
+    expect(screen.queryByRole('button', { name: '개요로 이동' })).toBeNull();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: '출처', selected: true })).toHaveFocus();
+    await user.click(screen.getByRole('tab', { name: '미디어' }));
+    expect(screen.getByRole('tab', { name: '미디어', selected: true })).toBeInTheDocument();
   });
 });

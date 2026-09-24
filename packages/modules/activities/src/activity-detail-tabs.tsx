@@ -13,23 +13,25 @@ const tabs = [
 ] as const;
 // The route tab is reachable whether or not a track is stored: the panel behind it is
 // what distinguishes "no stored track" from "stored, but no GPS" from "failed to load".
-const enabled: ActivityDetailTab[] = ['overview', 'intervals', 'route', 'impact', 'source'];
-const unavailable = {
-  media: '현재 활동 상세에서 미디어 연결을 제공하지 않습니다.',
-};
+// A tab is disabled only when the screen that hosts these tabs says why it cannot serve it
+// (for example the media tab in a shell that composes no media panel, M2-01k-l).
+export type UnavailableDetailTabs = Partial<Readonly<Record<ActivityDetailTab, string>>>;
 export function ActivityDetailTabs({
   value,
   onChange,
+  unavailable = {},
   children,
 }: {
   value: ActivityDetailTab | null;
   onChange(tab: ActivityDetailTab): void;
+  unavailable?: UnavailableDetailTabs;
   children: ReactNode;
 }) {
   const id = useId();
   const refs = useRef(new Map<ActivityDetailTab, HTMLButtonElement>());
+  const enabled = tabs.map(([tab]) => tab).filter((tab) => unavailable[tab] === undefined);
   const focusable = value !== null && enabled.includes(value) ? value : 'overview';
-  const unavailableMessage = value === 'media' ? unavailable.media : null;
+  const unavailableMessage = value === null ? null : (unavailable[value] ?? null);
   return (
     <div className={styles.workspace}>
       <div role="tablist" aria-label="활동 상세 보기" className={styles.tabs}>
@@ -47,7 +49,7 @@ export function ActivityDetailTabs({
             aria-selected={value === tab}
             aria-controls={`${id}-panel`}
             tabIndex={focusable === tab ? 0 : -1}
-            aria-describedby={tab === 'media' ? `${id}-${tab}-reason` : undefined}
+            aria-describedby={unavailable[tab] === undefined ? undefined : `${id}-${tab}-reason`}
             onClick={() => onChange(tab)}
             onKeyDown={(event) => {
               if (
@@ -80,7 +82,13 @@ export function ActivityDetailTabs({
           </Button>
         ))}
       </div>
-      <p id={`${id}-media-reason`}>미디어: {unavailable.media}</p>
+      {tabs.map(([tab, label]) =>
+        unavailable[tab] === undefined ? null : (
+          <p key={tab} id={`${id}-${tab}-reason`}>
+            {label}: {unavailable[tab]}
+          </p>
+        ),
+      )}
       <div
         role="tabpanel"
         id={`${id}-panel`}

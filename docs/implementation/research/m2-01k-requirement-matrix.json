@@ -150,6 +150,20 @@
         "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-g.md."
+    },
+    {
+      "node": "M2-01k-l",
+      "date": "2026-09-25",
+      "rows": ["S09-tabs", "V2-A37"],
+      "decision": "User decided on 2026-09-24 to build all S09 gaps including the media tab. Gap node M2-01k-l built the S09 media tab on the existing gallery link column; independent review approved with non-blocking accessibility notes, all applied.",
+      "change": "2 rows partial -> passed; counts passed 63 -> 65, partial 41 -> 39.",
+      "executed": [
+        "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+        "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
+        "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
+        "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-l.md."
     }
   ],
   "rounds": [
@@ -271,8 +285,8 @@
     }
   ],
   "counts": {
-    "passed": 63,
-    "partial": 41,
+    "passed": 65,
+    "partial": 39,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -345,17 +359,29 @@
       "id": "S09-tabs",
       "source": "docs/.pre/01_product_screen_spec.md:135",
       "quote": "본문 탭은 **개요 / 구간 / 경로 / 영향 / 미디어 / 출처**다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/modules/activities/tests/activity-detail-tabs.test.tsx:33,87 (unit, executed)"
       ],
-      "reason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function.",
+      "reason": "M2-01k-l amendment: passed. All six body tabs work: the media tab lists media linked to the activity, links and unlinks items from the owner's gallery (revisioned PATCH on the existing gallery_media_item.activity_id, composite FK and FORCE RLS), downloads the original through the session transfer, and is reachable at /activities/:id?tab=media, in both shells; another account gets 404 and an empty list; M1, M2a, M2b killed. Limits: an item links to at most one activity (re-linking moves it); a deleted activity leaves its link in place (open product decision, breaks no export or erasure rule).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-l",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function.",
+        "executed": [
+          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+          "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
+          "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
+          "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
+        ]
+      }
     },
     {
       "id": "S09-split-lazy",
@@ -1363,11 +1389,11 @@
       "id": "V2-A37",
       "source": "docs/.pre/05_implementation_requirements.md:156",
       "quote": "| V2-A37 | media 삭제 후 thumbnail URL 재조회 | access 차단·파생물 삭제 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "course analogue: tests/identity/course-acceptance.spec.ts step 11 (thumbnail 404 after reclaim); course-thumbnails.integration:998/984"
       ],
-      "reason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here.",
+      "reason": "M2-01k-l amendment: passed, with the M2-03 limit. For real gallery media, after delete the owner gets 404 on both the thumbnail and original addresses and the item leaves the tab (E2E); both objects are queued for cleanup and the existing cleanup worker removes them in the same integration run; M3, M3b, M4 killed. Limit: the production cleanup scheduler and a remote object provider are not verified.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1376,7 +1402,19 @@
           "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-l",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here.",
+        "executed": [
+          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+          "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
+          "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
+          "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
+        ]
+      }
     },
     {
       "id": "FUT-07-1",

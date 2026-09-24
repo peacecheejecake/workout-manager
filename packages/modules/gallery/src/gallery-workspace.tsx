@@ -20,27 +20,17 @@ import {
   type GalleryMediaType,
 } from '@workout/contracts/gallery';
 import { createGalleryApi, GalleryRequestError } from './gallery-api';
+import { readableGalleryError } from './gallery-errors';
+import { deduplicateById, nextGalleryOffset } from './gallery-paging';
+import { MediaPreview } from './media-preview';
+import type { GalleryMediaTransfer } from './media-transfer';
 import styles from './gallery.module.css';
 
-export interface GalleryMediaUploadInput {
-  uploadId: string;
-  file: File;
-  mediaType: GalleryMediaType;
-  signal: AbortSignal;
-  onProgress: (uploadedBytes: number, totalBytes: number) => void;
-}
-
-export interface GalleryMediaOpenInput {
-  mediaItemId: string;
-  variant: 'original' | 'preview';
-  signal: AbortSignal;
-}
-
-export interface GalleryMediaTransfer {
-  upload(input: GalleryMediaUploadInput): Promise<void>;
-  /** Resolves to a blob URL the caller owns and revokes. */
-  open(input: GalleryMediaOpenInput): Promise<string>;
-}
+export type {
+  GalleryMediaOpenInput,
+  GalleryMediaTransfer,
+  GalleryMediaUploadInput,
+} from './media-transfer';
 
 export interface GalleryWorkspaceProps {
   athleteId: string;
@@ -76,57 +66,6 @@ function Lifetime(props: GalleryWorkspaceProps) {
       <Workspace {...props} />
     </QueryClientProvider>
   );
-}
-
-// The content PUT runs through the Host file transfer, not the JSON API, so its
-// failures arrive as a plain Error carrying the server error code.
-const TRANSFER_MESSAGES: Readonly<Record<string, string>> = {
-  INVALID_MEDIA_SIGNATURE: '파일 내용이 선언한 형식과 일치하지 않습니다.',
-  FILE_TOO_LARGE: '파일이 허용된 크기를 넘었습니다. 사진은 15 MiB, 동영상은 64 MiB까지 저장합니다.',
-  UNSUPPORTED_FILE_TYPE: '지원하지 않는 파일 형식입니다.',
-  EMPTY_UPLOAD: '빈 파일은 저장할 수 없습니다.',
-  CONTENT_LENGTH_MISMATCH: '전송된 크기가 선언한 크기와 다릅니다.',
-  UPLOAD_FAILED: '이 업로드는 종료됐습니다. 파일을 다시 선택해 올리세요.',
-  UPLOAD_RETRY_REQUIRED: '업로드를 처음부터 다시 시도하세요.',
-  UPLOAD_RESUME_REQUIRED: '업로드가 중단됐습니다. 같은 파일로 다시 시도하세요.',
-  MEDIA_TRANSFER_UNAVAILABLE: '이 환경에서는 파일 전송을 사용할 수 없습니다.',
-};
-
-function readableError(error: unknown) {
-  if (error instanceof Error && !(error instanceof GalleryRequestError)) {
-    // Exact allowlist membership only: an inherited key such as `constructor`
-    // must fall through to the generic message, never reach the render.
-    const known = Object.hasOwn(TRANSFER_MESSAGES, error.message)
-      ? TRANSFER_MESSAGES[error.message]
-      : undefined;
-    if (known !== undefined) return known;
-  }
-  if (!(error instanceof GalleryRequestError)) return '요청을 완료하지 못했습니다.';
-  // The same curated allowlist also covers codes the JSON API returns.
-  const knownCode = Object.hasOwn(TRANSFER_MESSAGES, error.code)
-    ? TRANSFER_MESSAGES[error.code]
-    : undefined;
-  if (knownCode !== undefined) return knownCode;
-  if (error.status === 409) return '다른 변경이 먼저 저장되었습니다. 최신 상태를 다시 확인하세요.';
-  if (error.status === 413)
-    return `파일이 허용된 크기를 넘었습니다. 사진은 ${byteFormatter.format(
-      GALLERY_IMAGE_MAX_BYTES,
-    )} 바이트, 동영상은 ${byteFormatter.format(GALLERY_VIDEO_MAX_BYTES)} 바이트까지 저장합니다.`;
-  if (error.status === 415) return TRANSFER_MESSAGES['UNSUPPORTED_FILE_TYPE'] ?? '';
-  if (error.status === 422) return TRANSFER_MESSAGES['INVALID_MEDIA_SIGNATURE'] ?? '';
-  if (error.status === 404) return '미디어를 찾을 수 없거나 열람 권한이 없습니다.';
-  return '입력을 확인한 뒤 다시 시도하세요.';
-}
-
-function deduplicateById(items: readonly GalleryMediaItem[]): GalleryMediaItem[] {
-  const seen = new Set<string>();
-  const unique: GalleryMediaItem[] = [];
-  for (const item of items) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    unique.push(item);
-  }
-  return unique;
 }
 
 function resolveMediaType(file: File): GalleryMediaType | null {
@@ -166,20 +105,7 @@ function Workspace({
         },
         signal,
       ),
-    getNextPageParam: (lastPage, pages, lastPageParam) => {
-      // An insertion or deletion at the head shifts the window, so a page can
-      // repeat identities that are already loaded. Advancing by the raw page
-      // length would step past identities that were never shown, so the next
-      // offset is the number of DISTINCT identities held. This recovers an
-      // overlap SMALLER than one page; a whole repeated page adds no new
-      // identity and ends the listing, which a stable cursor contract would
-      // fix. A page that adds nothing ends the listing rather than re-reading
-      // the same window forever.
-      if (lastPage.items.length === 0) return undefined;
-      const distinct = new Set(pages.flatMap((page) => page.items.map((item) => item.id))).size;
-      if (distinct >= lastPage.total || distinct <= lastPageParam) return undefined;
-      return distinct;
-    },
+    getNextPageParam: nextGalleryOffset,
   });
   // A deleted item is removed from the cache rather than refetched: a refetch
   // would 404 while TanStack Query keeps the previous payload, leaving deleted
@@ -255,7 +181,7 @@ function Workspace({
     onError: (error) => {
       setStage('idle');
       setProgress(null);
-      setUploadError(readableError(error));
+      setUploadError(readableGalleryError(error));
       // The submit control is disabled while the upload runs, so focus is lost
       // on failure. Request a return instead of focusing here: React has not
       // committed the enabled control yet and a disabled element cannot take
@@ -488,7 +414,7 @@ function Workspace({
             ) : null}
           </div>
         ) : null}
-        {remove.isError ? <p role="alert">{readableError(remove.error)}</p> : null}
+        {remove.isError ? <p role="alert">{readableGalleryError(remove.error)}</p> : null}
       </section>
 
       {mediaItemId !== null ? (
@@ -503,7 +429,7 @@ function Workspace({
                   Rendering it would leave private media and its blob URL on
                   screen after the item became unreadable elsewhere, so only a
                   successful read may be displayed. */}
-              {detail.isError ? <p role="alert">{readableError(detail.error)}</p> : null}
+              {detail.isError ? <p role="alert">{readableGalleryError(detail.error)}</p> : null}
               {detail.isSuccess && detail.data.status === 'unavailable' ? (
                 <p role="status">이 미디어는 더 이상 열람할 수 없습니다.</p>
               ) : null}
@@ -515,85 +441,5 @@ function Workspace({
         </section>
       ) : null}
     </section>
-  );
-}
-
-/**
- * Media bytes load only when the tile enters the viewport, and each blob URL is
- * revoked when the tile unmounts so private media never outlives the session.
- */
-function MediaPreview({
-  item,
-  transfer,
-  variant = 'preview',
-}: {
-  item: GalleryMediaItem;
-  transfer: GalleryMediaTransfer | undefined;
-  variant?: 'original' | 'preview';
-}) {
-  const container = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(() => typeof IntersectionObserver !== 'function');
-  const [source, setSource] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const resolvedVariant = variant === 'preview' && item.preview === null ? 'original' : variant;
-
-  useEffect(() => {
-    const element = container.current;
-    if (!element || typeof IntersectionObserver !== 'function') return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible || !transfer) return;
-    const controller = new AbortController();
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    transfer
-      .open({ mediaItemId: item.id, variant: resolvedVariant, signal: controller.signal })
-      .then((url) => {
-        objectUrl = url;
-        if (cancelled) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        setSource(url);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-      setSource(null);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [visible, transfer, item.id, resolvedVariant]);
-
-  const label = item.caption ?? item.file.originalFileName;
-  return (
-    <div className={styles.media} ref={container}>
-      {!transfer ? (
-        <p className={styles.hint}>이 환경에서는 미디어를 표시할 수 없습니다.</p>
-      ) : failed ? (
-        <p role="alert">미디어를 불러오지 못했습니다.</p>
-      ) : source === null ? (
-        <p role="status">미디어 불러오는 중</p>
-      ) : item.mediaKind === 'image' ? (
-        <img src={source} alt={label} loading="lazy" decoding="async" />
-      ) : (
-        <>
-          {/* No caption track is generated for user uploaded video in this
-              milestone, so the absence is stated below instead of implied by an
-              empty track element. */}
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video src={source} controls preload="none" aria-label={label} />
-          <p className={styles.hint}>자막 없음 · 이 화면은 자막을 생성하지 않습니다.</p>
-        </>
-      )}
-    </div>
   );
 }

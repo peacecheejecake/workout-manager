@@ -14,6 +14,7 @@
     "zod": "4.6.5"
   },
   "exports": {
-    "./gallery-workspace": "./src/gallery-workspace.tsx"
+    "./gallery-workspace": "./src/gallery-workspace.tsx",
+    "./activity-media-panel": "./src/activity-media-panel.tsx"
   }
 }
