@@ -17,14 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01ah](progress/M2-01ah.md)를 완료했다. routing tenant 한도를 PostgreSQL lease 표(migration 047 `routing_admission`)로 옮겨 모든
-API 인스턴스가 같은 한도를 나눈다. 획득·반환은 각자 짧은 트랜잭션이며 엔진 호출 동안 트랜잭션을 잡지 않는다. 죽은 인스턴스의
-허가는 12 s 뒤 만료되고, DB에 물을 수 없으면 거절한다(fail closed, 경합은 `limiter_contended`로 따로 기록). 엔진 전역 동시성
-상한(`ROUTING_ENGINE_CONCURRENCY`, 기본 8)과 다중 leg timeout 경고 `timeout_may_be_no_route`를 더했다. P6-tenant-limits의 단일
-인스턴스 전제를 풀었다(같은 DB·같은 한도 설정 조건). K-graph-rollback은 graph 교체의 원자성이 프로세스 단위라 단일 인스턴스
-전제를 유지한다.
+[M2-01k-i](progress/M2-01k-i.md)를 완료했다. S14 경유점 목록에 pointer·keyboard drag를 더했다(집기·옮기기·놓기·취소, live
+안내, IME 보호). drag와 "앞으로/뒤로" 버튼이 같은 draft 동작 `moveWaypoint`를 거치므로 drag 한 번이 되돌리기 한 번이고, 잠긴
+경유점을 옮기거나 잠긴 이웃을 넘는 이동은 둘 다 거절한다. 같은 코스를 drag와 버튼으로 바꾼 결과의 엔진 요청·저장 순서와 역할이
+두 shell에서 같다. 매트릭스 2행을 passed로 올렸다(passed 65 → 67). 지도 marker drag는 만들지 않았다(선택 사항).
 
-직전 완료: [M2-01k-l](progress/M2-01k-l.md)(S09 미디어 탭).
+직전 완료: [M2-01ah](progress/M2-01ah.md)(routing 여러 인스턴스 limiter, 엔진 전역 상한).
 
 ## 운영 메모
 
@@ -38,10 +36,10 @@ API 인스턴스가 같은 한도를 나눈다. 획득·반환은 각자 짧은 
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-i, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af,
-M2-01ag, M2-01ai. 이 중 M2-01k-a·d·i, M2-01af, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph
-상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01k-b·j와 M2-01ag는 같은 코스
-편집기를 바꾸는 M2-01k-i 뒤에, M2-01k-m·n은 같은 S09 화면을 바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag, M2-01ai.
+이 중 M2-01k-a·d, M2-01af, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개
+시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01k-b·j와 M2-01ag는 M2-01k-i가 끝나 진행할 수 있다(코스 편집기는 이제
+`moveWaypoint` 하나로 순서를 바꾼다). M2-01k-m·n은 같은 S09 화면을 바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이
 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate

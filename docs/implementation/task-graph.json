@@ -1382,8 +1382,9 @@
       "title": "S14 경유점 drag",
       "dependsOn": ["M2-01k-c1"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "경유점 목록에 pointer·keyboard로 쓸 수 있는 drag 재배치를 추가한다(지도 marker drag는 선택). drag와 \"앞으로/뒤로\" 버튼은 같은 draft reducer 동작을 거친다. 잠긴 경유점과 잠긴 이웃을 넘는 이동은 둘 다 거절한다. 완료: 두 shell E2E에서 같은 초기 코스를 drag로 한 번, 버튼으로 한 번 재배치해 저장하고, API에서 읽은 저장된 waypoint 순서가 서로 같고 엔진 요청의 순서·role도 같다. 잠금 거절과 되돌리기가 drag에도 적용된다. 버튼 대안은 유지하고 단언한다(drag 없이도 완결). 비공허성: drag handler를 no-op으로 만드는 변이, drag가 reducer를 우회해 목록만 바꾸는 변이, 잠금 검사를 뺀 변이가 각각 시험을 실패시킨다 닫을 매트릭스 행: S14-drag-and-buttons, V2-F19. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "경유점 목록에 pointer·keyboard로 쓸 수 있는 drag 재배치를 추가한다(지도 marker drag는 선택). drag와 \"앞으로/뒤로\" 버튼은 같은 draft reducer 동작을 거친다. 잠긴 경유점과 잠긴 이웃을 넘는 이동은 둘 다 거절한다. 완료: 두 shell E2E에서 같은 초기 코스를 drag로 한 번, 버튼으로 한 번 재배치해 저장하고, API에서 읽은 저장된 waypoint 순서가 서로 같고 엔진 요청의 순서·role도 같다. 잠금 거절과 되돌리기가 drag에도 적용된다. 버튼 대안은 유지하고 단언한다(drag 없이도 완결). 비공허성: drag handler를 no-op으로 만드는 변이, drag가 reducer를 우회해 목록만 바꾸는 변이, 잠금 검사를 뺀 변이가 각각 시험을 실패시킨다 닫을 매트릭스 행: S14-drag-and-buttons, V2-F19. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-i.md"
     },
     {
       "id": "M2-01k-j",

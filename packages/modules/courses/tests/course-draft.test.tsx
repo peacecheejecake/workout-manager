@@ -58,7 +58,7 @@ describe('waypoint draft', () => {
     ]);
     const second = store.getState().waypoints[1];
     if (!second) throw new Error('missing waypoint');
-    store.getState().moveEarlier(second.id);
+    store.getState().moveWaypoint(second.id, 0);
     // Moving a via to the front makes it the start; the roles follow the order rather than
     // the list disagreeing with itself.
     expect(store.getState().waypoints.map((waypoint) => waypoint.role)).toEqual([
@@ -120,9 +120,9 @@ describe('waypoint draft', () => {
     expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
     store.getState().remove(via.id);
     expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
-    store.getState().moveEarlier(via.id);
+    store.getState().moveWaypoint(via.id, 0);
     expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
-    store.getState().moveLater(via.id);
+    store.getState().moveWaypoint(via.id, 2);
     expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
     // A refused change is not a change: nothing moved and no revision was spent.
     expect(store.getState().revision).toBe(revisionAfterLock);
@@ -139,9 +139,78 @@ describe('waypoint draft', () => {
     const [start, via] = store.getState().waypoints;
     if (!start || !via) throw new Error('missing waypoints');
     store.getState().setLocked(start.id, true);
-    store.getState().moveEarlier(via.id);
+    store.getState().moveWaypoint(via.id, 0);
     expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
     expect(store.getState().waypoints[0]?.id).toBe(start.id);
+  });
+
+  describe('moveWaypoint — the one reorder action behind the buttons and the drag', () => {
+    const four = () => {
+      const store = draft();
+      store.getState().addVia([126.9785, 37.5667]);
+      store.getState().addVia([126.979, 37.5669]);
+      return store;
+    };
+    const ids = (store: ReturnType<typeof draft>) =>
+      store.getState().waypoints.map((waypoint) => waypoint.id);
+
+    it('carries one waypoint several places in one change, roles following the order', () => {
+      const store = four();
+      const [a, b, c, d] = ids(store);
+      const before = store.getState().revision;
+      store.getState().moveWaypoint(c ?? '', 0);
+      expect(ids(store)).toEqual([c, a, b, d]);
+      expect(store.getState().waypoints.map((waypoint) => waypoint.role)).toEqual([
+        'start',
+        'via',
+        'via',
+        'finish',
+      ]);
+      expect(store.getState().revision).toBe(before + 1);
+      // One change, so one undo puts all of it back, and redo carries it again.
+      store.getState().undo();
+      expect(ids(store)).toEqual([a, b, c, d]);
+      store.getState().redo();
+      expect(ids(store)).toEqual([c, a, b, d]);
+      store.getState().moveWaypoint(c ?? '', 3);
+      expect(ids(store)).toEqual([a, b, d, c]);
+    });
+
+    it('refuses to carry anything over a locked waypoint, in either direction', () => {
+      const store = four();
+      const [a, b, c, d] = ids(store);
+      store.getState().setLocked(b ?? '', true);
+      const revision = store.getState().revision;
+      store.getState().moveWaypoint(c ?? '', 0);
+      expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
+      store.getState().moveWaypoint(a ?? '', 3);
+      expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
+      // The locked one itself does not move either.
+      store.getState().moveWaypoint(b ?? '', 3);
+      expect(store.getState().refusal).toBe('WAYPOINT_LOCKED');
+      expect(ids(store)).toEqual([a, b, c, d]);
+      expect(store.getState().revision).toBe(revision);
+      // A move that passes no lock is still allowed.
+      store.getState().moveWaypoint(d ?? '', 2);
+      expect(ids(store)).toEqual([a, b, d, c]);
+      expect(store.getState().refusal).toBeNull();
+    });
+
+    it('treats a drop in place as no change and refuses a place outside the list', () => {
+      const store = four();
+      const [a] = ids(store);
+      const revision = store.getState().revision;
+      store.getState().moveWaypoint(a ?? '', 0);
+      expect(store.getState().revision).toBe(revision);
+      expect(store.getState().past).toHaveLength(2);
+      store.getState().moveWaypoint(a ?? '', 4);
+      expect(store.getState().refusal).toBe('WAYPOINT_NOT_FOUND');
+      store.getState().moveWaypoint(a ?? '', -1);
+      expect(store.getState().refusal).toBe('WAYPOINT_NOT_FOUND');
+      store.getState().moveWaypoint('not-a-waypoint', 1);
+      expect(store.getState().refusal).toBe('WAYPOINT_NOT_FOUND');
+      expect(store.getState().revision).toBe(revision);
+    });
   });
 
   it('stops claiming a recorded sample for a waypoint that has been moved', () => {
@@ -307,7 +376,7 @@ describe('the uncomputed draft status (M2-01r, S14 "미계산 초안")', () => {
     expect(line()).toBeUndefined();
     const via = store.getState().waypoints[1];
     if (!via) throw new Error('missing waypoint');
-    store.getState().moveEarlier(via.id);
+    store.getState().moveWaypoint(via.id, 0);
     expect(line()?.role).toBe('uncomputed');
   });
 

@@ -233,6 +233,30 @@
   border-radius: var(--radius-2, 0.5rem);
 }
 
+/*
+ * Drag to reorder (M2-01k-i). The handle takes the whole gesture (`touch-action: none`), so a
+ * touch drag on it does not scroll the list. While a waypoint is carried the rows do not move:
+ * the carried row is marked and a line shows where it would land. A drop that the draft
+ * refuses therefore leaves nothing to put back.
+ */
+.dragHandle {
+  touch-action: none;
+  cursor: grab;
+}
+.dragHandle[aria-pressed='true'] {
+  cursor: grabbing;
+}
+.waypoints li[data-carried='true'] {
+  border-style: dashed;
+  border-color: var(--accent, #6256b8);
+}
+.waypoints li[data-drop='before'] {
+  box-shadow: 0 -3px 0 0 var(--accent, #6256b8);
+}
+.waypoints li[data-drop='after'] {
+  box-shadow: 0 3px 0 0 var(--accent, #6256b8);
+}
+
 .coordinate {
   font-variant-numeric: tabular-nums;
   font-size: 0.875rem;

@@ -189,8 +189,12 @@ export interface CourseDraftState {
   movePosition(id: string, position: CoursePosition): void;
   rename(id: string, name: string | null): void;
   setLocked(id: string, locked: boolean): void;
-  moveEarlier(id: string): void;
-  moveLater(id: string): void;
+  /**
+   * Put one waypoint at `toIndex` of the list. The only way the order changes: the list's
+   * "앞으로/뒤로" buttons ask for one step, a drag (pointer or keyboard) for wherever it was
+   * dropped, and both land here, so both are one undoable change under the same lock rule.
+   */
+  moveWaypoint(id: string, toIndex: number): void;
   remove(id: string): void;
   undo(): void;
   redo(): void;
@@ -399,32 +403,25 @@ export function createCourseDraftStore(input: {
         change(next);
       },
 
-      moveEarlier: (id) => {
-        const index = find(id);
-        if (index <= 0) return refuse('WAYPOINT_NOT_FOUND');
+      moveWaypoint: (id, toIndex) => {
         const waypoints = get().waypoints;
-        const current = waypoints[index];
-        const previous = waypoints[index - 1];
-        if (!current || !previous) return refuse('WAYPOINT_NOT_FOUND');
-        // Reordering moves both of them, so a lock on either one refuses the swap.
-        if (current.locked || previous.locked) return refuse('WAYPOINT_LOCKED');
+        const from = find(id);
+        if (from < 0) return refuse('WAYPOINT_NOT_FOUND');
+        if (!Number.isInteger(toIndex) || toIndex < 0 || toIndex >= waypoints.length)
+          return refuse('WAYPOINT_NOT_FOUND');
+        // Dropped where it already was: nothing changed, so no revision and no history.
+        if (toIndex === from) return;
+        // Every waypoint between the two places shifts by one, so each of them moves — the
+        // one carried and every one it passes. A lock on any of them refuses the move: a
+        // locked waypoint keeps its place, and nothing is carried over it either.
+        const low = Math.min(from, toIndex);
+        const high = Math.max(from, toIndex);
+        if (waypoints.slice(low, high + 1).some((waypoint) => waypoint.locked))
+          return refuse('WAYPOINT_LOCKED');
         const next = [...waypoints];
-        next[index - 1] = current;
-        next[index] = previous;
-        change(next);
-      },
-
-      moveLater: (id) => {
-        const waypoints = get().waypoints;
-        const index = find(id);
-        if (index < 0 || index >= waypoints.length - 1) return refuse('WAYPOINT_NOT_FOUND');
-        const current = waypoints[index];
-        const following = waypoints[index + 1];
-        if (!current || !following) return refuse('WAYPOINT_NOT_FOUND');
-        if (current.locked || following.locked) return refuse('WAYPOINT_LOCKED');
-        const next = [...waypoints];
-        next[index + 1] = current;
-        next[index] = following;
+        const [moved] = next.splice(from, 1);
+        if (!moved) return refuse('WAYPOINT_NOT_FOUND');
+        next.splice(toIndex, 0, moved);
         change(next);
       },
 

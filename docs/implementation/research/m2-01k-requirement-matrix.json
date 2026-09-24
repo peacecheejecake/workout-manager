@@ -178,6 +178,20 @@
         "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
       ],
       "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01ah.md."
+    },
+    {
+      "node": "M2-01k-i",
+      "date": "2026-09-25",
+      "rows": ["S14-drag-and-buttons", "V2-F19"],
+      "decision": "User decided on 2026-09-24 to build waypoint list drag. Gap node M2-01k-i built pointer and keyboard drag on one draft action shared with the buttons; independent review requested a fix for focus theft after a refused or in-place keyboard drop, which is fixed and re-reviewed.",
+      "change": "2 rows partial -> passed; counts passed 65 -> 67, partial 39 -> 37.",
+      "executed": [
+        "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
+        "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
+        "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+        "pnpm test and two identity runs on the merged tree"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-i.md."
     }
   ],
   "rounds": [
@@ -299,8 +313,8 @@
     }
   ],
   "counts": {
-    "passed": 65,
-    "partial": 39,
+    "passed": 67,
+    "partial": 37,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -769,17 +783,29 @@
       "id": "S14-drag-and-buttons",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "왼쪽 waypoint list의 drag와 이동 버튼은 같은 상태를 편집한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/modules/courses/tests/course-editor.test.tsx:402-403 move button changes draft revision (unit)"
       ],
-      "reason": "No drag anywhere (list or map). `course-editor.test.tsx:391` is titled \"usable without a drag\" — it proves the alternative, not drag.",
+      "reason": "M2-01k-i amendment: passed. The waypoint list supports pointer and keyboard drag (pick up, move, drop, cancel, with live announcements and an IME guard), and drag and the earlier/later buttons both go through the same draft action moveWaypoint, so a drag is one undoable change. The same course reordered by drag and by buttons gives identical engine request and saved order and roles in both shells; a move of a locked waypoint or past a locked neighbour is refused for drag and buttons alike; D1, D2, D2b, D3 killed. The buttons remain, so the task is completable without drag. Limits: map-marker drag is not built (optional); no real touch device or screen reader was used (browse-mode screen readers need focus mode; the buttons cover them).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-i",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "No drag anywhere (list or map). `course-editor.test.tsx:391` is titled \"usable without a drag\" — it proves the alternative, not drag.",
+        "executed": [
+          "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
+          "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
+          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "S14-undo-redo",
@@ -1197,9 +1223,9 @@
       "id": "V2-F19",
       "source": "docs/.pre/05_implementation_requirements.md:97",
       "quote": "| V2-F19 | Route planning | waypoint/menu+drag, routing stale/error, GPX boundary S14 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S14-drag-and-buttons, V2-A34, V2-A35, S14-gpx"],
-      "reason": "No drag.",
+      "reason": "M2-01k-i amendment: passed. The drag gap is closed by S14-drag-and-buttons (M2-01k-i); the row's other parts rest on S14-gpx, V2-A34 and V2-A35, which are passed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1211,7 +1237,19 @@
         ],
         "note": "Executed through the rows it cites: S14-drag-and-buttons, S14-gpx, V2-A34, V2-A35."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-i",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "No drag.",
+        "executed": [
+          "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
+          "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
+          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "V2-F31",
