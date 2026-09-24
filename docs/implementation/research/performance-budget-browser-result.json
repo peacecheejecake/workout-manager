@@ -1,0 +1,1352 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k-f",
+  "executedAt": "2026-09-24T05:40:54.126Z",
+  "label": "Desktop, this shared machine, headless Chromium through Playwright, product S09 route tab in both shells. Not a device result. Every sample carries the 1-minute load average.",
+  "mode": "judged",
+  "budgetFile": "docs/implementation/research/performance-budget.json",
+  "samplesPerShell": 20,
+  "track": {
+    "kind": "synthetic",
+    "samples": 20000
+  },
+  "browser": {
+    "name": "chromium",
+    "version": "153.0.8010.12",
+    "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "loadAverageAtEnd": [10.6, 15.41, 18.77]
+  },
+  "passed": true,
+  "checks": [
+    {
+      "id": "browser-next-maplibre-not-loaded-before-route-tab",
+      "passed": true,
+      "detail": "before: chunks [] workers []"
+    },
+    {
+      "id": "browser-next-maplibre-loaded-on-route-tab",
+      "passed": true,
+      "detail": "after: chunks [/_next/static/chunks/0ug39n0nyrjc9.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+    },
+    {
+      "id": "browser-vite-maplibre-not-loaded-before-route-tab",
+      "passed": true,
+      "detail": "before: chunks [] workers []"
+    },
+    {
+      "id": "browser-vite-maplibre-loaded-on-route-tab",
+      "passed": true,
+      "detail": "after: chunks [/assets/maplibre-gl-TrXRxYbc.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+    }
+  ],
+  "evaluation": {
+    "passed": true,
+    "metrics": [
+      {
+        "id": "browser.next.navigationToDrawnMs",
+        "statistic": "p95",
+        "budget": 3400,
+        "unit": "ms",
+        "samples": 20,
+        "loadAverage1m": {
+          "min": 11.61,
+          "max": 13.22
+        },
+        "verdict": "passed",
+        "observed": 1416
+      },
+      {
+        "id": "browser.vite.navigationToDrawnMs",
+        "statistic": "p95",
+        "budget": 3400,
+        "unit": "ms",
+        "samples": 20,
+        "loadAverage1m": {
+          "min": 10.6,
+          "max": 11.69
+        },
+        "verdict": "passed",
+        "observed": 1664
+      },
+      {
+        "id": "browser.next.jsHeapAfterDrawnMiB",
+        "statistic": "max",
+        "budget": 49,
+        "unit": "MiB",
+        "samples": 20,
+        "loadAverage1m": {
+          "min": 11.61,
+          "max": 13.22
+        },
+        "verdict": "passed",
+        "observed": 32.3
+      },
+      {
+        "id": "browser.vite.jsHeapAfterDrawnMiB",
+        "statistic": "max",
+        "budget": 48,
+        "unit": "MiB",
+        "samples": 20,
+        "loadAverage1m": {
+          "min": 10.6,
+          "max": 11.69
+        },
+        "verdict": "passed",
+        "observed": 32
+      }
+    ],
+    "realDevice": [
+      {
+        "id": "device.ios.navigationToDrawnMs",
+        "verdict": "not_executed"
+      },
+      {
+        "id": "device.ios.jsHeapAfterDrawnMiB",
+        "verdict": "not_executed"
+      },
+      {
+        "id": "device.ios.panFrameP95Ms",
+        "verdict": "not_executed"
+      },
+      {
+        "id": "device.android.navigationToDrawnMs",
+        "verdict": "not_executed"
+      }
+    ]
+  },
+  "samples": {
+    "browser.next.navigationToDrawnMs": [
+      {
+        "value": 1083,
+        "loadAverage1m": 13.22
+      },
+      {
+        "value": 1105,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 1367,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 1402,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 1383,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 1343,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 1389,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 1416,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 1351,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 1352,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 1365,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 1420,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 1355,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 1339,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1354,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1319,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1356,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 1367,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 1338,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 1339,
+        "loadAverage1m": 12.36
+      }
+    ],
+    "browser.next.jsHeapAfterDrawnMiB": [
+      {
+        "value": 32.3,
+        "loadAverage1m": 13.22
+      },
+      {
+        "value": 32.3,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.8
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.98
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.82
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.27
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.04
+      },
+      {
+        "value": 32.2,
+        "loadAverage1m": 12.36
+      }
+    ],
+    "browser.vite.navigationToDrawnMs": [
+      {
+        "value": 1620,
+        "loadAverage1m": 11.69
+      },
+      {
+        "value": 1617,
+        "loadAverage1m": 11.69
+      },
+      {
+        "value": 1664,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 1624,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 1634,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 1610,
+        "loadAverage1m": 11.66
+      },
+      {
+        "value": 1603,
+        "loadAverage1m": 11.66
+      },
+      {
+        "value": 1612,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1638,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1618,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 1576,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 1644,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 1601,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 1630,
+        "loadAverage1m": 11.52
+      },
+      {
+        "value": 1633,
+        "loadAverage1m": 11.52
+      },
+      {
+        "value": 1602,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 1603,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 1668,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 1626,
+        "loadAverage1m": 10.6
+      },
+      {
+        "value": 1645,
+        "loadAverage1m": 10.6
+      }
+    ],
+    "browser.vite.jsHeapAfterDrawnMiB": [
+      {
+        "value": 32,
+        "loadAverage1m": 11.69
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.69
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.63
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.66
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.66
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.61
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.48
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.52
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11.52
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 11
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 10.6
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 10.6
+      }
+    ]
+  },
+  "previousRuns": [
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-24T03:08:21.525Z",
+      "label": "Desktop, this shared machine, headless Chromium through Playwright, product S09 route tab in both shells. Not a device result. Every sample carries the 1-minute load average.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "samplesPerShell": 5,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000
+      },
+      "browser": {
+        "name": "chromium",
+        "version": "153.0.8010.12",
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "loadAverageAtEnd": [33.8, 29.45, 28.04]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "browser-next-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-next-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/_next/static/chunks/0ug39n0nyrjc9.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        },
+        {
+          "id": "browser-vite-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-vite-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/assets/maplibre-gl-TrXRxYbc.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "browser.next.navigationToDrawnMs": [
+          {
+            "value": 1784,
+            "loadAverage1m": 34.08
+          },
+          {
+            "value": 1520,
+            "loadAverage1m": 34.08
+          },
+          {
+            "value": 1623,
+            "loadAverage1m": 34.87
+          },
+          {
+            "value": 9828,
+            "loadAverage1m": 34.93
+          },
+          {
+            "value": 1153,
+            "loadAverage1m": 34.93
+          }
+        ],
+        "browser.next.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32.2,
+            "loadAverage1m": 34.08
+          },
+          {
+            "value": 32.3,
+            "loadAverage1m": 34.08
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 34.87
+          },
+          {
+            "value": 32.3,
+            "loadAverage1m": 34.93
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 34.93
+          }
+        ],
+        "browser.vite.navigationToDrawnMs": [
+          {
+            "value": 1595,
+            "loadAverage1m": 36.21
+          },
+          {
+            "value": 1565,
+            "loadAverage1m": 36.21
+          },
+          {
+            "value": 1597,
+            "loadAverage1m": 34.92
+          },
+          {
+            "value": 1567,
+            "loadAverage1m": 34.92
+          },
+          {
+            "value": 1579,
+            "loadAverage1m": 33.8
+          }
+        ],
+        "browser.vite.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 36.21
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 36.21
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 34.92
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 34.92
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 33.8
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-24T03:13:41.233Z",
+      "label": "Desktop, this shared machine, headless Chromium through Playwright, product S09 route tab in both shells. Not a device result. Every sample carries the 1-minute load average.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "samplesPerShell": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000
+      },
+      "browser": {
+        "name": "chromium",
+        "version": "153.0.8010.12",
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "loadAverageAtEnd": [36.76, 33.24, 29.69]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "browser-next-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-next-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/_next/static/chunks/0ug39n0nyrjc9.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        },
+        {
+          "id": "browser-vite-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-vite-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/assets/maplibre-gl-TrXRxYbc.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "browser.next.navigationToDrawnMs": [
+          {
+            "value": 1633,
+            "loadAverage1m": 50.64
+          },
+          {
+            "value": 1675,
+            "loadAverage1m": 50.64
+          },
+          {
+            "value": 1657,
+            "loadAverage1m": 50.43
+          },
+          {
+            "value": 1762,
+            "loadAverage1m": 50.43
+          },
+          {
+            "value": 1292,
+            "loadAverage1m": 50.24
+          },
+          {
+            "value": 1657,
+            "loadAverage1m": 50.24
+          },
+          {
+            "value": 1532,
+            "loadAverage1m": 49.02
+          },
+          {
+            "value": 1560,
+            "loadAverage1m": 49.02
+          },
+          {
+            "value": 1526,
+            "loadAverage1m": 47.97
+          },
+          {
+            "value": 1222,
+            "loadAverage1m": 47.97
+          },
+          {
+            "value": 1198,
+            "loadAverage1m": 48.78
+          },
+          {
+            "value": 1533,
+            "loadAverage1m": 48.78
+          },
+          {
+            "value": 1190,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 1193,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 1427,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 1375,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 1378,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 1324,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 1317,
+            "loadAverage1m": 48.49
+          },
+          {
+            "value": 1316,
+            "loadAverage1m": 48.49
+          }
+        ],
+        "browser.next.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32.2,
+            "loadAverage1m": 50.64
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 50.64
+          },
+          {
+            "value": 32.3,
+            "loadAverage1m": 50.43
+          },
+          {
+            "value": 32.3,
+            "loadAverage1m": 50.43
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 50.24
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 50.24
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.02
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.02
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 47.97
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 47.97
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 48.78
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 48.78
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.67
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 49.14
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 48.49
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 48.49
+          }
+        ],
+        "browser.vite.navigationToDrawnMs": [
+          {
+            "value": 1567,
+            "loadAverage1m": 48.29
+          },
+          {
+            "value": 1548,
+            "loadAverage1m": 48.29
+          },
+          {
+            "value": 1596,
+            "loadAverage1m": 47.62
+          },
+          {
+            "value": 1635,
+            "loadAverage1m": 47.62
+          },
+          {
+            "value": 1581,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 1621,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 1621,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 1596,
+            "loadAverage1m": 45.08
+          },
+          {
+            "value": 1597,
+            "loadAverage1m": 45.08
+          },
+          {
+            "value": 1606,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 1623,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 1583,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 1579,
+            "loadAverage1m": 42.3
+          },
+          {
+            "value": 1597,
+            "loadAverage1m": 42.3
+          },
+          {
+            "value": 1596,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 1651,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 1595,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 1610,
+            "loadAverage1m": 37.79
+          },
+          {
+            "value": 1597,
+            "loadAverage1m": 37.79
+          },
+          {
+            "value": 1593,
+            "loadAverage1m": 37.79
+          }
+        ],
+        "browser.vite.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 48.29
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 48.29
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 47.62
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 47.62
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 46.13
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 45.08
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 45.08
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 44.67
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 42.3
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 42.3
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 40.03
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 37.79
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 37.79
+          },
+          {
+            "value": 29.3,
+            "loadAverage1m": 37.79
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-24T05:28:12.018Z",
+      "label": "Desktop, this shared machine, headless Chromium through Playwright, product S09 route tab in both shells. Not a device result. Every sample carries the 1-minute load average.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "samplesPerShell": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000
+      },
+      "browser": {
+        "name": "chromium",
+        "version": "153.0.8010.12",
+        "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)"
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "loadAverageAtEnd": [11.46, 15.61, 20.75]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "browser-next-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-next-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/_next/static/chunks/0ug39n0nyrjc9.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        },
+        {
+          "id": "browser-vite-maplibre-not-loaded-before-route-tab",
+          "passed": true,
+          "detail": "before: chunks [] workers []"
+        },
+        {
+          "id": "browser-vite-maplibre-loaded-on-route-tab",
+          "passed": true,
+          "detail": "after: chunks [/assets/maplibre-gl-TrXRxYbc.js] workers [/dist/maplibre/maplibre-gl-worker.mjs]"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "browser.next.navigationToDrawnMs": [
+          {
+            "value": 1055,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 1406,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 1385,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 1382,
+            "loadAverage1m": 14.67
+          },
+          {
+            "value": 1386,
+            "loadAverage1m": 14.67
+          },
+          {
+            "value": 1393,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 1354,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 1370,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 1370,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 1402,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 1386,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 1375,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 1351,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 1401,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 1373,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 1374,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 1353,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 1418,
+            "loadAverage1m": 13.47
+          },
+          {
+            "value": 1368,
+            "loadAverage1m": 13.47
+          },
+          {
+            "value": 1373,
+            "loadAverage1m": 13.47
+          }
+        ],
+        "browser.next.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.64
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.67
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.67
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.62
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 14.25
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.59
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 12.82
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.47
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.47
+          },
+          {
+            "value": 32.2,
+            "loadAverage1m": 13.47
+          }
+        ],
+        "browser.vite.navigationToDrawnMs": [
+          {
+            "value": 1634,
+            "loadAverage1m": 13.6
+          },
+          {
+            "value": 1591,
+            "loadAverage1m": 13.71
+          },
+          {
+            "value": 1617,
+            "loadAverage1m": 13.71
+          },
+          {
+            "value": 1651,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 1605,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 1656,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 1595,
+            "loadAverage1m": 13.13
+          },
+          {
+            "value": 1585,
+            "loadAverage1m": 13.13
+          },
+          {
+            "value": 1631,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 1640,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 1586,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 1645,
+            "loadAverage1m": 13.11
+          },
+          {
+            "value": 1610,
+            "loadAverage1m": 13.11
+          },
+          {
+            "value": 1637,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 1637,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 1603,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 1644,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 1631,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 1620,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 1625,
+            "loadAverage1m": 11.46
+          }
+        ],
+        "browser.vite.jsHeapAfterDrawnMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 13.6
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.71
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.71
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.49
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.13
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.13
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.12
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.11
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 13.11
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.46
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 12.02
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 11.46
+          }
+        ]
+      }
+    }
+  ]
+}

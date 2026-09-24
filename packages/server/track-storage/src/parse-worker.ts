@@ -13,7 +13,10 @@ import { storedTrackSelectionSchema, type StoredTrackArtifacts } from './artifac
  *
  * Everything expensive happens here on purpose: parsing, normalization, the display
  * geometry and the aggregates are all built under the V8 heap ceiling the parent set
- * through `resourceLimits`, so exceeding it ends this thread instead of the process.
+ * through `resourceLimits`. Exceeding it normally ends this thread instead of the process,
+ * but not always: an allocation inside a native, uninterruptible step (M2-01k-f observed
+ * `node::worker` structured-clone deserialization, `ValueDeserializer`) can use up Node's
+ * near-heap-limit grace, and V8 then aborts the whole process. See M2-01k-f.md F1.
  *
  * The first message this worker sends is the heap limit V8 actually gave it. The parent
  * withholds the bytes until it has checked that value against the ceiling it asked for,

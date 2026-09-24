@@ -110,9 +110,23 @@
         "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
         "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
         "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-        "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-e.md."
+    },
+    {
+      "node": "M2-01k-f",
+      "date": "2026-09-25",
+      "rows": ["K-performance", "V2-F35", "P7-parser-bounds"],
+      "decision": "Gap node M2-01k-f checked in performance budgets derived from record-only baselines and a shared evaluator with a source-tree guard; four rounds of independent review. Root accepts desktop-only passed for K-performance and passed with F1 as the stated limit for P7-parser-bounds; the F1 fix and evaluator hardening are split to M2-01ai.",
+      "change": "2 rows partial -> passed; V2-F35 reason updated, still partial; M2-01k-e amendment evidence line now labels round-2 and final-tree figures separately (M2-01k-e final review note D2); counts passed 53 -> 55, partial 51 -> 49.",
+      "executed": [
+        "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
+        "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
+        "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
+        "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-f.md."
     }
   ],
   "rounds": [
@@ -234,8 +248,8 @@
     }
   ],
   "counts": {
-    "passed": 53,
-    "partial": 51,
+    "passed": 55,
+    "partial": 49,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1120,7 +1134,7 @@
         "scripts/probe-routing-operational.mts rate bound",
         "packages/track-parsing tests/limits.test.ts boundaries"
       ],
-      "reason": "Single-process limiter; no load measurement; lazy map loading not asserted.",
+      "reason": "M2-01k-f amendment: still partial. Lazy heavy plugins are asserted in both shells (MapLibre code and worker absent before the route tab), and bounded jobs are shown for the parse worker (concurrency 2, deadline, heap ceiling) and routing admission. Model, tools and retrieval limits were not measured.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1128,7 +1142,19 @@
           "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-f",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Single-process limiter; no load measurement; lazy map loading not asserted.",
+        "executed": [
+          "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
+          "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
+          "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
+          "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+        ]
+      }
     },
     {
       "id": "V2-F36",
@@ -1467,18 +1493,30 @@
       "id": "K-performance",
       "source": "docs/implementation/map-implementation-plan.md:94",
       "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"성능\"",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)"
       ],
-      "reason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured.",
+      "reason": "M2-01k-f amendment: passed, desktop only. Budgets for the representative 20,000-point track are checked in (server path parse/normalize/map_path/API response, browser render time, API RSS, worker heap ceiling, browser JS heap, engine RSS under load) and asserted by one evaluator shared by the server probe and the browser spec; judged run 4 passed all budgets on the reviewed content. Limits: real-device budgets are not_executed; browser GPU is SwiftShader; budgets catch regressions of 2x or more and are not a latency SLO; browser samples are warm-cache; the admissible-load rule (time metrics over budget above their baseline load are inconclusive, never passed) was set after judged run 3 failed under load and is now enforced.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "scripts/probe-course-performance.mts was not re-run in round 2 (no verdict depends on a new measurement; K-performance stays partial). Not re-measured in round 2. Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-f",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured.",
+        "executed": [
+          "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
+          "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
+          "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
+          "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+        ]
+      }
     },
     {
       "id": "K-graph-rollback",
@@ -1505,7 +1543,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },
@@ -1838,7 +1876,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },
@@ -1866,7 +1904,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },
@@ -1942,7 +1980,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },
@@ -1974,7 +2012,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },
@@ -2033,17 +2071,29 @@
       "id": "P7-parser-bounds",
       "source": "docs/implementation/map-implementation-plan.md:166",
       "quote": "파일 bytes·sample/segment 수·XML depth/text·정규화 출력·파싱 시간·메모리·worker 동시성에 구체적 상한과 초과 오류를 a에서 확정하고 각 경계/초과값을 시험한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)"
       ],
-      "reason": "Parse time, memory and worker concurrency boundaries not verified here.",
+      "reason": "M2-01k-f amendment: passed, with F1 as the stated limit. Parse time (host deadline test, parser budget test), memory (real V8 heap-ceiling ladder in the probe) and worker concurrency (default limit test and probe check) each have executed assertions with killed mutants. Limit F1: a worker OOM is normally contained, but a native structured-clone allocation near the heap limit can abort the whole API process (reproduced under mutation); the fix is M2-01ai and is needed before untrusted production uploads.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-f",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Parse time, memory and worker concurrency boundaries not verified here.",
+        "executed": [
+          "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
+          "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
+          "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
+          "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+        ]
+      }
     },
     {
       "id": "P7-xxe",
@@ -2426,7 +2476,7 @@
           "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
           "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
           "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
         ]
       }
     },

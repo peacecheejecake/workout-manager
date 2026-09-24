@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k-f",
+  "track": {
+    "kind": "synthetic",
+    "samples": 20000,
+    "source": "scripts/fixtures/long-track.ts",
+    "approximateLengthMeters": 76000
+  },
+  "method": {
+    "baseline": "Record-only runs of scripts/probe-performance-budget.mts (server) and tests/performance/long-track-render.spec.ts (browser) on this machine, each sample stamped with os.loadavg()[0]. statisticValue is the worst per-run statistic across those runs.",
+    "budget": "budget = baseline statisticValue x headroom factor, rounded up to two significant figures (never more than 10 % above the product). parseBudgetFile refuses a budget that does not follow from its baseline and factor.",
+    "statistic": "Nearest-rank percentile over at least 20 samples per p95 metric (minimumSamples), so the p95 is the 19th of 20 and one outlier on the loaded machine does not decide it. Baseline runs with fewer samples stay in the record but do not set a p95 baseline. max metrics (memory, sizes, the heap ladder) take the worst sample.",
+    "flakeAvoidance": "Budgets are judged only in separate opt-in steps (the probe; playwright.performance.config.ts), never in pnpm test or pnpm test:identity. Headroom is set on the loaded baseline, so an idle machine meets it with more margin. Admissible load (rule added in M2-01k-f round 4, after judged run 3 failed at a load average up to 124; no earlier version defined one): a time budget exceeded while any of its samples was taken above that metric's baseline.loadAverage1m.max is `inconclusive`, not failed, and the run is repeated at an admissible load. Load never turns a failure into a pass and never excuses memory or size metrics. evaluateBudget enforces this.",
+    "noArtificialLoad": "No load generator was run. The engine load is product requests at the admission limits, bounded in count and duration."
+  },
+  "desktop": {
+    "label": "Desktop: darwin arm64, 8 CPUs, 32 GiB, Node 24.12.0, headless Chromium (Playwright). Shared machine under load from other agents. Not a device result.",
+    "metrics": {
+      "api.uploadParseMs": {
+        "phase": "api",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 1300,
+        "minimumSamples": 20,
+        "description": "PUT of the 780 KB FIT through the production API: storage plus server re-parse in the bounded worker (parse, normalize, map_path, aggregates).",
+        "baseline": {
+          "statisticValue": 630,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [623, 630],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 22.53
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "api.finalizeMs": {
+        "phase": "api",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 55,
+        "minimumSamples": 20,
+        "description": "Finalize of the stored track (derivatives committed).",
+        "baseline": {
+          "statisticValue": 11,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [11, 10],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 22.53
+          }
+        },
+        "headroom": {
+          "factor": 5.0,
+          "reason": "An operation of a few milliseconds is the same order as one GC pause or scheduler delay on the loaded machine, so a 2x factor would fail on noise alone; 5x (tens of milliseconds) still fails a regression that turns the read into real work, e.g. re-deriving the artifact per request."
+        }
+      },
+      "api.readMapPathMs": {
+        "phase": "api",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 30,
+        "minimumSamples": 20,
+        "description": "GET track content variant=map_path (API response).",
+        "baseline": {
+          "statisticValue": 6,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [5, 6],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 22.53
+          }
+        },
+        "headroom": {
+          "factor": 5.0,
+          "reason": "An operation of a few milliseconds is the same order as one GC pause or scheduler delay on the loaded machine, so a 2x factor would fail on noise alone; 5x (tens of milliseconds) still fails a regression that turns the read into real work, e.g. re-deriving the artifact per request."
+        }
+      },
+      "api.readNormalizedMs": {
+        "phase": "api",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 55,
+        "minimumSamples": 20,
+        "description": "GET track content variant=normalized (API response).",
+        "baseline": {
+          "statisticValue": 11,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [11, 10],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 22.53
+          }
+        },
+        "headroom": {
+          "factor": 5.0,
+          "reason": "An operation of a few milliseconds is the same order as one GC pause or scheduler delay on the loaded machine, so a 2x factor would fail on noise alone; 5x (tens of milliseconds) still fails a regression that turns the read into real work, e.g. re-deriving the artifact per request."
+        }
+      },
+      "api.readMapPathBytes": {
+        "phase": "api",
+        "unit": "bytes",
+        "statistic": "max",
+        "budget": 1100000,
+        "minimumSamples": 5,
+        "description": "map_path response body size.",
+        "baseline": {
+          "statisticValue": 970464,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [970464, 970464, 970464],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 29.31
+          }
+        },
+        "headroom": {
+          "factor": 1.1,
+          "reason": "Serialized sizes are deterministic for the fixed synthetic track; 10 % admits a small format addition and fails any real growth of the artifact."
+        }
+      },
+      "api.readNormalizedBytes": {
+        "phase": "api",
+        "unit": "bytes",
+        "statistic": "max",
+        "budget": 6000000,
+        "minimumSamples": 5,
+        "description": "normalized response body size.",
+        "baseline": {
+          "statisticValue": 5365290,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [5365290, 5365290, 5365290],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 29.31
+          }
+        },
+        "headroom": {
+          "factor": 1.1,
+          "reason": "Serialized sizes are deterministic for the fixed synthetic track; 10 % admits a small format addition and fails any real growth of the artifact."
+        }
+      },
+      "api.processPeakRssMiB": {
+        "phase": "api",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 1100,
+        "minimumSamples": 5,
+        "description": "Peak RSS of the process hosting the API (includes the probe itself and the synthetic FIT generator; the parse workers are threads of this process).",
+        "baseline": {
+          "statisticValue": 716,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [664, 682, 716],
+          "loadAverage1m": {
+            "min": 16.75,
+            "max": 29.31
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
+        }
+      },
+      "engine.idleRssMiB": {
+        "phase": "engine",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 470,
+        "minimumSamples": 5,
+        "description": "GraphHopper JVM RSS after one warm-up route, before load (-Xms512m -Xmx2048m).",
+        "baseline": {
+          "statisticValue": 310,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [310, 286, 301],
+          "loadAverage1m": {
+            "min": 17.93,
+            "max": 30.06
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
+        }
+      },
+      "engine.loadPeakRssMiB": {
+        "phase": "engine",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 800,
+        "minimumSamples": 5,
+        "description": "Peak GraphHopper JVM RSS per load round: two tenants at their concurrency limit (4 heavy 12-waypoint routes in flight), sampled every 250 ms.",
+        "baseline": {
+          "statisticValue": 527,
+          "samples": 25,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [500, 518, 527],
+          "loadAverage1m": {
+            "min": 19.77,
+            "max": 30.06
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
+        }
+      },
+      "engine.routeUnderLoadMs": {
+        "phase": "engine",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 200,
+        "minimumSamples": 20,
+        "description": "API walking-route latency of one 12-waypoint request (the contract maximum count, a ~26 km route along the long track) while 4 are in flight.",
+        "baseline": {
+          "statisticValue": 98,
+          "samples": 100,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [80, 85, 98],
+          "loadAverage1m": {
+            "min": 19.77,
+            "max": 30.06
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "worker.parseMs": {
+        "phase": "worker",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 980,
+        "minimumSamples": 20,
+        "description": "createBoundedTrackParser().parse of the long FIT: worker start, heap check, parse, normalize, map_path, aggregates, reply validation (cold, as in production).",
+        "baseline": {
+          "statisticValue": 488,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [488, 477],
+          "loadAverage1m": {
+            "min": 18.7,
+            "max": 23.21
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "worker.concurrentAtBoundMs": {
+        "phase": "worker",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 2600,
+        "minimumSamples": 20,
+        "description": "Wall time of 3 simultaneous parses against the default parser: 2 run (the bound), 1 is refused.",
+        "baseline": {
+          "statisticValue": 1293,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [1293, 608],
+          "loadAverage1m": {
+            "min": 18.89,
+            "max": 26.93
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "worker.minimumHeapCeilingMiB": {
+        "phase": "worker",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 96,
+        "minimumSamples": 2,
+        "description": "Smallest V8 old-generation ceiling (resourceLimits) under which the long track parses; below it V8 ends the worker with TRACK_PARSE_MEMORY_EXCEEDED.",
+        "baseline": {
+          "statisticValue": 48,
+          "samples": 6,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [48, 48, 48],
+          "loadAverage1m": {
+            "min": 19.29,
+            "max": 31.2
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "The smallest ceiling is read off a discrete ladder (16, 24, 32, 48, 64, 96, ...); 2x is the next rung pair up and stays far below the product ceiling of 256 MiB."
+        }
+      },
+      "parse.parseNormalizeMs": {
+        "phase": "parse",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 710,
+        "minimumSamples": 20,
+        "description": "parseTrackFile in-process, warm (decode, normalize, contract validation).",
+        "baseline": {
+          "statisticValue": 352,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [352, 153],
+          "loadAverage1m": {
+            "min": 17.62,
+            "max": 35.15
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "parse.mapPathMs": {
+        "phase": "parse",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 130,
+        "minimumSamples": 20,
+        "description": "buildMapPath in-process, warm.",
+        "baseline": {
+          "statisticValue": 61,
+          "samples": 40,
+          "runs": ["2026-09-24T03:10:30.015Z", "2026-09-24T05:25:24.995Z"],
+          "perRunStatistic": [61, 22],
+          "loadAverage1m": {
+            "min": 17.62,
+            "max": 35.15
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "parse.normalizedBytes": {
+        "phase": "parse",
+        "unit": "bytes",
+        "statistic": "max",
+        "budget": 6000000,
+        "minimumSamples": 5,
+        "description": "Serialized normalized track.",
+        "baseline": {
+          "statisticValue": 5365364,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [5365364, 5365364, 5365364],
+          "loadAverage1m": {
+            "min": 17.62,
+            "max": 35.15
+          }
+        },
+        "headroom": {
+          "factor": 1.1,
+          "reason": "Serialized sizes are deterministic for the fixed synthetic track; 10 % admits a small format addition and fails any real growth of the artifact."
+        }
+      },
+      "parse.mapPathBytes": {
+        "phase": "parse",
+        "unit": "bytes",
+        "statistic": "max",
+        "budget": 1100000,
+        "minimumSamples": 5,
+        "description": "Serialized map_path.",
+        "baseline": {
+          "statisticValue": 970538,
+          "samples": 47,
+          "runs": [
+            "2026-09-24T03:06:45.593Z",
+            "2026-09-24T03:10:30.015Z",
+            "2026-09-24T05:25:24.995Z"
+          ],
+          "perRunStatistic": [970538, 970538, 970538],
+          "loadAverage1m": {
+            "min": 17.62,
+            "max": 35.15
+          }
+        },
+        "headroom": {
+          "factor": 1.1,
+          "reason": "Serialized sizes are deterministic for the fixed synthetic track; 10 % admits a small format addition and fails any real growth of the artifact."
+        }
+      },
+      "browser.next.navigationToDrawnMs": {
+        "phase": "browser",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 3400,
+        "minimumSamples": 20,
+        "description": "Next shell: navigation start to the route map's own \"drawn\" verdict for the whole long track (S09 route tab, full load, fetch of normalized + map_path, lazy map chunk, basemap).",
+        "baseline": {
+          "statisticValue": 1675,
+          "samples": 40,
+          "runs": ["2026-09-24T03:13:41.233Z", "2026-09-24T05:28:12.018Z"],
+          "perRunStatistic": [1675, 1406],
+          "loadAverage1m": {
+            "min": 12.82,
+            "max": 50.64
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "browser.vite.navigationToDrawnMs": {
+        "phase": "browser",
+        "unit": "ms",
+        "statistic": "p95",
+        "budget": 3400,
+        "minimumSamples": 20,
+        "description": "Vite shell: same as the Next metric.",
+        "baseline": {
+          "statisticValue": 1651,
+          "samples": 40,
+          "runs": ["2026-09-24T03:13:41.233Z", "2026-09-24T05:28:12.018Z"],
+          "perRunStatistic": [1635, 1651],
+          "loadAverage1m": {
+            "min": 11.46,
+            "max": 48.29
+          }
+        },
+        "headroom": {
+          "factor": 2.0,
+          "reason": "Timing on a shared 8-CPU machine whose 1-minute load average stayed around 3-4x the CPU count while the baseline was taken; per-run p95 moved by up to ~40 % between baseline runs. 2x keeps a judged run on the same machine from failing on load alone while still failing a regression that doubles the path."
+        }
+      },
+      "browser.next.jsHeapAfterDrawnMiB": {
+        "phase": "browser",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 49,
+        "minimumSamples": 5,
+        "description": "Next shell: retained JS heap (after gc) once drawn.",
+        "baseline": {
+          "statisticValue": 32.3,
+          "samples": 45,
+          "runs": [
+            "2026-09-24T03:08:21.525Z",
+            "2026-09-24T03:13:41.233Z",
+            "2026-09-24T05:28:12.018Z"
+          ],
+          "perRunStatistic": [32.3, 32.3, 32.2],
+          "loadAverage1m": {
+            "min": 12.82,
+            "max": 50.64
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
+        }
+      },
+      "browser.vite.jsHeapAfterDrawnMiB": {
+        "phase": "browser",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 48,
+        "minimumSamples": 5,
+        "description": "Vite shell: retained JS heap (after gc) once drawn.",
+        "baseline": {
+          "statisticValue": 32,
+          "samples": 45,
+          "runs": [
+            "2026-09-24T03:08:21.525Z",
+            "2026-09-24T03:13:41.233Z",
+            "2026-09-24T05:28:12.018Z"
+          ],
+          "perRunStatistic": [32, 32, 32],
+          "loadAverage1m": {
+            "min": 11.46,
+            "max": 48.29
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
+        }
+      }
+    }
+  },
+  "realDevice": {
+    "status": "not_executed",
+    "reason": "Real-device measurement is on hold by the user's decision. No budget is set: desktop, headless Chromium and iOS Simulator numbers are not substitutes, and the evaluator refuses any sample offered for these ids.",
+    "metrics": {
+      "device.ios.navigationToDrawnMs": {
+        "status": "not_executed",
+        "budget": null,
+        "description": "Route tab draw time on a physical iPhone (WKWebView shell)."
+      },
+      "device.ios.jsHeapAfterDrawnMiB": {
+        "status": "not_executed",
+        "budget": null,
+        "description": "Retained JS heap on a physical iPhone."
+      },
+      "device.ios.panFrameP95Ms": {
+        "status": "not_executed",
+        "budget": null,
+        "description": "Pan frame interval p95 over the long track on a physical iPhone."
+      },
+      "device.android.navigationToDrawnMs": {
+        "status": "not_executed",
+        "budget": null,
+        "description": "Route tab draw time on a physical Android device."
+      }
+    }
+  }
+}

@@ -7,7 +7,7 @@
  * Opt-in, refuses CI, binds the fixture identity provider on 4400 (hold the harness lock),
  * starts the self-hosted routing engine on loopback 8991. Nothing external is called.
  *
- * The track is SYNTHETIC: 20,000 samples, about 78 km, the size M2-01d fixed as the
+ * The track is SYNTHETIC: 20,000 samples, about 76 km, the size M2-01d fixed as the
  * representative long track for its map harness. No personal FIT or GPS is read. Every
  * number here is a single-caller measurement on this desktop machine through Fastify
  * `inject` (no network, no browser). It is not a device result, not a load test and not a
@@ -26,11 +26,6 @@ import {
   type CourseWaypoint,
 } from '../packages/contracts/src/courses.ts';
 import { renderCourseThumbnail } from '../packages/server/courses/src/thumbnail.ts';
-import {
-  fitFile,
-  recordMessage,
-  sessionMessage,
-} from '../packages/track-parsing/tests/fit-fixture.ts';
 import { createConfiguredApi } from '../apps/api/src/configured.ts';
 import {
   routingGraphConfig,
@@ -39,6 +34,14 @@ import {
   stopEngine,
   waitForEngine,
 } from './build-routing-graph.mjs';
+import {
+  LONG_TRACK_SAMPLES as SAMPLES,
+  longTrackAt as at,
+  longTrackFitBytes,
+  longTrackLengthMeters,
+  longTrackPosition as position,
+  type LongTrackPosition as Position,
+} from './fixtures/long-track.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
 import {
   PUBLIC_ORIGIN,
@@ -54,29 +57,8 @@ const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 const reportPath = join(repositoryRoot, 'docs/implementation/research/course-performance.json');
 
-type Position = [number, number];
-
-/**
- * A continuous zig-zag over central Seoul: 20,000 samples one second and ~3.9 m apart,
- * 19 north-south legs of ~4 km drifting ~7.9 km east, ~78 km in all. Continuous on
- * purpose: a jump between samples is a recording gap, and a course may not span one.
- */
-const SAMPLES = 20_000;
-const WEST = 126.93;
-const EAST_SPAN = 0.09;
-const SOUTH = 37.52;
-const NORTH_SPAN = 0.036;
-const LEGS = 19;
-const position = (index: number): Position => {
-  const t = index / (SAMPLES - 1);
-  const phase = t * LEGS;
-  const within = phase % 1;
-  const rising = Math.floor(phase) % 2 === 0;
-  return [WEST + EAST_SPAN * t, SOUTH + NORTH_SPAN * (rising ? within : 1 - within)];
-};
-
-const start = Date.parse('2026-03-01T00:00:00Z');
-const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
+// The representative long track lives in ./fixtures/long-track.ts, shared with the M2-01k-f
+// budget probe and browser spec so every measurement uses the same bytes.
 
 function memory() {
   const usage = process.memoryUsage();
@@ -152,32 +134,8 @@ async function main() {
     const session = new Session();
     await session.login(app, 'alice');
 
-    let length = 0;
-    for (let index = 1; index < SAMPLES; index += 1) {
-      const [x1, y1] = position(index - 1);
-      const [x2, y2] = position(index);
-      const dx = (x2 - x1) * 111_320 * Math.cos((y1 * Math.PI) / 180);
-      const dy = (y2 - y1) * 110_574;
-      length += Math.hypot(dx, dy);
-    }
-    const fitBytes = Buffer.from(
-      fitFile([
-        sessionMessage({
-          startedAt: at(0),
-          elapsedSeconds: SAMPLES,
-          distanceMeters: Math.round(length),
-        }),
-        ...Array.from({ length: SAMPLES }, (_, index) =>
-          recordMessage({
-            at: at(index),
-            longitude: position(index)[0],
-            latitude: position(index)[1],
-            heartRate: 140 + (index % 20),
-            distanceMeters: Math.round((length * index) / (SAMPLES - 1)),
-          }),
-        ),
-      ]),
-    );
+    const length = longTrackLengthMeters();
+    const fitBytes = longTrackFitBytes();
 
     const imported = await measure('activity-import', async () => {
       const response = await app.inject({

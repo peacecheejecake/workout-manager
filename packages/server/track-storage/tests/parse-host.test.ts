@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { trackLimits } from '@workout/contracts/tracks';
+
 import { createBoundedTrackParser, TrackParseRuntimeConflictError } from '../src/parse-host.js';
 import { trackCorrespondenceDigest } from '../src/derive.js';
 import type { StoredTrackSelection } from '../src/artifacts.js';
@@ -139,6 +141,46 @@ describe('the server parse worker has a real memory ceiling', () => {
     expect(second).toEqual({ ok: false, code: 'TRACK_PARSER_BUSY' });
     expect((await first).ok).toBe(true);
   });
+
+  it(
+    'at the default bound (the contract worker concurrency) runs exactly that many and refuses the next',
+    { timeout: 120_000 },
+    async () => {
+      // M2-01k-f: the product parser is constructed without options (apps/api configured.ts),
+      // so the bound that matters is the default one, not an explicit `concurrency: 1`.
+      const parser = createBoundedTrackParser({ execArgv });
+      const bytes = gpxBytes(2_000);
+      const running = Array.from({ length: trackLimits.workerConcurrency }, () =>
+        parser.parse(bytes, selection),
+      );
+      expect(parser.active()).toBe(trackLimits.workerConcurrency);
+      expect(await parser.parse(bytes, selection)).toEqual({
+        ok: false,
+        code: 'TRACK_PARSER_BUSY',
+      });
+      for (const outcome of await Promise.all(running)) expect(outcome.ok).toBe(true);
+      // The bound frees when the work ends: the next parse is admitted again.
+      expect(parser.active()).toBe(0);
+      expect((await parser.parse(gpxBytes(3), selection)).ok).toBe(true);
+    },
+  );
+
+  it(
+    'ends a parse that outlives the host deadline with its own code and frees the worker',
+    { timeout: 120_000 },
+    async () => {
+      // M2-01k-f: the parent's wall-clock deadline, independent of the parser's own budget.
+      // The long input cannot finish (worker start alone takes longer than 100 ms), so only
+      // the host timer can end it; without that timer this parse succeeds.
+      const parser = createBoundedTrackParser({ execArgv, timeoutMs: 100 });
+      const started = Date.now();
+      const outcome = await parser.parse(gpxBytes(20_000), selection);
+      expect(outcome).toEqual({ ok: false, code: 'TRACK_PARSE_TIMEOUT' });
+      // Ended by the deadline, not after the parse: well under the parser's own 5 s budget.
+      expect(Date.now() - started).toBeLessThan(trackLimits.parseMilliseconds);
+      expect(parser.active()).toBe(0);
+    },
+  );
 
   it('reports a caller cancellation as its own outcome, not as a parse failure', async () => {
     const parser = createBoundedTrackParser({ execArgv });

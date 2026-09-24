@@ -22,9 +22,12 @@ import {
  * temporaries or Zod's copies, so it cannot be a memory bound. M2-01b could not close that
  * gap because a browser exposes no per-worker heap ceiling.
  *
- * A Node worker does: `resourceLimits.maxOldGenerationSizeMb` ends the worker — and only
- * the worker — when the parse exceeds it, and the failure arrives as
- * `ERR_WORKER_OUT_OF_MEMORY`. One worker per parse also gives the same lifetime bound the
+ * A Node worker does: `resourceLimits.maxOldGenerationSizeMb` normally ends the worker —
+ * and only the worker — when the parse exceeds it, and the failure arrives as
+ * `ERR_WORKER_OUT_OF_MEMORY`. That containment is not guaranteed: when the limit is reached
+ * inside a native, uninterruptible allocation (M2-01k-f observed structured-clone
+ * deserialization, `ValueDeserializer`), Node's near-heap-limit grace can be exhausted and
+ * V8 aborts the process (M2-01k-f.md F1). One worker per parse also gives the same lifetime bound the
  * browser preview has: success, failure, deadline and cancellation all end in `terminate()`.
  *
  * **A configured ceiling is not an applied ceiling.** V8's heap options are process-global:

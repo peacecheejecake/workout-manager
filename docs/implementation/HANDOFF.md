@@ -17,25 +17,29 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-e](progress/M2-01k-e.md)를 완료했다. routing graph를 blue/green 엔진 두 벌과 API 신원 한 번의 전환으로 교체·rollback한다.
-다른 extract로 만든 graph C로 부하 중 교체·rollback을 실제 엔진 probe로 실행했다(실패 0, 전환 뒤 옛 graph 답 0). 엔진 탐색은
-요청마다 보낸 `timeout_ms`로 deadline 안에서 멈추고, no_route·outside_coverage·snap_too_far·timeout을 실제 엔진에서 각각
-관측했다. 전환 파일은 프로세스 uid 소유의 일반 파일이고 group·world 쓰기 불가일 때만 읽는다(FIFO도 막히지 않고 거절).
-매트릭스 5행을 passed로 올렸다(passed 48 → 53). **K-graph-rollback·P6-tenant-limits는 routing API 단일 인스턴스 전제**이며
-runbook에 적었다. 여러 인스턴스 limiter(PostgreSQL lease)·전역 엔진 상한·다중 leg timeout warning은 M2-01ah로 분리했다.
+[M2-01k-f](progress/M2-01k-f.md)를 완료했다. 대표 장기 track(20,000점)의 성능 예산을 기록 전용 기준선 run(p95 예산은 2회)에서 도출해
+[performance-budget.json](research/performance-budget.json)에 체크인했다. 서버 probe와 브라우저 spec이 같은 평가기로
+판정하고, 측정 전에 source tree를 검사해 남은 변이나 미기록 변경이 증거가 되지 않게 한다. 판정 run 4가 예산을 모두
+통과했다. 판정 run 3은 부하(최대 약 124)에서 시간 예산 다섯 개를 넘었고 기록에 남겼다. 허용 부하 규칙(기준선 부하를
+넘은 시간 초과는 inconclusive, 통과가 아님)은 그 실패 **뒤에** 정했고 이제 평가기가 강제한다. 매트릭스 2행을 passed로
+올렸다(passed 53 → 55). K-performance는 데스크톱 한정이다. **F1: worker OOM이 API 프로세스 전체를 abort할 수 있다**
+(변이로 재현). 신뢰할 수 없는 운영 업로드 전에 M2-01ai로 고친다.
 
-직전 완료: [M2-01k-c1](progress/M2-01k-c1.md)(태블릿 접히는 경유점 목록, 편집 단언 공백).
+직전 완료: [M2-01k-e](progress/M2-01k-e.md)(routing blue/green 교체, 요청별 엔진 deadline, 결과 구별).
 
 ## 운영 메모
 
 - 운영 API는 `WORKOUT_RELEASE`를 반드시 설정한다. 없으면 로그의 version이 `unreleased`로 남는다(M2-01k-c2).
 - routing을 켠 API는 한 인스턴스로 운영한다. 두 번째 인스턴스는 M2-01ah가 끝난 뒤에 띄운다.
+- 신뢰할 수 없는 사용자의 track 업로드를 운영에서 받기 전에 M2-01ai(F1)를 끝낸다.
 
 ## 다음 ready 작업
 
-진행 중: M2-01k-d, M2-01k-f, M2-01k-g, M2-01k-i, M2-01k-l. 아직 시작하지 않은 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j,
-M2-01k-m, M2-01k-n, M2-01ag(M2-01k-i와 동시에 진행하지 않음), M2-01af(M2-01k-e 완료로 ready), M2-01ah. `M2-01k-o`(공유)는
-의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-g, M2-01k-i, M2-01k-j, M2-01k-l, M2-01k-m,
+M2-01k-n, M2-01af, M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-d·g·i·l과 M2-01af는 이 세션의 병렬 agent가 작업 중이며
+(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는
+M2-01k-i와 동시에 진행하지 않는다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이
+gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 
