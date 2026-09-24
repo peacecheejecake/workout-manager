@@ -44,30 +44,43 @@
   padding-top: var(--space-3, 0.75rem);
 }
 
-/* tablet: a collapsible list beside the map and the detail. */
+/*
+ * tablet (07 §4, S13/S14: "지도+접히는 경유점 목록"): the map and the open course side by side,
+ * so the waypoint editor — whose own list folds at this width — sits beside the map rather
+ * than under it. The course list folds too, and runs across the top: a column of its own
+ * beside both would leave the map and the editor narrower than their minimum at 768px.
+ */
 .panes[data-layout='tablet'] {
-  grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
 }
 .panes[data-layout='tablet'] .listPane {
-  grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  /*
+   * Across the top, an open list with many courses pushed the map below the first screen
+   * (13 courses at 900px height: map top at ~1440px). The pane keeps its height bounded and
+   * scrolls inside, so the map starts on the first screen however many courses there are.
+   * The list is not folded for the owner: S13 is the list, and hiding it on arrival would
+   * make choosing a course one extra step at every tablet width.
+   */
+  max-height: min(14rem, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .panes[data-layout='tablet'] .mapPane {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 2;
 }
 .panes[data-layout='tablet'] .sheetPane {
   grid-column: 2;
   grid-row: 2;
 }
-.panes[data-layout='tablet'][data-list='collapsed'] {
-  grid-template-columns: max-content minmax(0, 1fr);
-}
 /* Collapsed hides the entries, never the control that brings them back. */
 .panes[data-layout='tablet'][data-list='collapsed'] .listPane .list,
 /*
   …and everything else the list pane carries. The import panel lives here too (M2-01j);
-  leaving it visible kept the pane at its full width, so "collapsed" stopped collapsing.
+  leaving it visible kept the pane at its full size, so "collapsed" stopped collapsing.
 */
 .panes[data-layout='tablet'][data-list='collapsed'] .listPane .panel,
 /* The ordering control orders the entries; with the entries hidden it has nothing to do. */
@@ -105,7 +118,8 @@
  * grid there left the map 20px wide (M2-01q). When the container cannot hold the list at
  * its track width, the gap and a map of at least 15rem, the panes stack instead:
  *   desktop: 24rem list + 1rem gap + 15rem map = 40rem
- *   tablet:  16rem list + 1rem gap + 15rem map = 32rem
+ *   tablet:  15rem map + 1rem gap + 15rem open course (or new-course editor) = 31rem, so 32rem
+ *   new course, desktop: 15rem map + 1rem gap + 28rem editor = 44rem
  * These are this screen's own track sizes, not copies of a viewport breakpoint.
  */
 .workbench {
@@ -130,8 +144,7 @@
  */
 @supports not (container-type: inline-size) {
   .panes[data-layout='desktop'],
-  .panes[data-layout='tablet'],
-  .panes[data-layout='tablet'][data-list='collapsed'] {
+  .panes[data-layout='tablet'] {
     grid-template-columns: minmax(0, 1fr);
   }
   .panes[data-layout='desktop'] .mapPane,
@@ -145,8 +158,7 @@
   }
 }
 @container course-workbench (width < 32rem) {
-  .panes[data-layout='tablet'],
-  .panes[data-layout='tablet'][data-list='collapsed'] {
+  .panes[data-layout='tablet'] {
     grid-template-columns: minmax(0, 1fr);
   }
   .panes[data-layout='tablet'] .mapPane,
@@ -304,7 +316,41 @@
   gap: var(--space-4, 1rem);
   min-width: 0;
 }
+.newPanes[data-layout='tablet'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
 .newPanes[data-layout='desktop'] {
   grid-template-columns: minmax(0, 1fr) minmax(0, 28rem);
   align-items: start;
+}
+/* The same minimum widths as the list screen (see the container conditions above). */
+@container course-workbench (width < 44rem) {
+  .newPanes[data-layout='desktop'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container course-workbench (width < 32rem) {
+  .newPanes[data-layout='tablet'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@supports not (container-type: inline-size) {
+  .newPanes[data-layout='desktop'],
+  .newPanes[data-layout='tablet'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The waypoint list and its fold (tablet only; see `CollapsibleWaypointList`). */
+.waypointList {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2, 0.5rem);
+  min-width: 0;
+}
+.waypointRows {
+  align-self: stretch;
+  min-width: 0;
 }

@@ -370,6 +370,63 @@ describe('S13 responsive composition', () => {
     );
   });
 
+  /**
+   * 07 §4, S13/S14 tablet: "지도+접히는 경유점 목록". The WAYPOINT list folds — not only the
+   * course list — and only at tablet width. Folding hides the rows from everyone (they are
+   * `hidden`, so no row control can take focus), keeps the draft, and brings the same rows
+   * back; the fold is presentation, not an edit.
+   */
+  it('folds the waypoint list at tablet width only, and folding is not an edit', async () => {
+    resizeTo(1024);
+    setup();
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    const editor = await screen.findByRole('region', { name: '경유지 편집' });
+    const rows = within(editor).getByRole('list', { name: '경유점 목록' });
+    expect(rows.children).toHaveLength(2);
+    const revisionBefore = within(editor).getByTestId('draft-revision').textContent;
+    const fold = within(editor).getByRole('button', { name: '경유점 목록 접기' });
+    expect(fold).toHaveAttribute('aria-expanded', 'true');
+    expect(fold).toHaveAttribute('aria-controls', rows.parentElement?.id);
+
+    await userEvent.click(fold);
+    const unfold = within(editor).getByRole('button', { name: '경유점 목록 펼치기' });
+    expect(unfold).toHaveAttribute('aria-expanded', 'false');
+    expect(within(editor).queryByRole('list', { name: '경유점 목록' })).toBeNull();
+    expect(within(editor).queryByRole('button', { name: '1번 선택' })).toBeNull();
+    expect(within(editor).getByTestId('waypoint-list-folded')).toHaveTextContent('경유점 2개');
+    // Adding still works while folded, and the count says so.
+    await userEvent.type(within(editor).getByLabelText('경유점 경도'), '126.9789');
+    await userEvent.type(within(editor).getByLabelText('경유점 위도'), '37.5668');
+    await userEvent.click(within(editor).getByRole('button', { name: '좌표로 경유점 추가' }));
+    expect(within(editor).getByTestId('waypoint-list-folded')).toHaveTextContent('경유점 3개');
+
+    // Wider than tablet there is room for the list: no fold control, the rows are shown.
+    resizeTo(1280);
+    await waitFor(() =>
+      expect(
+        within(editor).queryByRole('button', { name: /경유점 목록 (접기|펼치기)/ }),
+      ).toBeNull(),
+    );
+    expect(within(editor).getByRole('list', { name: '경유점 목록' }).children).toHaveLength(3);
+    // Back at tablet width it is folded as the owner left it.
+    resizeTo(1024);
+    await userEvent.click(
+      await within(editor).findByRole('button', { name: '경유점 목록 펼치기' }),
+    );
+    expect(within(editor).getByRole('list', { name: '경유점 목록' }).children).toHaveLength(3);
+    // Folding and unfolding moved the draft by nothing but the one waypoint added.
+    expect(
+      Number(within(editor).getByTestId('draft-revision').textContent?.match(/\d+/)?.[0]),
+    ).toBe(Number(revisionBefore?.match(/\d+/)?.[0]) + 1);
+
+    resizeTo(390);
+    await waitFor(() =>
+      expect(
+        within(editor).queryByRole('button', { name: /경유점 목록 (접기|펼치기)/ }),
+      ).toBeNull(),
+    );
+  });
+
   it('keeps the waypoint draft across a layout change', async () => {
     resizeTo(390);
     setup();

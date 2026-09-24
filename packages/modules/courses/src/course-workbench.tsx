@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ComponentType,
   type FormEvent,
 } from 'react';
@@ -31,7 +30,6 @@ import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import { Button } from '@workout/ui-foundation/button';
-import { getLayoutMode, type LayoutMode } from '@workout/ui-foundation/responsive';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { courseExportPath, createCourseApi, CourseRequestError } from './course-api';
 import {
@@ -55,6 +53,7 @@ import {
   CoursePrivacyPanel,
   readableExtrasError,
 } from './course-extras';
+import { useLayoutModeFromViewport } from './course-layout';
 import { CourseMapLeaf } from './course-map-leaf';
 import styles from './courses.module.css';
 
@@ -67,8 +66,9 @@ import styles from './courses.module.css';
  * elsewhere produces a visible conflict instead of a silent overwrite.
  *
  * The three S13 compositions are one DOM whose panes are shown and hidden by the generated
- * viewport specification: a sheet over the list on mobile, a collapsible list beside the
- * detail on tablet, and map and list side by side on desktop. No breakpoint number lives in
+ * viewport specification: a sheet over the list on mobile; on tablet the map beside the open
+ * course, whose waypoint list folds (07 §4 "지도+접히는 경유점 목록"), under a course list that
+ * folds too; and map and list side by side on desktop. No breakpoint number lives in
  * this package — the mode arrives as `data-layout` and the stylesheet reads only that — and
  * the draft, the selection and the map renderer all sit above the switch, so changing width
  * never restarts an edit.
@@ -138,28 +138,6 @@ function generationLabel(generation: CourseGeneration): string {
 
 function metres(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)}km` : `${Math.round(value)}m`;
-}
-
-function subscribeToViewport(onChange: () => void) {
-  window.addEventListener('resize', onChange);
-  window.addEventListener('orientationchange', onChange);
-  return () => {
-    window.removeEventListener('resize', onChange);
-    window.removeEventListener('orientationchange', onChange);
-  };
-}
-
-/**
- * Layout mode from the **generated** viewport specification, never from a breakpoint copied
- * into this package and never from the user agent. The server snapshot is the narrowest
- * mode, so the first paint is the one that fits everywhere.
- */
-export function useLayoutModeFromViewport(): LayoutMode {
-  return useSyncExternalStore(
-    subscribeToViewport,
-    () => getLayoutMode(window.innerWidth),
-    () => 'mobile' as const,
-  );
 }
 
 /**

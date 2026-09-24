@@ -451,7 +451,8 @@ test('composes the course screen at 767/768 and 1279/1280 and in a 420px pane', 
   await page.getByRole('button', { name: '코스 목록으로 돌아가기' }).click();
   await expect(listPane).toBeVisible();
 
-  // 768: tablet. The list is a column beside the map, and it collapses.
+  // 768: tablet. The course list runs across the top and folds; under it the map and the
+  // open course sit side by side (M2-01k-c1: the waypoint editor is beside the map).
   await page.setViewportSize({ width: 768, height: 900 });
   await expect(panes).toHaveAttribute('data-layout', 'tablet');
   await workbench.getByRole('button', { name: '배치 확인 코스' }).click();
@@ -460,13 +461,13 @@ test('composes the course screen at 767/768 and 1279/1280 and in a 420px pane', 
   const tabletList = await listPane.boundingBox();
   const tabletMap = await mapPane.boundingBox();
   assert.ok(tabletList && tabletMap);
-  expect(tabletList.x).toBeLessThan(tabletMap.x);
-  const expandedWidth = tabletList.width;
+  expect(tabletList.y + tabletList.height).toBeLessThanOrEqual(tabletMap.y);
+  const expandedHeight = tabletList.height;
   await page.getByRole('button', { name: '코스 목록 접기' }).click();
   await expect(page.getByRole('list', { name: '코스 목록' })).toBeHidden();
   const collapsed = await listPane.boundingBox();
   assert.ok(collapsed);
-  expect(collapsed.width).toBeLessThan(expandedWidth);
+  expect(collapsed.height).toBeLessThan(expandedHeight);
   await page.getByRole('button', { name: '코스 목록 펼치기' }).click();
   expect(await overflow()).toBeLessThanOrEqual(0);
 

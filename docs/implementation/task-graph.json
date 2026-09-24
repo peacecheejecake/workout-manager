@@ -1320,7 +1320,8 @@
       "title": "S14 편집기: 접히는 경유점 목록과 편집 단언 공백",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01k-c1.md",
       "scope": "tablet에서 지도 옆 경유점 목록을 접고 펼 수 있게 하고(07 표의 \"지도+접히는 경유점 목록\"), 다섯 경계에서 레이아웃 변이로 실패하는 최소 폭 단언을 둔다. 되돌리기·다시 실행이 경유점 내용을 복원·재적용하는지, 안전 비보장 문구, 먼저 적용된 최신 geometry를 늦은 옛 응답이 덮지 않음(실제 스택), 지도 상태 중 부분 기록·배경 없음·저장 실패를 각각 단언한다. 각 단언은 변이로 비공허성을 보인다 닫을 매트릭스 행: R-S13-S14, S14-undo-redo, S14-safety-notice, V2-A35, FUT-07-2, P6-latest-request-only, P8-ui-component, P5-states. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
     },
     {
@@ -1446,6 +1447,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "M2-01k-c2에서 분리. 지금 routing 엔진의 waypoint 로그 보호는 두 가지에만 기대고 있다: 저장소 안 실행 경로의 -Ddw.server.request_log.type=external override(요청 줄에서 query 제거)와 모든 logging appender의 WARN threshold(GraphHopper RouteResource의 INFO 줄에 waypoint가 있음). 다음 graph 재구축에서 serving profile 파일 자체에 server.request_log.appenders: []를 넣고 com.graphhopper.resources.RouteResource logger를 WARN 또는 OFF로 고정한다. profile SHA-256이 graph manifest의 profileConfigSha256에 묶여 있으므로 전체 재import와 graph id 변경, 코스의 graph 인정 재확인이 따른다(M2-01k-e의 blue/green 교체 절차로). 저장소 밖 실행도 막도록 adapter를 POST /route(JSON body)로 바꾸는 것을 검토한다. guard 시험(packages/tooling/tests/graphhopper-launch.test.mjs)의 엄격한 profile 문법을 같은 변경에서 확장하고, scripts/probe-routing-engine-logs.mts로 새 profile에서 실제 엔진이 waypoint를 쓰지 않음을 보인다."
+    },
+    {
+      "id": "M2-01ag",
+      "title": "S13 태블릿 코스 목록 사용성 보강",
+      "dependsOn": ["M2-01k-c1"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01k-c1 2차 독립 검토의 비차단 공백. 태블릿에서 코스 목록은 높이가 묶여 내부 스크롤된다. (a) 주소(/courses/:id/edit)로 연 코스가 목록에서 보이도록 스크롤되지 않는다 — 선택 시 목록 안에서 scrollIntoView(block: nearest)로 보이게 한다. (b) 목록의 접기·순서 전환 버튼이 목록과 함께 스크롤되어 사라진다 — pane의 제어 줄을 sticky로 둔다. 두 shell E2E로 단언하고, 각 동작을 되돌리는 변이로 비공허성을 보인다. M2-01k-i(목록 drag)와 같은 편집기 영역을 건드리므로 순서를 조정한다."
     },
     {
       "id": "M2-01k",

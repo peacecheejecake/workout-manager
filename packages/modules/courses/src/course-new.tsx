@@ -16,7 +16,8 @@ import { outcomes, provesNothingWasStored, RouteReviewSummary } from './course-e
 import { CoursePlaceSearch } from './course-extras';
 import { createCourseExtrasApi } from './course-extras-api';
 import { WaypointListEditor } from './course-waypoint-list';
-import { CourseMapPane, useLayoutModeFromViewport } from './course-workbench';
+import { useLayoutModeFromViewport } from './course-layout';
+import { CourseMapPane } from './course-workbench';
 import styles from './courses.module.css';
 
 /**
@@ -129,7 +130,7 @@ function NewCourseScreen({
             {...(mapView ? { mapView } : {})}
             {...(adapterFactory ? { createMapAdapter: adapterFactory } : {})}
           />
-          <div className={styles.pane}>
+          <div className={styles.pane} data-pane="draft">
             {picked ? (
               <p className={styles.note} data-testid="picked-position">
                 선택한 위치: {picked[1].toFixed(5)}, {picked[0].toFixed(5)}

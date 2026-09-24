@@ -70,6 +70,28 @@
         "guard test packages/tooling/tests/graphhopper-launch.test.mjs 9/9: every launch path uses the helper, every appender threshold WARN or higher, strict fail-closed profile grammar; independent review bypasses X1-X3, B1-B3, U1, U3 all refused"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and six rounds of independent review; see docs/implementation/progress/M2-01k-c2.md."
+    },
+    {
+      "node": "M2-01k-c1",
+      "date": "2026-09-24",
+      "rows": [
+        "R-S13-S14",
+        "S14-undo-redo",
+        "S14-safety-notice",
+        "V2-A35",
+        "FUT-07-2",
+        "P6-latest-request-only",
+        "P8-ui-component",
+        "P5-states"
+      ],
+      "decision": "User accepted the new S13/S14 tablet layout (2026-09-24). Gap node M2-01k-c1 built the collapsible waypoint list and asserted the editor gaps with mutants; two rounds of independent review.",
+      "change": "6 rows partial -> passed; P8-ui-component and P5-states reasons updated, still partial; counts passed 42 -> 48, partial 62 -> 56.",
+      "executed": [
+        "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+        "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+        "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-c1.md."
     }
   ],
   "rounds": [
@@ -191,8 +213,8 @@
     }
   ],
   "counts": {
-    "partial": 62,
-    "passed": 42,
+    "partial": 56,
+    "passed": 48,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -628,12 +650,12 @@
       "id": "S14-undo-redo",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "undo/redo",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/modules/courses/tests/course-draft.test.tsx:79-90 revisions/future (unit)",
         "tests/identity/courses.spec.ts:295 draft revision numbers"
       ],
-      "reason": "No executed test asserts that undo restores the previous waypoint content or that redo re-applies it; the E2E list count is 3 before and after undo.",
+      "reason": "M2-01k-c1 amendment: passed. Undo and redo restore and re-apply the waypoint content (not just the revision number), asserted end to end in both shells; U1/U2 killed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -642,7 +664,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "No executed test asserts that undo restores the previous waypoint content or that redo re-applies it; the E2E list count is 3 before and after undo.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "S14-loop-draft",
@@ -821,11 +854,11 @@
       "id": "S14-safety-notice",
       "source": "docs/.pre/01_product_screen_spec.md:165",
       "quote": "지도에서 보인 경로가 안전·통행 허가를 보장하지 않는다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "Aside snapshot (this node) showed \"지도에 보이는 경로가 통행 허가나 안전을 보장하지 않습니다.\""
       ],
-      "reason": "No test asserts the text; nothing would catch its removal.",
+      "reason": "M2-01k-c1 amendment: passed. The exact safety-not-guaranteed text is asserted on both editors in both shells; N1/N2 killed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -834,7 +867,18 @@
         ],
         "note": "Round-1 Aside observations are not re-executed evidence in round 2. Still no executed test asserts the text; Aside observation only."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "No test asserts the text; nothing would catch its removal.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "S14-privacy-share",
@@ -889,12 +933,12 @@
       "id": "R-S13-S14",
       "source": "docs/.pre/07_responsive_layout.md:70",
       "quote": "| Courses S13/S14 | 지도+경유점 sheet, 전체 목록 대안 | 지도+접히는 경유점 목록 | 지도+list+세부 정보; 각 최소 폭 검증 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/courses.spec.ts:416 (3100 only, layout attributes)",
         "ad-hoc Playwright (not committed): 3100 and 4200 × 320/767/768/1279/1280 overflowX 0, layout switches"
       ],
-      "reason": "Stays partial (independent review B1). The quote's tablet column is '지도+접히는 경유점 목록' (map + collapsible WAYPOINT list). The only collapse control (course-workbench.tsx:708, '코스 목록 접기') collapses the COURSE list, and courses.spec.ts:416 asserts only that; no collapsible waypoint list exists. What is proven: in both shells at 320/767/768/1279/1280 and in a 420px module pane the course line is drawn by the real renderer, the canvas is >= 240x200, each visible pane is >= 240px (M2-01q's own minimum; the spec gives no number) and there is no horizontal overflow (map-render.spec, identity x2). Non-vacuity differs by part: mutant css-container (container declaration removed) fails only through the 420px pane; at the five viewport boundaries only mutant f2-both (no drawing at all) shows the checks can fail, so the per-boundary minimum-width checks were not shown to catch a layout regression.",
+      "reason": "M2-01k-c1 amendment: passed. At tablet the waypoint list folds (only there) and sits beside the map on both S14 screens; the course list is on top with a bounded height that scrolls inside, so the map starts on the first screen for any course count (user accepted this layout on 2026-09-24). Asserted at the five boundaries and a 420px pane in both shells, killed by L1-L6, F1-F2 and H1. Known UX gaps (M2-01ag): a course opened by address is not scrolled into view in the tablet list, and the list's fold/order toggles scroll away with it.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -907,7 +951,18 @@
         ],
         "note": "Round-1 ad-hoc Playwright runs were not committed; not re-executed."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Stays partial (independent review B1). The quote's tablet column is '지도+접히는 경유점 목록' (map + collapsible WAYPOINT list). The only collapse control (course-workbench.tsx:708, '코스 목록 접기') collapses the COURSE list, and courses.spec.ts:416 asserts only that; no collapsible waypoint list exists. What is proven: in both shells at 320/767/768/1279/1280 and in a 420px module pane the course line is drawn by the real renderer, the canvas is >= 240x200, each visible pane is >= 240px (M2-01q's own minimum; the spec gives no number) and there is no horizontal overflow (map-render.spec, identity x2). Non-vacuity differs by part: mutant css-container (container declaration removed) fails only through the 420px pane; at the five viewport boundaries only mutant f2-both (no drawing at all) shows the checks can fail, so the per-boundary minimum-width checks were not shown to catch a layout regression.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "R-touch-ime",
@@ -1151,17 +1206,28 @@
       "id": "V2-A35",
       "source": "docs/.pre/05_implementation_requirements.md:154",
       "quote": "| V2-A35 | 빠르게 waypoint 연속 수정 | 오래된 route response가 최신 geometry 덮지 않음 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/modules/courses/tests/course-draft.test.tsx:94, course-editor.test.tsx:280/568/808/843, course-candidates.test.tsx:451/470 (jsdom, fake transport)"
       ],
-      "reason": "Tests assert a stale answer is discarded; none applies the newest geometry first and then asserts it survives a late older answer; no real-stack test.",
+      "reason": "M2-01k-c1 amendment: passed with limits. On the real stack with real server responses (delivery held back), a newer route applied first is not overwritten by a late old answer, and a draft changed during computation refuses the stale result; P1 (store revision check) killed. Limits: fixture routing engine only; /courses/new only (the stored-course editor's compute path is covered in jsdom and shares the P1 check).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Tests assert a stale answer is discarded; none applies the newest geometry first and then asserts it survives a late older answer; no real-stack test.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "V2-A37",
@@ -1205,16 +1271,27 @@
       "id": "FUT-07-2",
       "source": "docs/.pre/06_follow_up_backlog.md:280",
       "quote": "- [ ] 빠른 경유점 수정에서 오래된 응답이 최신 결과를 덮어쓰지 않는다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see V2-A35"],
-      "reason": "Same as V2-A35: stale answers are discarded (jsdom, fake transport); that the newest result survives a late older answer is not asserted.",
+      "reason": "M2-01k-c1 amendment: passed with the same limits as V2-A35 (fixture engine, /courses/new only).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"],
         "note": "Executed through the rows it cites: V2-A35."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Same as V2-A35: stale answers are discarded (jsdom, fake transport); that the newest result survives a late older answer is not asserted.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "FUT-07-3",
@@ -1587,7 +1664,7 @@
       "quote": "오류·GPS 없음·부분 기록·배경 없음·WebGL unavailable·미계산·계산 중·stale·저장 실패를 구별한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Much closer than round 1 but still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. Not traced to an executed assertion as its own distinct state in round 2: 'partial recording' and 'no background map' on the map (the drawn check accepts either wording), and 'save failure' in a real browser. The row lists nine states; F3 (round 1's main reason) is fixed.",
+      "reason": "Much closer than round 1 but still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. Not traced to an executed assertion as its own distinct state in round 2: 'partial recording' and 'no background map' on the map (the drawn check accepts either wording), and 'save failure' in a real browser. The row lists nine states; F3 (round 1's main reason) is fixed. M2-01k-c1 killed three more states (partial recording, no background, save failure); the other six rely on earlier-node mutants not re-run here, so the row stays partial.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1764,16 +1841,27 @@
       "id": "P6-latest-request-only",
       "source": "docs/implementation/map-implementation-plan.md:155",
       "quote": "최신 요청 ID와 draft revision이 일치할 때만 결과를 반영한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see V2-A35"],
-      "reason": "Request id and draft revision matching is asserted in jsdom with a fake transport (course-editor.test.tsx:280, :568); no real-stack test.",
+      "reason": "M2-01k-c1 amendment: passed with a note. The draft-revision half is killed by a single anchor on the real stack (P1). The request-ID half is killed only by the two-anchor P2 (abort and ownership removed together); P2a (abort alone) and P2b (ownership alone) survive because an aborted request never delivers, so the single-anchor ownership kill exists only in jsdom (course-editor.test.tsx).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"],
         "note": "Executed through the rows it cites: V2-A35."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-c1",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Request id and draft revision matching is asserted in jsdom with a fake transport (course-editor.test.tsx:280, :568); no real-stack test.",
+        "executed": [
+          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
+          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
+          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+        ]
+      }
     },
     {
       "id": "P6-cancel-bound",
@@ -2208,7 +2296,7 @@
       "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
       "verdict": "partial",
       "evidence": ["pnpm test (3,207)"],
-      "reason": "See V2-A35, P5-logout-clear.",
+      "reason": "See V2-A35, P5-logout-clear. M2-01k-c1: the stale-response part is now covered (see V2-A35); what remains is account switching, which belongs to M2-01k-d.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",

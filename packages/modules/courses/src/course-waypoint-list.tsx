@@ -1,11 +1,12 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { CoursePosition } from '@workout/contracts/courses';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
 import { draftRouteStatus, type DraftProblem, type DraftRouteStatus } from './course-draft';
 import { useCourseDraft, useCourseDraftStore } from './course-draft-context';
+import { useLayoutModeFromViewport } from './course-layout';
 import styles from './courses.module.css';
 
 /**
@@ -130,77 +131,14 @@ export function WaypointListEditor({
         <span data-testid="draft-revision">초안 변경 번호 {state.revision}</span>
       </div>
 
-      <ol className={styles.waypoints} aria-label="경유점 목록" aria-describedby={statusId}>
-        {state.waypoints.map((waypoint, index) => {
-          const selected = state.selectedWaypointId === waypoint.id;
-          return (
-            <li
-              key={waypoint.id}
-              data-role={waypoint.role}
-              data-selected={selected ? 'true' : undefined}
-            >
-              <span>
-                {index + 1}.{' '}
-                {waypoint.role === 'start' ? '시작' : waypoint.role === 'finish' ? '끝' : '경유'}
-                {waypoint.locked ? ' · 잠김' : ''}
-              </span>
-              <span className={styles.coordinate}>
-                {waypoint.position[1].toFixed(5)}, {waypoint.position[0].toFixed(5)}
-              </span>
-              {/*
-                Selecting from the list is selecting on the map: the draft holds one
-                selection and the map marks the same waypoint.
-              */}
-              <Button
-                variant="secondary"
-                aria-pressed={selected}
-                onClick={() => store.getState().selectWaypoint(selected ? null : waypoint.id)}
-              >
-                {`${index + 1}번 선택`}
-              </Button>
-              <TextField
-                label={`${index + 1}번 경유점 이름`}
-                value={waypoint.name ?? ''}
-                maxLength={120}
-                onChange={(event) => store.getState().rename(waypoint.id, event.target.value)}
-              />
-              <Button
-                variant="secondary"
-                aria-pressed={waypoint.locked}
-                onClick={() => store.getState().setLocked(waypoint.id, !waypoint.locked)}
-              >
-                {waypoint.locked ? `${index + 1}번 잠금 해제` : `${index + 1}번 잠그기`}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={index === 0}
-                onClick={() => store.getState().moveEarlier(waypoint.id)}
-              >
-                {index + 1}번 앞으로
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={index === state.waypoints.length - 1}
-                onClick={() => store.getState().moveLater(waypoint.id)}
-              >
-                {index + 1}번 뒤로
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={pickedPosition === null}
-                onClick={() =>
-                  pickedPosition && store.getState().movePosition(waypoint.id, pickedPosition)
-                }
-              >
-                {index + 1}번을 선택한 위치로 이동
-              </Button>
-              <Button variant="danger" onClick={() => store.getState().remove(waypoint.id)}>
-                {index + 1}번 삭제
-              </Button>
-            </li>
-          );
-        })}
-      </ol>
+      {/*
+        Collapsible at tablet width (07 §4, S13/S14 tablet: "지도+접히는 경유점 목록"). The
+        entries fold away and the control that brings them back stays; the status above, the
+        undo/redo controls and the add controls below stay usable while it is folded.
+      */}
+      <CollapsibleWaypointList count={state.waypoints.length}>
+        <WaypointEntries pickedPosition={pickedPosition} describedBy={statusId} />
+      </CollapsibleWaypointList>
 
       <div className={styles.actions}>
         <Button
@@ -244,5 +182,143 @@ export function WaypointListEditor({
         </Button>
       </form>
     </>
+  );
+}
+
+/**
+ * The entries of the waypoint list, one row per waypoint with its own controls.
+ *
+ * Its own component so the list can grow new ways to act on a row (M2-01k-i adds drag to
+ * reorder, through the same draft actions the move buttons use) without touching how the
+ * list is composed, collapsed or described.
+ */
+function WaypointEntries({
+  pickedPosition,
+  describedBy,
+}: {
+  readonly pickedPosition: CoursePosition | null;
+  /** The element that says what state the draft is in, read with the list. */
+  readonly describedBy: string;
+}) {
+  const store = useCourseDraftStore();
+  const state = useCourseDraft((value) => value);
+  return (
+    <ol className={styles.waypoints} aria-label="경유점 목록" aria-describedby={describedBy}>
+      {state.waypoints.map((waypoint, index) => {
+        const selected = state.selectedWaypointId === waypoint.id;
+        return (
+          <li
+            key={waypoint.id}
+            data-role={waypoint.role}
+            data-selected={selected ? 'true' : undefined}
+          >
+            <span>
+              {index + 1}.{' '}
+              {waypoint.role === 'start' ? '시작' : waypoint.role === 'finish' ? '끝' : '경유'}
+              {waypoint.locked ? ' · 잠김' : ''}
+            </span>
+            <span className={styles.coordinate}>
+              {waypoint.position[1].toFixed(5)}, {waypoint.position[0].toFixed(5)}
+            </span>
+            {/*
+              Selecting from the list is selecting on the map: the draft holds one
+              selection and the map marks the same waypoint.
+            */}
+            <Button
+              variant="secondary"
+              aria-pressed={selected}
+              onClick={() => store.getState().selectWaypoint(selected ? null : waypoint.id)}
+            >
+              {`${index + 1}번 선택`}
+            </Button>
+            <TextField
+              label={`${index + 1}번 경유점 이름`}
+              value={waypoint.name ?? ''}
+              maxLength={120}
+              onChange={(event) => store.getState().rename(waypoint.id, event.target.value)}
+            />
+            <Button
+              variant="secondary"
+              aria-pressed={waypoint.locked}
+              onClick={() => store.getState().setLocked(waypoint.id, !waypoint.locked)}
+            >
+              {waypoint.locked ? `${index + 1}번 잠금 해제` : `${index + 1}번 잠그기`}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={index === 0}
+              onClick={() => store.getState().moveEarlier(waypoint.id)}
+            >
+              {index + 1}번 앞으로
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={index === state.waypoints.length - 1}
+              onClick={() => store.getState().moveLater(waypoint.id)}
+            >
+              {index + 1}번 뒤로
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={pickedPosition === null}
+              onClick={() =>
+                pickedPosition && store.getState().movePosition(waypoint.id, pickedPosition)
+              }
+            >
+              {index + 1}번을 선택한 위치로 이동
+            </Button>
+            <Button variant="danger" onClick={() => store.getState().remove(waypoint.id)}>
+              {index + 1}번 삭제
+            </Button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * The waypoint list's fold, offered at tablet width only.
+ *
+ * On a phone the list is the sheet under the map and on a desktop there is room for it, so
+ * neither folds. The fold is this list's own presentation state: it is not part of the
+ * draft, it survives a layout change (a list folded at tablet width is open again at
+ * desktop width and folded again back at tablet width), and folding hides the rows with
+ * `hidden`, so nothing folded away can take focus.
+ */
+function CollapsibleWaypointList({
+  count,
+  children,
+}: {
+  readonly count: number;
+  readonly children: ReactNode;
+}) {
+  const layout = useLayoutModeFromViewport();
+  const [folded, setFolded] = useState(false);
+  const rowsId = useId();
+  const collapsible = layout === 'tablet';
+  const collapsed = collapsible && folded;
+  return (
+    <div className={styles.waypointList} data-waypoint-list={collapsed ? 'collapsed' : 'expanded'}>
+      {collapsible ? (
+        <Button
+          variant="secondary"
+          aria-expanded={!collapsed}
+          aria-controls={rowsId}
+          onClick={() => setFolded((value) => !value)}
+        >
+          {collapsed ? '경유점 목록 펼치기' : '경유점 목록 접기'}
+        </Button>
+      ) : null}
+      {collapsed ? (
+        <p className={styles.note} data-testid="waypoint-list-folded">
+          경유점 {count}개 · 목록을 접었습니다. 펼치면 경유점마다 선택·순서·잠금·삭제를 할 수
+          있습니다.
+        </p>
+      ) : null}
+      <div id={rowsId} className={styles.waypointRows} hidden={collapsed}>
+        {children}
+      </div>
+    </div>
   );
 }

@@ -17,21 +17,17 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-c2](progress/M2-01k-c2.md)를 완료했다. 코스·routing·track API와 썸네일 worker의 실제 로그 stream을 버리지 않고
-검사하는 `@workout/server-courses/log-audit` helper를 만들어, 좌표·waypoint·객체 key·토큰·본문이 없고 trace id·version이
-모든 줄에 있음을 변이로 보였다. **독립 검토가 실제 누출을 찾았다**: routing 엔진(GraphHopper)의 기본 access log가
-`GET /route?...&point=lat,lon`으로 정확한 waypoint를 stdout에 썼다. 저장소 안의 모든 엔진 실행을 한 helper로 모아
-`-Ddw.server.request_log.type=external`을 넘기고, 실제 엔진에서 0건임을 보였다. 보호는 이 override와 모든 appender의
-WARN threshold 두 가지에 기대며(GraphHopper RouteResource INFO 줄에 waypoint가 있음), guard 시험이 엄격한 profile 문법으로
-두 조건을 지킨다(검토가 찾은 profile YAML 우회 7가지와 실행 우회 1가지 모두 거절). profile 파일 자체의 강화는 graph 재구축이 필요해 M2-01af로 분리했다.
-매트릭스 P7-no-coordinates-in-logs를 한계와 함께 passed로 올렸다(passed 41 → 42). 운영에서는 `WORKOUT_RELEASE`를
-설정해야 로그의 version이 `unreleased`가 아니다.
+[M2-01k-c1](progress/M2-01k-c1.md)를 완료했다. 태블릿에서 경유점 목록을 접을 수 있게 하고 지도 옆에 두었다. 사용자가
+2026-09-24에 새 배치(코스 목록 위·높이 제한·내부 스크롤, 아래에 지도와 편집기 나란히)를 수용했다. 이미 구현되어 있었지만
+단언이 없던 되돌리기·다시 실행의 경유점 내용, 안전 비보장 문구, 늦은 옛 응답이 새 경로를 덮지 않음, 저장 실패(결과 불명 뒤
+같은 idempotency key 재시도)를 두 shell E2E와 변이로 단언했다. 독립 검토 1차가 코스가 많을 때 지도가 첫 화면 밖으로 밀리는
+회귀를 잡아 고쳤다. 매트릭스 6행을 passed로 올렸다(passed 42 → 48). 남은 사용성 공백은 M2-01ag로 분리했다.
 
-직전 완료: [M2-01ae](progress/M2-01ae.md)(공개 CI artifact에서 세션 값 제거).
+직전 완료: [M2-01k-c2](progress/M2-01k-c2.md)(로그에서 waypoint 제거, routing 엔진 access log 누출 수정).
 
 ## 다음 ready 작업
 
-`M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 이제 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01af는 M2-01k-e 뒤다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
+`M2-01k-i`는 이제 ready다(M2-01k-c1 완료). M2-01ag는 ready다. 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 이제 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01af는 M2-01k-e 뒤다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 
