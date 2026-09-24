@@ -188,10 +188,24 @@
       "executed": [
         "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
         "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
-        "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+        "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3 (round 1) and B1 and N1 (round 2)",
         "pnpm test and two identity runs on the merged tree"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-i.md."
+    },
+    {
+      "node": "M2-01ai",
+      "date": "2026-09-25",
+      "rows": ["P7-parser-bounds", "K-performance"],
+      "decision": "Follow-up node M2-01ai (split from M2-01k-f) moved track parsing into a separate child process so a parser memory overrun cannot abort the API (F1), and hardened the performance evaluator; independent review approved and reproduced the fix.",
+      "change": "2 row reasons updated, verdicts unchanged (P7-parser-bounds F1 limit closed); M2-01k-i review note: its executed line now also names the round-2 re-kills; counts unchanged (67/37/0/0/6).",
+      "executed": [
+        "packages/server/track-storage/tests/parse-process.test.ts: survival under the M2-01k-f M2b/M2d conditions (5 real host processes x 10 rungs x copies 8 and 10 x 2 runs: 174 TRACK_PARSE_MEMORY_EXCEEDED, 26 ok, every host exits 0), leak/cleanup, host death, output identity across 9 fixtures (JSON, deepStrictEqual and v8.serialize bytes)",
+        "independent review reproduced survival on the final code (3 hosts, 60 parses) and MA1 (base worker restored -> host rc 134, FATAL ERROR: Reached heap limit), plus MA4 and MA4+MA5",
+        "scripts/probe-performance-budget.mts judged runs on the final tree under the harness lock: 17/17 budgets, 10/10 checks (the independent review's run, hash 3071f97b, and the implementer's after the review fixes, hash 8d0ece18)",
+        "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
+      ],
+      "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01ai.md."
     }
   ],
   "rounds": [
@@ -802,7 +816,7 @@
         "executed": [
           "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
           "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
-          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3 (round 1) and B1 and N1 (round 2)",
           "pnpm test and two identity runs on the merged tree"
         ]
       }
@@ -1246,7 +1260,7 @@
         "executed": [
           "tests/identity/course-waypoint-drag.spec.ts in the Next and Vite shells: the same course reordered by pointer drag, keyboard drag and buttons gives identical engine request order and roles and identical saved order and roles read from the API (fixed expected order); lock refusal and undo/redo of a drag",
           "packages/modules/courses/tests/course-waypoint-drag.test.tsx and course-draft.test.tsx (moveWaypoint, lock range, IME guard, focus after refused or in-place drop, single pointer, announcement reasons)",
-          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3",
+          "mutants D1, D2, D2b, D3, D4, D5, B1, N1, N2a, N2b each fail; the independent review re-killed D1 and D3 (round 1) and B1 and N1 (round 2)",
           "pnpm test and two identity runs on the merged tree"
         ]
       }
@@ -1672,7 +1686,7 @@
       "evidence": [
         "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)"
       ],
-      "reason": "M2-01k-f amendment: passed, desktop only. Budgets for the representative 20,000-point track are checked in (server path parse/normalize/map_path/API response, browser render time, API RSS, worker heap ceiling, browser JS heap, engine RSS under load) and asserted by one evaluator shared by the server probe and the browser spec; judged run 4 passed all budgets on the reviewed content. Limits: real-device budgets are not_executed; browser GPU is SwiftShader; budgets catch regressions of 2x or more and are not a latency SLO; browser samples are warm-cache; the admissible-load rule (time metrics over budget above their baseline load are inconclusive, never passed) was set after judged run 3 failed under load and is now enforced.",
+      "reason": "M2-01ai amendment: still passed, desktop only. Judged runs on the child-process parser pass all 17 budgets with parse times unchanged. api.processPeakRssMiB no longer includes parse memory; the child's peak RSS (about 170 MiB, up to four children) is recorded without a budget until record-only baselines exist. The M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply; the evaluator now also fails a time budget when loaded samples counted as best case still exceed it.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1681,15 +1695,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-f",
+        "node": "M2-01ai",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-f amendment: passed, desktop only. Budgets for the representative 20,000-point track are checked in (server path parse/normalize/map_path/API response, browser render time, API RSS, worker heap ceiling, browser JS heap, engine RSS under load) and asserted by one evaluator shared by the server probe and the browser spec; judged run 4 passed all budgets on the reviewed content. Limits: real-device budgets are not_executed; browser GPU is SwiftShader; budgets catch regressions of 2x or more and are not a latency SLO; browser samples are warm-cache; the admissible-load rule (time metrics over budget above their baseline load are inconclusive, never passed) was set after judged run 3 failed under load and is now enforced.",
         "executed": [
-          "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
-          "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
-          "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
-          "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+          "packages/server/track-storage/tests/parse-process.test.ts: survival under the M2-01k-f M2b/M2d conditions (5 real host processes x 10 rungs x copies 8 and 10 x 2 runs: 174 TRACK_PARSE_MEMORY_EXCEEDED, 26 ok, every host exits 0), leak/cleanup, host death, output identity across 9 fixtures (JSON, deepStrictEqual and v8.serialize bytes)",
+          "independent review reproduced survival on the final code (3 hosts, 60 parses) and MA1 (base worker restored -> host rc 134, FATAL ERROR: Reached heap limit), plus MA4 and MA4+MA5",
+          "scripts/probe-performance-budget.mts judged runs on the final tree under the harness lock: 17/17 budgets, 10/10 checks (the independent review's run, hash 3071f97b, and the implementer's after the review fixes, hash 8d0ece18)",
+          "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
         ]
       }
     },
@@ -2262,7 +2276,7 @@
       "evidence": [
         "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)"
       ],
-      "reason": "M2-01k-f amendment: passed, with F1 as the stated limit. Parse time (host deadline test, parser budget test), memory (real V8 heap-ceiling ladder in the probe) and worker concurrency (default limit test and probe check) each have executed assertions with killed mutants. Limit F1: a worker OOM is normally contained, but a native structured-clone allocation near the heap limit can abort the whole API process (reproduced under mutation); the fix is M2-01ai and is needed before untrusted production uploads.",
+      "reason": "M2-01ai amendment: passed, and the F1 limit is closed. Each parse now runs in a separate child process whose V8 heap is capped by --max-old-space-size (checked against the reported heap limit before any bytes are sent); exceeding it ends only the child and the API answers TRACK_PARSE_MEMORY_EXCEEDED and keeps serving (reproduced across 200 parses in 5 real host processes; restoring the in-process worker aborts the host). Parse time, memory and concurrency assertions from M2-01k-f still hold. Remaining limits: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2270,15 +2284,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-f",
+        "node": "M2-01ai",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Parse time, memory and worker concurrency boundaries not verified here.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-f amendment: passed, with F1 as the stated limit. Parse time (host deadline test, parser budget test), memory (real V8 heap-ceiling ladder in the probe) and worker concurrency (default limit test and probe check) each have executed assertions with killed mutants. Limit F1: a worker OOM is normally contained, but a native structured-clone allocation near the heap limit can abort the whole API process (reproduced under mutation); the fix is M2-01ai and is needed before untrusted production uploads.",
         "executed": [
-          "scripts/probe-performance-budget.mts judged server run 4 (2026-09-24T15:58Z, load 2.95-3.51, harness lock): 17/17 budgets, 9/9 checks; sourceTree diffSha256 07369bb4 recomputed by the independent review on the reviewed content; judged run 3 (load up to ~124) failed five time budgets and is kept in the history, re-judged inconclusive under the admissible-load rule set afterwards",
-          "tests/performance browser spec (Playwright, headless Chromium, SwiftShader): 4/4 budgets, lazy check 4/4, re-run by the independent review in round 1",
-          "packages/tooling/tests/performance-budget.test.ts 28 passed, packages/server/track-storage/tests/parse-host.test.ts 13 passed",
-          "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
+          "packages/server/track-storage/tests/parse-process.test.ts: survival under the M2-01k-f M2b/M2d conditions (5 real host processes x 10 rungs x copies 8 and 10 x 2 runs: 174 TRACK_PARSE_MEMORY_EXCEEDED, 26 ok, every host exits 0), leak/cleanup, host death, output identity across 9 fixtures (JSON, deepStrictEqual and v8.serialize bytes)",
+          "independent review reproduced survival on the final code (3 hosts, 60 parses) and MA1 (base worker restored -> host rc 134, FATAL ERROR: Reached heap limit), plus MA4 and MA4+MA5",
+          "scripts/probe-performance-budget.mts judged runs on the final tree under the harness lock: 17/17 budgets, 10/10 checks (the independent review's run, hash 3071f97b, and the implementer's after the review fixes, hash 8d0ece18)",
+          "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
         ]
       }
     },

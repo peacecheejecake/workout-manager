@@ -14,11 +14,17 @@
  * - Every sample carries the 1-minute load average at the moment it was taken. The machine is
  *   shared, so a number without its load is not evidence.
  * - Admissible load (rule added by M2-01k-f round 4, after judged run 3 failed under a load
- *   average of up to 124): a **time** budget that is exceeded while any of the metric's samples
- *   was taken above the highest load of that metric's own baseline
- *   (`baseline.loadAverage1m.max`) is `inconclusive`, not `failed`. The run must be repeated
- *   at an admissible load. Load only excuses a failure; it never turns one into a pass, and it
- *   never excuses memory or size metrics, which do not depend on CPU contention.
+ *   average of up to 124; narrowed by M2-01ai): when a **time** budget is exceeded, it is
+ *   `failed` if the statistic still exceeds the budget with every sample taken above that
+ *   metric's baseline load (`baseline.loadAverage1m.max`) counted as 0 ms, or if at least
+ *   `minimumSamples` admissible samples exceed it on their own; otherwise it is
+ *   `inconclusive` and the run must be repeated at an admissible load. Load only excuses a
+ *   failure the loaded samples could explain; it never
+ *   turns one into a pass, and it never excuses memory or size metrics, which do not depend
+ *   on CPU contention.
+ * - A budget's baseline is checked against the recorded baseline runs it names
+ *   ({@link verifyBaselinesAgainstRuns}): its sample count, per-run statistics, statistic
+ *   and load range must be what those runs' samples give.
  * - Real-device budgets are `not_executed` with no numeric budget. Nothing here can turn one
  *   into `passed`: no desktop or Simulator sample is accepted for a real-device metric.
  */
@@ -51,6 +57,8 @@ export interface DesktopMetricBudget {
     readonly statisticValue: number;
     readonly samples: number;
     readonly runs: readonly string[];
+    /** The statistic of each baseline run, in `runs` order; `statisticValue` is the worst. */
+    readonly perRunStatistic?: readonly number[];
     readonly loadAverage1m: { readonly min: number; readonly max: number };
   };
   readonly headroom: { readonly factor: number; readonly reason: string };
@@ -171,7 +179,11 @@ export function parseBudgetFile(value: unknown): PerformanceBudgetFile {
       baseline['runs'].length === 0 ||
       !isRecord(load) ||
       typeof load['min'] !== 'number' ||
-      typeof load['max'] !== 'number'
+      typeof load['max'] !== 'number' ||
+      (baseline['perRunStatistic'] !== undefined &&
+        (!Array.isArray(baseline['perRunStatistic']) ||
+          baseline['perRunStatistic'].length !== baseline['runs'].length ||
+          !baseline['perRunStatistic'].every(positive)))
     )
       throw new Error(`BUDGET_BASELINE_INVALID:${id}`);
     if (!positive(headroom['factor']) || typeof headroom['reason'] !== 'string')
@@ -200,6 +212,125 @@ export function parseBudgetFile(value: unknown): PerformanceBudgetFile {
     if (!isRecord(metric) || metric['status'] !== 'not_executed' || metric['budget'] !== null)
       throw new Error(`BUDGET_REAL_DEVICE_METRIC_INVALID:${id}`);
   return value as unknown as PerformanceBudgetFile;
+}
+
+/** One run as a result file records it (the latest run, or an entry of `previousRuns`). */
+export interface RecordedRun {
+  readonly executedAt: string;
+  readonly mode: string;
+  readonly samples: Readonly<Record<string, readonly BudgetSample[]>>;
+}
+
+/** Every run a result file records: the latest one and its `previousRuns`. */
+export function recordedRuns(result: unknown): RecordedRun[] {
+  if (!isRecord(result)) throw new Error('RESULT_INVALID');
+  const { previousRuns = [], ...latest } = result;
+  if (!Array.isArray(previousRuns)) throw new Error('RESULT_INVALID');
+  return [latest, ...(previousRuns as unknown[])].map((run) => {
+    if (
+      !isRecord(run) ||
+      typeof run['executedAt'] !== 'string' ||
+      typeof run['mode'] !== 'string' ||
+      !isRecord(run['samples'])
+    )
+      throw new Error('RESULT_RUN_INVALID');
+    return run as unknown as RecordedRun;
+  });
+}
+
+/**
+ * Re-derives every desktop baseline from the recorded runs it names and refuses any that
+ * does not follow (M2-01ai, N-h). `parseBudgetFile` can check a budget against its own
+ * baseline; only the recorded samples can say whether the baseline itself — and with it the
+ * admissible load, `baseline.loadAverage1m.max` — is what was measured.
+ *
+ * For each metric, each run in `baseline.runs` must be exactly one recorded **record-only**
+ * run (a judged run cannot be its own baseline) holding at least `minimumSamples` samples of
+ * the metric. From those samples: the count must equal `baseline.samples`, the load range
+ * must equal `baseline.loadAverage1m`, each run's statistic must equal `perRunStatistic`,
+ * and the worst of them must equal `statisticValue`.
+ */
+export function verifyBaselinesAgainstRuns(
+  budget: PerformanceBudgetFile,
+  runs: readonly RecordedRun[],
+): void {
+  for (const [id, metric] of Object.entries(budget.desktop.metrics)) {
+    const perRun: number[] = [];
+    const loads: number[] = [];
+    for (const executedAt of metric.baseline.runs) {
+      const matching = runs.filter((run) => run.executedAt === executedAt);
+      if (matching.length !== 1) throw new Error(`BASELINE_RUN_NOT_RECORDED:${id}:${executedAt}`);
+      const [run] = matching as [RecordedRun];
+      if (!run.mode.startsWith('record-only'))
+        throw new Error(`BASELINE_RUN_NOT_RECORD_ONLY:${id}:${executedAt}`);
+      const samples = run.samples[id] ?? [];
+      if (samples.length < metric.minimumSamples)
+        throw new Error(`BASELINE_RUN_TOO_FEW_SAMPLES:${id}:${executedAt}`);
+      perRun.push(
+        statisticOf(
+          samples.map((sample) => sample.value),
+          metric.statistic,
+        ),
+      );
+      loads.push(...samples.map((sample) => sample.loadAverage1m));
+    }
+    if (loads.length !== metric.baseline.samples)
+      throw new Error(`BASELINE_SAMPLES_MISMATCH:${id}`);
+    if (
+      Math.min(...loads) !== metric.baseline.loadAverage1m.min ||
+      Math.max(...loads) !== metric.baseline.loadAverage1m.max
+    )
+      throw new Error(`BASELINE_LOAD_MISMATCH:${id}`);
+    if (
+      metric.baseline.perRunStatistic !== undefined &&
+      (metric.baseline.perRunStatistic.length !== perRun.length ||
+        metric.baseline.perRunStatistic.some((value, index) => value !== perRun[index]))
+    )
+      throw new Error(`BASELINE_PER_RUN_MISMATCH:${id}`);
+    if (Math.max(...perRun) !== metric.baseline.statisticValue)
+      throw new Error(`BASELINE_STATISTIC_MISMATCH:${id}`);
+  }
+}
+
+/**
+ * The verdict for a metric whose statistic over all of its samples exceeded the budget.
+ *
+ * Decision (M2-01ai, N-g, tightened after review NB-1): a loaded sample may excuse only an
+ * excess it can explain.
+ *
+ * - Memory and size budgets do not depend on CPU contention: `failed`, whatever the load.
+ * - A time budget, where "loaded" means taken above the metric's own admissible load
+ *   (`baseline.loadAverage1m.max`), is `failed` when either
+ *   - **best case over all samples:** the statistic still exceeds the budget with every loaded
+ *     sample replaced by the best value it could have had (0 ms). The full n is kept, so one
+ *     loaded sample in the default 20 cannot drop the run below `minimumSamples` and hide
+ *     an excess; or
+ *   - **admissible samples alone:** there are at least `minimumSamples` of them and their own
+ *     statistic exceeds the budget.
+ *
+ *   Otherwise it is `inconclusive`: the loaded samples could account for the excess, and the
+ *   run must be repeated at an admissible load.
+ *
+ * Until M2-01ai any single sample above the admissible load made an exceeded time budget
+ * `inconclusive`. Load still never makes a pass: this function is reached only when the
+ * statistic over *all* samples is over budget, and a run with an inconclusive metric does
+ * not pass.
+ */
+function exceededVerdict(
+  metric: DesktopMetricBudget,
+  samples: readonly BudgetSample[],
+): 'failed' | 'inconclusive' {
+  if (metric.unit !== 'ms') return 'failed';
+  const admissibleLoad = metric.baseline.loadAverage1m.max;
+  const bestCase = samples.map((sample) =>
+    sample.loadAverage1m <= admissibleLoad ? sample.value : 0,
+  );
+  if (statisticOf(bestCase, metric.statistic) > metric.budget) return 'failed';
+  const admissible = samples
+    .filter((sample) => sample.loadAverage1m <= admissibleLoad)
+    .map((sample) => sample.value);
+  if (admissible.length < metric.minimumSamples) return 'inconclusive';
+  return statisticOf(admissible, metric.statistic) > metric.budget ? 'failed' : 'inconclusive';
 }
 
 /**
@@ -239,16 +370,12 @@ export function evaluateBudget(
     const values = samples.map((sample) => sample.value);
     if (values.some((value) => !Number.isFinite(value))) throw new Error(`NON_FINITE_SAMPLE:${id}`);
     const observed = statisticOf(values, metric.statistic);
-    const aboveAdmissibleLoad =
-      metric.unit === 'ms' && Math.max(...loads) > metric.baseline.loadAverage1m.max;
     const verdict: MetricVerdict =
       samples.length < metric.minimumSamples
         ? 'insufficient'
         : observed <= metric.budget
           ? 'passed'
-          : aboveAdmissibleLoad
-            ? 'inconclusive'
-            : 'failed';
+          : exceededVerdict(metric, samples);
     metrics.push({ ...base, verdict, observed });
   }
   const passed = metrics.length > 0 && metrics.every((metric) => metric.verdict === 'passed');

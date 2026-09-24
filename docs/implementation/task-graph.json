@@ -1475,8 +1475,9 @@
       "title": "track parser 메모리 초과 격리와 성능 판정 보강",
       "dependsOn": ["M2-01k-f"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01k-f에서 분리. (a) F1: worker resourceLimits가 OOM을 worker 안에 항상 가두지 못한다. native structured-clone 역직렬화(ValueDeserializer)가 heap 한도 근처의 유예를 다 쓰면 V8이 API 프로세스 전체를 abort한다(변이로 재현, exit 134). 신뢰할 수 없는 운영 업로드를 받기 전에 parser를 별도 child process(또는 supervisor)로 옮겨 메모리 초과가 API를 죽이지 않고 TRACK_PARSE_MEMORY_EXCEEDED로 끝남을 실제 프로세스로 단언하고, M2-01k-f의 M2b·M2d 변이 조건에서 부모가 살아남음을 보인다. P7-parser-bounds의 F1 한계를 닫는다. (b) 성능 판정 보강(M2-01k-f 4차 검토 N-g·N-h·N-i): 허용 부하 초과 표본 하나가 그 metric을 inconclusive로 만드는 대신 허용 부하 표본만으로 통계를 판정할지 결정하고 시험으로 구별한다. parseBudgetFile이 metric별 baseline.loadAverage1m을 기록된 기준선 run에서 다시 도출해 대조한다. pnpm-lock.yaml·turbo.json 스캔을 시험으로 묶는다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-f.md §5, §8, §11."
+      "status": "completed",
+      "scope": "M2-01k-f에서 분리. (a) F1: worker resourceLimits가 OOM을 worker 안에 항상 가두지 못한다. native structured-clone 역직렬화(ValueDeserializer)가 heap 한도 근처의 유예를 다 쓰면 V8이 API 프로세스 전체를 abort한다(변이로 재현, exit 134). 신뢰할 수 없는 운영 업로드를 받기 전에 parser를 별도 child process(또는 supervisor)로 옮겨 메모리 초과가 API를 죽이지 않고 TRACK_PARSE_MEMORY_EXCEEDED로 끝남을 실제 프로세스로 단언하고, M2-01k-f의 M2b·M2d 변이 조건에서 부모가 살아남음을 보인다. P7-parser-bounds의 F1 한계를 닫는다. (b) 성능 판정 보강(M2-01k-f 4차 검토 N-g·N-h·N-i): 허용 부하 초과 표본 하나가 그 metric을 inconclusive로 만드는 대신 허용 부하 표본만으로 통계를 판정할지 결정하고 시험으로 구별한다. parseBudgetFile이 metric별 baseline.loadAverage1m을 기록된 기준선 run에서 다시 도출해 대조한다. pnpm-lock.yaml·turbo.json 스캔을 시험으로 묶는다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-f.md §5, §8, §11.",
+      "evidence": "docs/implementation/progress/M2-01ai.md"
     },
     {
       "id": "M2-01k",

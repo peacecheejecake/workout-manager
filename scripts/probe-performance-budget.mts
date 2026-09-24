@@ -36,14 +36,17 @@
  * and not the in-process parser's):
  *
  *   api     production composition (`createConfiguredApi`) over Fastify inject: upload with
- *           server re-parse in the bounded worker, finalize, map_path and normalized reads.
+ *           server re-parse in the bounded parse process, finalize, map_path and normalized
+ *           reads.
  *   engine  the GraphHopper JVM's RSS idle and under routing load. The load is the product's
  *           own admission shape: two tenants, each at its concurrency limit (2), sending
  *           the contract's maximum waypoint count (12) spread along the long track (a ~26 km
  *           route) through the API.
  *           This is the workload the budget is about, bounded and short — not machine load.
- *   worker  the bounded parse worker (`createBoundedTrackParser`): wall time, the smallest V8
+ *   worker  the bounded parse host (`createBoundedTrackParser`): wall time, the smallest V8
  *           heap ceiling the long track parses under, and the concurrency bound at its limit.
+ *           The phase and its metric ids keep their M2-01k-f name; since M2-01ai each parse
+ *           runs in a child process (`--max-old-space-size`), not a worker thread.
  *   parse   the same product functions in-process (warm): parse+normalize and map_path time,
  *           and the serialized sizes of both artifacts.
  *
@@ -221,9 +224,53 @@ const selection: StoredTrackSelection = {
 };
 
 // ---------------------------------------------------------------- worker phase
+/**
+ * RSS of this process's live parse processes, sampled every `intervalMs` (M2-01ai: the parse
+ * runs in a child process, so its memory is no longer inside this process's own RSS).
+ * Returns the highest single-child reading and the highest sum. A sample can miss a peak
+ * shorter than the interval: this is a record, not a budget.
+ */
+function childRssSampler(intervalMs = 50) {
+  let peakChild = 0;
+  let peakSum = 0;
+  let running = true;
+  const loop = (async () => {
+    while (running) {
+      try {
+        const { stdout } = await execFileAsync('ps', ['-A', '-o', 'ppid=,rss=,command=']);
+        // Only parse processes: tsx's esbuild service is also a child of this process.
+        const children = stdout
+          .split('\n')
+          .filter((line) => line.includes('parse-child'))
+          .map((line) => line.trim().split(/\s+/).slice(0, 2).map(Number))
+          .filter(([ppid, kib]) => ppid === process.pid && Number.isFinite(kib))
+          .map(([, kib]) => Math.round((kib as number) / 1024));
+        peakChild = Math.max(peakChild, ...children);
+        peakSum = Math.max(
+          peakSum,
+          children.reduce((sum, value) => sum + value, 0),
+        );
+      } catch {
+        // A failed `ps` is a missing reading, not a measurement.
+      }
+      await new Promise((done) => setTimeout(done, intervalMs));
+    }
+  })();
+  return {
+    stop: async () => {
+      running = false;
+      await loop;
+      return { peakChildMiB: peakChild, peakSumMiB: peakSum };
+    },
+  };
+}
+
 async function workerPhase(fitBytes: Uint8Array, samples: number) {
-  console.log('worker phase');
+  // The metric ids keep their M2-01k-f names (`worker.*`). Since M2-01ai the bounded parse
+  // runs in a child process, not a worker thread; each sample includes starting it.
+  console.log('worker phase (bounded parse process)');
   const parser = createBoundedTrackParser();
+  const childRss = childRssSampler();
   for (let index = 0; index < samples; index += 1) {
     const started = performance.now();
     const outcome = await parser.parse(fitBytes, selection, { filename: 'long.fit' });
@@ -232,9 +279,13 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
       throw new Error('WORKER_SAMPLE_COUNT');
     record('worker.parseMs', elapsed(started));
   }
+  details['parseProcessRss'] = {
+    ...(await childRss.stop()),
+    note: "ps RSS of this probe process's parse-child processes every 50 ms during the worker.parseMs samples (one parse at a time, default 256 MiB ceiling). Recorded, not budgeted: the parse memory left the API process in M2-01ai, and this is where it went.",
+  };
 
   // The smallest V8 old-generation ceiling the long track parses under. Ascending ladder,
-  // twice; each rung is a fresh worker. A rung below the answer must fail with the memory
+  // twice; each rung is a fresh parse process. A rung below the answer must fail with the memory
   // code, or the answer is only "the floor of the ladder" and says nothing.
   const ladder = [16, 24, 32, 48, 64, 96, 128, 192, DEFAULT_TRACK_PARSE_HEAP_MEGABYTES];
   const ladderRuns: { ceilingMb: number; outcome: string }[][] = [];
@@ -290,12 +341,23 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
       );
     record('worker.concurrentAtBoundMs', wall);
   }
+  // M2-01ai: every parse process of the phase — ladder rungs that V8 aborted included — is
+  // gone once its parse has answered. None is left behind by this phase.
+  const { stdout } = await execFileAsync('ps', ['-A', '-o', 'ppid=,command=']);
+  const leftover = stdout
+    .split('\n')
+    .filter((line) => line.trim().startsWith(`${process.pid} `) && line.includes('parse-child'));
+  check(
+    'worker-no-parse-process-left',
+    leftover.length === 0 && parser.processIds().length === 0 && bounded.processIds().length === 0,
+    `${leftover.length} parse processes alive after the phase`,
+  );
 }
 
 // ---------------------------------------------------------------- parse phase
 async function parsePhase(fitBytes: Uint8Array, samples: number) {
   console.log('parse phase (in-process, warm)');
-  // One warm-up, not recorded: the production worker is cold every time and is measured
+  // One warm-up, not recorded: the production parse process is cold every time and is measured
   // by the worker phase; this phase isolates the functions themselves.
   const warm = await parseTrackFile(fitBytes, { filename: 'long.fit' });
   buildMapPath(warm.recorded[0] as NonNullable<(typeof warm.recorded)[0]>);
@@ -446,7 +508,9 @@ async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
             );
           }
         }
-        // The process's own high-water mark: API, parse host and this probe together.
+        // The process's own high-water mark: API, parse host and this probe together. Since
+        // M2-01ai the parse itself runs in a child process and is not in this number; the
+        // worker phase records where that memory went (details.parseProcessRss).
         record('api.processPeakRssMiB', Math.round(process.resourceUsage().maxRSS / 1024));
       }
       const failed = statuses.filter((status) => status !== 200);

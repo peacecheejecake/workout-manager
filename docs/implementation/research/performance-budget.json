@@ -23,7 +23,7 @@
         "statistic": "p95",
         "budget": 1300,
         "minimumSamples": 20,
-        "description": "PUT of the 780 KB FIT through the production API: storage plus server re-parse in the bounded worker (parse, normalize, map_path, aggregates).",
+        "description": "PUT of the 780 KB FIT through the production API: storage plus server re-parse in the bounded parse host (parse, normalize, map_path, aggregates). Since M2-01ai the parse runs in a child process, not a worker thread; the budget is unchanged.",
         "baseline": {
           "statisticValue": 630,
           "samples": 40,
@@ -163,7 +163,7 @@
         "statistic": "max",
         "budget": 1100,
         "minimumSamples": 5,
-        "description": "Peak RSS of the process hosting the API (includes the probe itself and the synthetic FIT generator; the parse workers are threads of this process).",
+        "description": "Peak RSS of the process hosting the API (includes the probe itself and the synthetic FIT generator; until M2-01ai the parse workers were threads of this process. Since M2-01ai each parse runs in a child process bounded by its own --max-old-space-size, so its heap is no longer in this number; the budget is unchanged and was not re-baselined, and the probe records the RSS of the parse processes separately in details.parseProcessRss, unbudgeted).",
         "baseline": {
           "statisticValue": 716,
           "samples": 47,
@@ -267,7 +267,7 @@
         "statistic": "p95",
         "budget": 980,
         "minimumSamples": 20,
-        "description": "createBoundedTrackParser().parse of the long FIT: worker start, heap check, parse, normalize, map_path, aggregates, reply validation (cold, as in production).",
+        "description": "createBoundedTrackParser().parse of the long FIT: parse process start (a child process since M2-01ai, a worker thread before; the id and the budget are unchanged), heap check, parse, normalize, map_path, aggregates, reply validation (cold, as in production).",
         "baseline": {
           "statisticValue": 488,
           "samples": 40,
@@ -311,7 +311,7 @@
         "statistic": "max",
         "budget": 96,
         "minimumSamples": 2,
-        "description": "Smallest V8 old-generation ceiling (resourceLimits) under which the long track parses; below it V8 ends the worker with TRACK_PARSE_MEMORY_EXCEEDED.",
+        "description": "Smallest V8 old-generation ceiling under which the long track parses (--max-old-space-size of the parse process since M2-01ai; worker resourceLimits before); below it V8 ends the parse process with TRACK_PARSE_MEMORY_EXCEEDED.",
         "baseline": {
           "statisticValue": 48,
           "samples": 6,

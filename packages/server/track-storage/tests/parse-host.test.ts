@@ -8,7 +8,7 @@ import { createBoundedTrackParser, TrackParseRuntimeConflictError } from '../src
 import { trackCorrespondenceDigest } from '../src/derive.js';
 import type { StoredTrackSelection } from '../src/artifacts.js';
 
-// The parent test process runs under vitest, not under `tsx`, so the worker's loader is
+// The parent test process runs under vitest, not under `tsx`, so the parse process's loader is
 // passed explicitly. A server started with `node --import tsx` inherits it instead.
 const execArgv = ['--import', 'tsx'];
 const selection: StoredTrackSelection = {
@@ -34,7 +34,7 @@ function gpxBytes(points: number, options: { readonly longitudeStep?: number } =
   );
 }
 
-describe('the server parse worker has a real memory ceiling', () => {
+describe('the server parse process has a real memory ceiling', () => {
   it(
     'parses a small track inside a bounded worker and returns the stored artifacts',
     { timeout: 60_000 },
@@ -47,8 +47,9 @@ describe('the server parse worker has a real memory ceiling', () => {
       expect(outcome.artifacts.track.provenance).toEqual(selection.provenance);
       expect(outcome.artifacts.mapPath.geometry.coordinates[0]).toHaveLength(5);
       expect(outcome.artifacts.parserId).toBe('gpx-track-v1');
-      // No worker is left running after a parse.
+      // No parse process is left running after a parse.
       expect(parser.active()).toBe(0);
+      expect(parser.processIds()).toEqual([]);
     },
   );
 
@@ -74,7 +75,7 @@ describe('the server parse worker has a real memory ceiling', () => {
       });
       const overLimit = await tight.parse(bytes, selection);
       // Same bytes, same code, same budget: only the runtime ceiling differs. V8 ends the
-      // worker, the host reports it as its own code, and the parent survives to answer.
+      // parse process, the host reports it as its own code, and the parent survives to answer.
       expect(overLimit).toEqual({ ok: false, code: 'TRACK_PARSE_MEMORY_EXCEEDED' });
       expect(tight.active()).toBe(0);
       const afterwards = await tight.parse(gpxBytes(3), selection);
@@ -83,7 +84,7 @@ describe('the server parse worker has a real memory ceiling', () => {
   );
 
   it(
-    'refuses to parse when a parent heap option replaced the ceiling it asked for',
+    'keeps the ceiling when the host process carries a heap option of its own',
     { timeout: 300_000 },
     () => {
       const child = fileURLToPath(new URL('./ceiling-child.mts', import.meta.url));
@@ -92,24 +93,57 @@ describe('the server parse worker has a real memory ceiling', () => {
           encoding: 'utf8',
           timeout: 240_000,
         });
-      // A plain parent: the 32 MiB ceiling really is applied, and V8 ends the worker.
-      const plain = run([]);
-      expect(plain.status).toBe(0);
-      expect(plain.stdout.trim()).toBe('outcome TRACK_PARSE_MEMORY_EXCEEDED');
-
-      // The same ceiling, the same bytes, the same code — but the parent carries a heap
-      // option, which V8 applies process-wide and which used to let this input parse under
-      // a limit nobody asked for. Both a large and a modest parent option are above the
-      // stated budget of ceiling + 192 MiB, so both must fail closed.
-      for (const option of ['--max-old-space-size=1024', '--max-old-space-size=128']) {
-        const raised = run([option]);
-        expect(raised.status).toBe(0);
-        expect(raised.stdout.trim()).toBe('outcome TRACK_PARSE_CEILING_NOT_APPLIED');
-        expect(raised.stdout).not.toContain('TRACK_OUTPUT_TOO_LARGE');
-        expect(raised.stdout).not.toContain('PARSED');
+      // M2-01k-f: a worker thread shared the host's process-global heap options, so a host
+      // started with --max-old-space-size could parse this input under a limit nobody asked
+      // for, and the host had to refuse (TRACK_PARSE_CEILING_NOT_APPLIED). A parse process
+      // inherits none of them (M2-01ai): the same 32 MiB ceiling applies under every host,
+      // and the same bytes end in the memory code every time — never in a parse under
+      // roughly 1 GiB (TRACK_OUTPUT_TOO_LARGE) and never as a success.
+      for (const option of [[], ['--max-old-space-size=1024'], ['--max-old-space-size=128']]) {
+        const host = run(option);
+        expect(host.status).toBe(0);
+        expect(host.stdout.trim()).toBe('outcome TRACK_PARSE_MEMORY_EXCEEDED');
       }
     },
   );
+
+  it(
+    'boots under a host started with a heap option, with default options, and keeps the ceiling',
+    { timeout: 120_000 },
+    () => {
+      // Review NB-2: the host's own `--max-old-space-size` arrives in the inherited
+      // `process.execArgv`. It is left out of the parse process instead of making
+      // construction throw; the parse's ceiling still applies.
+      const host = spawnSync(
+        process.execPath,
+        [
+          '--max-old-space-size=1024',
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('./default-options-host.mts', import.meta.url)),
+        ],
+        { encoding: 'utf8', timeout: 100_000 },
+      );
+      expect(host.status).toBe(0);
+      expect(host.stdout).toBe('default PARSED\ntight TRACK_PARSE_MEMORY_EXCEEDED\n');
+    },
+  );
+
+  it('fails closed, parsing nothing, when the reported heap limit is above the stated budget', async () => {
+    // The applied limit is verified, not assumed. A budget below what V8 reports for this
+    // ceiling (32 + 192 MiB) stands in for a runtime that defeated the ceiling: the process
+    // is refused before it is handed any bytes.
+    const parser = createBoundedTrackParser({
+      execArgv,
+      maxOldGenerationSizeMb: 32,
+      maxHeapLimitMb: 32,
+    });
+    expect(await parser.parse(gpxBytes(5), selection)).toEqual({
+      ok: false,
+      code: 'TRACK_PARSE_CEILING_NOT_APPLIED',
+    });
+    expect(parser.processIds()).toEqual([]);
+  });
 
   it('refuses a heap budget below the ceiling it would enforce', () => {
     expect(() =>

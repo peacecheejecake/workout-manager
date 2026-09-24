@@ -17,12 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-i](progress/M2-01k-i.md)를 완료했다. S14 경유점 목록에 pointer·keyboard drag를 더했다(집기·옮기기·놓기·취소, live
-안내, IME 보호). drag와 "앞으로/뒤로" 버튼이 같은 draft 동작 `moveWaypoint`를 거치므로 drag 한 번이 되돌리기 한 번이고, 잠긴
-경유점을 옮기거나 잠긴 이웃을 넘는 이동은 둘 다 거절한다. 같은 코스를 drag와 버튼으로 바꾼 결과의 엔진 요청·저장 순서와 역할이
-두 shell에서 같다. 매트릭스 2행을 passed로 올렸다(passed 65 → 67). 지도 marker drag는 만들지 않았다(선택 사항).
+[M2-01ai](progress/M2-01ai.md)를 완료했다. track 파싱을 parse마다 별도 child process로 옮기고 V8 heap을
+`--max-old-space-size`로 묶었다. 메모리 초과는 그 child만 끝내고 API는 `TRACK_PARSE_MEMORY_EXCEEDED`로 답한 뒤 계속 동작한다
+(M2-01k-f의 F1 해소, 실제 host 프로세스 200 parse로 재현). 출력은 기존 parser와 바이트까지 같고 성능 예산 17개를 모두 통과한다.
+성능 평가기는 부하 표본을 최선 값으로 보고도 예산을 넘으면 실패로 판정한다. 매트릭스 판정 수는 그대로다(passed 67).
 
-직전 완료: [M2-01ah](progress/M2-01ah.md)(routing 여러 인스턴스 limiter, 엔진 전역 상한).
+직전 완료: [M2-01k-i](progress/M2-01k-i.md)(S14 경유점 목록 drag).
 
 ## 운영 메모
 
@@ -32,15 +32,16 @@
   또는 함께 한다(옛 web bundle은 `timeout_may_be_no_route`를 해석하지 못한다).
 - 후속(M2-01k-l 검토 비차단): 연결·해제 PATCH가 실패하면 keyboard focus가 body로 떨어진다. 활동 상세 재조회 중 미디어 panel을
   유지하는 gate에 시험이 없다.
-- 신뢰할 수 없는 사용자의 track 업로드를 운영에서 받기 전에 M2-01ai(F1)를 끝낸다.
+- track parser child는 컨테이너 메모리 한도 안에서 돈다. OS OOM-killer가 child를 죽이면 `TRACK_PARSE_WORKER_FAILED`로 보이고,
+  heap 밖 메모리는 컨테이너 한도로만 묶인다(M2-01ai). parse child RSS 예산은 아직 없다.
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag, M2-01ai.
-이 중 M2-01k-a·d, M2-01af, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개
-시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01k-b·j와 M2-01ag는 M2-01k-i가 끝나 진행할 수 있다(코스 편집기는 이제
-`moveWaypoint` 하나로 순서를 바꾼다). M2-01k-m·n은 같은 S09 화면을 바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이
-풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag. 이 중
+M2-01k-a·b·d·j와 M2-01af는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에, M2-01k-m·n은 같은 S09 화면을
+바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과
+외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

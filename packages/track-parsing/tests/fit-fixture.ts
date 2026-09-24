@@ -56,7 +56,9 @@ export function fitFile(
     readonly zeroFileCrc?: boolean;
   } = {},
 ): Uint8Array {
-  const body = messages.reduce<number[]>((all, message) => [...all, ...message], []);
+  // Linear, not a spread per message: the 20,000-record long track took ~20 s to build.
+  const body: number[] = [];
+  for (const message of messages) for (const byte of message) body.push(byte);
   const header = new Uint8Array(14);
   const view = new DataView(header.buffer);
   view.setUint8(0, 14);

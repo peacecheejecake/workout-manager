@@ -9,7 +9,9 @@ import {
   evaluateBudget,
   parseBudgetFile,
   percentile,
+  recordedRuns,
   repoRelative,
+  verifyBaselinesAgainstRuns,
   type BudgetSample,
   type PerformanceBudgetFile,
 } from '../../../scripts/performance-budget';
@@ -199,6 +201,71 @@ describe('admissible load', () => {
     expect(memory.inconclusive).toBe(false);
   });
 
+  // M2-01ai (N-g): the admissible-load samples are judged on their own. These cases tell that
+  // design apart from the M2-01k-f one, where any one sample above the admissible load made
+  // an exceeded time budget inconclusive.
+  it('does not let one loaded sample hide a failure the admissible samples show by themselves', () => {
+    const oneLoaded = evaluateBudget(
+      budget,
+      {
+        'parse.time': [...samples([150, 150, 150, 150, 150], 20), ...samples([150], 99)],
+        'parse.memory': within,
+      },
+      ['parse'],
+    );
+    expect(oneLoaded.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe('failed');
+    expect(oneLoaded.inconclusive).toBe(false);
+  });
+
+  it('is inconclusive when the admissible samples alone meet the budget', () => {
+    // The excess is the loaded sample's: judged without it, the metric is within budget.
+    const loadedExcess = evaluateBudget(
+      budget,
+      {
+        'parse.time': [...samples([90, 90, 90, 90, 90], 20), ...samples([150], 99)],
+        'parse.memory': within,
+      },
+      ['parse'],
+    );
+    expect(loadedExcess.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe(
+      'inconclusive',
+    );
+    expect(loadedExcess.passed).toBe(false);
+    expect(loadedExcess.inconclusive).toBe(true);
+  });
+
+  describe('at the default 20 samples of a p95 budget', () => {
+    const p95 = budgetWith({ 'parse.p95': { budget: 100, statistic: 'p95' } });
+    const verdict = (observed: BudgetSample[]) =>
+      evaluateBudget(p95, { 'parse.p95': observed }, ['parse']).metrics[0]?.verdict;
+
+    it('fails 3x the budget even when one of the 20 samples was loaded (review NB-1)', () => {
+      // 19 admissible samples are fewer than minimumSamples (20), so judging the admissible
+      // samples alone could not decide it. Counted at its best case (0 ms), the loaded sample
+      // leaves the p95 of all 20 at 300: the excess is not the loaded sample's.
+      expect(verdict([...samples(Array(19).fill(300), 20), ...samples([300], 99)])).toBe('failed');
+    });
+
+    it('is inconclusive when too few admissible samples remain and the loaded ones explain the excess', () => {
+      // 18 admissible at 50 and one at 150, two loaded at 150: p95 over all 21 is 150. At
+      // their best case the loaded samples give a p95 of 50, and 19 admissible samples are
+      // too few to judge alone.
+      expect(
+        verdict([...samples([...Array(18).fill(50), 150], 20), ...samples([150, 150], 99)]),
+      ).toBe('inconclusive');
+    });
+  });
+
+  it('takes the admissible load from the baseline maximum, not its minimum', () => {
+    // Load 20 lies between the fixture baseline's minimum (10) and maximum (30): admissible.
+    const between = evaluateBudget(
+      budget,
+      { 'parse.time': samples([150, 150, 150, 150, 150], 20), 'parse.memory': within },
+      ['parse'],
+    );
+    expect(between.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe('failed');
+  });
+
   it('never turns load into a pass, and a real failure keeps the run from being inconclusive', () => {
     // Within budget under heavy load is simply passed.
     expect(
@@ -285,6 +352,9 @@ describe('assertMeasurableSourceTree', () => {
     write('playwright.performance.config.ts', 'export default {};\n');
     write('package.json', '{}\n');
     write('pnpm-workspace.yaml', 'packages: []\n');
+    write('pnpm-lock.yaml', "lockfileVersion: '9.0'\n");
+    write('turbo.json', '{}\n');
+    write('tsconfig.base.json', '{}\n');
     write('docs/notes.md', 'notes\n');
     git('add', '-A');
     git('commit', '-q', '-m', 'fixture');
@@ -321,6 +391,11 @@ describe('assertMeasurableSourceTree', () => {
     'playwright.performance.config.ts',
     'package.json',
     'pnpm-workspace.yaml',
+    // N-i (M2-01ai): the lockfile decides what is installed, turbo.json how it is built, and
+    // tsconfig*.json how it is compiled — each scanned and hashed like the rest.
+    'pnpm-lock.yaml',
+    'turbo.json',
+    'tsconfig.base.json',
   ])
     it(`scans and hashes ${path} as non-product: a reason is needed and enough`, () => {
       const { root, write, cleanup } = fixtureRepository();
@@ -456,6 +531,84 @@ describe('the checked-in budget', () => {
       expect(result.mode, file).toBe('judged');
       expect(evaluateBudget(budget, result.samples, phases).passed, file).toBe(true);
     }
+  });
+
+  describe('baselines re-derived from the recorded runs (N-h)', () => {
+    const runs = [
+      ...recordedRuns(JSON.parse(readFileSync(research('performance-budget-result.json'), 'utf8'))),
+      ...recordedRuns(
+        JSON.parse(readFileSync(research('performance-budget-browser-result.json'), 'utf8')),
+      ),
+    ];
+    type MutableBaseline = {
+      statisticValue: number;
+      samples: number;
+      runs: string[];
+      perRunStatistic?: number[];
+      loadAverage1m: { min: number; max: number };
+    };
+    const changed = (id: string, change: (baseline: MutableBaseline) => void) => {
+      const copy = structuredClone(budget) as unknown as {
+        desktop: { metrics: Record<string, { baseline: MutableBaseline }> };
+      };
+      change((copy.desktop.metrics[id] as { baseline: MutableBaseline }).baseline);
+      return () => verifyBaselinesAgainstRuns(copy as unknown as PerformanceBudgetFile, runs);
+    };
+
+    it('follow, metric by metric, from the samples of the runs they name', () => {
+      expect(() => verifyBaselinesAgainstRuns(budget, runs)).not.toThrow();
+    });
+
+    it('refuses an admissible load that the baseline runs did not record', () => {
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          baseline.loadAverage1m.max = 38;
+        }),
+      ).toThrow('BASELINE_LOAD_MISMATCH:api.uploadParseMs');
+      expect(
+        changed('worker.parseMs', (baseline) => {
+          baseline.loadAverage1m.min = 1;
+        }),
+      ).toThrow('BASELINE_LOAD_MISMATCH:worker.parseMs');
+    });
+
+    it('refuses a statistic, a per-run statistic or a count the runs do not give', () => {
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          baseline.statisticValue = 600;
+        }),
+      ).toThrow('BASELINE_STATISTIC_MISMATCH');
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          baseline.perRunStatistic = [623, 629];
+        }),
+      ).toThrow('BASELINE_PER_RUN_MISMATCH');
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          baseline.samples = 47;
+        }),
+      ).toThrow('BASELINE_SAMPLES_MISMATCH');
+    });
+
+    it('refuses a baseline run that is missing, judged, or too small to count', () => {
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          baseline.runs = [...baseline.runs, '2026-01-01T00:00:00.000Z'];
+        }),
+      ).toThrow('BASELINE_RUN_NOT_RECORDED');
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          // The judged run 4 cannot be its own baseline.
+          baseline.runs = ['2026-09-24T15:58:23.437Z'];
+        }),
+      ).toThrow('BASELINE_RUN_NOT_RECORD_ONLY');
+      expect(
+        changed('api.uploadParseMs', (baseline) => {
+          // Baseline 1 has 7 samples: below the 20 a p95 baseline needs.
+          baseline.runs = ['2026-09-24T03:06:45.593Z', ...baseline.runs];
+        }),
+      ).toThrow('BASELINE_RUN_TOO_FEW_SAMPLES');
+    });
   });
 
   it('judges the load-failed server run 3 inconclusive under the admissible-load rule', () => {

@@ -189,6 +189,7 @@ function setup(
     datasets?: boolean;
     zones?: (typeof zone)[];
     headGeometry?: [number, number][];
+    parseCeilingMb?: number;
   } = {},
 ) {
   const coordinates = options.headGeometry ?? [
@@ -287,11 +288,11 @@ function setup(
     courseExtras: {
       courses,
       preferences,
-      // The real worker. The test process does not run under `tsx`, so the loader is
-      // passed explicitly, exactly as the parse-host contract describes.
+      // The real parse process. The test process does not run under `tsx`, so the loader
+      // is passed explicitly, exactly as the parse-host contract describes.
       parser: createBoundedTrackParser({
         execArgv: ['--import', 'tsx'],
-        maxOldGenerationSizeMb: 256,
+        maxOldGenerationSizeMb: options.parseCeilingMb ?? 256,
       }),
       places: options.datasets === false ? null : placeIndex,
       elevation: options.datasets === false ? null : elevationIndex,
@@ -333,6 +334,40 @@ describe('course import', () => {
     expect(created.generation.sourceKind).toBe('gpx-rte');
     expect(created.coordinates).toHaveLength(2);
   });
+
+  it(
+    'answers a parse past its heap ceiling with the memory code and keeps serving',
+    { timeout: 60_000 },
+    async () => {
+      // M2-01ai: the ceiling ends the parse process, not the API. The same app answers the
+      // next import normally.
+      const { app, courses } = setup({ parseCeilingMb: 16 });
+      let points = '';
+      for (let index = 0; index < 40_000; index += 1)
+        points += `<rtept lat="${(37.5 + index * 1e-6).toFixed(7)}" lon="${(127.02 + index * 1e-6).toFixed(7)}" />`;
+      const large = await importFile(app, {
+        name: null,
+        originalFilename: 'large.gpx',
+        selection: null,
+        fileBase64: base64(gpx(`<rte><name>큰 경로</name>${points}</rte>`)),
+      });
+      expect(large.statusCode).toBe(422);
+      expect(large.json()).toMatchObject({ error: { code: 'TRACK_PARSE_MEMORY_EXCEEDED' } });
+      expect(courses.create).not.toHaveBeenCalled();
+      const next = await importFile(
+        app,
+        {
+          name: null,
+          originalFilename: 'course.gpx',
+          selection: null,
+          fileBase64: base64(singleRoute),
+        },
+        { ...commandHeaders, 'idempotency-key': 'course-import-0002' },
+      );
+      expect(next.statusCode).toBe(200);
+      expect(next.json()).toMatchObject({ outcome: 'imported' });
+    },
+  );
 
   it('answers with what the file holds instead of choosing between a track and a route', async () => {
     const { app, courses } = setup();

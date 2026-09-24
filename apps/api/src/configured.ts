@@ -158,6 +158,12 @@ export async function createConfiguredApi(
   void provider.prepare?.().catch(() => undefined);
   const database = createDatabase({ connectionString: env.DATABASE_URL });
   const store = createIdentityRepository({ connectionString: env.DATABASE_URL });
+  // Server-side parsing runs in child processes with a real V8 heap ceiling (M2-01ai); the
+  // deployment's container memory limit bounds the process tree around them. Each parser
+  // runs at most its own concurrency bound of processes, and shutdown kills them.
+  const courseImportParser = createBoundedTrackParser();
+  const activityTrackParser = createBoundedTrackParser();
+  const closeParsers = () => Promise.all([courseImportParser.close(), activityTrackParser.close()]);
   try {
     const resourceStorage = await createLocalFilesystemObjectStorage(
       env.PRIVATE_RESOURCE_STORAGE_ROOT,
@@ -276,7 +282,7 @@ export async function createConfiguredApi(
         preferences: createCoursePreferenceRepository(database),
         // The same bounded parse host stored recordings use: an imported file is parsed
         // under a real heap ceiling, a deadline and the same refusals.
-        parser: createBoundedTrackParser(),
+        parser: courseImportParser,
         // Absent unless a dataset directory is configured, and then place search and
         // elevation answer `no_dataset` rather than reaching for anyone else's service.
         places: geoDatasets.places,
@@ -286,9 +292,7 @@ export async function createConfiguredApi(
       activityTracks: {
         tracks: createActivityTrackRepository(database),
         storage: resourceStorage,
-        // Server-side re-parsing runs in a worker with a real V8 heap ceiling; the
-        // deployment's container memory limit bounds the process around it.
-        parser: createBoundedTrackParser(),
+        parser: activityTrackParser,
       },
       resourceAccess: createResourceAccessRepository(database),
       resourceRetrieval: createResourceRetrievalRepository(database),
@@ -297,7 +301,7 @@ export async function createConfiguredApi(
         // Permits whose engine search outlives the last answer are released when the engine
         // stops (M2-01ah); wait for that, bounded by their lease, before the pool goes away.
         await routingAdmission.drain(ROUTING_PERMIT_LEASE_MILLISECONDS);
-        await Promise.all([store.close(), database.close()]);
+        await Promise.all([store.close(), database.close(), closeParsers()]);
       },
     });
     log = app.log;
@@ -310,7 +314,7 @@ export async function createConfiguredApi(
       });
     return app;
   } catch (error) {
-    await Promise.all([store.close(), database.close()]);
+    await Promise.all([store.close(), database.close(), closeParsers()]);
     throw error;
   }
 }
