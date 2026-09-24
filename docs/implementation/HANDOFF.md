@@ -17,15 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-f](progress/M2-01k-f.md)를 완료했다. 대표 장기 track(20,000점)의 성능 예산을 기록 전용 기준선 run(p95 예산은 2회)에서 도출해
-[performance-budget.json](research/performance-budget.json)에 체크인했다. 서버 probe와 브라우저 spec이 같은 평가기로
-판정하고, 측정 전에 source tree를 검사해 남은 변이나 미기록 변경이 증거가 되지 않게 한다. 판정 run 4가 예산을 모두
-통과했다. 판정 run 3은 부하(최대 약 124)에서 시간 예산 다섯 개를 넘었고 기록에 남겼다. 허용 부하 규칙(기준선 부하를
-넘은 시간 초과는 inconclusive, 통과가 아님)은 그 실패 **뒤에** 정했고 이제 평가기가 강제한다. 매트릭스 2행을 passed로
-올렸다(passed 53 → 55). K-performance는 데스크톱 한정이다. **F1: worker OOM이 API 프로세스 전체를 abort할 수 있다**
-(변이로 재현). 신뢰할 수 없는 운영 업로드 전에 M2-01ai로 고친다.
+[M2-01k-g](progress/M2-01k-g.md)를 완료했다. S09 머리글(출처·관측 시각·정정 여부), 공유 cursor store, 요약 전용 활동의 경로
+부재, LOD, parser 날짜 경계와 구버전 replay, 코스 쓰기 전반(원 코스 삭제 포함) 뒤 원본 track의 byte 불변을 변이와 함께
+단언했다. geo-kit 경계 lint 규칙이 실제로는 경계를 강제하지 않던 결함을 고쳤다(지도 SDK는 adapter만 import, 재export
+금지, UI 층의 track-parsing import 금지). 매트릭스 8행을 passed로 올렸다(passed 55 → 63). S09-cursor-store는 제품에 hover
+cursor가 없다는 한계, V2-A17은 CSV importer가 없어 요약 전용 활동으로 대신했다는 대체를 적었다.
 
-직전 완료: [M2-01k-e](progress/M2-01k-e.md)(routing blue/green 교체, 요청별 엔진 deadline, 결과 구별).
+직전 완료: [M2-01k-f](progress/M2-01k-f.md)(장기 track 성능 예산, F1은 M2-01ai).
 
 ## 운영 메모
 
@@ -35,8 +33,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-g, M2-01k-i, M2-01k-j, M2-01k-l, M2-01k-m,
-M2-01k-n, M2-01af, M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-d·g·i·l과 M2-01af는 이 세션의 병렬 agent가 작업 중이며
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-i, M2-01k-j, M2-01k-l, M2-01k-m,
+M2-01k-n, M2-01af, M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-d·i·l, M2-01af, M2-01ah, M2-01ai는 이 세션의 병렬 agent가 작업 중이며
 (task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는
 M2-01k-i와 동시에 진행하지 않는다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이
 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.

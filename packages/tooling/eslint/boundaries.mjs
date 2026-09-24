@@ -7,6 +7,24 @@ const serverDependencies =
 const frameworkDependencies =
   /^(?:react(?:-dom)?(?:\/|$)|next(?:\/|$)|fastify(?:\/|$)|@fastify\/|pg$|postgres$|@prisma\/|prisma$|drizzle-orm(?:\/|$))/;
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, '')));
+/**
+ * Map plan §5: `experience/geo-kit` takes an SDK-free MapPath, a selected position and
+ * events, and only its MapLibre adapter module owns SDK objects. So the map SDK may be
+ * imported by that one module (and by the M0 UI spike's one map panel, which predates the
+ * kit), never by the kit's SDK-free files, a domain module or an app shell. The kit's own
+ * tests may name SDK *types* only. Nobody re-exports the SDK: that would hand its objects
+ * past the adapter under another name.
+ */
+const mapSdk = /^maplibre-gl(?:\/|$)/;
+/** The SDK reached by a path into the installed package instead of by its name. */
+const mapSdkPath = /\/node_modules\/maplibre-gl(?:\/|$)/;
+const mapSdkOwners = [
+  /^packages\/experience\/geo-kit\/src\/maplibre-adapter\.tsx?$/,
+  /^packages\/experience\/ui-spike\/src\/map-panel\.tsx$/,
+];
+const mapSdkTypeReaders = [/^packages\/experience\/geo-kit\/tests\//];
+/** Source-file parsers (FIT/GPX); an experience kit receives display paths, not files. */
+const trackParsing = 'packages/track-parsing';
 
 function inside(directory, filename) {
   const relative = path.relative(directory, filename);
@@ -97,14 +115,14 @@ export function createBoundaryRule(root) {
       const clientDirective = context.sourceCode.ast.body.some(
         (node) => node.type === 'ExpressionStatement' && node.directive === 'use client',
       );
+      const relativeFile = path.relative(root, filename).split(path.sep).join('/');
       const browser =
         ['module', 'ui', 'shared', 'pure-shared'].includes(sourceLayer) ||
         clientDirective ||
-        /^apps\/(mobile-web|mobile)\//.test(
-          path.relative(root, filename).split(path.sep).join('/'),
-        );
+        /^apps\/(mobile-web|mobile)\//.test(relativeFile);
 
-      function check(node) {
+      /** `kind`: how the module is used — a value import, a type-only import, or a re-export. */
+      function check(node, kind = 'value') {
         if (!node) return;
         const source =
           node.type === 'TemplateLiteral' && node.expressions.length === 0
@@ -116,8 +134,10 @@ export function createBoundaryRule(root) {
         }
         let target;
         let reason;
+        let sdk = mapSdk.test(source);
         if (source.startsWith('.') || path.isAbsolute(source)) {
           const resolved = path.resolve(path.dirname(filename), source);
+          if (mapSdkPath.test(resolved.split(path.sep).join('/'))) sdk = true;
           target = packages.find((item) => inside(item.directory, resolved));
           if (target && target !== owner && sourceLayer !== 'tooling')
             reason = 'Cross-package paths must use a public package export';
@@ -150,6 +170,21 @@ export function createBoundaryRule(root) {
         if (sourceLayer === 'ui' && ['module', 'app'].includes(target?.layer)) {
           reason = 'UI and experience kits cannot depend on modules or apps';
         }
+        if (
+          sourceLayer === 'ui' &&
+          target &&
+          path.relative(root, target.directory).split(path.sep).join('/') === trackParsing
+        ) {
+          reason = 'Experience kits receive display paths, never FIT/GPX parsers';
+        }
+        if (sdk) {
+          if (kind === 'export') reason = 'The map SDK is never re-exported';
+          else if (
+            !mapSdkOwners.some((owner) => owner.test(relativeFile)) &&
+            !(kind === 'type' && mapSdkTypeReaders.some((reader) => reader.test(relativeFile)))
+          )
+            reason = 'Only the geo-kit MapLibre adapter may import the map SDK';
+        }
         if (sourceLayer === 'shared' && ['module', 'ui', 'app'].includes(target?.layer)) {
           reason = 'Shared contracts and platform cannot depend on UI, modules, or apps';
         }
@@ -179,11 +214,12 @@ export function createBoundaryRule(root) {
         if (reason) context.report({ node, messageId: 'boundary', data: { reason, source } });
       }
       return {
-        ImportDeclaration: (node) => check(node.source),
-        ExportNamedDeclaration: (node) => check(node.source),
-        ExportAllDeclaration: (node) => check(node.source),
+        ImportDeclaration: (node) =>
+          check(node.source, node.importKind === 'type' ? 'type' : 'value'),
+        ExportNamedDeclaration: (node) => check(node.source, 'export'),
+        ExportAllDeclaration: (node) => check(node.source, 'export'),
         ImportExpression: (node) => check(node.source),
-        TSImportType: (node) => check(node.source),
+        TSImportType: (node) => check(node.source, 'type'),
         TSExternalModuleReference: (node) => check(node.expression),
         CallExpression(node) {
           if (node.callee.type === 'Identifier' && node.callee.name === 'require')

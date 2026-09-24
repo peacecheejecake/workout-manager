@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
   activityImportResultSchema,
@@ -63,7 +63,7 @@ async function login(page: Page) {
   };
 }
 
-async function storeTrack(page: Page, headers: Record<string, string>) {
+async function storeTrack(page: Page, headers: Record<string, string>, bytes: Buffer = fitBytes) {
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
     source: { kind: 'fit', sourceId: randomUUID(), revision: 1, contentHash: 'f'.repeat(64) },
@@ -101,7 +101,7 @@ async function storeTrack(page: Page, headers: Record<string, string>) {
         'content-type': 'application/octet-stream',
         'x-track-file-name': encodeURIComponent('course.fit'),
       },
-      data: fitBytes,
+      data: bytes,
     },
   );
   expect(uploaded.status()).toBe(200);
@@ -208,6 +208,209 @@ test('cuts a course from a stored recording, exports it and reclaims it with the
   const body = await read.text();
   expect(body).toContain('"status":"unavailable"');
   expect(body).not.toContain('126.97');
+});
+
+/**
+ * S13-from-track / V2-F18: "원본 track에서 새 코스 생성, 원본 불변" — checked by content, after
+ * every kind of course write this product has, not only once after creation (M2-01k-g).
+ *
+ * The recording is read back byte for byte: the original file, the normalized track and
+ * the display geometry, plus the stored revision metadata and the activity itself. Every
+ * course write below — create, copy, rename, re-cut, reroute, accessibility note, privacy
+ * trim, and deleting both the copy and the course cut from the recording — must leave all of
+ * it exactly as it was.
+ */
+test('leaves the recording byte-identical through every course write made from it', async ({
+  page,
+}) => {
+  const headers = await login(page);
+  // Its own recording, about 2 km from the protected areas other specs leave on this
+  // account, so the privacy trim below depends only on the area this test creates.
+  const origin = [127.0, 37.58] as const;
+  const ownBytes = Buffer.from(
+    fitFile([
+      sessionMessage({ startedAt: at(0), elapsedSeconds: 40, distanceMeters: 512 }),
+      ...[0, 1, 2, 3, 4].map((index) =>
+        recordMessage({
+          at: at(index * 10),
+          longitude: origin[0] + index / 2000,
+          latitude: origin[1] + index / 2000,
+          heartRate: 140 + index,
+          distanceMeters: index * 128,
+        }),
+      ),
+    ]),
+  );
+  const activity = await storeTrack(page, headers, ownBytes);
+  const write = { ...headers };
+  const keyed = () => ({ ...write, 'idempotency-key': randomUUID() });
+
+  async function recording() {
+    const contents: Record<string, string> = {};
+    for (const variant of ['raw', 'normalized', 'map_path'] as const) {
+      const response = await page.request.get(
+        `/bff/v1/activities/${activity.activityId}/track/content?variant=${variant}`,
+        { headers },
+      );
+      expect(response.status(), variant).toBe(200);
+      contents[variant] = createHash('sha256')
+        .update(await response.body())
+        .digest('hex');
+    }
+    const metadata = await page.request.get(`/bff/v1/activities/${activity.activityId}/track`, {
+      headers,
+    });
+    expect(metadata.status()).toBe(200);
+    const owner = await page.request.get(`/bff/v1/activities/${activity.activityId}`, {
+      headers,
+    });
+    expect(owner.status()).toBe(200);
+    return { contents, metadata: await metadata.json(), activity: await owner.json() };
+  }
+  const before = await recording();
+  // The raw object is the uploaded file itself.
+  expect(before.contents['raw']).toBe(createHash('sha256').update(ownBytes).digest('hex'));
+
+  type CourseRead = {
+    course: { courseId: string; headRevision: number };
+    revision: {
+      waypoints: unknown[];
+      generation: { kind: string };
+      geometry: { coordinates: [number, number][] };
+    };
+  };
+  const expectOk = async (response: Awaited<ReturnType<typeof page.request.get>>) => {
+    expect(response.status(), await response.text()).toBeLessThan(300);
+    return (await response.json()) as CourseRead;
+  };
+
+  // Create from the recording.
+  const created = await expectOk(
+    await page.request.post('/bff/v1/courses', {
+      headers: keyed(),
+      data: {
+        name: '원본 불변 확인',
+        from: {
+          kind: 'recorded-segment',
+          activityId: activity.activityId,
+          trackRevision: 1,
+          startSampleId: '0:0',
+          endSampleId: '0:4',
+        },
+      },
+    }),
+  );
+  const courseId = created.course.courseId;
+  expect(created.revision.generation.kind).toBe('recorded-segment');
+
+  // Copy it, and trim the copy against a protected area around its first vertex.
+  const copy = await expectOk(
+    await page.request.post('/bff/v1/courses', {
+      headers: keyed(),
+      data: {
+        name: '원본 불변 확인 사본',
+        from: { kind: 'course-copy', courseId, expectedRevision: 1 },
+      },
+    }),
+  );
+  const zones = await page.request.post('/bff/v1/courses/privacy-zones', {
+    headers: write,
+    data: { name: '원본 불변 보호 구역', center: [origin[0], origin[1]], radiusMeters: 50 },
+  });
+  expect(zones.status()).toBe(200);
+  const zoneList = (await zones.json()) as {
+    zones: { zoneId: string; name: string }[];
+    zoneSetDigest: string;
+  };
+  const zoneId = zoneList.zones.find((zone) => zone.name === '원본 불변 보호 구역')?.zoneId;
+  assert.ok(zoneId);
+  try {
+    const trimmed = await expectOk(
+      await page.request.patch(`/bff/v1/courses/${copy.course.courseId}`, {
+        headers: keyed(),
+        data: {
+          expectedRevision: 1,
+          change: { kind: 'privacy-trim', acknowledgedZoneSetDigest: zoneList.zoneSetDigest },
+        },
+      }),
+    );
+    expect(trimmed.revision.generation.kind).toBe('privacy-trimmed');
+    expect(trimmed.revision.geometry.coordinates.length).toBeLessThan(
+      created.revision.geometry.coordinates.length,
+    );
+  } finally {
+    const removed = await page.request.delete(`/bff/v1/courses/privacy-zones/${zoneId}`, {
+      headers: write,
+    });
+    expect(removed.status()).toBe(200);
+  }
+  const deleted = await page.request.delete(
+    `/bff/v1/courses/${copy.course.courseId}?expectedRevision=2`,
+    { headers: write },
+  );
+  expect(deleted.status()).toBeLessThan(300);
+
+  // Rename, re-cut from the same recording, then reroute through the engine.
+  await expectOk(
+    await page.request.patch(`/bff/v1/courses/${courseId}`, {
+      headers: keyed(),
+      data: { expectedRevision: 1, change: { kind: 'rename', name: '원본 불변 확인 (이름)' } },
+    }),
+  );
+  const retrimmed = await expectOk(
+    await page.request.patch(`/bff/v1/courses/${courseId}`, {
+      headers: keyed(),
+      data: {
+        expectedRevision: 2,
+        change: { kind: 'retrim', startSampleId: '0:1', endSampleId: '0:3' },
+      },
+    }),
+  );
+  expect(retrimmed.revision.geometry.coordinates).toHaveLength(3);
+  const proposalResponse = await page.request.post(`/bff/v1/courses/${courseId}/route-proposals`, {
+    headers: keyed(),
+    data: { requestId: randomUUID(), draftRevision: 1, waypoints: retrimmed.revision.waypoints },
+  });
+  expect(proposalResponse.status(), await proposalResponse.text()).toBeLessThan(300);
+  const computed = (await proposalResponse.json()) as {
+    outcome: string;
+    proposal: { proposalId: string; computation: { graph: { graphBuildId: string } } };
+  };
+  expect(computed.outcome).toBe('route_computed');
+  const proposal = computed.proposal;
+  const rerouted = await expectOk(
+    await page.request.patch(`/bff/v1/courses/${courseId}`, {
+      headers: keyed(),
+      data: {
+        expectedRevision: 3,
+        change: {
+          kind: 'reroute',
+          proposalId: proposal.proposalId,
+          draftRevision: 1,
+          acknowledgedGraph: { previous: null, next: proposal.computation.graph.graphBuildId },
+        },
+      },
+    }),
+  );
+  expect(rerouted.course.headRevision).toBe(4);
+  const note = await page.request.put(`/bff/v1/courses/${courseId}/accessibility-note`, {
+    headers: write,
+    data: { expectedRevision: 4, note: '계단 없음(원본 불변 확인)' },
+  });
+  expect(note.status()).toBe(200);
+  // The note appends no revision, so the head is still the rerouted revision 4.
+  const removedCourse = await page.request.delete(
+    `/bff/v1/courses/${courseId}?expectedRevision=4`,
+    {
+      headers: write,
+    },
+  );
+  expect(removedCourse.status(), await removedCourse.text()).toBeLessThan(300);
+  const gone = await page.request.get(`/bff/v1/courses/${courseId}`, { headers });
+  expect(gone.status()).toBe(404);
+
+  // After all of it, the recording is what it was — by content, not by a revision number.
+  expect(await recording()).toEqual(before);
 });
 
 /**

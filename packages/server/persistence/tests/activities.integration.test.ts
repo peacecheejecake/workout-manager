@@ -893,3 +893,108 @@ it('rolls back source detail enrichment and its head when outbox delivery cannot
   });
   expect((await repository.importActivity(athlete, enrichment)).revision).toBe(2);
 });
+
+/**
+ * P8-contract-parser (map plan §8): "구버전 상세 replay 동일" and "날짜 경계". Details written in
+ * an older schema version are read back and replayed exactly as they were written — never
+ * upgraded, never re-rendered — including instants that sit on a UTC midnight, a local
+ * midnight in another offset, a year end and a leap day (M2-01k-g).
+ */
+describe('M2-01k-g old-version detail replay across date boundaries', () => {
+  const boundaryRecords = [
+    { index: 0, timestamp: '2027-12-31T23:59:59Z', distanceMeters: 0, heartRateBpm: 120 },
+    { index: 1, timestamp: '2028-01-01T09:00:00+09:00', distanceMeters: 3.5, heartRateBpm: null },
+    { index: 2, timestamp: '2027-12-31T19:00:01.250-05:00', distanceMeters: null, heartRateBpm: 0 },
+    { index: 3, timestamp: '2028-02-29T23:59:59.999Z', distanceMeters: 7, heartRateBpm: 121 },
+    { index: 4, timestamp: null, distanceMeters: 0, heartRateBpm: null },
+  ];
+  const boundaryLaps = [
+    {
+      index: 0,
+      startedAt: '2028-01-01T08:59:59+09:00',
+      recordedAt: '2028-01-01T00:00:02Z',
+      elapsedSeconds: 3.25,
+      timerSeconds: 0,
+      distanceMeters: 0,
+      averageHeartRateBpm: null,
+      maximumHeartRateBpm: 0,
+    },
+  ];
+  const legacyDetails = {
+    schemaVersion: 1,
+    streamIndex: 0,
+    sessionIndex: 0,
+    startedAt: '2028-01-01T08:59:59+09:00',
+    recordedAt: '2028-03-01T00:00:00Z',
+    elapsedSeconds: 5_184_000.75,
+    records: boundaryRecords,
+    laps: boundaryLaps,
+  } as const;
+  const summaryDetails = {
+    ...legacyDetails,
+    schemaVersion: 2,
+    sessionSummary: { averageHeartRateBpm: 0, maximumHeartRateBpm: null },
+  } as const;
+
+  it.each([
+    ['v1', legacyDetails],
+    ['v2', summaryDetails],
+  ] as const)('reads and replays %s details exactly as written', async (_version, written) => {
+    const athlete = randomUUID();
+    const command: ActivityImport = { ...input(), details: written };
+    const first = await repository.importActivity(athlete, command);
+    const read = await repository.getActivityDetails(athlete, first.activityId);
+    // Same version, same fields, same instant text — no upgrade and no re-rendering.
+    expect(read?.details).toEqual(written);
+    expect(read?.details?.schemaVersion).toBe(written.schemaVersion);
+    expect(read?.details?.records.map((record) => record.timestamp)).toEqual(
+      boundaryRecords.map((record) => record.timestamp),
+    );
+    expect(read?.details?.laps.map((lap) => [lap.startedAt, lap.recordedAt])).toEqual([
+      ['2028-01-01T08:59:59+09:00', '2028-01-01T00:00:02Z'],
+    ]);
+    // A replay under the same key is the original answer; the same payload under a new key
+    // is recognised as the stored revision, not as a conflict or a new revision.
+    expect(await repository.importActivity(athlete, command)).toEqual(first);
+    expect(
+      await repository.importActivity(athlete, { ...command, idempotencyKey: randomUUID() }),
+    ).toEqual({ ...first, outcome: 'unchanged' });
+    expect(await repository.getActivityDetails(athlete, first.activityId)).toEqual(read);
+    await database.tenant(athlete, async (tx) => {
+      expect(
+        (await tx.query('SELECT source_revision,details_json FROM activity_source_revision')).rows,
+      ).toEqual([{ source_revision: 1, details_json: written }]);
+    });
+  });
+
+  it('keeps an old-version revision replayable after a newer version supersedes it', async () => {
+    const athlete = randomUUID();
+    const legacy: ActivityImport = { ...input(), details: legacyDetails };
+    const first = await repository.importActivity(athlete, legacy);
+    const newer: ActivityImport = {
+      ...legacy,
+      idempotencyKey: randomUUID(),
+      source: { ...legacy.source, revision: 2 },
+      details: summaryDetails,
+    };
+    const second = await repository.importActivity(athlete, newer);
+    expect(second).toMatchObject({ activityId: first.activityId, revision: 2 });
+    expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toEqual(
+      summaryDetails,
+    );
+    // The old command replays to its own answer and leaves the old revision untouched.
+    expect(await repository.importActivity(athlete, legacy)).toEqual(first);
+    await database.tenant(athlete, async (tx) => {
+      expect(
+        (
+          await tx.query(
+            'SELECT source_revision,details_json FROM activity_source_revision ORDER BY source_revision',
+          )
+        ).rows,
+      ).toEqual([
+        { source_revision: 1, details_json: legacyDetails },
+        { source_revision: 2, details_json: summaryDetails },
+      ]);
+    });
+  });
+});

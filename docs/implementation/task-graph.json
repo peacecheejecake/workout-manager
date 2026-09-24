@@ -1364,8 +1364,9 @@
       "title": "S09·track 단언 공백(시험 중심)",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "S09 상단의 출처·관측 시각·정정 여부, 커서 hover 이동에서 서버 쓰기 0과 selection store, CSV 요약의 그려진 경로 부재, 편집 뒤 원본 track 내용 불변, LOD 전후 요약 동일, 구버전 상세 replay와 날짜 경계, geo-kit 경계를 lint 규칙이 실제로 막는지(변이)를 단언한다 닫을 매트릭스 행: S09-header, S09-cursor-store, V2-A17, S13-from-track, V2-F18, P8-simplify, P8-contract-parser, P5-geokit-boundary. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "S09 상단의 출처·관측 시각·정정 여부, 커서 hover 이동에서 서버 쓰기 0과 selection store, CSV 요약의 그려진 경로 부재, 편집 뒤 원본 track 내용 불변, LOD 전후 요약 동일, 구버전 상세 replay와 날짜 경계, geo-kit 경계를 lint 규칙이 실제로 막는지(변이)를 단언한다 닫을 매트릭스 행: S09-header, S09-cursor-store, V2-A17, S13-from-track, V2-F18, P8-simplify, P8-contract-parser, P5-geokit-boundary. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-g.md"
     },
     {
       "id": "M2-01k-h",

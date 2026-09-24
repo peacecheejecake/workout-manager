@@ -127,6 +127,29 @@
         "mutants M1, M2b and M2d (process abort, F1), M3, M4b, M5-M12, R3M1-R3M5, R4M1-R4M7 each fail; M2, M2c and M4 survive by design (regressions under 2x; three-layer lazy boundary, progress doc section 4); control T fails 17/17; four review rounds re-killed their own mutants"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-f.md."
+    },
+    {
+      "node": "M2-01k-g",
+      "date": "2026-09-25",
+      "rows": [
+        "S09-header",
+        "S09-cursor-store",
+        "V2-A17",
+        "P8-simplify",
+        "P8-contract-parser",
+        "S13-from-track",
+        "V2-F18",
+        "P5-geokit-boundary"
+      ],
+      "decision": "Gap node M2-01k-g added executed assertions with mutants for the S09 header, the shared cursor store, summary-only display, LOD, parser date boundaries and old-version replay, track immutability across course writes, and fixed the geo-kit lint boundary; independent review approved with six non-blocking notes, all applied and re-reviewed.",
+      "change": "8 rows partial -> passed (S09-cursor-store with the no-hover-cursor limit, V2-A17 with the no-CSV-importer substitution, P8-contract-parser with its stated scope); counts passed 55 -> 63, partial 49 -> 41.",
+      "executed": [
+        "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+        "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+        "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+        "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-g.md."
     }
   ],
   "rounds": [
@@ -248,8 +271,8 @@
     }
   ],
   "counts": {
-    "passed": 55,
-    "partial": 49,
+    "passed": 63,
+    "partial": 41,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -292,11 +315,11 @@
       "id": "S09-header",
       "source": "docs/.pre/01_product_screen_spec.md:135",
       "quote": "S09 상단은 출처·관측 시각·정정 여부와 거리/시간/페이스/심박 요약이다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/activity-metric-summary.spec.ts:49 asserts pace/elapsed/heart-rate texts (:113-130)"
       ],
-      "reason": "Source, observed time and an explicit correction state are not asserted by any executed test.",
+      "reason": "M2-01k-g amendment: passed. Source label, the server observedAt in <time datetime> and the correction state (없음 -> 있음 after a real PATCH) are asserted in a unit test and the real-stack E2E; h-corr, h-time, h-src killed. The distance/time/pace/heart-rate half rests on the existing activity-metric-summary evidence.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -304,7 +327,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Source, observed time and an explicit correction state are not asserted by any executed test.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "S09-tabs",
@@ -358,11 +393,11 @@
       "id": "S09-cursor-store",
       "source": "docs/.pre/01_product_screen_spec.md:137",
       "quote": "커서 상태는 shared selection store에만 두고 매 움직임을 전역 서버 상태로 저장하지 않는다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/activity-workbench.spec.ts:35 — `expect(writes).toBe(0)` (:209)"
       ],
-      "reason": "No-write is asserted for clicks/Enter/range apply only; cursor (hover) movement is never exercised; the store identity is not asserted.",
+      "reason": "M2-01k-g amendment: passed, with a stated limit. Every cursor move (observation table pick, previous/next, chart point, sample buttons, map pick) goes through the provider's shared store and both views follow it; hover, zoom and moves send zero requests (unit and real MapLibre E2E); c-own-wb, c-own-panel, c-write, c-hover killed. Limit: the product has no hover-driven cursor, so hover is asserted only as sending no requests.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -370,7 +405,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "No-write is asserted for clicks/Enter/range apply only; cursor (hover) movement is never exercised; the store identity is not asserted.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "S09-gps-gap",
@@ -611,12 +658,12 @@
       "id": "S13-from-track",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "활동의 실제 track에서 새 코스를 만들 수 있으나 원본 track과 planned course는 다른 엔터티다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 2 (recorded-segment, lineage=[activityId])",
         "tests/identity/courses.spec.ts:118 trackRevision stays 1 right after creation (:146-148)"
       ],
-      "reason": "Track immutability is checked once, after creation; not after edits, and not by content.",
+      "reason": "M2-01k-g amendment: passed. After create, copy, privacy trim, rename, retrim, reroute, an accessibility note and deleting both the copy and the originating course, the raw, normalized and map_path objects are byte-identical by sha256 (raw equals the uploaded bytes), and the track metadata and activity are unchanged; t-retrim-writes killed end to end.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -624,7 +671,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Track immutability is checked once, after creation; not after edits, and not by content.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "S14-address",
@@ -1068,9 +1127,9 @@
       "id": "V2-F18",
       "source": "docs/.pre/05_implementation_requirements.md:96",
       "quote": "| V2-F18 | Course CRUD/version | 원본 track에서 새 코스 생성, 원본 불변 S13 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S13-from-track"],
-      "reason": "\"원본 불변\" asserted once, after creation only.",
+      "reason": "M2-01k-g amendment: passed. Same evidence as S13-from-track: the original track is unchanged by content after every course write, including deleting the course made from it.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1079,7 +1138,19 @@
         ],
         "note": "Executed through the rows it cites: S13-from-track."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "\"원본 불변\" asserted once, after creation only.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "V2-F19",
@@ -1177,11 +1248,11 @@
       "id": "V2-A17",
       "source": "docs/.pre/05_implementation_requirements.md:136",
       "quote": "| V2-A17 | CSV 요약에 route 없음 | route unavailable, 직선 route 생성 금지 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/activity-track-map.spec.ts:370 text \"저장된 경로가 없습니다\" (:393)"
       ],
-      "reason": "Only text is asserted; absence of any drawn path is not.",
+      "reason": "M2-01k-g amendment: passed, with a substitution. A summary-only activity mounts no map renderer, draws no path and requests no geometry (unit and E2E); a17-draw killed. The product has no CSV importer, so a summary-only activity (distance and time, no stored track) stands in for the quote's CSV summary.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1189,7 +1260,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Only text is asserted; absence of any drawn path is not.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "V2-A18",
@@ -1629,15 +1712,27 @@
       "id": "P5-geokit-boundary",
       "source": "docs/implementation/map-implementation-plan.md:111",
       "quote": "`experience/geo-kit`은 SDK-free MapPath와 선택 위치·이벤트만 받는다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["pnpm lint (executed)"],
-      "reason": "Structural; not verified that lint enforces this specific boundary.",
+      "reason": "M2-01k-g amendment: passed. The lint rule did not enforce the boundary (product defect, fixed): only geo-kit/src/maplibre-adapter.ts and ui-spike/src/map-panel.tsx may import the map SDK, no file re-exports it, node_modules paths count as the SDK, geo-kit tests may use type-only imports, and the UI layer may not import track-parsing. 27 cases against the real lint config; rule mutants p5-*, n1-export, n2-path, n3-* killed; inserting an SDK import into the real map-path.ts makes eslint exit 1.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm lint (0 warnings)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Structural; not verified that lint enforces this specific boundary.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "P5-lazy-two-shells",
@@ -2362,9 +2457,9 @@
       "id": "P8-contract-parser",
       "source": "docs/implementation/map-implementation-plan.md:194",
       "quote": "| 계약/parser | FIT/GPX 손상·한도 경계·XXE·좌표 순서·timestamp null/역전·segment·날짜 경계·단일 점·다중 track; 구버전 상세 replay 동일 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see P7-parser-bounds, P7-xxe"],
-      "reason": "Old-version replay and date boundaries not re-verified here.",
+      "reason": "M2-01k-g amendment: passed, with a stated scope. Date boundaries (year end across offsets, leap day, local midnight, reversal and duplicates judged by instant, FIT year end) and v1/v2 detail replay with boundary timestamps are asserted; parser offset mutants and r-upgrade, r-normtime killed. The quote's limit boundaries mean the byte, sample, segment and XML-depth limits asserted by P7-parser-bounds; parse time, memory and worker concurrency are outside this row (K-performance, V2-F35, M2-01k-f).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2374,22 +2469,46 @@
         ],
         "note": "Executed through the rows it cites: P7-parser-bounds, P7-xxe."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Old-version replay and date boundaries not re-verified here.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "P8-simplify",
       "source": "docs/implementation/map-implementation-plan.md:195",
       "quote": "| 단순화/분석 | 원본 sample 매핑·gap 불연결, zoom/LOD 변경 전후 실제 요약·집계 동일 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S09-gps-gap"],
-      "reason": "Single Douglas-Peucker level; no zoom LOD test.",
+      "reason": "M2-01k-g amendment: passed. The same track at three levels of detail draws fewer vertices at coarser levels, keeps a gap as two lines, maps every vertex to its sample and leaves the summary identical (component test; lod-display, lod-drawn killed); a real MapLibre keyboard zoom changes the rendered map while the summary stays identical (n4-noop killed). Limit: the server stores one LOD level.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"],
         "note": "Executed through the rows it cites: S09-gps-gap."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-g",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Single Douglas-Peucker level; no zoom LOD test.",
+        "executed": [
+          "new unit tests activity-detail-header, detail-cursor-store, stored-track-display (packages/modules/activities), date-boundaries (packages/track-parsing), geo-kit-boundary (packages/tooling, 27 cases against the real lint config)",
+          "activities.integration.test.ts v1/v2 boundary replay block (pnpm test:integration, throwaway cluster)",
+          "tests/identity activity-metric-summary, activity-track-map (keyboard zoom with pixel-change wait), courses (byte identity of raw/normalized/map_path after every course write including deleting the originating course) in two identity runs",
+          "mutants p5-sdk, p5-parser, p5-ui, n1-export, n2-path, n3-spike, n3-types, h-corr, h-time, h-src, c-own-wb, c-own-panel, c-write, c-hover, a17-draw, lod-display, lod-drawn, d-offset, d-agg, d-text, d-epoch, r-upgrade, r-normtime, n4-noop, t-retrim-writes each fail; independent review re-killed the rule mutants, c-own-*, h-corr, h-time and the parser offset mutant"
+        ]
+      }
     },
     {
       "id": "P8-postgres-object",

@@ -11,7 +11,7 @@ import {
   recordMessage,
   sessionMessage,
 } from '../../packages/track-parsing/tests/fit-fixture';
-import { expectLineDrawn, mapRegion } from './map-evidence';
+import { expectLineDrawn, mapRegion, renderedLines } from './map-evidence';
 
 /**
  * S09 stored-track route screen, against the real OIDC session, API, PostgreSQL and object
@@ -235,6 +235,88 @@ test('re-reads a stored track after a full load, draws it and round-trips select
   ).toEqual([]);
 });
 
+/**
+ * S09-cursor-store and P8-simplify on the real stack (M2-01k-g): pointer hover over the map
+ * and the graph, wheel zoom in and out, and cursor moves send no request to the API at all —
+ * nothing is written and nothing is re-read — and the summary is the same text before and
+ * after every zoom level the renderer drew.
+ */
+test('hovers, zooms and moves the cursor without a server request or a summary change', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const headers = await login(page);
+  const activityId = await storeTrack(page, headers);
+  await page.goto(routeAddress(activityId));
+  const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+  const map = mapRegion(panel, '저장된 활동 경로');
+  await expectLineDrawn(map);
+  const summary = panel.getByText('GPS 재계산 거리', { exact: true }).locator('xpath=ancestor::dl');
+  await expect(summary).toContainText('640m');
+  const summaryBefore = (await summary.textContent()) ?? '';
+  expect(summaryBefore).toContain('GPS 재계산 거리');
+
+  const api: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/bff/v1/'))
+      api.push(`${request.method()} ${new URL(request.url()).pathname}`);
+  });
+
+  // Hover: sweep the map and the graph with the pointer.
+  const box = await map.boundingBox();
+  assert.ok(box);
+  for (const [x, y] of [
+    [0.1, 0.1],
+    [0.9, 0.9],
+    [0.5, 0.2],
+    [0.2, 0.8],
+    [0.5, 0.5],
+  ] as const)
+    await page.mouse.move(box.x + box.width * x, box.y + box.height * y, { steps: 12 });
+  const graph = panel.getByRole('group', { name: '저장된 경로 관측 그래프', exact: true });
+  for (const point of await graph.locator('circle').all()) await point.hover();
+
+  // Zoom in and out, and prove each step really changed what the renderer shows: the
+  // pixels of the map differ from the frame before it. (A plain wheel does not zoom this
+  // map — it uses cooperative gestures so the page can scroll — and a wheel with the bypass
+  // key did not reach the renderer in headless Chromium, so the steps use MapLibre's own
+  // keyboard zoom on the focused map canvas: "-" out, "=" in. Clicking to focus would pick
+  // a sample and move the marker, which would change the pixels without any zoom.)
+  const generation = await map.getAttribute('data-paths-generation');
+  const canvas = map.locator('canvas').first();
+  await canvas.focus();
+  const frame = () => map.screenshot({ animations: 'disabled' });
+  let previous = await frame();
+  // Out first and alternating: a fitted short track can already sit at the style's maximum
+  // zoom, where a further zoom-in legitimately changes nothing.
+  for (const key of ['-', '=', '-', '=']) {
+    await canvas.press(key);
+    await expect
+      .poll(async () => (await frame()).equals(previous), {
+        message: `zoom key "${key}" changed what the map shows`,
+        timeout: 10_000,
+      })
+      .toBe(false);
+    await expect(map).toHaveAttribute('data-map-status', 'drawn');
+    expect(await renderedLines(map)).toBeGreaterThan(0);
+    await expect(summary).toHaveText(summaryBefore);
+    await expect(panel.getByText('선택한 지점이 없습니다.')).toBeVisible();
+    previous = await frame();
+  }
+  // Zooming did not hand the map a different path: only the view changed.
+  expect(await map.getAttribute('data-paths-generation')).toBe(generation);
+
+  // A cursor move is a selection-store change, not a server one.
+  await panel.getByRole('button', { name: '끝 지점', exact: true }).click();
+  await expect(panel.getByText(/선택 표본 0:5/)).toBeVisible();
+  await panel.getByRole('button', { name: '시작 지점', exact: true }).click();
+  await expect(panel.getByText(/선택 표본 0:0/)).toBeVisible();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3, { steps: 12 });
+
+  expect(api).toEqual([]);
+  expect(await summary.textContent()).toBe(summaryBefore);
+});
+
 test('draws the stored path over the self-hosted basemap with its attribution', async ({
   page,
 }, testInfo) => {
@@ -394,8 +476,26 @@ test('says so when an activity has no stored track', async ({ page }) => {
   });
   expect(imported.status()).toBe(200);
   const result = activityImportResultSchema.parse(await imported.json());
+  const trackReads: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.includes(`/activities/${result.activityId}/track`)) trackReads.push(path);
+  });
+  const metadata = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/bff/v1/activities/${result.activityId}/track`,
+  );
   await page.goto(routeAddress(result.activityId));
   await expect(page.getByText(/이 활동에는 저장된 경로가 없습니다/)).toBeVisible();
   // The summary stays usable next to the empty route state.
   await expect(page.getByRole('region', { name: '활동 요약 출처', exact: true })).toBeVisible();
+  // V2-A17 (M2-01k-g): the route is unavailable, and nothing stands in for it — no map, no
+  // renderer, no drawn line, and no geometry requested for a recording that does not exist.
+  expect((await metadata).status()).toBe(404);
+  const route = page.getByRole('tabpanel', { name: '경로', exact: true });
+  await expect(route).toContainText('이 활동에는 저장된 경로가 없습니다');
+  await expect(route.getByRole('region', { name: '저장된 활동 경로', exact: true })).toHaveCount(0);
+  await expect(route.locator('[data-map-status], canvas, svg polyline')).toHaveCount(0);
+  await expect(route.getByText(/지도 구성 요소/)).toHaveCount(0);
+  expect(trackReads).toEqual([`/bff/v1/activities/${result.activityId}/track`]);
 });

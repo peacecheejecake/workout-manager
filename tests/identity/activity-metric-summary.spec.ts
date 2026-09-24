@@ -6,6 +6,7 @@ import {
   activityImportResultSchema,
   activityExportSchema,
 } from '../../packages/contracts/src/activity';
+import { activityContextSchema } from '../../packages/contracts/src/activity-context';
 
 async function login(page: Page, name: 'Alice' | 'Bob') {
   await page.goto('/account');
@@ -102,7 +103,27 @@ test('source session heart rate survives explicit v3 import and pace-only correc
     return activitySchema.parse(await response.json());
   };
   const initial = await read();
+  // S09 header: source, observation time and correction state (M2-01k-g). The observation
+  // time is the one the server stamped on the summary it answered with, not a client clock.
+  const contextOf = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === `/bff/v1/activities/${id}/context`,
+    );
+  const firstContext = contextOf();
   await page.goto(`/activities?selected=${id}`);
+  const firstObservedAt = activityContextSchema.parse(await (await firstContext).json()).observedAt;
+  const header = page.getByRole('region', { name: '활동 요약 출처', exact: true });
+  const observed = header.locator('time');
+  await expect(header).toContainText(
+    `출처 테스트 자료 · 원본 수정 1 · 기록 수정 ${initial.revision} · 사용자 정정 없음`,
+  );
+  await expect(header).toContainText(`출처 식별자: ${command.source.sourceId}`);
+  await expect(observed).toHaveAttribute('datetime', firstObservedAt);
+  await expect(observed).toHaveText(firstObservedAt);
+  // An observation time, not the activity's own start.
+  expect(firstObservedAt).not.toBe(command.activity.startedAt);
   const summary = page.getByRole('region', {
     name: '활동 거리·시간·페이스·심박 요약',
     exact: true,
@@ -125,7 +146,17 @@ test('source session heart rate survives explicit v3 import and pace-only correc
     },
   });
   expect(corrected.status()).toBe(200);
+  const correctedRevision = activitySchema.parse(await corrected.json()).revision;
+  const secondContext = contextOf();
   await page.getByRole('button', { name: '활동 상세 다시 확인', exact: true }).click();
+  const secondObservedAt = activityContextSchema.parse(
+    await (await secondContext).json(),
+  ).observedAt;
+  await expect(header).toContainText(
+    `출처 테스트 자료 · 원본 수정 1 · 기록 수정 ${correctedRevision} · 사용자 정정 있음`,
+  );
+  await expect(observed).toHaveAttribute('datetime', secondObservedAt);
+  expect(Date.parse(secondObservedAt)).toBeGreaterThanOrEqual(Date.parse(firstObservedAt));
   await expect(current).toContainText('2:00 /km');
   await expect(current).toContainText('이동 시간 120초');
   await expect(original).toContainText('5:01 /km');
