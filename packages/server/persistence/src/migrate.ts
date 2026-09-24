@@ -49,6 +49,7 @@ const migrationFiles = [
   '044_tenant_object_purge.sql',
   '045_tenant_object_purge_visibility.sql',
   '046_object_scope_purge.sql',
+  '047_routing_admission.sql',
 ] as const;
 
 /**
@@ -987,6 +988,15 @@ export async function grantCourses(connectionString: string, runtimeRole: string
     await pool.query(
       `GRANT UPDATE(note,written_at_revision,updated_at) ON course_accessibility_note
        TO "${runtimeRole}"`,
+    );
+    // Routing admission (M2-01ah). The API computes routes for the course screens, and every
+    // computation first takes a permit from the shared limiter. The role gets the two
+    // functions and nothing on the table: it cannot read another tenant's permits, count the
+    // engine's load, or write a permit that skips the checks.
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION
+       public.acquire_routing_permit(uuid,integer,integer,integer,integer,integer),
+       public.release_routing_permit(uuid) TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

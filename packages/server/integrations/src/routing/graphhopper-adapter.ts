@@ -373,7 +373,9 @@ export class GraphHopperRoutingAdapter {
    * several legs, a genuine NoRoute whose legs together took longer than one leg's budget
    * (each leg well inside it) is reported as `timeout`. With one leg the rule is exact up
    * to transfer time. The error is always toward `timeout`, which claims nothing about the
-   * network and invites a retry; a `no_route` is never a disguised timeout.
+   * network and invites a retry; a `no_route` is never a disguised timeout. A multi-leg
+   * `timeout` classified this way carries `timeout_may_be_no_route` (M2-01ah), so a reader
+   * does not take it for proof that the network is connected.
    */
   computeWalkingRouteTracked(
     request: WalkingRouteRequest,
@@ -524,15 +526,17 @@ export class GraphHopperRoutingAdapter {
         return failed('engine_unavailable', identity, warnings);
       }
 
-      if (response.status !== 200)
-        return failed(
-          this.#classifyEngineError(response.status, body, {
-            engineMilliseconds,
-            engineTimeoutMilliseconds,
-          }),
-          identity,
-          warnings,
-        );
+      if (response.status !== 200) {
+        const outcome = this.#classifyEngineError(response.status, body, {
+          engineMilliseconds,
+          engineTimeoutMilliseconds,
+        });
+        // An engine answer classified `timeout` only ever comes from the time rule below, and
+        // with more than one leg that rule can call a real NoRoute a timeout (M2-01ah). The
+        // outcome stays `timeout` — the rule errs that way on purpose — but it says so.
+        if (outcome === 'timeout' && legs > 1) warnings.push('timeout_may_be_no_route');
+        return failed(outcome, identity, warnings);
+      }
 
       const parsed = engineRouteSchema.safeParse(body);
       if (!parsed.success) return failed('engine_contract_violation', identity, warnings);
@@ -616,7 +620,8 @@ export class GraphHopperRoutingAdapter {
       // exactly like a disconnected pair. The adapter set that budget, so time separates
       // them: an answer back before ONE leg's budget could run out is a real NoRoute. The
       // total is compared with the per-leg budget, so a multi-leg NoRoute slower than one
-      // leg's budget is reported as `timeout` (see computeWalkingRouteTracked).
+      // leg's budget is reported as `timeout` (see computeWalkingRouteTracked), and carries
+      // the `timeout_may_be_no_route` warning.
       return timing.engineMilliseconds >= timing.engineTimeoutMilliseconds ? 'timeout' : 'no_route';
     if (status >= 500) return 'engine_unavailable';
     return 'engine_contract_violation';

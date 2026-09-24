@@ -130,12 +130,23 @@ export type RouteConditions = z.infer<typeof routeConditionsSchema>;
  * engine's per-request budget itself and reports an answer that came back after it as
  * `timeout`, so a `no_route` is no longer ambiguous. The code stays in the enum because
  * revisions stored before that change carry it.
+ *
+ * `timeout_may_be_no_route` (M2-01ah) is the mirror image, and only ever rides on a `timeout`.
+ * GraphHopper answers an exhausted per-leg budget and a disconnected pair with the same
+ * error, and reports neither which leg failed nor how long each took, so the adapter can only
+ * compare the WHOLE answer time with ONE leg's budget. With several legs, a genuine NoRoute
+ * whose legs each finished inside the budget can still take longer than one budget in total
+ * and is reported as `timeout`. This warning says so: retrying may give the same answer, and
+ * the reader must not assume the network is connected. Additive — schema version 1 is
+ * unchanged, every earlier value still parses, and a `timeout` is never stored, so no stored
+ * revision or export carries it.
  */
 export const routeWarningCodeSchema = z.enum([
   'no_route_may_be_engine_budget',
   'snap_distance_notable',
   'response_truncated_by_engine',
   'engine_version_unknown',
+  'timeout_may_be_no_route',
 ]);
 
 /**

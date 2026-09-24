@@ -9,6 +9,7 @@ import {
   ROUTING_GRAPH_MANIFEST_FILE,
   RoutingEndpointError,
   RoutingTransportError,
+  TenantAdmissionControl,
   hashGraphDirectory,
   type RoutingEngineEndpoint,
   type RoutingEngineTransport,
@@ -104,6 +105,14 @@ const configured = () => ({
   ROUTING_PROFILE_CONFIG: paths.profile,
 });
 
+/**
+ * These tests are about configuration and switching, not admission, so each composition gets
+ * an in-process limiter, passed explicitly: the option is required so nothing falls back to
+ * one silently (M2-01ah). The shared limiter is asserted on real PostgreSQL in
+ * `routing-admission.integration.test.ts`.
+ */
+const local = () => ({ admission: new TenantAdmissionControl({ now: () => Date.now() }) });
+
 function engine(info: typeof engineInfo = engineInfo) {
   const calls: string[] = [];
   const transport: RoutingEngineTransport = {
@@ -113,7 +122,7 @@ function engine(info: typeof engineInfo = engineInfo) {
       return { status: 200, bodyText: JSON.stringify(body), truncated: false, byteLength: 1 };
     },
   };
-  return { calls, transportFactory: () => transport };
+  return { calls, transportFactory: () => transport, ...local() };
 }
 
 const request = {
@@ -129,13 +138,17 @@ const request = {
 
 describe('routing configuration states', () => {
   it('leaves routing off when nothing is configured', async () => {
-    await expect(createConfiguredWalkingRoutes({})).resolves.toBeNull();
-    await expect(createConfiguredWalkingRoutes({ ROUTING_ENGINE_URL: '  ' })).resolves.toBeNull();
+    await expect(createConfiguredWalkingRoutes({}, local())).resolves.toBeNull();
+    await expect(
+      createConfiguredWalkingRoutes({ ROUTING_ENGINE_URL: '  ' }, local()),
+    ).resolves.toBeNull();
   });
 
   it('refuses a half configuration and names what is missing', async () => {
     const { ROUTING_PROFILE_CONFIG: _omitted, ...partial } = configured();
-    const refusal = await createConfiguredWalkingRoutes(partial).catch((error: unknown) => error);
+    const refusal = await createConfiguredWalkingRoutes(partial, local()).catch(
+      (error: unknown) => error,
+    );
     expect(refusal).toBeInstanceOf(RoutingConfigurationError);
     expect(refusal).toMatchObject({
       code: 'ROUTING_CONFIGURATION_INCOMPLETE',
@@ -145,13 +158,22 @@ describe('routing configuration states', () => {
 
   it('refuses a host allowlist that configures nothing else', async () => {
     await expect(
-      createConfiguredWalkingRoutes({ ROUTING_ENGINE_ALLOWED_HOSTS: 'routing.internal' }),
+      createConfiguredWalkingRoutes({ ROUTING_ENGINE_ALLOWED_HOSTS: 'routing.internal' }, local()),
+    ).rejects.toMatchObject({ code: 'ROUTING_CONFIGURATION_INCOMPLETE' });
+  });
+
+  it('refuses an engine cap that configures nothing else (M2-01ah)', async () => {
+    await expect(
+      createConfiguredWalkingRoutes({ ROUTING_ENGINE_CONCURRENCY: '4' }, local()),
     ).rejects.toMatchObject({ code: 'ROUTING_CONFIGURATION_INCOMPLETE' });
   });
 
   it('refuses relative artifact paths', async () => {
     await expect(
-      createConfiguredWalkingRoutes({ ...configured(), ROUTING_ENGINE_ARTIFACT: 'engine.jar' }),
+      createConfiguredWalkingRoutes(
+        { ...configured(), ROUTING_ENGINE_ARTIFACT: 'engine.jar' },
+        local(),
+      ),
     ).rejects.toMatchObject({
       code: 'ROUTING_PATH_NOT_ABSOLUTE',
       keys: ['ROUTING_ENGINE_ARTIFACT'],
@@ -314,6 +336,7 @@ describe('blue/green graph replacement (M2-01k-e)', () => {
   async function started(fake: ReturnType<typeof engines>) {
     const routing = await createConfiguredWalkingRoutes(configured(), {
       transportFactory: fake.transportFactory,
+      ...local(),
     });
     if (routing === null) throw new Error('expected a configured port');
     return routing;

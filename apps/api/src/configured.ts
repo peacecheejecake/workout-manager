@@ -34,12 +34,17 @@ import {
   createConfiguredWalkingRoutes,
   type RoutingDeploymentSwitch,
 } from './routing-deployment.js';
+import {
+  ROUTING_PERMIT_LEASE_MILLISECONDS,
+  createConfiguredRoutingAdmission,
+} from './routing-admission.js';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
 import { createResourceAccessRepository } from '@workout/server-persistence/resource-access';
 import { createLocalFilesystemObjectStorage } from '@workout/server-media/local-filesystem';
 import { isAbsolute, parse, resolve } from 'node:path';
+import type { Writable } from 'node:stream';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
@@ -100,6 +105,12 @@ export interface ConfiguredApiOptions {
    * entrypoint can wire an operator trigger to it. Not called when routing is off.
    */
   readonly onRoutingDeployments?: (control: RoutingDeploymentSwitch) => void;
+  /**
+   * Where the API's structured log goes; stdout when unset. A probe seam (M2-01ah) so a probe
+   * can read the operator events it asserts — `routing_admission_refused` above all — from
+   * the production composition itself. The lines are the same redacted lines stdout gets.
+   */
+  readonly logStream?: Writable;
 }
 
 /** The supplied database role must be the restricted runtime role, never the migration owner. */
@@ -123,6 +134,7 @@ export async function createConfiguredApi(
   // Discovery failures carry only a fixed reason (never provider text). Before the API's
   // logger exists they go to stderr as the same one-line JSON.
   let log: { warn(event: OidcEvent): void } | undefined;
+  let routingLog: { warn(event: object): void } | undefined;
   const provider = await createOidcProvider(
     {
       issuer: env.OIDC_ISSUER,
@@ -163,9 +175,24 @@ export async function createConfiguredApi(
     // The self-hosted pedestrian engine, verified against its graph manifest before any
     // route can be computed. Unset leaves the routing routes unregistered; half-set or
     // unverifiable refuses to start rather than serving under an unchecked identity.
-    const routing = await createConfiguredWalkingRoutes(
-      z.record(z.string(), z.unknown()).parse(plainEnvironment(environment)),
-    );
+    const routingEnvironment = z
+      .record(z.string(), z.unknown())
+      .parse(plainEnvironment(environment));
+    // Every computation's permit comes from PostgreSQL, shared by every API instance, with
+    // the engine capped over every tenant (M2-01ah). Refusals the operator must see — the
+    // engine cap reached, the limiter unreachable — are logged without the tenant id; a
+    // tenant hitting its own bound is the ordinary 429 and is not.
+    const routingAdmission = createConfiguredRoutingAdmission(database, routingEnvironment, {
+      onRefusal: (event) => {
+        if (event.reason === 'rate' || event.reason === 'concurrency') return;
+        const line = { event: 'routing_admission_refused', ...event };
+        if (routingLog === undefined) process.stderr.write(`${JSON.stringify(line)}\n`);
+        else routingLog.warn(line);
+      },
+    });
+    const routing = await createConfiguredWalkingRoutes(routingEnvironment, {
+      admission: routingAdmission,
+    });
     if (routing !== null) options.onRoutingDeployments?.(routing.deployments);
     const identity = createIdentityService({
       store,
@@ -175,6 +202,7 @@ export async function createConfiguredApi(
     });
     const app = createApi({
       ...(env.WORKOUT_RELEASE === undefined ? {} : { version: env.WORKOUT_RELEASE }),
+      ...(options.logStream === undefined ? {} : { logStream: options.logStream }),
       auth: identity,
       identity,
       garmin:
@@ -266,10 +294,20 @@ export async function createConfiguredApi(
       resourceRetrieval: createResourceRetrievalRepository(database),
       allowedOrigins: [env.PUBLIC_ORIGIN],
       close: async () => {
+        // Permits whose engine search outlives the last answer are released when the engine
+        // stops (M2-01ah); wait for that, bounded by their lease, before the pool goes away.
+        await routingAdmission.drain(ROUTING_PERMIT_LEASE_MILLISECONDS);
         await Promise.all([store.close(), database.close()]);
       },
     });
     log = app.log;
+    routingLog = app.log;
+    if (routing !== null)
+      app.log.info({
+        event: 'routing_admission_configured',
+        limiter: 'postgresql',
+        engineConcurrency: routingAdmission.engineConcurrency,
+      });
     return app;
   } catch (error) {
     await Promise.all([store.close(), database.close()]);

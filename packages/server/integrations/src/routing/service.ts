@@ -5,7 +5,7 @@ import {
   type WalkingRouteResult,
 } from '@workout/contracts/routing';
 
-import type { TenantAdmissionControl } from './admission.js';
+import type { RoutingAdmission } from './admission.js';
 import { requestedSpanMeters } from './geo.js';
 import type { GraphHopperRoutingAdapter, RoutingClock } from './graphhopper-adapter.js';
 
@@ -38,13 +38,13 @@ export interface WalkingRouteComputation {
 
 export interface WalkingRouteServiceOptions {
   readonly adapter: GraphHopperRoutingAdapter;
-  readonly admission: TenantAdmissionControl;
+  readonly admission: RoutingAdmission;
   readonly clock: RoutingClock;
 }
 
 export class WalkingRouteService {
   readonly #adapter: GraphHopperRoutingAdapter;
-  readonly #admission: TenantAdmissionControl;
+  readonly #admission: RoutingAdmission;
   readonly #clock: RoutingClock;
 
   constructor(options: WalkingRouteServiceOptions) {
@@ -77,7 +77,10 @@ export class WalkingRouteService {
         throw new RoutingRequestError('ROUTING_WAYPOINT_REPEATED');
     }
 
-    const lease = this.#admission.tryAcquire(tenantId);
+    // Its own short step: a shared limiter takes and commits the permit in one brief
+    // transaction and holds nothing open while the engine works (AGENTS: no provider call
+    // inside a DB transaction).
+    const lease = await this.#admission.tryAcquire(tenantId);
     if (!lease.granted) {
       return {
         result: walkingRouteResultSchema.parse({
@@ -104,7 +107,8 @@ export class WalkingRouteService {
     // answer would let one tenant cancel and resubmit its way past the concurrency bound
     // while the engine kept every search running. `engineReleased` never rejects and is
     // bounded by the deadline plus a grace period, so no permit is held without a bound.
-    void tracked.engineReleased.then(() => lease.release());
+    // A release that fails leaves the permit to its lease expiry; it never rejects here.
+    void tracked.engineReleased.then(() => lease.release()).catch(() => undefined);
     return { result: await tracked.result, retryAfterSeconds: null };
   }
 }

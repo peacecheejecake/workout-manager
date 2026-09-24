@@ -7,6 +7,9 @@ import {
   RoutingRequestError,
   TenantAdmissionControl,
   WalkingRouteService,
+  type AdmissionLease,
+  type AdmissionRefusal,
+  type RoutingAdmission,
   type RoutingEngineTransport,
 } from '../src/routing/index.js';
 import { verifiedDeployment } from './deployment-fixture.js';
@@ -220,5 +223,63 @@ describe('a cancelled computation keeps its permit while the engine still search
         'route_computed',
       ),
     );
+  });
+});
+
+describe('an asynchronous, shared admission (M2-01ah)', () => {
+  async function withAdmission(admission: RoutingAdmission, hold?: Promise<void>) {
+    const clock = new ControllableClock();
+    const engineCalls = { count: 0 };
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        if (input.path === '/info')
+          return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+        engineCalls.count += 1;
+        if (hold) await hold;
+        return {
+          status: 200,
+          bodyText: JSON.stringify(realAnswer),
+          truncated: false,
+          byteLength: 1,
+        };
+      },
+    };
+    const { deployment } = await verifiedDeployment({ transport });
+    const adapter = new GraphHopperRoutingAdapter({ deployment, clock });
+    return { service: new WalkingRouteService({ adapter, admission, clock }), engineCalls };
+  }
+
+  it('answers an engine-capacity refusal as overloaded without calling the engine', async () => {
+    const refusal: AdmissionRefusal = {
+      granted: false,
+      reason: 'engine_capacity',
+      retryAfterSeconds: 1,
+    };
+    const { service, engineCalls } = await withAdmission({ tryAcquire: async () => refusal });
+    const refused = await service.compute('athlete-1', validRequest, {});
+    expect(refused.result.outcome).toBe('overloaded');
+    expect(refused.retryAfterSeconds).toBe(1);
+    expect(engineCalls.count).toBe(0);
+  });
+
+  it('releases an asynchronous permit only when the engine stops, even after an abort', async () => {
+    let finish = () => {};
+    const hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const released = vi.fn(async () => {
+      throw new Error('store unreachable; the lease expiry returns the permit instead');
+    });
+    const lease: AdmissionLease = { granted: true, release: released };
+    const { service, engineCalls } = await withAdmission({ tryAcquire: async () => lease }, hold);
+    const caller = new AbortController();
+    const pending = service.compute('athlete-1', validRequest, { signal: caller.signal });
+    await vi.waitFor(() => expect(engineCalls.count).toBe(1));
+    caller.abort();
+    expect((await pending).result.outcome).toBe('cancelled');
+    // The caller has its answer; the engine is still searching, so the permit is held.
+    expect(released).not.toHaveBeenCalled();
+    finish();
+    await vi.waitFor(() => expect(released).toHaveBeenCalledTimes(1));
   });
 });

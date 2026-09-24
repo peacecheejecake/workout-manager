@@ -4,6 +4,7 @@ export {
   type AdmissionClock,
   type AdmissionLease,
   type AdmissionRefusal,
+  type RoutingAdmission,
   type TenantAdmissionLimits,
 } from './admission.js';
 export {

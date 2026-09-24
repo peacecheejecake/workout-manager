@@ -4,12 +4,12 @@ import { isAbsolute } from 'node:path';
 
 import {
   GraphHopperRoutingAdapter,
-  TenantAdmissionControl,
   WalkingRouteService,
   createRoutingEngineEndpoint,
   defaultRoutingEngineHosts,
   loadRoutingDeployment,
   type LoadRoutingDeploymentOptions,
+  type RoutingAdmission,
   type RoutingClock,
 } from '@workout/server-integrations/routing';
 import { z } from 'zod';
@@ -60,10 +60,15 @@ export const routingEnvironmentKeys = Object.freeze([
  */
 /** Optional: comma-separated hosts the engine may live on. Defaults to loopback only. */
 export const ROUTING_ENGINE_ALLOWED_HOSTS = 'ROUTING_ENGINE_ALLOWED_HOSTS';
+/** Optional: the engine cap over every tenant (M2-01ah). Read by `routing-admission.ts`. */
+export const ROUTING_ENGINE_CONCURRENCY = 'ROUTING_ENGINE_CONCURRENCY';
 
 export class RoutingConfigurationError extends Error {
   constructor(
-    readonly code: 'ROUTING_CONFIGURATION_INCOMPLETE' | 'ROUTING_PATH_NOT_ABSOLUTE',
+    readonly code:
+      | 'ROUTING_CONFIGURATION_INCOMPLETE'
+      | 'ROUTING_PATH_NOT_ABSOLUTE'
+      | 'ROUTING_CONFIGURATION_INVALID',
     readonly keys: readonly string[],
   ) {
     super(`${code}: ${keys.join(', ')}`);
@@ -85,6 +90,14 @@ export interface ConfiguredWalkingRoutes {
 }
 
 export interface ConfiguredWalkingRoutesOptions {
+  /**
+   * Where every computation takes its permit (M2-01ah). Required, so no composition falls
+   * back to counting in its own process without saying so: production passes the shared
+   * PostgreSQL limiter (`createConfiguredRoutingAdmission`); tests and offline probes pass an
+   * in-process `TenantAdmissionControl` explicitly. One admission serves every deployment
+   * this process switches between, so a switch does not reset a tenant's bounds.
+   */
+  readonly admission: RoutingAdmission;
   readonly clock?: RoutingClock;
   /** Test seam only; production uses the real fetch transport bound to the endpoint. */
   readonly transportFactory?: LoadRoutingDeploymentOptions['transportFactory'];
@@ -281,14 +294,17 @@ async function assertServing(deployment: ServingDeployment): Promise<void> {
 
 export async function createConfiguredWalkingRoutes(
   environment: Readonly<Record<string, unknown>>,
-  options: ConfiguredWalkingRoutesOptions = {},
+  options: ConfiguredWalkingRoutesOptions,
 ): Promise<ConfiguredWalkingRoutes | null> {
   const allowedHostsSetting = readSetting(environment, ROUTING_ENGINE_ALLOWED_HOSTS);
   const settings = routingSettings(environment);
   if (settings === null) {
-    // An allowlist on its own configures nothing, and saying nothing about it would hide
-    // an operator's half-finished change just as a missing path would.
-    if (allowedHostsSetting !== undefined)
+    // An allowlist or an engine cap on its own configures nothing, and saying nothing about
+    // it would hide an operator's half-finished change just as a missing path would.
+    if (
+      allowedHostsSetting !== undefined ||
+      readSetting(environment, ROUTING_ENGINE_CONCURRENCY) !== undefined
+    )
       throw new RoutingConfigurationError('ROUTING_CONFIGURATION_INCOMPLETE', [
         ...routingEnvironmentKeys,
       ]);
@@ -302,8 +318,8 @@ export async function createConfiguredWalkingRoutes(
           .map((host) => host.trim())
           .filter((host) => host !== '');
   const clock = options.clock ?? { now: () => new Date() };
-  // One admission control for every deployment this process will ever serve.
-  const admission = new TenantAdmissionControl({ now: () => clock.now().getTime() });
+  // One admission for every deployment this process will ever serve.
+  const admission = options.admission;
   const prepare = async (next: RoutingSettings): Promise<ServingDeployment> => {
     const endpoint = createRoutingEngineEndpoint(next.engineUrl, { allowedHosts });
     const deployment = await loadRoutingDeployment({

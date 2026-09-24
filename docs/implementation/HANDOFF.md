@@ -17,24 +17,29 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-l](progress/M2-01k-l.md)를 완료했다. S09 미디어 탭을 두 shell에 열었다. 활동에 연결된 미디어 목록, 소유자 gallery에서
-연결·해제, session transfer로 원본 받기, `/activities/:id?tab=media` 주소를 지원한다. 연결은 새 표 없이 기존
-`gallery_media_item.activity_id`(복합 FK·FORCE RLS·revision PATCH)를 쓰므로 삭제·export·erase 규칙을 그대로 따른다. 다른 계정은
-404와 빈 목록을 받는다. media 삭제 뒤 thumbnail·원본 주소는 404이고 두 객체가 정리 대기열에 들어간다. 매트릭스 2행을
-passed로 올렸다(passed 63 → 65). 항목 하나는 활동 하나에만 연결된다. 삭제된 활동에 남는 연결을 지울지는 제품 결정으로 남겼다.
+[M2-01ah](progress/M2-01ah.md)를 완료했다. routing tenant 한도를 PostgreSQL lease 표(migration 047 `routing_admission`)로 옮겨 모든
+API 인스턴스가 같은 한도를 나눈다. 획득·반환은 각자 짧은 트랜잭션이며 엔진 호출 동안 트랜잭션을 잡지 않는다. 죽은 인스턴스의
+허가는 12 s 뒤 만료되고, DB에 물을 수 없으면 거절한다(fail closed, 경합은 `limiter_contended`로 따로 기록). 엔진 전역 동시성
+상한(`ROUTING_ENGINE_CONCURRENCY`, 기본 8)과 다중 leg timeout 경고 `timeout_may_be_no_route`를 더했다. P6-tenant-limits의 단일
+인스턴스 전제를 풀었다(같은 DB·같은 한도 설정 조건). K-graph-rollback은 graph 교체의 원자성이 프로세스 단위라 단일 인스턴스
+전제를 유지한다.
 
-직전 완료: [M2-01k-g](progress/M2-01k-g.md)(S09·track 단언 공백, geo-kit lint 경계 수정).
+직전 완료: [M2-01k-l](progress/M2-01k-l.md)(S09 미디어 탭).
 
 ## 운영 메모
 
 - 운영 API는 `WORKOUT_RELEASE`를 반드시 설정한다. 없으면 로그의 version이 `unreleased`로 남는다(M2-01k-c2).
-- routing을 켠 API는 한 인스턴스로 운영한다. 두 번째 인스턴스는 M2-01ah가 끝난 뒤에 띄운다.
+- routing을 켠 API를 여러 인스턴스로 운영할 수 있다(M2-01ah). 모든 인스턴스는 같은 PostgreSQL과 같은 한도 설정을 쓰고, 047 적용
+  뒤 `grantCourses`를 다시 실행한다. graph 교체는 인스턴스마다 전환하며 그동안 graph가 섞인다(runbook). 배포는 web을 API보다 먼저
+  또는 함께 한다(옛 web bundle은 `timeout_may_be_no_route`를 해석하지 못한다).
+- 후속(M2-01k-l 검토 비차단): 연결·해제 PATCH가 실패하면 keyboard focus가 body로 떨어진다. 활동 상세 재조회 중 미디어 panel을
+  유지하는 gate에 시험이 없다.
 - 신뢰할 수 없는 사용자의 track 업로드를 운영에서 받기 전에 M2-01ai(F1)를 끝낸다.
 
 ## 다음 ready 작업
 
 task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-i, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af,
-M2-01ag, M2-01ah, M2-01ai. 이 중 M2-01k-a·d·i, M2-01af, M2-01ah, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph
+M2-01ag, M2-01ai. 이 중 M2-01k-a·d·i, M2-01af, M2-01ai는 이 세션의 병렬 agent가 작업 중이며(task-graph
 상태는 커밋할 때 completed로 바뀐다), 재개 시 각 worktree의 미커밋 상태를 먼저 확인한다. M2-01k-b·j와 M2-01ag는 같은 코스
 편집기를 바꾸는 M2-01k-i 뒤에, M2-01k-m·n은 같은 S09 화면을 바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이
 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.

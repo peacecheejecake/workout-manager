@@ -192,8 +192,15 @@ describe('migration 039 upgrade of a populated 038 database', () => {
        ORDER BY proname`,
     );
     expect(definers.rows).toHaveLength(6);
+    // Pinned: pg_catalog alone, or with pg_temp explicitly LAST. `erase_account` is read after a
+    // full migrate, so it is the head of the chain; since 047 (M2-01ah review N1) the head pins
+    // `pg_catalog, pg_temp`, which keeps a temporary object from shadowing a catalog name.
     for (const row of definers.rows)
-      expect(row.config, row.proname).toEqual(['search_path=pg_catalog']);
+      expect(row.config, row.proname).toEqual(
+        row.proname === 'erase_account'
+          ? ['search_path=pg_catalog, pg_temp']
+          : ['search_path=pg_catalog'],
+      );
   });
 
   it('backfills the index for references recorded before this table existed', async () => {

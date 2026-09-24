@@ -43,6 +43,7 @@ import { createCoursePreferenceRepository } from '../packages/server/persistence
 import { loadGeoDatasets } from '../apps/api/src/geo-datasets.ts';
 import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
 import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deployment.ts';
+import { createConfiguredRoutingAdmission } from '../apps/api/src/routing-admission.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -51,7 +52,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
-import { createDatabase } from '../packages/server/persistence/src/database.ts';
+import { createDatabase, type Database } from '../packages/server/persistence/src/database.ts';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.ts';
 import { createIdentityRepository } from '../packages/server/persistence/src/identity.ts';
 import {
@@ -125,11 +126,15 @@ function run(command: string, args: string[]) {
   const result = spawnSync(command, args, { stdio: 'ignore' });
   if (result.error || result.status !== 0) throw new Error('Isolated PostgreSQL command failed');
 }
-async function identityWalkingRoutes() {
+async function identityWalkingRoutes(database: Database) {
   const mode = process.env['IDENTITY_E2E_ROUTING'] ?? 'fixture';
   if (mode === 'fixture') return createFixtureWalkingRoutePort();
   if (mode !== 'graphhopper') throw new Error(`Unsupported IDENTITY_E2E_ROUTING: ${mode}`);
-  const routing = await createConfiguredWalkingRoutes(process.env);
+  const environment = { ...process.env };
+  // The production limiter, on this harness's PostgreSQL (M2-01ah).
+  const routing = await createConfiguredWalkingRoutes(environment, {
+    admission: createConfiguredRoutingAdmission(database, environment),
+  });
   if (routing === null)
     throw new Error('IDENTITY_E2E_ROUTING=graphhopper needs ROUTING_* settings');
   console.log(`Identity E2E routing: self-hosted engine, graph ${routing.graphBuildId}.`);
@@ -487,7 +492,7 @@ try {
     // With IDENTITY_E2E_ROUTING=graphhopper (M2-01k) the port comes from the production
     // factory instead, through the same on-disk verification `configured.ts` uses; the
     // engine itself is started by the operator on loopback before this harness.
-    walkingRoutes: await identityWalkingRoutes(),
+    walkingRoutes: await identityWalkingRoutes(database),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

@@ -1465,8 +1465,9 @@
       "title": "routing 여러 인스턴스 limiter와 전역 엔진 상한",
       "dependsOn": ["M2-01k-e"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01k-e에서 분리. 지금 routing tenant 한도(TenantAdmissionControl)와 graph 교체의 원자성은 프로세스 단위이며, K-graph-rollback·P6-tenant-limits의 passed는 \"routing API 단일 인스턴스\" 전제에 묶여 있다(runbook). 두 번째 API 인스턴스를 띄우기 전에: (a) M2-01k-e §1.4에서 채택한 PostgreSQL lease limiter(만료 있는 lease 행, 엔진 호출 동안 트랜잭션을 잡지 않음, 같은 표의 시각 창으로 rate)를 구현하고 두 프로세스에서 tenant 한도가 합산됨을 실제 PostgreSQL로 단언한다. (b) tenant 합계의 전역 엔진 동시성 상한을 두어 엔진 과부하를 막는다. (c) 다중 leg 요청의 timeout이 실제로는 NoRoute일 수 있음을 알리는 warning 코드를 contract에 추가한다(M2-01k-e §1.3). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-e.md §1.4, §7."
+      "status": "completed",
+      "scope": "M2-01k-e에서 분리. 지금 routing tenant 한도(TenantAdmissionControl)와 graph 교체의 원자성은 프로세스 단위이며, K-graph-rollback·P6-tenant-limits의 passed는 \"routing API 단일 인스턴스\" 전제에 묶여 있다(runbook). 두 번째 API 인스턴스를 띄우기 전에: (a) M2-01k-e §1.4에서 채택한 PostgreSQL lease limiter(만료 있는 lease 행, 엔진 호출 동안 트랜잭션을 잡지 않음, 같은 표의 시각 창으로 rate)를 구현하고 두 프로세스에서 tenant 한도가 합산됨을 실제 PostgreSQL로 단언한다. (b) tenant 합계의 전역 엔진 동시성 상한을 두어 엔진 과부하를 막는다. (c) 다중 leg 요청의 timeout이 실제로는 NoRoute일 수 있음을 알리는 warning 코드를 contract에 추가한다(M2-01k-e §1.3). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-e.md §1.4, §7.",
+      "evidence": "docs/implementation/progress/M2-01ah.md"
     },
     {
       "id": "M2-01ai",

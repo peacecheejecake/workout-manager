@@ -158,12 +158,26 @@
       "decision": "User decided on 2026-09-24 to build all S09 gaps including the media tab. Gap node M2-01k-l built the S09 media tab on the existing gallery link column; independent review approved with non-blocking accessibility notes, all applied.",
       "change": "2 rows partial -> passed; counts passed 63 -> 65, partial 41 -> 39.",
       "executed": [
-        "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+        "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs, the independent review's run on the round-1 tree 94d00297 (11/11), and root's two identity runs on the merged tree (204 passed, 3 skipped each)",
         "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
         "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
         "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-l.md."
+    },
+    {
+      "node": "M2-01ah",
+      "date": "2026-09-25",
+      "rows": ["P6-tenant-limits", "K-graph-rollback", "P6-outcomes-distinct"],
+      "decision": "Follow-up node M2-01ah (split from M2-01k-e) built the PostgreSQL lease limiter, an engine-wide concurrency cap and the multi-leg timeout warning; independent review approved the code and migration and required the probe to prove the engine-cap refusal reason, which it now does. Root keeps the single-instance precondition on K-graph-rollback (fleet-level atomic swap is not claimed) and lifts it for P6-tenant-limits.",
+      "change": "3 row reasons updated, verdicts unchanged; M2-01k-l review notes: S09-tabs and V2-A37 evidence arrays gain the M2-01k-l evidence and the M2-01k-l executed line now labels the review run as round 1; counts unchanged (65/39/0/0/6).",
+      "executed": [
+        "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
+        "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
+        "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
+        "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
+      ],
+      "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01ah.md."
     }
   ],
   "rounds": [
@@ -361,7 +375,8 @@
       "quote": "본문 탭은 **개요 / 구간 / 경로 / 영향 / 미디어 / 출처**다.",
       "verdict": "passed",
       "evidence": [
-        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:33,87 (unit, executed)"
+        "packages/modules/activities/tests/activity-detail-tabs.test.tsx:33,87 (unit, executed)",
+        "M2-01k-l: tests/identity/activity-media.spec.ts (Next and Vite), activity-detail-address.spec.ts media address, packages/modules/gallery/tests/activity-media-panel.test.tsx, packages/server/persistence/tests/activity-media-link.integration.test.ts"
       ],
       "reason": "M2-01k-l amendment: passed. All six body tabs work: the media tab lists media linked to the activity, links and unlinks items from the owner's gallery (revisioned PATCH on the existing gallery_media_item.activity_id, composite FK and FORCE RLS), downloads the original through the session transfer, and is reachable at /activities/:id?tab=media, in both shells; another account gets 404 and an empty list; M1, M2a, M2b killed. Limits: an item links to at most one activity (re-linking moves it); a deleted activity leaves its link in place (open product decision, breaks no export or erasure rule).",
       "round2": {
@@ -376,7 +391,7 @@
         "previousVerdict": "partial",
         "previousReason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function.",
         "executed": [
-          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs, the independent review's run on the round-1 tree 94d00297 (11/11), and root's two identity runs on the merged tree (204 passed, 3 skipped each)",
           "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
           "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
           "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
@@ -1391,7 +1406,8 @@
       "quote": "| V2-A37 | media 삭제 후 thumbnail URL 재조회 | access 차단·파생물 삭제 |",
       "verdict": "passed",
       "evidence": [
-        "course analogue: tests/identity/course-acceptance.spec.ts step 11 (thumbnail 404 after reclaim); course-thumbnails.integration:998/984"
+        "course analogue: tests/identity/course-acceptance.spec.ts step 11 (thumbnail 404 after reclaim); course-thumbnails.integration:998/984",
+        "M2-01k-l: tests/identity/activity-media.spec.ts (owner 404 on thumbnail and original after delete), packages/server/persistence/tests/activity-media-link.integration.test.ts (delete queues preview and original; export; erase_account) with the existing cleanup-worker drain"
       ],
       "reason": "M2-01k-l amendment: passed, with the M2-03 limit. For real gallery media, after delete the owner gets 404 on both the thumbnail and original addresses and the item leaves the tab (E2E); both objects are queued for cleanup and the existing cleanup worker removes them in the same integration run; M3, M3b, M4 killed. Limit: the production cleanup scheduler and a remote object provider are not verified.",
       "round2": {
@@ -1409,7 +1425,7 @@
         "previousVerdict": "partial",
         "previousReason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here.",
         "executed": [
-          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs and the independent review's run (11/11)",
+          "tests/identity/activity-media.spec.ts in the Next and Vite shells with real gallery uploads, plus activity-detail-address and activity-detail-tabs, in the node's identity runs, the independent review's run on the round-1 tree 94d00297 (11/11), and root's two identity runs on the merged tree (204 passed, 3 skipped each)",
           "packages/server/persistence/tests/activity-media-link.integration.test.ts (6 tests: stored link and outbox, FORCE RLS and cross-tenant refusal, FK 23503, deleted activity and stale revision refused, delete -> preview and original unresolvable and queued, export and erase_account) with the existing cleanup-worker drain in the same run",
           "packages/modules/gallery/tests/activity-media-panel.test.tsx (10) and activity-detail-tabs media cases",
           "mutants M1, M2a, M2b, M3, M3b, MF, MD, MH each fail; the independent review re-killed M3 and M3b at integration level and added M4 (preview not queued for cleanup, 3 failed) and FK (composite FK removed, 1 failed)"
@@ -1647,7 +1663,7 @@
       "evidence": [
         "scripts/probe-routing-operational.mts ×3 (26 checks), guard-revert of the adapter import_date check makes 2 checks fail"
       ],
-      "reason": "M2-01k-e amendment: passed, with the precondition that the routing API runs as a single instance (runbook). Blue/green engines plus one API identity switch replace the graph with graph C built from a different extract, and roll back, under load with 0 failures and no old-graph answers after the switch; in-flight computations keep their graph; the three refusals change nothing; rollback to a stopped engine is refused. Atomicity is per process: with several instances a roll-out mixes graphs (recorded and acknowledged safely, but not at once) — the multi-instance limiter is M2-01ah.",
+      "reason": "M2-01ah amendment: still passed with the single-instance precondition. Blue/green replacement and rollback are atomic within one API process (M2-01k-e evidence). M2-01ah lifts the single-instance condition for limits only: with several routing instances each switches separately and graphs are mixed during the roll-out (recorded and acknowledged safely), so atomic graph replacement across a fleet is not claimed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1656,15 +1672,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-e",
+        "node": "M2-01ah",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Unchanged: the probe re-ran 26/26 against the real engine (graph_mismatch while pinned, no recomputation on swap or rollback, 409 without two-sided acknowledgement, exact graph A after rollback), but replacement is still two steps (engine restart, API redeploy), the /info<->/route window stays open, and graph B is a re-import of the same extract. The guard-revert mutation was not re-run.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-e amendment: passed, with the precondition that the routing API runs as a single instance (runbook). Blue/green engines plus one API identity switch replace the graph with graph C built from a different extract, and roll back, under load with 0 failures and no old-graph answers after the switch; in-flight computations keep their graph; the three refusals change nothing; rollback to a stopped engine is refused. Atomicity is per process: with several instances a roll-out mixes graphs (recorded and acknowledged safely, but not at once) — the multi-instance limiter is M2-01ah.",
         "executed": [
-          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
-          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
-          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
+          "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
+          "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
+          "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
+          "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
         ]
       }
     },
@@ -1991,7 +2007,7 @@
       "evidence": [
         "scripts/probe-routing-operational.mts: 21st request 429 + retry-after 60, other tenant 200 (real configuration)"
       ],
-      "reason": "M2-01k-e amendment: passed, with the same single-instance precondition as K-graph-rollback. Concurrency, waypoint count, leg and total distance and rate are observed in the operational composition (createConfiguredApi); deadline and response points are enforced by the recorded values and observed with lower values in the same composition. The multi-instance PostgreSQL lease limiter is decided but not built (M2-01ah).",
+      "reason": "M2-01ah amendment: passed, and the single-instance precondition is lifted for limits. Tenant concurrency and rate are counted in a PostgreSQL lease table shared by every API instance (acquire and release in their own short transactions, never across the engine call; leases expire 12 s after a dead instance; fail closed): two limiters on separate pools grant exactly 2 of 16 racing acquisitions, two real API compositions never let the engine run more than 2 searches for one tenant, and an engine-wide cap holds across tenants and instances. Conditions: every instance uses the same database and the same limit configuration and release (runbook).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2001,15 +2017,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-e",
+        "node": "M2-01ah",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-e amendment: passed, with the same single-instance precondition as K-graph-rollback. Concurrency, waypoint count, leg and total distance and rate are observed in the operational composition (createConfiguredApi); deadline and response points are enforced by the recorded values and observed with lower values in the same composition. The multi-instance PostgreSQL lease limiter is decided but not built (M2-01ah).",
         "executed": [
-          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
-          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
-          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
+          "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
+          "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
+          "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
+          "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
         ]
       }
     },
@@ -2126,7 +2142,7 @@
         "packages/server/integrations/tests/routing-adapter.test.ts (failure bodies hand-written)",
         "probe: overload 429, engine_unavailable, graph_mismatch against the real configuration"
       ],
-      "reason": "M2-01k-e amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine; overloaded, engine_unavailable and graph_mismatch via the operational probe; failures store nothing. Limit: a multi-leg NoRoute that runs longer than one leg budget is reported as timeout (errs only toward timeout); a warning code is M2-01ah.",
+      "reason": "M2-01ah amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine (M2-01k-e). The multi-leg ambiguity is now signalled: an engine-answered timeout over more than one leg carries the warning timeout_may_be_no_route (additive contract value; unit tests, real-engine probe, M4 killed). The warning only fires when the engine answers before the API deadline, so the probe check is load-sensitive.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2137,15 +2153,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-e",
+        "node": "M2-01ah",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-e amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine; overloaded, engine_unavailable and graph_mismatch via the operational probe; failures store nothing. Limit: a multi-leg NoRoute that runs longer than one leg budget is reported as timeout (errs only toward timeout); a warning code is M2-01ah.",
         "executed": [
-          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
-          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
-          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
-          "round-2 tree e6d82204: pnpm test 3,494 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs); final merged tree 4abcfad3: pnpm test 3,496 passed, pnpm test:integration 618 + 1 passed, pnpm test:identity x2 200 passed, 3 skipped"
+          "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
+          "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
+          "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
+          "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
         ]
       }
     },

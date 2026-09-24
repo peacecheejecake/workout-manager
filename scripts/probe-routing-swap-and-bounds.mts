@@ -24,10 +24,14 @@
  *    `createConfiguredApi`: waypoint count, leg and total straight-line distance,
  *    concurrency, and the deadline and response-point bounds as recorded; the latter two
  *    are also observed at tighter values through the same composition, because this region
- *    cannot reach their production values.
+ *    cannot reach their production values. Since M2-01ah the bounds come from the shared
+ *    PostgreSQL limiter: a second API instance over the same database shares the tenant
+ *    bound, and the engine cap (`ROUTING_ENGINE_CONCURRENCY`) holds across tenants and
+ *    instances.
  * 3. Cancellation: the caller is answered at once, the engine's own `timeout_ms` bounds how
  *    long it keeps searching, and a tenant's permit stays held until the engine stops.
- * 4. `no_route`, `outside_coverage`, `snap_too_far` and `timeout`, each from the real engine.
+ * 4. `no_route`, `outside_coverage`, `snap_too_far` and `timeout`, each from the real engine;
+ *    the multi-leg `timeout` carries `timeout_may_be_no_route` (M2-01ah).
  *
  * WHAT THIS IS NOT. Graph C is a clip of the same snapshot, not newer map data: the
  * allowlisted URL served the same bytes on 2026-09-24 (same length and Last-Modified as the
@@ -41,6 +45,7 @@ import { mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { cpus, tmpdir, totalmem } from 'node:os';
+import { Writable } from 'node:stream';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,6 +62,7 @@ import {
 } from '../packages/contracts/src/routing.ts';
 import {
   GraphHopperRoutingAdapter,
+  TenantAdmissionControl,
   createRoutingEngineEndpoint,
   loadRoutingDeployment,
 } from '../packages/server/integrations/src/routing/index.ts';
@@ -82,7 +88,9 @@ import { verifyAllowedSourceFile } from './geo/sources.mjs';
 import {
   PUBLIC_ORIGIN,
   Session,
+  clearAdmissionHistory,
   detectedBin,
+  waitForNoHeldPermits,
   startDatabase,
   type Api,
 } from './probe-routing-operational.mts';
@@ -166,6 +174,40 @@ function routeBody(points: Position[], requestId: string) {
   };
 }
 
+/**
+ * M2-01ah review F1: the API's structured log, captured from the production composition
+ * (`createConfiguredApi`'s `logStream`) and echoed to stdout, so a check can assert WHICH
+ * refusal happened: `routing_admission_refused` carries the reason, the engine count the
+ * decision saw and the cap. Tenant-bound refusals are not logged; their absence is asserted.
+ */
+function captureApiLog() {
+  const events: Record<string, unknown>[] = [];
+  let pending = '';
+  const stream = new Writable({
+    write(chunk: Buffer | string, _encoding, done) {
+      process.stdout.write(chunk);
+      pending += String(chunk);
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        try {
+          events.push(JSON.parse(line) as Record<string, unknown>);
+        } catch {
+          // Not a JSON line; the echo above keeps it.
+        }
+      }
+      done();
+    },
+  });
+  return {
+    stream,
+    mark: () => events.length,
+    refusalsSince: (mark: number) =>
+      events.slice(mark).filter((event) => event['event'] === 'routing_admission_refused'),
+  };
+}
+
 function summary(result: WalkingRouteResult) {
   return {
     outcome: result.outcome,
@@ -174,6 +216,7 @@ function summary(result: WalkingRouteResult) {
     computationMilliseconds: result.computation.computationMilliseconds,
     deadlineMilliseconds: result.computation.conditions.deadlineMilliseconds,
     waypointCount: result.computation.conditions.waypointCount,
+    warnings: result.computation.warnings,
     ...(result.outcome === 'route_computed'
       ? {
           distanceMeters: Math.round(result.distanceMeters),
@@ -317,6 +360,16 @@ function disconnectingRequest(
 }
 
 // ---------------------------------------------------------------- main
+// Keep only the admission fields: the pino line also carries host name, pid and time.
+function recordedRefusal(line: Record<string, unknown>): Record<string, unknown> {
+  return {
+    event: line['event'],
+    reason: line['reason'],
+    engineInFlight: line['engineInFlight'],
+    engineConcurrency: line['engineConcurrency'],
+  };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const workIndex = argv.indexOf('--work-dir');
@@ -750,7 +803,17 @@ async function main() {
     apis.pop();
 
     // ================================================================ 2. production bounds
-    const limitsApi = await createConfiguredApi({ ...baseEnv, ...envA });
+    // Section 1 spent alice's rate window through its own API instances, and since M2-01ah
+    // that window is shared and outlives them. Each part below that needs a fresh window
+    // starts from an empty one; a permit still held is never cleared (see the helper).
+    const admissionResets: Record<string, unknown> = {};
+    observations['admissionResets'] = admissionResets;
+    admissionResets['bounds'] = await clearAdmissionHistory(database.admin);
+    const boundsLog = captureApiLog();
+    const limitsApi = await createConfiguredApi(
+      { ...baseEnv, ...envA },
+      { logStream: boundsLog.stream },
+    );
     apis.push(limitsApi);
     await limitsApi.ready();
     const owner = new Session();
@@ -807,6 +870,105 @@ async function main() {
         refused.retryAfter === '1',
       `three at once: ${concurrent.map((answer) => `${answer.status}:${answer.result?.outcome}`).join(', ')}; refused retry-after ${refused?.retryAfter}`,
     );
+    // M2-01ah: a second API instance — its own composition and its own database pool, the
+    // same PostgreSQL. The tenant bound is shared: four at once, two through each instance,
+    // is two computed and two refused, not four computed.
+    const limitsApiB = await createConfiguredApi(
+      { ...baseEnv, ...envA },
+      { logStream: boundsLog.stream },
+    );
+    apis.push(limitsApiB);
+    await limitsApiB.ready();
+    // Start idle: the concurrency check above leaves permits whose release commits a few ms
+    // after its answers. With nothing held and alice's window far below 20, the only refusal
+    // left for these four is alice's own concurrency bound; any other (engine cap, limiter
+    // unavailable or contended) would be a logged `routing_admission_refused`, asserted absent.
+    admissionResets['twoInstances'] = {
+      ...(await clearAdmissionHistory(database.admin)),
+      ...(await waitForNoHeldPermits(database.admin)),
+    };
+    const twoInstancesMark = boundsLog.mark();
+    const acrossInstances = await Promise.all(
+      [limitsApi, limitsApiB, limitsApi, limitsApiB].map((instance, index) =>
+        computeOver(instance, owner, LONG, `limits-two-instances-${index}`),
+      ),
+    );
+    const acrossStatuses = acrossInstances.map((answer) => answer.status).sort();
+    const twoInstancesLogged = boundsLog.refusalsSince(twoInstancesMark);
+    observations['twoInstances'] = {
+      answers: acrossInstances.map((answer) => ({
+        status: answer.status,
+        outcome: answer.result?.outcome ?? null,
+        retryAfter: answer.retryAfter ?? null,
+      })),
+      loggedRefusals: twoInstancesLogged.map(recordedRefusal),
+    };
+    check(
+      'tenant-bound-shared-by-two-api-instances',
+      JSON.stringify(acrossStatuses) === JSON.stringify([200, 200, 429, 429]) &&
+        twoInstancesLogged.length === 0 &&
+        acrossInstances
+          .filter((answer) => answer.status === 429)
+          .every((answer) => answer.result?.outcome === 'overloaded' && answer.retryAfter === '1'),
+      `four at once, two through each instance, starting with no permit held: ${acrossInstances.map((answer) => `${answer.status}:${answer.result?.outcome}`).join(', ')}; logged (non-tenant) refusals ${twoInstancesLogged.length}`,
+    );
+    // M2-01ah: the engine cap over every tenant. Two instances capped at one engine search:
+    // alice through one and bob through the other, at once — one runs, one is refused.
+    const capLog = captureApiLog();
+    const cappedA = await createConfiguredApi(
+      { ...baseEnv, ...envA, ROUTING_ENGINE_CONCURRENCY: '1' },
+      { logStream: capLog.stream },
+    );
+    apis.push(cappedA);
+    const cappedB = await createConfiguredApi(
+      { ...baseEnv, ...envA, ROUTING_ENGINE_CONCURRENCY: '1' },
+      { logStream: capLog.stream },
+    );
+    apis.push(cappedB);
+    await Promise.all([cappedA.ready(), cappedB.ready()]);
+    const other = new Session();
+    await other.login(cappedB, 'bob');
+    // Start idle (review F1): the first run of this check began with alice still holding two
+    // permits from the check above, so her 429 was most likely her own concurrency refusal.
+    // Now nothing is held and both windows are empty, and the refusal's reason is read from
+    // the production log line rather than inferred from the status.
+    admissionResets['engineCap'] = {
+      ...(await clearAdmissionHistory(database.admin)),
+      ...(await waitForNoHeldPermits(database.admin)),
+    };
+    const capMark = capLog.mark();
+    const capped = await Promise.all([
+      computeOver(cappedA, owner, LONG, 'cap-alice'),
+      computeOver(cappedB, other, LONG, 'cap-bob'),
+    ]);
+    const capLogged = capLog.refusalsSince(capMark);
+    observations['engineCap'] = {
+      answers: capped.map((answer) => ({
+        status: answer.status,
+        outcome: answer.result?.outcome ?? null,
+        retryAfter: answer.retryAfter ?? null,
+      })),
+      loggedRefusals: capLogged.map(recordedRefusal),
+    };
+    check(
+      'engine-cap-across-tenants-and-instances',
+      JSON.stringify(capped.map((answer) => answer.status).sort()) === JSON.stringify([200, 429]) &&
+        // Exactly one refusal, and it is the engine cap: the other tenant's search was the one
+        // engine slot, seen by the decision (engineInFlight 1 of 1).
+        capLogged.length === 1 &&
+        capLogged[0]?.['reason'] === 'engine_capacity' &&
+        capLogged[0]?.['engineInFlight'] === 1 &&
+        capLogged[0]?.['engineConcurrency'] === 1 &&
+        capped.some(
+          (answer) => answer.result?.outcome === 'overloaded' && answer.retryAfter === '1',
+        ) &&
+        capped.some((answer) => answer.result?.outcome === 'route_computed'),
+      `cap 1, starting with no permit held, alice via instance A and bob via instance B at once: ${capped.map((answer) => `${answer.status}:${answer.result?.outcome}`).join(', ')}; logged refusals ${JSON.stringify(capLogged.map((event) => ({ reason: event['reason'], engineInFlight: event['engineInFlight'], engineConcurrency: event['engineConcurrency'] })))}`,
+    );
+    for (const extra of [cappedB, cappedA, limitsApiB]) {
+      await extra.close();
+      apis.splice(apis.indexOf(extra), 1);
+    }
     check(
       'deadline-and-response-points-as-configured',
       computedLong?.result?.outcome === 'route_computed' &&
@@ -817,6 +979,7 @@ async function main() {
     );
 
     // ---- Distinct outcomes from the real engine, production configuration.
+    admissionResets['outcomes'] = await clearAdmissionHistory(database.admin);
     const noRoute = await computeOver(limitsApi, owner, NO_ROUTE, 'outcome-no-route');
     const offshore = await computeOver(limitsApi, owner, OFFSHORE, 'outcome-offshore');
     const farSnap = await computeOver(limitsApi, owner, FAR_SNAP, 'outcome-snap');
@@ -842,6 +1005,7 @@ async function main() {
     );
 
     // ---- A client that goes away does not free its permit while the engine searches.
+    admissionResets['cancellation'] = await clearAdmissionHistory(database.admin);
     await limitsApi.listen({ port: 0, host: '127.0.0.1' });
     const port = (limitsApi.server.address() as AddressInfo).port;
     const cancelledStartedAt = performance.now();
@@ -876,7 +1040,11 @@ async function main() {
     apis.pop();
 
     // ================================================================ 3. tighter bounds, same composition
+    // These two observe the deadline and response-point bounds, not admission, so each takes
+    // an in-process limiter, explicitly (M2-01ah made the option required). Admission is
+    // observed through `createConfiguredApi` above, on the shared PostgreSQL limiter.
     const tight = await createConfiguredWalkingRoutes(envA, {
+      admission: new TenantAdmissionControl({ now: () => Date.now() }),
       adapterBounds: { deadlineMilliseconds: TIGHT_DEADLINE },
     });
     if (tight === null) throw new Error('NO_TIGHT_ROUTING');
@@ -898,10 +1066,15 @@ async function main() {
       'timeout-observed-and-kept-apart-from-no-route',
       timedOut.result.outcome === 'timeout' &&
         timedOut.result.computation.graph.identitySource === 'engine' &&
-        quickNoRoute.result.outcome === 'no_route',
-      `deadline ${TIGHT_DEADLINE} ms: four long legs -> ${timedOut.result.outcome} after ${timedOut.result.computation.computationMilliseconds} ms; the NoRoute pair under the same budget -> ${quickNoRoute.result.outcome} after ${quickNoRoute.result.computation.computationMilliseconds} ms`,
+        // M2-01ah: a multi-leg timeout the engine answered says it may really be a NoRoute;
+        // the one-leg NoRoute carries no such warning.
+        timedOut.result.computation.warnings.includes('timeout_may_be_no_route') &&
+        quickNoRoute.result.outcome === 'no_route' &&
+        quickNoRoute.result.computation.warnings.length === 0,
+      `deadline ${TIGHT_DEADLINE} ms: four long legs -> ${timedOut.result.outcome} [${timedOut.result.computation.warnings.join(',')}] after ${timedOut.result.computation.computationMilliseconds} ms; the NoRoute pair under the same budget -> ${quickNoRoute.result.outcome} [${quickNoRoute.result.computation.warnings.join(',')}] after ${quickNoRoute.result.computation.computationMilliseconds} ms`,
     );
     const fewPoints = await createConfiguredWalkingRoutes(envA, {
+      admission: new TenantAdmissionControl({ now: () => Date.now() }),
       adapterBounds: { maxResponsePoints: 1000 },
     });
     if (fewPoints === null) throw new Error('NO_TIGHT_ROUTING');

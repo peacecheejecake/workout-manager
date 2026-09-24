@@ -59,7 +59,8 @@
     "./evidence-snapshots": "./src/evidence-snapshots.ts",
     "./coaching-constraints": "./src/coaching-constraints.ts",
     "./resource-retrieval": "./src/resource-retrieval.ts",
-    "./course-thumbnails": "./src/course-thumbnails.ts"
+    "./course-thumbnails": "./src/course-thumbnails.ts",
+    "./routing-admission": "./src/routing-admission.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

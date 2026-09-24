@@ -152,8 +152,17 @@ describe('tenant object purge migration upgrade of a populated database', () => 
          'erase_account_before_tenant_object_purge') ORDER BY proname`,
     );
     expect(functions.rows).toHaveLength(4);
+    // Pinned: pg_catalog alone, or with pg_temp explicitly LAST. `erase_account` is read after a
+    // full migrate, so it is the head of the chain; since 047 (M2-01ah review N1) the head pins
+    // `pg_catalog, pg_temp`, which keeps a temporary object from shadowing a catalog name.
     for (const row of functions.rows)
-      expect(row, row.name).toMatchObject({ definer: true, config: ['search_path=pg_catalog'] });
+      expect(row, row.name).toMatchObject({
+        definer: true,
+        config:
+          row.name === 'erase_account'
+            ? ['search_path=pg_catalog, pg_temp']
+            : ['search_path=pg_catalog'],
+      });
     for (const name of ['lease_tenant_object_purge', 'finish_tenant_object_purge'])
       expect(await granteesOf(name), name).toEqual([]);
     await grantResourceObjectCleanupWorker(upgradeUrl(), workerRole);

@@ -77,6 +77,7 @@ import {
   createCourseRepository,
 } from '../packages/server/persistence/src/courses.ts';
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
+import { createSharedRoutingAdmission } from '../packages/server/persistence/src/routing-admission.ts';
 import {
   createCourseThumbnailWorkerRepository,
   type CourseThumbnailLease,
@@ -2284,6 +2285,8 @@ async function execute() {
       'activity_track_revision',
       'activity_track_object',
       'activity_track_object_ref',
+      // M2-01ah: a routing permit, as if a route computation was in flight at backup time.
+      'routing_admission',
     ] as const;
     const countErasedTenantRows = async (owner: Pool) => {
       const counts: Record<string, number> = {};
@@ -2298,6 +2301,16 @@ async function execute() {
       }
       return counts;
     };
+    // M2-01ah: the erased tenant holds a routing permit when the dump is taken. The permit is
+    // taken through the runtime role's own function, exactly as the API takes one.
+    const drillAdmission = createSharedRoutingAdmission(sourceDb, {
+      tenantConcurrency: 2,
+      tenantRequestsPerWindow: 20,
+      tenantWindowMilliseconds: 60_000,
+      engineConcurrency: 8,
+      leaseMilliseconds: 12_000,
+    });
+    assert.equal((await drillAdmission.tryAcquire(deletedAthlete)).granted, true);
     const erasedTenantBackupCounts = await countErasedTenantRows(source);
     for (const table of erasedTenantCourseTables)
       assert.ok(
@@ -2339,6 +2352,7 @@ async function execute() {
     checks.push(
       'erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup',
     );
+    checks.push('erased_tenant_routing_permit_seeded_before_backup');
     // M2-01y: an activity of the live tenant that is in the dump with no track yet. Its
     // track arrives between the dump and the archive copy, and the activity is deleted after
     // the backup, so the restored cluster knows the activity but not one row of its track.

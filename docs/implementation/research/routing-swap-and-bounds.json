@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k-e",
-  "measuredAt": "2026-09-24T14:56:02.117Z",
+  "measuredAt": "2026-09-24T19:29:42.622Z",
   "what": "Blue/green graph replacement, production tenant bounds, cancellation and distinct outcomes against two self-hosted GraphHopper engines on loopback, the production API composition, fixture OIDC and an isolated PostgreSQL. Not a coverage review.",
   "machine": {
     "label": "this machine (desktop), single caller",
@@ -21,12 +21,12 @@
       "graphContentSha256": "c5fbcdecf780a5052c97e6e063ab88294523b38f691b2cf3b6a8629578a12499"
     },
     "C": {
-      "graphBuildId": "d857c1f896908c77",
+      "graphBuildId": "1373f16b44750e14",
       "extractRegion": "Seoul clip bbox 126.90,37.49,127.06,37.62 of the BBBike Seoul extract",
       "extractSha256": "9bf6476581a4d8d2c45d9d405a69c5e893abe67b15a41d5536aeb58b71f9e35f",
-      "graphImportedAt": "2026-09-24T14:48:01.000Z",
+      "graphImportedAt": "2026-09-24T17:11:40.000Z",
       "roadDataAt": "2026-09-18T23:00:00.000Z",
-      "graphContentSha256": "2f488a5d356b94d84b4dd1b2456d014f95d77083d1de0504138a78e515db7ccf",
+      "graphContentSha256": "f8f0bc2aa4f600539abe1aacd7f8ec9e76a68a14e0847df00bd5b28343704db4",
       "derivedFrom": {
         "extractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
         "tool": "osmium version 1.19.1",
@@ -41,8 +41,8 @@
   },
   "observations": {
     "engineRssMiBAfterStart": {
-      "blue": 276,
-      "green": 243
+      "blue": 270,
+      "green": 235
     },
     "switchUnderLoad": {
       "seen": [
@@ -72,28 +72,28 @@
           "startedAfterMove": true,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         },
         {
           "index": 4,
           "startedAfterMove": true,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         },
         {
           "index": 5,
           "startedAfterMove": true,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         }
       ],
       "result": {
         "from": "c57f12f5975347e8",
-        "to": "d857c1f896908c77"
+        "to": "1373f16b44750e14"
       },
-      "moveMilliseconds": 44
+      "moveMilliseconds": 42
     },
     "rollbackUnderLoad": {
       "seen": [
@@ -102,21 +102,21 @@
           "startedAfterMove": false,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         },
         {
           "index": 1,
           "startedAfterMove": false,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         },
         {
           "index": 2,
           "startedAfterMove": false,
           "status": 200,
           "outcome": "route_computed",
-          "graph": "d857c1f896908c77"
+          "graph": "1373f16b44750e14"
         },
         {
           "index": 3,
@@ -141,75 +141,152 @@
         }
       ],
       "result": {
-        "from": "d857c1f896908c77",
+        "from": "1373f16b44750e14",
         "to": "c57f12f5975347e8"
       },
-      "moveMilliseconds": 44
+      "moveMilliseconds": 45
     },
     "inFlightAcrossRollback": {
       "startedBeforeRollbackBy": 40,
       "rollbackReturnedAtMilliseconds": 44,
-      "finishedAtMilliseconds": 157,
+      "finishedAtMilliseconds": 180,
       "result": {
         "outcome": "route_computed",
-        "graph": "d857c1f896908c77",
+        "graph": "1373f16b44750e14",
         "identitySource": "engine",
-        "computationMilliseconds": 154,
+        "computationMilliseconds": 174,
         "deadlineMilliseconds": 8000,
         "waypointCount": 4,
+        "warnings": [],
         "distanceMeters": 57437,
         "vertices": 1728,
         "worstSnapMeters": 26.3
       }
+    },
+    "admissionResets": {
+      "bounds": {
+        "historyCleared": 21,
+        "permitsHeld": 0
+      },
+      "twoInstances": {
+        "historyCleared": 3,
+        "permitsHeld": 0,
+        "waitedMilliseconds": 0
+      },
+      "engineCap": {
+        "historyCleared": 2,
+        "permitsHeld": 0,
+        "waitedMilliseconds": 0
+      },
+      "outcomes": {
+        "historyCleared": 1,
+        "permitsHeld": 0
+      },
+      "cancellation": {
+        "historyCleared": 2,
+        "permitsHeld": 1
+      }
+    },
+    "twoInstances": {
+      "answers": [
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        },
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        },
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        },
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        }
+      ],
+      "loggedRefusals": []
+    },
+    "engineCap": {
+      "answers": [
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        },
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        }
+      ],
+      "loggedRefusals": [
+        {
+          "event": "routing_admission_refused",
+          "reason": "engine_capacity",
+          "engineInFlight": 1,
+          "engineConcurrency": 1
+        }
+      ]
     },
     "outcomes": {
       "noRoute": {
         "outcome": "no_route",
         "graph": "c57f12f5975347e8",
         "identitySource": "engine",
-        "computationMilliseconds": 8,
+        "computationMilliseconds": 6,
         "deadlineMilliseconds": 8000,
-        "waypointCount": 2
+        "waypointCount": 2,
+        "warnings": []
       },
       "offshore": {
         "outcome": "outside_coverage",
         "graph": "c57f12f5975347e8",
         "identitySource": "engine",
-        "computationMilliseconds": 4,
+        "computationMilliseconds": 5,
         "deadlineMilliseconds": 8000,
-        "waypointCount": 2
+        "waypointCount": 2,
+        "warnings": []
       },
       "farSnap": {
         "outcome": "snap_too_far",
         "graph": "c57f12f5975347e8",
         "identitySource": "engine",
-        "computationMilliseconds": 11,
+        "computationMilliseconds": 5,
         "deadlineMilliseconds": 8000,
-        "waypointCount": 2
+        "waypointCount": 2,
+        "warnings": []
       }
     },
     "permitAfterDisconnect": {
       "clients": ["disconnected", "disconnected"],
-      "thirdStatusAt": 86,
+      "thirdStatusAt": 100,
       "thirdStatus": 429,
-      "admittedAt": 320
+      "admittedAt": 315
     },
     "timeout": {
       "long": {
         "outcome": "timeout",
         "graph": "c57f12f5975347e8",
         "identitySource": "engine",
-        "computationMilliseconds": 158,
+        "computationMilliseconds": 155,
         "deadlineMilliseconds": 200,
-        "waypointCount": 5
+        "waypointCount": 5,
+        "warnings": ["timeout_may_be_no_route"]
       },
       "noRouteUnderSameBudget": {
         "outcome": "no_route",
         "graph": "c57f12f5975347e8",
         "identitySource": "engine",
-        "computationMilliseconds": 4,
+        "computationMilliseconds": 7,
         "deadlineMilliseconds": 200,
-        "waypointCount": 2
+        "waypointCount": 2,
+        "warnings": []
       }
     },
     "cancellation": {
@@ -217,38 +294,38 @@
         "deadlineMilliseconds": 8000,
         "cancelAfter": null,
         "outcome": "route_computed",
-        "answeredAt": 220,
-        "engineReleasedAt": 218
+        "answeredAt": 236,
+        "engineReleasedAt": 234
       },
       "cancelledMidSearch": {
         "deadlineMilliseconds": 8000,
         "cancelAfter": 60,
         "outcome": "cancelled",
         "answeredAt": 62,
-        "engineReleasedAt": 209
+        "engineReleasedAt": 234
       },
       "cancelledWithTightBudget": {
         "deadlineMilliseconds": 200,
         "cancelAfter": 60,
         "outcome": "cancelled",
         "answeredAt": 62,
-        "engineReleasedAt": 153
+        "engineReleasedAt": 158
       }
     },
     "engineRssMiBAtEnd": {
-      "blue": 600
+      "blue": 800
     }
   },
   "checks": [
     {
       "id": "graph-c-from-a-different-extract",
       "passed": true,
-      "detail": "A c57f12f5975347e8 extract 7e13e2adf102 / C d857c1f896908c77 extract 9bf6476581a4 (clip of A's extract)"
+      "detail": "A c57f12f5975347e8 extract 7e13e2adf102 / C 1373f16b44750e14 extract 9bf6476581a4 (clip of A's extract)"
     },
     {
       "id": "blue-serves-graph-a",
       "passed": true,
-      "detail": "KRC-01 {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":70,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"distanceMeters\":1282,\"vertices\":48,\"worstSnapMeters\":10}; Gangdong {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":74,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"distanceMeters\":17630,\"vertices\":419,\"worstSnapMeters\":3.2}"
+      "detail": "KRC-01 {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":71,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[],\"distanceMeters\":1282,\"vertices\":48,\"worstSnapMeters\":10}; Gangdong {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":79,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[],\"distanceMeters\":17630,\"vertices\":419,\"worstSnapMeters\":3.2}"
     },
     {
       "id": "course-saved-on-a",
@@ -263,27 +340,27 @@
     {
       "id": "switch-is-one-step-under-load",
       "passed": true,
-      "detail": "0:200:route_computed:A 1:200:route_computed:A 2:200:route_computed:A 3*:200:route_computed:C 4*:200:route_computed:C 5*:200:route_computed:C (switch 44 ms, * = started after it returned)"
+      "detail": "0:200:route_computed:A 1:200:route_computed:A 2:200:route_computed:A 3*:200:route_computed:C 4*:200:route_computed:C 5*:200:route_computed:C (switch 42 ms, * = started after it returned)"
     },
     {
       "id": "green-serves-graph-c-with-its-own-coverage",
       "passed": true,
-      "detail": "Gangdong on C: {\"outcome\":\"outside_coverage\",\"graph\":\"d857c1f896908c77\",\"identitySource\":\"engine\",\"computationMilliseconds\":9,\"deadlineMilliseconds\":8000,\"waypointCount\":2} (on A it was route_computed)"
+      "detail": "Gangdong on C: {\"outcome\":\"outside_coverage\",\"graph\":\"1373f16b44750e14\",\"identitySource\":\"engine\",\"computationMilliseconds\":7,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]} (on A it was route_computed)"
     },
     {
       "id": "switch-recomputes-nothing-and-needs-acknowledgement",
       "passed": true,
-      "detail": "stored 1:null:aa80fa37 2:c57f12f5975347e8:564fbfa7; proposal on d857c1f896908c77; save acknowledging A->A 409"
+      "detail": "stored 1:null:aa80fa37 2:c57f12f5975347e8:564fbfa7; proposal on 1373f16b44750e14; save acknowledging A->A 409"
     },
     {
       "id": "rollback-is-one-step-under-load",
       "passed": true,
-      "detail": "0:200:route_computed:C 1:200:route_computed:C 2:200:route_computed:C 3*:200:route_computed:A 4*:200:route_computed:A 5*:200:route_computed:A (rollback 44 ms)"
+      "detail": "0:200:route_computed:C 1:200:route_computed:C 2:200:route_computed:C 3*:200:route_computed:A 4*:200:route_computed:A 5*:200:route_computed:A (rollback 45 ms)"
     },
     {
       "id": "in-flight-computation-finishes-where-it-started",
       "passed": true,
-      "detail": "started on C, rollback returned at 44 ms, finished at 157 ms on C (route_computed)"
+      "detail": "started on C, rollback returned at 44 ms, finished at 180 ms on C (route_computed)"
     },
     {
       "id": "rollback-returns-exactly-graph-a",
@@ -311,34 +388,44 @@
       "detail": "three at once: 200:route_computed, 200:route_computed, 429:overloaded; refused retry-after 1"
     },
     {
+      "id": "tenant-bound-shared-by-two-api-instances",
+      "passed": true,
+      "detail": "four at once, two through each instance, starting with no permit held: 200:route_computed, 429:overloaded, 200:route_computed, 429:overloaded; logged (non-tenant) refusals 0"
+    },
+    {
+      "id": "engine-cap-across-tenants-and-instances",
+      "passed": true,
+      "detail": "cap 1, starting with no permit held, alice via instance A and bob via instance B at once: 429:overloaded, 200:route_computed; logged refusals [{\"reason\":\"engine_capacity\",\"engineInFlight\":1,\"engineConcurrency\":1}]"
+    },
+    {
       "id": "deadline-and-response-points-as-configured",
       "passed": true,
-      "detail": "longest route {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":353,\"deadlineMilliseconds\":8000,\"waypointCount\":5,\"distanceMeters\":119744,\"vertices\":2338,\"worstSnapMeters\":33.3}; bounds 8000 ms and 20,000 vertices are recorded, not reached, in this region"
+      "detail": "longest route {\"outcome\":\"route_computed\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":386,\"deadlineMilliseconds\":8000,\"waypointCount\":5,\"warnings\":[],\"distanceMeters\":119744,\"vertices\":2338,\"worstSnapMeters\":33.3}; bounds 8000 ms and 20,000 vertices are recorded, not reached, in this region"
     },
     {
       "id": "no-route-observed",
       "passed": true,
-      "detail": "200 {\"outcome\":\"no_route\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":8,\"deadlineMilliseconds\":8000,\"waypointCount\":2}"
+      "detail": "200 {\"outcome\":\"no_route\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":6,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]}"
     },
     {
       "id": "outside-coverage-observed",
       "passed": true,
-      "detail": "200 {\"outcome\":\"outside_coverage\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":4,\"deadlineMilliseconds\":8000,\"waypointCount\":2}"
+      "detail": "200 {\"outcome\":\"outside_coverage\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":5,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]}"
     },
     {
       "id": "snap-too-far-observed",
       "passed": true,
-      "detail": "200 {\"outcome\":\"snap_too_far\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":11,\"deadlineMilliseconds\":8000,\"waypointCount\":2} (production snap limit 120 m)"
+      "detail": "200 {\"outcome\":\"snap_too_far\",\"graph\":\"c57f12f5975347e8\",\"identitySource\":\"engine\",\"computationMilliseconds\":5,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]} (production snap limit 120 m)"
     },
     {
       "id": "disconnected-client-keeps-permit-until-engine-stops",
       "passed": true,
-      "detail": "two clients disconnected at 80 ms; a third request at 86 ms: 429 retry-after 1; admitted again at 320 ms"
+      "detail": "two clients disconnected at 80 ms; a third request at 100 ms: 429 retry-after 1; admitted again at 315 ms"
     },
     {
       "id": "timeout-observed-and-kept-apart-from-no-route",
       "passed": true,
-      "detail": "deadline 200 ms: four long legs -> timeout after 158 ms; the NoRoute pair under the same budget -> no_route after 4 ms"
+      "detail": "deadline 200 ms: four long legs -> timeout [timeout_may_be_no_route] after 155 ms; the NoRoute pair under the same budget -> no_route [] after 7 ms"
     },
     {
       "id": "response-point-bound-enforced",
@@ -348,7 +435,7 @@
     {
       "id": "cancellation-answers-at-once-and-engine-stops-by-its-budget",
       "passed": true,
-      "detail": "uncancelled search 218 ms; cancelled at 60 ms with the 8 s budget: answered 62 ms, engine stopped 209 ms; with a 200 ms budget: answered 62 ms, engine stopped 153 ms"
+      "detail": "uncancelled search 234 ms; cancelled at 60 ms with the 8 s budget: answered 62 ms, engine stopped 234 ms; with a 200 ms budget: answered 62 ms, engine stopped 158 ms"
     }
   ],
   "result": "all_checks_passed"

@@ -118,6 +118,51 @@ function run(command: string, args: string[]) {
   if (result.error || result.status !== 0) throw new Error(`COMMAND_FAILED: ${command}`);
 }
 
+/**
+ * M2-01ah: every API instance now takes its permits from one PostgreSQL table, so a tenant's
+ * rate window outlives the API instance that spent it — which is the point of the shared
+ * limiter. The probes build fresh API instances section by section and used to start each
+ * from a fresh in-process window; this starts a section from an empty WINDOW instead.
+ *
+ * It deletes only history: rows that hold nothing (released, or past their lease). A permit
+ * still held is left in place and still counts, so a permit that outlived its instance would
+ * still show up as a refusal. It reports what it found, for the probe's record.
+ */
+export async function clearAdmissionHistory(admin: Pool) {
+  const held = await admin.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM routing_admission
+     WHERE released_at IS NULL AND lease_until>clock_timestamp()`,
+  );
+  const cleared = await admin.query(
+    `DELETE FROM routing_admission
+     WHERE released_at IS NOT NULL OR lease_until<=clock_timestamp()`,
+  );
+  return { historyCleared: cleared.rowCount ?? 0, permitsHeld: held.rows[0]?.total ?? -1 };
+}
+
+/**
+ * M2-01ah review F1: wait until no permit is held anywhere, so a check that follows starts
+ * from an idle limiter. Permits are released a few ms after the engine stops, asynchronously,
+ * so a section that follows another can otherwise start while the previous section's last
+ * permits are still held — and a tenant's own `concurrency` refusal would then pass for the
+ * refusal under test. Throws after `timeoutMilliseconds` rather than proceeding.
+ */
+export async function waitForNoHeldPermits(admin: Pool, timeoutMilliseconds = 15_000) {
+  const startedAt = performance.now();
+  for (;;) {
+    const held = await admin.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM routing_admission
+       WHERE released_at IS NULL AND lease_until>clock_timestamp()`,
+    );
+    const total = held.rows[0]?.total ?? -1;
+    const waitedMilliseconds = Math.round(performance.now() - startedAt);
+    if (total === 0) return { waitedMilliseconds };
+    if (waitedMilliseconds > timeoutMilliseconds)
+      throw new Error(`PERMITS_STILL_HELD: ${total} after ${waitedMilliseconds} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 export async function startDatabase(directory: string, bin: string) {
   const data = join(directory, 'data');
   run(join(bin, 'initdb'), [
@@ -778,6 +823,12 @@ async function main() {
       });
 
     // ---- 5. The tenant admission bound, with the engine up, then the engine down.
+    // Alice spent her window through the API instances of the sections above; with the
+    // shared limiter (M2-01ah) it outlives them. Start this section from an empty window.
+    const admissionBeforeBounds = await clearAdmissionHistory(database.admin);
+    console.log(
+      `admission history before the bound section: ${JSON.stringify(admissionBeforeBounds)}`,
+    );
     const bob = new Session();
     await bob.login(current, 'bob');
     const statuses: number[] = [];

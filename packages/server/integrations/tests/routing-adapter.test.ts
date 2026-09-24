@@ -530,6 +530,75 @@ describe('failures stay apart', () => {
     };
     const result = await (await adapterFor(transport, clock)).adapter.computeWalkingRoute(request);
     expect(result.outcome).toBe('timeout');
+    // One leg: the time rule is exact up to transfer time, so there is nothing to warn about.
+    expect(result.computation.warnings).toEqual([]);
+  });
+
+  /**
+   * M2-01ah. With several legs the engine's WHOLE answer time is compared with ONE leg's
+   * budget, so a real NoRoute whose legs each finished inside the budget can still be reported
+   * as `timeout`. It stays `timeout`, and it says it may be a NoRoute.
+   */
+  function connectionNotFoundAfter(clock: FixedClock, budgets: number) {
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        if (input.path === '/info')
+          return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+        clock.advance(Number(input.query.get('timeout_ms')) * budgets);
+        return {
+          status: 400,
+          bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
+          truncated: false,
+          byteLength: 1,
+        };
+      },
+    };
+    return transport;
+  }
+  const threeLegs: WalkingRouteRequest = {
+    ...request,
+    waypoints: [
+      [126.9769, 37.5759],
+      [126.9779, 37.5663],
+      [126.9819, 37.5703],
+      [126.9859, 37.5743],
+    ],
+  };
+
+  it('warns that a multi-leg timeout may really be a NoRoute (M2-01ah)', async () => {
+    const clock = new FixedClock();
+    // 1.5 budgets in total over three legs: every leg may have finished well inside its own
+    // budget and the pair still be disconnected. The rule cannot tell, so it warns.
+    const adapter = (await adapterFor(connectionNotFoundAfter(clock, 1.5), clock)).adapter;
+    const result = await adapter.computeWalkingRoute(threeLegs);
+    expect(result.outcome).toBe('timeout');
+    expect(result.computation.warnings).toEqual(['timeout_may_be_no_route']);
+    expect(walkingRouteResultSchema.parse(result)).toEqual(result);
+  });
+
+  it('does not put the warning on a multi-leg no_route or on a deadline timeout', async () => {
+    const clock = new FixedClock();
+    const early = (await adapterFor(connectionNotFoundAfter(clock, 0.5), clock)).adapter;
+    const noRoute = await early.computeWalkingRoute(threeLegs);
+    expect(noRoute.outcome).toBe('no_route');
+    expect(noRoute.computation.warnings).toEqual([]);
+    // Our own deadline ran out before the search could start: a timeout of ours, not the
+    // engine's ambiguous ConnectionNotFound, so there is nothing to warn about.
+    const late = new FixedClock();
+    const spent = await adapterFor(
+      {
+        get: async (input) => {
+          late.advance(9_000);
+          if (input.path === '/info')
+            return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+          throw new Error('the search must not start');
+        },
+      },
+      late,
+    );
+    const outOfTime = await spent.adapter.computeWalkingRoute(threeLegs);
+    expect(outOfTime.outcome).toBe('timeout');
+    expect(outOfTime.computation.warnings).toEqual([]);
   });
 
   it.each([

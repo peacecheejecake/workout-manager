@@ -8,8 +8,11 @@ import { routingLimits } from '@workout/contracts/routing';
  * one tenant from holding several engine computations at once. Both are refusals, never
  * a queue that grows without a bound.
  *
- * In-process only. A multi-instance deployment needs a shared limiter, and this file
- * does not provide one.
+ * {@link TenantAdmissionControl} below counts in-process only. The production composition
+ * uses the PostgreSQL lease limiter instead (M2-01ah, `@workout/server-persistence/
+ * routing-admission`), which every API instance shares and which adds a cap on the engine's
+ * concurrency across all tenants. Both implement {@link RoutingAdmission}; the in-process one
+ * remains for tests and offline probes that have no database.
  */
 export interface AdmissionClock {
   /** Monotonic-enough milliseconds. Injected so tests do not sleep. */
@@ -18,15 +21,42 @@ export interface AdmissionClock {
 
 export interface AdmissionLease {
   readonly granted: true;
-  /** Idempotent: releasing twice does not return two permits. */
-  release(): void;
+  /**
+   * Idempotent: releasing twice does not return two permits. Never rejects; a shared limiter
+   * whose release cannot reach its store lets the permit's lease expire instead.
+   */
+  release(): void | Promise<void>;
 }
 
 export interface AdmissionRefusal {
   readonly granted: false;
-  readonly reason: 'rate' | 'concurrency' | 'capacity';
+  /**
+   * `rate` and `concurrency` are the tenant's own bounds. `capacity` is the in-process
+   * limiter's tracked-tenant cap. `engine_capacity` is the cap on the engine's concurrency
+   * summed over every tenant (M2-01ah). `limiter_unavailable` is a shared limiter that could
+   * not be asked, and `limiter_contended` one that could be asked but whose lock or statement
+   * timed out under contention: both refuse rather than admitting unchecked work, and are
+   * kept apart so an operator can tell an outage from load.
+   */
+  readonly reason:
+    | 'rate'
+    | 'concurrency'
+    | 'capacity'
+    | 'engine_capacity'
+    | 'limiter_unavailable'
+    | 'limiter_contended';
   /** Seconds after which a retry could succeed, for `retry-after`. */
   readonly retryAfterSeconds: number;
+}
+
+/**
+ * What the routing service asks before it calls the engine. A shared implementation answers
+ * asynchronously; the in-process one synchronously. Either way a refusal costs no engine work.
+ */
+export interface RoutingAdmission {
+  tryAcquire(
+    tenantId: string,
+  ): AdmissionLease | AdmissionRefusal | Promise<AdmissionLease | AdmissionRefusal>;
 }
 
 export interface TenantAdmissionLimits {
@@ -51,7 +81,7 @@ interface TenantState {
   lastSeen: number;
 }
 
-export class TenantAdmissionControl {
+export class TenantAdmissionControl implements RoutingAdmission {
   readonly #limits: TenantAdmissionLimits;
   readonly #clock: AdmissionClock;
   readonly #tenants = new Map<string, TenantState>();

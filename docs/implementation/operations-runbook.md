@@ -568,16 +568,78 @@ API가 참조 하나를 바꿔 한 번에 옮겨 간다. 이전 절차(엔진 �
 tenant 한도는 교체와 무관하게 이어진다.
 
 지켜지지 않는 것: 원자성은 **API 프로세스 하나 안에서**다. 인스턴스가 여럿이면 차례로 옮겨 가고, 그동안 일부는
-blue, 일부는 green으로 답한다(각각 일관되게, revision에 graph가 기록된다).
+blue, 일부는 green으로 답한다(각각 일관되게, revision에 graph가 기록된다). 여러 인스턴스에서는 **인스턴스마다**
+전환 파일을 쓰고 `SIGHUP`을 보낸다. 모든 인스턴스가 옮겨 간 것을 각 인스턴스의 `routing_deployment_switched` 로그로
+확인하기 전에는 blue를 끄지 않는다(끄면 아직 옮기지 않은 인스턴스는 `engine_unavailable`을 답한다). M2-01ah의 공유
+limiter는 이 roll-out 혼재를 없애지 않는다. 한도만 공유한다.
 
 ### 한도·취소 (M2-01k-e)
 
 - 요청 한도(엔진 호출 전 거절, 422): waypoint 2–12개, leg 직선 30 km, 합계 직선 100 km, 반복 waypoint.
-- tenant 한도(429 `overloaded`, `retry-after`): 동시 2건(`retry-after: 1`), 60초에 20건. **프로세스 안에서만** 센다.
+- tenant 한도(429 `overloaded`, `retry-after`): 동시 2건(`retry-after: 1`), 60초에 20건. **모든 API 인스턴스가
+  PostgreSQL 한 곳에서 함께 센다**(M2-01ah, 아래 "공유 limiter").
+- 엔진 전역 동시성 상한(429 `overloaded`, `retry-after: 1`): 모든 tenant·모든 인스턴스를 합쳐
+  `ROUTING_ENGINE_CONCURRENCY`건(기본 8, 정수 1–1024). 엔진 기계의 코어 수에 맞춘다. 기본 8은 probe를 돌린
+  데스크톱의 논리 코어 수이며 측정된 최적값이 아니다. routing 네 변수 없이 이것만 두면 `ROUTING_CONFIGURATION_INCOMPLETE`,
+  형식이 틀리면 `ROUTING_CONFIGURATION_INVALID`로 기동을 거절한다.
 - deadline 8초. 엔진에는 `timeout_ms = (남은 deadline − 예비분) / leg 수`를 매 요청 보낸다(GraphHopper는 leg마다
   timeout을 건다). 예비분은 deadline의 1/4, 최대 500 ms.
 - 응답 정점 20,000개, 엔진 방문 노드 1,000,000개, 응답 4 MiB.
 - 취소: 호출자는 즉시 답을 받지만 GraphHopper는 탐색 도중 멈출 수 없다. 엔진 연결은 엔진이 답할 때까지(최대
   deadline + 2초) 열어 두고, **tenant 허가도 그때까지 붙잡는다.** 취소를 반복해 동시 한도를 넘길 수 없다.
-- 여러 API 인스턴스: 현재 limiter는 인스턴스마다 따로 센다. **인스턴스를 둘 이상 띄우기 전에** 공유 limiter가
-  필요하다(결정: PostgreSQL 기반 lease. M2-01k-e 진행 문서 참조). 그 전까지 routing을 켠 API는 **한 인스턴스**로 운영한다.
+- 여러 API 인스턴스: M2-01ah 전에는 limiter가 인스턴스마다 따로 세서 routing을 켠 API를 한 인스턴스로 운영해야
+  했다. **한도에 관한 이 전제는 M2-01ah로 풀렸다.** 아래 남은 조건을 지키면 tenant 한도와 엔진 상한은 여러
+  인스턴스에서도 합산된다. 단, **원자적 graph 교체는 여전히 한 인스턴스일 때만 성립한다**: 여러 인스턴스는 차례로
+  옮겨 가며 그동안 graph가 섞인다(위 blue/green 절). 교체가 "한 번에"여야 하는 운영이면 교체하는 동안 한 인스턴스로 둔다.
+
+### 공유 limiter (M2-01ah)
+
+계산 하나마다 `routing_admission` 표(migration 047)에 허가 행 하나를 얻고 돌려준다.
+
+- **짧은 트랜잭션 두 번, 엔진 호출 동안에는 없음.** 획득(`acquire_routing_permit`)이 판단과 insert를 한 번에 하고
+  commit한다. 엔진이 돈다. 반환(`release_routing_permit`)이 행을 released로 표시하고 commit한다. 허가는 여전히
+  엔진이 멈출 때 돌아간다(호출자가 끊어도, 다른 인스턴스에서도 그 허가가 센다).
+- **만료.** 허가 행에는 `lease_until = 획득 시각 + 12초`(deadline 8초 + hard stop 유예 2초 + 여유 2초)가 있다.
+  인스턴스가 계산 도중 죽으면 그 허가는 lease가 끝나는 순간부터 세지 않는다. 누가 알아차릴 필요가 없다.
+- **종료.** API 종료(close)는 진행 중 허가의 반환을 최대 12초 기다린 뒤 DB pool을 닫는다. rolling restart가 엔진
+  자리를 lease 동안 헛되이 잡지 않는다. 강제 종료(SIGKILL)는 lease 만료가 대신한다.
+- **시각은 DB의 시계**(`clock_timestamp()`)다. 인스턴스 시계가 어긋나도 만료·창 판단은 같다.
+- **직렬화.** 획득은 advisory lock `(77206, 47)`을 잡고 센다. 두 인스턴스가 "한 자리 남음"을 동시에 보고 둘 다
+  가져가는 일이 없다. 잡는 시간은 count와 insert 한 번이다. 반환은 잡지 않는다.
+- **거절은 닫힌 쪽으로.** DB에 묻지 못하면 `overloaded`(`retry-after: 1`)로 거절하고 로그에 남긴다. 프로세스 안에서
+  세는 fallback은 없다. 반환이 실패하면 lease 만료가 허가를 돌려준다. DB 불통(연결 실패 등)은
+  `limiter_unavailable`, DB는 답하지만 획득 잠금이나 문장이 시간 제한(`lock_timeout` 3초, `statement_timeout` 5초)을
+  넘긴 경합은 `limiter_contended`로 구분해 로그한다. 앞의 것은 장애, 뒤의 것은 부하다.
+- **창 ≥ lease.** 청소는 창을 벗어나고 허가를 잡지 않은 행을 지운다. 그래서 tenant 창은 lease보다 짧을 수 없다.
+  limiter 생성과 DB 함수가 모두 이를 거절한다(`INVALID_ADMISSION_LIMITS` / `INVALID_ROUTING_ADMISSION_LIMITS`).
+  현재 값은 창 60초, lease 12초다.
+- **관측.** 기동 로그 `routing_admission_configured`(`limiter: postgresql`, `engineConcurrency`). 엔진 상한 도달과
+  limiter 불통·경합은 `routing_admission_refused`(`reason: engine_capacity | limiter_unavailable | limiter_contended`,
+  `engineInFlight`, `engineConcurrency`)로 warn. tenant id는 싣지 않는다. tenant가 자기 한도에 걸린 것은 평범한 429라
+  로그하지 않는다.
+  **`engine_capacity` 경보를 걸 때 알아 둘 것:** 기본 상한 8과 tenant 동시성 2에서는 **계정 넷이 엔진 자리 전부를
+  잡을 수 있다.** 그동안 다른 모든 tenant는 `engine_capacity` 429를 받는다(각 계정은 자기 한도 안이다). 이 경보가
+  잦으면 공정성 문제일 수 있으니 상한을 올리거나(엔진 코어가 허락하면) tenant 동시성을 다시 본다. tenant별 공정 배분은
+  구현되어 있지 않다.
+  현재 엔진 부하는 migration 소유자로 조회한다:
+  `SELECT count(*) FROM routing_admission WHERE released_at IS NULL AND lease_until > clock_timestamp();`
+  runtime 역할은 이 표에 아무 권한이 없다(두 함수의 EXECUTE만, `grantCourses`).
+- **삭제.** 계정 삭제(`erase_account`)는 그 tenant의 허가 행을 지운다. 창(60초)을 벗어나고 허가를 잡지 않은 행은
+  획득할 때 최대 500개씩 치운다.
+
+여러 인스턴스로 운영할 때 **남은 조건**:
+
+1. 모든 인스턴스가 **같은 PostgreSQL**을 쓰고, migration 047을 적용한 뒤 `grantCourses`를 다시 실행한다(runtime
+   역할의 EXECUTE). 적용 전 DB에서는 모든 계산이 `limiter_unavailable`로 거절된다.
+2. 모든 인스턴스의 **한도 설정이 같다**(`ROUTING_ENGINE_CONCURRENCY`와 코드에 든 tenant 한도, 즉 같은 release).
+   각 인스턴스는 자기 값으로 공유된 수를 판단하므로, 값이 다르면 더 느슨한 인스턴스가 그만큼 더 받는다.
+3. **graph 교체의 원자성은 여전히 프로세스 단위**다. 위 blue/green 절의 "지켜지지 않는 것"과 인스턴스별 전환 절차를
+   따른다. roll-out 중 혼재는 revision 기록과 양측 확인으로 안전하게 드러날 뿐 "한 번에"가 아니다.
+4. 엔진 상한은 **허가의 수**다. GraphHopper Jetty 스레드 풀이나 엔진 기계의 CPU를 직접 재지 않는다. 상한은 엔진
+   기계의 코어 수 이하로 둔다.
+5. DB가 느리면 획득 지연이 계산 시간에 더해진다(획득은 deadline 밖에서 일어난다). DB 장애는 routing을 닫는다.
+6. **배포 순서와 버전 차이.** M2-01ah는 contract에 warning 코드 `timeout_may_be_no_route`를 더했다(additive,
+   schemaVersion 1 그대로). rolling deploy 중 **이전 web bundle**은 이 값을 모르는 enum으로 보고 그 응답의 parse에
+   실패할 수 있다(다중 leg `timeout` 응답에만 실린다). API를 먼저 올리면 그 창 동안 이전 bundle의 다중 leg timeout
+   화면이 일반 오류로 보일 수 있다. web을 먼저(또는 함께) 배포하거나, 창이 짧다는 것을 받아들인다. 저장된 revision에는
+   실리지 않으므로(`timeout`은 저장되지 않는다) 배포가 끝나면 남는 영향은 없다.
