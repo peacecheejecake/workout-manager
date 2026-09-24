@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   GraphHopperRoutingAdapter,
@@ -188,5 +188,37 @@ describe('per tenant admission', () => {
     await service.compute('athlete-2', validRequest, {});
     const third = await service.compute('athlete-3', validRequest, {});
     expect(third.result.outcome).toBe('overloaded');
+  });
+});
+
+describe('a cancelled computation keeps its permit while the engine still searches (M2-01k-e)', () => {
+  it('refuses a third computation until the engine answers the two cancelled ones', async () => {
+    let release = () => {};
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engineCalls = { count: 0 };
+    const { service } = await serviceWith({ hold, engineCalls });
+    const first = new AbortController();
+    const second = new AbortController();
+    const one = service.compute('athlete-1', validRequest, { signal: first.signal });
+    const two = service.compute('athlete-1', validRequest, { signal: second.signal });
+    await vi.waitFor(() => expect(engineCalls.count).toBe(2));
+    first.abort();
+    second.abort();
+    // Both callers are answered at once...
+    expect((await one).result.outcome).toBe('cancelled');
+    expect((await two).result.outcome).toBe('cancelled');
+    // ...but the engine is still on both searches, so the tenant has no permit to spend.
+    const refused = await service.compute('athlete-1', validRequest, {});
+    expect(refused.result.outcome).toBe('overloaded');
+    expect(refused.retryAfterSeconds).toBe(1);
+    expect(engineCalls.count).toBe(2);
+    release();
+    await vi.waitFor(async () =>
+      expect((await service.compute('athlete-1', validRequest, {})).result.outcome).toBe(
+        'route_computed',
+      ),
+    );
   });
 });

@@ -5,12 +5,14 @@ import { walkingRouteResultSchema } from '@workout/contracts/routing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ENGINE_HARD_STOP_GRACE_MILLISECONDS,
   GraphHopperRoutingAdapter,
   GraphManifestError,
   RoutingTransportError,
   createRoutingEngineEndpoint,
   type GraphHopperAdapterOptions,
   edgeDetailsCoverGeometry,
+  engineReserveMilliseconds,
   geometryVisitsWaypointsInOrder,
   graphBuildIdFromManifest,
   haversineMeters,
@@ -480,6 +482,7 @@ describe('failures stay apart', () => {
 
   it.each([
     ['PointNotFoundException', 'outside_coverage'],
+    ['PointOutOfBoundsException', 'outside_coverage'],
     ['ConnectionNotFoundException', 'no_route'],
     ['MaximumNodesExceededException', 'compute_budget_exceeded'],
   ])('maps %s to %s', async (exception, outcome) => {
@@ -488,13 +491,45 @@ describe('failures stay apart', () => {
     expect(result.outcome).toBe(outcome);
   });
 
-  it('records that a NoRoute may be an exhausted engine budget', async () => {
-    const { transport } = stubTransport({
-      status: 400,
-      body: engineError('ConnectionNotFoundException'),
-    });
-    const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
-    expect(result.computation.warnings).toContain('no_route_may_be_engine_budget');
+  it('reports a ConnectionNotFound that came back inside the engine budget as no_route', async () => {
+    const clock = new FixedClock();
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        if (input.path === '/info')
+          return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+        // The engine searched for less than the budget it was given, so it did not time out.
+        clock.advance(Number(input.query.get('timeout_ms')) - 1);
+        return {
+          status: 400,
+          bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
+          truncated: false,
+          byteLength: 1,
+        };
+      },
+    };
+    const result = await (await adapterFor(transport, clock)).adapter.computeWalkingRoute(request);
+    expect(result.outcome).toBe('no_route');
+    expect(result.computation.warnings).toEqual([]);
+  });
+
+  it('reports a ConnectionNotFound that came back after the engine budget as timeout', async () => {
+    const clock = new FixedClock();
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        if (input.path === '/info')
+          return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+        // GraphHopper answers an exhausted timeout_ms exactly like a disconnected pair.
+        clock.advance(Number(input.query.get('timeout_ms')));
+        return {
+          status: 400,
+          bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
+          truncated: false,
+          byteLength: 1,
+        };
+      },
+    };
+    const result = await (await adapterFor(transport, clock)).adapter.computeWalkingRoute(request);
+    expect(result.outcome).toBe('timeout');
   });
 
   it.each([
@@ -565,5 +600,201 @@ describe('failures stay apart', () => {
     await vi.advanceTimersByTimeAsync(1_100);
     const result = await pending;
     expect(result.outcome).toBe('timeout');
+  });
+});
+
+describe('the engine search is bounded, and cancellation is honest about it (M2-01k-e)', () => {
+  const threeWaypoints: WalkingRouteRequest = {
+    ...request,
+    waypoints: [
+      [126.9769, 37.5759],
+      [126.9786, 37.5712],
+      [126.9779, 37.5663],
+    ],
+  };
+
+  /** A `/route` that answers only when the test says so, and records its signal. */
+  function heldEngine() {
+    let answer: (response: RoutingEngineResponse) => void = () => undefined;
+    const routeCalls: RoutingEngineTransportRequest[] = [];
+    const transport: RoutingEngineTransport = {
+      get(input) {
+        if (input.path === '/info')
+          return Promise.resolve({
+            status: 200,
+            bodyText: JSON.stringify(info),
+            truncated: false,
+            byteLength: 1,
+          });
+        routeCalls.push(input);
+        return new Promise((resolve, reject) => {
+          answer = resolve;
+          input.signal.addEventListener('abort', () =>
+            reject(new RoutingTransportError('ENGINE_ABORTED')),
+          );
+        });
+      },
+    };
+    return {
+      transport,
+      routeCalls,
+      answer: () =>
+        answer({
+          status: 200,
+          bodyText: JSON.stringify(realAnswer),
+          truncated: false,
+          byteLength: 1,
+        }),
+    };
+  }
+
+  it('sends the remaining deadline, less the reserve, as a per-leg engine timeout', async () => {
+    const clock = new FixedClock();
+    const seen: RoutingEngineTransportRequest[] = [];
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        seen.push(input);
+        // The identity check takes 300 ms of the deadline.
+        if (input.path === '/info') {
+          clock.advance(300);
+          return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+        }
+        return {
+          status: 200,
+          bodyText: JSON.stringify(realAnswer),
+          truncated: false,
+          byteLength: 1,
+        };
+      },
+    };
+    const { deployment } = await verifiedDeployment({ transport });
+    const adapter = new GraphHopperRoutingAdapter({ deployment, clock });
+    await adapter.computeWalkingRoute(threeWaypoints);
+    const route = seen.find((entry) => entry.path === '/route');
+    // (8000 - 300 - 500) / 2 legs: GraphHopper arms the timeout once per leg.
+    expect(route?.query.get('timeout_ms')).toBe('3600');
+    expect(engineReserveMilliseconds(8_000)).toBe(500);
+    expect(engineReserveMilliseconds(400)).toBe(100);
+  });
+
+  it('never asks the engine to search when no budget is left', async () => {
+    const clock = new FixedClock();
+    const seen: string[] = [];
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        seen.push(input.path);
+        clock.advance(7_600);
+        return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
+      },
+    };
+    const { deployment } = await verifiedDeployment({ transport });
+    const adapter = new GraphHopperRoutingAdapter({ deployment, clock });
+    const result = await adapter.computeWalkingRoute(request);
+    expect(result.outcome).toBe('timeout');
+    expect(seen).toEqual(['/info']);
+  });
+
+  it('answers a cancelled caller at once but keeps the engine connection until the engine stops', async () => {
+    const engine = heldEngine();
+    const { adapter } = await adapterFor(engine.transport);
+    const controller = new AbortController();
+    const tracked = adapter.computeWalkingRouteTracked(request, { signal: controller.signal });
+    let released = false;
+    void tracked.engineReleased.then(() => {
+      released = true;
+    });
+    await vi.waitFor(() => expect(engine.routeCalls).toHaveLength(1));
+    controller.abort();
+    expect((await tracked.result).outcome).toBe('cancelled');
+    // The caller has its answer; the engine is still searching and nothing pretends otherwise.
+    expect(engine.routeCalls[0]?.signal.aborted).toBe(false);
+    await Promise.resolve();
+    expect(released).toBe(false);
+    engine.answer();
+    await tracked.engineReleased;
+    expect(released).toBe(true);
+  });
+
+  it('does not start the search at all when the caller cancels during the identity check', async () => {
+    const controller = new AbortController();
+    const seen: string[] = [];
+    const transport: RoutingEngineTransport = {
+      async get(input) {
+        seen.push(input.path);
+        controller.abort();
+        throw new RoutingTransportError('ENGINE_ABORTED');
+      },
+    };
+    const { adapter } = await adapterFor(transport);
+    const tracked = adapter.computeWalkingRouteTracked(request, { signal: controller.signal });
+    expect((await tracked.result).outcome).toBe('cancelled');
+    await tracked.engineReleased;
+    expect(seen).toEqual(['/info']);
+  });
+
+  it('cuts the engine connection only at the deadline plus the grace period', async () => {
+    vi.useFakeTimers();
+    const engine = heldEngine();
+    const { deployment } = await verifiedDeployment({ transport: engine.transport });
+    const adapter = new GraphHopperRoutingAdapter({
+      deployment,
+      clock: new FixedClock(),
+      deadlineMilliseconds: 1_000,
+    });
+    const tracked = adapter.computeWalkingRouteTracked(request);
+    let released = false;
+    void tracked.engineReleased.then(() => {
+      released = true;
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await tracked.result).outcome).toBe('timeout');
+    expect(engine.routeCalls[0]?.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(ENGINE_HARD_STOP_GRACE_MILLISECONDS - 10);
+    expect(released).toBe(false);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(engine.routeCalls[0]?.signal.aborted).toBe(true);
+    expect(released).toBe(true);
+  });
+
+  it('refuses an answer with more vertices than the configured response bound', async () => {
+    const { transport } = stubTransport({ status: 200, body: realAnswer });
+    const { deployment } = await verifiedDeployment({ transport });
+    const vertices = realAnswer.paths[0].points.coordinates.length;
+    const tight = new GraphHopperRoutingAdapter({
+      deployment,
+      clock: new FixedClock(),
+      maxResponsePoints: vertices - 1,
+    });
+    expect((await tight.computeWalkingRoute(request)).outcome).toBe('engine_contract_violation');
+    const exact = new GraphHopperRoutingAdapter({
+      deployment,
+      clock: new FixedClock(),
+      maxResponsePoints: vertices,
+    });
+    expect((await exact.computeWalkingRoute(request)).outcome).toBe('route_computed');
+    expect(
+      () =>
+        new GraphHopperRoutingAdapter({
+          deployment,
+          clock: new FixedClock(),
+          maxResponsePoints: 20_001,
+        }),
+    ).toThrow('INVALID_RESPONSE_POINT_LIMIT');
+  });
+
+  it('verifies a running engine against the pin before anything is switched to it', async () => {
+    const { transport } = stubTransport({ status: 200, body: realAnswer });
+    const { adapter } = await adapterFor(transport);
+    const ok = await adapter.verifyEngineIdentity();
+    expect(ok.ok && ok.identity.identitySource).toBe('engine');
+    const other = stubTransport(
+      { status: 200, body: realAnswer },
+      { ...info, import_date: '2026-09-23T04:11:56Z' },
+    );
+    const { adapter: pinnedElsewhere } = await adapterFor(other.transport);
+    expect(await pinnedElsewhere.verifyEngineIdentity()).toEqual({
+      ok: false,
+      outcome: 'graph_mismatch',
+    });
   });
 });

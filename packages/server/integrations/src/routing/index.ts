@@ -32,13 +32,16 @@ export {
   type VerifiedRoutingGraph,
 } from './graph-manifest.js';
 export {
+  ENGINE_HARD_STOP_GRACE_MILLISECONDS,
   GraphHopperRoutingAdapter,
   distanceMatchesGeometry,
+  engineReserveMilliseconds,
   edgeDetailsCoverGeometry,
   geometryVisitsWaypointsInOrder,
   type GraphHopperAdapterOptions,
   type RoutingClock,
   type RoutingComputeContext,
+  type TrackedWalkingRoute,
 } from './graphhopper-adapter.js';
 export {
   RoutingRequestError,

@@ -1346,8 +1346,9 @@
       "title": "routing 운영: 원자적 교체, 한도, 취소, 결과 구별",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "엔진 두 벌(blue/green)과 API 신원 전환을 한 번에 바꾸는 절차, 또는 명시적 유지보수 창을 결정하고, 다른 extract로 만든 graph로 교체·rollback을 probe로 실행한다. tenant 한도(동시성·waypoint·거리·응답점수·deadline)를 실제 구성에서 관측하고, 여러 인스턴스 limiter를 결정한다. 취소가 엔진 탐색을 실제로 멈추게 한다. 실제 엔진에서 no_route·outside_coverage·snap_too_far·timeout을 각각 관측한다. 데이터 취득 allowlist 시험을 다시 실행한다 닫을 매트릭스 행: K-graph-rollback, P8-self-ops, P6-tenant-limits, P6-cancel-bound, P6-outcomes-distinct, P6-allowlist. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "엔진 두 벌(blue/green)과 API 신원 전환을 한 번에 바꾸는 절차, 또는 명시적 유지보수 창을 결정하고, 다른 extract로 만든 graph로 교체·rollback을 probe로 실행한다. tenant 한도(동시성·waypoint·거리·응답점수·deadline)를 실제 구성에서 관측하고, 여러 인스턴스 limiter를 결정한다. 취소가 엔진 탐색을 실제로 멈추게 한다. 실제 엔진에서 no_route·outside_coverage·snap_too_far·timeout을 각각 관측한다. 데이터 취득 allowlist 시험을 다시 실행한다 닫을 매트릭스 행: K-graph-rollback, P8-self-ops, P6-tenant-limits, P6-cancel-bound, P6-outcomes-distinct, P6-allowlist. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-e.md"
     },
     {
       "id": "M2-01k-f",
@@ -1454,7 +1455,15 @@
       "dependsOn": ["M2-01k-c1"],
       "kind": "task",
       "status": "not_started",
-      "scope": "M2-01k-c1 2차 독립 검토의 비차단 공백. 태블릿에서 코스 목록은 높이가 묶여 내부 스크롤된다. (a) 주소(/courses/:id/edit)로 연 코스가 목록에서 보이도록 스크롤되지 않는다 — 선택 시 목록 안에서 scrollIntoView(block: nearest)로 보이게 한다. (b) 목록의 접기·순서 전환 버튼이 목록과 함께 스크롤되어 사라진다 — pane의 제어 줄을 sticky로 둔다. 두 shell E2E로 단언하고, 각 동작을 되돌리는 변이로 비공허성을 보인다. M2-01k-i(목록 drag)와 같은 편집기 영역을 건드리므로 순서를 조정한다."
+      "scope": "M2-01k-c1 2차 독립 검토의 비차단 공백. 태블릿에서 코스 목록은 높이가 묶여 내부 스크롤된다. (a) 주소(/courses/:id/edit)로 연 코스가 목록에서 보이도록 스크롤되지 않는다 — 선택 시 목록 안에서 scrollIntoView(block: nearest)로 보이게 한다. (b) 목록의 접기·순서 전환 버튼이 목록과 함께 스크롤되어 사라진다 — pane의 제어 줄을 sticky로 둔다. 두 shell E2E로 단언하고, 각 동작을 되돌리는 변이로 비공허성을 보인다. M2-01k-i는 경유점 목록 drag이고 이 노드는 코스 목록 pane을 바꾸므로 영역은 다르지만, 두 노드 모두 course editor 배치 파일을 건드리므로 동시에 진행하지 않는다."
+    },
+    {
+      "id": "M2-01ah",
+      "title": "routing 여러 인스턴스 limiter와 전역 엔진 상한",
+      "dependsOn": ["M2-01k-e"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01k-e에서 분리. 지금 routing tenant 한도(TenantAdmissionControl)와 graph 교체의 원자성은 프로세스 단위이며, K-graph-rollback·P6-tenant-limits의 passed는 \"routing API 단일 인스턴스\" 전제에 묶여 있다(runbook). 두 번째 API 인스턴스를 띄우기 전에: (a) M2-01k-e §1.4에서 채택한 PostgreSQL lease limiter(만료 있는 lease 행, 엔진 호출 동안 트랜잭션을 잡지 않음, 같은 표의 시각 창으로 rate)를 구현하고 두 프로세스에서 tenant 한도가 합산됨을 실제 PostgreSQL로 단언한다. (b) tenant 합계의 전역 엔진 동시성 상한을 두어 엔진 과부하를 막는다. (c) 다중 leg 요청의 timeout이 실제로는 NoRoute일 수 있음을 알리는 warning 코드를 contract에 추가한다(M2-01k-e §1.3). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-e.md §1.4, §7."
     },
     {
       "id": "M2-01k",

@@ -124,8 +124,12 @@ export type RouteConditions = z.infer<typeof routeConditionsSchema>;
 
 /**
  * A warning never upgrades an outcome. It records something the reader must not assume
- * away — for example that an exhausted engine budget cannot be told apart from a
- * genuinely disconnected pair.
+ * away.
+ *
+ * `no_route_may_be_engine_budget` is no longer produced (M2-01k-e): the adapter now sets the
+ * engine's per-request budget itself and reports an answer that came back after it as
+ * `timeout`, so a `no_route` is no longer ambiguous. The code stays in the enum because
+ * revisions stored before that change carry it.
  */
 export const routeWarningCodeSchema = z.enum([
   'no_route_may_be_engine_budget',

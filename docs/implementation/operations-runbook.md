@@ -533,7 +533,51 @@ threshold)이 보호다. `RouteResource` logger를 WARN/OFF로 고정하는 일�
 검증은 `node --import tsx scripts/probe-routing-engine-logs.mts --execute`다. 실제 jar를 이 helper로
 띄우고, 심은 좌표가 엔진 stdout/stderr에 0건이어야 PASS다. `--console-threshold INFO`를 붙이면 기동 인자만의
 보장을 본다. 요청 줄은 query를 담지 않아야 PASS이고, 이때 `RouteResource` 줄의 waypoint는 보고만 한다.
-graph를 바꿀 때는 엔진 재시작과 API 재배포 **두 단계**다. 원자적이지 않다. 그 사이에는 API가
-`graph_mismatch`(502)로 계산을 거절하며, 저장된 코스는 재계산되지 않는다. rollback도 같은 두 단계다.
+graph 교체·rollback은 아래 blue/green 절차를 따른다(M2-01k-e).
+
 identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다
 (기본은 fixture 엔진).
+
+### graph 교체·rollback — blue/green (M2-01k-e)
+
+**서빙 중인 엔진을 제자리에서 재시작하지 않는다.** 새 graph는 **두 번째 엔진**(다른 port)으로 띄우고,
+API가 참조 하나를 바꿔 한 번에 옮겨 간다. 이전 절차(엔진 재시작 → API 재배포 두 단계, 그 사이 `graph_mismatch`)는
+더 쓰지 않는다.
+
+1. green 엔진을 blue와 **똑같이** 띄운다: 같은 jar, 같은 serving profile, `graphhopperJavaArguments`가 만든 인자
+   (`-Ddw.server.request_log.type=external` 포함 — 빼면 waypoint가 엔진 로그에 남는다, 위 절). 다른 것은 port뿐이며
+   helper의 `ports`(`{application: 8993, admin: 8994}`)로 옮긴다. 이것은
+   `-Ddw.server.application_connectors[0].port=8993`, `-Ddw.server.admin_connectors[0].port=8994`가 된다.
+   profile 파일은 복사하지 않는다(manifest가 그 해시를 고정한다).
+2. API 기동 환경에 `ROUTING_SWITCH_FILE=<절대 경로>`를 둔다. 파일은 API 프로세스의 uid가 소유하고 group·other 쓰기가
+   없어야 한다(예: `chmod 600`). 일반 파일이 아니면(FIFO·디렉터리·장치) `ROUTING_SWITCH_FILE_NOT_REGULAR`, 소유자가 다르면 `ROUTING_SWITCH_FILE_NOT_OWNED`,
+   group·other 쓰기가 있으면 `ROUTING_SWITCH_FILE_WRITABLE_BY_OTHERS`로 거절한다(FIFO에서도 막히지 않는다). 교체할 때 그 파일에
+   `{"action":"switch","ROUTING_ENGINE_URL":"http://127.0.0.1:8993/","ROUTING_GRAPH_DIRECTORY":…,"ROUTING_ENGINE_ARTIFACT":…,"ROUTING_PROFILE_CONFIG":…}`를
+   쓰고 API 프로세스에 `SIGHUP`을 보낸다.
+3. API는 green graph를 디스크에서 검증하고(graph·jar·profile 해시), green 엔진의 `/info`가 그 graph와
+   정확히 같은지 확인한 **뒤에만** 활성 배포를 바꾼다. 실패하면 아무것도 바뀌지 않고 로그에 코드만 남는다
+   (`routing_deployment_switch_refused`: `ROUTING_SWITCH_ENGINE_NOT_SERVING`, `ROUTING_SWITCH_SAME_ENGINE`,
+   `GRAPH_CONTENT_CHANGED`, `ENDPOINT_HOST_NOT_ALLOWED` …). 성공하면 `routing_deployment_switched`에 이전·새 build id.
+4. rollback은 파일에 `{"action":"rollback"}`을 쓰고 `SIGHUP`. 직전 배포로 되돌아가며, 그 엔진이 **아직 같은 graph를
+   서빙 중**이어야 한다. 그래서 blue는 green이 충분히 확인될 때까지 끄지 않는다.
+5. blue는 모든 API 인스턴스가 옮겨 가고 진행 중 계산이 끝난 뒤 끈다(계산 하나는 최대 deadline 8초 + 유예 2초).
+
+지켜지는 것: 한 계산은 활성 배포를 한 번 읽고 그 배포의 엔진에게만 묻는다(신원과 경로 모두). 교체 전 계산은 blue에서
+끝나고 blue의 신원을 기록한다. 저장된 코스는 재계산되지 않고, 다른 graph의 제안 저장은 여전히 양측 확인이 필요하다.
+전환 파일은 `ROUTING_ENGINE_ALLOWED_HOSTS`를 담을 수 없다(host allowlist는 기동 설정이고 교체로 넓힐 수 없다).
+tenant 한도는 교체와 무관하게 이어진다.
+
+지켜지지 않는 것: 원자성은 **API 프로세스 하나 안에서**다. 인스턴스가 여럿이면 차례로 옮겨 가고, 그동안 일부는
+blue, 일부는 green으로 답한다(각각 일관되게, revision에 graph가 기록된다).
+
+### 한도·취소 (M2-01k-e)
+
+- 요청 한도(엔진 호출 전 거절, 422): waypoint 2–12개, leg 직선 30 km, 합계 직선 100 km, 반복 waypoint.
+- tenant 한도(429 `overloaded`, `retry-after`): 동시 2건(`retry-after: 1`), 60초에 20건. **프로세스 안에서만** 센다.
+- deadline 8초. 엔진에는 `timeout_ms = (남은 deadline − 예비분) / leg 수`를 매 요청 보낸다(GraphHopper는 leg마다
+  timeout을 건다). 예비분은 deadline의 1/4, 최대 500 ms.
+- 응답 정점 20,000개, 엔진 방문 노드 1,000,000개, 응답 4 MiB.
+- 취소: 호출자는 즉시 답을 받지만 GraphHopper는 탐색 도중 멈출 수 없다. 엔진 연결은 엔진이 답할 때까지(최대
+  deadline + 2초) 열어 두고, **tenant 허가도 그때까지 붙잡는다.** 취소를 반복해 동시 한도를 넘길 수 없다.
+- 여러 API 인스턴스: 현재 limiter는 인스턴스마다 따로 센다. **인스턴스를 둘 이상 띄우기 전에** 공유 limiter가
+  필요하다(결정: PostgreSQL 기반 lease. M2-01k-e 진행 문서 참조). 그 전까지 routing을 켠 API는 **한 인스턴스**로 운영한다.

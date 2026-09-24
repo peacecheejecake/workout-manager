@@ -59,13 +59,28 @@ export interface EngineHandle {
   readonly log: () => string;
 }
 
-/** Starts the engine on loopback with the pinned serving profile. */
+/** Loopback listener ports for one engine instance: the API port and the admin port. */
+export interface EnginePorts {
+  readonly application: number;
+  readonly admin: number;
+}
+
+/**
+ * Starts the engine on loopback with the pinned serving profile.
+ *
+ * `ports` moves the listeners with Dropwizard `-Ddw.` overrides instead of a second profile
+ * file (M2-01k-e). A blue/green pair must run the SAME profile configuration, whose SHA-256
+ * the graph manifest pins; a copy that differed only in its port would be a different
+ * profile to the deployment guard. The bind host stays whatever the profile says
+ * (127.0.0.1).
+ */
 export function startEngine(options: {
   jarPath: string;
   configPath: string;
   extractPath: string;
   graphPath: string;
   heapMegabytes?: number;
+  ports?: EnginePorts;
 }): EngineHandle {
   // One command line for every launch: it carries the request-log override that keeps
   // waypoints out of the engine's log (M2-01k-c2, scripts/geo/graphhopper-launch.mjs).
@@ -77,6 +92,8 @@ export function startEngine(options: {
       extractPath: options.extractPath,
       graphPath: options.graphPath,
       ...(options.heapMegabytes === undefined ? {} : { heapMegabytes: options.heapMegabytes }),
+      // Blue/green (M2-01k-e): the listener ports move through the same helper.
+      ...(options.ports === undefined ? {} : { ports: options.ports }),
     }),
     { stdio: ['ignore', 'pipe', 'pipe'], cwd: dirname(options.jarPath) },
   );
@@ -136,6 +153,14 @@ export async function importRoutingGraph(options: {
   readonly extractSha256: string;
   readonly profileConfigSha256: string;
   readonly extractByteLength: number;
+  /**
+   * A different extract than the allowlisted one under `.geo-build/source` (M2-01k-e's
+   * blue/green probe imports a clip of it). The caller hashes it and names its region;
+   * both land in the manifest, so the graph never claims the default extract's provenance.
+   */
+  readonly extract?: { readonly path: string; readonly region: string };
+  /** Listener ports for the import engine, so an import can run beside a serving engine. */
+  readonly ports?: EnginePorts;
 }): Promise<RoutingGraphManifest> {
   await rm(options.graphDirectory, { recursive: true, force: true });
   await mkdir(options.graphDirectory, { recursive: true });
@@ -143,13 +168,15 @@ export async function importRoutingGraph(options: {
   const engine = startEngine({
     jarPath,
     configPath: routingGraphConfig,
-    extractPath,
+    extractPath: options.extract?.path ?? extractPath,
     graphPath: options.graphDirectory,
+    ...(options.ports ? { ports: options.ports } : {}),
   });
+  const port = options.ports?.application ?? ENGINE_PORT;
   let info: { version: string; import_date: string; data_date: string; profiles: string[] };
   try {
-    await waitForEngine(engine);
-    const response = await fetch(`http://127.0.0.1:${ENGINE_PORT}/info`);
+    await waitForEngine(engine, port);
+    const response = await fetch(`http://127.0.0.1:${port}/info`);
     const body: unknown = await response.json();
     const parsed = body as {
       version?: unknown;
@@ -193,7 +220,7 @@ export async function importRoutingGraph(options: {
     profileConfigSha256: options.profileConfigSha256,
     profileName: 'foot',
     extractSha256: options.extractSha256,
-    extractRegion: EXTRACT_REGION,
+    extractRegion: options.extract?.region ?? EXTRACT_REGION,
     extractByteLength: options.extractByteLength,
     graphContentSha256,
     graphImportedAt: properties.graphImportedAt,

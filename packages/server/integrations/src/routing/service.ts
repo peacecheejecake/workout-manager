@@ -97,13 +97,14 @@ export class WalkingRouteService {
         retryAfterSeconds: lease.retryAfterSeconds,
       };
     }
-    try {
-      const result = await this.#adapter.computeWalkingRoute(request, context);
-      return { result, retryAfterSeconds: null };
-    } finally {
-      // Released on success, failure and cancellation alike: a cancelled request must not
-      // keep holding a tenant's permit.
-      lease.release();
-    }
+    const tracked = this.#adapter.computeWalkingRouteTracked(request, context);
+    // The permit follows the ENGINE, not the caller (M2-01k-e). A cancelled or timed-out
+    // caller is answered at once, but the engine cannot be told to stop mid-search and
+    // runs until its own per-request budget ends; releasing the permit on the caller's
+    // answer would let one tenant cancel and resubmit its way past the concurrency bound
+    // while the engine kept every search running. `engineReleased` never rejects and is
+    // bounded by the deadline plus a grace period, so no permit is held without a bound.
+    void tracked.engineReleased.then(() => lease.release());
+    return { result: await tracked.result, retryAfterSeconds: null };
   }
 }

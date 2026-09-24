@@ -1,4 +1,4 @@
-# 다음 세션 handoff · 2026-09-24
+# 다음 세션 handoff · 2026-09-25
 
 최신 상태는 [task-graph.json](task-graph.json), 요구·수용 기준은
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
@@ -17,17 +17,25 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-c1](progress/M2-01k-c1.md)를 완료했다. 태블릿에서 경유점 목록을 접을 수 있게 하고 지도 옆에 두었다. 사용자가
-2026-09-24에 새 배치(코스 목록 위·높이 제한·내부 스크롤, 아래에 지도와 편집기 나란히)를 수용했다. 이미 구현되어 있었지만
-단언이 없던 되돌리기·다시 실행의 경유점 내용, 안전 비보장 문구, 늦은 옛 응답이 새 경로를 덮지 않음, 저장 실패(결과 불명 뒤
-같은 idempotency key 재시도)를 두 shell E2E와 변이로 단언했다. 독립 검토 1차가 코스가 많을 때 지도가 첫 화면 밖으로 밀리는
-회귀를 잡아 고쳤다. 매트릭스 6행을 passed로 올렸다(passed 42 → 48). 남은 사용성 공백은 M2-01ag로 분리했다.
+[M2-01k-e](progress/M2-01k-e.md)를 완료했다. routing graph를 blue/green 엔진 두 벌과 API 신원 한 번의 전환으로 교체·rollback한다.
+다른 extract로 만든 graph C로 부하 중 교체·rollback을 실제 엔진 probe로 실행했다(실패 0, 전환 뒤 옛 graph 답 0). 엔진 탐색은
+요청마다 보낸 `timeout_ms`로 deadline 안에서 멈추고, no_route·outside_coverage·snap_too_far·timeout을 실제 엔진에서 각각
+관측했다. 전환 파일은 프로세스 uid 소유의 일반 파일이고 group·world 쓰기 불가일 때만 읽는다(FIFO도 막히지 않고 거절).
+매트릭스 5행을 passed로 올렸다(passed 48 → 53). **K-graph-rollback·P6-tenant-limits는 routing API 단일 인스턴스 전제**이며
+runbook에 적었다. 여러 인스턴스 limiter(PostgreSQL lease)·전역 엔진 상한·다중 leg timeout warning은 M2-01ah로 분리했다.
 
-직전 완료: [M2-01k-c2](progress/M2-01k-c2.md)(로그에서 waypoint 제거, routing 엔진 access log 누출 수정).
+직전 완료: [M2-01k-c1](progress/M2-01k-c1.md)(태블릿 접히는 경유점 목록, 편집 단언 공백).
+
+## 운영 메모
+
+- 운영 API는 `WORKOUT_RELEASE`를 반드시 설정한다. 없으면 로그의 version이 `unreleased`로 남는다(M2-01k-c2).
+- routing을 켠 API는 한 인스턴스로 운영한다. 두 번째 인스턴스는 M2-01ah가 끝난 뒤에 띄운다.
 
 ## 다음 ready 작업
 
-`M2-01k-i`는 이제 ready다(M2-01k-c1 완료). M2-01ag는 ready다. 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 이제 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01af는 M2-01k-e 뒤다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
+진행 중: M2-01k-d, M2-01k-f, M2-01k-g, M2-01k-i, M2-01k-l. 아직 시작하지 않은 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j,
+M2-01k-m, M2-01k-n, M2-01ag(M2-01k-i와 동시에 진행하지 않음), M2-01af(M2-01k-e 완료로 ready), M2-01ah. `M2-01k-o`(공유)는
+의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

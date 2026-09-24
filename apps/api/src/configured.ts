@@ -30,7 +30,10 @@ import { createCourseRepository } from '@workout/server-persistence/courses';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createCoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import { loadGeoDatasets } from './geo-datasets.js';
-import { createConfiguredWalkingRoutes } from './routing-deployment.js';
+import {
+  createConfiguredWalkingRoutes,
+  type RoutingDeploymentSwitch,
+} from './routing-deployment.js';
 import { createPrivateTextResourceRepository } from '@workout/server-persistence/resources';
 import { createResourceFileUploadRepository } from '@workout/server-persistence/resource-file-uploads';
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
@@ -91,8 +94,19 @@ function plainEnvironment(environment: unknown): unknown {
     : environment;
 }
 
+export interface ConfiguredApiOptions {
+  /**
+   * Receives the blue/green routing control when routing is configured (M2-01k-e), so the
+   * entrypoint can wire an operator trigger to it. Not called when routing is off.
+   */
+  readonly onRoutingDeployments?: (control: RoutingDeploymentSwitch) => void;
+}
+
 /** The supplied database role must be the restricted runtime role, never the migration owner. */
-export async function createConfiguredApi(environment: unknown) {
+export async function createConfiguredApi(
+  environment: unknown,
+  options: ConfiguredApiOptions = {},
+) {
   const env = environmentSchema.parse(environment);
   if (env.NODE_ENV === 'production' && env.ALLOW_INSECURE_LOCALHOST === 'true')
     throw new Error('Insecure production configuration');
@@ -152,6 +166,7 @@ export async function createConfiguredApi(environment: unknown) {
     const routing = await createConfiguredWalkingRoutes(
       z.record(z.string(), z.unknown()).parse(plainEnvironment(environment)),
     );
+    if (routing !== null) options.onRoutingDeployments?.(routing.deployments);
     const identity = createIdentityService({
       store,
       provider,

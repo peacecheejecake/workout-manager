@@ -101,7 +101,39 @@ export interface GraphHopperAdapterOptions {
   readonly deadlineMilliseconds?: number;
   readonly maxVisitedNodes?: number;
   readonly snapLimitMeters?: number;
+  /**
+   * Vertices one answer may carry. Defaults to the contract's bound and may only be lower;
+   * a lower value exists so the bound itself can be observed against a real engine whose
+   * region never produces a route that long (M2-01k-e).
+   */
+  readonly maxResponsePoints?: number;
 }
+
+/** A computation's answer, and separately, when the engine stopped working on it. */
+export interface TrackedWalkingRoute {
+  /** Settles as soon as the caller has an answer, including a cancellation or timeout. */
+  readonly result: Promise<WalkingRouteResult>;
+  /**
+   * Resolves once the engine is no longer searching for this request: it answered, it was
+   * never asked, or the hard stop cut the connection. Never rejects.
+   */
+  readonly engineReleased: Promise<void>;
+}
+
+/**
+ * Time kept back from the engine's budget for the identity check, the answer's transfer and
+ * its validation: a quarter of the deadline, at most 500 ms.
+ */
+export function engineReserveMilliseconds(deadlineMilliseconds: number): number {
+  return Math.min(500, Math.floor(deadlineMilliseconds / 4));
+}
+
+/**
+ * How long past the caller's deadline the engine connection is kept open to learn when the
+ * engine stopped. The engine's own `timeout_ms` ends before the deadline, so this is only
+ * reached by an engine that is not honouring it.
+ */
+export const ENGINE_HARD_STOP_GRACE_MILLISECONDS = 2_000;
 
 const positionSchema = z
   .array(z.number().finite())
@@ -158,6 +190,7 @@ export class GraphHopperRoutingAdapter {
   readonly #deadlineMilliseconds: number;
   readonly #maxVisitedNodes: number;
   readonly #snapLimitMeters: number;
+  readonly #maxResponsePoints: number;
 
   constructor(options: GraphHopperAdapterOptions) {
     // Consumption is guarded, not just construction: a structurally identical object that
@@ -169,6 +202,36 @@ export class GraphHopperRoutingAdapter {
     this.#deadlineMilliseconds = options.deadlineMilliseconds ?? routingLimits.deadlineMilliseconds;
     this.#maxVisitedNodes = options.maxVisitedNodes ?? routingLimits.maxEngineVisitedNodes;
     this.#snapLimitMeters = options.snapLimitMeters ?? routingLimits.maxSnapMeters;
+    const maxResponsePoints = options.maxResponsePoints ?? routingLimits.maxResponsePoints;
+    // Only ever tighter than the contract: the result schema refuses more points anyway.
+    if (
+      !Number.isInteger(maxResponsePoints) ||
+      maxResponsePoints < 2 ||
+      maxResponsePoints > routingLimits.maxResponsePoints
+    )
+      throw new Error('INVALID_RESPONSE_POINT_LIMIT');
+    this.#maxResponsePoints = maxResponsePoints;
+  }
+
+  /**
+   * Ask the engine at this deployment's endpoint who it is, once, and compare it to the
+   * pin. Used before a deployment is switched in, so a switch cannot point the API at an
+   * engine that is down or serving another graph. Bounded by `timeoutMilliseconds`.
+   */
+  async verifyEngineIdentity(
+    timeoutMilliseconds = 2_000,
+  ): Promise<
+    { ok: true; identity: RoutingGraphIdentity } | { ok: false; outcome: FailureOutcome }
+  > {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMilliseconds);
+    try {
+      const resolved = await this.#identity(controller.signal);
+      if (!resolved.ok && controller.signal.aborted) return { ok: false, outcome: 'timeout' };
+      return resolved;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** The identity used when the engine was never reached. Nothing here is an observation. */
@@ -214,8 +277,13 @@ export class GraphHopperRoutingAdapter {
    *
    * The residual window, stated rather than hidden: the engine is asked who it is and
    * then asked to route, as two requests. A swap landing between those two would be
-   * attributed to the identity read a few milliseconds earlier. Closing that needs the
-   * route response itself to carry the graph identity, which this engine does not offer.
+   * attributed to the identity read a few milliseconds earlier. Closing that in the
+   * protocol needs the route response itself to carry the graph identity, which this
+   * engine does not offer. It is closed by PROCEDURE instead (M2-01k-e): a serving engine
+   * never changes graph in place — a new graph is started as a second engine on its own
+   * port and the API switches to it (`RoutingDeploymentSwitch`) — so the engine behind one
+   * endpoint cannot change between the two requests unless an operator breaks that rule,
+   * and then this check still catches it on the next computation.
    */
   async #identity(
     signal: AbortSignal,
@@ -268,19 +336,84 @@ export class GraphHopperRoutingAdapter {
     request: WalkingRouteRequest,
     context: RoutingComputeContext = {},
   ): Promise<WalkingRouteResult> {
+    return this.computeWalkingRouteTracked(request, context).result;
+  }
+
+  /**
+   * One bounded computation, with the engine's own lifetime reported separately
+   * (M2-01k-e).
+   *
+   * WHAT CANCELLATION CAN AND CANNOT DO TO THIS ENGINE. GraphHopper 10.0 has no request
+   * cancellation: a `/route` search runs until it finds a path, exhausts
+   * `max_visited_nodes`, or passes its `timeout_ms`, whatever the HTTP client does. Closing
+   * our connection would only stop us from learning when it finished. So:
+   *
+   * - A cancellation that arrives before `/route` is sent stops the search from ever
+   *   starting (the identity check is aborted and `/route` is never requested).
+   * - Every `/route` carries `timeout_ms`: the caller's remaining deadline minus a reserve,
+   *   divided by the number of legs, because GraphHopper arms that timeout per leg. The
+   *   engine therefore stops searching by the caller's deadline at the latest, cancelled
+   *   or not.
+   * - A cancellation or deadline that arrives mid-search answers the caller at once, but
+   *   the connection to the engine stays open until the engine answers, so
+   *   {@link TrackedWalkingRoute.engineReleased} says when the engine really stopped. The
+   *   service holds the tenant's permit until then: cancelling cannot free capacity the
+   *   engine is still spending. A hard stop (deadline plus a grace period) cuts the
+   *   connection if the engine never answers, so nothing waits without a bound.
+   *
+   * WHY `timeout` AND `no_route` STAY APART. The engine answers an exhausted `timeout_ms`
+   * with the same `ConnectionNotFoundException` as a genuinely disconnected pair. The
+   * adapter set that budget itself, so time tells them apart: an answer that came back
+   * before the per-leg budget could have run out cannot be a timeout and is `no_route`;
+   * one that came back after it is reported as `timeout`.
+   *
+   * THE LIMIT OF THAT RULE. It compares the engine's TOTAL answer time with the PER-LEG
+   * budget, because the answer does not say which leg failed or how long each leg took.
+   * Only the direction "faster than one leg's budget ⇒ no leg timed out" is exact. With
+   * several legs, a genuine NoRoute whose legs together took longer than one leg's budget
+   * (each leg well inside it) is reported as `timeout`. With one leg the rule is exact up
+   * to transfer time. The error is always toward `timeout`, which claims nothing about the
+   * network and invites a retry; a `no_route` is never a disguised timeout.
+   */
+  computeWalkingRouteTracked(
+    request: WalkingRouteRequest,
+    context: RoutingComputeContext = {},
+  ): TrackedWalkingRoute {
+    let releaseEngine: () => void = () => undefined;
+    const engineReleased = new Promise<void>((resolve) => {
+      releaseEngine = resolve;
+    });
+    let routeCallStarted = false;
+    const result = this.#compute(request, context, (settled) => {
+      routeCallStarted = true;
+      void settled.then(releaseEngine, releaseEngine);
+    }).finally(() => {
+      // `/route` was never requested: the engine is not working on this request.
+      if (!routeCallStarted) releaseEngine();
+    });
+    return { result, engineReleased };
+  }
+
+  async #compute(
+    request: WalkingRouteRequest,
+    context: RoutingComputeContext,
+    routeCallStarted: (settled: Promise<unknown>) => void,
+  ): Promise<WalkingRouteResult> {
     const startedAt = this.#clock.now().getTime();
     const callerSignal = context.signal;
-    const controller = new AbortController();
+    // `early` ends the caller's wait: its own cancellation or the deadline. It aborts the
+    // identity request, but never the `/route` request (see above).
+    const early = new AbortController();
     // Built by hand rather than with AbortSignal.any/timeout so the deadline cannot
     // quietly disappear on a runtime without them, and so the two reasons stay apart.
     let deadlineReached = false;
     const timer = setTimeout(() => {
       deadlineReached = true;
-      controller.abort();
+      early.abort();
     }, this.#deadlineMilliseconds);
-    const onCallerAbort = () => controller.abort();
+    const onCallerAbort = () => early.abort();
     callerSignal?.addEventListener('abort', onCallerAbort, { once: true });
-    if (callerSignal?.aborted === true) controller.abort();
+    if (callerSignal?.aborted === true) early.abort();
 
     const record = (
       identity: RoutingGraphIdentity,
@@ -302,9 +435,11 @@ export class GraphHopperRoutingAdapter {
       warnings: Warning[],
     ): WalkingRouteResult =>
       walkingRouteResultSchema.parse({ outcome, computation: record(identity, warnings) });
+    const endedEarly = () => reclassifyAbort('cancelled', deadlineReached, callerSignal);
 
+    let stopWaiting: () => void = () => undefined;
     try {
-      const resolved = await this.#identity(controller.signal);
+      const resolved = await this.#identity(early.signal);
       if (!resolved.ok)
         return failed(
           reclassifyAbort(resolved.outcome, deadlineReached, callerSignal),
@@ -313,6 +448,15 @@ export class GraphHopperRoutingAdapter {
         );
       const identity = resolved.identity;
       const warnings: Warning[] = [];
+      // Cancelled or out of time between the two requests: the search never starts.
+      if (early.signal.aborted) return failed(endedEarly(), identity, warnings);
+
+      const remaining = this.#deadlineMilliseconds - (this.#clock.now().getTime() - startedAt);
+      const legs = request.waypoints.length - 1;
+      const engineTimeoutMilliseconds = Math.floor(
+        (remaining - engineReserveMilliseconds(this.#deadlineMilliseconds)) / legs,
+      );
+      if (engineTimeoutMilliseconds < 1) return failed('timeout', identity, warnings);
 
       const query = new URLSearchParams({
         profile: this.#pinned.engineProfileName,
@@ -324,29 +468,54 @@ export class GraphHopperRoutingAdapter {
         // Requested so the answer can be checked against the edges it claims to use.
         details: 'road_class',
         max_visited_nodes: String(this.#maxVisitedNodes),
+        // Per leg; the engine caps it at its configured `routing.timeout_ms`.
+        timeout_ms: String(engineTimeoutMilliseconds),
       });
       for (const [longitude, latitude] of request.waypoints)
         query.append('point', `${latitude},${longitude}`);
 
-      let response;
-      try {
-        response = await this.#transport.get({
+      // The engine connection's own bound: the deadline plus a grace period, and only then
+      // is it cut. Until then it stays open so the engine's real finish is observed.
+      const hardStop = new AbortController();
+      const hardStopTimer = setTimeout(
+        () => hardStop.abort(),
+        Math.max(0, remaining) + ENGINE_HARD_STOP_GRACE_MILLISECONDS,
+      );
+      const routeStartedAt = this.#clock.now().getTime();
+      const routeCall = this.#transport
+        .get({
           path: '/route',
           query,
-          signal: controller.signal,
+          signal: hardStop.signal,
           maxBytes: routingLimits.maxEngineResponseBytes,
-        });
-      } catch (error) {
+        })
+        .finally(() => clearTimeout(hardStopTimer));
+      routeCallStarted(routeCall);
+      const stopped = new Promise<'early'>((resolve) => {
+        stopWaiting = () => resolve('early');
+        if (early.signal.aborted) resolve('early');
+        else early.signal.addEventListener('abort', () => resolve('early'), { once: true });
+      });
+      const settled = await Promise.race([
+        routeCall.then(
+          (response) => ({ kind: 'answer' as const, response }),
+          (error: unknown) => ({ kind: 'error' as const, error }),
+        ),
+        stopped,
+      ]);
+      if (settled === 'early') return failed(endedEarly(), identity, warnings);
+      if (settled.kind === 'error')
         return failed(
           reclassifyAbort(
-            transportOutcome(error, controller.signal),
-            deadlineReached,
+            transportOutcome(settled.error, hardStop.signal),
+            deadlineReached || hardStop.signal.aborted,
             callerSignal,
           ),
           identity,
           warnings,
         );
-      }
+      const response = settled.response;
+      const engineMilliseconds = this.#clock.now().getTime() - routeStartedAt;
 
       let body: unknown;
       try {
@@ -357,7 +526,10 @@ export class GraphHopperRoutingAdapter {
 
       if (response.status !== 200)
         return failed(
-          this.#classifyEngineError(response.status, body, warnings),
+          this.#classifyEngineError(response.status, body, {
+            engineMilliseconds,
+            engineTimeoutMilliseconds,
+          }),
           identity,
           warnings,
         );
@@ -389,7 +561,7 @@ export class GraphHopperRoutingAdapter {
 
       const violation =
         coordinates.length < 2 ||
-        coordinates.length > routingLimits.maxResponsePoints ||
+        coordinates.length > this.#maxResponsePoints ||
         !(path.distance > 0) ||
         path.distance > routingLimits.maxRouteDistanceMeters ||
         !(path.time >= 0) ||
@@ -414,26 +586,38 @@ export class GraphHopperRoutingAdapter {
     } finally {
       clearTimeout(timer);
       callerSignal?.removeEventListener('abort', onCallerAbort);
+      stopWaiting();
     }
   }
 
-  #classifyEngineError(status: number, body: unknown, warnings: Warning[]): FailureOutcome {
+  #classifyEngineError(
+    status: number,
+    body: unknown,
+    timing: { readonly engineMilliseconds: number; readonly engineTimeoutMilliseconds: number },
+  ): FailureOutcome {
     if (status === 429 || status === 503) return 'overloaded';
     const parsed = engineErrorSchema.safeParse(body);
     const details = parsed.success
       ? (parsed.data.hints ?? []).map((hint) => hint.details ?? '')
       : [];
-    if (details.some((detail) => detail.endsWith('PointNotFoundException')))
+    // PointOutOfBounds: the point lies outside the graph's bounding box altogether. Measured
+    // on a clipped graph (M2-01k-e); before, it fell through to `engine_contract_violation`.
+    if (
+      details.some(
+        (detail) =>
+          detail.endsWith('PointNotFoundException') || detail.endsWith('PointOutOfBoundsException'),
+      )
+    )
       return 'outside_coverage';
     if (details.some((detail) => detail.endsWith('MaximumNodesExceededException')))
       return 'compute_budget_exceeded';
-    if (details.some((detail) => detail.endsWith('ConnectionNotFoundException'))) {
-      // Measured on GraphHopper 10.0: the engine answers ConnectionNotFound both for a
-      // genuinely disconnected pair and for an exhausted server-side `routing.timeout_ms`.
-      // The outcome stays `no_route`, but the ambiguity is recorded, never assumed away.
-      warnings.push('no_route_may_be_engine_budget');
-      return 'no_route';
-    }
+    if (details.some((detail) => detail.endsWith('ConnectionNotFoundException')))
+      // Measured on GraphHopper 10.0: an exhausted `timeout_ms` answers ConnectionNotFound,
+      // exactly like a disconnected pair. The adapter set that budget, so time separates
+      // them: an answer back before ONE leg's budget could run out is a real NoRoute. The
+      // total is compared with the per-leg budget, so a multi-leg NoRoute slower than one
+      // leg's budget is reported as `timeout` (see computeWalkingRouteTracked).
+      return timing.engineMilliseconds >= timing.engineTimeoutMilliseconds ? 'timeout' : 'no_route';
     if (status >= 500) return 'engine_unavailable';
     return 'engine_contract_violation';
   }

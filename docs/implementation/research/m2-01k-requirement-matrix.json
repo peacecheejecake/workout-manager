@@ -92,6 +92,27 @@
         "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-c1.md."
+    },
+    {
+      "node": "M2-01k-e",
+      "date": "2026-09-25",
+      "rows": [
+        "K-graph-rollback",
+        "P6-tenant-limits",
+        "P6-cancel-bound",
+        "P6-outcomes-distinct",
+        "P6-allowlist",
+        "P8-self-ops"
+      ],
+      "decision": "Gap node M2-01k-e built blue/green graph replacement with one API identity switch, per-request engine deadlines, distinct real-engine outcomes and the allowlist test; two rounds of independent review. Root accepts the single-instance precondition for K-graph-rollback and P6-tenant-limits (recorded in the runbook); the multi-instance limiter is split to M2-01ah.",
+      "change": "5 rows partial -> passed; P8-self-ops reason updated, still partial; P5-states reason rewritten (M2-01k-c1 review note, verdict unchanged); counts passed 48 -> 53, partial 56 -> 51.",
+      "executed": [
+        "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+        "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+        "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+        "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-e.md."
     }
   ],
   "rounds": [
@@ -213,8 +234,8 @@
     }
   ],
   "counts": {
-    "partial": 56,
-    "passed": 48,
+    "passed": 53,
+    "partial": 51,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1463,18 +1484,30 @@
       "id": "K-graph-rollback",
       "source": "docs/implementation/map-implementation-plan.md:149",
       "quote": "원자적 graph 교체·이전 버전 rollback",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-routing-operational.mts ×3 (26 checks), guard-revert of the adapter import_date check makes 2 checks fail"
       ],
-      "reason": "Unchanged: the probe re-ran 26/26 against the real engine (graph_mismatch while pinned, no recomputation on swap or rollback, 409 without two-sided acknowledgement, exact graph A after rollback), but replacement is still two steps (engine restart, API redeploy), the /info<->/route window stays open, and graph B is a re-import of the same extract. The guard-revert mutation was not re-run.",
+      "reason": "M2-01k-e amendment: passed, with the precondition that the routing API runs as a single instance (runbook). Blue/green engines plus one API identity switch replace the graph with graph C built from a different extract, and roll back, under load with 0 failures and no old-graph answers after the switch; in-flight computations keep their graph; the three refusals change nothing; rollback to a stopped engine is refused. Atomicity is per process: with several instances a roll-out mixes graphs (recorded and acknowledged safely, but not at once) — the multi-instance limiter is M2-01ah.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "previousReason": "Replacement is two steps (engine restart, API redeploy), so NOT atomic; `/info`↔`/route` window stays open; graph B is a re-import of the same extract.",
         "executed": ["probe-routing-operational --execute (real engine): 26/26"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Unchanged: the probe re-ran 26/26 against the real engine (graph_mismatch while pinned, no recomputation on swap or rollback, 409 without two-sided acknowledgement, exact graph A after rollback), but replacement is still two steps (engine restart, API redeploy), the /info<->/route window stays open, and graph B is a re-import of the same extract. The guard-revert mutation was not re-run.",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "K-next-map-render",
@@ -1664,7 +1697,7 @@
       "quote": "오류·GPS 없음·부분 기록·배경 없음·WebGL unavailable·미계산·계산 중·stale·저장 실패를 구별한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Much closer than round 1 but still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. Not traced to an executed assertion as its own distinct state in round 2: 'partial recording' and 'no background map' on the map (the drawn check accepts either wording), and 'save failure' in a real browser. The row lists nine states; F3 (round 1's main reason) is fixed. M2-01k-c1 killed three more states (partial recording, no background, save failure); the other six rely on earlier-node mutants not re-run here, so the row stays partial.",
+      "reason": "Still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. M2-01k-c1 added executed assertions with killed mutants for three states that round 2 could not trace to their own assertion: partial recording, no background map and save failure in a real browser. The row lists nine states; the other six rely on earlier-node mutants that were not re-run in this matrix, so the row stays partial.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1783,11 +1816,11 @@
       "id": "P6-tenant-limits",
       "source": "docs/implementation/map-implementation-plan.md:151",
       "quote": "내부 API도 tenant별 rate/concurrency/waypoint/거리/응답점수/deadline 한도를 둔다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-routing-operational.mts: 21st request 429 + retry-after 60, other tenant 200 (real configuration)"
       ],
-      "reason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter.",
+      "reason": "M2-01k-e amendment: passed, with the same single-instance precondition as K-graph-rollback. Concurrency, waypoint count, leg and total distance and rate are observed in the operational composition (createConfiguredApi); deadline and response points are enforced by the recorded values and observed with lower values in the same composition. The multi-instance PostgreSQL lease limiter is decided but not built (M2-01ah).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1795,23 +1828,47 @@
           "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter.",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "P6-allowlist",
       "source": "docs/implementation/map-implementation-plan.md:152",
       "quote": "데이터 취득은 운영 allowlist로만 수행하며 사용자가 임의 URL을 넣지 못한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "apps/api/tests/routing-deployment.test.ts: host outside the loopback allowlist refused"
       ],
-      "reason": "Data-acquisition allowlist not re-verified here.",
+      "reason": "M2-01k-e amendment: passed. packages/tooling/tests/geo-sources.test.mjs asserts the data-acquisition allowlist (id only, arbitrary URL ignored, no redirects, 30x fails, hash mismatch removed, {range} injection refused, frozen list), and routing requests refuse URL fields; M9-M11 killed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Data-acquisition allowlist not re-verified here.",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "P6-route-record-no-silent-overwrite",
@@ -1867,26 +1924,38 @@
       "id": "P6-cancel-bound",
       "source": "docs/implementation/map-implementation-plan.md:156",
       "quote": "취소는 서버 자원 상한과 함께 구현한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["apps/api/tests/routing-cancellation.test.ts (stub)"],
-      "reason": "The engine search is not stopped by an abort (M2-01g).",
+      "reason": "M2-01k-e amendment: passed. Cancel answers at once; the engine search stops within the deadline through the per-request timeout_ms (157 ms on a 200 ms budget); the admission slot is held until the engine stops (after a real socket disconnect 429, then 200). Limit: GraphHopper 10.0 cannot stop a search mid-way on cancel; the bound is the deadline.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": ["pnpm test (3,404 passed, 280 files)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "The engine search is not stopped by an abort (M2-01g).",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "P6-outcomes-distinct",
       "source": "docs/implementation/map-implementation-plan.md:157",
       "quote": "NoRoute/coverage 밖/과도한 snap/timeout/과부하를 구별하며 실패해도 미계산 초안을 보존한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/server/integrations/tests/routing-adapter.test.ts (failure bodies hand-written)",
         "probe: overload 429, engine_unavailable, graph_mismatch against the real configuration"
       ],
-      "reason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test.",
+      "reason": "M2-01k-e amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine; overloaded, engine_unavailable and graph_mismatch via the operational probe; failures store nothing. Limit: a multi-leg NoRoute that runs longer than one leg budget is reported as timeout (errs only toward timeout); a warning code is M2-01ah.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1895,7 +1964,19 @@
           "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test.",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "P6-target-bounds-seed",
@@ -2326,7 +2407,7 @@
       "quote": "| 자체 운영 | 외부 runtime 요청 없음, CSP/worker·asset license·대표 장기 track의 시간/메모리/GPU 측정, graph 갱신/rollback·과부하 |",
       "verdict": "partial",
       "evidence": ["probe-routing-operational, probe-course-performance"],
-      "reason": "No GPU/browser long-track measurement; rollback not atomic.",
+      "reason": "M2-01k-e amendment: still partial. Graph update/rollback and overload now have executed real-engine evidence (see K-graph-rollback, P6-tenant-limits), but the same row's long-track time/memory/GPU measurement belongs to M2-01k-f and was not measured here.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2335,7 +2416,19 @@
         ],
         "note": "scripts/probe-course-performance.mts was not re-run in round 2 (no verdict depends on a new measurement; K-performance stays partial)."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-e",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "No GPU/browser long-track measurement; rollback not atomic.",
+        "executed": [
+          "scripts/probe-routing-swap-and-bounds.mts against the real GraphHopper engines (blue/green, graph C from a different extract) under the harness lock: 22/22 in the node and 22/22 re-run by the independent review on the exact round-2 tree",
+          "operational probe 26/26; apps/api routing-deployment, routing-adapter, routing-service, geo-sources and graphhopper-launch guard unit tests",
+          "unit mutants M1-M16, M18, M19 each fail; probe mutants M1, M2, M3, M5, M6, M14 each fail; M17 (ports not passed) survives unit tests and is caught by the probe (ENGINE_NOT_READY)",
+          "pnpm test 3,496 passed; pnpm test:integration 619 passed; pnpm test:identity x2 182 passed, 3 skipped (oidc-certified real-OP specs)"
+        ]
+      }
     },
     {
       "id": "P8-coverage",
