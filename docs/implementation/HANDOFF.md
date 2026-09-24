@@ -17,13 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-h](progress/M2-01k-h.md)를 완료했다. 영속·객체 저장 수명주기의 조건(tenant/RLS·idempotency·CAS·동시 upload/삭제·
-publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원·DB 먼저 기록·rollback·중복 upload)을 조건마다 시험 하나에
-대응시키고, 그 시험이 지키는 제품 가드를 한 곳씩 되돌려 실패함을 보였다. 대응이 없던 publish 실패와 DB rollback은 시험을
-더했다. 독립 검토가 rollback 뒤 정리(만료 뒤 임시·최종 참조 6개 회수)를 단언하는 시험이 없음을 잡아 보강했다. 매트릭스
-P7-durable-lifecycle·P8-postgres-object를 한계와 함께 passed로 올렸다(로컬 FS만, 합성 drill, CAS는 409 분류만 비공허).
+[M2-01k-k](progress/M2-01k-k.md)를 완료했다(사용자 결정: S09 주소 별칭을 만든다). 두 shell에서
+`/activities/:id?tab=<tab>`이 현재 주소(`/activities?selected=<id>&detailTab=<tab>`)로 넘어간다(Next 307, Vite
+`history.replaceState`). 별칭은 주소만 바꾸고 조회하지 않아 존재 여부를 흘리지 않으며, 잘못된 tab·id·남의 활동은
+화면의 기존 오류 상태가 판단한다. 독립 검토가 open redirect·header injection·형제 경로·뒤로 가기를 실측했다.
+매트릭스 S09-address를 passed로 올렸다(passed 40 → 41).
 
-직전 완료: [M2-01ad](progress/M2-01ad.md)(시험 격리 guard, 진단, coaching 순서 의존 제거).
+직전 완료: [M2-01k-h](progress/M2-01k-h.md)(영속 수명주기 조건별 시험과 변이, P7·P8 passed).
 
 ## 다음 ready 작업
 

@@ -1393,7 +1393,8 @@
       "title": "S09 주소 별칭",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01k-k.md",
       "scope": "두 shell에서 `/activities/:id?tab=<tab>`을 현재 주소(`/activities?selected=<id>&detailTab=…`)로 보내는 별칭 또는 redirect를 만든다. 허용하지 않는 tab 값, uuid가 아닌 id, 남의 활동은 기존 오류 상태로 보낸다(존재 여부를 흘리지 않는다). 완료: 두 shell E2E가 여섯 탭 각각의 주소로 들어가 해당 탭이 선택된 화면에 닿음을 단언하고, 잘못된 tab·id·Bob의 접근을 단언한다. 비공허성: 별칭 route를 지우는 변이, tab 매핑을 한 칸 밀어 놓는 변이가 각각 실패한다 닫을 매트릭스 행: S09-address. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
     },
     {

@@ -5,6 +5,7 @@ import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
 import { integratedCandidateV4Schema } from '@workout/contracts/integrated-coaching';
 import { availableCourseHeadSchema } from '@workout/contracts/courses';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
+import { activityDetailAliasTarget } from '@workout/modules-activities/detail-address';
 import './styles.css';
 
 const SpikeWorkspace = lazy(() =>
@@ -60,6 +61,24 @@ const ActivitiesPage = lazy(() =>
 const CoursePage = lazy(() =>
   import('./course-page').then((module) => ({ default: module.CoursePage })),
 );
+// S09's spec address `/activities/:id?tab=<tab>` (M2-01k-k), replaced in place by the activity
+// screen's own address before anything renders, as the Next shell redirects it. The id is not
+// checked here: the screen answers for a malformed, missing or someone else's activity alike.
+// `track-preview`, `import` and `new` are sibling pages in the Next shell, not activity ids.
+const activityAliasPath = location.pathname.match(/^\/activities\/([^/]+)\/?$/)?.[1];
+if (activityAliasPath && !['track-preview', 'import', 'new'].includes(activityAliasPath)) {
+  let id = activityAliasPath;
+  try {
+    id = decodeURIComponent(activityAliasPath);
+  } catch {
+    // A malformed escape stays as written; the screen reports the address as invalid.
+  }
+  history.replaceState(
+    history.state,
+    '',
+    activityDetailAliasTarget(id, new URLSearchParams(location.search)),
+  );
+}
 const proposalPath = location.pathname.match(/^\/proposals\/([^/]+)\/?$/)?.[1];
 const proposalCandidateId = proposalPath
   ? trainingCandidateStatusV1Schema.shape.candidateId.safeParse(proposalPath)

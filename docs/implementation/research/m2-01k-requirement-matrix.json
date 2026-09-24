@@ -42,6 +42,20 @@
         "independent review re-ran #2 (5/5 fail mutated, 5/5 pass unmutated), #3, #5, #7, #8, #13"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-h.md."
+    },
+    {
+      "node": "M2-01k-k",
+      "date": "2026-09-24",
+      "rows": ["S09-address"],
+      "decision": "User decided (2026-09-24) to build the /activities/:id?tab= alias rather than amend the spec.",
+      "change": "S09-address partial -> passed; counts passed 40 -> 41, partial 64 -> 63.",
+      "executed": [
+        "tests/identity/activity-detail-address.spec.ts (Next and Vite) in the node's identity x2 and the reviewer's run",
+        "unit detail-address.test.tsx 9/9",
+        "mutants M1 (Next page removed), M2 (Vite replaceState removed), M3 (tab mapping shifted) each fail; restored with cmp",
+        "independent review probes: open redirect, header injection, sibling routes, history"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-k.md."
     }
   ],
   "rounds": [
@@ -163,8 +177,8 @@
     }
   ],
   "counts": {
-    "partial": 64,
-    "passed": 40,
+    "partial": 63,
+    "passed": 41,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -175,9 +189,13 @@
       "id": "S09-address",
       "source": "docs/.pre/01_product_screen_spec.md:47",
       "quote": "| S09 | 활동 상세 `/activities/:id?tab=overview` | 분석·구간·지도·impact·미디어·출처 | M1 |",
-      "verdict": "partial",
-      "evidence": ["tests/identity/activity-detail-tabs.spec.ts:112 (identity ×2, executed)"],
-      "reason": "Address is `/activities?selected=<id>&detailTab=…`; `apps/web/app/activities/[id]/` holds only `edit/`. Tabs exist; media tab is disabled.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/activity-detail-tabs.spec.ts:112 (identity ×2, executed)",
+        "tests/identity/activity-detail-address.spec.ts (Next and Vite, M2-01k-k)",
+        "packages/modules/activities/tests/detail-address.test.tsx (M2-01k-k)"
+      ],
+      "reason": "M2-01k-k amendment (user decision 2026-09-24: build the alias): passed. In both shells /activities/:id?tab=<tab> reaches the S09 detail screen with exactly that tab selected for all six tabs, the default tab without ?tab, and the existing error states for an unsupported tab, a non-uuid id, and another user's activity (identical to a nonexistent uuid: context/details [404,404], same text). The address is an alias: it redirects (Next 307, Vite history.replaceState) and is not the URL the screen displays or generates. tab=map (the spec column's 지도) is deliberately the unsupported-view state because the tab is route; the media panel and 지도/경로 naming belong to S09-tabs. Escaped ids are decoded differently by the two shells (Next leaves params percent-encoded); the probed escaped variants (%2F, %5C, %252F, unicode/NUL) land on the invalid-address state in both, while a valid uuid with an escaped character would differ between the shells (not tested).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -185,7 +203,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-k",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Address is `/activities?selected=<id>&detailTab=…`; `apps/web/app/activities/[id]/` holds only `edit/`. Tabs exist; media tab is disabled.",
+        "executed": [
+          "tests/identity/activity-detail-address.spec.ts (Next and Vite) in the node's identity x2 and the reviewer's run",
+          "unit detail-address.test.tsx 9/9",
+          "mutants M1 (Next page removed), M2 (Vite replaceState removed), M3 (tab mapping shifted) each fail; restored with cmp",
+          "independent review probes: open redirect, header injection, sibling routes, history"
+        ]
+      }
     },
     {
       "id": "S09-header",

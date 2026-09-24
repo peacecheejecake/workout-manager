@@ -23,6 +23,7 @@
     "./demo-workspace": "./src/demo-workspace.tsx",
     "./import-workspace": "./src/import-workspace.tsx",
     "./activity-browser": "./src/activity-browser.tsx",
+    "./detail-address": "./src/detail-address.ts",
     "./activity-editor": "./src/activity-editor.tsx",
     "./track-preview": "./src/track-preview.tsx",
     "./track-preview-parser": "./src/track-preview-parser.ts",
