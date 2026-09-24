@@ -206,6 +206,27 @@
         "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
       ],
       "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01ai.md."
+    },
+    {
+      "node": "M2-01k-d",
+      "date": "2026-09-25",
+      "rows": [
+        "P5-lazy-two-shells",
+        "S09-split-lazy",
+        "P6-no-external-runtime",
+        "R-state-retention",
+        "P5-logout-clear",
+        "R-S09"
+      ],
+      "decision": "Gap node M2-01k-d made S09 panes mount on demand (product defect: all panes mounted and were only hidden) and asserted lazy map loading, lifecycle cleanup and no external runtime requests in both shells; independent review found the late-response check vacuous and three verdicts overclaimed, which were fixed.",
+      "change": "3 rows partial -> passed; R-state-retention, P5-logout-clear and R-S09 reasons updated, still partial; counts passed 67 -> 70, partial 37 -> 34.",
+      "executed": [
+        "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+        "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+        "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+        "pnpm test and two identity runs on the merged tree"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-d.md."
     }
   ],
   "rounds": [
@@ -327,8 +348,8 @@
     }
   ],
   "counts": {
-    "passed": 67,
-    "partial": 37,
+    "passed": 70,
+    "partial": 34,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -430,9 +451,9 @@
       "id": "S09-split-lazy",
       "source": "docs/.pre/01_product_screen_spec.md:135",
       "quote": "큰 그래프와 지도는 데스크톱 split-pane, 모바일은 개별 탭으로 lazy mount한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["tests/identity/activity-track-map.spec.ts:272 (layout at boundaries)"],
-      "reason": "Mobile pane stays mounted once loaded (M2-01e); split exists only inside the route tab. Lazy mount per tab not asserted.",
+      "reason": "M2-01k-d amendment: passed. S09 mounted map, chart and summary at once and only hid them; now each pane mounts the first time it is shown and stays mounted when hidden (renderer and viewport survive tab changes); tablet shows a map|chart switch with the summary beside it instead of stacking three panes; desktop shows the split. D3 and D9 killed in both shells and at unit level.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -440,7 +461,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Mobile pane stays mounted once loaded (M2-01e); split exists only inside the route tab. Lazy mount per tab not asserted.",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "S09-range-link",
@@ -1094,7 +1127,7 @@
       "quote": "| Activity workbench S09 | chart/route/lap/sets 탭; 필요할 때 mount | chart+table 또는 지도 보기; 3개 동시 강제 없음 | linked split-pane, 선택·zoom 공유 |",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-track-map.spec.ts:272"],
-      "reason": "Mount-on-demand and zoom sharing not asserted (S09-split-lazy).",
+      "reason": "M2-01k-d amendment: still partial. Mobile mount-on-demand and the tablet two-pane view are proven (D3, D9 and a tablet mutant killed, the last at unit level). The desktop cell requires shared selection and zoom between chart and map: the chart has no zoom feature, and range sharing has no mutant in this node. Remaining: chart zoom <-> map zoom sharing.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1102,7 +1135,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Mount-on-demand and zoom sharing not asserted (S09-split-lazy).",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "R-S13-S14",
@@ -1160,14 +1205,26 @@
       "quote": "선택·초안은 반응형 renderer 밖에 두고 SDK instance·worker·listener·요청·blob URL을 정리한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Draft retention across layout switches has unit tests (not re-read here); cleanup of SDK/worker/listeners is not asserted.",
+      "reason": "M2-01k-d amendment: still partial. The cleanup half is proven: unmount releases the WebGL context, per-map worker state, window/document listeners, ResizeObservers and blob URLs, and aborts the track request (D4, D5, D6, D8, D11 killed in both shells; MapLibre's single shared worker is allowed and asserted to be exactly one). Keeping the selection and draft outside the renderer across layout switches was not executed or mutated in this node.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Draft retention across layout switches has unit tests (not re-read here); cleanup of SDK/worker/listeners is not asserted.",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "V2-F13",
@@ -1844,9 +1901,9 @@
       "id": "P5-lazy-two-shells",
       "source": "docs/implementation/map-implementation-plan.md:117",
       "quote": "지도는 client-only lazy leaf이며 두 shell이 재사용한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["ad-hoc Playwright on 4200 (not committed)"],
-      "reason": "The 'both shells reuse the map leaf' half is now proven by committed tests (see K-next-map-render). 'client-only lazy leaf' is still not asserted by any executed test (no check that the map chunk loads only when a map mounts).",
+      "reason": "M2-01k-d amendment: passed. In both shells the MapLibre adapter and map view load only after the route tab opens (script bodies received with the HTTP cache off, waiting for script requests to settle before each verdict), and an activity without a stored track mounts the route panel but no map; D1 and D2 (static imports) killed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1854,7 +1911,19 @@
         "executed": ["pnpm test:identity x2 (map-render.spec both shells)", "mutant f2-both"],
         "note": "Round-1 ad-hoc Playwright runs were not committed; not re-executed."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "The 'both shells reuse the map leaf' half is now proven by committed tests (see K-next-map-render). 'client-only lazy leaf' is still not asserted by any executed test (no check that the map chunk loads only when a map mounts).",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "P5-fitbounds",
@@ -1881,14 +1950,26 @@
       "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Abort/destroy not asserted (M2-01b); not re-verified.",
+      "reason": "M2-01k-d amendment: still partial. After sign-out or an account switch in another tab, the held track requests are cancelled and a track that was delivered before the change is removed and never re-added (both shells). A response arriving after the change could not be produced through the tested detection path (visibilitychange -> 401/409 -> expired() cancels), and a visible tab that never re-checks was not tested, so late re-entry is not shown as such. Four independent layers each prevent the leak: only removing all four fails, and that failure is the leaked activity list, not the track assertion; the track-discard assertion has no killing mutant. Clearing of the private cache and the course draft is not asserted directly, and the localStorage check has no mutant.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Abort/destroy not asserted (M2-01b); not re-verified.",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "P5-list-alternative",
@@ -1987,9 +2068,9 @@
       "id": "P6-no-external-runtime",
       "source": "docs/implementation/map-implementation-plan.md:199",
       "quote": "외부 runtime 요청 없음",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["Aside on /courses: resource entries all same-origin (external [])"],
-      "reason": "Resource timing entries do not capture blocked/failed attempts; one page only this node.",
+      "reason": "M2-01k-d amendment: passed. On all four map screens in both shells every attempted request (worker requests included), WebSocket attempt and CSP violation is recorded and anything off-origin is aborted; none occurs; D7 (external background image) killed through the route recorder (Next) and the CSP record (Vite). Limit: worker fetches blocked by Vite's CSP are visible only through Next's route recording of the same code; tile checks need the self-hosted basemap.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1998,7 +2079,19 @@
         ],
         "note": "Round-1 Aside observations are not re-executed evidence in round 2. Still partial: resource timing does not record blocked or failed attempts, and only one screen per shell was observed."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-d",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Resource timing entries do not capture blocked/failed attempts; one page only this node.",
+        "executed": [
+          "tests/identity/map-lifecycle.spec.ts (10 tests x Next and Vite) with the tests/identity/map-lifecycle-probe.ts init script: lazy map code only after the route tab (script bodies, cache off, settle before each verdict), mount on demand per pane, WebGL/worker/listener/ResizeObserver/blob URL release on unmount, all attempted requests recorded and foreign ones aborted (route, WebSocket, CSP), sign-out and account switch through a second tab",
+          "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
+          "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "P6-engine-choice",

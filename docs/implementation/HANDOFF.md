@@ -17,12 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01ai](progress/M2-01ai.md)를 완료했다. track 파싱을 parse마다 별도 child process로 옮기고 V8 heap을
-`--max-old-space-size`로 묶었다. 메모리 초과는 그 child만 끝내고 API는 `TRACK_PARSE_MEMORY_EXCEEDED`로 답한 뒤 계속 동작한다
-(M2-01k-f의 F1 해소, 실제 host 프로세스 200 parse로 재현). 출력은 기존 parser와 바이트까지 같고 성능 예산 17개를 모두 통과한다.
-성능 평가기는 부하 표본을 최선 값으로 보고도 예산을 넘으면 실패로 판정한다. 매트릭스 판정 수는 그대로다(passed 67).
+[M2-01k-d](progress/M2-01k-d.md)를 완료했다. S09가 지도·그래프·요약 pane을 한꺼번에 mount하고 CSS로만 숨기던 결함을 고쳐, 각
+pane은 처음 보일 때 mount하고 숨겨도 유지한다. 태블릿은 세 pane을 쌓지 않고 지도|그래프 전환과 옆 요약을 쓴다. 두 shell에서 지도
+코드가 경로 탭 전에는 오지 않음, unmount 때 WebGL·worker 상태·listener·ResizeObserver·blob URL 해제, 네 지도 화면의 외부 요청 0을
+변이와 함께 단언했다. 매트릭스 3행을 passed로 올렸다(passed 67 → 70). R-state-retention(초안 유지 미실행), P5-logout-clear(늦은
+응답 재진입은 시험한 감지 경로로 만들 수 없어 취소만 증명, 보이는 채 재확인하지 않는 탭은 미시험), R-S09(chart zoom 기능 없음)는 partial로 남겼다.
 
-직전 완료: [M2-01k-i](progress/M2-01k-i.md)(S14 경유점 목록 drag).
+직전 완료: [M2-01ai](progress/M2-01ai.md)(track parser child process 격리, F1 해소).
 
 ## 운영 메모
 
@@ -37,11 +38,11 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-d, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag. 이 중
-M2-01k-a·b·d·j와 M2-01af는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에, M2-01k-m·n은 같은 S09 화면을
-바꾸는 M2-01k-d 뒤에 진행한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이 필요하다. M2-01k는 이 gap 노드들과
-외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag, M2-01aj. 이 중
+M2-01k-a·b·j와 M2-01af는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01k-m·n은 M2-01k-d가 끝나 진행할 수 있다(S09 pane은 이제 처음 보일 때 mount한다).
+M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이
+필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

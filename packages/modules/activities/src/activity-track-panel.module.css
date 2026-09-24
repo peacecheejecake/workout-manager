@@ -8,8 +8,9 @@
 /*
  * One DOM for the three S09 layouts. The mode comes from the generated viewport
  * specification and arrives as `data-layout`, so no breakpoint value is copied into this
- * package. Panes are hidden with `display: none` rather than unmounted, which keeps the
- * renderer, the selection and the list page across a tab change or a layout change.
+ * package. A pane's content mounts the first time it is shown; after that it is hidden with
+ * `display: none` rather than unmounted, which keeps the renderer, the selection and the
+ * list page across a tab change or a layout change.
  */
 .panes {
   display: grid;
@@ -34,15 +35,13 @@
   display: none;
 }
 
-/* tablet: a selection view — graph, then map, then the summary and sample list. */
-.panes[data-layout='tablet'] .chartPane {
-  order: 0;
-}
-.panes[data-layout='tablet'] .mapPane {
-  order: 1;
-}
-.panes[data-layout='tablet'] .detailPane {
-  order: 2;
+/*
+ * tablet: a selection view — the graph or the map (07 §S09: never all three forced at once),
+ * each with the summary and the sample list underneath.
+ */
+.panes[data-layout='tablet'][data-pane='map'] .chartPane,
+.panes[data-layout='tablet']:not([data-pane='map']) .mapPane {
+  display: none;
 }
 
 /*

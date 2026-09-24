@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { Activity, ActivityDetailsRead } from '@workout/contracts/activity';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
@@ -148,10 +148,24 @@ function hover(element: Element) {
 }
 
 describe('the S09 cursor lives in the shared selection store', () => {
+  // The S09 panes mount when they are first shown (M2-01k-d). At desktop width the route
+  // screen is the linked split-pane, so the map, the graph and the sample list are all on
+  // screen together, as a user sees them there. jsdom's default width is a tablet's, where
+  // the graph is behind its own tab.
+  let width = 0;
+  beforeEach(() => {
+    width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+  });
+
   it('moves through one store from every view and never reaches the server', async () => {
     const user = userEvent.setup();
     const { request, probe, shared } = setup();
     await screen.findByRole('region', { name: '저장된 활동 경로' });
+    expect(screen.getByTestId('stored-track-panes')).toHaveAttribute('data-layout', 'desktop');
     await within(workbench()).findAllByRole('button', { name: /^차트 관측 \d 선택$/u });
     await waitFor(() => expect(probe.options()).not.toBeNull());
     const loads = request.mock.calls.length;

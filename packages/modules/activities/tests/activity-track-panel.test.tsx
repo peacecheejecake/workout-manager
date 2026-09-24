@@ -577,6 +577,45 @@ describe('stored activity track responsive layout', () => {
     expect(probe.created).toHaveLength(1);
   });
 
+  it('mounts each mobile pane on demand and keeps the renderer once mounted', async () => {
+    const probe = adapterProbe();
+    setViewport(360);
+    const { container } = renderPanel({ handler: available(), probe });
+    await screen.findByRole('region', { name: '저장된 활동 경로' });
+    const pane = (name: string) => screen.getByRole('tabpanel', { name });
+    // Only the map is shown, so only the map is mounted: no chart, no sample list.
+    expect(within(pane('그래프')).queryByRole('img')).toBeNull();
+    expect(within(pane('요약·표본')).queryByRole('list')).toBeNull();
+    expect(container.querySelectorAll('[data-mounted="true"]')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('tab', { name: '그래프' }));
+    expect(
+      await within(pane('그래프')).findByRole('img', { name: '원본 심박 (bpm) 차트' }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: '지도' }));
+    // Back on the map: the same renderer, never a second one.
+    expect(probe.created).toHaveLength(1);
+    expect(probe.destroyed()).toBe(0);
+    expect(within(pane('요약·표본')).queryByRole('list')).toBeNull();
+  });
+
+  it('offers the graph or the map on a tablet, never all three at once', async () => {
+    const probe = adapterProbe();
+    setViewport(1024);
+    renderPanel({ handler: available(), probe });
+    await screen.findByRole('region', { name: '저장된 활동 경로' });
+    const tabs = screen.getByRole('tablist', { name: '저장된 경로 보기' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['지도', '그래프']);
+    expect(within(screen.getByRole('tabpanel', { name: '그래프' })).queryByRole('img')).toBeNull();
+    await userEvent.click(within(tabs).getByRole('tab', { name: '그래프' }));
+    expect(await screen.findByRole('img', { name: '원본 심박 (bpm) 차트' })).toBeInTheDocument();
+    expect(screen.getByTestId('stored-track-panes').getAttribute('data-pane')).toBe('chart');
+    expect(probe.created).toHaveLength(1);
+  });
+
   it('does not intercept an IME composition or a modifier combination', async () => {
     setViewport(360);
     renderPanel({ handler: available() });

@@ -94,11 +94,28 @@ const recordsPerChartPage = 500;
  * mobile. These are the three panes of one DOM; the layout mode decides how they are shown.
  */
 type PaneId = 'map' | 'chart' | 'detail';
-const paneOrder = [
+type PaneTab = readonly [PaneId, string];
+/** Mobile: one pane at a time. */
+const mobileTabs = [
   ['map', '지도'],
   ['chart', '그래프'],
   ['detail', '요약·표본'],
-] as const satisfies readonly (readonly [PaneId, string])[];
+] as const satisfies readonly PaneTab[];
+/**
+ * Tablet (07 §S09): the graph or the map, never all three forced at once. The summary and
+ * the sample list stay beside either one, because the list is the map's non-map alternative.
+ */
+const tabletTabs = [
+  ['map', '지도'],
+  ['chart', '그래프'],
+] as const satisfies readonly PaneTab[];
+
+/** The panes a layout shows for the chosen tab. */
+function visiblePanes(layout: LayoutMode, pane: PaneId): readonly PaneId[] {
+  if (layout === 'desktop') return ['map', 'chart', 'detail'];
+  if (layout === 'tablet') return pane === 'map' ? ['map', 'detail'] : ['chart', 'detail'];
+  return [pane];
+}
 
 const breakLabels: Record<string, string> = {
   'stream-start': '기록 시작',
@@ -344,6 +361,16 @@ function StoredTrackView({
 }: StoredTrackViewProps) {
   const layout = useLayoutModeFromViewport();
   const [pane, setPane] = useState<PaneId>('map');
+  // Mount on demand (S09, 07 §S09): a pane's content mounts the first time it is shown and
+  // then stays mounted while hidden, so returning to the map keeps its renderer and its
+  // viewport instead of building a new one. Held with React's derived-state pattern.
+  const visible = visiblePanes(layout, pane);
+  const [mounted, setMounted] = useState<ReadonlySet<PaneId>>(() => new Set(visible));
+  if (visible.some((id) => !mounted.has(id))) setMounted(new Set([...mounted, ...visible]));
+  const shows = (id: PaneId) => mounted.has(id) || visible.includes(id);
+  const tabs = layout === 'mobile' ? mobileTabs : layout === 'tablet' ? tabletTabs : null;
+  // On a tablet the summary pane belongs to both views, so the graph tab stands for it too.
+  const selectedTab: PaneId = layout === 'tablet' && pane === 'detail' ? 'chart' : pane;
   const [fitRequest, setFitRequest] = useState(0);
   const [page, setPage] = useState(0);
   const [failure, setFailure] = useState<MapAdapterFailure | null>(null);
@@ -524,17 +551,17 @@ function StoredTrackView({
         </Button>
       </div>
 
-      {layout === 'mobile' ? (
+      {tabs ? (
         <div role="tablist" aria-label="저장된 경로 보기" className={styles.tabs}>
-          {paneOrder.map(([id, label]) => (
+          {tabs.map(([id, label]) => (
             <Button
               key={id}
               variant="secondary"
               role="tab"
               id={`${tabsId}-${id}`}
-              aria-selected={pane === id}
+              aria-selected={selectedTab === id}
               aria-controls={`${tabsId}-${id}-pane`}
-              tabIndex={pane === id ? 0 : -1}
+              tabIndex={selectedTab === id ? 0 : -1}
               onClick={() => setPane(id)}
               onKeyDown={(event) => {
                 // Modifier combinations and IME composition are never intercepted.
@@ -546,18 +573,18 @@ function StoredTrackView({
                   event.nativeEvent.isComposing
                 )
                   return;
-                const current = paneOrder.findIndex(([candidate]) => candidate === id);
+                const current = tabs.findIndex(([candidate]) => candidate === id);
                 const next =
                   event.key === 'ArrowRight'
-                    ? (current + 1) % paneOrder.length
+                    ? (current + 1) % tabs.length
                     : event.key === 'ArrowLeft'
-                      ? (current + paneOrder.length - 1) % paneOrder.length
+                      ? (current + tabs.length - 1) % tabs.length
                       : event.key === 'Home'
                         ? 0
                         : event.key === 'End'
-                          ? paneOrder.length - 1
+                          ? tabs.length - 1
                           : null;
-                const target = next === null ? undefined : paneOrder[next]?.[0];
+                const target = next === null ? undefined : tabs[next]?.[0];
                 if (target === undefined) return;
                 event.preventDefault();
                 setPane(target);
@@ -614,9 +641,10 @@ function StoredTrackView({
       </p>
 
       {/*
-        One DOM for every layout. The panes are always mounted and only their visibility
-        changes, so switching a tab or crossing a breakpoint keeps the renderer, the
-        selection and the list page instead of remounting the map.
+        One DOM for every layout. A pane's content mounts the first time the pane is shown
+        (S09 mount on demand) and afterwards only its visibility changes, so switching a tab
+        or crossing a breakpoint keeps the renderer, its viewport, the selection and the list
+        page instead of remounting the map.
       */}
       <div
         className={styles.panes}
@@ -627,11 +655,12 @@ function StoredTrackView({
         <div
           className={`${styles.pane} ${styles.mapPane}`}
           id={`${tabsId}-map-pane`}
-          {...(layout === 'mobile'
+          data-mounted={shows('map')}
+          {...(tabs
             ? { role: 'tabpanel', 'aria-labelledby': `${tabsId}-map` }
             : { role: 'group', 'aria-label': '저장된 경로 지도' })}
         >
-          {total > 0 ? (
+          {!shows('map') ? null : total > 0 ? (
             <MapLeaf
               label="저장된 활동 경로"
               paths={paths}
@@ -660,12 +689,12 @@ function StoredTrackView({
             classified failure (review N6). These add only what this screen owns — that the
             summary and the sample list still work.
           */}
-          {basemapFailed ? (
+          {shows('map') && basemapFailed ? (
             <p className={styles.note}>
               배경 지도를 불러오지 못했습니다. 경로와 요약은 그대로 사용할 수 있습니다.
             </p>
           ) : null}
-          {rendererFailed ? (
+          {shows('map') && rendererFailed ? (
             <p className={styles.note}>
               이 브라우저에서 지도 렌더러(WebGL)를 사용할 수 없습니다. 아래 표본 목록으로 같은
               지점을 선택할 수 있습니다.
@@ -675,7 +704,7 @@ function StoredTrackView({
             Whether the path is drawn is the map's own status line, tied to what the
             renderer actually drew; a second count here once contradicted it.
           */}
-          {mapStatus === 'invalid' ? (
+          {shows('map') && mapStatus === 'invalid' ? (
             <StatusNotice state="error">
               저장된 좌표가 표시 계약을 만족하지 않아 그리지 않았습니다.
             </StatusNotice>
@@ -685,12 +714,13 @@ function StoredTrackView({
         <div
           className={`${styles.pane} ${styles.chartPane}`}
           id={`${tabsId}-chart-pane`}
-          {...(layout === 'mobile'
+          data-mounted={shows('chart')}
+          {...(tabs
             ? { role: 'tabpanel', 'aria-labelledby': `${tabsId}-chart` }
             : { role: 'group', 'aria-label': '저장된 경로 관측 그래프' })}
         >
           <h4>관측 그래프</h4>
-          {details === null ? (
+          {!shows('chart') ? null : details === null ? (
             <StatusNotice state="unavailable">
               원본 관측 상세를 함께 조회하지 못해 그래프를 표시하지 않습니다. 지도와 표본 목록은
               그대로 사용할 수 있습니다.
@@ -708,151 +738,158 @@ function StoredTrackView({
         <div
           className={`${styles.pane} ${styles.detailPane}`}
           id={`${tabsId}-detail-pane`}
+          data-mounted={shows('detail')}
           {...(layout === 'mobile'
             ? { role: 'tabpanel', 'aria-labelledby': `${tabsId}-detail` }
             : { role: 'group', 'aria-label': '저장된 경로 요약과 표본' })}
         >
           <h4>기본 요약</h4>
-          <dl className={styles.summary}>
-            <div>
-              <dt>시작 시각</dt>
-              <dd>{summary.startedAt ?? '미확인'}</dd>
-            </div>
-            <div>
-              <dt>끝 시각</dt>
-              <dd>{summary.endedAt ?? '미확인'}</dd>
-            </div>
-            <div>
-              <dt>경과 시간</dt>
-              <dd>{summary.elapsedSeconds === null ? '미확인' : `${summary.elapsedSeconds}초`}</dd>
-            </div>
-            <div>
-              <dt>기기 보고 거리</dt>
-              <dd>
-                {summary.deviceDistanceMeters === null
-                  ? '미확인'
-                  : `${Math.round(summary.deviceDistanceMeters)}m`}
-              </dd>
-            </div>
-            <div>
-              <dt>GPS 재계산 거리</dt>
-              <dd>
-                {summary.recomputedDistanceMeters === null
-                  ? '미확인'
-                  : `${Math.round(summary.recomputedDistanceMeters)}m`}
-              </dd>
-            </div>
-            <div>
-              <dt>평균 페이스(기기 거리 기준)</dt>
-              <dd>
-                {summary.averagePaceSecondsPerKilometer === null
-                  ? '미확인'
-                  : `${Math.round(summary.averagePaceSecondsPerKilometer)}초/km`}
-              </dd>
-            </div>
-            <div>
-              <dt>평균 심박(표본 평균)</dt>
-              <dd>
-                {summary.averageHeartRateBpm === null
-                  ? '미확인'
-                  : `${Math.round(summary.averageHeartRateBpm)}bpm`}
-              </dd>
-            </div>
-          </dl>
-          {breaks.length > 0 ? (
-            <ul className={styles.breaks}>
-              {breaks.map((item) => (
-                <li key={item.reason}>
-                  {breakLabels[item.reason] ?? item.reason} {item.count}회
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {geometry.insufficient.length > 0 ? (
-            <ul className={styles.breaks}>
-              {geometry.insufficient.map((item) => (
-                <li key={`${item.segmentIndex}:${item.reason}`}>
-                  구간 {item.segmentIndex}: {insufficientLabels[item.reason] ?? item.reason} (표본{' '}
-                  {item.sampleIds.length}개)
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {shows('detail') ? (
+            <>
+              <dl className={styles.summary}>
+                <div>
+                  <dt>시작 시각</dt>
+                  <dd>{summary.startedAt ?? '미확인'}</dd>
+                </div>
+                <div>
+                  <dt>끝 시각</dt>
+                  <dd>{summary.endedAt ?? '미확인'}</dd>
+                </div>
+                <div>
+                  <dt>경과 시간</dt>
+                  <dd>
+                    {summary.elapsedSeconds === null ? '미확인' : `${summary.elapsedSeconds}초`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>기기 보고 거리</dt>
+                  <dd>
+                    {summary.deviceDistanceMeters === null
+                      ? '미확인'
+                      : `${Math.round(summary.deviceDistanceMeters)}m`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>GPS 재계산 거리</dt>
+                  <dd>
+                    {summary.recomputedDistanceMeters === null
+                      ? '미확인'
+                      : `${Math.round(summary.recomputedDistanceMeters)}m`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>평균 페이스(기기 거리 기준)</dt>
+                  <dd>
+                    {summary.averagePaceSecondsPerKilometer === null
+                      ? '미확인'
+                      : `${Math.round(summary.averagePaceSecondsPerKilometer)}초/km`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>평균 심박(표본 평균)</dt>
+                  <dd>
+                    {summary.averageHeartRateBpm === null
+                      ? '미확인'
+                      : `${Math.round(summary.averageHeartRateBpm)}bpm`}
+                  </dd>
+                </div>
+              </dl>
+              {breaks.length > 0 ? (
+                <ul className={styles.breaks}>
+                  {breaks.map((item) => (
+                    <li key={item.reason}>
+                      {breakLabels[item.reason] ?? item.reason} {item.count}회
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {geometry.insufficient.length > 0 ? (
+                <ul className={styles.breaks}>
+                  {geometry.insufficient.map((item) => (
+                    <li key={`${item.segmentIndex}:${item.reason}`}>
+                      구간 {item.segmentIndex}: {insufficientLabels[item.reason] ?? item.reason}{' '}
+                      (표본 {item.sampleIds.length}개)
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
 
-          {/*
+              {/*
             A course can only be cut from a recording the server stored, so the section is
             offered only when this geometry carries stored provenance.
           */}
-          {mapPath.sourceRevision.kind === 'activity-source' ? (
-            <CourseFromSegment
-              transport={transport}
-              activityId={activityId}
-              trackRevision={mapPath.sourceRevision.trackRevision}
-              selectedSampleId={sampleId}
-              selectedIsDrawn={vertexIndex !== undefined}
-            />
-          ) : null}
+              {mapPath.sourceRevision.kind === 'activity-source' ? (
+                <CourseFromSegment
+                  transport={transport}
+                  activityId={activityId}
+                  trackRevision={mapPath.sourceRevision.trackRevision}
+                  selectedSampleId={sampleId}
+                  selectedIsDrawn={vertexIndex !== undefined}
+                />
+              ) : null}
 
-          <h4 id={`${tabsId}-samples`}>표본 목록</h4>
-          {total === 0 ? (
-            <p className={styles.note}>그려진 표본이 없습니다.</p>
-          ) : (
-            <>
-              <p className={styles.note}>
-                좌표 {total}개 중 {start + 1}–{start + listed.length}번째. 지도 없이도 모든 표본을
-                선택할 수 있습니다.
-              </p>
-              <div className={styles.actions}>
-                <Button
-                  variant="secondary"
-                  disabled={shownPage === 0}
-                  onClick={() => {
-                    pick(null);
-                    setPage(Math.max(0, shownPage - 1));
-                  }}
-                >
-                  이전 표본 묶음
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={shownPage >= pages - 1}
-                  onClick={() => {
-                    pick(null);
-                    setPage(Math.min(pages - 1, shownPage + 1));
-                  }}
-                >
-                  다음 표본 묶음
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={shownPage >= pages - 1}
-                  onClick={() => {
-                    pick(null);
-                    setPage(pages - 1);
-                  }}
-                >
-                  마지막 묶음
-                </Button>
-              </div>
-              <ol className={styles.samples} aria-labelledby={`${tabsId}-samples`}>
-                {listed.map((position, offset) => {
-                  const vertex = start + offset;
-                  const id = geometry.vertexSampleIds[vertex] ?? String(vertex);
-                  return (
-                    <li key={id}>
-                      <Button
-                        variant="secondary"
-                        aria-pressed={sampleId === id}
-                        onClick={() => pick(id)}
-                      >
-                        {id} · {position[1].toFixed(5)}, {position[0].toFixed(5)}
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ol>
+              <h4 id={`${tabsId}-samples`}>표본 목록</h4>
+              {total === 0 ? (
+                <p className={styles.note}>그려진 표본이 없습니다.</p>
+              ) : (
+                <>
+                  <p className={styles.note}>
+                    좌표 {total}개 중 {start + 1}–{start + listed.length}번째. 지도 없이도 모든
+                    표본을 선택할 수 있습니다.
+                  </p>
+                  <div className={styles.actions}>
+                    <Button
+                      variant="secondary"
+                      disabled={shownPage === 0}
+                      onClick={() => {
+                        pick(null);
+                        setPage(Math.max(0, shownPage - 1));
+                      }}
+                    >
+                      이전 표본 묶음
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={shownPage >= pages - 1}
+                      onClick={() => {
+                        pick(null);
+                        setPage(Math.min(pages - 1, shownPage + 1));
+                      }}
+                    >
+                      다음 표본 묶음
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={shownPage >= pages - 1}
+                      onClick={() => {
+                        pick(null);
+                        setPage(pages - 1);
+                      }}
+                    >
+                      마지막 묶음
+                    </Button>
+                  </div>
+                  <ol className={styles.samples} aria-labelledby={`${tabsId}-samples`}>
+                    {listed.map((position, offset) => {
+                      const vertex = start + offset;
+                      const id = geometry.vertexSampleIds[vertex] ?? String(vertex);
+                      return (
+                        <li key={id}>
+                          <Button
+                            variant="secondary"
+                            aria-pressed={sampleId === id}
+                            onClick={() => pick(id)}
+                          >
+                            {id} · {position[1].toFixed(5)}, {position[0].toFixed(5)}
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </>
+              )}
             </>
-          )}
+          ) : null}
         </div>
       </div>
     </>

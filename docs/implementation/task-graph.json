@@ -1338,8 +1338,9 @@
       "title": "지도 lazy 로딩, 수명 정리, 외부 요청",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "지도 chunk가 지도 mount 때만 로드됨과 S09 탭별 mount-on-demand·선택/zoom 공유를 두 shell에서 단언한다. 로그아웃·계정 전환·unmount에서 SDK instance·worker·listener·요청·blob URL이 정리되고 늦은 응답이 재유입되지 않음을 단언한다. 모든 지도 화면에서 `page.route`로 시도된 요청까지 기록해 외부 origin 0건을 단언한다 닫을 매트릭스 행: P5-lazy-two-shells, R-state-retention, P5-logout-clear, S09-split-lazy, R-S09, P6-no-external-runtime. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "지도 chunk가 지도 mount 때만 로드됨과 S09 탭별 mount-on-demand·선택/zoom 공유를 두 shell에서 단언한다. 로그아웃·계정 전환·unmount에서 SDK instance·worker·listener·요청·blob URL이 정리되고 늦은 응답이 재유입되지 않음을 단언한다. 모든 지도 화면에서 `page.route`로 시도된 요청까지 기록해 외부 origin 0건을 단언한다 닫을 매트릭스 행: P5-lazy-two-shells, R-state-retention, P5-logout-clear, S09-split-lazy, R-S09, P6-no-external-runtime. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-d.md"
     },
     {
       "id": "M2-01k-e",
@@ -1478,6 +1479,14 @@
       "status": "completed",
       "scope": "M2-01k-f에서 분리. (a) F1: worker resourceLimits가 OOM을 worker 안에 항상 가두지 못한다. native structured-clone 역직렬화(ValueDeserializer)가 heap 한도 근처의 유예를 다 쓰면 V8이 API 프로세스 전체를 abort한다(변이로 재현, exit 134). 신뢰할 수 없는 운영 업로드를 받기 전에 parser를 별도 child process(또는 supervisor)로 옮겨 메모리 초과가 API를 죽이지 않고 TRACK_PARSE_MEMORY_EXCEEDED로 끝남을 실제 프로세스로 단언하고, M2-01k-f의 M2b·M2d 변이 조건에서 부모가 살아남음을 보인다. P7-parser-bounds의 F1 한계를 닫는다. (b) 성능 판정 보강(M2-01k-f 4차 검토 N-g·N-h·N-i): 허용 부하 초과 표본 하나가 그 metric을 inconclusive로 만드는 대신 허용 부하 표본만으로 통계를 판정할지 결정하고 시험으로 구별한다. parseBudgetFile이 metric별 baseline.loadAverage1m을 기록된 기준선 run에서 다시 도출해 대조한다. pnpm-lock.yaml·turbo.json 스캔을 시험으로 묶는다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01k-f.md §5, §8, §11.",
       "evidence": "docs/implementation/progress/M2-01ai.md"
+    },
+    {
+      "id": "M2-01aj",
+      "title": "track parse child 메모리 예산과 종료 순서",
+      "dependsOn": ["M2-01ai"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01ai 독립 검토의 비차단 후속. (a) parse child process의 peak RSS(`details.parseProcessRss`, 현재 약 170 MiB, API당 최대 4개)는 기록만 하고 예산이 없다. 기록 전용 기준선 run 3회로 metric과 예산을 performance-budget.json에 더하고, 서버 probe가 판정하게 한다. api.processPeakRssMiB는 이제 parse 메모리를 포함하지 않으므로 그 예산을 새 기준선에 맞게 다시 도출할지 결정한다. (b) apps/api/src/configured.ts의 close hook에서 parser close를 routing permit drain 앞이나 함께 두어, 종료 때 진행 중 parse가 drain 시간만큼 더 돌지 않게 한다(순서가 바뀌어도 routing admission과 공유 상태가 없음을 확인한다). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01ai.md §7, M2-01ai 2차 검토."
     },
     {
       "id": "M2-01k",
