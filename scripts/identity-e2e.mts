@@ -87,6 +87,7 @@ import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
 import { startCertifiedOidc } from './fixtures/oidc-certified-provider.ts';
 import { certifiedOidcContextPath } from './fixtures/certified-oidc-context.ts';
+import { sweepStaleHandoffFiles } from './fixtures/identity-handoff-sweep.ts';
 import { fixtureGarmin, startFixtureGarmin } from './fixtures/garmin-provider.ts';
 import {
   createGarminStore,
@@ -111,6 +112,13 @@ const detectedBin = [
 if (detectedBin === undefined)
   throw new Error('Identity E2E requires local PostgreSQL binaries (PG_BIN).');
 const bin = detectedBin;
+// Hand-off files of harnesses that were killed (SIGKILL skips the closers below). Only files
+// whose writer is gone are removed; a concurrently running harness keeps its own.
+const swept = await sweepStaleHandoffFiles();
+if (swept.removed.length > 0)
+  console.log(`Identity E2E: removed ${swept.removed.length} stale hand-off file(s).`);
+for (const { name, reason } of swept.skipped)
+  console.log(`Identity E2E: left hand-off entry ${name} in place (${reason}).`);
 const directory = await mkdtemp(join(tmpdir(), 'workout-identity-e2e-'));
 const data = join(directory, 'data');
 function run(command: string, args: string[]) {
@@ -239,7 +247,12 @@ try {
   await rm(coachingWorkerContextPath, { force: true });
   await writeFile(
     coachingWorkerContextPath,
-    JSON.stringify({ databaseUrl: runtimeUrl, workerDatabaseUrl: workerUrl }),
+    JSON.stringify({
+      databaseUrl: runtimeUrl,
+      workerDatabaseUrl: workerUrl,
+      // Lets a later harness tell this file from one a killed harness left behind.
+      harnessPid: process.pid,
+    }),
     { mode: 0o600 },
   );
   closers.push(() => rm(coachingWorkerContextPath, { force: true }));
@@ -255,9 +268,11 @@ try {
     const certified = await startCertifiedOidc();
     closers.push(() => certified.close());
     await rm(certifiedOidcContextPath, { force: true });
-    await writeFile(certifiedOidcContextPath, JSON.stringify({ passwords: certified.passwords }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      certifiedOidcContextPath,
+      JSON.stringify({ passwords: certified.passwords, harnessPid: process.pid }),
+      { mode: 0o600 },
+    );
     closers.push(() => rm(certifiedOidcContextPath, { force: true }));
     oidcSettings = {
       issuer: certified.issuer,

@@ -42,6 +42,7 @@ export default defineConfig({
           environmentOptions: { jsdom: { url: 'http://localhost/' } },
           include: [
             'packages/tooling/fixtures/**/*.test.tsx',
+            'packages/tooling/tests/**/*.test.tsx',
             'packages/platform/tests/**/*.test.tsx',
             'packages/modules/*/tests/**/*.test.tsx',
             'packages/experience/*/tests/**/*.test.tsx',

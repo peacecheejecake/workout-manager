@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { identityApiPort } from './scripts/fixtures/identity-api-port';
+import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-capture';
 
 /**
  * The self-hosted basemap deployment, when one has been built on this machine.
@@ -33,9 +34,33 @@ const geoDataEnv = existsSync(join(geoDataDirectory, 'places.json'))
  */
 process.env.IDENTITY_E2E_RUN_ID ??= randomUUID();
 
+/**
+ * Opt-in failure evidence for stalls nobody could reproduce (M2-01ad): with
+ * `IDENTITY_E2E_DIAGNOSTICS=1`, each worker logs Playwright's API/CDP/browser debug streams
+ * and its event-loop delay, and a reporter samples machine pressure and, for each failed
+ * test, writes that test's share next to its trace. Off by default: normal runs load neither.
+ * See README "Identity E2E diagnostics".
+ */
+const diagnostics = process.env.IDENTITY_E2E_DIAGNOSTICS === '1';
+if (diagnostics) {
+  process.env.IDENTITY_E2E_DIAGNOSTICS_DIR ??= join(
+    import.meta.dirname,
+    'playwright-report/identity-diagnostics',
+    process.env.IDENTITY_E2E_RUN_ID,
+  );
+  // The config is loaded again in every worker; only there does the browser connection live.
+  if (process.env.TEST_WORKER_INDEX !== undefined)
+    captureWorkerProtocol(process.env.IDENTITY_E2E_DIAGNOSTICS_DIR);
+}
+
 export default defineConfig({
   testDir: './tests/identity',
   workers: 1,
+  ...(diagnostics
+    ? {
+        reporter: [[process.env.CI ? 'dot' : 'list'], ['./tests/identity/diagnostics/reporter.ts']],
+      }
+    : {}),
   forbidOnly: Boolean(process.env.CI),
   use: {
     ...devices['Desktop Chrome'],

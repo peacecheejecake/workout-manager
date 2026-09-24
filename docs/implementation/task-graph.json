@@ -1295,7 +1295,8 @@
       "title": "남은 시험 불안정 요인",
       "dependsOn": ["M2-01ac"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01ad.md",
       "scope": "M2-01ac와 그 독립 검토에서 남은 것. (1) 미해명 renderer 정지: planner-operations.spec.ts:129·activity-tags가 setViewportSize 직후 브라우저 안에서 멈춤(stable 대기·scrollIntoView 무응답). 재발 시 DEBUG=pw:protocol과 시스템 CPU·메모리 압박을 함께 기록해 원인을 가린다. dashboard-ui.spec.ts:267, activity-track-map.spec.ts:165도 미해명. (2) vitest가 timeout된 시험 본문을 멈추지 않아 남은 동작이 다음 시험의 DOM에 닿는다(M2-01ac의 499/500 연쇄) — 구조적 차단. (3) coaching-acceptance.spec.ts:231이 Alice의 전체 활동 수를 세어 activity-track-map이 먼저 돌면 실패하는 순서 의존 — 자기 계정이나 자기 활동만 세도록. (4) harness가 SIGKILL되면 run id별 handoff 파일(DB URL 포함, 0600)이 tmpdir에 남는다 — 오래된 파일 정리. timeout 상향은 해결로 치지 않는다."
     },
     {
@@ -1425,6 +1426,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "코스 공유 기능을 만든다. 정확한 시작·끝 위치를 공유하거나 GPX로 내보내기 전에 privacy trim 제안과 확인 화면을 둔다. 확인 없이는 정확한 위치가 나가지 않는다. 주의: 이 결정은 passed 행 P7-no-public-share(\"공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성\")의 전제를 바꾼다. 이 노드는 공유 범위(링크·대상), ACL, 철회, 재식별 검토를 요구로 먼저 적어야 하고, 착지하면 P7-no-public-share와 P7-privacy-trim을 다시 판정해야 한다. 완료: 두 shell E2E가 확인 전에는 공유·내보내기가 막히고, 확인 화면이 보호 구역·시작·끝 노출을 설명하며, trim을 고르면 공유본·GPX에 보호 좌표가 없음을 단언한다. ACL(허가받지 않은 사용자 404), 철회 뒤 접근 차단, 코스 삭제·계정 말소 시 공유 회수를 통합 시험으로 단언한다. 비공허성: 확인 단계를 건너뛰는 변이, trim을 무시하는 변이, ACL 검사를 뺀 변이, 철회를 no-op으로 하는 변이가 각각 실패한다 root 병합 추가(독립 재검토): (a) 진입 gate — 공유 범위·ACL·철회·재식별 검토를 코드 전에 요구로 작성하고 사용자 승인을 받는다. 재식별 검토는 구현자가 아닌 독립 검토자가 한다. P7-no-public-share의 근거인 계획 문장을 같은 단계에서 개정한다(M2-01t 방식). (b) 검토 통과 전까지 공유는 기본값 꺼짐. (c) 철회·말소된 공유가 백업 복원 뒤 되살아나지 않는 drill check. (d) M2-01k-c2(로그 redaction)에 의존해 공유 링크·정확한 위치가 로그에 남지 않음을 단언한다. 닫을 매트릭스 행: S14-privacy-share (착지 뒤 P7-no-public-share·P7-privacy-trim 재판정). 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01ae",
+      "title": "CI 시험 artifact의 세션 값과 진단 redaction 정밀도",
+      "dependsOn": ["M2-01ad"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01ad 독립 검토에서 분리. (1) Playwright retain-on-failure trace.zip이 세션 id·CSRF token·session cookie·OIDC state/nonce/code를 redaction 없이 담고, .github/workflows/ci.yml(약 46–53, 141–148행)이 실패 시 playwright-report/·test-results/를 7일 보관 artifact로 올린다. 저장소는 public이라 로그인한 누구나 받을 수 있다. 값은 runner 안 합성 fixture 계정·일회용 DB의 것이라 재사용할 곳은 없지만, 재생 가능한 모양의 token을 공개 artifact에 두지 않도록 CI에서 trace를 끄거나 snapshots를 빼고 redaction하거나 test-results/ 업로드를 빼는 방법을 결정·구현하고, fixture E2E job(playwright.config)의 trace도 같은 기준으로 확인한다. (2) 진단 redaction이 key `sessionId`를 일괄로 가려 CDP flattened-mode의 32자 hex target sessionId와 계획 훈련 도메인 sessionId까지 숨긴다 — 앱 세션 UUID 모양만 가리도록 좁히고, 줄어든 범위가 실제 앱 세션 값을 흘리지 않음을 기존 end-to-end probe로 다시 보인다."
     },
     {
       "id": "M2-01k",

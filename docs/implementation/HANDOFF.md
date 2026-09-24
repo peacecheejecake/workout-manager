@@ -17,21 +17,21 @@
 
 ## 완료된 최신 작업
 
-[M2-01k](progress/M2-01k.md) 수용 **2차 판정**을 마쳤다(노드는 새 gap 노드 16개와 외부 gate EXT-OIDC 때문에 아직 완료가 아니다). 110행 매트릭스를 main
-`4d5b9e9` 기준으로 다시 판정해 passed 28 → 38, partial 72 → 66, failed 1 → 0, missing 3 → 0, not_executed 6 그대로다.
-승격한 행은 모두 이 판에서 실행하고 변이로 비공허성을 보였다(실제 GraphHopper에서 저장 재계산 digest 일치 포함).
-독립 검토가 R-S13-S14 승격(태블릿의 접히는 **경유점** 목록 부재)을 차단해 partial로 되돌렸다.
+[M2-01ad](progress/M2-01ad.md)를 완료했다(제품 코드 변경 없음, timeout 상향 없음).
 
-남은 partial·not_executed 72행은 모두 새 노드 `M2-01k-a`…`M2-01k-o`, 외부 gate, "지금은 partial로 수용" 중 한 곳에
-들어간다. **사용자 결정(2026-09-24):** S14 목록 drag, 왕복 초안, S09 주소 별칭·미디어 탭·영향 분리·범위/lap/지도 연결,
-코스 공유(privacy 확인 포함)를 모두 만든다(i–o). 공유(o)는 passed 행 P7-no-public-share의 전제를 바꾸므로 코드 전에
-요구·ACL·철회·재식별 검토를 사용자 승인받고, 기본값 꺼짐으로 시작한다.
+- 선택형 진단 `IDENTITY_E2E_DIAGNOSTICS=1`: 실패 시 Playwright protocol·CPU/메모리 압박·trace를 남긴다. 세션 id·CSRF·cookie·
+  authorization·OIDC 값은 Playwright 직렬화 형식을 포함해 가린다(실제 실패 probe에서 실제 값 0건). 독립 검토가 첫 판의
+  redaction 누락(evaluate 인자의 `{"k","v"}` 형식)을 차단으로 잡아 고쳤다. renderer 정지 원인은 여전히 미해명이다.
+- jsdom 시험에서 timeout된 시험 본문이 다음 시험 DOM에 event를 보내면 막고 파일을 실패시킨다(499/500 연쇄 차단).
+- coaching-acceptance는 빈 계정에서 시작해 앞선 spec 순서에 의존하지 않는다. harness는 죽은 pid의 hand-off 파일을 안전하게 치운다.
+- 기존부터 있던 문제: 실패 시 Playwright trace가 세션 값을 그대로 담고 CI가 public 저장소 artifact로 올린다(합성 계정·일회용
+  runner라 실제 노출은 무시할 만함). M2-01ae로 분리했다.
 
-직전 완료: [M2-01ac](progress/M2-01ac.md)(부하 간헐 실패 규명, 제품 코드 변경 없음).
+직전 완료: [M2-01k](progress/M2-01k.md) 수용 2차 판정(passed 38, 새 gap 노드 16개, 사용자 결정 i–o).
 
 ## 다음 ready 작업
 
-M2-01ad는 독립 검토 지적(진단 redaction) 수정 중이다. `M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
+M2-01ae는 ready다. `M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
 뒤이며 코드 전에 사용자 승인이 필요하다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate

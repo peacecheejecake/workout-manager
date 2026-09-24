@@ -53,10 +53,7 @@ async function login(page: Page) {
   return { athleteId: session.athleteId, headers };
 }
 
-test.afterEach(async ({ page }) => {
-  const headers = cleanupHeaders.get(page);
-  if (!headers) return;
-  cleanupHeaders.delete(page);
+async function eraseAccount(page: Page, headers: Headers) {
   // This is the private OIDC fixture's synthetic account, never an external account.
   const erased = await page.request.delete('/bff/v1/operations/account', {
     headers,
@@ -64,6 +61,28 @@ test.afterEach(async ({ page }) => {
     timeout: 5000,
   });
   expect(erased.status()).toBe(200);
+  expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
+}
+
+/**
+ * Signs in to an Alice account that holds nothing yet.
+ *
+ * The evidence dependency manifest and the dashboard count every activity of the account,
+ * and earlier specs in the same harness (activity-track-map, for one) leave Alice's
+ * activities behind. Erasing first makes this journey's counts its own.
+ */
+async function loginToEmptyAccount(page: Page) {
+  const previous = await login(page);
+  cleanupHeaders.delete(page);
+  await eraseAccount(page, previous.headers);
+  return login(page);
+}
+
+test.afterEach(async ({ page }) => {
+  const headers = cleanupHeaders.get(page);
+  if (!headers) return;
+  cleanupHeaders.delete(page);
+  await eraseAccount(page, headers);
 });
 
 async function dispatchFixtureWorker(athleteId: string) {
@@ -100,7 +119,7 @@ test('synthetic actual enters evidence, then an explicitly reviewed fixture diff
   page,
 }) => {
   test.setTimeout(120_000);
-  const { athleteId, headers } = await login(page);
+  const { athleteId, headers } = await loginToEmptyAccount(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);
