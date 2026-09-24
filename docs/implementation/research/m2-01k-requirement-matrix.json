@@ -13,6 +13,7 @@
     "probe-course-performance",
     "course-acceptance.spec fixture x1, real engine x3 (after render assertion), F2 revert fails"
   ],
+  "roundOneNote": "The header fields node, baseHead, rule and executedThisNode describe round 1 of M2-01k (base e2b3bf5, second review on 17effce). Each row keeps its round-1 evidence in `evidence` (`evidenceRound` says which round that list comes from) and carries a `round2` record: the change, the verdict, and what round 2 itself executed.",
   "amendments": [
     {
       "node": "M2-01t",
@@ -28,11 +29,129 @@
       "note": "The header fields node, baseHead and executedThisNode above describe M2-01k only. Rows listed here were re-judged by the amending node on its own executed evidence; see docs/implementation/progress/M2-01t.md."
     }
   ],
+  "rounds": [
+    {
+      "round": "M2-01k round 2",
+      "date": "2026-09-24",
+      "baseHead": "4d5b9e9",
+      "rule": "passed only when a test, probe or measurement executed in this node passed AND asserts the core of the requirement AND would fail without the feature. Code reading, test names, stubs of the thing being judged, or tests that accept \"not deployed\" as success are not passed evidence. Applied unchanged in round 2: a row was promoted only on evidence executed in round 2; evidence another node reported was re-executed before it counted, and a row whose evidence could not be executed kept its verdict. Verdicts were decided by the round-2 agent from the executed assertions. An independent review of this round (tree 57e8cb5c) requested changes: one blocking finding (R-S13-S14 kept partial) and non-blocking wording, evidence-labelling and proposal fixes, all applied. Root will have the result re-reviewed.",
+      "executed": [
+        "pnpm check:generated, pnpm lint, pnpm typecheck: passed",
+        "pnpm build: 15/15 (and rebuilds for the two E2E mutants and their restores)",
+        "pnpm test: 3,404 passed (280 files)",
+        "pnpm test:integration: 1 + 616 passed (runner-made unix-socket cluster, no TEST_DATABASE_* set)",
+        "scripts/backup-restore-drill.mts --execute (PG_BIN postgresql@14): passed, 75 checks",
+        "scripts/probe-routing-operational.mts --execute (real GraphHopper 10.0, graph A c57f12f5975347e8 / B f2448701c8f6e2da): 26/26 PASS, findings [], iterative editing 12/12 route_computed (logged: siblings held after a pick 0)",
+        "IDENTITY_E2E_ROUTING=graphhopper (engine on 8991, graph A): course-acceptance.spec + course-new-edit.spec, fresh harness per run, 3 runs x 4/4 passed",
+        "pnpm test:identity x2 (fixture routing): 178 passed, 3 skipped (oidc-certified.spec real-OP tests), 0 failed, each run",
+        "E2E mutant f2-both (mapWorkerUrl removed from the Next AND Vite course list/edit screens, rebuilt): map-render responsive test fails in both shells, Expected drawn / Received not-drawn",
+        "E2E mutant css-container (course workbench container declaration removed, rebuilt): map-render responsive test fails in both shells, Expected drawn / Received out-of-view",
+        "unit mutant m10 (moveEarlier no-op): 6 failed / 77 (course-draft, course-editor, course-new, course-workbench)",
+        "unit mutant select (selectWaypoint no-op): 2 failed / 77",
+        "unit mutant f6-hash (publish hash comparison removed): 1 failed / 40 (local-filesystem)",
+        "unit mutant f6-size (both publish size comparisons removed): 1 failed / 40",
+        "unit mutant fit-always (MapView refits on every data change): 1 failed / 74 (geo-kit)",
+        "unit mutant fit-once (MapView fits only once): 2 failed / 74",
+        "integration mutant no-supersede (store no longer supersedes replaced answers; private PG14 cluster): courses.integration 7 failed / 55; restored 55/55",
+        "Aside (CLI 1.26.916.1741, aside repl) on the fixture harness: /courses/new in 3100 and 4200",
+        "every mutant restored and byte-compared (sha256); git status clean of source changes after each",
+        "place search from the deployed self-hosted place dataset (course-new-edit.spec, outcome results, 한성대입구) in all five identity/graphhopper runs"
+      ],
+      "countsBefore": {
+        "partial": 72,
+        "passed": 28,
+        "missing": 3,
+        "not_executed": 6,
+        "failed": 1
+      },
+      "countsAfter": {
+        "partial": 66,
+        "passed": 38,
+        "failed": 0,
+        "missing": 0,
+        "not_executed": 6
+      },
+      "changedRows": [
+        "K-next-map-render",
+        "K-s14-edit-loop",
+        "P5-fitbounds",
+        "P5-list-alternative",
+        "P7-erasure",
+        "P7-object-keys",
+        "S13-card-access-memo",
+        "S14-address",
+        "S14-place-search",
+        "S14-uncomputed-draft"
+      ],
+      "notExecuted": [
+        "K-oidc and every row needing a production OIDC provider: EXT-OIDC external gate (oidc-certified.spec real-OP tests skipped in both identity runs; M2-01u/w evidence is a local certified OP, not a production IdP)",
+        "FUT-07-4, P8-coverage: Korean pedestrian coverage independent review (M0-06b gate)",
+        "R-touch-ime, P5-gesture-escape: real-device touch, rotation, OS IME, gesture escape (user deferred real-device work)",
+        "M2-01-parent: root decision after M0-06b",
+        "scripts/probe-course-performance.mts was not re-run (K-performance keeps partial on round-1 values)",
+        "No mutation was re-run for the M2-01q LINE (points-only) or UNCOMPUTED layer anchors, the M2-01s/x/y SQL anchors, or the M2-01r E2E paths; those rows rely on assertions whose failure without the feature follows from what they assert, plus the mutants listed as executed"
+      ],
+      "note": "See docs/implementation/progress/M2-01k.md \"Round 2\".",
+      "userDecisions": [
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S14-drag-and-buttons", "V2-F19"],
+          "decision": "Build list drag (map-marker drag optional) on the same draft reducer as the move buttons; drag and buttons must produce the same saved order.",
+          "proposedNode": "M2-01k-i"
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S14-loop-draft", "P6-target-display"],
+          "decision": "Build an out-and-back (A->B->A) draft that shows the overlapping segment.",
+          "proposedNode": "M2-01k-j",
+          "note": "P6-target-display was bundled into this decision by the implementer, not decided by the user; node M2-01k-j must also assert connectivity, known access restrictions and slope source."
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S09-address"],
+          "decision": "Build a /activities/:id?tab= alias/redirect in both shells.",
+          "proposedNode": "M2-01k-k"
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S09-tabs"],
+          "decision": "Build the media tab (media connection).",
+          "proposedNode": "M2-01k-l"
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S09-impact-split", "V2-F14", "S09-no-causal"],
+          "decision": "Build the classification/estimate (분류·추정) and consultation (상담) sections, plus a negative test that no risk % is shown.",
+          "proposedNode": "M2-01k-m"
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S09-range-link", "V2-F13", "V2-A18"],
+          "decision": "Build a drag chart range, a linked lap table and an asserted map highlight.",
+          "proposedNode": "M2-01k-n"
+        },
+        {
+          "date": "2026-09-24",
+          "source": "the user's own answers, relayed by root",
+          "rows": ["S14-privacy-share"],
+          "decision": "Build a sharing feature with a privacy trim and confirmation screen before sharing or exporting exact start/end positions.",
+          "proposedNode": "M2-01k-o",
+          "note": "This changes the premise of the passed row P7-no-public-share (public sharing stays disabled until a separate requirement, ACL and re-identification review); the node must write those down first, and P7-no-public-share and P7-privacy-trim must be re-judged when it lands."
+        }
+      ]
+    }
+  ],
   "counts": {
-    "partial": 72,
-    "passed": 28,
-    "failed": 1,
-    "missing": 3,
+    "partial": 66,
+    "passed": 38,
+    "failed": 0,
+    "missing": 0,
     "not_executed": 6
   },
   "total": 110,
@@ -43,7 +162,15 @@
       "quote": "| S09 | 활동 상세 `/activities/:id?tab=overview` | 분석·구간·지도·impact·미디어·출처 | M1 |",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-detail-tabs.spec.ts:112 (identity ×2, executed)"],
-      "reason": "Address is `/activities?selected=<id>&detailTab=…`; `apps/web/app/activities/[id]/` holds only `edit/`. Tabs exist; media tab is disabled."
+      "reason": "Address is `/activities?selected=<id>&detailTab=…`; `apps/web/app/activities/[id]/` holds only `edit/`. Tabs exist; media tab is disabled.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-header",
@@ -53,7 +180,15 @@
       "evidence": [
         "tests/identity/activity-metric-summary.spec.ts:49 asserts pace/elapsed/heart-rate texts (:113-130)"
       ],
-      "reason": "Source, observed time and an explicit correction state are not asserted by any executed test."
+      "reason": "Source, observed time and an explicit correction state are not asserted by any executed test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-tabs",
@@ -63,7 +198,13 @@
       "evidence": [
         "packages/modules/activities/tests/activity-detail-tabs.test.tsx:33,87 (unit, executed)"
       ],
-      "reason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function."
+      "reason": "Media tab is always disabled (\"미디어 연결을 제공하지 않습니다\"); no media function.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-split-lazy",
@@ -71,7 +212,15 @@
       "quote": "큰 그래프와 지도는 데스크톱 split-pane, 모바일은 개별 탭으로 lazy mount한다.",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-track-map.spec.ts:272 (layout at boundaries)"],
-      "reason": "Mobile pane stays mounted once loaded (M2-01e); split exists only inside the route tab. Lazy mount per tab not asserted."
+      "reason": "Mobile pane stays mounted once loaded (M2-01e); split exists only inside the route tab. Lazy mount per tab not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-range-link",
@@ -79,7 +228,15 @@
       "quote": "차트에서 구간을 선택하면 지도 경로와 lap table의 동일 시간 범위가 강조된다.",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-workbench.spec.ts:35 (:157-174 range via UTC inputs)"],
-      "reason": "No drag range on the chart (range is typed); no lap table linked in the route tab; map highlight of the range not asserted."
+      "reason": "No drag range on the chart (range is typed); no lap table linked in the route tab; map highlight of the range not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-cursor-store",
@@ -89,7 +246,15 @@
       "evidence": [
         "tests/identity/activity-workbench.spec.ts:35 — `expect(writes).toBe(0)` (:209)"
       ],
-      "reason": "No-write is asserted for clicks/Enter/range apply only; cursor (hover) movement is never exercised; the store identity is not asserted."
+      "reason": "No-write is asserted for clicks/Enter/range apply only; cursor (hover) movement is never exercised; the store identity is not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-gps-gap",
@@ -100,7 +265,13 @@
         "packages/experience/geo-kit/tests/geo-kit.test.tsx:87 \"never bridges a gap\" — features split into 2 (:90), second is an insufficient Point (:98-99); fails without break handling (unit, executed)",
         "packages/modules/activities/tests/stored-track-geometry.test.tsx:31,234 breaks preserved"
       ],
-      "reason": "Asserted on the feature collection handed to the renderer. The E2E (activity-track-map.spec:193) only checks \"≥1 feature\", so the rendered pixels are not asserted."
+      "reason": "Asserted on the feature collection handed to the renderer. The E2E (activity-track-map.spec:193) only checks \"≥1 feature\", so the rendered pixels are not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-indoor-tab",
@@ -113,7 +284,16 @@
         "packages/modules/activities/tests/activity-detail-tabs.test.tsx:87 \"enables the route tab and renders its panel content\" (unit)",
         "packages/modules/activities/tests/activity-track-panel.test.tsx:262 \"reports a recording with no fix and still shows the summary\" (unit, mocked API)"
       ],
-      "reason": "Spec amended by explicit user decision on 2026-09-23 (\"M2-01t는 현재 구현에 맞게 스펙을 고쳐\"); product behaviour unchanged. This row was failed (M2-01k) against the previous clause '실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다.', because the tab is enabled; an independent reviewer judged the enabled tab with an in-panel explanation more accessible than a disabled tab. The E2E asserts in both shells: the route tab is enabled and selectable from another tab; the panel shows the no-location explanation; after the geometry query has resolved (the map pane's 'no coordinates' notice is visible, rendered in the same commit that would mount the map leaf) the map pane holds exactly one child, the notice, with no map loading fallback; after network idle the pane still holds one child and there is no map region, canvas or rendered path feature, and start/end are disabled; the stored map_path has no coordinates; the recording summary (50초, 640m) and the activity summary are visible. Each map check is shown to fail under a map-mounting mutation (M2, M2b, M2b with the structural check removed). Not proven: pixels (nothing is drawn to check), and a map mounted only after network idle."
+      "reason": "Spec amended by explicit user decision on 2026-09-23 (\"M2-01t는 현재 구현에 맞게 스펙을 고쳐\"); product behaviour unchanged. This row was failed (M2-01k) against the previous clause '실내·GPS 없는 기록은 경로 탭을 설명과 함께 비활성화한다.', because the tab is enabled; an independent reviewer judged the enabled tab with an in-panel explanation more accessible than a disabled tab. The E2E asserts in both shells: the route tab is enabled and selectable from another tab; the panel shows the no-location explanation; after the geometry query has resolved (the map pane's 'no coordinates' notice is visible, rendered in the same commit that would mount the map leaf) the map pane holds exactly one child, the notice, with no map loading fallback; after network idle the pane still holds one child and there is no map region, canvas or rendered path feature, and start/end are disabled; the stored map_path has no coordinates; the recording summary (50초, 640m) and the activity summary are visible. Each map check is shown to fail under a map-mounting mutation (M2, M2b, M2b with the structural check removed). Not proven: pixels (nothing is drawn to check), and a map mounted only after network idle.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "M2-01t amendment (2026-09-23)"
     },
     {
       "id": "S09-impact-split",
@@ -121,7 +301,15 @@
       "quote": "영향(impact)은 다음을 분리한다.\n| 관측·계산 | 해당 Block의 거리/시간에 기여한 양, 계획 대비 차이, 보고한 RPE |\n| 분류·추정 | 목적/강도 분류와 그 출처·불확실성 |\n| 상담 | 향후 계획에서 검토할 항목과 관련 제안 |",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-context.spec.ts:35"],
-      "reason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent."
+      "reason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S09-no-causal",
@@ -131,7 +319,15 @@
       "evidence": [
         "tests/identity/activity-context.spec.ts:35 — known/missing partial sums (:152-157, :201)"
       ],
-      "reason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent."
+      "reason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-crud",
@@ -143,7 +339,17 @@
         "tests/identity/courses.spec.ts:118 rename (:181-182 \"이름을 저장했습니다. 현재 수정 번호 2\", then the new name in the delete impact :188)",
         "packages/modules/courses/tests/course-editor.test.tsx:1089 screen delete path"
       ],
-      "reason": "CRUD part of the row."
+      "reason": "CRUD part of the row.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "IDENTITY_E2E_ROUTING=graphhopper: course-acceptance + course-new-edit, fresh harness x3 (4/4 each)",
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-gpx",
@@ -153,7 +359,15 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts steps 5 and 8: UI import creates an `imported-file` course; UI export byte-equal to API, `<rte>` only, rtept count = head geometry"
       ],
-      "reason": "GPX part of the row."
+      "reason": "GPX part of the row.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-favourite",
@@ -163,7 +377,15 @@
       "evidence": [
         "tests/identity/course-extras.spec.ts:58 — \"즐겨찾기 해제\" visible (:125), API favourite true (:132)"
       ],
-      "reason": "Favourite part of the row."
+      "reason": "Favourite part of the row.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-card-thumbnail",
@@ -173,7 +395,15 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 7 (stored SVG path = geometry, Bob 404)"
       ],
-      "reason": "Thumbnail is stored and shown in the course detail, not on the list card (M2-01l)."
+      "reason": "Thumbnail is stored and shown in the course detail, not on the list card (M2-01l).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-card-distance",
@@ -181,7 +411,14 @@
       "quote": "실제/추정 거리",
       "verdict": "partial",
       "evidence": [],
-      "reason": "List card shows no distance; detail shows planned line length; engine estimate only in the proposal review. Not asserted on a card."
+      "reason": "List card shows no distance; detail shows planned line length; engine estimate only in the proposal review. Not asserted on a card.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-card-elevation",
@@ -191,7 +428,15 @@
       "evidence": [
         "tests/identity/course-extras.spec.ts:192 accepts \"고도 데이터가 배포되어 있지 않습니다\" — NOT counted as evidence"
       ],
-      "reason": "Only the detail shows it; the E2E passes with no dataset; unit tests use a fake `no_dataset` transport; real dataset has 821 points (effective coverage ~0)."
+      "reason": "Only the detail shows it; the E2E passes with no dataset; unit tests use a fake `no_dataset` transport; real dataset has 821 points (effective coverage ~0).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-card-surface",
@@ -201,15 +446,35 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts:413 and course-extras.spec.ts:193 assert \"확인되지 않음\""
       ],
-      "reason": "The state is a constant \"확인되지 않음\"; there is no surface data source. Detail only, not the card."
+      "reason": "The state is a constant \"확인되지 않음\"; there is no surface data source. Detail only, not the card.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-card-access-memo",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "접근성 메모",
-      "verdict": "missing",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "No field, contract or UI."
+      "reason": "The list CARD shows '접근성 메모: …' (asserted on the card list item in both shells, and again after a reload); the note is stored against the head on screen (writtenAtRevision 3, head unchanged by it), exported in account export v22, refused without the CSRF token (403, measured), refused against an old head (409), and Bob gets 404 for write and read and sees no note. Unit tests distinguish 'no note' from 'could not read notes'. Restore keeps the note and its revision. The note is the owner's claim, labelled as such; nothing checks its truth.",
+      "round2": {
+        "change": "missing -> passed",
+        "verdict": "passed",
+        "previousReason": "No field, contract or UI.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts (both shells) in pnpm test:identity x2 and in graphhopper mode x3",
+          "packages/modules/courses/tests/course-accessibility-note.test.tsx (pnpm test)",
+          "pnpm test:integration (course-accessibility-notes-upgrade.integration.test.ts)",
+          "drill restored_course_accessibility_note_survives_with_its_revision, restored_course_accessibility_note_reproduced_in_export_v22"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "S13-card-last-used",
@@ -217,7 +482,14 @@
       "quote": "마지막 사용을 표시한다.",
       "verdict": "partial",
       "evidence": ["tests/identity/course-extras.spec.ts:134 `lastUsedAt` not null (API only)"],
-      "reason": "On-screen display not asserted by an executed E2E (seen in Aside capture only)."
+      "reason": "The list card now renders '마지막 사용 <date>' (course-workbench.tsx), but no executed test asserts that text on the card; course-extras.spec.ts:134 still checks only the API lastUsedAt.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "On-screen display not asserted by an executed E2E (seen in Aside capture only).",
+        "executed": ["pnpm test:identity x2 (course-extras.spec)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S13-from-track",
@@ -228,15 +500,34 @@
         "tests/identity/course-acceptance.spec.ts step 2 (recorded-segment, lineage=[activityId])",
         "tests/identity/courses.spec.ts:118 trackRevision stays 1 right after creation (:146-148)"
       ],
-      "reason": "Track immutability is checked once, after creation; not after edits, and not by content."
+      "reason": "Track immutability is checked once, after creation; not after edits, and not by content.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-address",
       "source": "docs/.pre/01_product_screen_spec.md:52",
       "quote": "| S14 | 경로 편집 `/courses/new`, `/:id/edit` | 지도 waypoint·보행 경로·고도·저장 | M2 |",
-      "verdict": "missing",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "No `/courses/new` or `/courses/:id/edit` in apps/web/app/courses or apps/mobile-web; a course cannot be started from an empty map or a place search."
+      "reason": "Both addresses exist in both shells and are driven end to end: /courses/new (empty map) -> coordinate or place-search points -> preview (POST /courses/route-previews, 200 route_computed, nothing stored: the course list does not contain the name) -> reviewed save -> the screen lands on /courses/:id/edit, and the saved revision's geometry equals the reviewed preview, lineage [], edit created, graph id = preview graph. /courses/:id/edit reopens and edits by address (revision 2 and 3 saved there). The Vite shell refuses a non-uuid address. Without the routes or the routed-waypoints create path the spec cannot reach its first region. DETERMINISM (M2-01r's open limit) MEASURED this round: with the real GraphHopper 10.0 engine the server's save-time recomputation matched the reviewed geometrySha256 on every save (3 runs x 2 new courses; otherwise 409 ROUTE_PREVIEW_CHANGED) and the saved coordinates equal the preview's. That is determinism observed on one machine, one graph, one engine version and short Seoul routes; it is not a proof for every route. Not covered: elevation before the first save (S14-flow). Scope: the addresses (/courses/new, /courses/:id/edit) and what they do; elevation (고도) in the quoted row is judged in S14-flow and S14-elevation-distance-check.",
+      "round2": {
+        "change": "missing -> passed",
+        "verdict": "passed",
+        "previousReason": "No `/courses/new` or `/courses/:id/edit` in apps/web/app/courses or apps/mobile-web; a course cannot be started from an empty map or a place search.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts (3 tests: Next, Vite, place search) in pnpm test:identity x2 (fixture routing)",
+          "same spec with IDENTITY_E2E_ROUTING=graphhopper, graph c57f12f5975347e8, fresh harness x3: 3/3 each",
+          "Aside: /courses/new on 3100 and 4200"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "S14-flow",
@@ -246,7 +537,17 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 3 (coordinates → routing → review → save, real engine ×3)"
       ],
-      "reason": "Search works only after opening an existing course; elevation is only readable for the saved head, so \"check elevation → save\" cannot happen in that order."
+      "reason": "Search -> points -> foot routing -> save now works from an empty map (course-new-edit.spec, including a place-search start; real engine x3). Elevation is still only available for a saved head, so 'check elevation, then save' cannot happen in that order.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "Search works only after opening an existing course; elevation is only readable for the saved head, so \"check elevation → save\" cannot happen in that order.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts (x2 fixture, x3 graphhopper)",
+          "tests/identity/course-acceptance.spec.ts (real engine x3)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-drag-and-buttons",
@@ -256,7 +557,13 @@
       "evidence": [
         "packages/modules/courses/tests/course-editor.test.tsx:402-403 move button changes draft revision (unit)"
       ],
-      "reason": "No drag anywhere (list or map). `course-editor.test.tsx:391` is titled \"usable without a drag\" — it proves the alternative, not drag."
+      "reason": "No drag anywhere (list or map). `course-editor.test.tsx:391` is titled \"usable without a drag\" — it proves the alternative, not drag.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-undo-redo",
@@ -267,7 +574,16 @@
         "packages/modules/courses/tests/course-draft.test.tsx:79-90 revisions/future (unit)",
         "tests/identity/courses.spec.ts:295 draft revision numbers"
       ],
-      "reason": "No executed test asserts that undo restores the previous waypoint content or that redo re-applies it; the E2E list count is 3 before and after undo."
+      "reason": "No executed test asserts that undo restores the previous waypoint content or that redo re-applies it; the E2E list count is 3 before and after undo.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-loop-draft",
@@ -278,7 +594,17 @@
         "scripts/probe-routing-operational.mts real engine: 4 candidates (1,798/2,013/2,323/1,769 m)",
         "tests/identity/course-acceptance.spec.ts step 4 (real engine ×3)"
       ],
-      "reason": "Only triangle loop candidates around the start; no out-and-back draft."
+      "reason": "Only triangle loop candidates around the start; no out-and-back draft.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "IDENTITY_E2E_ROUTING=graphhopper: course-acceptance + course-new-edit, fresh harness x3 (4/4 each)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-gpx",
@@ -288,7 +614,15 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts steps 5 and 8 (UI import; UI export byte-equal to API)"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-lock",
@@ -299,17 +633,35 @@
         "tests/identity/courses.spec.ts:295 — alert \"잠긴 경유점입니다\" (:332), list still 3 after a delete attempt (:333-335)",
         "packages/modules/courses/tests/course-draft.test.tsx:118-126 WAYPOINT_LOCKED ×4, revision unchanged"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-place-search",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "장소 검색을 제공한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-extras.spec.ts:197-198 accepts \"장소 데이터가 배포되어 있지 않습니다|찾은 장소가 없습니다\" — NOT counted"
       ],
-      "reason": "No executed test asserts a real search result from the deployed dataset; unit tests use fakes and an in-test document."
+      "reason": "Round 1's objection (every executed test accepted 'not deployed' as success) no longer holds for this spec: it requires outcome 'results' from the self-hosted place dataset, fails when the dataset is absent, and places the course start at the found place. Limits: one query ('한성대입구'), Next shell only, on the locally built Seoul dataset (.geo-build/geo-data, not committed). Coverage, licence and update policy stay in P6-place-elevation-data (partial). course-extras.spec.ts:197-198 still accepts 'not deployed' and is not counted.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "No executed test asserts a real search result from the deployed dataset; unit tests use fakes and an in-test document.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts 'starts a new course from a place found in our own place data' in pnpm test:identity x2 (fixture routing) and IDENTITY_E2E_ROUTING=graphhopper x3: POST /bff/v1/courses/place-search answers outcome 'results' from the deployed dataset (.geo-build/geo-data/places.json via GEO_DATA_DIR), '한성대입구' is among them, and the first preview waypoint is exactly that place's position"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "S14-foot-routing",
@@ -320,7 +672,16 @@
         "tests/identity/course-acceptance.spec.ts with IDENTITY_E2E_ROUTING=graphhopper ×3 (after the render assertion was added): stored graph c57f12f5975347e8, engineVersion 10.0, identitySource engine",
         "scripts/probe-routing-operational.mts through createConfiguredApi ×3: KRC-01 route_computed 1,281.8 m"
       ],
-      "reason": "Computation only. Whether a person can walk it is FUT-07 ④ (not_executed)."
+      "reason": "Computation only. Whether a person can walk it is FUT-07 ④ (not_executed).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "IDENTITY_E2E_ROUTING=graphhopper x3: course-acceptance.spec (stored graph c57f12f5975347e8, engine 10.0, identitySource engine) and course-new-edit.spec",
+          "probe-routing-operational: KRC-01 route_computed 1,281.8 m, 48 vertices"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-elevation-distance-check",
@@ -328,7 +689,14 @@
       "quote": "고도/거리 확인",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Engine distance is shown in the proposal review (seen in Aside); elevation is not available before saving. Neither is asserted by an executed E2E."
+      "reason": "Engine distance is shown in the proposal review (seen in Aside); elevation is not available before saving. Neither is asserted by an executed E2E.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-providers",
@@ -338,15 +706,35 @@
       "evidence": [
         "scripts/probe-routing-operational.mts: routing routes are absent unless the routing deployment is configured (404)"
       ],
-      "reason": "Routing separation observed; geocoder/elevation/tiles separation is structural (code reading), not asserted."
+      "reason": "Routing separation observed; geocoder/elevation/tiles separation is structural (code reading), not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-uncomputed-draft",
       "source": "docs/.pre/01_product_screen_spec.md:165",
       "quote": "경로 계산 불가 상태에서 직선 연결은 **미계산 초안**으로 표시한다.",
-      "verdict": "missing",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "No straight uncomputed line and no \"미계산 초안\" label in the product; waypoints are drawn as points only. Safer than the text but not what it says; needs a spec decision."
+      "reason": "When nothing is computed the waypoints are joined by a straight line in its own geo-kit role 'uncomputed' on its own layer, and the screen and a screen reader say it is an '미계산 초안' that is neither a walkable route nor a real distance. Asserted in unit (role, only while uncomputed/stale), in both shells' real renderers (queryRenderedFeatures on the line layers including the uncomputed one), and in the E2E status/description. Not asserted: the dashed styling in pixels.",
+      "round2": {
+        "change": "missing -> passed",
+        "verdict": "passed",
+        "previousReason": "No straight uncomputed line and no \"미계산 초안\" label in the product; waypoints are drawn as points only. Safer than the text but not what it says; needs a spec decision.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts: data-status uncomputed, role=status, text '미계산 초안' and '걸을 수 있는 경로도 실제 거리도 아닙니다', list accessible description, no review group (x2 fixture, x3 graphhopper)",
+          "tests/identity/map-render.spec.ts 'says the dashed uncomputed draft on a new course is drawn' (both shells, identity x2): the uncomputed line is drawn on the renderer's line layers and the map says so",
+          "packages/modules/courses/tests/course-draft.test.tsx 'draws the waypoints joined straight only while the draft is uncomputed, in its own role' (pnpm test; also fails under mutant m10)",
+          "Aside 3100 and 4200: status text '미계산 초안 … 지도의 회색 점선은 … 걸을 수 있는 경로도 실제 거리도 아닙니다', map drawn with 2 rendered lines, no save control"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "S14-no-confirmation",
@@ -357,7 +745,18 @@
         "apps/api/tests/course-routes.test.ts:945 — 10 failure outcomes: status, outcome, no `LineString`, `storeRouteProposal` not called (:956-961)",
         "scripts/probe-routing-operational.mts real config: engine down → 502 engine_unavailable, graph swap → 502 graph_mismatch, revisions unchanged"
       ],
-      "reason": "Failure outcomes other than engine_unavailable/graph_mismatch/overloaded are stubbed. Partly vacuous: the product never draws an uncomputed straight line at all (S14-uncomputed-draft is missing), so 'not confirming it' is trivially true for that part."
+      "reason": "The round-1 vacuity is resolved: an uncomputed straight line now exists (S14-uncomputed-draft), and course-new-edit.spec asserts that while it is shown the status says it is neither a walkable route nor a real distance and there is no review group / save control; the draft shows no distance number (Aside 3100/4200). Failure outcomes: course-routes.test.ts:945 (stubbed outcomes, no LineString, nothing stored) and the real-engine probe (502 engine_unavailable, graph_mismatch, revisions unchanged).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "previousReason": "Failure outcomes other than engine_unavailable/graph_mismatch/overloaded are stubbed. Partly vacuous: the product never draws an uncomputed straight line at all (S14-uncomputed-draft is missing), so 'not confirming it' is trivially true for that part.",
+        "executed": [
+          "pnpm test (course-routes.test.ts, course-draft/editor/new tests)",
+          "tests/identity/course-new-edit.spec.ts (x2 fixture, x3 graphhopper)",
+          "probe-routing-operational (real engine)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-safety-notice",
@@ -367,7 +766,16 @@
       "evidence": [
         "Aside snapshot (this node) showed \"지도에 보이는 경로가 통행 허가나 안전을 보장하지 않습니다.\""
       ],
-      "reason": "No test asserts the text; nothing would catch its removal."
+      "reason": "No test asserts the text; nothing would catch its removal.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "Aside 3100 /courses/new: '지도에 보이는 경로가 통행 허가나 안전을 보장하지 않습니다.' visible in the waypoint editor"
+        ],
+        "note": "Round-1 Aside observations are not re-executed evidence in round 2. Still no executed test asserts the text; Aside observation only."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-privacy-share",
@@ -377,7 +785,15 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 6/8: trimmed revision, exported GPX has no protected coordinates"
       ],
-      "reason": "Trim works; there is no confirmation step before a GPX export and no sharing feature."
+      "reason": "Trim works; there is no confirmation step before a GPX export and no sharing feature.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "S14-tile-policy",
@@ -385,7 +801,14 @@
       "quote": "공개 tile 서버의 quota/정책을 production 계획에서 별도로 처리한다.",
       "verdict": "partial",
       "evidence": ["Aside on /courses: only same-origin resource entries (external [])"],
-      "reason": "Self-hosted locally; production hosting/CDN not built."
+      "reason": "Self-hosted locally; production hosting/CDN not built.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Round-1 Aside observations are not re-executed evidence in round 2. Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "R-S09",
@@ -393,7 +816,15 @@
       "quote": "| Activity workbench S09 | chart/route/lap/sets 탭; 필요할 때 mount | chart+table 또는 지도 보기; 3개 동시 강제 없음 | linked split-pane, 선택·zoom 공유 |",
       "verdict": "partial",
       "evidence": ["tests/identity/activity-track-map.spec.ts:272"],
-      "reason": "Mount-on-demand and zoom sharing not asserted (S09-split-lazy)."
+      "reason": "Mount-on-demand and zoom sharing not asserted (S09-split-lazy).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "R-S13-S14",
@@ -404,7 +835,20 @@
         "tests/identity/courses.spec.ts:416 (3100 only, layout attributes)",
         "ad-hoc Playwright (not committed): 3100 and 4200 × 320/767/768/1279/1280 overflowX 0, layout switches"
       ],
-      "reason": "Committed tests run only on 3100 and check layout, not map rendering or each pane's minimum width; the 4200 measurement is not committed. During F2 these tests were green over a blank map."
+      "reason": "Stays partial (independent review B1). The quote's tablet column is '지도+접히는 경유점 목록' (map + collapsible WAYPOINT list). The only collapse control (course-workbench.tsx:708, '코스 목록 접기') collapses the COURSE list, and courses.spec.ts:416 asserts only that; no collapsible waypoint list exists. What is proven: in both shells at 320/767/768/1279/1280 and in a 420px module pane the course line is drawn by the real renderer, the canvas is >= 240x200, each visible pane is >= 240px (M2-01q's own minimum; the spec gives no number) and there is no horizontal overflow (map-render.spec, identity x2). Non-vacuity differs by part: mutant css-container (container declaration removed) fails only through the 420px pane; at the five viewport boundaries only mutant f2-both (no drawing at all) shows the checks can fail, so the per-boundary minimum-width checks were not shown to catch a layout regression.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "Committed tests run only on 3100 and check layout, not map rendering or each pane's minimum width; the 4200 measurement is not committed. During F2 these tests were green over a blank map.",
+        "executed": [
+          "tests/identity/map-render.spec.ts 'draws the course line at every S13/S14 boundary and keeps each pane at its minimum width', Next and Vite, identity x2: 320/767/768/1279/1280 (fresh document each) + a 420px module pane: line drawn, canvas >= 240x200, each visible pane >= 240px, no horizontal overflow, no not-drawn/unavailable in the status history",
+          "tests/identity/courses.spec.ts:416 layout transitions (mobile sheet replaces the list, tablet list collapses, desktop map+list row)",
+          "mutant css-container (container declaration removed, rebuilt): fails in both shells, Expected drawn / Received out-of-view",
+          "mutant f2-both: fails in both shells (not-drawn)"
+        ],
+        "note": "Round-1 ad-hoc Playwright runs were not committed; not re-executed."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "R-touch-ime",
@@ -412,7 +856,14 @@
       "quote": "Check mobile/tablet/desktop, breakpoint boundaries, 320px reflow, narrow containers, keyboard/focus, touch alternatives, IME, and error recovery as relevant.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "Real touch, rotation and OS IME are M0-06b external gates; the user deferred real-device work."
+      "reason": "Real touch, rotation and OS IME are M0-06b external gates; the user deferred real-device work.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "R-state-retention",
@@ -420,7 +871,14 @@
       "quote": "선택·초안은 반응형 renderer 밖에 두고 SDK instance·worker·listener·요청·blob URL을 정리한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Draft retention across layout switches has unit tests (not re-read here); cleanup of SDK/worker/listeners is not asserted."
+      "reason": "Draft retention across layout switches has unit tests (not re-read here); cleanup of SDK/worker/listeners is not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F13",
@@ -428,7 +886,17 @@
       "quote": "| V2-F13 | Linked workbench | 차트 시간 선택과 route/lap 선택 일치; GPS gaps S09 |",
       "verdict": "partial",
       "evidence": ["see S09-range-link, S09-gps-gap"],
-      "reason": "Single-sample round trip only; no range→lap table link."
+      "reason": "Single-sample round trip only; no range→lap table link.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ],
+        "note": "Executed through the rows it cites: S09-range-link, S09-gps-gap."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F14",
@@ -436,7 +904,16 @@
       "quote": "| V2-F14 | Impact semantics | 관측 contribution/추정/상담 분리; 가상 위험확률 금지 S09 |",
       "verdict": "partial",
       "evidence": ["see S09-impact-split, S09-no-causal"],
-      "reason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown."
+      "reason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ],
+        "note": "Executed through the rows it cites: S09-impact-split, S09-no-causal."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F18",
@@ -444,7 +921,16 @@
       "quote": "| V2-F18 | Course CRUD/version | 원본 track에서 새 코스 생성, 원본 불변 S13 |",
       "verdict": "partial",
       "evidence": ["see S13-from-track"],
-      "reason": "\"원본 불변\" asserted once, after creation only."
+      "reason": "\"원본 불변\" asserted once, after creation only.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ],
+        "note": "Executed through the rows it cites: S13-from-track."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F19",
@@ -452,7 +938,19 @@
       "quote": "| V2-F19 | Route planning | waypoint/menu+drag, routing stale/error, GPX boundary S14 |",
       "verdict": "partial",
       "evidence": ["see S14-drag-and-buttons, V2-A34, V2-A35, S14-gpx"],
-      "reason": "No drag."
+      "reason": "No drag.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test (course-editor.test.tsx, course-routes.test.ts)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "probe-routing-operational (real engine): 429 + retry-after, 502 engine_unavailable, revisions unchanged"
+        ],
+        "note": "Executed through the rows it cites: S14-drag-and-buttons, S14-gpx, V2-A34, V2-A35."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F31",
@@ -460,7 +958,23 @@
       "quote": "| V2-F31 | Account/consent/erase | app/provider/AI consent 별도, export/delete 파생물 S22 |",
       "verdict": "partial",
       "evidence": ["course scope: see P7-erasure, P7-activity-delete, K-deletion"],
-      "reason": "Course derivatives pass; consent separation (S22) is outside this node and not judged."
+      "reason": "Course derivatives pass; consent separation (S22) is outside this node and not judged.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "backup-restore-drill --execute: 75 checks passed, incl. erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup, restore_brings_back_erased_tenant_course_rows_and_objects_before_replay, erased_tenant_course_rows_and_reference_index_absent_after_erasure_replay, erased_tenant_course_thumbnail_and_track_objects_reclaimed_after_erasure_replay, gap_upload_between_dump_and_archive_copy_restored_with_objects_and_no_row, erased_tenant_prefix_purge_armed_by_replay_reclaims_gap_upload_and_spares_every_other_object",
+          "backup-restore-drill 75",
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:identity x2 and graphhopper x3 (course-acceptance steps 10-13)",
+          "pnpm test:integration",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)",
+          "pnpm test:integration: courses/course-thumbnails/course-preferences erasure tests, tenant-object-purge.integration, erasure-watched-refs-upgrade"
+        ],
+        "note": "Executed through the rows it cites: K-deletion, P7-activity-delete, P7-erasure."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F35",
@@ -471,7 +985,15 @@
         "scripts/probe-routing-operational.mts rate bound",
         "packages/track-parsing tests/limits.test.ts boundaries"
       ],
-      "reason": "Single-process limiter; no load measurement; lazy map loading not asserted."
+      "reason": "Single-process limiter; no load measurement; lazy map loading not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-F36",
@@ -481,7 +1003,13 @@
       "evidence": [
         "apps/worker/tests/course-thumbnail-worker.test.ts:281 (thumbnail worker log has no coordinates/ids)"
       ],
-      "reason": "Course/routing/track route tests discard the log stream; no assertion on their logs."
+      "reason": "Course/routing/track route tests discard the log stream; no assertion on their logs.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A17",
@@ -491,7 +1019,15 @@
       "evidence": [
         "tests/identity/activity-track-map.spec.ts:370 text \"저장된 경로가 없습니다\" (:393)"
       ],
-      "reason": "Only text is asserted; absence of any drawn path is not."
+      "reason": "Only text is asserted; absence of any drawn path is not.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A18",
@@ -499,7 +1035,17 @@
       "quote": "| V2-A18 | GPS gap과 chart range 선택 | gap 보존, 시간 index 일치 |",
       "verdict": "partial",
       "evidence": ["see S09-gps-gap, S09-range-link"],
-      "reason": "Gap preservation is asserted at the feature level; a chart range selected across a gap is not asserted against the map."
+      "reason": "Gap preservation is asserted at the feature level; a chart range selected across a gap is not asserted against the map.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ],
+        "note": "Executed through the rows it cites: S09-range-link, S09-gps-gap."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A20",
@@ -509,7 +1055,15 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 12: re-import of the same source is `suppressed`"
       ],
-      "reason": "Exercised through the user import API, not a provider event."
+      "reason": "Exercised through the user import API, not a provider event.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A34",
@@ -522,7 +1076,16 @@
         "scripts/probe-routing-operational.mts real config: 429 + retry-after, 502 engine_unavailable, revisions unchanged",
         "packages/modules/courses/tests/course-editor.test.tsx 'keeps the edited draft when the server refuses a proposal over its unsaved bound' (added in M2-01k): the F1 429 ROUTE_PROPOSAL_QUOTA_EXCEEDED keeps the added via waypoint, draft revision 2, no review, no PATCH; a mutation that undoes the last edit on this error fails only this test"
       ],
-      "reason": "UI part is jsdom with a fake transport; server part observed against the real engine configuration."
+      "reason": "UI part is jsdom with a fake transport; server part observed against the real engine configuration.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (course-editor.test.tsx, course-routes.test.ts)",
+          "probe-routing-operational (real engine): 429 + retry-after, 502 engine_unavailable, revisions unchanged"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A35",
@@ -532,7 +1095,13 @@
       "evidence": [
         "packages/modules/courses/tests/course-draft.test.tsx:94, course-editor.test.tsx:280/568/808/843, course-candidates.test.tsx:451/470 (jsdom, fake transport)"
       ],
-      "reason": "Tests assert a stale answer is discarded; none applies the newest geometry first and then asserts it survives a late older answer; no real-stack test."
+      "reason": "Tests assert a stale answer is discarded; none applies the newest geometry first and then asserts it survives a late older answer; no real-stack test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "V2-A37",
@@ -542,7 +1111,16 @@
       "evidence": [
         "course analogue: tests/identity/course-acceptance.spec.ts step 11 (thumbnail 404 after reclaim); course-thumbnails.integration:998/984"
       ],
-      "reason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here."
+      "reason": "Requirement is about gallery media; only the course-thumbnail analogue is evidenced here.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "FUT-07-1",
@@ -552,7 +1130,16 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts real engine ×3: review shows `route-graph` = c57f12f5975347e8, save disabled until review checkbox, revision unchanged until save"
       ],
-      "reason": "Distance display is not asserted (seen in Aside only)."
+      "reason": "Distance display is not asserted (seen in Aside only).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "IDENTITY_E2E_ROUTING=graphhopper: course-acceptance + course-new-edit, fresh harness x3 (4/4 each)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "FUT-07-2",
@@ -560,7 +1147,14 @@
       "quote": "- [ ] 빠른 경유점 수정에서 오래된 응답이 최신 결과를 덮어쓰지 않는다.",
       "verdict": "partial",
       "evidence": ["see V2-A35"],
-      "reason": "Same as V2-A35: stale answers are discarded (jsdom, fake transport); that the newest result survives a late older answer is not asserted."
+      "reason": "Same as V2-A35: stale answers are discarded (jsdom, fake transport); that the newest result survives a late older answer is not asserted.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"],
+        "note": "Executed through the rows it cites: V2-A35."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "FUT-07-3",
@@ -568,7 +1162,18 @@
       "quote": "- [ ] 요청 실패·quota 초과에서도 draft가 보존되며 직선 스케치를 계산 성공으로 표시하지 않는다.",
       "verdict": "passed",
       "evidence": ["see V2-A34 (incl. the F1 quota refusal test)"],
-      "reason": "Engine outcomes (stubbed in the UI test) and our own proposal-bound refusal both leave the draft and store nothing; failures observed against the real engine configuration (429 rate bound, 502 engine_unavailable/graph_mismatch) store nothing. On the F1 refusal the screen shows only the generic '경로 계산 결과를 확인하지 못했습니다. 저장된 것은 없습니다.' (no quota message on the compute path)."
+      "reason": "Engine outcomes (stubbed in the UI test) and our own proposal-bound refusal both leave the draft and store nothing; failures observed against the real engine configuration (429 rate bound, 502 engine_unavailable/graph_mismatch) store nothing. Since M2-01p the compute and search paths name the tenant-wide unsaved-proposal limit and the wait ('늦어도 30분 뒤'), asserted in course-editor/course-candidates unit tests.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "previousReason": "Engine outcomes (stubbed in the UI test) and our own proposal-bound refusal both leave the draft and store nothing; failures observed against the real engine configuration (429 rate bound, 502 engine_unavailable/graph_mismatch) store nothing. On the F1 refusal the screen shows only the generic '경로 계산 결과를 확인하지 못했습니다. 저장된 것은 없습니다.' (no quota message on the compute path).",
+        "executed": [
+          "pnpm test (course-editor.test.tsx, course-routes.test.ts)",
+          "probe-routing-operational (real engine): 429 + retry-after, 502 engine_unavailable, revisions unchanged"
+        ],
+        "note": "Executed through the rows it cites: V2-A34."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "FUT-07-4",
@@ -576,7 +1181,14 @@
       "quote": "- [ ] 대표 지역 품질, 이용 조건·표시 의무·credential·좌표 최소화 정책을 검토한다.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "Korean coverage `not_reviewed`, no independent reviewer (M0-06b gate); ODbL §4.2/§4.6 not carried out."
+      "reason": "Korean coverage `not_reviewed`, no independent reviewer (M0-06b gate); ODbL §4.2/§4.6 not carried out.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-oidc",
@@ -586,7 +1198,15 @@
       "evidence": [
         "scripts/identity-e2e.mts:244-252 and scripts/probe-routing-operational.mts use the local fixture OIDC provider"
       ],
-      "reason": "No real identity provider was used. The OIDC code path (discovery, PKCE, token, id_token signature) runs against a fixture, which is not a real OIDC provider."
+      "reason": "Still not executed. Since round 1: M2-01u ran a local OpenID Certified OP (panva oidc-provider) and M2-01w added deferred discovery and RP-initiated logout; the three oidc-certified.spec real-OP tests were skipped in both round-2 identity runs (they need IDENTITY_E2E_OIDC=certified). A local certified OP is not the production identity provider this row requires; that is the EXT-OIDC external gate.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "previousReason": "No real identity provider was used. The OIDC code path (discovery, PKCE, token, id_token signature) runs against a fixture, which is not a real OIDC provider.",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-db",
@@ -596,7 +1216,18 @@
       "evidence": [
         "isolated PostgreSQL with the restricted runtime role in the identity harness (157 ×2), the acceptance spec and both probes; pnpm test:integration 524"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2",
+          "pnpm test:integration 1 + 616",
+          "probe-routing-operational",
+          "backup-restore-drill 75"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-object",
@@ -606,7 +1237,17 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts: stored thumbnail downloaded and compared to geometry; GPX bytes; courses objects through `createLocalFilesystemObjectStorage`"
       ],
-      "reason": "The only object-storage adapter is the local filesystem; no cloud object store exists to test."
+      "reason": "The only object-storage adapter is the local filesystem; no cloud object store exists to test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (course-acceptance)",
+          "course-acceptance.spec graphhopper x3",
+          "local-filesystem.test.ts (pnpm test)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-e2e",
@@ -616,7 +1257,16 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts: fixture ×1 + full suite ×2 (157/157) + IDENTITY_E2E_ROUTING=graphhopper ×3, with the render assertion"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 real-OP skipped)",
+          "course-acceptance.spec with IDENTITY_E2E_ROUTING=graphhopper x3"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-recovery",
@@ -626,7 +1276,13 @@
       "evidence": [
         "pnpm exec tsx scripts/backup-restore-drill.mts --execute: passed, 62 checks, incl. restored_routed_course_revision_keeps_the_graph_that_computed_it, restored_course_thumbnail_object_is_readable_after_restore, restored_activity_deletion_reclaims_derived_courses_and_their_copies"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": ["backup-restore-drill --execute: passed, 75 checks"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-deletion",
@@ -637,7 +1293,17 @@
         "tests/identity/course-acceptance.spec.ts steps 10-13: impact names only A, A unavailable/404/410, B revision/thumbnail/GPX bytes unchanged, B delete → 404",
         "packages/server/persistence/tests/courses.integration.test.ts:468 (:516-532 other courses stay available), :738 erasure"
       ],
-      "reason": "Actual object-file removal is covered by course-thumbnails.integration:998/984/1014, not by the E2E."
+      "reason": "Actual object-file removal is covered by course-thumbnails.integration:998/984/1014, not by the E2E.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 and graphhopper x3 (course-acceptance steps 10-13)",
+          "pnpm test:integration",
+          "backup-restore-drill 75"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-performance",
@@ -647,7 +1313,14 @@
       "evidence": [
         "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)"
       ],
-      "reason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured."
+      "reason": "Measured only; no budget; no browser rendering of the long track; engine RSS under load not measured.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "scripts/probe-course-performance.mts was not re-run in round 2 (no verdict depends on a new measurement; K-performance stays partial). Not re-measured in round 2. Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-graph-rollback",
@@ -657,27 +1330,57 @@
       "evidence": [
         "scripts/probe-routing-operational.mts ×3 (26 checks), guard-revert of the adapter import_date check makes 2 checks fail"
       ],
-      "reason": "Replacement is two steps (engine restart, API redeploy), so NOT atomic; `/info`↔`/route` window stays open; graph B is a re-import of the same extract."
+      "reason": "Unchanged: the probe re-ran 26/26 against the real engine (graph_mismatch while pinned, no recomputation on swap or rollback, 409 without two-sided acknowledgement, exact graph A after rollback), but replacement is still two steps (engine restart, API redeploy), the /info<->/route window stays open, and graph B is a re-import of the same extract. The guard-revert mutation was not re-run.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "Replacement is two steps (engine restart, API redeploy), so NOT atomic; `/info`↔`/route` window stays open; graph B is a re-import of the same extract.",
+        "executed": ["probe-routing-operational --execute (real engine): 26/26"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "K-next-map-render",
       "source": "docs/implementation/map-implementation-plan.md:117",
       "quote": "지도는 client-only lazy leaf이며 두 shell이 재사용한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-acceptance.spec.ts:314-327 `data-rendered-path-features` > 0 (queryRenderedFeatures over path layers, after idle): fixture ×1, real engine ×3; removing F2 fails at :327 (Received 0)"
       ],
-      "reason": "Requirement is 'both shells reuse the map leaf'. PROVEN for the Next shell: tests/identity/course-acceptance.spec.ts:314-327 asserts `data-rendered-path-features` > 0 (queryRenderedFeatures over the course source's path layers after idle; basemap tiles cannot count), fixture x1 and real engine x3, and removing F2 makes it fail at :327 (Received 0). NOT PROVEN for the Vite shell: no committed test renders the course map there (ad-hoc Playwright only). Caveat: the counted layers include the point layer, so points alone without a line would also give > 0."
+      "reason": "Both shells reuse the kit's map leaf and draw the course line: asserted in committed E2E tests in each shell on the renderer's line layers (the round-1 point-layer caveat is gone: lines and points are counted separately, and 'drawn' needs lines when lines are expected). Removing the worker from both shells makes the test fail in both. The M2-01q LINE (points-only) mutant was not re-run this round; the line-only count is what the assertion reads.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "Requirement is 'both shells reuse the map leaf'. PROVEN for the Next shell: tests/identity/course-acceptance.spec.ts:314-327 asserts `data-rendered-path-features` > 0 (queryRenderedFeatures over the course source's path layers after idle; basemap tiles cannot count), fixture x1 and real engine x3, and removing F2 makes it fail at :327 (Received 0). NOT PROVEN for the Vite shell: no committed test renders the course map there (ad-hoc Playwright only). Caveat: the counted layers include the point layer, so points alone without a line would also give > 0.",
+        "executed": [
+          "tests/identity/map-render.spec.ts, Next and Vite shells, in pnpm test:identity x2: expectLineDrawn = data-map-status drawn, status line text, data-rendered-lines > 0 (line layers only, points counted separately)",
+          "mutant f2-both (mapWorkerUrl removed from both shells' course list/edit screen, rebuilt): the responsive render test fails in BOTH shells, Expected drawn / Received not-drawn",
+          "Aside: 3100 and 4200 /courses/new map drawn, 2 rendered lines, no other-origin resources"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "K-s14-edit-loop",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "S14 지도 편집은 검색→시작/경유/도착 지점→foot profile routing→고도/거리 확인→저장이다.",
-      "verdict": "failed",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-routing-operational.mts finding iterative-recompute-refused-by-proposal-quota: 6th recompute 429 ROUTE_PROPOSAL_QUOTA_EXCEEDED after the engine computed"
       ],
-      "reason": "Judged here: the edit–recompute loop. F1. Unsaved proposals of superseded drafts count against the per-course cap of 5 for the 30 min TTL."
+      "reason": "Judged here: the edit-recompute loop (as in round 1). F1 is fixed (M2-01p): a new answer for a course supersedes the replaced unsaved answers, so the per-course cap is never met by the edit loop. Observed against the real engine through createConfiguredApi: 12 consecutive recomputations on one course all route_computed, and the probe's findings list is empty (on the round-1 tree the same probe recorded the 6th recompute as 429 and the finding iterative-recompute-refused-by-proposal-quota). 'siblings held after a pick: 0' is a logged measurement, not an asserted check. Removing the supersession call makes 7 integration tests fail, including the edit-loop test. What remains is the tenant-wide bound (20 unsaved answers across courses for 30 min), which an owner editing many courses can still meet; the screen then names the limit and the wait.",
+      "round2": {
+        "change": "failed -> passed",
+        "verdict": "passed",
+        "previousReason": "Judged here: the edit–recompute loop. F1. Unsaved proposals of superseded drafts count against the per-course cap of 5 for the 30 min TTL.",
+        "executed": [
+          "scripts/probe-routing-operational.mts --execute, real GraphHopper: iterative editing 1..12 all 200 route_computed, siblings held after a pick 0, findings [] (round 1 on the pre-fix tree: 6th 429 ROUTE_PROPOSAL_QUOTA_EXCEEDED and finding iterative-recompute-refused-by-proposal-quota)",
+          "courses.integration.test.ts 'replaces the route a recompute supersedes, so the edit loop never meets the bound' and 6 related tests (pnpm test:integration)",
+          "mutant no-supersede (persistence store stops superseding): courses.integration 7 failed / 55, incl. the edit-loop test; restored 55/55",
+          "course-editor.test.tsx quota wording test (pnpm test)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "M2-01-parent",
@@ -685,7 +1388,14 @@
       "quote": "| M2-01 부모 | M1c-04, M0-06b, k | 전체 코스·routing 수용; viewer만으로 완료 금지 |",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "Depends on M0-06b external gates; root decision."
+      "reason": "Depends on M0-06b external gates; root decision.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-thumbnail-policy",
@@ -696,7 +1406,16 @@
         "tests/identity/course-acceptance.spec.ts step 7 (Bob 404), step 9 (export v21 courseThumbnails content_hash), step 11 (404 after reclaim)",
         "course-thumbnails.integration:1014 storage stat null after erasure"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-geokit-boundary",
@@ -704,7 +1423,13 @@
       "quote": "`experience/geo-kit`은 SDK-free MapPath와 선택 위치·이벤트만 받는다.",
       "verdict": "partial",
       "evidence": ["pnpm lint (executed)"],
-      "reason": "Structural; not verified that lint enforces this specific boundary."
+      "reason": "Structural; not verified that lint enforces this specific boundary.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm lint (0 warnings)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-lazy-two-shells",
@@ -712,15 +1437,34 @@
       "quote": "지도는 client-only lazy leaf이며 두 shell이 재사용한다.",
       "verdict": "partial",
       "evidence": ["ad-hoc Playwright on 4200 (not committed)"],
-      "reason": "No committed Vite-shell course test."
+      "reason": "The 'both shells reuse the map leaf' half is now proven by committed tests (see K-next-map-render). 'client-only lazy leaf' is still not asserted by any executed test (no check that the map chunk loads only when a map mounts).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "No committed Vite-shell course test.",
+        "executed": ["pnpm test:identity x2 (map-render.spec both shells)", "mutant f2-both"],
+        "note": "Round-1 ad-hoc Playwright runs were not committed; not re-executed."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-fitbounds",
       "source": "docs/implementation/map-implementation-plan.md:119",
       "quote": "fitBounds는 최초/활동 전환/전체 보기 요청에만 수행한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "Asserted: first fit, no refit on a selection change, refit only when fitRequest is raised (packages/experience/geo-kit/tests/geo-kit.test.tsx ~:585-616). Not asserted: refit on switching activity/course, and resize doing only resize."
+      "reason": "fitBounds on first display, on switching course/activity, and on an explicit request only; a resize only resizes. Asserted in unit tests (two mutants fail them) and in both shells' real renderers.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "Asserted: first fit, no refit on a selection change, refit only when fitRequest is raised (packages/experience/geo-kit/tests/geo-kit.test.tsx ~:585-616). Not asserted: refit on switching activity/course, and resize doing only resize.",
+        "executed": [
+          "packages/experience/geo-kit/tests/geo-kit.test.tsx: first fit, no refit on selection, refit only on a raised request, refit to the new track on a switch and not on a data update, resize only resizes (pnpm test)",
+          "mutant fit-always: 1 failed / 74; mutant fit-once: 2 failed / 74",
+          "tests/identity/map-render.spec.ts, both shells, identity x2: Seoul <-> Busan switches each draw the new course with a verdict about the new path (changedFrom), and 'keeps the viewport the user chose across a resize' (real canvas resize, stays out-of-view, no drawn in the history)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "P5-logout-clear",
@@ -728,18 +1472,36 @@
       "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Abort/destroy not asserted (M2-01b); not re-verified."
+      "reason": "Abort/destroy not asserted (M2-01b); not re-verified.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-list-alternative",
       "source": "docs/implementation/map-implementation-plan.md:129",
       "quote": "목록으로 같은 위치/경유점 선택, 순서 변경·삭제·좌표 입력이 가능해야 한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 3: waypoint added by coordinate input (3 list items)",
         "packages/modules/courses/tests/course-editor.test.tsx:391,402-403 order change by buttons, usable without a map"
       ],
-      "reason": "Coordinate input is asserted end to end (acceptance step 3). Reordering is not effectively tested: reviewer mutation m10 (moveEarlier made a no-op) failed 0 of the cited tests. Selection and deletion from the list are not asserted as the requirement states."
+      "reason": "Selection, reordering, deletion and coordinate entry from the list are each asserted by result content (the saved waypoint order and the engine request's order and roles), in both shells for reordering. Round 1's gap (m10 survived) is closed: m10 now fails 6 tests.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "Coordinate input is asserted end to end (acceptance step 3). Reordering is not effectively tested: reviewer mutation m10 (moveEarlier made a no-op) failed 0 of the cited tests. Selection and deletion from the list are not asserted as the requirement states.",
+        "executed": [
+          "tests/identity/course-new-edit.spec.ts (x2 fixture, x3 graphhopper): add by coordinates, reorder by '2번 앞으로'/'1번 뒤로'/'3번 앞으로', select '3번 선택' marks exactly that vertex in the map's coordinate list, delete '2번 삭제'; each asserted by the SAVED course's waypoint order read from the API",
+          "mutant m10 (moveEarlier no-op, the round-1 reviewer's m10): 6 failed / 77 unit tests",
+          "mutant select (selectWaypoint no-op): 2 failed / 77"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "P5-keyboard-ime",
@@ -749,7 +1511,15 @@
       "evidence": [
         "tests/identity/courses.spec.ts:220 (320px, keyboard, synthetic IME composition)"
       ],
-      "reason": "IME is synthetic only; OS IME is an external gate."
+      "reason": "IME is synthetic only; OS IME is an external gate.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-states",
@@ -757,7 +1527,17 @@
       "quote": "오류·GPS 없음·부분 기록·배경 없음·WebGL unavailable·미계산·계산 중·stale·저장 실패를 구별한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Several states have unit tests; F3 shows \"ready\" is reported over an empty canvas, so the renderer state is not reliably distinguished."
+      "reason": "Much closer than round 1 but still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. Not traced to an executed assertion as its own distinct state in round 2: 'partial recording' and 'no background map' on the map (the drawn check accepts either wording), and 'save failure' in a real browser. The row lists nine states; F3 (round 1's main reason) is fixed.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "Several states have unit tests; F3 shows \"ready\" is reported over an empty canvas, so the renderer state is not reliably distinguished.",
+        "executed": [
+          "pnpm test",
+          "pnpm test:identity x2 (map-render, activity-track-no-position, course-new-edit)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P5-gesture-escape",
@@ -765,7 +1545,14 @@
       "quote": "지도 pan이 페이지 스크롤을 영구 가로채지 않도록 제스처와 focus 탈출을 시험한다.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "No gesture test."
+      "reason": "No gesture test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-self-hosted-basemap",
@@ -775,7 +1562,17 @@
       "evidence": [
         "Playwright/Aside on /courses: tiles, style, sprite, glyph fetched from the same origin"
       ],
-      "reason": "Local deployment only."
+      "reason": "Local deployment only.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "Aside 3100 and 4200 /courses/new: basemap and attribution served from the same origin",
+          "pnpm test:identity x2 (activity-track-map.spec self-hosted basemap test)"
+        ],
+        "note": "Round-1 Aside observations are not re-executed evidence in round 2."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-no-external-runtime",
@@ -783,7 +1580,16 @@
       "quote": "외부 runtime 요청 없음",
       "verdict": "partial",
       "evidence": ["Aside on /courses: resource entries all same-origin (external [])"],
-      "reason": "Resource timing entries do not capture blocked/failed attempts; one page only this node."
+      "reason": "Resource timing entries do not capture blocked/failed attempts; one page only this node.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "Aside 3100 and 4200 /courses/new: resource entries from other origins [] (basemap, glyphs, worker all same-origin)"
+        ],
+        "note": "Round-1 Aside observations are not re-executed evidence in round 2. Still partial: resource timing does not record blocked or failed attempts, and only one screen per shell was observed."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-engine-choice",
@@ -791,7 +1597,14 @@
       "quote": "GraphHopper open-source, Valhalla, OSRM 중 보행·국내 데이터·자원 비용으로 하나를 검증·선정한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Valhalla not measured (M2-01d)."
+      "reason": "Valhalla not measured (M2-01d).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-bounded-roundtrip",
@@ -802,7 +1615,17 @@
         "packages/server/courses/tests/candidates.test.ts: bounds toEqual (:208-214), stop reasons attempt/candidate/time/cancelled (:180,205,224,322)",
         "scripts/probe-routing-operational.mts real engine candidate search (stoppedBecause candidate_limit)"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "IDENTITY_E2E_ROUTING=graphhopper: course-acceptance + course-new-edit, fresh harness x3 (4/4 each)",
+          "pnpm test (3,404 passed, 280 files)",
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-place-elevation-data",
@@ -810,7 +1633,14 @@
       "quote": "장소 검색과 elevation은 자체 데이터/엔진·license·갱신·결손 정책을 j에서 검증한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "See S14-place-search, S13-card-elevation."
+      "reason": "See S14-place-search, S13-card-elevation.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-tenant-limits",
@@ -820,7 +1650,15 @@
       "evidence": [
         "scripts/probe-routing-operational.mts: 21st request 429 + retry-after 60, other tenant 200 (real configuration)"
       ],
-      "reason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter."
+      "reason": "Concurrency, waypoint, distance, response points and deadline are asserted only in unit tests with stubs; single-process limiter.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-allowlist",
@@ -830,7 +1668,13 @@
       "evidence": [
         "apps/api/tests/routing-deployment.test.ts: host outside the loopback allowlist refused"
       ],
-      "reason": "Data-acquisition allowlist not re-verified here."
+      "reason": "Data-acquisition allowlist not re-verified here.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-route-record-no-silent-overwrite",
@@ -843,7 +1687,18 @@
         "drill restored_routed_course_revision_keeps_the_graph_that_computed_it",
         "packages/server/courses/tests/routed.test.ts:93 generation records engine, graph build/content, engineVersion, conditions, requestRevision, warnings"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "backup-restore-drill --execute (passed, 75 checks)",
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-latest-request-only",
@@ -851,7 +1706,14 @@
       "quote": "최신 요청 ID와 draft revision이 일치할 때만 결과를 반영한다.",
       "verdict": "partial",
       "evidence": ["see V2-A35"],
-      "reason": "Request id and draft revision matching is asserted in jsdom with a fake transport (course-editor.test.tsx:280, :568); no real-stack test."
+      "reason": "Request id and draft revision matching is asserted in jsdom with a fake transport (course-editor.test.tsx:280, :568); no real-stack test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"],
+        "note": "Executed through the rows it cites: V2-A35."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-cancel-bound",
@@ -859,7 +1721,13 @@
       "quote": "취소는 서버 자원 상한과 함께 구현한다.",
       "verdict": "partial",
       "evidence": ["apps/api/tests/routing-cancellation.test.ts (stub)"],
-      "reason": "The engine search is not stopped by an abort (M2-01g)."
+      "reason": "The engine search is not stopped by an abort (M2-01g).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-outcomes-distinct",
@@ -870,7 +1738,16 @@
         "packages/server/integrations/tests/routing-adapter.test.ts (failure bodies hand-written)",
         "probe: overload 429, engine_unavailable, graph_mismatch against the real configuration"
       ],
-      "reason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test."
+      "reason": "no_route, outside_coverage, snap_too_far, timeout are never observed from the real engine in an executed test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-target-bounds-seed",
@@ -880,7 +1757,13 @@
       "evidence": [
         "packages/server/courses/tests/candidates.test.ts: bounds (:208-214), seed determinism (:378-383), evaluationVersion 1 (:574), searchSeed/generatorVersion recorded (:697-699), outside_search_area (:409)"
       ],
-      "reason": "Unit level with a fake router; real-engine run in the probe."
+      "reason": "Unit level with a fake router; real-engine run in the probe.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-target-display",
@@ -888,7 +1771,14 @@
       "quote": "연결성·목표 오차·중복/왕복 구간·알려진 접근 제한·경사 출처를 표시한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "Display not asserted by an executed test in this node."
+      "reason": "Display not asserted by an executed test in this node.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P6-unknown-not-satisfied",
@@ -899,7 +1789,16 @@
         "packages/server/courses/tests/candidates.test.ts:566-574 knowledge all `unknown`",
         "tests/identity/course-acceptance.spec.ts:413 \"확인되지 않음\""
       ],
-      "reason": "Holds by construction: every fact is 'unknown' because the contract allows no other value and there is no surface/stairs/night data, so nothing can be judged satisfied. The assertions show that; they do not show handling of real data."
+      "reason": "Holds by construction: every fact is 'unknown' because the contract allows no other value and there is no surface/stairs/night data, so nothing can be judged satisfied. The assertions show that; they do not show handling of real data.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-parser-bounds",
@@ -909,7 +1808,13 @@
       "evidence": [
         "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)"
       ],
-      "reason": "Parse time, memory and worker concurrency boundaries not verified here."
+      "reason": "Parse time, memory and worker concurrency boundaries not verified here.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-xxe",
@@ -921,7 +1826,16 @@
         "apps/api/tests/course-extras-routes.test.ts:359-361 422 and nothing created",
         "tests/identity/course-extras.spec.ts:207"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-ownership",
@@ -934,19 +1848,41 @@
         "apps/api/tests/course-routes.test.ts:420 'requires CSRF for a cookie session on every write' — POST/PATCH/DELETE 403, repository not called",
         "apps/api/tests/course-routes.test.ts:1212 thumbnail download needs an authenticated owner (401, object not resolved)"
       ],
-      "reason": "RLS, CSRF and authenticated download each have an executed assertion (reviewer mutation m12 removing requireCsrf fails 4 tests)."
+      "reason": "RLS, CSRF and authenticated download each have an executed assertion (reviewer mutation m12 removing requireCsrf fails 4 tests).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-object-keys",
       "source": "docs/implementation/map-implementation-plan.md:171",
       "quote": "private 객체 key는 서버가 생성하며 경로 순회·symlink·hash/size 검증을 수행한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "packages/server/media/tests/local-filesystem.test.ts:393 traversal key and symlinked path component refused",
         "packages/server/media/tests/keys-validation.test.ts:236,290 traversal/absolute/bad digest refused for track and thumbnail keys",
         "packages/server/media/tests/local-filesystem.test.ts:223 publish refused on mismatch"
       ],
-      "reason": "Traversal and symlink are asserted. hash/size are NOT each asserted: the :223 sample differs in both size (9 vs 8 bytes) and hash, and a temporary mutation in this node showed removing the hash comparison alone, or both size comparisons, leaves all 44 media tests green (packages/server/media/src/local-filesystem.ts:366-375). 'Server generates keys' is structural. (The earlier reason citing the directory race was wrong: it is not in the requirement.)"
+      "reason": "Round 1's F6 is closed (M2-01o): the hash check and the size check are each guarded by their own test, and removing either alone now fails exactly that test. Traversal and symlink refusal are asserted; the API test asserts the stored reference equals the server-generated key for the upload, and the contracts carry no client key field.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "Traversal and symlink are asserted. hash/size are NOT each asserted: the :223 sample differs in both size (9 vs 8 bytes) and hash, and a temporary mutation in this node showed removing the hash comparison alone, or both size comparisons, leaves all 44 media tests green (packages/server/media/src/local-filesystem.ts:366-375). 'Server generates keys' is structural. (The earlier reason citing the directory race was wrong: it is not in the requirement.)",
+        "executed": [
+          "packages/server/media/tests/local-filesystem.test.ts (traversal, symlink, root swap, 'rejects publish when the bytes have the declared size but not the declared hash', '… declared hash but not the declared size')",
+          "packages/server/media/tests/keys-validation.test.ts (traversal/absolute/bad digest refused for track and thumbnail keys)",
+          "apps/api/tests/activity-track-routes.test.ts: stored refs are exactly the server key scheme for this upload; owner from session, athlete id in body refused; no client parse result in the contract",
+          "mutant f6-hash: 1 failed / 40; mutant f6-size: 1 failed / 40"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "P7-durable-lifecycle",
@@ -954,7 +1890,15 @@
       "quote": "temp/prepared/final 상태를 DB에 먼저 기록하고 publish 실패·DB rollback·중복/동시 upload를 기존 durable cleanup 패턴으로 처리한다.",
       "verdict": "partial",
       "evidence": ["pnpm test:integration 524"],
-      "reason": "Sweep dead-letter and shared-directory race are open in M2-01n."
+      "reason": "Sweep dead-letter and shared-directory race are open in M2-01n.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-activity-delete",
@@ -967,7 +1911,17 @@
         "courses.integration:468 (:516-532)",
         "apps/api/tests/activity-track-lifecycle.integration.test.ts:188 'reclaims every object when the activity is deleted and cleaned up mid-publication'"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-no-over-delete",
@@ -979,20 +1933,40 @@
         "packages/server/persistence/tests/activity-tracks.integration.test.ts:787 — doomed objects deleted, live raw object survives with REFERENCE_PRESENT",
         "tests/identity/course-acceptance.spec.ts step 11 (independent course B untouched)"
       ],
-      "reason": "The live-reference check itself is exercised; the E2E only shows independent courses are untouched."
+      "reason": "The live-reference check itself is exercised; the E2E only shows independent courses are untouched.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-erasure",
       "source": "docs/implementation/map-implementation-plan.md:182",
       "quote": "계정 erasure는 모든 코스/파일/파생물/재시도까지 제거하며 restore 후 suppression을 재적용한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "courses.integration:738 heads/revisions/lineage 0 (:747), :2058 courses and candidate sets 0",
         "course-thumbnails.integration:1014 rows 0 and object stat null (:1023-1025)",
         "course-preferences.integration:688 preferences/zones/courses 0",
         "drill latest_erasure_replayed_before_runtime_access"
       ],
-      "reason": "Account erasure removing course data is asserted (integration tests cited). 'restore 후 suppression 재적용' is NOT shown for courses: the drill replays `erase_account` on the restored cluster (scripts/backup-restore-drill.mts:2434) but seeds no course or thumbnail for the erased tenant and asserts nothing about course/thumbnail tables or thumbnail objects after restore; the deletion-ledger replay (:2620-2664) checks only tenant_erasure and activity_canonical. This may be a real defect (an erased account's courses or thumbnail objects coming back after a restore) and is not excluded. Tracked by root as a separate node."
+      "reason": "Round 1's gap (F7) is closed and executed here (backup-restore-drill --execute, 75/75). The drill checks that prove it: erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup (the erased tenant's courses with a rename, a retrying render and an index-only orphan, preferences, protected areas, unsaved proposals, candidate searches and track objects exist before the backup); restore_brings_back_erased_tenant_course_rows_and_objects_before_replay (all of it is back in the restored cluster before replay, so the later checks are not vacuous); erased_tenant_course_rows_and_reference_index_absent_after_erasure_replay (every listed table is 0 for that tenant and every key is an open account_erased receipt); erased_tenant_course_thumbnail_and_track_objects_reclaimed_after_erasure_replay (the restored cluster's cleanup worker removes the objects); gap_upload_between_dump_and_archive_copy_restored_with_objects_and_no_row and erased_tenant_prefix_purge_armed_by_replay_reclaims_gap_upload_and_spares_every_other_object (an object uploaded between dump and archive copy is removed by the tenant prefix purge and every other object survives). The '13 tables' and '7 objects' figures come from the drill source (scripts/backup-restore-drill.mts, about lines 2273-2345) and M2-01s; the result JSON records only check names and outcomes, so they are verifiable only there. course_accessibility_note (M2-01r, migration 043) is NOT in that 13-table list: it is removed by the FK ON DELETE CASCADE from course, which the course-preferences/courses integration erasure tests cover (pnpm test:integration). Known limits left by the gap nodes: empty shared directories named with tenant/activity/course UUIDs remain after a purge (M2-01x §7); the drill ran the purge only in the restored cluster.",
+      "round2": {
+        "change": "partial -> passed",
+        "verdict": "passed",
+        "previousReason": "Account erasure removing course data is asserted (integration tests cited). 'restore 후 suppression 재적용' is NOT shown for courses: the drill replays `erase_account` on the restored cluster (scripts/backup-restore-drill.mts:2434) but seeds no course or thumbnail for the erased tenant and asserts nothing about course/thumbnail tables or thumbnail objects after restore; the deletion-ledger replay (:2620-2664) checks only tenant_erasure and activity_canonical. This may be a real defect (an erased account's courses or thumbnail objects coming back after a restore) and is not excluded. Tracked by root as a separate node.",
+        "executed": [
+          "backup-restore-drill --execute: 75 checks passed, incl. erased_tenant_courses_thumbnails_retries_index_only_orphan_and_track_objects_seeded_before_backup, restore_brings_back_erased_tenant_course_rows_and_objects_before_replay, erased_tenant_course_rows_and_reference_index_absent_after_erasure_replay, erased_tenant_course_thumbnail_and_track_objects_reclaimed_after_erasure_replay, gap_upload_between_dump_and_archive_copy_restored_with_objects_and_no_row, erased_tenant_prefix_purge_armed_by_replay_reclaims_gap_upload_and_spares_every_other_object",
+          "pnpm test:integration: courses/course-thumbnails/course-preferences erasure tests, tenant-object-purge.integration, erasure-watched-refs-upgrade"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce): `evidence` is the round-1 list, kept for the trail; the round-2 evidence behind the new verdict is in `round2.executed`"
     },
     {
       "id": "P7-export",
@@ -1004,7 +1978,17 @@
         "packages/contracts/tests/operations-export.test.ts:727-770 (inside the test at :635): v20 and v19 artifacts still parse unchanged, a v20 claiming a v21 collection is refused, required collections enforced",
         "packages/server/persistence/tests/course-preferences.integration.test.ts:310 'answers from one snapshot when a course is deleted while the export runs' (+ single-statement read test)"
       ],
-      "reason": "All three parts of the requirement are asserted by executed tests: new collection/version (acceptance step 9, v21), old-version compatibility (operations-export.test.ts:727-770 — v20 and v19 artifacts parse unchanged and a v20 carrying a v21 collection is refused), and a single snapshot under a concurrent delete (course-preferences.integration:310)."
+      "reason": "All three parts of the requirement are asserted by executed tests: new collection/version (acceptance step 9, v21), old-version compatibility (operations-export.test.ts:727-770 — v20 and v19 artifacts parse unchanged and a v20 carrying a v21 collection is refused), and a single snapshot under a concurrent delete (course-preferences.integration:310).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-no-coordinates-in-logs",
@@ -1015,7 +1999,13 @@
         "apps/worker/tests/course-thumbnail-worker.test.ts:281",
         "apps/api/tests/app.test.ts:166"
       ],
-      "reason": "Course/routing/track route tests discard logs; no assertion on them."
+      "reason": "Course/routing/track route tests discard logs; no assertion on them.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-privacy-trim",
@@ -1027,7 +2017,16 @@
         "packages/server/courses/tests/privacy-trim.test.ts:84,98-99,111-112",
         "apps/api/tests/course-extras-routes.test.ts:697-714 422 and no update"
       ],
-      "reason": ""
+      "reason": "",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P7-no-public-share",
@@ -1040,7 +2039,16 @@
         "packages/modules/courses/tests/course-extras.test.tsx:1103 'offers no way to share a course, trimmed or not'",
         "contract: course visibility is the literal 'private'"
       ],
-      "reason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them."
+      "reason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "passed",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-contract-parser",
@@ -1048,7 +2056,17 @@
       "quote": "| 계약/parser | FIT/GPX 손상·한도 경계·XXE·좌표 순서·timestamp null/역전·segment·날짜 경계·단일 점·다중 track; 구버전 상세 replay 동일 |",
       "verdict": "partial",
       "evidence": ["see P7-parser-bounds, P7-xxe"],
-      "reason": "Old-version replay and date boundaries not re-verified here."
+      "reason": "Old-version replay and date boundaries not re-verified here.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "pnpm test (3,404 passed, 280 files)",
+          "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
+        ],
+        "note": "Executed through the rows it cites: P7-parser-bounds, P7-xxe."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-simplify",
@@ -1056,7 +2074,14 @@
       "quote": "| 단순화/분석 | 원본 sample 매핑·gap 불연결, zoom/LOD 변경 전후 실제 요약·집계 동일 |",
       "verdict": "partial",
       "evidence": ["see S09-gps-gap"],
-      "reason": "Single Douglas-Peucker level; no zoom LOD test."
+      "reason": "Single Douglas-Peucker level; no zoom LOD test.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"],
+        "note": "Executed through the rows it cites: S09-gps-gap."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-postgres-object",
@@ -1064,7 +2089,16 @@
       "quote": "| 실제 PostgreSQL/객체 | tenant/RLS·idempotency·CAS·동시 upload/삭제·publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원 |",
       "verdict": "partial",
       "evidence": ["pnpm test:integration 524, drill 62"],
-      "reason": "Individual concurrency cases not re-read here; M2-01n open items."
+      "reason": "Individual concurrency cases not re-read here; M2-01n open items.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "backup-restore-drill --execute (passed, 75 checks)",
+          "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
+        ]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-ui-component",
@@ -1072,7 +2106,13 @@
       "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
       "verdict": "partial",
       "evidence": ["pnpm test (3,207)"],
-      "reason": "See V2-A35, P5-logout-clear."
+      "reason": "See V2-A35, P5-logout-clear.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": ["pnpm test (3,404 passed, 280 files)"]
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-real-browser",
@@ -1080,7 +2120,15 @@
       "quote": "| 실제 브라우저 | Aside 우선 후 불가 사유별 Chrome/Playwright; Next/Vite production, 320px·767/768·1279/1280·420px pane·회전/IME/touch |",
       "verdict": "partial",
       "evidence": ["Aside (3100), Playwright 3100+4200 boundaries (ad hoc)"],
-      "reason": "420px pane not re-measured; rotation/IME/touch not executed; 4200 not committed."
+      "reason": "Next and Vite production builds are now covered by committed tests at 320/767/768/1279/1280 and in a 420px pane (map-render.spec), and Aside was used on both shells this round. Rotation, OS IME and touch are not executed (real-device gate).",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "previousReason": "420px pane not re-measured; rotation/IME/touch not executed; 4200 not committed.",
+        "executed": ["pnpm test:identity x2", "Aside 3100/4200"],
+        "note": "Round-1 Aside observations are not re-executed evidence in round 2."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-self-ops",
@@ -1088,7 +2136,16 @@
       "quote": "| 자체 운영 | 외부 runtime 요청 없음, CSP/worker·asset license·대표 장기 track의 시간/메모리/GPU 측정, graph 갱신/rollback·과부하 |",
       "verdict": "partial",
       "evidence": ["probe-routing-operational, probe-course-performance"],
-      "reason": "No GPU/browser long-track measurement; rollback not atomic."
+      "reason": "No GPU/browser long-track measurement; rollback not atomic.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "partial",
+        "executed": [
+          "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
+        ],
+        "note": "scripts/probe-course-performance.mts was not re-run in round 2 (no verdict depends on a new measurement; K-performance stays partial)."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     },
     {
       "id": "P8-coverage",
@@ -1096,7 +2153,14 @@
       "quote": "| 보행 coverage | graph 신원 고정, 사전 기대 결과와 독립 검토자, 도심/횡단보도/다리/계단/공원/접근시간·음성 대조; HTTP 200만으로 통과 금지 |",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "M0-06b external gate."
+      "reason": "M0-06b external gate.",
+      "round2": {
+        "change": "unchanged",
+        "verdict": "not_executed",
+        "executed": [],
+        "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
+      },
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
     }
   ]
 }

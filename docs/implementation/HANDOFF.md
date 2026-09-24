@@ -1,4 +1,4 @@
-# 다음 세션 handoff · 2026-09-23
+# 다음 세션 handoff · 2026-09-24
 
 최신 상태는 [task-graph.json](task-graph.json), 요구·수용 기준은
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
@@ -17,22 +17,22 @@
 
 ## 완료된 최신 작업
 
-[M2-01ac](progress/M2-01ac.md)를 완료했다. 병합 검증마다 되풀이되던 부하 간헐 실패를 규명했다(제품 코드 변경 없음,
-timeout 상향 없음).
+[M2-01k](progress/M2-01k.md) 수용 **2차 판정**을 마쳤다(노드는 새 gap 노드 16개와 외부 gate EXT-OIDC 때문에 아직 완료가 아니다). 110행 매트릭스를 main
+`4d5b9e9` 기준으로 다시 판정해 passed 28 → 38, partial 72 → 66, failed 1 → 0, missing 3 → 0, not_executed 6 그대로다.
+승격한 행은 모두 이 판에서 실행하고 변이로 비공허성을 보였다(실제 GraphHopper에서 저장 재계산 digest 일치 포함).
+독립 검토가 R-S13-S14 승격(태블릿의 접히는 **경유점** 목록 부재)을 차단해 partial로 되돌렸다.
 
-- unit 5초 timeout 대부분은 대기가 아니라 질의 비용이었다(차트의 원 약 1000개 옆에서 문서 전체 `getByRole`이 약
-  0.5초). 질의를 소유 영역으로 좁혀 20k 시험이 4.6초 → 0.9초가 되었다. 단언은 그대로다.
-- "499 기대, 500"은 off-by-one이 아니라 timeout된 앞 시험 본문이 다음 시험 DOM을 누른 연쇄였다(재현).
-- identity: 로그아웃 뒤 로그인 링크를 기다리지 않고 이동하던 경쟁, 늦게 닫힌 harness가 다음 harness의 port 이름
-  handoff 파일을 지우던 충돌(run id를 이름에 넣음)을 고쳤다.
-- 재현하지 못한 renderer 정지 등은 미해명으로 남기고 M2-01ad로 분리했다.
+남은 partial·not_executed 72행은 모두 새 노드 `M2-01k-a`…`M2-01k-o`, 외부 gate, "지금은 partial로 수용" 중 한 곳에
+들어간다. **사용자 결정(2026-09-24):** S14 목록 drag, 왕복 초안, S09 주소 별칭·미디어 탭·영향 분리·범위/lap/지도 연결,
+코스 공유(privacy 확인 포함)를 모두 만든다(i–o). 공유(o)는 passed 행 P7-no-public-share의 전제를 바꾸므로 코드 전에
+요구·ACL·철회·재식별 검토를 사용자 승인받고, 기본값 꺼짐으로 시작한다.
 
-직전 완료: [M2-01t](progress/M2-01t.md)(사용자 결정으로 S09 실내 경로 탭 사양을 구현에 맞춤).
+직전 완료: [M2-01ac](progress/M2-01ac.md)(부하 간헐 실패 규명, 제품 코드 변경 없음).
 
 ## 다음 ready 작업
 
-M2-01ad는 ready다. M2-01k는 외부 gate EXT-OIDC만 남았다. 내부 공백 노드(M2-01l–y, aa, ab, t)가 모두 닫혔으므로
-수용 매트릭스를 다시 돌려 갱신할 수 있으나, `K-oidc`는 EXT-OIDC까지 not_executed이고 노드는 그때까지 완료되지 않는다.
+M2-01ad는 독립 검토 지적(진단 redaction) 수정 중이다. `M2-01k-i`는 같은 편집기 컴포넌트를 바꾸는 `M2-01k-c1` 뒤이고, 나머지 `M2-01k-a`…`M2-01k-n`은 ready이며, `M2-01k-o`(공유)는 `M2-01k-c2`
+뒤이며 코드 전에 사용자 승인이 필요하다. M2-01k는 이 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 

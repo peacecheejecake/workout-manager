@@ -1295,8 +1295,136 @@
       "title": "남은 시험 불안정 요인",
       "dependsOn": ["M2-01ac"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "M2-01ac와 그 독립 검토에서 남은 것. (1) 미해명 renderer 정지: planner-operations.spec.ts:129·activity-tags가 setViewportSize 직후 브라우저 안에서 멈춤(stable 대기·scrollIntoView 무응답). 재발 시 DEBUG=pw:protocol과 시스템 CPU·메모리 압박을 함께 기록해 원인을 가린다. dashboard-ui.spec.ts:267, activity-track-map.spec.ts:165도 미해명. (2) vitest가 timeout된 시험 본문을 멈추지 않아 남은 동작이 다음 시험의 DOM에 닿는다(M2-01ac의 499/500 연쇄) — 구조적 차단. (3) coaching-acceptance.spec.ts:231이 Alice의 전체 활동 수를 세어 activity-track-map이 먼저 돌면 실패하는 순서 의존 — 자기 계정이나 자기 활동만 세도록. (4) harness가 SIGKILL되면 run id별 handoff 파일(DB URL 포함, 0600)이 tmpdir에 남는다 — 오래된 파일 정리. timeout 상향은 해결로 치지 않는다."
+    },
+    {
+      "id": "M2-01k-a",
+      "title": "S13 목록 카드 표시",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S13 카드에 썸네일·계획 거리(추정/실제 구분)·고도 출처·노면 확인 상태를 표시하고, 마지막 사용 문구와 함께 카드 단위로 두 shell E2E에서 단언한다. 고도가 배포되지 않았을 때는 \"없음\"을 말하고, 그 상태를 성공으로 받지 않는 시험을 둔다 닫을 매트릭스 행: S13-card-thumbnail, S13-card-distance, S13-card-elevation, S13-card-surface, S13-card-last-used. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-b",
+      "title": "S14 저장 전 고도·거리와 검토 표시",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "저장되지 않은 미리보기·제안 선의 고도 프로파일(자체 데이터, 결손 표시)을 조회하게 하고, 검토 화면의 엔진 거리·고도를 E2E로 단언한다. 순서는 검색 → 지점 → 계산 → 고도/거리 확인 → 저장이다 닫을 매트릭스 행: S14-flow, S14-elevation-distance-check, FUT-07-1. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-c1",
+      "title": "S14 편집기: 접히는 경유점 목록과 편집 단언 공백",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "tablet에서 지도 옆 경유점 목록을 접고 펼 수 있게 하고(07 표의 \"지도+접히는 경유점 목록\"), 다섯 경계에서 레이아웃 변이로 실패하는 최소 폭 단언을 둔다. 되돌리기·다시 실행이 경유점 내용을 복원·재적용하는지, 안전 비보장 문구, 먼저 적용된 최신 geometry를 늦은 옛 응답이 덮지 않음(실제 스택), 지도 상태 중 부분 기록·배경 없음·저장 실패를 각각 단언한다. 각 단언은 변이로 비공허성을 보인다 닫을 매트릭스 행: R-S13-S14, S14-undo-redo, S14-safety-notice, V2-A35, FUT-07-2, P6-latest-request-only, P8-ui-component, P5-states. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-c2",
+      "title": "로그 redaction 단언",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "코스·routing·track 라우트와 worker의 로그 stream을 버리지 않고 모아, 좌표·waypoint·객체 key·토큰·본문이 없고 trace id·version은 있음을 단언한다. 각 필드를 로그에 넣는 변이로 실패를 보인다 닫을 매트릭스 행: P7-no-coordinates-in-logs, V2-F36. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-d",
+      "title": "지도 lazy 로딩, 수명 정리, 외부 요청",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "지도 chunk가 지도 mount 때만 로드됨과 S09 탭별 mount-on-demand·선택/zoom 공유를 두 shell에서 단언한다. 로그아웃·계정 전환·unmount에서 SDK instance·worker·listener·요청·blob URL이 정리되고 늦은 응답이 재유입되지 않음을 단언한다. 모든 지도 화면에서 `page.route`로 시도된 요청까지 기록해 외부 origin 0건을 단언한다 닫을 매트릭스 행: P5-lazy-two-shells, R-state-retention, P5-logout-clear, S09-split-lazy, R-S09, P6-no-external-runtime. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-e",
+      "title": "routing 운영: 원자적 교체, 한도, 취소, 결과 구별",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "엔진 두 벌(blue/green)과 API 신원 전환을 한 번에 바꾸는 절차, 또는 명시적 유지보수 창을 결정하고, 다른 extract로 만든 graph로 교체·rollback을 probe로 실행한다. tenant 한도(동시성·waypoint·거리·응답점수·deadline)를 실제 구성에서 관측하고, 여러 인스턴스 limiter를 결정한다. 취소가 엔진 탐색을 실제로 멈추게 한다. 실제 엔진에서 no_route·outside_coverage·snap_too_far·timeout을 각각 관측한다. 데이터 취득 allowlist 시험을 다시 실행한다 닫을 매트릭스 행: K-graph-rollback, P8-self-ops, P6-tenant-limits, P6-cancel-bound, P6-outcomes-distinct, P6-allowlist. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-f",
+      "title": "성능 예산과 측정 probe",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "계획 4절 M2-01k 수용 문구의 \"성능\" 항목이다. 대표 장기 track(20,000점)에 대해 서버 경로·브라우저 렌더 시간·메모리·엔진 RSS(부하 중)의 예산을 정하고, 예산을 단언하는 probe를 기록한다. 파싱 시간·메모리·worker 동시성 상한과 무거운 plugin의 lazy 로딩도 함께 다룬다. 데스크톱 값과 실기기 값을 구분한다 닫을 매트릭스 행: K-performance, V2-F35, P7-parser-bounds. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-g",
+      "title": "S09·track 단언 공백(시험 중심)",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S09 상단의 출처·관측 시각·정정 여부, 커서 hover 이동에서 서버 쓰기 0과 selection store, CSV 요약의 그려진 경로 부재, 편집 뒤 원본 track 내용 불변, LOD 전후 요약 동일, 구버전 상세 replay와 날짜 경계, geo-kit 경계를 lint 규칙이 실제로 막는지(변이)를 단언한다 닫을 매트릭스 행: S09-header, S09-cursor-store, V2-A17, S13-from-track, V2-F18, P8-simplify, P8-contract-parser, P5-geokit-boundary. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-h",
+      "title": "persistence 집계 행 재판정",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01n·o가 닫은 sweep dead-letter·공유 디렉터리 경합과 표의 각 조건(tenant/RLS·idempotency·CAS·동시 upload/삭제·publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원)을 조건마다 통합 시험 하나에 대응시키고, 대응이 없는 조건만 시험을 더한다 닫을 매트릭스 행: P7-durable-lifecycle, P8-postgres-object. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-i",
+      "title": "S14 경유점 drag",
+      "dependsOn": ["M2-01k-c1"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "경유점 목록에 pointer·keyboard로 쓸 수 있는 drag 재배치를 추가한다(지도 marker drag는 선택). drag와 \"앞으로/뒤로\" 버튼은 같은 draft reducer 동작을 거친다. 잠긴 경유점과 잠긴 이웃을 넘는 이동은 둘 다 거절한다. 완료: 두 shell E2E에서 같은 초기 코스를 drag로 한 번, 버튼으로 한 번 재배치해 저장하고, API에서 읽은 저장된 waypoint 순서가 서로 같고 엔진 요청의 순서·role도 같다. 잠금 거절과 되돌리기가 drag에도 적용된다. 버튼 대안은 유지하고 단언한다(drag 없이도 완결). 비공허성: drag handler를 no-op으로 만드는 변이, drag가 reducer를 우회해 목록만 바꾸는 변이, 잠금 검사를 뺀 변이가 각각 시험을 실패시킨다 닫을 매트릭스 행: S14-drag-and-buttons, V2-F19. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-j",
+      "title": "왕복(A→B→A) 초안과 목표 표시",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "시작점 A와 반환점 B로 A→B→A 왕복 초안을 만들고 실제 엔진으로 계산한다. 가는 길과 오는 길이 겹치는 구간을 지도와 검토 화면에 표시하고, 목표 거리 후보와 함께 연결성·목표 오차·중복/왕복 구간·알려진 접근 제한·경사 출처를 표시한다. 모르는 사실은 \"확인되지 않음\"이며 충족으로 표시하지 않는다. 완료: 단위 시험이 겹침 구간 계산(완전 겹침·부분 겹침·겹침 없음)을 단언하고, 실제 엔진 모드 E2E가 왕복 초안의 저장 revision(graph·엔진 버전)과 화면의 겹침 구간·오차 표시를 단언한다. 비공허성: 겹침 계산을 빈 결과로 바꾸는 변이, 표시를 숨기는 변이, 왕복 대신 편도를 요청하는 변이가 각각 실패한다 root 병합 추가(독립 재검토 NB-3): 완료 조건에 연결성·알려진 접근 제한·경사 출처 표시를 각각 단언하고, 각 표시를 숨기는 변이가 실패해야 한다. P6-target-display를 이 노드에 묶은 것은 사용자 결정이 아니라 구현자의 배치다. 닫을 매트릭스 행: S14-loop-draft, P6-target-display. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-k",
+      "title": "S09 주소 별칭",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "두 shell에서 `/activities/:id?tab=<tab>`을 현재 주소(`/activities?selected=<id>&detailTab=…`)로 보내는 별칭 또는 redirect를 만든다. 허용하지 않는 tab 값, uuid가 아닌 id, 남의 활동은 기존 오류 상태로 보낸다(존재 여부를 흘리지 않는다). 완료: 두 shell E2E가 여섯 탭 각각의 주소로 들어가 해당 탭이 선택된 화면에 닿음을 단언하고, 잘못된 tab·id·Bob의 접근을 단언한다. 비공허성: 별칭 route를 지우는 변이, tab 매핑을 한 칸 밀어 놓는 변이가 각각 실패한다 닫을 매트릭스 행: S09-address. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-l",
+      "title": "S09 미디어 탭(V2-A37 포함)",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "활동 상세의 미디어 탭을 켜고, 소유자의 기존 갤러리 미디어를 활동에 연결·해제한다(미디어 연결). 권한·삭제·export는 미디어 원본의 정책을 따르고, 삭제된 미디어의 썸네일 URL은 다시 조회되지 않는다. 완료: 두 shell E2E에서 연결 → 탭 표시 → 해제, 인증 다운로드와 Bob 404, 미디어 삭제 뒤 탭과 URL이 접근을 막음(코스 썸네일 유비가 아니라 실제 갤러리 미디어로)을 단언하고, 통합 시험이 연결 표의 RLS·erasure·export를 단언한다. 비공허성: 탭을 다시 비활성으로 만드는 변이, 연결 저장을 no-op으로 하는 변이, 삭제 후 URL 차단을 빼는 변이가 각각 실패한다 root 병합 추가: V2-A37(미디어 삭제 후 썸네일 URL 재조회 → 접근 차단·파생물 삭제)도 이 노드가 닫는다. 닫을 매트릭스 행: S09-tabs, V2-A37. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-m",
+      "title": "S09 영향 분리",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "영향 탭에 관측·계산 절 외에 분류·추정 절(목적/강도 분류, 그 출처와 불확실성)과 상담 절(향후 계획에서 검토할 항목과 관련 제안)을 만든다. 추정은 출처·version·불확실성 없이 표시하지 않고, 분모가 불완전하면 기여율 대신 부분 합계를 쓴다. 상담 절은 제안일 뿐 계획을 바꾸지 않는다(승인 흐름 불변). 완료: E2E가 세 절이 각각 다른 제목·출처 표시로 나뉘어 있음을 단언하고, 화면 전체에 위험 %·검증되지 않은 인과 수치·기여율이 없다는 부정 단언을 둔다. 비공허성: 추정 절에서 출처를 빼는 변이, 위험 % 문구를 넣는 변이, 상담 절이 계획을 쓰게 하는 변이가 각각 실패한다 닫을 매트릭스 행: S09-impact-split, V2-F14, S09-no-causal. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-n",
+      "title": "S09 범위·lap·지도 연결",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "chart에서 drag로 시간 범위를 고르면 같은 범위가 경로 지도와 lap table에서 강조된다. 범위는 shared selection store에만 있고 움직임마다 서버에 쓰지 않는다. GPS gap을 가로지르는 범위도 시간 index로 맞추며 gap을 잇지 않는다. 완료: 두 shell E2E가 drag 범위 선택 뒤 지도의 강조 feature(실제 렌더러 `queryRenderedFeatures`)가 그 범위의 표본과 일치하고, lap table의 해당 행이 강조되며, 서버 쓰기가 0임을 단언한다. gap을 가로지른 범위를 따로 단언한다. 비공허성: 지도 강조를 끄는 변이, lap 연결을 끊는 변이, 범위를 한 표본 밀어 놓는 변이가 각각 실패한다 닫을 매트릭스 행: S09-range-link, V2-F13, V2-A18. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+    },
+    {
+      "id": "M2-01k-o",
+      "title": "코스 공유와 privacy 확인",
+      "dependsOn": ["M2-01k-c2"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "코스 공유 기능을 만든다. 정확한 시작·끝 위치를 공유하거나 GPX로 내보내기 전에 privacy trim 제안과 확인 화면을 둔다. 확인 없이는 정확한 위치가 나가지 않는다. 주의: 이 결정은 passed 행 P7-no-public-share(\"공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성\")의 전제를 바꾼다. 이 노드는 공유 범위(링크·대상), ACL, 철회, 재식별 검토를 요구로 먼저 적어야 하고, 착지하면 P7-no-public-share와 P7-privacy-trim을 다시 판정해야 한다. 완료: 두 shell E2E가 확인 전에는 공유·내보내기가 막히고, 확인 화면이 보호 구역·시작·끝 노출을 설명하며, trim을 고르면 공유본·GPX에 보호 좌표가 없음을 단언한다. ACL(허가받지 않은 사용자 404), 철회 뒤 접근 차단, 코스 삭제·계정 말소 시 공유 회수를 통합 시험으로 단언한다. 비공허성: 확인 단계를 건너뛰는 변이, trim을 무시하는 변이, ACL 검사를 뺀 변이, 철회를 no-op으로 하는 변이가 각각 실패한다 root 병합 추가(독립 재검토): (a) 진입 gate — 공유 범위·ACL·철회·재식별 검토를 코드 전에 요구로 작성하고 사용자 승인을 받는다. 재식별 검토는 구현자가 아닌 독립 검토자가 한다. P7-no-public-share의 근거인 계획 문장을 같은 단계에서 개정한다(M2-01t 방식). (b) 검토 통과 전까지 공유는 기본값 꺼짐. (c) 철회·말소된 공유가 백업 복원 뒤 되살아나지 않는 drill check. (d) M2-01k-c2(로그 redaction)에 의존해 공유 링크·정확한 위치가 로그에 남지 않음을 단언한다. 닫을 매트릭스 행: S14-privacy-share (착지 뒤 P7-no-public-share·P7-privacy-trim 재판정). 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
     },
     {
       "id": "M2-01k",
@@ -1313,7 +1441,23 @@
         "M2-01t",
         "M2-01u",
         "EXT-OIDC",
-        "M2-01x"
+        "M2-01x",
+        "M2-01k-a",
+        "M2-01k-b",
+        "M2-01k-c1",
+        "M2-01k-c2",
+        "M2-01k-d",
+        "M2-01k-e",
+        "M2-01k-f",
+        "M2-01k-g",
+        "M2-01k-h",
+        "M2-01k-i",
+        "M2-01k-j",
+        "M2-01k-k",
+        "M2-01k-l",
+        "M2-01k-m",
+        "M2-01k-n",
+        "M2-01k-o"
       ],
       "kind": "task",
       "status": "in_progress",

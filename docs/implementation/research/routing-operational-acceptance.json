@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k",
-  "measuredAt": "2026-09-23T10:06:53.947Z",
+  "measuredAt": "2026-09-23T18:23:22.329Z",
   "what": "Production API composition (createConfiguredApi) against the self-hosted GraphHopper engine on loopback, fixture OIDC, isolated PostgreSQL. Not a coverage review.",
   "machine": {
     "label": "this machine (desktop), single caller",
@@ -27,13 +27,13 @@
     }
   },
   "timingsMilliseconds": {
-    "engine-start-A": [1236, 1164],
-    "engine-rss-mib-after-start-A": [270, 273],
-    "direct-route": [87],
-    "course-proposal": [22, 15, 75, 15, 77, 20],
-    "candidate-search": [111],
-    "engine-start-B": [1157],
-    "engine-rss-mib-after-start-B": [273]
+    "engine-start-A": [1225, 1135],
+    "engine-rss-mib-after-start-A": [270, 269],
+    "direct-route": [90],
+    "course-proposal": [22, 16, 78, 14, 77, 14],
+    "candidate-search": [113],
+    "engine-start-B": [1143],
+    "engine-rss-mib-after-start-B": [275]
   },
   "checks": [
     {
@@ -89,7 +89,7 @@
     {
       "id": "candidates-real-engine-A",
       "passed": true,
-      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"c57f12f5975347e8\"],\"attemptsMade\":5,\"elapsedMilliseconds\":94,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
+      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"c57f12f5975347e8\"],\"attemptsMade\":5,\"elapsedMilliseconds\":95,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
     },
     {
       "id": "candidate-pick-saved-under-A",
@@ -124,7 +124,7 @@
     {
       "id": "cross-graph-save-needs-acknowledgement",
       "passed": true,
-      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"1846b607-b99"
+      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"d29c6e2a-2ce"
     },
     {
       "id": "acknowledged-save-on-B-appends",
