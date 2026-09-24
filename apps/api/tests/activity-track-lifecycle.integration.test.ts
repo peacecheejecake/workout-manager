@@ -402,6 +402,126 @@ describe('a cancelled writer cannot leave objects behind', () => {
   );
 
   it(
+    'fails an upload whose store refuses a publication midway and reclaims every object it staged',
+    { timeout: 120_000 },
+    async () => {
+      // M2-01k-h: the publication itself fails. The real store refuses the second object
+      // (its bytes do not match what the request declares), after the first object is already
+      // visible. Nothing else interferes: the activity is live and the fence is open, so only
+      // the writer's own failure handling can hand the published and staged objects back.
+      const activities = createActivityRepository(database);
+      const imported = await activities.importActivity(athleteId, importInput());
+      const storage = await createLocalFilesystemObjectStorage(objectRoot);
+      let publications = 0;
+      const refusing: ObjectStorage = {
+        writeTemporary: (key, body) => storage.writeTemporary(key, body),
+        publishTemporary: (temporaryKey, finalKey, expectation) => {
+          publications += 1;
+          return storage.publishTemporary(
+            temporaryKey,
+            finalKey,
+            publications === 2 ? { ...expectation, sha256: '0'.repeat(64) } : expectation,
+          );
+        },
+        open: (key) => storage.open(key),
+        stat: (key) => storage.stat(key),
+        delete: (key) => storage.delete(key),
+      };
+      const app = setup(refusing);
+      let uploadId = '';
+      try {
+        const reservation = await app.inject({
+          method: 'POST',
+          url: `/bff/v1/activities/${imported.activityId}/track-uploads`,
+          headers: { ...headers, 'idempotency-key': `track-${randomUUID()}` },
+          payload: { expectedActivityRevision: imported.revision, recordedTrackIndex: 0 },
+        });
+        expect(reservation.statusCode).toBe(200);
+        uploadId = reservation.json().uploadId as string;
+        const content = await app.inject({
+          method: 'PUT',
+          url: `/bff/v1/activity-track-uploads/${uploadId}/content`,
+          headers: { ...headers, 'content-type': 'application/octet-stream' },
+          payload: gpxBytes,
+        });
+        expect(publications).toBe(2);
+        expect(content.statusCode).toBe(409);
+        expect(content.json()).toMatchObject({ error: { code: 'OBJECT_STORAGE_CONFLICT' } });
+        // The failure is recorded against the upload, so it can never be finalized.
+        const finalize = await app.inject({
+          method: 'POST',
+          url: `/bff/v1/activity-track-uploads/${uploadId}/finalize`,
+          headers,
+        });
+        expect(finalize.statusCode).toBe(409);
+        expect(finalize.json()).toMatchObject({ error: { code: 'UPLOAD_FAILED' } });
+      } finally {
+        await app.close();
+      }
+      const intent = await admin.query(
+        `SELECT state,failure_code,raw_temporary_ref,normalized_temporary_ref,map_path_temporary_ref
+         FROM activity_track_upload_intent WHERE upload_id=$1`,
+        [uploadId],
+      );
+      expect(intent.rows[0]).toMatchObject({
+        state: 'failed',
+        failure_code: 'OBJECT_STORAGE_CONFLICT',
+      });
+      const refs = await refsOf(uploadId);
+      expect(refs).toHaveLength(3);
+      const [rawFinal] = refs;
+      if (!rawFinal) throw new Error('raw final ref missing');
+      // The first object really did become visible before the store refused the second.
+      expect(await storage.stat(validateObjectKey(rawFinal))).not.toBeNull();
+      const temporaries = [
+        intent.rows[0]?.['raw_temporary_ref'],
+        intent.rows[0]?.['normalized_temporary_ref'],
+        intent.rows[0]?.['map_path_temporary_ref'],
+      ].map((ref) => validateObjectKey(String(ref)));
+      // Recording the failure queued every reference at once — the activity is alive and
+      // nothing has expired, so no other path would. While the writer's fence is open the
+      // worker holds the receipts rather than closing them.
+      await drainCleanup(storage);
+      const held = await admin.query(
+        `SELECT count(DISTINCT storage_ref)::int AS count FROM resource_object_cleanup
+         WHERE storage_ref=ANY($1) AND completed_at IS NULL
+           AND last_error_code='PUBLICATION_IN_PROGRESS'`,
+        [[...refs, ...temporaries]],
+      );
+      expect(held.rows[0]?.['count']).toBe(6);
+      // Once the fence has passed, the same worker takes all of it.
+      await admin.query(
+        'ALTER TABLE activity_track_upload_intent DISABLE TRIGGER activity_track_upload_transition',
+      );
+      try {
+        await admin.query(
+          `UPDATE activity_track_upload_intent
+           SET prepared_at=clock_timestamp()-interval '10 minutes',
+               publication_lease_until=clock_timestamp()-interval '1 minute'
+           WHERE upload_id=$1`,
+          [uploadId],
+        );
+      } finally {
+        // A failing statement must not leave the transition trigger off for later tests.
+        await admin.query(
+          'ALTER TABLE activity_track_upload_intent ENABLE TRIGGER activity_track_upload_transition',
+        );
+      }
+      await admin.query(
+        `UPDATE resource_object_cleanup SET available_at=clock_timestamp()
+         WHERE storage_ref=ANY($1) AND completed_at IS NULL`,
+        [[...refs, ...temporaries]],
+      );
+      await drainCleanup(storage);
+      for (const ref of refs) expect(await storage.stat(validateObjectKey(ref))).toBeNull();
+      for (const ref of temporaries) expect(await storage.stat(ref)).toBeNull();
+      expect(
+        await createActivityTrackRepository(database).read(athleteId, imported.activityId),
+      ).toEqual({ status: 'unavailable', activityId: imported.activityId });
+    },
+  );
+
+  it(
     'defers cleanup while a publication fence is open and deletes once it has passed',
     { timeout: 120_000 },
     async () => {

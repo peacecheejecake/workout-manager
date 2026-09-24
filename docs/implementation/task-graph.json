@@ -1368,7 +1368,8 @@
       "title": "persistence 집계 행 재판정",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
+      "evidence": "docs/implementation/progress/M2-01k-h.md",
       "scope": "M2-01n·o가 닫은 sweep dead-letter·공유 디렉터리 경합과 표의 각 조건(tenant/RLS·idempotency·CAS·동시 upload/삭제·publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원)을 조건마다 통합 시험 하나에 대응시키고, 대응이 없는 조건만 시험을 더한다 닫을 매트릭스 행: P7-durable-lifecycle, P8-postgres-object. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
     },
     {

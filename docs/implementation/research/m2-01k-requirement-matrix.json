@@ -27,6 +27,21 @@
         "pnpm test:identity"
       ],
       "note": "The header fields node, baseHead and executedThisNode above describe M2-01k only. Rows listed here were re-judged by the amending node on its own executed evidence; see docs/implementation/progress/M2-01t.md."
+    },
+    {
+      "node": "M2-01k-h",
+      "date": "2026-09-24",
+      "rows": ["P7-durable-lifecycle", "P8-postgres-object"],
+      "decision": "Gap node M2-01k-h mapped each condition to one test and killed a single-anchor mutant per condition; independent review required the rollback-cleanup assertion (B1) before P7 could pass.",
+      "change": "P7-durable-lifecycle and P8-postgres-object partial -> passed (with limits in reason); counts passed 38 -> 40, partial 66 -> 64.",
+      "executed": [
+        "pnpm test:integration 1 + 618 (M2-01k-h, runner-made cluster)",
+        "activity-tracks + activity-track-lifecycle integration 33/33 on a fresh DB",
+        "drill passed, 75 checks",
+        "single-anchor mutants per condition, each restored with cmp (M2-01k-h.md mapping table): 20 in round 1 plus reaper-staged, rollback, db-first-expiry, dir-race@:707, restore-replay in round 2",
+        "independent review re-ran #2 (5/5 fail mutated, 5/5 pass unmutated), #3, #5, #7, #8, #13"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-h.md."
     }
   ],
   "rounds": [
@@ -148,8 +163,8 @@
     }
   ],
   "counts": {
-    "partial": 66,
-    "passed": 38,
+    "partial": 64,
+    "passed": 40,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1888,9 +1903,9 @@
       "id": "P7-durable-lifecycle",
       "source": "docs/implementation/map-implementation-plan.md:172",
       "quote": "temp/prepared/final 상태를 DB에 먼저 기록하고 publish 실패·DB rollback·중복/동시 upload를 기존 durable cleanup 패턴으로 처리한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["pnpm test:integration 524"],
-      "reason": "Sweep dead-letter and shared-directory race are open in M2-01n.",
+      "reason": "M2-01k-h amendment: passed. Each clause maps to one test with a killed single-anchor mutant: DB-first recording (activity-tracks :780, reaper queueing removed → fail), publish failure (activity-track-lifecycle :405, fail() removed → fail), DB rollback plus the durable cleanup pattern (activity-tracks :613: the refused finalize rolls back heads/revisions/objects AND after expiry all six refs, 3 temporary + 3 final, get open upload_abandoned receipts; mutants rollback, db-first-expiry and reaper-staged each fail it), duplicate upload (:343), concurrent upload (#6 requeue). Limits: #12 (:780) covers only a reserved upload's temporary refs; the shared-directory race is cited by the deterministic local-filesystem.test.ts:707 with the multi-process :731 as secondary; object storage is the local private-volume adapter only.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1898,7 +1913,20 @@
           "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-h",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Sweep dead-letter and shared-directory race are open in M2-01n.",
+        "executed": [
+          "pnpm test:integration 1 + 618 (M2-01k-h, runner-made cluster)",
+          "activity-tracks + activity-track-lifecycle integration 33/33 on a fresh DB",
+          "drill passed, 75 checks",
+          "single-anchor mutants per condition, each restored with cmp (M2-01k-h.md mapping table): 20 in round 1 plus reaper-staged, rollback, db-first-expiry, dir-race@:707, restore-replay in round 2",
+          "independent review re-ran #2 (5/5 fail mutated, 5/5 pass unmutated), #3, #5, #7, #8, #13"
+        ]
+      }
     },
     {
       "id": "P7-activity-delete",
@@ -2087,9 +2115,9 @@
       "id": "P8-postgres-object",
       "source": "docs/implementation/map-implementation-plan.md:196",
       "quote": "| 실제 PostgreSQL/객체 | tenant/RLS·idempotency·CAS·동시 upload/삭제·publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["pnpm test:integration 524, drill 62"],
-      "reason": "Individual concurrency cases not re-read here; M2-01n open items.",
+      "reason": "M2-01k-h amendment: passed with limits. Each condition in the row maps to one integration test or drill check with a killed single-anchor mutant (M2-01k-h.md table: tenant/RLS, idempotency, CAS, concurrent upload/delete, publish failure, lease race, cleanup re-run, export, erasure, backup restore). Limits: local private-volume object storage only (the product's only ObjectStorage; remote provider and encrypted remote backup are separate targets per operations-runbook); the backup is the synthetic drill, not a production backup or RPO/RTO; for CAS only the 409 conflict classification is shown non-vacuous (a head-transition trigger and the activity_track_revision PK are further defences, and the test is sequential, so FOR UPDATE serialisation is not raced); the backup-restore mutant hits the general delete trigger and is not restore-specific.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2098,7 +2126,20 @@
           "pnpm test:integration (1 + 616 passed, runner-made cluster, no TEST_DATABASE_*)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-h",
+        "date": "2026-09-24",
+        "previousVerdict": "partial",
+        "previousReason": "Individual concurrency cases not re-read here; M2-01n open items.",
+        "executed": [
+          "pnpm test:integration 1 + 618 (M2-01k-h, runner-made cluster)",
+          "activity-tracks + activity-track-lifecycle integration 33/33 on a fresh DB",
+          "drill passed, 75 checks",
+          "single-anchor mutants per condition, each restored with cmp (M2-01k-h.md mapping table): 20 in round 1 plus reaper-staged, rollback, db-first-expiry, dir-race@:707, restore-replay in round 2",
+          "independent review re-ran #2 (5/5 fail mutated, 5/5 pass unmutated), #3, #5, #7, #8, #13"
+        ]
+      }
     },
     {
       "id": "P8-ui-component",

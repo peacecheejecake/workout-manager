@@ -17,17 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01ad](progress/M2-01ad.md)를 완료했다(제품 코드 변경 없음, timeout 상향 없음).
+[M2-01k-h](progress/M2-01k-h.md)를 완료했다. 영속·객체 저장 수명주기의 조건(tenant/RLS·idempotency·CAS·동시 upload/삭제·
+publish 실패·lease race·cleanup 재실행·export/erasure·백업 복원·DB 먼저 기록·rollback·중복 upload)을 조건마다 시험 하나에
+대응시키고, 그 시험이 지키는 제품 가드를 한 곳씩 되돌려 실패함을 보였다. 대응이 없던 publish 실패와 DB rollback은 시험을
+더했다. 독립 검토가 rollback 뒤 정리(만료 뒤 임시·최종 참조 6개 회수)를 단언하는 시험이 없음을 잡아 보강했다. 매트릭스
+P7-durable-lifecycle·P8-postgres-object를 한계와 함께 passed로 올렸다(로컬 FS만, 합성 drill, CAS는 409 분류만 비공허).
 
-- 선택형 진단 `IDENTITY_E2E_DIAGNOSTICS=1`: 실패 시 Playwright protocol·CPU/메모리 압박·trace를 남긴다. 세션 id·CSRF·cookie·
-  authorization·OIDC 값은 Playwright 직렬화 형식을 포함해 가린다(실제 실패 probe에서 실제 값 0건). 독립 검토가 첫 판의
-  redaction 누락(evaluate 인자의 `{"k","v"}` 형식)을 차단으로 잡아 고쳤다. renderer 정지 원인은 여전히 미해명이다.
-- jsdom 시험에서 timeout된 시험 본문이 다음 시험 DOM에 event를 보내면 막고 파일을 실패시킨다(499/500 연쇄 차단).
-- coaching-acceptance는 빈 계정에서 시작해 앞선 spec 순서에 의존하지 않는다. harness는 죽은 pid의 hand-off 파일을 안전하게 치운다.
-- 기존부터 있던 문제: 실패 시 Playwright trace가 세션 값을 그대로 담고 CI가 public 저장소 artifact로 올린다(합성 계정·일회용
-  runner라 실제 노출은 무시할 만함). M2-01ae로 분리했다.
-
-직전 완료: [M2-01k](progress/M2-01k.md) 수용 2차 판정(passed 38, 새 gap 노드 16개, 사용자 결정 i–o).
+직전 완료: [M2-01ad](progress/M2-01ad.md)(시험 격리 guard, 진단, coaching 순서 의존 제거).
 
 ## 다음 ready 작업
 

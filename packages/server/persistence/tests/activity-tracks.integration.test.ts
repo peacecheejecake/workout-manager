@@ -610,6 +610,126 @@ describe('M2-01c private track storage', () => {
     expect(accepted.result?.status).toBe('available');
   });
 
+  it('rolls a finalize refused after its writes back whole, and expiry then queues all six of its objects', async () => {
+    // M2-01k-h: the stored-bytes quota is checked only after finalize has written the head,
+    // the revision and the object ledger rows, so a refusal there is a real rollback of real
+    // writes, not a check that ran before anything happened.
+    const athlete = randomUUID();
+    const sizes = { raw: 33_554_432, normalized: 8_388_608, mapPath: 8_388_608 };
+    for (let index = 0; index < 10; index += 1) {
+      const imported = await activities.importActivity(athlete, importInput());
+      await storeTrack(athlete, imported.activityId, imported.revision, {
+        sizes,
+        rawContent: `rollback-${index}`,
+        correspondence: hashOf(`rollback-${index}`),
+      });
+    }
+    const overflow = await activities.importActivity(athlete, importInput());
+    const staged = await storeTrack(athlete, overflow.activityId, overflow.revision, {
+      sizes,
+      rawContent: 'rollback-overflow',
+      correspondence: hashOf('rollback-overflow'),
+      finalize: false,
+    });
+    await expect(tracks.finalize(athlete, staged.reservation.uploadId)).rejects.toMatchObject({
+      code: 'TRACK_QUOTA_EXCEEDED',
+    });
+    const left = await admin.query(
+      `SELECT
+         (SELECT count(*)::int FROM activity_track WHERE athlete_id=$1 AND activity_id=$2) AS heads,
+         (SELECT count(*)::int FROM activity_track_revision
+            WHERE athlete_id=$1 AND activity_id=$2) AS revisions,
+         (SELECT count(*)::int FROM activity_track_object
+            WHERE athlete_id=$1 AND storage_ref=ANY($3)) AS objects,
+         (SELECT count(*)::int FROM command_receipt c JOIN activity_track_upload_intent i
+            ON c.athlete_id=i.athlete_id
+            AND c.idempotency_key='activity-track:store:'||i.idempotency_key
+            WHERE i.upload_id=$4) AS receipts,
+         (SELECT state FROM activity_track_upload_intent WHERE upload_id=$4) AS state`,
+      [
+        athlete,
+        overflow.activityId,
+        [staged.keys.raw, staged.keys.normalized, staged.keys.mapPath],
+        staged.reservation.uploadId,
+      ],
+    );
+    expect(left.rows[0]).toEqual({
+      heads: 0,
+      revisions: 0,
+      objects: 0,
+      receipts: 0,
+      state: 'staged',
+    });
+    // The activity gained no track.
+    expect(await tracks.read(athlete, overflow.activityId)).toEqual({
+      status: 'unavailable',
+      activityId: overflow.activityId,
+    });
+    // The rolled-back upload is left to the durable cleanup pattern: it still names its three
+    // temporary and three final objects (the final ones may already be published), so when it
+    // expires by the database clock the worker reaper queues all six.
+    await admin.query(
+      'ALTER TABLE activity_track_upload_intent DISABLE TRIGGER activity_track_upload_transition',
+    );
+    try {
+      await admin.query(
+        `UPDATE activity_track_upload_intent
+         SET created_at=clock_timestamp()-interval '2 hours',
+             updated_at=clock_timestamp()-interval '2 hours',
+             expires_at=clock_timestamp()-interval '90 minutes'
+         WHERE upload_id=$1`,
+        [staged.reservation.uploadId],
+      );
+    } finally {
+      await admin.query(
+        'ALTER TABLE activity_track_upload_intent ENABLE TRIGGER activity_track_upload_transition',
+      );
+    }
+    const worker = createResourceObjectCleanupRepository({ connectionString: workerUrl, max: 1 });
+    try {
+      // The reaper is global and bounded per call, so other tests' expired uploads may come
+      // first; it is called until this one has been taken or there is nothing left.
+      for (let pass = 0; pass < 50; pass += 1) {
+        const state = await admin.query(
+          'SELECT state FROM activity_track_upload_intent WHERE upload_id=$1',
+          [staged.reservation.uploadId],
+        );
+        if (state.rows[0]?.['state'] !== 'staged') break;
+        if ((await worker.reapExpired(new Date(), 100)) === 0) break;
+      }
+    } finally {
+      await worker.close();
+    }
+    const expired = await admin.query(
+      `SELECT state,failure_code,raw_temporary_ref,normalized_temporary_ref,map_path_temporary_ref,
+         raw_storage_ref,normalized_storage_ref,map_path_storage_ref
+       FROM activity_track_upload_intent WHERE upload_id=$1`,
+      [staged.reservation.uploadId],
+    );
+    const row = expired.rows[0];
+    expect(row).toMatchObject({ state: 'failed', failure_code: 'UPLOAD_EXPIRED' });
+    const allRefs = [
+      row?.['raw_temporary_ref'],
+      row?.['normalized_temporary_ref'],
+      row?.['map_path_temporary_ref'],
+      row?.['raw_storage_ref'],
+      row?.['normalized_storage_ref'],
+      row?.['map_path_storage_ref'],
+    ];
+    expect(allRefs.slice(3)).toEqual([
+      staged.keys.raw,
+      staged.keys.normalized,
+      staged.keys.mapPath,
+    ]);
+    expect(new Set(allRefs).size).toBe(6);
+    const queued = await admin.query(
+      `SELECT count(DISTINCT storage_ref)::int AS count FROM resource_object_cleanup
+       WHERE storage_ref=ANY($1) AND reason='upload_abandoned' AND completed_at IS NULL`,
+      [allRefs],
+    );
+    expect(queued.rows[0]?.['count']).toBe(6);
+  });
+
   it('bounds the bytes waiting for reclamation, and clears once cleanup catches up', async () => {
     const athlete = randomUUID();
     // 48 MiB of declared objects per track. Deleting an activity only *schedules* the
