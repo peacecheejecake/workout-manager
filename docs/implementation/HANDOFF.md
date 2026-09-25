@@ -40,11 +40,10 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M1-06b-tmp. 이 중
+task-graph에서 not_started인 ready 노드: M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01k-o, M1-06b-tmp. 이 중
 M2-01k-b·j·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
-`.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자
-승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+`.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 
@@ -57,7 +56,11 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
   수집을 하는 M1-06b-tmp를 진행한다([결정 기록](research/garmin-temporary-gate.md)). EXT-G·M0-07b·M1-06b·M2-07은 그대로
   not_started이고 G2는 공식 연동을 거친다.
-- 사용자 결정(2026-09-25): 코스 공유(M2-01k-o)는 코드 전에 요구(공유 범위·ACL·철회·재식별 검토)를 먼저 작성해 승인받는다.
+- 사용자 결정(2026-09-25): 코스 공유(M2-01k-o) [요구](research/m2-01k-o-sharing-requirement.md)를 승인했다. 범위는 확인 뒤 소유자
+  GPX(A)와 보기 전용 unlisted 링크(B, 기본 꺼짐)이며, 링크는 보호 구역이 하나 이상 있어야 한다. B는 독립 재식별 검토의 차단 항목
+  (공유용 확장 원과 비밀 오프셋 등)과 T22–T25가 통과해야 켤 수 있다. 계획 문장(map-implementation-plan.md:104, :187)을 개정했다.
+- 사용자 결정(2026-09-25): routing 지도 데이터를 서울 extract에서 한국 전체 extract로 바꾼다(M2-01ak). M0-06b 증거 묶음은
+  [m0-06b-routing-evidence.md](research/m0-06b-routing-evidence.md)이며 독립 coverage 검토는 새 graph로 받는다.
   운영 OIDC는 Google을 평가했고([평가](research/ext-oidc-google-evaluation.md): Google 단독은 prompt=login·새 auth_time·OP
   로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
   독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.

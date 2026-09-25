@@ -1454,7 +1454,7 @@
       "dependsOn": ["M2-01k-c2"],
       "kind": "task",
       "status": "not_started",
-      "scope": "코스 공유 기능을 만든다. 정확한 시작·끝 위치를 공유하거나 GPX로 내보내기 전에 privacy trim 제안과 확인 화면을 둔다. 확인 없이는 정확한 위치가 나가지 않는다. 주의: 이 결정은 passed 행 P7-no-public-share(\"공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성\")의 전제를 바꾼다. 이 노드는 공유 범위(링크·대상), ACL, 철회, 재식별 검토를 요구로 먼저 적어야 하고, 착지하면 P7-no-public-share와 P7-privacy-trim을 다시 판정해야 한다. 완료: 두 shell E2E가 확인 전에는 공유·내보내기가 막히고, 확인 화면이 보호 구역·시작·끝 노출을 설명하며, trim을 고르면 공유본·GPX에 보호 좌표가 없음을 단언한다. ACL(허가받지 않은 사용자 404), 철회 뒤 접근 차단, 코스 삭제·계정 말소 시 공유 회수를 통합 시험으로 단언한다. 비공허성: 확인 단계를 건너뛰는 변이, trim을 무시하는 변이, ACL 검사를 뺀 변이, 철회를 no-op으로 하는 변이가 각각 실패한다 root 병합 추가(독립 재검토): (a) 진입 gate — 공유 범위·ACL·철회·재식별 검토를 코드 전에 요구로 작성하고 사용자 승인을 받는다. 재식별 검토는 구현자가 아닌 독립 검토자가 한다. P7-no-public-share의 근거인 계획 문장을 같은 단계에서 개정한다(M2-01t 방식). (b) 검토 통과 전까지 공유는 기본값 꺼짐. (c) 철회·말소된 공유가 백업 복원 뒤 되살아나지 않는 drill check. (d) M2-01k-c2(로그 redaction)에 의존해 공유 링크·정확한 위치가 로그에 남지 않음을 단언한다. 닫을 매트릭스 행: S14-privacy-share (착지 뒤 P7-no-public-share·P7-privacy-trim 재판정). 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "scope": "코스 공유 기능을 만든다. 정확한 시작·끝 위치를 공유하거나 GPX로 내보내기 전에 privacy trim 제안과 확인 화면을 둔다. 확인 없이는 정확한 위치가 나가지 않는다. 주의: 이 결정은 passed 행 P7-no-public-share(\"공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성\")의 전제를 바꾼다. 이 노드는 공유 범위(링크·대상), ACL, 철회, 재식별 검토를 요구로 먼저 적어야 하고, 착지하면 P7-no-public-share와 P7-privacy-trim을 다시 판정해야 한다. 완료: 두 shell E2E가 확인 전에는 공유·내보내기가 막히고, 확인 화면이 보호 구역·시작·끝 노출을 설명하며, trim을 고르면 공유본·GPX에 보호 좌표가 없음을 단언한다. ACL(허가받지 않은 사용자 404), 철회 뒤 접근 차단, 코스 삭제·계정 말소 시 공유 회수를 통합 시험으로 단언한다. 비공허성: 확인 단계를 건너뛰는 변이, trim을 무시하는 변이, ACL 검사를 뺀 변이, 철회를 no-op으로 하는 변이가 각각 실패한다 root 병합 추가(독립 재검토): (a) 진입 gate — 공유 범위·ACL·철회·재식별 검토를 코드 전에 요구로 작성하고 사용자 승인을 받는다. 재식별 검토는 구현자가 아닌 독립 검토자가 한다. P7-no-public-share의 근거인 계획 문장을 같은 단계에서 개정한다(M2-01t 방식). (b) 검토 통과 전까지 공유는 기본값 꺼짐. (c) 철회·말소된 공유가 백업 복원 뒤 되살아나지 않는 drill check. (d) M2-01k-c2(로그 redaction)에 의존해 공유 링크·정확한 위치가 로그에 남지 않음을 단언한다. 닫을 매트릭스 행: S14-privacy-share (착지 뒤 P7-no-public-share·P7-privacy-trim 재판정). 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6. 요구 승인(사용자 2026-09-25): docs/implementation/research/m2-01k-o-sharing-requirement.md(승인본 sha256 9dbae494…, 이후 §7 계획 문장만 D3c와 맞춰 정정한 판 bdfd4dbc…)이 이 노드의 수용 기준이다. 범위는 A(확인 뒤 소유자 GPX)+B(보기 전용 unlisted 링크, 기본 꺼짐)이며 독립 재식별 검토(2026-09-25)의 차단 항목 A-1·B-1–B-8과 T22–T25가 B 출하의 조건이다. 계획 문장(map-implementation-plan.md:104, :187-194)은 요구 승인 commit에서 개정했다."
     },
     {
       "id": "M2-01ae",
@@ -1515,7 +1515,7 @@
       "dependsOn": ["M2-01af"],
       "kind": "task",
       "status": "not_started",
-      "scope": "M2-01af에서 분리. 저장소의 serving profile(request log off, com.graphhopper.resources·http·navigation OFF, POST /route)은 바뀌었지만 `.geo-build/routing-graph`의 배포 graph A(c57f12f5975347e8)는 옛 profile 사본(e72537c1…)으로 돌며, helper가 자동으로 붙이는 request-log override와 WARN threshold로만 보호된다. runbook \"serving profile 변경의 배포\" 절차대로 새 profile로 graph를 영속 위치에 다시 import하고(`--replace-served-graph` 없이 새 root에), blue/green으로 전환하고, 코스의 graph 인정을 다시 확인하고, 옛 graph로 rollback이 되는지 보인다. `.geo-build`는 다른 노드의 시험도 쓰므로 harness lock을 잡고 한 번에 하고, 전후 manifest·profile SHA-256과 새 graph id를 기록한다. 새 profile 위에서 engine log probe(R1, root INFO R8, navigate·spt·isochrone 포함)와 swap·운영 probe를 다시 실행해 기존 보고서를 갱신한다. 출처: docs/implementation/progress/M2-01af.md §7, §9."
+      "scope": "M2-01af에서 분리. 저장소의 serving profile(request log off, com.graphhopper.resources·http·navigation OFF, POST /route)은 바뀌었지만 `.geo-build/routing-graph`의 배포 graph A(c57f12f5975347e8)는 옛 profile 사본(e72537c1…)으로 돌며, helper가 자동으로 붙이는 request-log override와 WARN threshold로만 보호된다. runbook \"serving profile 변경의 배포\" 절차대로 새 profile로 graph를 영속 위치에 다시 import하고(`--replace-served-graph` 없이 새 root에), blue/green으로 전환하고, 코스의 graph 인정을 다시 확인하고, 옛 graph로 rollback이 되는지 보인다. `.geo-build`는 다른 노드의 시험도 쓰므로 harness lock을 잡고 한 번에 하고, 전후 manifest·profile SHA-256과 새 graph id를 기록한다. 새 profile 위에서 engine log probe(R1, root INFO R8, navigate·spt·isochrone 포함)와 swap·운영 probe를 다시 실행해 기존 보고서를 갱신한다. 출처: docs/implementation/progress/M2-01af.md §7, §9. 사용자 결정(2026-09-25): 지금 extract는 BBBike Seoul 도시 extract라 서울 밖(부산·수원·강원·경북·제주)이 모두 outside_coverage다(docs/implementation/research/m0-06b-routing-evidence.md). 교체 graph는 한국 전체 OSM extract(예: Geofabrik south-korea)로 만든다: scripts/geo/sources.mjs allowlist에 URL과 SHA-256을 고정해 더하고, import 시간·엔진 메모리를 기록하고, manifest의 extractRegion을 바꾼다. 교체 뒤 scripts/probe-routing-korea-coverage.mts로 같은 38쌍 표본을 다시 실행해 결과를 기록하고, M0-06b의 독립 coverage 검토는 새 graph로 받는다."
     },
     {
       "id": "M2-01al",
@@ -1540,6 +1540,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "M2-01k-a 독립 검토의 비차단 후속. (a) GET /courses/cards는 코스마다 head 전체 선을 읽고 두 번 검증해 최악(코스 200개 × 20,000 정점) 요청당 CPU 약 3.85 s다. persistence에서 카드에 필요한 요약(400점 이하 표본, 세대, 썸네일 상태, 거리·고도 근거)만 한 tenant 트랜잭션으로 돌려주는 읽기, 또는 revisionId로 묶은 LRU를 두고 같은 기준 부하에서 비용을 측정해 기록한다. 출력은 지금 카드와 같아야 한다(계약 시험). (b) 카드 목록 재조회 조건을 시험으로 고정한다: 상세와 카드가 모두 ready면 다시 읽지 않음, 같은 head revision 조건, refetchOnWindowFocus false. 각 조건을 되돌리는 변이가 실패해야 한다. 출처: docs/implementation/progress/M2-01k-a.md §6, M2-01k-a 2회차 독립 검토의 비차단 R1."
+    },
+    {
+      "id": "M2-01ao",
+      "title": "백업 뒤 삭제한 코스가 복원으로 되살아나는 공백",
+      "dependsOn": [],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01k-o 요구 작성 중 발견(요구 §4 발견 (a)). backup-restore drill에는 백업 이후 소유자가 지운 코스를 복원 뒤 다시 지우는 원장이 없다(delete_course·courses.remove 재생 경로 없음, grep 확인·drill로는 재현하지 않음). 그래서 백업 뒤 지운 코스와 그 좌표가 복원으로 소유자에게 돌아올 수 있다. 활동·tenant·객체 purge(M2-01x·y·z)와 같은 방식으로 코스 삭제를 복원 뒤 재적용할지 결정하고, drill check로 백업 → 코스 삭제 → 복원 → 코스 부재를 실제 PostgreSQL에서 단언한다. 재현이 먼저이며, 재현되지 않으면 그 근거를 기록하고 닫는다. 출처: docs/implementation/research/m2-01k-o-sharing-requirement.md §4."
     },
     {
       "id": "M2-01k",

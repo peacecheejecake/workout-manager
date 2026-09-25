@@ -287,6 +287,17 @@
         "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-a.md."
+    },
+    {
+      "node": "M2-01k-o (requirement)",
+      "date": "2026-09-25",
+      "rows": ["P7-no-public-share"],
+      "decision": "The user approved the M2-01k-o sharing requirement on 2026-09-25 (\"Approve\"): scope A (confirmed owner GPX export) + B (view-only unlisted link, default off until the independent re-identification review's blocking items and tests pass); links need at least one privacy zone. The plan sentences at map-implementation-plan.md:104 and :187 were amended in the M2-01t manner.",
+      "change": "P7-no-public-share quote and source replaced by the amended sentence; verdict unchanged (passed); counts unchanged (77/27/0/0/6).",
+      "executed": [
+        "the three existing no-share assertions (tests/identity/course-extras.spec.ts:201-204, course-workbench.test.tsx:124, course-extras.test.tsx:1103) re-run in this commit's pnpm test and two identity runs"
+      ],
+      "note": "Plan amendment only; no product code. See docs/implementation/research/m2-01k-o-sharing-requirement.md §7."
     }
   ],
   "rounds": [
@@ -2783,8 +2794,8 @@
     },
     {
       "id": "P7-no-public-share",
-      "source": "docs/implementation/map-implementation-plan.md:187",
-      "quote": "공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성이다.",
+      "source": "docs/implementation/map-implementation-plan.md:187-189",
+      "quote": "공개 발견(검색·목록)은 두지 않는다. 코스 공유는 M2-01k-o 요구가 정한 만료·철회 가능한 보기 전용 unlisted 링크로만 허용하며, 독립 재식별 검토가 통과하기 전까지 기본값 꺼짐이다.",
       "verdict": "passed",
       "evidence": [
         "tests/identity/course-extras.spec.ts:201-204 no '공유'/'링크 복사'/'공개' button on the course screen",
@@ -2792,7 +2803,7 @@
         "packages/modules/courses/tests/course-extras.test.tsx:1103 'offers no way to share a course, trimmed or not'",
         "contract: course visibility is the literal 'private'"
       ],
-      "reason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them.",
+      "reason": "M2-01k-o requirement amendment: still passed. The plan sentence was amended by user decision (2026-09-25) from \"public sharing stays disabled until a separate requirement, ACL and re-identification review\" to \"no public discovery; sharing only through expiring, revocable, view-only unlisted links, default off until the independent re-identification review passes\". No sharing code exists yet, so the product still offers no share control, which the three existing assertions keep proving. When M2-01k-o lands, this row is re-judged under the requirement §7 conditions.",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
@@ -2801,7 +2812,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-o (requirement)",
+        "date": "2026-09-25",
+        "previousQuote": "공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성이다.",
+        "previousSource": "docs/implementation/map-implementation-plan.md:187",
+        "previousVerdict": "passed",
+        "previousReason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them.",
+        "executed": [
+          "the three existing no-share assertions (tests/identity/course-extras.spec.ts:201-204, course-workbench.test.tsx:124, course-extras.test.tsx:1103) re-run in this commit's pnpm test and two identity runs"
+        ]
+      }
     },
     {
       "id": "P8-contract-parser",
