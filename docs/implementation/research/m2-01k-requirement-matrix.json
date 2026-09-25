@@ -452,6 +452,20 @@
         "pnpm test 3,944; pnpm test:integration 1+758; drill 97; pnpm test:identity x2 259 passed each on phase/m2-01; no per-task review (user decision 2026-09-26: M2-01 phase review by Codex)"
       ],
       "note": "Re-judged by root from the gap node's executed evidence; see docs/implementation/progress/M2-01ap.md. Pending the M2-01 phase review."
+    },
+    {
+      "node": "M2-01ag",
+      "date": "2026-09-26",
+      "rows": ["R-S13-S14"],
+      "decision": "Gap node M2-01ag closed the two tablet course-list gaps M2-01k-c1 recorded. Independent review r1 (before the user's 2026-09-26 review-process change) APPROVE with a window-scroll finding, fixed; the M2-01 phase review by Codex covers the final code.",
+      "change": "No verdict change; R-S13-S14 stays passed and its known gaps are closed; counts unchanged.",
+      "executed": [
+        "tests/identity/course-list-scroll.spec.ts in both shells: at 768/1024/1279 px a course opened by address is scrolled into view inside the list pane without moving focus; the page does not scroll at 1280 px desktop, at 844x320 where the pane runs past the first screen, or on a desktop-to-tablet layout change; the sticky fold/order bar stays at the pane top and an imported course lands below it with room for its focus ring",
+        "packages/modules/courses/tests/course-list-reveal.test.tsx (4) and courses module 232 passed: reveal by address, a pane that grows with its content is left alone, re-reveal after collapse/expand and after a layout change",
+        "mutants G1 (reveal removed), G2 (focus instead of scroll), G4 (sticky removed), G5 (scroll-padding voided), G6 (scrollIntoView restored, moving the page) each fail in both shells; G3 became equivalent and was retired",
+        "full verification on phase/m2-01 (see progress doc); one independent review round before the review-process change (r1 APPROVE, window-scroll finding fixed); the M2-01 phase review by Codex covers the final code"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence; see docs/implementation/progress/M2-01ag.md."
     }
   ],
   "rounds": [
@@ -1529,7 +1543,7 @@
         "tests/identity/courses.spec.ts:416 (3100 only, layout attributes)",
         "ad-hoc Playwright (not committed): 3100 and 4200 × 320/767/768/1279/1280 overflowX 0, layout switches"
       ],
-      "reason": "M2-01k-c1 amendment: passed. At tablet the waypoint list folds (only there) and sits beside the map on both S14 screens; the course list is on top with a bounded height that scrolls inside, so the map starts on the first screen for any course count (user accepted this layout on 2026-09-24). Asserted at the five boundaries and a 420px pane in both shells, killed by L1-L6, F1-F2 and H1. Known UX gaps (M2-01ag): a course opened by address is not scrolled into view in the tablet list, and the list's fold/order toggles scroll away with it.",
+      "reason": "M2-01ag amendment: passed. At tablet the waypoint list folds (only there) and sits beside the map on both S14 screens; the course list is on top with a bounded height that scrolls inside, so the map starts on the first screen for any course count (user accepted this layout on 2026-09-24; M2-01k-c1 evidence and mutants stand). The two known gaps are closed: a course opened by address is scrolled into view inside the list without moving the page or focus, and the fold/order bar stays at the top of the list with scrolled or focused rows kept below it. Limits: Chromium only (no iPad Safari device evidence), and a card that arrives after the reveal can grow its row past the pane edge.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1544,14 +1558,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-c1",
-        "date": "2026-09-24",
-        "previousVerdict": "partial",
-        "previousReason": "Stays partial (independent review B1). The quote's tablet column is '지도+접히는 경유점 목록' (map + collapsible WAYPOINT list). The only collapse control (course-workbench.tsx:708, '코스 목록 접기') collapses the COURSE list, and courses.spec.ts:416 asserts only that; no collapsible waypoint list exists. What is proven: in both shells at 320/767/768/1279/1280 and in a 420px module pane the course line is drawn by the real renderer, the canvas is >= 240x200, each visible pane is >= 240px (M2-01q's own minimum; the spec gives no number) and there is no horizontal overflow (map-render.spec, identity x2). Non-vacuity differs by part: mutant css-container (container declaration removed) fails only through the 420px pane; at the five viewport boundaries only mutant f2-both (no drawing at all) shows the checks can fail, so the per-boundary minimum-width checks were not shown to catch a layout regression.",
+        "node": "M2-01ag",
+        "date": "2026-09-26",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-c1 amendment: passed. At tablet the waypoint list folds (only there) and sits beside the map on both S14 screens; the course list is on top with a bounded height that scrolls inside, so the map starts on the first screen for any course count (user accepted this layout on 2026-09-24). Asserted at the five boundaries and a 420px pane in both shells, killed by L1-L6, F1-F2 and H1. Known UX gaps (M2-01ag): a course opened by address is not scrolled into view in the tablet list, and the list's fold/order toggles scroll away with it.",
         "executed": [
-          "tests/identity/course-editor-layout.spec.ts, course-editor-edits.spec.ts, map-states.spec.ts (Next and Vite) in the node's identity runs and two independent-review runs",
-          "mutants L1-L6, F1-F2, U1-U2, N1-N2, P1, P2 (two anchors), NB1, PR1, SF1-SF3, H1 each fail; P2a/P2b survive and are disclosed",
-          "independent review re-killed F2, P1, H1 and measured pane widths and map top at 768/1024/1279"
+          "tests/identity/course-list-scroll.spec.ts in both shells: at 768/1024/1279 px a course opened by address is scrolled into view inside the list pane without moving focus; the page does not scroll at 1280 px desktop, at 844x320 where the pane runs past the first screen, or on a desktop-to-tablet layout change; the sticky fold/order bar stays at the pane top and an imported course lands below it with room for its focus ring",
+          "packages/modules/courses/tests/course-list-reveal.test.tsx (4) and courses module 232 passed: reveal by address, a pane that grows with its content is left alone, re-reveal after collapse/expand and after a layout change",
+          "mutants G1 (reveal removed), G2 (focus instead of scroll), G4 (sticky removed), G5 (scroll-padding voided), G6 (scrollIntoView restored, moving the page) each fail in both shells; G3 became equivalent and was retired",
+          "full verification on phase/m2-01 (see progress doc); one independent review round before the review-process change (r1 APPROVE, window-scroll finding fixed); the M2-01 phase review by Codex covers the final code"
         ]
       }
     },

@@ -1484,8 +1484,9 @@
       "title": "S13 태블릿 코스 목록 사용성 보강",
       "dependsOn": ["M2-01k-c1"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01k-c1 2차 독립 검토의 비차단 공백. 태블릿에서 코스 목록은 높이가 묶여 내부 스크롤된다. (a) 주소(/courses/:id/edit)로 연 코스가 목록에서 보이도록 스크롤되지 않는다 — 선택 시 목록 안에서 scrollIntoView(block: nearest)로 보이게 한다. (b) 목록의 접기·순서 전환 버튼이 목록과 함께 스크롤되어 사라진다 — pane의 제어 줄을 sticky로 둔다. 두 shell E2E로 단언하고, 각 동작을 되돌리는 변이로 비공허성을 보인다. M2-01k-i는 경유점 목록 drag이고 이 노드는 코스 목록 pane을 바꾸므로 영역은 다르지만, 두 노드 모두 course editor 배치 파일을 건드리므로 동시에 진행하지 않는다."
+      "status": "completed",
+      "scope": "M2-01k-c1 2차 독립 검토의 비차단 공백. 태블릿에서 코스 목록은 높이가 묶여 내부 스크롤된다. (a) 주소(/courses/:id/edit)로 연 코스가 목록에서 보이도록 스크롤되지 않는다 — 선택 시 목록 안에서 scrollIntoView(block: nearest)로 보이게 한다. (b) 목록의 접기·순서 전환 버튼이 목록과 함께 스크롤되어 사라진다 — pane의 제어 줄을 sticky로 둔다. 두 shell E2E로 단언하고, 각 동작을 되돌리는 변이로 비공허성을 보인다. M2-01k-i는 경유점 목록 drag이고 이 노드는 코스 목록 pane을 바꾸므로 영역은 다르지만, 두 노드 모두 course editor 배치 파일을 건드리므로 동시에 진행하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-01ag.md"
     },
     {
       "id": "M2-01ah",

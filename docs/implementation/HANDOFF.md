@@ -17,13 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01ap](progress/M2-01ap.md)를 완료했다(`phase/m2-01`). routing adapter가 `road_access`·`foot_access`·`surface`·`road_class` details를
-요청하고, 목표 거리 후보와 왕복 검토가 알려진 접근 제한·계단·노면을 따로 줄마다 보인다(모르는 구간은 이유와 함께 "확인되지 않음"). 후보
-평가 v2를 v1과 함께 두고 migration 053으로 저장 한도를 넓혔다. 실제 엔진이 서울로7017 보행 육교의 `road_access=no`와 계단을 보이는 것을
-단언한다. P6-target-display를 passed로 올렸다(passed 85 → 86). `road_access`는 차량 접근 값이며 화면이 그렇게 적는다. 경사·야간 접근은
-자료 원천이 없다.
+[M2-01ag](progress/M2-01ag.md)를 완료했다(`phase/m2-01`). 태블릿 코스 목록에서 주소로 연 코스를 목록 pane 안에서만 스크롤해 보이게 하고(페이지와
+focus는 움직이지 않음), 접기·순서 버튼 줄을 목록 위에 붙여 두며 스크롤·focus된 행이 그 아래에 가려지지 않게 했다. R-S13-S14는 passed 유지,
+M2-01k-c1이 적어 둔 두 공백을 닫았다.
 
-직전 완료: [M2-01au](progress/M2-01au.md)(plain 소유 역할의 cleanup queue·reconcile state).
+직전 완료: [M2-01ap](progress/M2-01ap.md)(경로 속성 details).
 
 ## 운영 메모
 
@@ -75,8 +73,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01as, M2-01av. 이 중
-M2-01ag·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01as, M2-01av. 이 중
+M2-01as·M2-01av는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험

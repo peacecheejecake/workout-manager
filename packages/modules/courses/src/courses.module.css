@@ -67,6 +67,31 @@
   max-height: min(14rem, 35dvh);
   overflow-y: auto;
   overscroll-behavior: contain;
+  /*
+   * M2-01ag: the controls below stay stuck to the top of this pane, so anything scrolled into
+   * view here — the open course revealed on arrival, or a row reached with the keyboard —
+   * stops below them rather than under them. The height is measured by the workbench (the
+   * buttons can wrap); the fallback is one row of controls. On top of it, and at the bottom,
+   * room for the focus ring, which is drawn outside the control (2px outline at a 3px
+   * offset, foundation controls): a row stopping flush with the controls would have its ring
+   * under them.
+   */
+  scroll-padding-top: calc(
+    var(--course-list-controls-size, calc(var(--target-primary, 44px) + var(--space-2, 0.5rem))) +
+      6px
+  );
+  scroll-padding-bottom: 6px;
+}
+/*
+ * M2-01ag: the fold and order controls stay on screen while the list scrolls under them.
+ * Opaque, so the rows passing beneath do not show through the gap between the buttons.
+ */
+.panes[data-layout='tablet'] .listPane .listControls {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block-end: var(--space-2, 0.5rem);
+  background: var(--canvas, #edf1f6);
 }
 .panes[data-layout='tablet'] .mapPane {
   grid-column: 1;
@@ -167,6 +192,13 @@
     grid-column: 1;
     grid-row: auto;
   }
+}
+
+/* The list's own controls: folding (tablet) and ordering, on one line while they fit. */
+.listControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
 }
 
 .list {

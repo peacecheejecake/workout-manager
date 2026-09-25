@@ -150,6 +150,30 @@ function metres(value: number): string {
 }
 
 /**
+ * Brings `row` into view inside the scrolling `pane` — and moves nothing else.
+ *
+ * `scrollIntoView` would do the same for the pane, but it also scrolls every scrollable
+ * ancestor, the page included: on a short tablet viewport (a landscape phone) or after a
+ * layout change further down the page it moved the window (M2-01ag review). So the pane's
+ * own `scrollTop` is set, with the same "nearest" rule: a row above the visible band is
+ * aligned to its top, one below to its bottom, and one taller than the band to its top. The
+ * band excludes the pane's scroll padding, which keeps the row (and its focus ring) clear of
+ * the controls stuck to the pane's top. Where the pane grows with its content (desktop, and
+ * mobile where it is hidden behind the sheet) every row is inside the band and nothing moves.
+ */
+function revealInPane(pane: HTMLElement, row: HTMLElement): void {
+  const style = window.getComputedStyle(pane);
+  const paddingTop = Number.parseFloat(style.scrollPaddingTop) || 0;
+  const paddingBottom = Number.parseFloat(style.scrollPaddingBottom) || 0;
+  const paneTop = pane.getBoundingClientRect().top + pane.clientTop;
+  const bandTop = paneTop + paddingTop;
+  const bandBottom = paneTop + pane.clientHeight - paddingBottom;
+  const { top, bottom } = row.getBoundingClientRect();
+  if (top < bandTop) pane.scrollTop -= bandTop - top;
+  else if (bottom > bandBottom) pane.scrollTop += Math.min(bottom - bandBottom, top - bandTop);
+}
+
+/**
  * The owner's GPX download.
  *
  * A plain navigation cannot carry the session header the API requires for a cookie
@@ -506,6 +530,37 @@ function Workbench({
       return left.name.localeCompare(right.name);
     });
   }, [list.data, preferenceOf, order]);
+  // M2-01ag (a): where the list pane is height-bounded and scrolls inside (tablet), the open
+  // course is brought into view within it — a course opened by its address can otherwise sit
+  // many rows below the pane's first screen. Only the pane's own scroll position moves — never
+  // the page's (see `revealInPane`) — and focus stays where the owner is. The reveal runs again when the card facts or the preferences first arrive,
+  // because both change the rows above it (a card's height, favourites first), and never on a
+  // later refetch, so it does not pull the pane back after the owner has scrolled it.
+  const listPane = useRef<HTMLDivElement>(null);
+  const listControls = useRef<HTMLDivElement>(null);
+  const selectedRow = useRef<HTMLLIElement>(null);
+  const selectedListed =
+    selected !== null && courses.some((course) => course.courseId === selected);
+  useEffect(() => {
+    const pane = listPane.current;
+    const row = selectedRow.current;
+    if (!selectedListed || listCollapsed || pane === null || row === null) return;
+    revealInPane(pane, row);
+  }, [selected, selectedListed, listCollapsed, layout, cards.isPending, preferences.isPending]);
+  // M2-01ag (b): the fold and order controls stay stuck to the top of the scrolling pane, so
+  // whatever the pane scrolls into view — the reveal above, or a row reached by keyboard — is
+  // kept clear of them by a scroll padding as tall as they are. Their height is measured
+  // because the buttons can wrap onto two lines in a narrow container.
+  useEffect(() => {
+    const pane = listPane.current;
+    const controls = listControls.current;
+    if (pane === null || controls === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      pane.style.setProperty('--course-list-controls-size', `${controls.offsetHeight}px`);
+    });
+    observer.observe(controls);
+    return () => observer.disconnect();
+  }, []);
   const current = detail.data ?? null;
   // The detail read of the open course already knows its stored picture is ready while its
   // card still says otherwise: the picture was made after the card was read. `ready` is
@@ -776,27 +831,32 @@ function Workbench({
             />
           ) : null}
 
-          <div className={`${styles.pane} ${styles.listPane}`} data-pane="list">
-            {layout === 'tablet' ? (
+          <div ref={listPane} className={`${styles.pane} ${styles.listPane}`} data-pane="list">
+            <div ref={listControls} className={styles.listControls} data-list-controls="">
+              {layout === 'tablet' ? (
+                <Button
+                  variant="secondary"
+                  aria-expanded={!listCollapsed}
+                  onClick={() => setListCollapsed((value) => !value)}
+                >
+                  {listCollapsed ? '코스 목록 펼치기' : '코스 목록 접기'}
+                </Button>
+              ) : null}
               <Button
+                className={styles.listControl}
                 variant="secondary"
-                aria-expanded={!listCollapsed}
-                onClick={() => setListCollapsed((value) => !value)}
+                aria-pressed={order === 'recent'}
+                onClick={() => setOrder((value) => (value === 'name' ? 'recent' : 'name'))}
               >
-                {listCollapsed ? '코스 목록 펼치기' : '코스 목록 접기'}
+                {order === 'name' ? '최근 사용순으로 보기' : '이름순으로 보기'}
               </Button>
-            ) : null}
-            <Button
-              className={styles.listControl}
-              variant="secondary"
-              aria-pressed={order === 'recent'}
-              onClick={() => setOrder((value) => (value === 'name' ? 'recent' : 'name'))}
-            >
-              {order === 'name' ? '최근 사용순으로 보기' : '이름순으로 보기'}
-            </Button>
+            </div>
             <ul className={styles.list} aria-label="코스 목록">
               {courses.map((course) => (
-                <li key={course.courseId}>
+                <li
+                  key={course.courseId}
+                  ref={selected === course.courseId ? selectedRow : undefined}
+                >
                   <Button
                     id={`course-name-${course.courseId}`}
                     variant={selected === course.courseId ? 'primary' : 'secondary'}
