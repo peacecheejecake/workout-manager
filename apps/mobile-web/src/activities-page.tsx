@@ -59,6 +59,9 @@ function Activities({
           mediaTransfer={mediaTransfer}
         />
       )}
+      coachingHref={(link) =>
+        `/coach?${new URLSearchParams(link.kind === 'thread' ? { thread: link.threadId } : { planVersion: link.planVersionId, scopeKind: link.scopeKind, targetId: link.targetId })}`
+      }
       onSearchChange={onSearchChange}
     />
   );

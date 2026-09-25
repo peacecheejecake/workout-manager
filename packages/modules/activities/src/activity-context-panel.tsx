@@ -1,6 +1,7 @@
 import type { ActivityContext } from '@workout/contracts/activity-context';
 import { sessionDistanceBounds, sessionDurationBounds } from '@workout/contracts/planning';
 import type { DashboardMetric } from '@workout/contracts/dashboard';
+import { sourceLabels } from './browser-records';
 const durationLabels = {
   timer: '타이머 시간 (timer)',
   elapsed: '경과 시간 (elapsed)',
@@ -29,10 +30,21 @@ export function ActivityContextPanel({
   const plan = context.planContext;
   return (
     <section aria-label="계획 연결과 관측 영향">
-      <h3>계획 연결과 관측 영향</h3>
+      <h3>관측·계산</h3>
+      <p>
+        출처: 이 활동의 기록 값(출처 {sourceLabels[context.activity.source.kind]} · 원본 수정{' '}
+        {context.activity.source.revision})과 연결 계획 버전에서 계산한 관측값입니다. 추정이
+        아닙니다.
+      </p>
       <p>
         관측 시각: <time dateTime={context.observedAt}>{context.observedAt}</time> · 정의{' '}
         {context.definitionVersion}
+      </p>
+      <p>
+        {context.activity.userReport?.sessionRpe === null ||
+        context.activity.userReport?.sessionRpe === undefined
+          ? '보고한 RPE: 없음. 보고하지 않은 값을 0으로 채우지 않습니다.'
+          : `보고한 RPE: ${context.activity.userReport.sessionRpe} · 사용자 자기 보고 · 보고 시각 ${context.activity.userReport.rpeReportedAt ?? '미확인'}`}
       </p>
       {plan.status === 'unlinked' ? (
         <p>연결한 계획이 없습니다. 날짜나 종목이 비슷해도 계획 연결을 추정하지 않습니다.</p>

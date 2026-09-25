@@ -17,11 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01aj](progress/M2-01aj.md)를 완료했다. track parse child process의 peak RSS에 예산(300 MiB)을 두고, parse 메모리가 API 밖으로 나간
-구조에 맞게 API RSS 예산을 다시 도출했다(1,100 → 800 MiB). API 종료 때 parser를 routing permit drain보다 먼저(함께) 닫아 진행 중
-parse가 drain 시간만큼 더 돌지 않는다. 매트릭스 판정 수는 그대로다(passed 70). 검토의 비차단 항목은 M2-01al로 분리했다.
+[M2-01k-m](progress/M2-01k-m.md)를 완료했다. S09 영향 탭을 관측·계산, 분류·추정, 상담 세 절로 나눴다. 분류는 연결한 계획 session에
+사용자가 쓴 목적·강도를 출처·계획 version·불확실성과 함께 보이고, 기록 기반 추정은 검증된 추정기가 없어 "추정 없음"으로 둔다.
+상담 절은 읽기만 하며 계획을 바꾸지 않는다. 화면 어디에도 위험 %·인과 수치·기여율이 없음을 두 shell에서 단언했다. 매트릭스 3행을
+passed로 올렸다(passed 70 → 73). 검토의 비차단 항목은 M2-01am으로 분리했다.
 
-직전 완료: [M2-01af](progress/M2-01af.md)(routing 엔진 serving profile 로그 강화).
+직전 완료: [M2-01aj](progress/M2-01aj.md)(parse child 메모리 예산, 종료 순서).
 
 ## 운영 메모
 
@@ -38,8 +39,8 @@ parse가 drain 시간만큼 더 돌지 않는다. 매트릭스 판정 수는 그
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-m, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M1-06b-tmp. 이 중
-M2-01k-a·b·j·m·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M1-06b-tmp. 이 중
+M2-01k-a·b·j·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자
 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.

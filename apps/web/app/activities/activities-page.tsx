@@ -58,6 +58,9 @@ function Activities({ basemap }: { basemap: ShellBasemap | null }) {
       planDayHref={(date) =>
         `/planner?${new URLSearchParams({ lens: 'calendar', from: date, to: shiftDashboardDate(date, 1) })}`
       }
+      coachingHref={(link) =>
+        `/coach?${new URLSearchParams(link.kind === 'thread' ? { thread: link.threadId } : { planVersion: link.planVersionId, scopeKind: link.scopeKind, targetId: link.targetId })}`
+      }
       onSearchChange={(query) => {
         const normalized = query ? `?${query.replace(/^\?/, '')}` : '';
         window.history.pushState(null, '', `${window.location.pathname}${normalized}`);

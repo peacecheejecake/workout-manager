@@ -29,7 +29,7 @@ import { ActivityBatchLink } from './activity-batch-link';
 import { ActivityBatchExport } from './activity-batch-export';
 import { ActivityBatchTags } from './activity-batch-tags';
 import { batchSelectionLimit, createBatchSelectionStore, toBatchTarget } from './batch-selection';
-import { ActivityContextPanel } from './activity-context-panel';
+import { ActivityImpactPanel, type CoachingLink } from './activity-impact-panel';
 import { ActivityWorkbench } from './activity-workbench';
 import { ActivityDetailTabs } from './activity-detail-tabs';
 import { DetailSelectionProvider } from './detail-selection-provider';
@@ -71,6 +71,8 @@ export interface ActivityBrowserProps {
   createHref?: string;
   linkedBlockHref?: (versionId: string, blockId: string) => string;
   planDayHref?: (date: string) => string;
+  /** The coach screen (S10) the impact tab's consultation section links to (M2-01k-m). */
+  coachingHref?: (link: CoachingLink) => string;
   editHref?: (id: string) => string;
   renderActivityDetails?: (activityId: string) => ReactNode;
   /**
@@ -125,6 +127,7 @@ function Workspace({
   createHref,
   editHref,
   planDayHref,
+  coachingHref,
   linkedBlockHref,
   renderActivityDetails,
   renderMediaTab,
@@ -647,10 +650,13 @@ function Workspace({
                     ? renderMediaTab(detail.data.activity.id)
                     : null}
                   {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
-                    <ActivityContextPanel
+                    <ActivityImpactPanel
                       context={detail.data}
+                      transport={transport}
+                      scope={prefix}
                       {...(planDayHref ? { planDayHref } : {})}
                       {...(linkedBlockHref ? { linkedBlockHref } : {})}
+                      {...(coachingHref ? { coachingHref } : {})}
                     />
                   ) : null}
                   <section

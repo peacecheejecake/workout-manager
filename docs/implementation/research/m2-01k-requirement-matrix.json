@@ -255,6 +255,19 @@
         "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
       ],
       "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01aj.md."
+    },
+    {
+      "node": "M2-01k-m",
+      "date": "2026-09-25",
+      "rows": ["S09-impact-split", "S09-no-causal", "V2-F14"],
+      "decision": "User decided on 2026-09-24 to build all S09 gaps. Gap node M2-01k-m split the S09 impact tab into observation, classification/estimate and consultation sections without inventing an estimator; independent review approved with non-blocking notes, split to M2-01am.",
+      "change": "3 rows partial -> passed; counts passed 70 -> 73, partial 34 -> 31.",
+      "executed": [
+        "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
+        "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
+        "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-m.md."
     }
   ],
   "rounds": [
@@ -376,8 +389,8 @@
     }
   ],
   "counts": {
-    "passed": 70,
-    "partial": 34,
+    "passed": 73,
+    "partial": 31,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -592,9 +605,9 @@
       "id": "S09-impact-split",
       "source": "docs/.pre/01_product_screen_spec.md:139",
       "quote": "영향(impact)은 다음을 분리한다.\n| 관측·계산 | 해당 Block의 거리/시간에 기여한 양, 계획 대비 차이, 보고한 RPE |\n| 분류·추정 | 목적/강도 분류와 그 출처·불확실성 |\n| 상담 | 향후 계획에서 검토할 항목과 관련 제안 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["tests/identity/activity-context.spec.ts:35"],
-      "reason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent.",
+      "reason": "M2-01k-m amendment: passed. The impact tab has three sections with their own headings and source lines: observed/calculated (block partial sums, plan difference, reported RPE), classification/estimate (the linked planned session's user-written purpose and intensity, each with source, plan version and uncertainty; record-based estimates show \"추정 없음\" because no validated estimator exists) and consultation (read-only review items from fixed rules, a coach review link and related threads). M1 killed in both shells.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -602,17 +615,28 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-m",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent.",
+        "executed": [
+          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
+          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+        ]
+      }
     },
     {
       "id": "S09-no-causal",
       "source": "docs/.pre/01_product_screen_spec.md:147",
       "quote": "“이번 활동 때문에 부상 위험이 12% 증가” 같은 검증되지 않은 인과 수치는 표시하지 않는다. 분모가 불완전하면 기여율 대신 부분 합계로 표시한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/activity-context.spec.ts:35 — known/missing partial sums (:152-157, :201)"
       ],
-      "reason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent.",
+      "reason": "M2-01k-m amendment: passed. A whole-screen negative assertion on linked and unlinked activities finds no percentage, no number beside risk or probability wording, no contribution share and no causal number; partial sums stay in place of shares because coverage is unknown. M2 killed in both shells. Limit: the patterns are narrow (fullwidth digits, number-before-word and fraction forms are not covered); widening them is M2-01am.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -620,7 +644,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-m",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent.",
+        "executed": [
+          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
+          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+        ]
+      }
     },
     {
       "id": "S13-crud",
@@ -1276,9 +1311,9 @@
       "id": "V2-F14",
       "source": "docs/.pre/05_implementation_requirements.md:92",
       "quote": "| V2-F14 | Impact semantics | 관측 contribution/추정/상담 분리; 가상 위험확률 금지 S09 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S09-impact-split, S09-no-causal"],
-      "reason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown.",
+      "reason": "M2-01k-m amendment: passed. Observation, estimate and consultation are separated (S09-impact-split), no risk probability or causal number is shown (S09-no-causal), and the consultation section writes nothing: zero non-GET requests and an unchanged plan head; opening the coach review only preselects a target, and any plan change still needs the S11 explicit approval. M3 killed in both shells.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1287,7 +1322,18 @@
         ],
         "note": "Executed through the rows it cites: S09-impact-split, S09-no-causal."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-m",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown.",
+        "executed": [
+          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
+          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+        ]
+      }
     },
     {
       "id": "V2-F18",
