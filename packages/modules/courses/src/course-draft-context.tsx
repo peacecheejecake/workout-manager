@@ -15,6 +15,7 @@ import type { CourseWaypoint } from '@workout/contracts/courses';
 import type { MapPath, MapSelection } from '@workout/geo-kit/map-path';
 import {
   createCourseDraftStore,
+  currentOutAndBack,
   currentRoute,
   draftRouteStatus,
   pickedCandidate,
@@ -151,6 +152,24 @@ export function draftMapPaths(input: {
       revision: `proposal:${route.proposalId}`,
       positions: route.coordinates.map((position) => [position[0], position[1]] as const),
     });
+  // The stretches of an out-and-back walked twice (M2-01k-j), over the proposal they belong
+  // to. One path, broken between stretches: two separate stretches are never joined.
+  const outAndBack = currentOutAndBack(input.state);
+  if (route && outAndBack && outAndBack.segments.length > 0) {
+    const positions: (readonly [number, number])[] = [];
+    const breaks: number[] = [];
+    for (const segment of outAndBack.segments) {
+      if (positions.length > 0) breaks.push(positions.length);
+      for (const position of segment.positions) positions.push([position[0], position[1]] as const);
+    }
+    paths.push({
+      id: 'course-overlap',
+      role: 'overlap',
+      revision: `overlap:${route.proposalId}`,
+      positions,
+      breaks,
+    });
+  }
   // Only the candidate the owner picked is drawn. Four loops at once would be four lines
   // nobody asked for, and none of them is a course until one is picked and saved.
   const candidate = pickedCandidate(input.state);

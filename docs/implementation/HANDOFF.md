@@ -17,12 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-b](progress/M2-01k-b.md)를 완료했다. S14에서 저장되지 않은 미리보기·제안의 고도를 자체 dataset으로 저장 전에 확인하게 하고(새
-`POST /courses/elevation-profiles`), 확인이 답하기 전에는 검토 checkbox와 저장을 막는다. 모르는 표본은 "모름"과 빗금으로 보이고 0이나
-평지로 만들지 않는다. 두 shell에서 검색 → 지점 → 계산 → 고도/거리 확인 → 저장 순서를 단언했다. 매트릭스 3행을 passed로 올렸다(passed
-77 → 80). dataset이 희소해 실제 선 대부분이 "모름"이다(P6-place-elevation-data). 목표 거리 후보 저장 경로에는 고도 확인이 없다.
+[M2-01k-j](progress/M2-01k-j.md)를 완료했다. 코스 편집기에서 시작점 A와 반환점 B로 왕복(A→B→A) 초안을 만들고 실제 엔진으로 계산한다.
+가는 길과 나란히 되돌아오는 겹침 구간(12 m 안, 방향 조건)을 지도와 검토 화면에 보이고, 목표 거리 오차·연결성·반복 구간·알려진 접근
+제한·경사 출처를 각 줄로 표시한다. 모르는 항목은 참된 이유와 함께 "확인되지 않음"이다. S14-loop-draft를 passed로 올렸다(passed 80 →
+81). P6-target-display는 graph에 있는 접근 제한·노면을 요청하지 않아 partial이며 M2-01ap로 이어진다.
 
-직전 완료: [M2-01k-a](progress/M2-01k-a.md)(S13 목록 카드).
+직전 완료: [M2-01k-b](progress/M2-01k-b.md)(S14 저장 전 고도·거리 확인).
 
 ## 운영 메모
 
@@ -39,10 +39,15 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01k-o, M1-06b-tmp. 이 중
-M2-01k-j·n과 M2-01k-o·M2-01ag·M2-01ak·M2-01al·M2-01am·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01aq, M2-01k-o, M1-06b-tmp. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01al·M2-01am·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+
+## 알려진 흔들리는 시험
+
+- `packages/server/persistence/tests/courses.integration.test.ts` "stays deadlock-free while stores, saves, reaping and deletion race
+  on one tenant"는 높은 부하에서 후보 저장이 0이라 실패할 수 있다(M2-01aq). 낮은 부하에서 다시 돌리면 통과한다.
 
 ## 남은 외부·실환경 gate
 

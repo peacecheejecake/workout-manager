@@ -124,6 +124,12 @@ export interface MapRenderIdleInfo {
   readonly renderedLineFeatures: number;
   /** Drawn features on the point layer only. */
   readonly renderedPointFeatures: number;
+  /**
+   * The distinct roles among the drawn line features, sorted (M2-01k-j). Lets a reader tell
+   * WHICH of our lines the renderer drew — an overlap stretch, say — rather than only that
+   * something was. Absent when the renderer could not say.
+   */
+  readonly renderedLineRoles?: readonly string[];
   /** Features in the paths the renderer currently holds. 0: it has nothing to judge. */
   readonly pathFeatures: number;
   /** What the viewport says must have been drawn, from {@link expectedVisibleGeometry}. */

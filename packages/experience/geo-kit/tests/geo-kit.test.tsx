@@ -793,12 +793,17 @@ describe('MapView', () => {
       />,
     );
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
-    const info = idleInfo({ renderedLineFeatures: 2, renderedPointFeatures: 1 });
+    const info = idleInfo({
+      renderedLineFeatures: 2,
+      renderedPointFeatures: 1,
+      renderedLineRoles: ['candidate', 'overlap'],
+    });
     adapter.idle(info);
     expect(onRenderIdle).toHaveBeenCalledWith(info);
     const region = screen.getByRole('region', { name: '기록 지도' });
     expect(region).toHaveAttribute('data-rendered-lines', '2');
     expect(region).toHaveAttribute('data-rendered-points', '1');
+    expect(region).toHaveAttribute('data-rendered-line-roles', 'candidate overlap');
   });
 
   it('destroys the renderer on unmount', async () => {

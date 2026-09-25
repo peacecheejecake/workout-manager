@@ -6,6 +6,7 @@ import {
   type CoursePosition,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
+import { analyseOutAndBack, isOutAndBack, type OutAndBackAnalysis } from './out-and-back';
 
 /**
  * The waypoint draft behind S14 (M2-01h).
@@ -93,7 +94,26 @@ export interface ComputedDraftRoute {
   readonly engineVersion: string | null;
   readonly computedAt: string;
   readonly warnings: readonly string[];
+  /**
+   * Where the engine put each requested waypoint, in request order (M2-01k-j). An
+   * out-and-back splits its line at the snapped turnaround; absent, the requested one stands
+   * in.
+   */
+  readonly snappedWaypoints?: readonly CoursePosition[];
 }
+
+/**
+ * Why an out-and-back draft could not be made from the draft as it is (M2-01k-j).
+ *
+ * - `OUT_AND_BACK_NEEDS_TWO_POINTS`: there is no start and turnaround yet.
+ * - `OUT_AND_BACK_SAME_POINT`: the turnaround is the start, so there is nowhere to go.
+ * - `OUT_AND_BACK_LOCKED_VIA`: a pinned via would have to be dropped. A lock is a refusal.
+ */
+export type OutAndBackRefusal =
+  | 'OUT_AND_BACK_NEEDS_TWO_POINTS'
+  | 'OUT_AND_BACK_SAME_POINT'
+  | 'OUT_AND_BACK_LOCKED_VIA'
+  | 'DRAFT_LIMIT_REACHED';
 
 /**
  * One generated target-distance candidate as the screen holds it (M2-01i).
@@ -195,6 +215,13 @@ export interface CourseDraftState {
    * dropped, and both land here, so both are one undoable change under the same lock rule.
    */
   moveWaypoint(id: string, toIndex: number): void;
+  /**
+   * Turn the draft into an out-and-back (M2-01k-j): the start A, the current finish as the
+   * turnaround B, and a new finish at A's own position — A→B→A, one undoable change. A draft
+   * that already is one is left alone. Via waypoints between them are dropped, so a locked
+   * one refuses the change; nothing is moved or dropped silently.
+   */
+  makeOutAndBack(): OutAndBackRefusal | null;
   remove(id: string): void;
   undo(): void;
   redo(): void;
@@ -425,6 +452,40 @@ export function createCourseDraftStore(input: {
         change(next);
       },
 
+      makeOutAndBack: () => {
+        const waypoints = get().waypoints;
+        const start = waypoints[0];
+        const turnaround = waypoints[waypoints.length - 1];
+        if (start === undefined || turnaround === undefined || waypoints.length < 2)
+          return 'OUT_AND_BACK_NEEDS_TWO_POINTS';
+        if (isOutAndBack(waypoints.map((waypoint) => waypoint.position))) return null;
+        if (
+          turnaround.position[0] === start.position[0] &&
+          turnaround.position[1] === start.position[1]
+        )
+          return 'OUT_AND_BACK_SAME_POINT';
+        if (waypoints.slice(1, -1).some((waypoint) => waypoint.locked))
+          return 'OUT_AND_BACK_LOCKED_VIA';
+        if (get().revision >= courseLimits.maxDraftRevision) return 'DRAFT_LIMIT_REACHED';
+        change([
+          start,
+          // The finish keeps its identity, name and lock: it is the same point, now the
+          // place the walk turns around.
+          turnaround,
+          {
+            id: nextId(),
+            role: 'finish',
+            position: start.position,
+            name: start.name,
+            // Returning to A is a planned point, not the observation A may have come from:
+            // one recorded sample is claimed by one waypoint.
+            sourceSampleId: null,
+            locked: false,
+          },
+        ]);
+        return null;
+      },
+
       remove: (id) => {
         const index = find(id);
         if (index < 0) return refuse('WAYPOINT_NOT_FOUND');
@@ -590,6 +651,27 @@ export type CourseDraftStore = ReturnType<typeof createCourseDraftStore>;
 /** The computed route, but only while it still belongs to the draft as it is now. */
 export function currentRoute(state: CourseDraftState): ComputedDraftRoute | null {
   return state.route && state.route.draftRevision === state.revision ? state.route : null;
+}
+
+const outAndBackCache = new WeakMap<ComputedDraftRoute, OutAndBackAnalysis | null>();
+
+/**
+ * The overlap of the computed out-and-back, or `null` when there is no current route or the
+ * draft it belongs to is not an A→B→A (M2-01k-j). Measured once per route: the map and the
+ * review read the same answer.
+ */
+export function currentOutAndBack(state: CourseDraftState): OutAndBackAnalysis | null {
+  const route = currentRoute(state);
+  if (route === null) return null;
+  const cached = outAndBackCache.get(route);
+  if (cached !== undefined) return cached;
+  const analysis = analyseOutAndBack({
+    coordinates: route.coordinates,
+    waypoints: state.waypoints.map((waypoint) => waypoint.position),
+    snappedWaypoints: route.snappedWaypoints,
+  });
+  outAndBackCache.set(route, analysis);
+  return analysis;
 }
 
 /** The generated candidates, but only while they still belong to the draft as it is now. */

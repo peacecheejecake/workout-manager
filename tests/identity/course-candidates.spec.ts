@@ -160,7 +160,9 @@ test('generates target-distance candidates, saves nothing, and only then picks o
 
   // A missing fact is reported as missing, never as satisfied.
   await expect(section.getByTestId('candidate-knowledge-0')).toContainText('확인되지 않음');
-  await expect(section.getByTestId('candidate-gradient-0')).toHaveText('없음');
+  await expect(section.getByTestId('candidate-gradient-0')).toHaveText(
+    '확인되지 않음 (엔진 경사 자료 없음 · 고도 표본은 고도 확인 참조)',
+  );
   await expect(section.getByTestId('candidate-error-0')).toContainText('%');
   await expect(section.getByTestId('candidate-repeat-0')).toBeVisible();
 

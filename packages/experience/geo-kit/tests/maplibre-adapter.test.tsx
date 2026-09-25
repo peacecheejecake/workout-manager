@@ -15,6 +15,8 @@ import { toFeatureCollection } from '@workout/geo-kit/map-path';
 const renderer = vi.hoisted(() => ({
   /** Features the stand-in says are drawn, per layer id. */
   drawn: new Map<string, number>(),
+  /** The role property of every feature a layer drew, when the stand-in is told one. */
+  roles: new Map<string, string>(),
   handlers: new Map<string, ((event?: unknown) => void)[]>(),
   layers: [] as { id: string; type: string }[],
 }));
@@ -45,8 +47,12 @@ vi.mock('maplibre-gl', () => {
       renderer.layers.push(layer);
     }
     queryRenderedFeatures({ layers }: { layers: string[] }) {
-      const total = layers.reduce((sum, id) => sum + (renderer.drawn.get(id) ?? 0), 0);
-      return Array.from({ length: total }, () => ({}));
+      return layers.flatMap((id) =>
+        Array.from({ length: renderer.drawn.get(id) ?? 0 }, () => {
+          const role = renderer.roles.get(id);
+          return role === undefined ? {} : { properties: { role } };
+        }),
+      );
     }
     isSourceLoaded() {
       return true;
@@ -66,8 +72,9 @@ vi.mock('maplibre-gl', () => {
   return { Map: StandInMap, GeoJSONSource, addProtocol: vi.fn(), setWorkerUrl: vi.fn() };
 });
 
-async function adapterWith(drawn: Record<string, number>) {
+async function adapterWith(drawn: Record<string, number>, roles: Record<string, string> = {}) {
   renderer.drawn = new Map(Object.entries(drawn));
+  renderer.roles = new Map(Object.entries(roles));
   renderer.handlers.clear();
   renderer.layers = [];
   const { createMapLibreAdapter } = await import('../src/maplibre-adapter');
@@ -127,5 +134,15 @@ describe('MapLibre adapter render observation', () => {
     for (const handler of renderer.handlers.get('idle') ?? []) handler();
     expect(observations.at(-1)?.renderedLineFeatures).toBe(0);
     expect(observations.at(-1)?.renderedPointFeatures).toBe(3);
+  });
+
+  it('says which roles among our lines it drew, so an overlap stretch is observable', async () => {
+    const { handle, observations } = await adapterWith(
+      { 'geo-kit-path-line': 3, 'geo-kit-path-uncomputed': 1 },
+      { 'geo-kit-path-line': 'overlap', 'geo-kit-path-uncomputed': 'uncomputed' },
+    );
+    handle.setPaths(uncomputedDraft);
+    for (const handler of renderer.handlers.get('idle') ?? []) handler();
+    expect(observations.at(-1)?.renderedLineRoles).toEqual(['overlap', 'uncomputed']);
   });
 });

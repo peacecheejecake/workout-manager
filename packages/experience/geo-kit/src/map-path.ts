@@ -17,8 +17,12 @@ export type GeoPosition = readonly [longitude: number, latitude: number];
  * `uncomputed` is a line nobody computed: an owner's waypoints joined in order, drawn only so
  * the order can be seen. The renderer draws it dashed and apart from every other line, and a
  * caller that uses it must say in words what it is — it is never a route and never a distance.
+ *
+ * `overlap` marks stretches of a computed line that are walked twice — the way back of an
+ * out-and-back running over the way out (M2-01k-j). It is drawn over the line it belongs to
+ * and never stands alone as a route.
  */
-export type MapPathRole = 'recorded' | 'planned' | 'candidate' | 'uncomputed';
+export type MapPathRole = 'recorded' | 'planned' | 'candidate' | 'uncomputed' | 'overlap';
 
 export interface MapPath {
   readonly id: string;

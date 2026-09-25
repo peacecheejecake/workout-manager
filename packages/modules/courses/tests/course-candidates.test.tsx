@@ -364,9 +364,20 @@ describe('target-distance candidates on screen', () => {
     // A missing fact is never a satisfied one.
     for (const ordinal of [0, 1]) {
       expect(screen.getByTestId(`candidate-knowledge-${ordinal}`)).toHaveTextContent(
-        '확인되지 않음',
+        '계단 확인되지 않음 (엔진 도로 등급을 검증에만 쓰고 보관하지 않음) · 노면 확인되지 않음 (엔진에 요청하지 않음) · 야간 통행 확인되지 않음 (자료 없음)',
       );
-      expect(screen.getByTestId(`candidate-gradient-${ordinal}`)).toHaveTextContent('없음');
+      // Each of the three is its own line, so hiding one cannot hide behind another
+      // (M2-01k-j): connectivity says what the engine attested, access restrictions and the
+      // gradient source say they are unknown.
+      expect(screen.getByTestId(`candidate-connectivity-${ordinal}`)).toHaveTextContent(
+        '엔진이 지났다고 밝힌 도로 구간으로 이어짐',
+      );
+      expect(screen.getByTestId(`candidate-access-${ordinal}`)).toHaveTextContent(
+        '확인되지 않음 (엔진에 요청하지 않음)',
+      );
+      expect(screen.getByTestId(`candidate-gradient-${ordinal}`)).toHaveTextContent(
+        '확인되지 않음 (엔진 경사 자료 없음 · 고도 표본은 고도 확인 참조)',
+      );
     }
     expect(screen.getByTestId('candidate-attempts')).toHaveTextContent('3 / 8');
     expect(screen.getByRole('list', { name: '시도 기록' })).toHaveTextContent(

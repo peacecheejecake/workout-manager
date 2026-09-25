@@ -14,6 +14,7 @@ import { TextField } from '@workout/ui-foundation/text-field';
 import { CourseRequestError, type CourseApi } from './course-api';
 import {
   currentCandidates,
+  currentOutAndBack,
   currentRoute,
   draftRequestWaypoints,
   pickedCandidate,
@@ -25,6 +26,16 @@ import {
   useRouteElevationCheck,
   type RouteElevationSource,
 } from './course-route-elevation';
+import {
+  connectivityText,
+  gradientSourceText,
+  knowledgeText,
+  OutAndBackReview,
+  outAndBackRefusals,
+  targetErrorText,
+  walkingConditionsText,
+} from './course-out-and-back';
+import { isOutAndBack } from './out-and-back';
 import { WaypointListEditor } from './course-waypoint-list';
 import styles from './courses.module.css';
 
@@ -213,6 +224,16 @@ export function CourseEditor({
   const [generating, setGenerating] = useState(false);
   const [target, setTarget] = useState('5000');
   /**
+   * The target the owner set when they asked for an out-and-back, bound to the draft it was
+   * asked for (M2-01k-j). A route computed for any other draft has no target of its own.
+   */
+  const [outAndBackTarget, setOutAndBackTarget] = useState<{
+    draftRevision: number;
+    targetDistanceMeters: number | null;
+    /** Via waypoints making the out-and-back left out; the review says so. */
+    droppedVias: number;
+  } | null>(null);
+  /**
    * What the owner read about the candidate they picked. Bound to the proposal and to the
    * draft, exactly as the route review is: picking a different candidate, running a new
    * search or touching a waypoint all mean nobody has read what is on screen now.
@@ -223,6 +244,7 @@ export function CourseEditor({
   } | null>(null);
   const abort = useRef<AbortController | null>(null);
   const command = useRef<{ fingerprint: string; key: string } | null>(null);
+  const outAndBack = currentOutAndBack(state);
   const candidateSet = currentCandidates(state);
   const picked = pickedCandidate(state);
   const candidateReviewed =
@@ -313,6 +335,7 @@ export function CourseEditor({
         engineVersion: proposal.computation.graph.engineVersion,
         computedAt: proposal.computation.computedAt,
         warnings: proposal.computation.warnings,
+        snappedWaypoints: proposal.snappedWaypoints.map((waypoint) => waypoint.snapped),
       });
       setMessage(
         applied
@@ -346,6 +369,37 @@ export function CourseEditor({
         setComputing(false);
       }
     }
+  }
+
+  /**
+   * Make the draft an out-and-back — start A, the finish as turnaround B, back to A — and ask
+   * the engine for exactly that (M2-01k-j). It is the ordinary computation of an ordinary
+   * three-waypoint draft: same request, same review, same explicit save. The target in the
+   * field, when it is a valid one, is remembered for this draft so the review can say how far
+   * the answer is from it.
+   */
+  function computeOutAndBack() {
+    const before = store.getState().waypoints;
+    const droppedVias = isOutAndBack(before.map((waypoint) => waypoint.position))
+      ? 0
+      : Math.max(0, before.length - 2);
+    const refusal = store.getState().makeOutAndBack();
+    if (refusal !== null) {
+      setMessage(outAndBackRefusals[refusal]);
+      return;
+    }
+    const targetDistanceMeters = Number(target);
+    setOutAndBackTarget({
+      draftRevision: store.getState().revision,
+      targetDistanceMeters:
+        Number.isFinite(targetDistanceMeters) &&
+        targetDistanceMeters >= targetDistanceLimits.minTargetMeters &&
+        targetDistanceMeters <= targetDistanceLimits.maxTargetMeters
+          ? targetDistanceMeters
+          : null,
+      droppedVias,
+    });
+    void compute();
   }
 
   /**
@@ -610,7 +664,18 @@ export function CourseEditor({
           <Button onClick={() => void generate()} disabled={computing || generating}>
             {generating ? '후보 생성 중' : '목표 거리 후보 생성'}
           </Button>
+          <Button
+            variant="secondary"
+            onClick={computeOutAndBack}
+            disabled={computing || generating}
+          >
+            왕복 초안 계산 (A→B→A)
+          </Button>
         </div>
+        <p className={styles.note}>
+          왕복 초안은 시작점을 A, 끝 지점을 반환점 B로 삼아 A→B→A로 계산합니다. 그 사이의 경유점은
+          쓰지 않습니다.
+        </p>
         {state.candidates && candidateSet === null ? (
           <p role="status">
             만든 후보는 이전 초안의 것입니다. 초안이 바뀌었으므로 다시 생성해야 저장할 수 있습니다.
@@ -656,16 +721,17 @@ export function CourseEditor({
                     <dd>{metres(candidate.engineDistanceMeters)}</dd>
                     <dt>목표 오차</dt>
                     <dd data-testid={`candidate-error-${candidate.ordinal}`}>
-                      {candidate.evaluation.distanceErrorMeters >= 0 ? '+' : '−'}
-                      {metres(Math.abs(candidate.evaluation.distanceErrorMeters))} (
-                      {(candidate.evaluation.distanceErrorRatio * 100).toFixed(1)}%)
+                      {targetErrorText(
+                        candidate.evaluation.distanceErrorMeters,
+                        candidate.evaluation.distanceErrorRatio,
+                      )}
                     </dd>
                     <dt>연결성</dt>
-                    <dd>
+                    <dd data-testid={`candidate-connectivity-${candidate.ordinal}`}>
                       {candidate.evaluation.loop.closed
                         ? '출발점으로 돌아옴'
                         : '출발점으로 돌아오지 않음'}{' '}
-                      · 엔진이 지났다고 밝힌 도로 구간으로 이어짐
+                      · {connectivityText(candidate.evaluation.connectivity)}
                     </dd>
                     <dt>반복·왕복 구간</dt>
                     <dd data-testid={`candidate-repeat-${candidate.ordinal}`}>
@@ -673,12 +739,21 @@ export function CourseEditor({
                       {(candidate.evaluation.repetition.repeatedRatio * 100).toFixed(0)}%)
                       {candidate.evaluation.repetition.outAndBack ? ' · 왕복 구간 많음' : ''}
                     </dd>
-                    <dt>계단·노면·야간 통행·접근 제한</dt>
+                    <dt>알려진 접근 제한</dt>
+                    <dd data-testid={`candidate-access-${candidate.ordinal}`}>
+                      {knowledgeText(
+                        'accessRestrictions',
+                        candidate.evaluation.knowledge.accessRestrictions,
+                      )}
+                    </dd>
+                    <dt>계단·노면·야간 통행</dt>
                     <dd data-testid={`candidate-knowledge-${candidate.ordinal}`}>
-                      확인되지 않음 (자료 없음)
+                      {walkingConditionsText(candidate.evaluation.knowledge)}
                     </dd>
                     <dt>경사 출처</dt>
-                    <dd data-testid={`candidate-gradient-${candidate.ordinal}`}>없음</dd>
+                    <dd data-testid={`candidate-gradient-${candidate.ordinal}`}>
+                      {gradientSourceText(candidate.evaluation.gradientSource)}
+                    </dd>
                     <dt>후보 seed</dt>
                     <dd>{candidate.candidateSeed}</dd>
                     <dt>사용한 지도 데이터</dt>
@@ -758,6 +833,22 @@ export function CourseEditor({
           <h4>계산된 경로 (제안)</h4>
           <RouteReviewSummary route={route} />
           <RouteElevationProfile check={elevationCheck} />
+          {outAndBack ? (
+            <OutAndBackReview
+              analysis={outAndBack}
+              engineDistanceMeters={route.engineDistanceMeters}
+              targetDistanceMeters={
+                outAndBackTarget !== null && outAndBackTarget.draftRevision === route.draftRevision
+                  ? outAndBackTarget.targetDistanceMeters
+                  : null
+              }
+              droppedVias={
+                outAndBackTarget !== null && outAndBackTarget.draftRevision === route.draftRevision
+                  ? outAndBackTarget.droppedVias
+                  : 0
+              }
+            />
+          ) : null}
           {graphChanged ? (
             <p role="alert" data-testid="graph-changed">
               이 코스는 다른 지도 데이터({headGraph})로 계산되어 있었습니다. 저장하면 새 지도

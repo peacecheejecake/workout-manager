@@ -152,6 +152,8 @@ interface EvidenceReport extends RendererStamp {
   /** Line and point features drawn at the last idle; `null` when no idle ever came. */
   readonly lines: number | null;
   readonly points: number | null;
+  /** Roles among the drawn lines, space separated; `null` when the renderer did not say. */
+  readonly roles: string | null;
 }
 
 /**
@@ -325,6 +327,7 @@ export function MapView({
         const about = handed.current?.generation ?? 0;
         const lines = info.renderedLineFeatures;
         const points = info.renderedPointFeatures;
+        const roles = info.renderedLineRoles ? info.renderedLineRoles.join(' ') : null;
         setEvidence((previous) =>
           previous !== null &&
           previous.factory === factory &&
@@ -332,9 +335,10 @@ export function MapView({
           previous.verdict === verdict &&
           previous.generation === about &&
           previous.lines === lines &&
-          previous.points === points
+          previous.points === points &&
+          previous.roles === roles
             ? previous
-            : { factory, basemap, verdict, generation: about, lines, points },
+            : { factory, basemap, verdict, generation: about, lines, points, roles },
         );
       },
     })
@@ -400,6 +404,7 @@ export function MapView({
         generation,
         lines: null,
         points: null,
+        roles: null,
       });
     }, renderDeadlineMs);
     return () => clearTimeout(timer);
@@ -452,6 +457,7 @@ export function MapView({
       data-map-status={status}
       data-rendered-lines={evidenceNow?.lines ?? undefined}
       data-rendered-points={evidenceNow?.points ?? undefined}
+      data-rendered-line-roles={evidenceNow?.roles ?? undefined}
       data-paths-generation={`${instance}${generation}`}
       data-evidence-generation={
         evidenceNow === null ? undefined : `${instance}${evidenceNow.generation}`

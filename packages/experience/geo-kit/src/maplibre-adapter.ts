@@ -257,7 +257,9 @@ async function initialise(
       ],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-width': 4,
+        // A stretch walked twice is wider and drawn in its own colour over the line it
+        // belongs to, so it stays visible where the two legs coincide (M2-01k-j).
+        'line-width': ['match', ['get', 'role'], 'overlap', 8, 4],
         'line-color': [
           'match',
           ['get', 'role'],
@@ -265,8 +267,11 @@ async function initialise(
           '#2f6f4e',
           'candidate',
           '#9a6b1f',
+          'overlap',
+          '#c2410c',
           '#6256b8',
         ],
+        'line-opacity': ['match', ['get', 'role'], 'overlap', 0.75, 1],
       },
     });
     map.addLayer({
@@ -305,21 +310,32 @@ async function initialise(
 
     if (onIdle) {
       // Lines and points are counted apart: points alone must not stand in for a line.
-      const count = (layers: string[]) => {
+      const query = (layers: string[]) => {
         try {
-          return map.queryRenderedFeatures({ layers }).length;
+          return map.queryRenderedFeatures({ layers });
         } catch {
-          return 0;
+          return [];
         }
       };
+      // One query over the line layers serves both the count and the drawn roles (M2-01k-j).
+      const rolesOf = (features: readonly unknown[]) => {
+        const roles = new Set<string>();
+        for (const feature of features) {
+          const role = (feature as { properties?: { role?: unknown } }).properties?.role;
+          if (typeof role === 'string') roles.add(role);
+        }
+        return [...roles].sort();
+      };
       const observe = () => {
-        const renderedLineFeatures = count(pathLineLayerIds);
-        const renderedPointFeatures = count([pathPointLayerId]);
+        const lineFeatures = query(pathLineLayerIds);
+        const renderedLineFeatures = lineFeatures.length;
+        const renderedPointFeatures = query([pathPointLayerId]).length;
         const viewport = map.getBounds();
         return {
           renderedPathFeatures: renderedLineFeatures + renderedPointFeatures,
           renderedLineFeatures,
           renderedPointFeatures,
+          renderedLineRoles: rolesOf(lineFeatures),
           pathFeatures: current.features.length,
           expected: expectedVisibleGeometry(current, {
             west: viewport.getWest(),

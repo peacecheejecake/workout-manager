@@ -312,6 +312,20 @@
         "pnpm test and two identity runs on the merged tree"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-b.md."
+    },
+    {
+      "node": "M2-01k-j",
+      "date": "2026-09-25",
+      "rows": ["S14-loop-draft", "P6-target-display"],
+      "decision": "User decided on 2026-09-24 to build the out-and-back draft. Gap node M2-01k-j built the A->B->A draft with overlap and target display; independent review round 1 required P6-target-display to stay partial because known access data is in the graph but not requested, split to M2-01ap.",
+      "change": "S14-loop-draft partial -> passed; P6-target-display reason updated, still partial; counts passed 80 -> 81, partial 24 -> 23.",
+      "executed": [
+        "tests/identity/course-out-and-back.spec.ts on the real GraphHopper engine (x3 in the node on base e00a992, and once by the independent round-2 review on the r2 tag merged with main 06754aa): A->B->A request, stored routed-waypoints revision on graph c57f12f5975347e8 with engine 10.0 and waypoints [A,B,A], overlap \"729m (100%) · 1곳\", target error, the renderer-reported overlap role, 0 coordinate lines in the engine log; fixture mode with course-candidates.spec.ts",
+        "packages/modules/courses/tests/course-out-and-back.test.tsx and course-candidates tests (full, partial and no overlap; crossing and acute departure are not overlap; each unknown's reason text)",
+        "mutants J1-J7, J9, J10 each fail (J1-J6b also in the real-engine E2E); J8 (grid query own cell only) is an equivalent mutant, confirmed by the independent review by argument and a 5.74 million-case random search",
+        "pnpm test and two identity runs on the merged tree"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-j.md."
     }
   ],
   "rounds": [
@@ -433,8 +447,8 @@
     }
   ],
   "counts": {
-    "passed": 80,
-    "partial": 24,
+    "passed": 81,
+    "partial": 23,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1064,12 +1078,13 @@
       "id": "S14-loop-draft",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "왕복/loop 초안",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-routing-operational.mts real engine: 4 candidates (1,798/2,013/2,323/1,769 m)",
-        "tests/identity/course-acceptance.spec.ts step 4 (real engine ×3)"
+        "tests/identity/course-acceptance.spec.ts step 4 (real engine ×3)",
+        "docs/implementation/progress/M2-01k-j.md"
       ],
-      "reason": "Only triangle loop candidates around the start; no out-and-back draft.",
+      "reason": "M2-01k-j amendment: passed. From start A and turnaround B the editor builds an A->B->A draft as one undoable change and computes it with the real engine through the existing proposal path; the review shows the out-and-back overlap (pieces within 12 m running along the way out), its share and count on the map and in the review, and the target error; the saved revision carries the graph and engine version. J1, J2a, J2b, J3a, J3b, J7 killed. Limit: overlap is measured only in the pre-save review, not stored.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1079,7 +1094,19 @@
           "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-j",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Only triangle loop candidates around the start; no out-and-back draft.",
+        "executed": [
+          "tests/identity/course-out-and-back.spec.ts on the real GraphHopper engine (x3 in the node on base e00a992, and once by the independent round-2 review on the r2 tag merged with main 06754aa): A->B->A request, stored routed-waypoints revision on graph c57f12f5975347e8 with engine 10.0 and waypoints [A,B,A], overlap \"729m (100%) · 1곳\", target error, the renderer-reported overlap role, 0 coordinate lines in the engine log; fixture mode with course-candidates.spec.ts",
+          "packages/modules/courses/tests/course-out-and-back.test.tsx and course-candidates tests (full, partial and no overlap; crossing and acute departure are not overlap; each unknown's reason text)",
+          "mutants J1-J7, J9, J10 each fail (J1-J6b also in the real-engine E2E); J8 (grid query own cell only) is an equivalent mutant, confirmed by the independent review by argument and a 5.74 million-case random search",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "S14-gpx",
@@ -2543,15 +2570,27 @@
       "source": "docs/implementation/map-implementation-plan.md:160",
       "quote": "연결성·목표 오차·중복/왕복 구간·알려진 접근 제한·경사 출처를 표시한다.",
       "verdict": "partial",
-      "evidence": [],
-      "reason": "Display not asserted by an executed test in this node.",
+      "evidence": ["docs/implementation/progress/M2-01k-j.md"],
+      "reason": "M2-01k-j amendment: still partial. Next to every target-distance candidate and in the out-and-back review, target error, connectivity, repeated/out-and-back section, known access restrictions and gradient source each have their own asserted line (J4-J6, J10 killed), and each unknown states its true reason. But known access restrictions and surface are available in the graph (road_access, foot_access, surface) and not requested, so the core \"show known access restrictions\" waits for M2-01ap.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-j",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Display not asserted by an executed test in this node.",
+        "executed": [
+          "tests/identity/course-out-and-back.spec.ts on the real GraphHopper engine (x3 in the node on base e00a992, and once by the independent round-2 review on the r2 tag merged with main 06754aa): A->B->A request, stored routed-waypoints revision on graph c57f12f5975347e8 with engine 10.0 and waypoints [A,B,A], overlap \"729m (100%) · 1곳\", target error, the renderer-reported overlap role, 0 coordinate lines in the engine log; fixture mode with course-candidates.spec.ts",
+          "packages/modules/courses/tests/course-out-and-back.test.tsx and course-candidates tests (full, partial and no overlap; crossing and acute departure are not overlap; each unknown's reason text)",
+          "mutants J1-J7, J9, J10 each fail (J1-J6b also in the real-engine E2E); J8 (grid query own cell only) is an equivalent mutant, confirmed by the independent review by argument and a 5.74 million-case random search",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "P6-unknown-not-satisfied",
