@@ -65,6 +65,23 @@
       "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정"
     },
     {
+      "id": "EXT-G-tmp",
+      "title": "임시 Garmin gate 결정(비공식 garminconnect)",
+      "dependsOn": ["M0-07a"],
+      "kind": "task",
+      "status": "completed",
+      "evidence": "docs/implementation/research/garmin-temporary-gate.md",
+      "scope": "사용자 결정(2026-09-25): 공식 Garmin 권한(EXT-G)을 기다리는 동안 python-garminconnect로 만든 임시 gate를 쓰고 나중에 공식 계획으로 갈아 끼운다. 범위는 소유자 자신의 계정에서 앱 내 수집까지이며 M2-07·G2는 임시 경로로 통과시키지 않는다. 별도 임시 노드로 기록하고 EXT-G·M0-07b·M1-06b·M2-07은 not_started로 둔다. 자격 증명은 앱 credential 저장소에 session token만 암호화해 둔다. 이 노드는 결정과 받아들인 위험, 임시 경로 조건의 기록이며 EXT-G의 증거가 아니다."
+    },
+    {
+      "id": "M1-06b-tmp",
+      "title": "임시 Garmin 앱 내 수집(비공식, 소유자 한정)",
+      "dependsOn": ["EXT-G-tmp", "M1-03", "M1-06c"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "docs/implementation/research/garmin-temporary-gate.md의 조건 1–9를 수용 기준으로 한다. 배포 설정이 지정한 소유자 앱 계정 하나만(기본 꺼짐, 다른 계정은 403) 앱 설정에서 Garmin 로그인(MFA는 메모리·session 한정·짧은 TTL)을 해 처음 연결한 Garmin profile에 묶이고, session token만 M1-06c와 같은 AES-256-GCM·keyring 방식에 별도 AAD purpose로 암호화해 둔다. 비밀번호는 로그·trace·오류 추적·outbox·job payload·argv·환경변수에 남지 않고 라이브러리 자체 token 파일은 쓰지 않는다. 로그인 endpoint에 rate limit과 lockout backoff를 둔다. 수집은 \"지금 가져오기\"와 소유자가 켠 예약 실행이며, 연결당 한 run(lease), DB 트랜잭션 밖 provider 호출, 429에서 Retry-After와 예약 중단, 인증 실패는 재시도 없이 \"다시 연결 필요\"로 둔다. 기존 fetch 경계를 재사용하고 ORIGINAL FIT을 기존 import 경로로 넣되 삭제 억제를 우회하지 않는다. 연결 해제·말소 때 token 삭제와 Garmin 쪽 세션 정리 안내, export에 token 없음, 복원이 token을 되살리지 않음(drill check). 화면·동기화 상태·출처에 비공식 임시 연결과 위험을 표시하고 공식 상태와 분리한다. 공식 M1-06b와 같은 수집 interface 뒤에 두고 provider 간 중복 판정과 교체·제거 절차를 runbook에 둔다. garminconnect는 선택 의존성이다. 합성 fixture로 두 shell E2E와 통합 시험을 하고 조건 9의 변이가 각각 실패함을 보인다. 실제 Garmin 계정 실행은 사용자가 앱에서 로그인해야 하는 별도 증거이며 그 전까지 not_executed다. 이 노드는 어떤 공식 노드나 gate의 dependsOn도 충족하지 않으며, 공식 노드가 착지하면 scope에 은퇴를 기록한다."
+    },
+    {
       "id": "EXT-OIDC",
       "title": "운영 OIDC identity provider 확보",
       "dependsOn": ["M2-01u"],

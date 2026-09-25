@@ -52,6 +52,12 @@ M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. 
   실제 iPhone/서명/HealthKit 검증. 현재 실기기 작업은 보류 상태다.
 - EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
   별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
+- 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
+  수집을 하는 M1-06b-tmp를 진행한다([결정 기록](research/garmin-temporary-gate.md)). EXT-G·M0-07b·M1-06b·M2-07은 그대로
+  not_started이고 G2는 공식 연동을 거친다.
+- 사용자 결정(2026-09-25): 코스 공유(M2-01k-o)는 코드 전에 요구(공유 범위·ACL·철회·재식별 검토)를 먼저 작성해 승인받는다.
+  운영 OIDC는 Google을 후보로 평가한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
+  독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.
 
 다음 세션은 working tree와 위 계획을 확인하고 M2-01a/d부터 진행한다. 실제 외부·실환경
 증거가 필요한 gate를 문서 검토나 합성 fixture로 완료 처리하지 않는다.
