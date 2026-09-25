@@ -24,8 +24,9 @@ import { z } from 'zod';
  * and an edit appends the next revision instead of rewriting one.
  *
  * Courses are private. There is no visibility value other than `private` and no sharing
- * field anywhere in this file: public sharing waits for its own requirements, ACL and
- * re-identification review.
+ * field anywhere in this file. What may leave the account — the owner's confirmed GPX and,
+ * behind a default-off flag, a view-only unlisted link — has its own contract in
+ * `course-sharing.ts` (M2-01k-o); there is no public discovery of a course anywhere.
  */
 export const courseLimits = {
   /** Vertices in one course geometry. */
@@ -886,9 +887,23 @@ export const activityDeletionImpactSchema = z.strictObject({
 });
 export type ActivityDeletionImpact = z.infer<typeof activityDeletionImpactSchema>;
 
-/** Exported GPX is a personal artifact, not a shareable publication. */
+/**
+ * Exported GPX leaves only behind the owner's privacy confirmation (M2-01k-o). The
+ * `creator` is a neutral value that does not name this product (R-3): a file is handed on,
+ * and a product name narrows who could have made it. The importer still recognises it, so
+ * the owner's own waypoints survive a round trip.
+ */
 export const courseGpxMediaType = 'application/gpx+xml';
-export const courseGpxCreator = 'workout-manager/course-v1';
+export const courseGpxCreator = 'course-route-export';
+/**
+ * Every `creator` this product has ever written, for the importer only: files exported
+ * before M2-01k-o say `workout-manager/course-v1` (M2-01j), and re-importing one of them must
+ * keep its waypoints as it always did. Export writes only {@link courseGpxCreator}.
+ */
+export const courseGpxRecognisedCreators: readonly string[] = [
+  courseGpxCreator,
+  'workout-manager/course-v1',
+];
 
 /**
  * Asking our own engine for a route under the current draft (M2-01h).

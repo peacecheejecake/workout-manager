@@ -29,6 +29,16 @@ import { createActivityTrackRepository } from '@workout/server-persistence/activ
 import { createCourseRepository } from '@workout/server-persistence/courses';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createCoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
+import {
+  createCourseSharingRepository,
+  createSharedCourseReader,
+} from '@workout/server-persistence/course-sharing';
+import {
+  drawShareOffset,
+  shareCircles,
+  sharedLineTouchesCircle,
+} from '@workout/server-courses/disclosure';
+import { courseSharingFromEnvironment } from './course-sharing.js';
 import { loadGeoDatasets } from './geo-datasets.js';
 import {
   createConfiguredWalkingRoutes,
@@ -164,8 +174,16 @@ export async function createConfiguredApi(
   // closed, not the whole API. Warm it now; a failure is reported (onEvent) and retried on
   // the next sign-in.
   void provider.prepare?.().catch(() => undefined);
+  // M2-01k-o B. Off unless `COURSE_SHARING=on`; on without an epoch, a rate key or the trusted
+  // proxies refuses to start here, before any pool exists (B-4, B-5).
+  const courseSharing = courseSharingFromEnvironment(
+    z.record(z.string(), z.unknown()).parse(plainEnvironment(environment)),
+  );
   const database = createDatabase({ connectionString: env.DATABASE_URL });
   const store = createIdentityRepository({ connectionString: env.DATABASE_URL });
+  const sharedCourseReader = courseSharing.enabled
+    ? createSharedCourseReader({ connectionString: env.DATABASE_URL })
+    : undefined;
   // Server-side parsing runs in child processes with a real V8 heap ceiling (M2-01ai); the
   // deployment's container memory limit bounds the process tree around them. Each parser
   // runs at most its own concurrency bound of processes, and shutdown kills them.
@@ -308,7 +326,13 @@ export async function createConfiguredApi(
       },
       courseExtras: {
         courses: createCourseRepository(database),
-        preferences: createCoursePreferenceRepository(database),
+        // A new protected area draws its secret share offset once and revokes every link
+        // that touches its share circle, in the same transaction (M2-01k-o B-1, B-6).
+        preferences: createCoursePreferenceRepository(database, {
+          drawShareOffset: () => drawShareOffset(),
+          shareTouchesNewZone: (snapshot, zone, offset) =>
+            shareCircles(zone, offset).some((circle) => sharedLineTouchesCircle(snapshot, circle)),
+        }),
         // The same bounded parse host stored recordings use: an imported file is parsed
         // under a real heap ceiling, a deadline and the same refusals.
         parser: courseImportParser,
@@ -317,6 +341,16 @@ export async function createConfiguredApi(
         places: geoDatasets.places,
         elevation: geoDatasets.elevation,
       },
+      // M2-01k-o. The privacy confirmation and the confirmed GPX are always on; link
+      // management exists only with the flag, and the unauthenticated read serves only then.
+      courseDisclosure: {
+        sharing: createCourseSharingRepository(database, {
+          drawShareOffset: () => drawShareOffset(),
+        }),
+        ...(courseSharing.enabled ? { links: { epoch: courseSharing.epoch } } : {}),
+      },
+      courseSharing,
+      ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
       ...(routing === null ? {} : { walkingRoutes: routing.walkingRoutes }),
       activityTracks: {
         tracks: createActivityTrackRepository(database),
@@ -340,7 +374,7 @@ export async function createConfiguredApi(
           closeParsers(),
           routingAdmission.drain(ROUTING_PERMIT_LEASE_MILLISECONDS),
         ]);
-        await Promise.all([store.close(), database.close()]);
+        await Promise.all([store.close(), database.close(), sharedCourseReader?.close()]);
       },
     });
     log = app.log;
@@ -358,7 +392,12 @@ export async function createConfiguredApi(
       });
     return app;
   } catch (error) {
-    await Promise.all([store.close(), database.close(), closeParsers()]);
+    await Promise.all([
+      store.close(),
+      database.close(),
+      closeParsers(),
+      sharedCourseReader?.close(),
+    ]);
     throw error;
   }
 }

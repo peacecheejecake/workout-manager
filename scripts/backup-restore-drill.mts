@@ -80,6 +80,14 @@ import {
   createCourseRepository,
 } from '../packages/server/persistence/src/courses.ts';
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
+import {
+  createCourseSharingRepository,
+  createSharedCourseReader,
+  type CourseSharingRepository,
+} from '../packages/server/persistence/src/course-sharing.ts';
+import { disclosureChoices, shareCircle } from '../packages/server/courses/src/disclosure.ts';
+import { privacyZoneSetDigest } from '../packages/server/courses/src/privacy-trim.ts';
+import { courseContentDigest } from '../packages/server/courses/src/digest.ts';
 import { createSharedRoutingAdmission } from '../packages/server/persistence/src/routing-admission.ts';
 import {
   createCourseThumbnailWorkerRepository,
@@ -537,6 +545,120 @@ async function replayCourseDeletionLedger(
 }
 
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
+/**
+ * M2-01k-o: a course that leaves the owner's protected area, for the link checks. Imported
+ * (no lineage), so it is reclaimed by nothing but its own deletion or the account's erasure.
+ */
+async function seedShareableCourse(database: Database, athleteId: string, name: string) {
+  const coordinates: [number, number][] = Array.from({ length: 41 }, (_, index) => [
+    Number((127.02 + index * 0.0005).toFixed(7)),
+    Number((37.5 + index * 0.0005).toFixed(7)),
+  ]);
+  const start = coordinates[0];
+  const finish = coordinates[coordinates.length - 1];
+  assert.ok(start && finish);
+  const waypoints = [
+    { role: 'start' as const, position: start, name: null, sourceSampleId: null, locked: false },
+    { role: 'finish' as const, position: finish, name: null, sourceSampleId: null, locked: false },
+  ];
+  const generation = {
+    kind: 'imported-file' as const,
+    format: 'gpx' as const,
+    sourceKind: 'gpx-rte' as const,
+    itemIndex: 0,
+    parserId: 'gpx-track-v1' as const,
+    parserVersion: 1 as const,
+    fileSha256: createHash('sha256').update(name).digest('hex'),
+    fileByteLength: 512,
+    originalFilename: null,
+    fileCreator: null,
+    vertexCount: coordinates.length,
+    importedWaypointCount: 0,
+    ignoredFileWaypointCount: 0,
+  };
+  const created = await createCourseRepository(database).create(
+    athleteId,
+    {
+      name,
+      coordinates,
+      waypoints,
+      generation,
+      edit: { kind: 'imported' },
+      lineage: [],
+      distanceMeters: 2_800,
+      contentDigest: courseContentDigest({ name, coordinates, waypoints, generation, lineage: [] }),
+    },
+    `course-${randomUUID()}`,
+  );
+  if (created.status !== 'available') throw new Error('SHAREABLE_COURSE_SEED_FAILED');
+  return created.course.courseId;
+}
+
+/**
+ * A view-only link made the way the API makes one (M2-01k-o B): the share cut of the head
+ * against the owner's share circles, a `share` receipt for exactly that line, and the link
+ * under the given epoch. Returns the token so a read can ask for it later.
+ */
+async function seedDrillLink(
+  database: Database,
+  sharing: CourseSharingRepository,
+  athleteId: string,
+  courseId: string,
+  epoch: number,
+) {
+  const head = await createCourseRepository(database).headContent(athleteId, courseId);
+  assert.ok(head);
+  const withOffsets = await sharing.zonesWithShareOffsets(athleteId);
+  const zones = withOffsets.map((entry) => entry.zone);
+  const choices = disclosureChoices(
+    'share',
+    head.coordinates,
+    head.waypoints,
+    withOffsets.map((entry) => shareCircle(entry.zone, entry.offset)),
+  );
+  const option = choices.options[0];
+  assert.ok(
+    option && (option.exposure === 'trimmed' || option.exposure === 'no-zone-intersection'),
+  );
+  const exposure = option.exposure;
+  const receipt = await sharing.recordReceipt(athleteId, {
+    courseId,
+    courseRevision: head.courseRevision,
+    purpose: 'share',
+    exposure,
+    zoneSetDigest: privacyZoneSetDigest(zones),
+    includeNames: false,
+    idempotencyKey: `drill-confirm-${randomUUID()}`,
+    request: { drill: courseId },
+    digestOf: privacyZoneSetDigest,
+  });
+  const token = randomBytes(32).toString('base64url');
+  const tokenDigest = createHash('sha256').update(token).digest('hex');
+  const share = await sharing.createShare(athleteId, {
+    courseId,
+    receiptId: receipt.receiptId,
+    exposure,
+    tokenDigest,
+    epoch,
+    expiresInDays: 7,
+    snapshot: {
+      coordinates: option.line.coordinates.map((position): [number, number] => [
+        position[0],
+        position[1],
+      ]),
+      waypoints: option.line.waypoints.map((waypoint) => ({
+        role: waypoint.role,
+        position: [waypoint.position[0], waypoint.position[1]] as [number, number],
+      })),
+      distanceMeters: Math.round(option.line.distanceMeters),
+    },
+    zoneIds: zones.map((zone) => zone.zoneId),
+    zoneSetDigest: privacyZoneSetDigest(zones),
+    digestOf: privacyZoneSetDigest,
+  });
+  return { shareId: share.shareId, courseId, token, tokenDigest };
+}
+
 function run(bin: string, name: string, args: string[]): string {
   const result = spawnSync(join(bin, name), args, {
     encoding: 'utf8',
@@ -1022,7 +1144,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 22);
+      assert.equal(before.schemaVersion, 23);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -1084,7 +1206,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 22) throw new Error('Expected coaching export v22');
+      if (coachingExport.schemaVersion !== 23) throw new Error('Expected coaching export v23');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1157,6 +1279,9 @@ async function execute() {
         coursePrivacyZones: _coursePrivacyZones,
         courseThumbnails: _courseThumbnails,
         courseAccessibilityNotes: _courseAccessibilityNotes,
+        coursePrivacyZoneShareOffsets: _coursePrivacyZoneShareOffsets,
+        courseShares: _courseShares,
+        courseDeletions: _courseDeletions,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1308,7 +1433,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 22) throw new Error('Expected candidate export v22');
+      if (candidateExport.schemaVersion !== 23) throw new Error('Expected candidate export v23');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -2424,6 +2549,74 @@ async function execute() {
         removedConstraintAthlete,
       ].sort(),
     );
+    // M2-01k-o (B-5, T10): view-only links in the backup, each made the way the API makes
+    // one. The share epoch is the deployment's setting outside the database; a restore must
+    // raise it before runtime access, and then no link from before the restore is served —
+    // not one revoked after the backup, not one whose course was deleted after it, not one
+    // of an account erased after it, and not an untouched one either (fail-closed: nothing is
+    // replayed for links, so nothing can be missed).
+    const shareEpochAtBackup = 1;
+    const sharingAthlete = randomUUID();
+    // A real account, as every course owner has: the 049 ledger replay refuses a tenant the
+    // restored cluster does not know (COURSE_REPLAY_TENANT_UNKNOWN).
+    await source.query(
+      'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+      [sharingAthlete, 'https://synthetic.invalid', 'drill-sharing'],
+    );
+    const sourceSharing = createCourseSharingRepository(sourceDb);
+    await createCoursePreferenceRepository(sourceDb).createPrivacyZone(sharingAthlete, {
+      name: 'Drill share protected area',
+      center: [127.02, 37.5],
+      radiusMeters: 200,
+    });
+    const linkRevokedAfterBackup = await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      sharingAthlete,
+      await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link revoked after backup'),
+      shareEpochAtBackup,
+    );
+    const linkOfCourseDeletedAfterBackup = await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      sharingAthlete,
+      await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link course deleted after backup'),
+      shareEpochAtBackup,
+    );
+    const linkUntouched = await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      sharingAthlete,
+      await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link untouched'),
+      shareEpochAtBackup,
+    );
+    const linkOfErasedTenant = await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      deletedAthlete,
+      await seedShareableCourse(sourceDb, deletedAthlete, 'Erased tenant shared course'),
+      shareEpochAtBackup,
+    );
+    // Their pictures are drawn before the dump, like every other course's here, so nothing
+    // of theirs lands in the gap between the dump and the object archive.
+    await drainThumbnailQueue();
+    const drillReadKey = () => createHash('sha256').update(randomUUID()).digest('hex');
+    const sourceReader = createSharedCourseReader({
+      connectionString: url('drill_source', 'drill_runtime'),
+      max: 1,
+    });
+    for (const link of [
+      linkRevokedAfterBackup,
+      linkOfCourseDeletedAfterBackup,
+      linkUntouched,
+      linkOfErasedTenant,
+    ])
+      assert.equal(
+        (await sourceReader.read(link.tokenDigest, shareEpochAtBackup, drillReadKey())).outcome,
+        'ok',
+      );
+    await sourceReader.close();
+    checks.push('pre_backup_links_made_through_share_receipts_and_served');
     // M2-01s: what the erased tenant owns in the course and track tables at backup time,
     // and every object key any of those rows names. The restore must bring all of it back
     // and the replayed erasure must take all of it away again — rows, index rows and bytes.
@@ -2443,6 +2636,12 @@ async function execute() {
       'activity_track_object_ref',
       // M2-01ah: a routing permit, as if a route computation was in flight at backup time.
       'routing_admission',
+      // M2-01k-o: the erased tenant's link, its confirmation, its audit and its area's
+      // secret share offset.
+      'course_share',
+      'course_share_audit',
+      'course_disclosure_receipt',
+      'course_privacy_zone_share_offset',
     ] as const;
     const countErasedTenantRows = async (owner: Pool) => {
       const counts: Record<string, number> = {};
@@ -2473,15 +2672,17 @@ async function execute() {
         (erasedTenantBackupCounts[table] ?? 0) > 0,
         `the erased tenant has ${table} rows at backup time`,
       );
-    assert.equal(erasedTenantBackupCounts['course'], 3);
-    assert.ok((erasedTenantBackupCounts['course_revision'] ?? 0) >= 3);
+    // Three courses of M2-01s and the shared course of M2-01k-o.
+    assert.equal(erasedTenantBackupCounts['course'], 4);
+    assert.ok((erasedTenantBackupCounts['course_revision'] ?? 0) >= 4);
     const erasedTenantThumbnailStates = (
       await source.query<{ state: string }>(
         'SELECT state FROM course_thumbnail WHERE athlete_id=$1 ORDER BY state',
         [deletedAthlete],
       )
     ).rows.map((row) => row.state);
-    assert.deepEqual(erasedTenantThumbnailStates, ['failed', 'ready', 'superseded']);
+    // The second `ready`: the M2-01k-o shared course's picture.
+    assert.deepEqual(erasedTenantThumbnailStates, ['failed', 'ready', 'ready', 'superseded']);
     const erasedTenantObjectRefs = (
       await source.query<{ storage_ref: string }>(
         `SELECT refs.storage_ref FROM course_thumbnail t
@@ -2499,8 +2700,8 @@ async function execute() {
     for (const ref of erasedTenantObjectRefs)
       if (await sourceObjectStorage.stat(validateObjectKey(ref))) erasedTenantObjects.push(ref);
     // Three track objects, two published pictures, one abandoned render's temporary object,
-    // and the orphan only the reference index names.
-    assert.equal(erasedTenantObjects.length, 7);
+    // the orphan only the reference index names, and the M2-01k-o shared course's picture.
+    assert.equal(erasedTenantObjects.length, 8);
     assert.ok(erasedTenantObjects.includes(orphan.finalKey));
     for (const artifact of erasedTrack.artifacts)
       assert.ok(erasedTenantObjects.includes(artifact.storageRef));
@@ -2939,6 +3140,37 @@ async function execute() {
         gapActivity.activityId,
         { expectedRevision: gapActivity.revision },
       );
+    // M2-01k-o: after the backup one link is revoked and another link's course is deleted.
+    // The revocation is in no ledger: the restore must not depend on one (B-5, D7). The course
+    // deletion is captured in the M2-01ao course-deletion ledger below and replayed, which
+    // takes the link with its revisions; the raised epoch stops it even before the replay.
+    await sourceSharing.revokeShare(
+      sharingAthlete,
+      linkRevokedAfterBackup.shareId,
+      shareEpochAtBackup,
+    );
+    await createCourseRepository(sourceDb).remove(
+      sharingAthlete,
+      linkOfCourseDeletedAfterBackup.courseId,
+      1,
+    );
+    assert.equal(
+      (
+        await source.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM course_share
+           WHERE share_id=ANY($1::uuid[]) AND state='active'`,
+          [
+            [
+              linkRevokedAfterBackup.shareId,
+              linkOfCourseDeletedAfterBackup.shareId,
+              linkOfErasedTenant.shareId,
+            ],
+          ],
+        )
+      ).rows[0]?.count,
+      0,
+    );
+    checks.push('post_backup_link_revoked_course_deleted_and_tenant_erased_in_source');
     // M2-01ao: the owner deletes both courses after the backup, through the real lifecycle.
     await courseRepo.remove(retainedAthlete, ownerDeletedCourse.course.courseId, 2);
     await courseRepo.remove(retainedAthlete, gapBornCourse.course.courseId, 1);
@@ -2957,9 +3189,16 @@ async function execute() {
         preBackupDeletedCourse.course.courseId,
         ownerDeletedCourse.course.courseId,
         gapBornCourse.course.courseId,
+        linkOfCourseDeletedAfterBackup.courseId,
       ].sort(),
     );
-    assert.ok(courseDeletionLedger.every((row) => row.athlete_id === retainedAthlete));
+    assert.ok(
+      courseDeletionLedger.every((row) =>
+        row.course_id === linkOfCourseDeletedAfterBackup.courseId
+          ? row.athlete_id === sharingAthlete
+          : row.athlete_id === retainedAthlete,
+      ),
+    );
     const combinedCourseDeletionLedger = [
       ...courseDeletionLedger,
       ...overlappingCourseDeletion,
@@ -3129,6 +3368,36 @@ async function execute() {
       [{ course_id: preBackupDeletedCourse.course.courseId }],
     );
     checks.push('restore_brings_back_owner_deleted_course_with_its_owner_facts_and_pictures');
+    // M2-01k-o T10: the archive predates the revocation, the course deletion and the
+    // erasure, so the restored cluster holds all three links again — active. What stops
+    // them below is the epoch, not the rows.
+    const restoredLinkStates = (
+      await restored.query<{ share_id: string; state: string }>(
+        'SELECT share_id,state FROM course_share WHERE share_id=ANY($1::uuid[]) ORDER BY share_id',
+        [
+          [
+            linkRevokedAfterBackup.shareId,
+            linkOfCourseDeletedAfterBackup.shareId,
+            linkOfErasedTenant.shareId,
+            linkUntouched.shareId,
+          ],
+        ],
+      )
+    ).rows;
+    assert.deepEqual(
+      restoredLinkStates.map((row) => row.state),
+      ['active', 'active', 'active', 'active'],
+    );
+    assert.equal(
+      (
+        await restored.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM course WHERE athlete_id=$1 AND course_id=$2',
+          [sharingAthlete, linkOfCourseDeletedAfterBackup.courseId],
+        )
+      ).rows[0]?.count,
+      1,
+    );
+    checks.push('restored_cluster_holds_revoked_deleted_and_erased_tenant_links_active');
     // M2-01x: the gap upload came back with the archive and with no row at all — not in the
     // ledger, not in the reference index, not in the queue.
     for (const ref of gapObjects)
@@ -3590,12 +3859,19 @@ async function execute() {
         restored,
         JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
       );
-      assert.deepEqual(courseReplay, {
-        deleted: [ownerDeletedCourse.course.courseId],
-        absent: [gapBornCourse.course.courseId],
-        already_applied: [preBackupDeletedCourse.course.courseId],
-        erasure_satisfied: [erasedRetryCourse.course.courseId],
-      });
+      assert.deepEqual(
+        { ...courseReplay, deleted: [...courseReplay.deleted].sort() },
+        {
+          // M2-01k-o: the shared course deleted after the backup is replayed like the owner's.
+          deleted: [
+            ownerDeletedCourse.course.courseId,
+            linkOfCourseDeletedAfterBackup.courseId,
+          ].sort(),
+          absent: [gapBornCourse.course.courseId],
+          already_applied: [preBackupDeletedCourse.course.courseId],
+          erasure_satisfied: [erasedRetryCourse.course.courseId],
+        },
+      );
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
@@ -3638,6 +3914,7 @@ async function execute() {
             preBackupDeletedCourse.course.courseId,
             ownerDeletedCourse.course.courseId,
             gapBornCourse.course.courseId,
+            linkOfCourseDeletedAfterBackup.courseId,
           ].sort(),
           erasure_satisfied: [erasedRetryCourse.course.courseId],
         },
@@ -3687,6 +3964,79 @@ async function execute() {
       'source_deleted',
     );
     checks.push('candidate_bodies_and_digest_purged_by_pre_runtime_withdrawal_and_deletion_replay');
+    // M2-01k-o B-5: the restore procedure raises the share epoch — a setting outside the
+    // database — before any runtime access, on every restore path (this archive, PITR, a
+    // hosting snapshot). The API refuses to start with sharing on and no epoch configured.
+    const shareEpochAfterRestore = shareEpochAtBackup + 1;
+    checks.push('restore_raises_share_epoch_before_runtime_access');
+    {
+      const restoredReader = createSharedCourseReader({
+        connectionString: url('drill_restore', 'drill_runtime'),
+        max: 1,
+      });
+      try {
+        const served = async (link: { tokenDigest: string }, epoch: number) =>
+          (await restoredReader.read(link.tokenDigest, epoch, drillReadKey())).outcome;
+        // The revoked link is active in the restored rows: under the backup's epoch it WOULD
+        // be served again. That is what the raised epoch stops.
+        assert.equal(await served(linkRevokedAfterBackup, shareEpochAtBackup), 'ok');
+        assert.equal(await served(linkRevokedAfterBackup, shareEpochAfterRestore), 'not_found');
+        checks.push('revoked_share_not_served_after_restore');
+        // The erased tenant's rows were active in the restored cluster before the replay
+        // (checked above); after it and the epoch, nothing is served.
+        assert.equal(await served(linkOfErasedTenant, shareEpochAfterRestore), 'not_found');
+        assert.equal(
+          (
+            await restored.query<{ count: number }>(
+              'SELECT count(*)::int AS count FROM course_share WHERE athlete_id=$1',
+              [deletedAthlete],
+            )
+          ).rows[0]?.count,
+          0,
+        );
+        checks.push('erased_tenant_share_not_served_after_restore');
+        // The course deleted after the backup came back with the archive, link active (checked
+        // above). The M2-01ao course-deletion replay removed it again, and the link with its
+        // revisions (the cascade): nothing is left to serve under either epoch.
+        assert.equal(
+          (
+            await restored.query<{ count: number }>(
+              `SELECT ((SELECT count(*) FROM course WHERE athlete_id=$1 AND course_id=$2)
+                 + (SELECT count(*) FROM course_share WHERE athlete_id=$1 AND course_id=$2))::int
+                 AS count`,
+              [sharingAthlete, linkOfCourseDeletedAfterBackup.courseId],
+            )
+          ).rows[0]?.count,
+          0,
+        );
+        assert.equal(await served(linkOfCourseDeletedAfterBackup, shareEpochAtBackup), 'not_found');
+        assert.equal(
+          await served(linkOfCourseDeletedAfterBackup, shareEpochAfterRestore),
+          'not_found',
+        );
+        checks.push('deleted_course_share_not_served_after_restore');
+        // Fail-closed: an untouched link from before the restore is not served either.
+        assert.equal(await served(linkUntouched, shareEpochAfterRestore), 'not_found');
+        checks.push('every_pre_restore_link_invalidated_by_the_raised_epoch');
+        // The restored deployment still makes and serves links: a new confirmation and a new
+        // link under the new epoch.
+        const linksDb = database('drill_restore');
+        const restoredSharing = createCourseSharingRepository(linksDb);
+        const fresh = await seedDrillLink(
+          linksDb,
+          restoredSharing,
+          sharingAthlete,
+          linkUntouched.courseId,
+          shareEpochAfterRestore,
+        );
+        assert.equal(await served(fresh, shareEpochAfterRestore), 'ok');
+        // …and a link of the raised epoch stops every link if the setting ever went back.
+        assert.equal(await served(fresh, shareEpochAtBackup), 'not_found');
+        checks.push('new_link_after_restore_served_under_the_raised_epoch_only');
+      } finally {
+        await restoredReader.close();
+      }
+    }
     const tables = [
       'consent',
       'command_receipt',
@@ -3880,7 +4230,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 22);
+    assert.ok(constraintExport.schemaVersion === 23);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -3915,7 +4265,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
+    if (withdrawnExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -3967,7 +4317,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
+    if (absentExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -4661,7 +5011,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 22) throw new Error('Expected resource export v22');
+    if (retainedExport.schemaVersion !== 23) throw new Error('Expected resource export v23');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -5082,7 +5432,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 22) throw new Error('Expected coaching export v22');
+    if (retainedExport.schemaVersion !== 23) throw new Error('Expected coaching export v23');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -5214,7 +5564,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 22) throw new Error('Expected coaching export v22');
+    if (coachingAfterReplay.schemaVersion !== 23) throw new Error('Expected coaching export v23');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -5390,7 +5740,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 22) throw new Error('Expected evidence export v22');
+    if (scrubbedExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
@@ -5466,6 +5816,7 @@ async function execute() {
       'invalidate_all_restored_sessions_and_login_attempts',
       'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
       'discard_restored_unofficial_garmin_sessions_keeping_pin_and_ledger',
+      'raise_course_share_epoch_invalidating_every_pre_restore_link',
     ],
     checks,
     checkCount: checks.length,
@@ -5480,6 +5831,7 @@ async function execute() {
       'An activity recorded after the database dump and deleted before the ledger capture is absent from the restored cluster; its ledger entry must carry the source revision and content hash, from which the replay rebuilds a value-less deleted canonical row, the source head and the suppression row, and arms the purge of its object directory. An entry that cannot be verified (malformed, foreign id, unknown or erased tenant, conflicting source) aborts the replay.',
       'Course deletions are replayed from an independently retained course-deletion ledger (tenant, course id, deletion time) captured after the backup; a replay against a cluster whose data is not restored, an unknown or erased tenant, or a course id another tenant holds aborts the replay. Courses deleted before migration 049 left no ledger row and can still be brought back by restoring a backup that predates their deletion.',
       'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
+      'Course links (M2-01k-o) are invalidated by raising the share epoch, a deployment setting outside the database, before runtime access; every restore path (logical archive, PITR, hosting snapshot) must raise it. The drill models the setting; a real deployment configuration change was not exercised.',
     ],
     sources: [
       'https://www.postgresql.org/docs/15/app-pgdump.html',

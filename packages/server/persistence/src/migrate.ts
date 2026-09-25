@@ -52,6 +52,7 @@ const migrationFiles = [
   '047_routing_admission.sql',
   '048_garmin_unofficial.sql',
   '049_course_deletion_ledger.sql',
+  '050_course_sharing.sql',
 ] as const;
 
 /**
@@ -312,6 +313,16 @@ export async function grantOperations(
     await pool.query(`GRANT SELECT ON course_thumbnail TO "${runtimeRole}"`);
     // The owner's accessibility notes (M2-01r, export v22). Read only.
     await pool.query(`GRANT SELECT ON course_accessibility_note TO "${runtimeRole}"`);
+    // Link facts and protected-area share offsets (M2-01k-o, export v23). Read only; the
+    // projection carries no token digest and no snapshot.
+    await pool.query(
+      `GRANT SELECT ON course_share,course_privacy_zone_share_offset TO "${runtimeRole}"`,
+    );
+    // M2-01ao's ledger stays unreadable as a table; export v23 reads the session tenant's own
+    // rows through this function (migration 050).
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.export_course_deletions() TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -1020,6 +1031,30 @@ export async function grantCourses(connectionString: string, runtimeRole: string
       `GRANT EXECUTE ON FUNCTION
        public.acquire_routing_permit(uuid,integer,integer,integer,integer,integer),
        public.release_routing_permit(uuid) TO "${runtimeRole}"`,
+    );
+    // What may leave the account (M2-01k-o, migration 050).
+    //
+    // A protected area's secret share offset is written once, when the area is made, and read
+    // when a link is cut: SELECT and INSERT, and no UPDATE — a trigger refuses one from anyone.
+    // A confirmation receipt is written and read by its owner, and the owner may delete its
+    // own expired receipts; nothing may edit one. A link is written once and may only be
+    // revoked: the three columns a revocation sets are the whole UPDATE grant, and a trigger
+    // refuses any other change. The audit is append-only. The rate counters get no grant at
+    // all: the unauthenticated read reaches them only through `read_course_share`, which is
+    // also the only way anything reads a link across tenants.
+    await pool.query(
+      `GRANT SELECT,INSERT ON course_privacy_zone_share_offset,course_share_audit
+       TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT,DELETE ON course_disclosure_receipt TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON course_share TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT UPDATE(state,revoked_at,revoke_reason) ON course_share TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION
+       public.read_course_share(text,integer,text,integer,integer,integer),
+       public.reap_course_shares(integer) TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

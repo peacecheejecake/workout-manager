@@ -18,10 +18,17 @@ import {
  * reader cannot mistake a waypoint for an extra route point.
  *
  * Coordinates are written with fixed precision so an export is byte-stable for the same
- * revision, and elevation is not invented: a course carries no elevation, so no `ele`
+ * content, and elevation is not invented: a course carries no elevation, so no `ele`
  * element is written at all rather than a zero.
+ *
+ * What the document may say about itself is an allowlist (M2-01k-o, R6/A-1): `metadata`
+ * holds the course name and nothing else, and only when the owner chose to include names.
+ * There is no description, no time, no extension, no course id and no revision number — a
+ * GPX file is handed on, and each of those would tie the file to an account, a moment or
+ * another file. `creator` is a neutral value that does not name this product.
  */
-const COORDINATE_DIGITS = 7;
+export const EXACT_COORDINATE_DIGITS = 7;
+export const DISCLOSED_COORDINATE_DIGITS = 5;
 
 /** GPX text is attribute- and element-safe. Names already refuse `<`, `>` and controls. */
 function escapeXml(value: string): string {
@@ -33,65 +40,79 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-function coordinateAttributes(position: CoursePosition): string {
+function coordinateAttributes(position: CoursePosition, digits: number): string {
   const [longitude, latitude] = coursePositionSchema.parse(position);
-  return `lat="${latitude.toFixed(COORDINATE_DIGITS)}" lon="${longitude.toFixed(COORDINATE_DIGITS)}"`;
+  return `lat="${latitude.toFixed(digits)}" lon="${longitude.toFixed(digits)}"`;
 }
 
 export interface CourseGpxInput {
   readonly name: string;
-  readonly courseId: string;
-  readonly courseRevision: number;
-  readonly createdAt: string;
+  /**
+   * Whether the course name and the waypoint names are written (D6). Off writes neither a
+   * `metadata` element nor any `name` element: the line and the waypoint roles only.
+   */
+  readonly includeNames: boolean;
   readonly coordinates: readonly CoursePosition[];
   readonly waypoints: readonly CourseWaypoint[];
+  /**
+   * Decimal places of every coordinate. Five (about a metre) for what the privacy
+   * confirmation discloses; seven only for the owner's explicitly chosen exact line.
+   */
+  readonly coordinateDigits: typeof EXACT_COORDINATE_DIGITS | typeof DISCLOSED_COORDINATE_DIGITS;
 }
 
 /**
- * Serialize a course revision as GPX 1.1.
+ * Serialize a course as GPX 1.1.
  *
- * The identity of the revision travels in `metadata` as a plain name and description, not
- * as a private key: there is no storage reference, no athlete id and no activity id in the
- * document. An export is a personal artifact — it is not prepared for publication and
- * carries no sharing information.
+ * There is no storage reference, no athlete id, no activity id, no course id, no revision
+ * and no time in the document: a file carries the line, the waypoint roles and — only when
+ * the owner kept them — the names.
  */
 export function writeCourseGpx(input: CourseGpxInput): string {
   const name = courseNameSchema.parse(input.name);
   const waypoints = input.waypoints.map((waypoint) => courseWaypointSchema.parse(waypoint));
+  const digits = input.coordinateDigits;
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<gpx version="1.1" creator="${escapeXml(courseGpxCreator)}"` +
       ' xmlns="http://www.topografix.com/GPX/1/1">',
-    '  <metadata>',
-    `    <name>${escapeXml(name)}</name>`,
-    `    <desc>course ${escapeXml(input.courseId)} revision ${input.courseRevision}</desc>`,
-    `    <time>${escapeXml(input.createdAt)}</time>`,
-    '  </metadata>',
   ];
+  if (input.includeNames) {
+    lines.push('  <metadata>');
+    lines.push(`    <name>${escapeXml(name)}</name>`);
+    lines.push('  </metadata>');
+  }
   for (const waypoint of waypoints) {
-    lines.push(`  <wpt ${coordinateAttributes(waypoint.position)}>`);
+    lines.push(`  <wpt ${coordinateAttributes(waypoint.position, digits)}>`);
     // No name is written for a waypoint that has none. A synthesised one ("<course>
     // start") is a fact nobody stated, and re-importing this document would turn it into
     // a name the owner never gave — the importer is the reason this is not cosmetic.
-    if (waypoint.name !== null) lines.push(`    <name>${escapeXml(waypoint.name)}</name>`);
+    if (input.includeNames && waypoint.name !== null)
+      lines.push(`    <name>${escapeXml(waypoint.name)}</name>`);
     lines.push(`    <type>${escapeXml(waypoint.role)}</type>`);
     lines.push('  </wpt>');
   }
   lines.push('  <rte>');
-  lines.push(`    <name>${escapeXml(name)}</name>`);
+  if (input.includeNames) lines.push(`    <name>${escapeXml(name)}</name>`);
   for (const position of input.coordinates)
-    lines.push(`    <rtept ${coordinateAttributes(position)} />`);
+    lines.push(`    <rtept ${coordinateAttributes(position, digits)} />`);
   lines.push('  </rte>');
   lines.push('</gpx>');
   return `${lines.join('\n')}\n`;
 }
 
-/** File name of a course export. Sanitized to a conservative set, never a storage key. */
-export function courseGpxFileName(name: string, courseRevision: number): string {
+/**
+ * File name of a course export. Sanitized to a conservative set, never a storage key, and
+ * never a revision number (A-1): `-r3` would tell a recipient how often the owner edited
+ * the course and tie two files of the same course together. Without names it is
+ * `course.gpx`.
+ */
+export function courseGpxFileName(name: string | null): string {
+  if (name === null) return 'course.gpx';
   const safe = courseNameSchema
     .parse(name)
     .replaceAll(/[^\p{Letter}\p{Number}_-]+/gu, '-')
     .replaceAll(/^-+|-+$/gu, '')
     .slice(0, 60);
-  return `${safe.length > 0 ? safe : 'course'}-r${courseRevision}.gpx`;
+  return `${safe.length > 0 ? safe : 'course'}.gpx`;
 }

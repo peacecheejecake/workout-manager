@@ -410,6 +410,20 @@
         "pnpm test 3,833 on 4c6b938 before the last review fixes, integration 1+669 after the rebase onto 8429efa; on the final tree activities and geo-kit 461, the new E2E and pnpm test:identity 253 passed; independent review in four rounds (tags r1, r3, r4, r5; r2 was pinned and superseded by the rebase before review), r5 APPROVE on tree fd28be22"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-n.md."
+    },
+    {
+      "node": "M2-01k-o",
+      "date": "2026-09-26",
+      "rows": ["S14-privacy-share", "P7-no-public-share", "P7-privacy-trim"],
+      "decision": "User approved the sharing requirement on 2026-09-25 (A: owner GPX after a trim confirmation; B: view-only unlisted links, off by default); the user's answer to the remaining attack was \"Mitigate first\". Gap node M2-01k-o built both. Independent peer review r1 REQUEST CHANGES (no 050 upgrade test, an owner-wide tenant_erasure policy), r2 APPROVE. Independent re-identification review of the implementation: PASS WITH CONDITIONS; the user decided on 2026-09-25 to mitigate the remaining attack in follow-up node M2-01as before links can be enabled.",
+      "change": "S14-privacy-share partial -> passed; P7-no-public-share and P7-privacy-trim stay passed with new evidence; counts passed 84 -> 85, partial 20 -> 19.",
+      "executed": [
+        "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
+        "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
+        "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
+        "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent reviews; see docs/implementation/progress/M2-01k-o.md."
     }
   ],
   "rounds": [
@@ -531,8 +545,8 @@
     }
   ],
   "counts": {
-    "passed": 84,
-    "partial": 20,
+    "passed": 85,
+    "partial": 19,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -1407,11 +1421,13 @@
       "id": "S14-privacy-share",
       "source": "docs/.pre/01_product_screen_spec.md:165",
       "quote": "정확한 시작·끝 위치 공유에는 privacy trim/확인 화면이 필요하다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
-        "tests/identity/course-acceptance.spec.ts step 6/8: trimmed revision, exported GPX has no protected coordinates"
+        "tests/identity/course-acceptance.spec.ts step 6/8: trimmed revision, exported GPX has no protected coordinates",
+        "tests/identity/course-disclosure.spec.ts and tests/identity/course-sharing.spec.ts (M2-01k-o, both shells)",
+        "apps/api/tests/course-sharing.integration.test.ts (M2-01k-o)"
       ],
-      "reason": "Trim works; there is no confirmation step before a GPX export and no sharing feature.",
+      "reason": "M2-01k-o amendment: passed. Before a GPX export or a link, the owner sees a confirmation screen that explains the privacy trim, and the server gates both on a receipt bound to the revision and the zones; protected coordinates never leave in a link, nor in a GPX unless the owner picks exact ends for their own GPX after a warning; trim-refused courses are blocked. View-only unlisted links exist behind a flag that is off by default. Enabling links needs the follow-up M2-01as (the heading and back-projection re-identification attack, user decision 2026-09-25), a front proxy that sets X-Forwarded-For from the connection, and the restore epoch step; CDN or proxy cache probes and access-log audits beyond the web shells are not_executed until such a proxy exists.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1419,7 +1435,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-o",
+        "date": "2026-09-26",
+        "previousVerdict": "partial",
+        "previousReason": "Trim works; there is no confirmation step before a GPX export and no sharing feature.",
+        "executed": [
+          "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
+          "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
+          "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
+          "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
+        ]
+      }
     },
     {
       "id": "S14-tile-policy",
@@ -3036,7 +3064,7 @@
         "packages/server/courses/tests/privacy-trim.test.ts:84,98-99,111-112",
         "apps/api/tests/course-extras-routes.test.ts:697-714 422 and no update"
       ],
-      "reason": "",
+      "reason": "M2-01k-o amendment: still passed with new evidence. Share responses and GPX files carry no protected coordinates (T3, V2), trim-refused courses are blocked (T17), links are cut against both the protected zones and larger secretly offset share circles and never carry the exact line (T20, R-2), rounding is re-checked after the cut (T25), courses without zones warn and links require a zone (T21), and GPX metadata follows an allowlist with no time or description (T8). Finding (b) of the requirement is closed.",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
@@ -3045,7 +3073,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-o",
+        "date": "2026-09-26",
+        "previousVerdict": "passed",
+        "previousReason": "",
+        "executed": [
+          "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
+          "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
+          "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
+          "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
+        ]
+      }
     },
     {
       "id": "P7-no-public-share",
@@ -3058,7 +3098,7 @@
         "packages/modules/courses/tests/course-extras.test.tsx:1103 'offers no way to share a course, trimmed or not'",
         "contract: course visibility is the literal 'private'"
       ],
-      "reason": "M2-01k-o requirement amendment: still passed. The plan sentence was amended by user decision (2026-09-25) from \"public sharing stays disabled until a separate requirement, ACL and re-identification review\" to \"no public discovery; sharing only through expiring, revocable, view-only unlisted links, default off until the independent re-identification review passes\". No sharing code exists yet, so the product still offers no share control, which the three existing assertions keep proving. When M2-01k-o lands, this row is re-judged under the requirement §7 conditions.",
+      "reason": "M2-01k-o amendment: still passed; links not shipped (flag off by default). With the flag off the product offers no share control and the public read answers 404 (the three existing assertions re-ran, plus T9 and V7); with the flag on there is no listing or search route, every failure is the same 404, and recipients get no download (T4, T16). The independent re-identification review passed with a condition (M2-01as) that must close before links are enabled.",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
@@ -3069,15 +3109,19 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-o (requirement)",
-        "date": "2026-09-25",
+        "node": "M2-01k-o",
+        "date": "2026-09-26",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-o requirement amendment: still passed. The plan sentence was amended by user decision (2026-09-25) from \"public sharing stays disabled until a separate requirement, ACL and re-identification review\" to \"no public discovery; sharing only through expiring, revocable, view-only unlisted links, default off until the independent re-identification review passes\". No sharing code exists yet, so the product still offers no share control, which the three existing assertions keep proving. When M2-01k-o lands, this row is re-judged under the requirement §7 conditions.",
+        "executed": [
+          "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
+          "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
+          "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
+          "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
+        ],
         "previousQuote": "공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성이다.",
         "previousSource": "docs/implementation/map-implementation-plan.md:187",
-        "previousVerdict": "passed",
-        "previousReason": "Disabled is asserted at the screen level in both unit and E2E; a share control would fail them.",
-        "executed": [
-          "the three existing no-share assertions (tests/identity/course-extras.spec.ts:201-204, course-workbench.test.tsx:124, course-extras.test.tsx:1103) re-run in this commit's pnpm test and two identity runs"
-        ]
+        "note": "The quote was amended on 2026-09-25 (M2-01k-o requirement amendment); previousQuote and previousSource carry that earlier sentence forward."
       }
     },
     {

@@ -32,7 +32,13 @@ import type { MapAdapterFactory } from '@workout/geo-kit/map-adapter';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
+import type {
+  CourseDisclosurePurpose,
+  CourseDisclosureReceipt,
+} from '@workout/contracts/course-sharing';
 import { courseExportPath, createCourseApi, CourseRequestError } from './course-api';
+import { CourseDisclosure, CourseSharePanel } from './course-disclosure';
+import { createCourseSharingApi } from './course-sharing-api';
 import {
   CourseDraftProvider,
   draftMapPaths,
@@ -62,10 +68,11 @@ import styles from './courses.module.css';
 /**
  * S13 course list and detail, with the S14 waypoint editor composed into it.
  *
- * Courses are private. This screen has no sharing control, because the server has no
- * sharing route; it offers the owner's own GPX download and nothing else that leaves the
- * account. Every write sends the revision the screen was showing, so a course changed
- * elsewhere produces a visible conflict instead of a silent overwrite.
+ * Courses are private. What may leave the account goes through one privacy confirmation
+ * (M2-01k-o): the owner's GPX download, always, and a view-only link only when the server
+ * has the sharing flag on — otherwise this screen has no share control at all. Every write
+ * sends the revision the screen was showing, so a course changed elsewhere produces a
+ * visible conflict instead of a silent overwrite.
  *
  * The three S13 compositions are one DOM whose panes are shown and hidden by the generated
  * viewport specification: a sheet over the list on mobile; on tablet the map beside the open
@@ -159,11 +166,13 @@ function metres(value: number): string {
 async function downloadCourseGpx(input: {
   readonly courseId: string;
   readonly sessionId: string;
-  readonly fileName: string;
+  /** The privacy confirmation this download is for (M2-01k-o); without it there is no body. */
+  readonly receiptId: string;
   readonly signal: AbortSignal;
   readonly stillCurrent: () => boolean;
 }) {
-  const response = await fetch(courseExportPath(input.courseId), {
+  const address = `${courseExportPath(input.courseId)}?receipt=${encodeURIComponent(input.receiptId)}`;
+  const response = await fetch(address, {
     method: 'GET',
     headers: { 'x-workout-session-id': input.sessionId },
     credentials: 'same-origin',
@@ -174,11 +183,20 @@ async function downloadCourseGpx(input: {
   if (!response.ok) throw new CourseRequestError(response.status, 'EXPORT_FAILED');
   const blob = await response.blob();
   if (input.signal.aborted || !input.stillCurrent()) return;
+  // The server names the file (A-1: no revision number, `course.gpx` without names).
+  const disposition = response.headers?.get('content-disposition') ?? '';
+  const encoded = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1];
+  let fileName = 'course.gpx';
+  try {
+    if (encoded) fileName = decodeURIComponent(encoded);
+  } catch {
+    fileName = 'course.gpx';
+  }
   const objectUrl = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement('a');
     anchor.href = objectUrl;
-    anchor.download = input.fileName;
+    anchor.download = fileName;
     anchor.rel = 'noopener';
     document.body.append(anchor);
     anchor.click();
@@ -259,6 +277,9 @@ function Workbench({
   // during render to compose the editor, which a ref may not be.
   const [api] = useState(() => createCourseApi(transport));
   const [extrasApi] = useState(() => createCourseExtrasApi(transport));
+  const [sharingApi] = useState(() => createCourseSharingApi(transport));
+  // Which confirmation is open for the course on screen, if any (M2-01k-o).
+  const [disclosure, setDisclosure] = useState<CourseDisclosurePurpose | null>(null);
   const adapterFactory = useMemo<MapAdapterFactory | undefined>(() => {
     if (createMapAdapter) return createMapAdapter;
     if (!mapWorkerUrl) return undefined;
@@ -351,6 +372,13 @@ function Workbench({
     enabled: selected !== null,
     queryFn: ({ signal }) => api.read(selected ?? '', signal),
   });
+  // Whether the server has link sharing on (M2-01k-o): without the flag there is no list
+  // route, the read answers `null`, and no share control appears anywhere on this screen.
+  const shareList = useQuery({
+    queryKey: [...scope, 'shares'],
+    queryFn: ({ signal }) => sharingApi.shares(signal),
+  });
+  const sharingEnabled = shareList.data != null;
 
   // Preferences (M2-01j) are private to this owner and this session's cache: the key is
   // scoped like every other one here, so a logout or an account switch cannot leave a
@@ -524,6 +552,37 @@ function Workbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queries, athleteId, sessionId]);
 
+  /**
+   * The GPX download for a confirmation receipt (M2-01k-o), bound to the session that
+   * started it exactly as before: aborted when the screen goes away, and handed to the
+   * browser only while the session is still the one that asked. A failure is rethrown to the
+   * confirmation screen, which says what went wrong.
+   */
+  async function exportConfirmed(exportedCourseId: string, receipt: CourseDisclosureReceipt) {
+    const controller = new AbortController();
+    downloads.current.add(controller);
+    try {
+      await downloadCourseGpx({
+        courseId: exportedCourseId,
+        sessionId,
+        receiptId: receipt.receiptId,
+        signal: controller.signal,
+        stillCurrent: () => live.current.active && live.current.session === sessionId,
+      });
+      if (live.current.active && exportedCourseId === openCourse.current)
+        setMessage('확인한 내용으로 GPX를 내보냈습니다.');
+    } finally {
+      downloads.current.delete(controller);
+    }
+  }
+
+  /** "보호 구역 추가하러 가기": the protected-area form of this screen, focused. */
+  function focusPrivacyZones() {
+    const region = document.getElementById('course-privacy-zones');
+    region?.scrollIntoView?.({ block: 'start' });
+    region?.querySelector<HTMLInputElement>('input')?.focus();
+  }
+
   function submitRename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (current === null || current.status !== 'available') return;
@@ -615,38 +674,36 @@ function Workbench({
             이름 저장
           </Button>
         </form>
-        <a
+        {/* M2-01k-o: a button, not a link. The export goes through the privacy confirmation,
+            and there is no address here a middle click, "save link as" or a crawler could
+            follow around it. The course id is data for the page, not a download target. */}
+        <Button
+          variant="secondary"
           className={styles.download}
-          href={courseExportPath(current.course.courseId)}
-          download
           data-testid="course-export"
-          onClick={(event) => {
-            event.preventDefault();
-            const controller = new AbortController();
-            const exportedCourseId = current.course.courseId;
-            downloads.current.add(controller);
-            void downloadCourseGpx({
-              courseId: exportedCourseId,
-              sessionId,
-              fileName: `${current.revision.name}-r${current.course.headRevision}.gpx`,
-              signal: controller.signal,
-              stillCurrent: () => live.current.active && live.current.session === sessionId,
-            })
-              .catch((error: unknown) => {
-                // Same rule as the writes: a failed download reports itself only while the
-                // course it was started for is the one on screen.
-                if (
-                  live.current.active &&
-                  !controller.signal.aborted &&
-                  exportedCourseId === openCourse.current
-                )
-                  setMessage(readableError(error));
-              })
-              .finally(() => downloads.current.delete(controller));
-          }}
+          data-course-id={current.course.courseId}
+          aria-expanded={disclosure === 'export'}
+          onClick={() => setDisclosure('export')}
         >
           GPX 내보내기
-        </a>
+        </Button>
+        {disclosure !== null ? (
+          <CourseDisclosure
+            key={`${current.course.courseId}:${disclosure}`}
+            api={sharingApi}
+            scope={scope}
+            courseId={current.course.courseId}
+            purpose={disclosure}
+            onExport={(receipt) => exportConfirmed(current.course.courseId, receipt)}
+            onChanged={() =>
+              void queries.invalidateQueries({
+                queryKey: disclosure === 'export' ? scope : [...scope, 'shares'],
+              })
+            }
+            onClose={() => setDisclosure(null)}
+            onAddZone={focusPrivacyZones}
+          />
+        ) : null}
         <Button
           variant="danger"
           onClick={() =>
@@ -665,7 +722,8 @@ function Workbench({
     <section className={styles.workbench} aria-label="내 코스" data-layout={layout}>
       <h2>내 코스</h2>
       <p className={styles.note}>
-        코스는 비공개입니다. 공개 공유 기능은 없으며, 내보내기는 본인 인증 다운로드입니다.
+        코스는 비공개입니다. 공개 공유 기능은 없으며, 내보내기는 본인 인증 다운로드입니다. 내보내기
+        전에는 보호 구역 확인을 거칩니다.
       </p>
       <p>
         <a href="/courses/new">새 코스 만들기</a>
@@ -748,6 +806,7 @@ function Workbench({
                       setName(course.name);
                       setMessage('');
                       setTrimMessage('');
+                      setDisclosure(null);
                       setPicked(null);
                       setFitRequest((value) => value + 1);
                       // Opening a course is what "used" means here, and the moment is the
@@ -897,14 +956,30 @@ function Workbench({
                   scope={scope}
                   courseId={current.course.courseId}
                 />
-                <CoursePrivacyPanel
-                  api={extrasApi}
+                <div id="course-privacy-zones">
+                  <CoursePrivacyPanel
+                    api={extrasApi}
+                    scope={scope}
+                    courseId={current.course.courseId}
+                    headRevision={current.course.headRevision}
+                    generationKind={current.revision.generation.kind}
+                    onTrim={(input) => trim.mutate(input)}
+                    trimMessage={trimMessage}
+                    {...(sharingEnabled
+                      ? {
+                          deletionNote:
+                            '보호 구역을 삭제하면 그 구역으로 잘린 링크는 모두 꺼집니다. 같은 곳에 구역을 다시 만들면 공유용 오프셋이 바뀝니다. 두 오프셋의 공유를 모으면 범위가 좁혀질 수 있습니다.',
+                        }
+                      : {})}
+                  />
+                </div>
+                <CourseSharePanel
+                  api={sharingApi}
+                  extrasApi={extrasApi}
                   scope={scope}
                   courseId={current.course.courseId}
-                  headRevision={current.course.headRevision}
-                  generationKind={current.revision.generation.kind}
-                  onTrim={(input) => trim.mutate(input)}
-                  trimMessage={trimMessage}
+                  onShare={() => setDisclosure('share')}
+                  onAddZone={focusPrivacyZones}
                 />
               </>
             ) : null}

@@ -13,6 +13,8 @@ import type { ObjectStorage } from '@workout/server-media/object-storage';
 import { createActivityRepository } from '@workout/server-persistence/activities';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
+import { createCoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
+import { createCourseSharingRepository } from '@workout/server-persistence/course-sharing';
 import { createDatabase, type Database } from '@workout/server-persistence/database';
 import {
   grantActivityTracks,
@@ -31,6 +33,7 @@ import {
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 
 import { createApi } from '../src/app.js';
+import { confirmedExport } from './course-disclosure-support.js';
 import { auditRouteLogs, testRelease } from './log-audit-support.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
@@ -204,6 +207,11 @@ function setup() {
       tracks: createActivityTrackRepository(database),
       storage,
     },
+    courseExtras: {
+      courses: createCourseRepository(database),
+      preferences: createCoursePreferenceRepository(database),
+    },
+    courseDisclosure: { sharing: createCourseSharingRepository(database) },
     ...logs.options(),
   });
 }
@@ -347,11 +355,17 @@ describe('turning a stored recording into a course, end to end', () => {
         expect(acrossGap.statusCode).toBe(422);
         expect(acrossGap.json().error.code).toBe('SEGMENT_SPANS_A_GAP');
 
-        const exported = await app.inject({
+        // M2-01k-o: no GPX body without a confirmation, then the confirmed one. This owner has
+        // no protected area, so the exact ends leave only after the explicit warning (D3a).
+        const unconfirmed = await app.inject({
           method: 'GET',
           url: `/bff/v1/courses/${course.course.courseId}/export.gpx`,
           headers,
         });
+        expect(unconfirmed.statusCode).toBe(409);
+        expect(unconfirmed.json().error.code).toBe('COURSE_EXPORT_NOT_CONFIRMED');
+        expect(unconfirmed.body).not.toContain('<gpx');
+        const { response: exported } = await confirmedExport(app, headers, course.course.courseId);
         expect(exported.statusCode).toBe(200);
         expect(exported.body).toContain('<rte>');
         expect(exported.body).not.toContain('<trk>');
@@ -360,7 +374,7 @@ describe('turning a stored recording into a course, end to end', () => {
           number,
         ][])
           expect(exported.body).toContain(
-            `<rtept lat="${latitude.toFixed(7)}" lon="${longitude.toFixed(7)}" />`,
+            `<rtept lat="${latitude.toFixed(5)}" lon="${longitude.toFixed(5)}" />`,
           );
 
         // An edit appends a revision; the first one is still readable byte for byte.

@@ -600,51 +600,6 @@ describe('course API boundaries', () => {
     expect(content?.lineage).toEqual(courseRevision.lineage);
   });
 
-  it('exports a course as a private GPX route, never as a recorded track', async () => {
-    const { app } = setup();
-    const response = await app.inject({
-      method: 'GET',
-      url: `/bff/v1/courses/${courseId}/export.gpx`,
-      headers: baseHeaders,
-    });
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toBe('application/gpx+xml; charset=utf-8');
-    expect(response.headers['cache-control']).toBe('private, no-store');
-    expect(response.headers['content-disposition']).toContain('attachment');
-    // The round trip through the real GPX reader is covered where the writer lives
-    // (`packages/server/courses/tests/gpx.test.ts`); what matters here is that the route
-    // hands back a route document and never a recorded track.
-    expect(response.body).toContain('<rte>');
-    expect(response.body).toContain('<rtept lat="37.5000000" lon="127.0200000" />');
-    expect(response.body).not.toContain('<trk>');
-    expect(response.body).not.toContain('<trkpt');
-    expect(response.body.match(/<wpt /g)).toHaveLength(2);
-  });
-
-  it('refuses to export a reclaimed course and says why', async () => {
-    const { app, courses } = setup();
-    vi.mocked(courses.read).mockResolvedValue({
-      status: 'unavailable',
-      course: {
-        status: 'unavailable',
-        courseId,
-        name: 'Seoul loop',
-        visibility: 'private',
-        reason: 'source_activity_deleted',
-        reclaimedAt: createdAt,
-        createdAt,
-        updatedAt: createdAt,
-      },
-    });
-    const response = await app.inject({
-      method: 'GET',
-      url: `/bff/v1/courses/${courseId}/export.gpx`,
-      headers: baseHeaders,
-    });
-    expect(response.statusCode).toBe(410);
-    expect(response.json()).toMatchObject({ error: { code: 'COURSE_UNAVAILABLE' } });
-  });
-
   it('shows the courses an activity deletion would reclaim', async () => {
     const { app, courses } = setup();
     const response = await app.inject({

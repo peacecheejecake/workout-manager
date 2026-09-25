@@ -177,6 +177,10 @@
       "types": "./src/course-cards.ts",
       "default": "./dist/course-cards.js"
     },
+    "./course-sharing": {
+      "types": "./src/course-sharing.ts",
+      "default": "./dist/course-sharing.js"
+    },
     "./geo-data": {
       "types": "./src/geo-data.ts",
       "default": "./dist/geo-data.js"

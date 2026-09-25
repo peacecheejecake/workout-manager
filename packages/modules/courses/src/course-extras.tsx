@@ -469,6 +469,11 @@ export interface CoursePrivacyPanelProps {
   generationKind: string;
   onTrim: (input: { courseId: string; expectedRevision: number; zoneSetDigest: string }) => void;
   trimMessage: string;
+  /**
+   * What deleting an area does to existing links (M2-01k-o R-7), shown beside the delete
+   * buttons. Given only when the server has link sharing on.
+   */
+  deletionNote?: string;
 }
 
 /**
@@ -486,6 +491,7 @@ export function CoursePrivacyPanel({
   generationKind,
   onTrim,
   trimMessage,
+  deletionNote,
 }: CoursePrivacyPanelProps) {
   const queries = useQueryClient();
   const [name, setName] = useState('');
@@ -599,6 +605,7 @@ export function CoursePrivacyPanel({
           ))}
         </ul>
       ) : null}
+      {deletionNote ? <p className={styles.note}>{deletionNote}</p> : null}
       <form onSubmit={submit}>
         <TextField
           label="보호 구역 이름"

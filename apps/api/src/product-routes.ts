@@ -70,6 +70,8 @@ import { registerResourceRetrievalRoutes } from './resource-retrieval-routes.js'
 import { registerRoutingRoutes, type WalkingRoutePort } from './routing-routes.js';
 import { registerCourseRoutes, type CourseServices } from './course-routes.js';
 import { registerCourseExtrasRoutes, type CourseExtrasServices } from './course-extras-routes.js';
+import { registerCourseDisclosureRoutes } from './course-disclosure-routes.js';
+import type { CourseSharingRepository } from '@workout/server-persistence/course-sharing';
 import type { ResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
@@ -116,6 +118,15 @@ export interface ProductRepositories {
   courses?: CourseServices;
   /** Import, preferences, protected areas, place search and elevation (M2-01j). */
   courseExtras?: CourseExtrasServices;
+  /**
+   * What may leave the account from a course (M2-01k-o): the privacy confirmation and the
+   * owner's GPX behind it, always; link management only with `links` (the flag, off by
+   * default). Absent: there is no GPX route at all — never one without a confirmation.
+   */
+  courseDisclosure?: {
+    readonly sharing: CourseSharingRepository;
+    readonly links?: { readonly epoch: number };
+  };
 }
 export function registerProductRoutes(
   routes: FastifyInstance,
@@ -203,4 +214,17 @@ export function registerProductRoutes(
     );
   if (repositories.courseExtras)
     registerCourseExtrasRoutes(routes, repositories.courseExtras, principal);
+  if (repositories.courses && repositories.courseExtras && repositories.courseDisclosure)
+    registerCourseDisclosureRoutes(
+      routes,
+      {
+        courses: repositories.courses.courses,
+        preferences: repositories.courseExtras.preferences,
+        sharing: repositories.courseDisclosure.sharing,
+        ...(repositories.courseDisclosure.links
+          ? { links: repositories.courseDisclosure.links }
+          : {}),
+      },
+      principal,
+    );
 }

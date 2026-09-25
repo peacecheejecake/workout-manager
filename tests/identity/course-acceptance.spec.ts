@@ -20,6 +20,7 @@ import {
   sessionMessage,
 } from '../../packages/track-parsing/tests/fit-fixture';
 import { parseCurrentAccountExport } from './account-export';
+import { confirmedGpx, exportOnScreen } from './course-disclosure-support';
 import { expectLineDrawn, mapRegion } from './map-evidence';
 
 /**
@@ -544,16 +545,23 @@ test('one account carries a recording through courses, thumbnails, exports and d
       expect(bobList.courses.map((course) => course.courseId)).not.toContain(importedId);
     });
 
-    // ── 8. GPX export: the screen's download is the same document the API serves.
+    // ── 8. GPX export: the screen's download is the same document the API serves. Both go
+    //    through the privacy confirmation (M2-01k-o); without a receipt there is no body.
+    const unconfirmed = await page.request.get(`/bff/v1/courses/${recordedId}/export.gpx`, {
+      headers,
+    });
+    expect(unconfirmed.status()).toBe(409);
+    expect(await errorCode(unconfirmed)).toBe('COURSE_EXPORT_NOT_CONFIRMED');
     const downloadPromise = page.waitForEvent('download');
-    await workbench.getByTestId('course-export').click();
+    await exportOnScreen(workbench);
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.gpx$/);
+    expect(download.suggestedFilename()).not.toMatch(/-r\d+\.gpx$/);
     const downloadPath = await download.path();
     assert.ok(downloadPath);
     const downloadedGpx = await readFile(downloadPath, 'utf8');
-    const recordedGpxResponse = await page.request.get(`/bff/v1/courses/${recordedId}/export.gpx`, {
-      headers,
+    const { response: recordedGpxResponse } = await confirmedGpx(page, headers, recordedId, {
+      prefer: 'exact',
     });
     expect(recordedGpxResponse.status()).toBe(200);
     const recordedGpx = await recordedGpxResponse.text();
@@ -561,15 +569,22 @@ test('one account carries a recording through courses, thumbnails, exports and d
     expect(recordedGpx).toContain('<rte>');
     expect(recordedGpx).not.toContain('<trk>');
     expect(recordedGpx.match(/<rtept /g)).toHaveLength(looped.revision.geometry.coordinates.length);
-    const importedGpxResponse = await page.request.get(`/bff/v1/courses/${importedId}/export.gpx`, {
+    // The trimmed head touches no protected area any more, so it leaves as it is — rounded
+    // to five decimals (R-2), and with no protected coordinate in it.
+    const { response: importedGpxResponse, preview: importedPreview } = await confirmedGpx(
+      page,
       headers,
-    });
+      importedId,
+    );
+    expect(importedPreview.outcome).toBe('no-intersection');
     expect(importedGpxResponse.status()).toBe(200);
     const importedGpx = await importedGpxResponse.text();
     expect(importedGpx.match(/<rtept /g)).toHaveLength(2);
-    expect(importedGpx).not.toContain('126.9900000');
-    expect(importedGpx).not.toContain('126.9901000');
-    expect(importedGpx).toContain('127.0050000');
+    expect(importedGpx).not.toContain('126.99000');
+    expect(importedGpx).not.toContain('126.99010');
+    expect(importedGpx).toContain('127.00500');
+    expect(importedGpx).not.toContain('<desc>');
+    expect(importedGpx).not.toContain('<time>');
 
     // ── 9. The account export, downloaded through the account screen, carries both.
     await page.goto('/account');
@@ -719,9 +734,7 @@ test('one account carries a recording through courses, thumbnails, exports and d
     expect(survivor.revision.revisionId).toBe(trimmed.revision.revisionId);
     expect(survivor.thumbnail).toEqual(importedPicture.thumbnail);
     expect(await fetchSvg(importedId)).toBe(importedSvg);
-    const survivorGpx = await page.request.get(`/bff/v1/courses/${importedId}/export.gpx`, {
-      headers,
-    });
+    const { response: survivorGpx } = await confirmedGpx(page, headers, importedId);
     expect(survivorGpx.status()).toBe(200);
     expect(await survivorGpx.text()).toBe(importedGpx);
 

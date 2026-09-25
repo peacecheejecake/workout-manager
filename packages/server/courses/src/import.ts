@@ -1,5 +1,5 @@
 import {
-  courseGpxCreator,
+  courseGpxRecognisedCreators,
   courseLimits,
   courseNameSchema,
   coursePositionSchema,
@@ -139,7 +139,7 @@ function coordinatesOf(
  * points — which is what the owner asked for by importing the file.
  */
 function adoptableWaypoints(parsed: ParsedTrackFile): readonly CourseWaypoint[] | null {
-  if (parsed.creator !== courseGpxCreator) return null;
+  if (parsed.creator === null || !courseGpxRecognisedCreators.includes(parsed.creator)) return null;
   const count = parsed.waypoints.length;
   const waypoints = parsed.waypoints.map((waypoint, index) => ({
     role:

@@ -3,7 +3,6 @@ import {
   courseCreateRequestSchema,
   courseDeleteRequestSchema,
   courseGenerationGraphBuildId,
-  courseGpxMediaType,
   courseLimits,
   courseListSchema,
   courseReadResultSchema,
@@ -30,7 +29,6 @@ import {
 } from '@workout/server-courses/candidates';
 import { mapPathSchema, trackLimits } from '@workout/contracts/tracks';
 import { courseContentDigest } from '@workout/server-courses/digest';
-import { courseGpxFileName, writeCourseGpx } from '@workout/server-courses/gpx';
 import { RoutedCourseError, routedCourseGeneration } from '@workout/server-courses/routed';
 import {
   CourseSegmentError,
@@ -577,9 +575,9 @@ function proposalOutcomeStatus(outcome: string): number {
  *
  * Every route derives its owner from the session. Nothing here can reach an Activity, a
  * source revision, an overlay or a PlanVersion: the only writes are to the course ledger,
- * and a recording is read, never modified. There is no sharing route, no ACL parameter and
- * no public URL — a course leaves this server only through its owner's authenticated GPX
- * export.
+ * and a recording is read, never modified. There is no ACL parameter and no public URL in
+ * this file. What may leave the account — the owner's confirmed GPX and, behind a
+ * default-off flag, a view-only link — is `course-disclosure-routes.ts` (M2-01k-o).
  */
 export function registerCourseRoutes(
   routes: FastifyInstance,
@@ -867,38 +865,8 @@ export function registerCourseRoutes(
       );
     });
 
-    /**
-     * Personal GPX export. A course is a planned line, so it leaves as a route with its
-     * waypoints, never as a recorded track, and the response is private and uncached.
-     */
-    courseRoutes.get('/courses/:courseId/export.gpx', async (request, reply) => {
-      input(emptyQuery, request.query);
-      const { courseId } = input(courseParamsSchema, request.params);
-      const result = courseReadResultSchema.parse(
-        await execute(() => services.courses.read(principal(request).athleteId, courseId)),
-      );
-      if (result.status !== 'available') throw new ProductRequestError(410, 'COURSE_UNAVAILABLE');
-      const document = writeCourseGpx({
-        name: result.revision.name,
-        courseId: result.revision.courseId,
-        courseRevision: result.revision.courseRevision,
-        createdAt: result.revision.createdAt,
-        coordinates: result.revision.geometry.coordinates,
-        waypoints: result.revision.waypoints,
-      });
-      const body = Buffer.from(document, 'utf8');
-      return reply
-        .header('content-type', `${courseGpxMediaType}; charset=utf-8`)
-        .header('content-length', body.byteLength)
-        .header('cache-control', 'private, no-store')
-        .header(
-          'content-disposition',
-          contentDisposition(
-            courseGpxFileName(result.revision.name, result.revision.courseRevision),
-          ),
-        )
-        .send(body);
-    });
+    // The owner's GPX export lives in `course-disclosure-routes.ts` (M2-01k-o): it is given
+    // only behind a privacy confirmation receipt.
 
     /**
      * The stored map thumbnail of this course (M2-01l).

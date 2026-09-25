@@ -260,8 +260,8 @@ describe('M2-01j account export v21', () => {
       radiusMeters: 350,
     });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(22);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    expect(artifact.schemaVersion).toBe(23);
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePreferences[0]).toMatchObject({
       course_id: courseId,
@@ -290,7 +290,7 @@ describe('M2-01j account export v21', () => {
       radiusMeters: 500,
     });
     const artifact = await operations.exportAccount(mine.athlete);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     expect(artifact.data.coursePreferences).toEqual([]);
     expect(artifact.data.coursePrivacyZones).toEqual([]);
     expect(JSON.stringify(artifact)).not.toContain('남의 집');
@@ -319,7 +319,7 @@ describe('M2-01j account export v21', () => {
       operations.exportAccount(athlete),
       courses.remove(athlete, courseId, 1),
     ]);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     const has = (rows: readonly Record<string, unknown>[]) =>
       rows.some((row) => row['course_id'] === courseId);
     const present = has(artifact.data.courses);
@@ -361,7 +361,7 @@ describe('M2-01j account export v21', () => {
       close: () => Promise.resolve(),
     };
     const artifact = await createOperationsRepository(recording).exportAccount(athlete);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     expect(artifact.data.coursePreferences).toHaveLength(1);
     expect(artifact.data.coursePrivacyZones).toHaveLength(1);
     const tables = ['course_preference', 'course_privacy_zone', 'course_revision', 'FROM course '];
@@ -447,7 +447,7 @@ describe('M2-01j account export v21', () => {
     await preferences.write(athlete, courseId, { favourite: true });
     await courses.remove(athlete, courseId, 1);
     const artifact = await operations.exportAccount(athlete);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     expect(artifact.data.coursePreferences).toEqual([]);
   });
 });
@@ -926,7 +926,7 @@ describe('M2-01r accessibility notes', () => {
     expect(left.rows[0]).toEqual({ notes: 0 });
   });
 
-  it('exports the note, and nothing of another tenant, in export v22', async () => {
+  it('exports the note, and nothing of another tenant, in export v23', async () => {
     const { athlete, courseId } = await athleteWithImportedCourse();
     const theirs = await athleteWithImportedCourse('다른 사람 코스');
     await preferences.writeAccessibilityNote(athlete, courseId, {
@@ -938,8 +938,8 @@ describe('M2-01r accessibility notes', () => {
       note: '남의 메모',
     });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(22);
-    if (artifact.schemaVersion !== 22) throw new Error('expected v22');
+    expect(artifact.schemaVersion).toBe(23);
+    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
     expect(artifact.data.courseAccessibilityNotes).toEqual([
       expect.objectContaining({ course_id: courseId, note: '계단 12개', written_at_revision: 1 }),
     ]);

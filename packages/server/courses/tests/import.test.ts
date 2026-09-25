@@ -118,9 +118,8 @@ describe('course import from a parsed file', () => {
   it('adopts the waypoints of a document this product wrote, which is what round-trips', async () => {
     const document = writeCourseGpx({
       name: '한강 코스',
-      courseId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-      courseRevision: 2,
-      createdAt: '2026-09-19T01:00:00.000Z',
+      includeNames: true,
+      coordinateDigits: 7,
       coordinates: [
         [127.02, 37.5],
         [127.0201, 37.5001],
@@ -175,6 +174,36 @@ describe('course import from a parsed file', () => {
     if (content.generation.kind !== 'imported-file') throw new Error('unreachable');
     expect(content.generation.importedWaypointCount).toBe(3);
     expect(content.generation.fileCreator).toBe(courseGpxCreator);
+  });
+
+  // An export made before M2-01k-o said `workout-manager/course-v1` (M2-01j). Export is
+  // neutral now; the importer still recognises the old value so those files keep their points.
+  it('still adopts the waypoints of a file this product exported under its old creator', async () => {
+    const body =
+      '<wpt lat="37.5" lon="127.02"><name>출발</name></wpt>' +
+      '<wpt lat="37.50015" lon="127.02015"><name>중간</name></wpt>' +
+      '<wpt lat="37.5002" lon="127.0202"></wpt>' +
+      '<rte><name>옛 코스</name><rtept lat="37.5" lon="127.02" /><rtept lat="37.5001" lon="127.0201" />' +
+      '<rtept lat="37.5002" lon="127.0202" /></rte>';
+    for (const [creator, adopted] of [
+      ['workout-manager/course-v1', 3],
+      ['workout-manager/course-v2', 0],
+      ['some-other-app', 0],
+    ] as const) {
+      const content = courseFromImportedFile({
+        parsed: await parse(gpx(body, creator)),
+        selection: null,
+        name: null,
+      });
+      if (content.generation.kind !== 'imported-file') throw new Error('unreachable');
+      expect(content.generation.importedWaypointCount, creator).toBe(adopted);
+      if (adopted > 0)
+        expect(content.waypoints.map((waypoint) => [waypoint.role, waypoint.name])).toEqual([
+          ['start', '출발'],
+          ['via', '중간'],
+          ['finish', null],
+        ]);
+    }
   });
 
   it('needs a name when the file has none of its own', async () => {

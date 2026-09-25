@@ -46,6 +46,7 @@
     "./activity-tracks": "./src/activity-tracks.ts",
     "./courses": "./src/courses.ts",
     "./course-preferences": "./src/course-preferences.ts",
+    "./course-sharing": "./src/course-sharing.ts",
     "./operations": "./src/operations.ts",
     "./garmin": "./src/garmin.ts",
     "./garmin-unofficial": "./src/garmin-unofficial.ts",

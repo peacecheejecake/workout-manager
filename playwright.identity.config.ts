@@ -42,6 +42,16 @@ process.env.IDENTITY_E2E_RUN_ID ??= randomUUID();
  * See README "Identity E2E diagnostics".
  */
 const diagnostics = process.env.IDENTITY_E2E_DIAGNOSTICS === '1';
+/**
+ * Opt-in shell log capture (M2-01k-o T11): with `IDENTITY_E2E_SHELL_LOGS=pipe`, the two
+ * shells' own stdout and stderr are printed into the run's output (prefixed `[WebServer]`),
+ * so a run can be audited for what the shells wrote while a link was read through them —
+ * `scripts/audit-shell-log.mts`. Off by default: normal runs keep the shells' stdout quiet.
+ */
+const shellLogs =
+  process.env.IDENTITY_E2E_SHELL_LOGS === 'pipe'
+    ? ({ stdout: 'pipe', stderr: 'pipe' } as const)
+    : {};
 if (diagnostics) {
   process.env.IDENTITY_E2E_DIAGNOSTICS_DIR ??= join(
     import.meta.dirname,
@@ -88,6 +98,7 @@ export default defineConfig({
       url: 'http://127.0.0.1:3100',
       reuseExistingServer: false,
       env: basemapEnv,
+      ...shellLogs,
     },
     {
       command: 'API_ORIGIN=http://127.0.0.1:4300 pnpm --filter @workout/mobile-web preview',
@@ -96,6 +107,7 @@ export default defineConfig({
       // This shell has no server of its own; during preview the background assets come
       // from the origin that already serves them.
       env: Object.keys(basemapEnv).length > 0 ? { BASEMAP_ORIGIN: 'http://127.0.0.1:3100' } : {},
+      ...shellLogs,
     },
   ],
 });

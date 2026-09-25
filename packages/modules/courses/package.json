@@ -25,6 +25,9 @@
     "./course-thumbnail": "./src/course-thumbnail.tsx",
     "./course-extras-api": "./src/course-extras-api.ts",
     "./course-map-leaf": "./src/course-map-leaf.tsx",
-    "./course-new": "./src/course-new.tsx"
+    "./course-new": "./src/course-new.tsx",
+    "./course-disclosure": "./src/course-disclosure.tsx",
+    "./course-sharing-api": "./src/course-sharing-api.ts",
+    "./course-shared-view": "./src/course-shared-view.tsx"
   }
 }

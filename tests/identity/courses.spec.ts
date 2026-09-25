@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { clearProtectedAreas, confirmedGpx, exportOnScreen } from './course-disclosure-support';
 import {
   activityImportResultSchema,
   importActivitySchema,
@@ -119,6 +120,9 @@ test('cuts a course from a stored recording, exports it and reclaims it with the
   page,
 }) => {
   const headers = await login(page);
+  // M2-01k-o: a protected area another spec left over this course would make its export a
+  // refused trim; this spec is about cutting, exporting and reclaiming, so it starts clean.
+  await clearProtectedAreas(page, headers);
   const activity = await storeTrack(page, headers);
 
   await page.goto(routeAddress(activity.activityId));
@@ -153,20 +157,23 @@ test('cuts a course from a stored recording, exports it and reclaims it with the
   await expect(workbench).toContainText('공개 공유 기능은 없으며');
   await workbench.getByRole('button', { name: '경복궁 한 바퀴' }).click();
   await expect(workbench.getByTestId('course-revision')).toHaveText('1');
-  const courseUrl = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(courseUrl);
-  const courseId = courseUrl.split('/')[4];
+  const courseId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
   assert.ok(courseId);
 
   // The download the screen actually performs: a plain navigation cannot carry the
   // session header this API requires, so the click does the authenticated read itself.
+  // M2-01k-o: through the privacy confirmation, never around it.
   const downloadPromise = page.waitForEvent('download');
-  await workbench.getByTestId('course-export').click();
+  await exportOnScreen(workbench);
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.gpx$/);
+  expect(download.suggestedFilename()).not.toMatch(/-r\d+\.gpx$/);
 
   // The owner's authenticated GPX export is a route with waypoints, never a track.
-  const exported = await page.request.get(courseUrl, { headers });
+  expect(
+    (await page.request.get(`/bff/v1/courses/${courseId}/export.gpx`, { headers })).status(),
+  ).toBe(409);
+  const { response: exported } = await confirmedGpx(page, headers, courseId, { prefer: 'exact' });
   expect(exported.status()).toBe(200);
   expect(exported.headers()['content-type']).toBe('application/gpx+xml; charset=utf-8');
   expect(exported.headers()['cache-control']).toBe('private, no-store');
@@ -567,9 +574,9 @@ test('edits waypoints, reviews the computed route and only then saves it', async
   await expect(workbench.getByTestId('course-revision')).toHaveText('2');
   await expect(workbench.getByTestId('course-generation')).toContainText('경유지 경로 계산');
   await expect(workbench.getByTestId('course-generation')).toContainText('0123456789abcdef');
-  const courseUrl = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(courseUrl);
-  const stored = await page.request.get(courseUrl.replace('/export.gpx', ''), { headers });
+  const storedId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
+  assert.ok(storedId);
+  const stored = await page.request.get(`/bff/v1/courses/${storedId}`, { headers });
   expect(stored.status()).toBe(200);
   const body = (await stored.json()) as {
     revision: {
@@ -756,9 +763,7 @@ test('keeps an unsaved draft and asks before replacing it with a change made els
   await expect(editor.getByRole('list', { name: '경유점 목록' }).getByRole('listitem')).toHaveCount(
     3,
   );
-  const courseUrl = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(courseUrl);
-  const courseId = courseUrl.split('/')[4];
+  const courseId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
   assert.ok(courseId);
 
   // Somewhere else entirely — another tab of the same account — the course is rerouted to

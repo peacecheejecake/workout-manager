@@ -61,6 +61,24 @@ const ActivitiesPage = lazy(() =>
 const CoursePage = lazy(() =>
   import('./course-page').then((module) => ({ default: module.CoursePage })),
 );
+const SharedCoursePage = lazy(() =>
+  import('./shared-course-page').then((module) => ({ default: module.SharedCoursePage })),
+);
+// M2-01k-o: the recipient's screen of a view-only link. Before anything renders, the page
+// stops sending a referrer and asks not to be indexed (§3 B, R7); this shell has no server
+// to send those as headers. The token stays in the fragment until "코스 보기".
+const sharedCourseScreen =
+  location.pathname === '/shared/course' || location.pathname === '/shared/course/';
+if (sharedCourseScreen)
+  for (const [name, content] of [
+    ['referrer', 'no-referrer'],
+    ['robots', 'noindex, nofollow, noarchive'],
+  ] as const) {
+    const meta = document.createElement('meta');
+    meta.name = name;
+    meta.content = content;
+    document.head.prepend(meta);
+  }
 // S09's spec address `/activities/:id?tab=<tab>` (M2-01k-k), replaced in place by the activity
 // screen's own address before anything renders, as the Next shell redirects it. The id is not
 // checked here: the screen answers for a malformed, missing or someone else's activity alike.
@@ -102,7 +120,11 @@ if (!root) throw new Error('Root element required');
 createRoot(root).render(
   <StrictMode>
     <main className="wm-page mobile-shell">
-      {integratedProposalCandidateId?.success ? (
+      {sharedCourseScreen ? (
+        <Suspense fallback={<p role="status">공유된 코스 화면 준비 중</p>}>
+          <SharedCoursePage />
+        </Suspense>
+      ) : integratedProposalCandidateId?.success ? (
         <Suspense fallback={<p role="status">통합 후보 검토 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
             <a href="/coach">코치</a> · <a href="/planner">통합 계획</a> ·{' '}

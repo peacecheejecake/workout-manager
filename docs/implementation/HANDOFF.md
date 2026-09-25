@@ -17,11 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-n](progress/M2-01k-n.md)를 완료했다. S09 경로 탭에서 차트를 끌어 시간 범위를 고르면 지도 강조(렌더러가 그린 표본)와 랩 표 행이 같은
-범위로 따라가고, GPS 끊김을 가로지른 범위는 두 조각으로 그린다. 터치는 누르고 기다린 뒤에만 끌기가 시작되어 페이지 스크롤을 뺏지 않는다.
-S09-range-link·V2-F13·V2-A18을 passed로 올렸다. 경로 탭의 키보드 전용 범위 입력과 차트 zoom 공유(R-S09)는 남았다.
+[M2-01k-o](progress/M2-01k-o.md)를 완료했다(사용자 승인 요구 2026-09-25). 코스 GPX 내보내기와 공유 링크 전에 privacy trim 확인 화면을
+거치고, 서버는 revision·보호 구역에 묶인 1시간 receipt로 둘 다 막는다. 보호 구역 안 좌표는 GPX와 링크 어디에도 나가지 않고, 소유자는
+경고 뒤 자기 GPX에만 정확한 끝을 실을 수 있다. 보기 전용 unlisted 링크는 `COURSE_SHARING` flag 뒤에 있고 **기본 꺼짐**이다. 계정 export는
+v23(공유 사실·구역 δ·코스 삭제 원장). S14-privacy-share를 passed로 올렸다(passed 84 → 85). 링크를 켜기 전에 후속 M2-01as(진행 방향·
+역투영 재식별 공격 완화, 사용자 결정)와 front proxy·복원 epoch 조건이 필요하다.
 
-직전 완료: [M2-01ak](progress/M2-01ak.md)(전국 routing graph).
+직전 완료: [M2-01k-n](progress/M2-01k-n.md)(S09 차트 범위·랩·지도 연결).
 
 ## 운영 메모
 
@@ -52,11 +54,20 @@ S09-range-link·V2-F13·V2-A18을 passed로 올렸다. 경로 탭의 키보드 �
 - 복원 절차에 코스 삭제 원장 재적용이 더해졌다(M2-01ao, runbook "코스 삭제 원장 재적용"). 원장은 DB 밖으로 캡처하고, data와
   post-data 복원이 끝난 뒤 runtime 접근 전에 RLS를 우회하는 복원 admin 역할로, 계정 원장 다음에 재적용한다.
 
+- 코스 공유 링크(M2-01k-o)는 `COURSE_SHARING` 기본 꺼짐이다. 켜려면 `COURSE_SHARE_EPOCH`, 32 byte 이상 `COURSE_SHARE_RATE_KEY`,
+  `COURSE_SHARE_TRUSTED_PROXIES`가 모두 필요하고(없으면 API가 시작을 거절), web shell 앞에 `X-Forwarded-For`를 연결 주소로 설정하는
+  front proxy가 있어야 한다(Next rewrite는 클라이언트 값을 그대로 넘긴다). 복원 뒤에는 epoch를 올린다(runbook). 그리고 M2-01as가 끝나
+  독립 재식별 검토가 통과하기 전에는 켜지 않는다. rate key는 base64를 풀어 32 byte 이상이다.
+- migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
+  쓴다). runbook에 이 단계는 아직 없다(후속).
+- `tenant_object_purge`(044–046)는 FORCE RLS에 policy가 없어, migration 소유 role이 superuser·BYPASSRLS가 아니면 purge lease가 아무것도
+  보지 못하고, 말소 체인의 INSERT도 거부되어 계정 말소가 실패할 수 있다(M2-01at, SQL 판독 기준). M2-01at 전까지는 소유 role이 superuser나 BYPASSRLS여야 purge가 돈다.
+
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
-M2-01k-o·M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01as, M2-01at. 이 중
+M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
 

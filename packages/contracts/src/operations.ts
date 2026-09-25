@@ -242,6 +242,33 @@ const accountExportV22Schema = accountExportV21Schema.extend({
     courseAccessibilityNotes: rows,
   }),
 });
+/**
+ * v23 adds what may leave the account from a course (M2-01k-o).
+ *
+ * Each protected area's **secret share offset** is included, for the same reason v20
+ * includes the centre: it is an input nothing can rebuild — it was drawn once — and a
+ * restore that drew a new one would move every share circle, which lets two links'
+ * offsets be combined (R-7). The export is the sensitive artifact of this product and is
+ * handled as one.
+ *
+ * Link **facts** are included and nothing that makes a link work: no token, no token
+ * digest and no snapshot. An export can therefore never bring a link back, and nothing in
+ * this product restores one from an export (B-5, T13). Confirmation receipts are not
+ * exported: they are an hour-long permission, not the owner's data.
+ *
+ * The owner's **course-deletion ledger** (M2-01ao) is included the way activity
+ * suppressions are: course id and when, nothing else. It is what keeps a deleted course
+ * deleted, and nothing can rebuild it.
+ */
+const accountExportV23Schema = accountExportV22Schema.extend({
+  schemaVersion: z.literal(23),
+  data: accountExportV22Schema.shape.data.extend({
+    coursePrivacyZoneShareOffsets: rows,
+    courseShares: rows,
+    // M2-01ao's course-deletion ledger: course id and when, like the activity suppressions.
+    courseDeletions: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -265,6 +292,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV20Schema,
   accountExportV21Schema,
   accountExportV22Schema,
+  accountExportV23Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

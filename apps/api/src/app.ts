@@ -19,6 +19,12 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { TenantErasedError } from '@workout/server-persistence/database';
+import type { SharedCourseReader } from '@workout/server-persistence/course-sharing';
+import {
+  courseSharingOff,
+  registerSharedCourseRead,
+  type CourseSharingConfiguration,
+} from './course-sharing.js';
 import {
   consentKindSchema,
   consentSchema,
@@ -49,6 +55,13 @@ export interface ApiOptions extends ProductRepositories {
    * traced to the code that wrote it. Defaults to {@link unreleasedVersion}.
    */
   version?: string;
+  /**
+   * The view-only link flag and its settings (M2-01k-o B). Absent is off: the one
+   * unauthenticated read then answers every request with the same 404.
+   */
+  courseSharing?: CourseSharingConfiguration;
+  /** The tenantless reader behind that read. Used only while the flag is on. */
+  sharedCourseReader?: SharedCourseReader;
   close?: () => Promise<void>;
 }
 
@@ -217,6 +230,13 @@ export function createApi(options: ApiOptions): FastifyInstance {
   });
   app.get('/health', async () => ({ status: 'ok' }));
   registerGarminCallback(app, options.garmin, options.auth);
+  // M2-01k-o B: the one unauthenticated data read, outside the authenticated plugin below. It
+  // is always registered so that "off" and "no such link" are the same 404.
+  registerSharedCourseRead(
+    app,
+    options.courseSharing ?? courseSharingOff,
+    options.sharedCourseReader,
+  );
   if (options.identity !== undefined) {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {

@@ -887,3 +887,108 @@ it('parses the currently integrated export version without dropping access facts
   expect(previous.schemaVersion).toBe(16);
   expect(previous.data).not.toHaveProperty('resourcePassages');
 });
+
+// M2-01k-o, export v23: each protected area's secret share offset and the facts of every
+// link. Nothing that makes a link work (token, digest, snapshot) is a collection at all.
+it('reads v23 with link facts and share offsets, and keeps v22 strict against them', () => {
+  const v22 = accountExportSchema.parse({
+    schemaVersion: 22,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: Object.fromEntries(
+      [
+        ...Object.keys(legacy.data),
+        ...[
+          'sessionCompletions',
+          'sessionCompletionRevisions',
+          'planScenarios',
+          'planScenarioRevisions',
+          'planScenarioApplications',
+          'coachingThreads',
+          'coachingMessages',
+          'evidenceSnapshots',
+          'coachingConstraints',
+          'coachingConstraintHeads',
+          'coachingRuns',
+          'coachingAnalysisOutputs',
+          'coachingDecisions',
+          'coachingProposals',
+          'coachingCandidates',
+          'nutritionPlanVersions',
+          'nutritionPlanHeads',
+          'nutritionPlanHistory',
+          'foodDefinitionVersions',
+          'foodDefinitionHeads',
+          'intakeEntries',
+          'intakeEntryRevisions',
+          'supplementaryExerciseVersions',
+          'supplementaryExerciseHeads',
+          'supplementaryRoutineVersions',
+          'supplementaryRoutineHeads',
+          'supplementaryRoutineTargetRefs',
+          'supplementarySessionLinks',
+          'supplementarySessionTargetRefs',
+          'supplementaryExecutions',
+          'supplementarySetLogs',
+          'supplementarySetLogRevisions',
+          'supplementaryRestTimers',
+          'resources',
+          'resourceVersions',
+          'resourceUrlIngestions',
+          'resourceUrlAttempts',
+          'resourceUrlFetchHops',
+          'resourceUrlArtifacts',
+          'resourceUrlProvenance',
+          'resourceUrlLocators',
+          'resourceShares',
+          'resourceAccessAudit',
+          'galleryMediaItems',
+          'galleryMediaDerivatives',
+          'resourcePassages',
+          'resourceGroundings',
+          'resourceGroundingExcerpts',
+          'resourceCitations',
+          'activityTracks',
+          'activityTrackRevisions',
+          'courses',
+          'courseRevisions',
+          'coursePreferences',
+          'coursePrivacyZones',
+          'courseThumbnails',
+          'courseAccessibilityNotes',
+        ],
+      ].map((key) => [key, (legacy.data as Record<string, unknown>)[key] ?? []]),
+    ),
+  });
+  const current = accountExportSchema.parse({
+    ...v22,
+    schemaVersion: 23,
+    data: {
+      ...v22.data,
+      coursePrivacyZoneShareOffsets: [
+        { zone_id: '11111111-1111-4111-8111-111111111111', offset_x: 0.25, offset_y: -0.5 },
+      ],
+      courseShares: [{ share_id: '22222222-2222-4222-8222-222222222222', state: 'revoked' }],
+      courseDeletions: [
+        { course_id: '33333333-3333-4333-8333-333333333333', deleted_at: '2026-09-25T00:00:00Z' },
+      ],
+    },
+  });
+  if (current.schemaVersion !== 23) throw new Error('Expected v23');
+  expect(current.data.courseShares).toHaveLength(1);
+  expect(current.data.coursePrivacyZoneShareOffsets).toHaveLength(1);
+  expect(current.data.courseDeletions).toHaveLength(1);
+  for (const missing of [
+    'coursePrivacyZoneShareOffsets',
+    'courseShares',
+    'courseDeletions',
+  ] as const)
+    expect(
+      accountExportSchema.safeParse({ ...current, data: { ...current.data, [missing]: undefined } })
+        .success,
+    ).toBe(false);
+  // v22 stays strict: an artifact claiming v22 with a v23 collection is refused, and a v22
+  // artifact is read unchanged, never given a manufactured link collection.
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 22 }).success).toBe(false);
+  expect(accountExportSchema.parse(v22).data).not.toHaveProperty('courseShares');
+});

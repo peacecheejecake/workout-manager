@@ -136,6 +136,37 @@ course id는 모두 **예외로 재적용 전체를 rollback**한다. 조용히 
 필요하며 drill은 이 경우를 돌리지 않는다. 자세한 근거는
 [M2-01ao 기록](progress/M2-01ao.md).
 
+### 코스 링크 공유: 복원 뒤 share epoch 올리기 (M2-01k-o)
+
+보기 전용 코스 링크(M2-01k-o B)는 **기본 꺼짐**이다(`COURSE_SHARING` 미설정·`off`). 꺼진 배포에는 이 절차가 필요 없다.
+켜진 배포라면, 링크는 만들 때의 share epoch(`course_share.epoch`)를 저장하고 API는 설정값 `COURSE_SHARE_EPOCH`와 같은
+epoch의 링크만 보여 준다. 복원은 백업에 있던 모든 링크 — 백업 뒤 철회·만료·코스 삭제·계정 말소된 것까지 — 를 되살리므로,
+**모든 복원 경로(논리 archive, PITR, 호스팅 snapshot)에서** 다음을 지킨다.
+
+1. 복원 트랜잭션(말소·활동·코스 삭제 원장 재적용)이 끝난 뒤, **runtime 접근을 열기 전에** `COURSE_SHARE_EPOCH`를 복원 전
+   값보다 크게 올린다(보통 +1). 복원 DB에서 `SELECT max(epoch) FROM course_share`보다도 커야 한다.
+2. 새 값으로 API를 시작한다. 복원 전 링크는 모두 404가 되고(fail-closed — 복원 뒤 링크 원장을 재생하지 않는다, D7), 소유자
+   화면에는 "복원으로 무효화됨"으로 보인다. 필요한 링크는 소유자가 새 확인으로 다시 만든다.
+3. 값을 **되돌리지 않는다.** 설정값보다 큰 epoch의 링크가 DB에 하나라도 있으면(설정이 뒤로 간 경우) 읽기는 어떤 링크도
+   보여 주지 않는다.
+
+drill은 이 설정을 모델링해 확인한다(`restore_raises_share_epoch_before_runtime_access` 외). 실제 배포 설정 변경은 실행하지
+않았다.
+
+**켜기 전 조건(링크 읽기 제한, B-4).** `COURSE_SHARING=on`은 `COURSE_SHARE_EPOCH`, 32 bytes 이상의 `COURSE_SHARE_RATE_KEY`,
+그리고 **`COURSE_SHARE_TRUSTED_PROXIES`**가 모두 있어야 시작한다(없으면 시작 거부). 셸이 API로 가는 길은 항상 proxy(web shell의
+`/bff` rewrite 등)라, 신뢰 proxy가 없으면 모든 받는 사람이 그 proxy 주소 하나로 계수되어 한 사람의 실패가 모두를 막는다.
+M2-01k-o에서 실측한 사실(Next 16.3.5 `next start`의 `/bff` rewrite, API 자리에 header echo 서버):
+
+- rewrite는 `X-Forwarded-For`를 **붙이지도 새로 쓰지도 않는다.** 클라이언트가 보내지 않으면 API는 header 없이 받고, 보내면
+  클라이언트가 쓴 값(`203.0.113.9`, `203.0.113.9, 198.51.100.7`)을 **그대로** 받는다([M2-01k-o 기록](progress/M2-01k-o.md) §8).
+- 따라서 web shell(Next) 주소만 신뢰 proxy로 두면 **누구나 `X-Forwarded-For`로 다른 사람인 척**해 자기 한도를 피할 수 있다.
+
+그러므로 켜기 전에 web shell **앞에** 연결한 주소로 `X-Forwarded-For`를 설정(또는 맨 뒤에 덧붙이기)하는 front proxy를 두고,
+web shell이 그 proxy를 거치지 않고는 닿을 수 없게 하며, `COURSE_SHARE_TRUSTED_PROXIES`에는 API가 보는 접속 주소(web shell·
+mobile shell의 서버 주소)를 적는다. API는 header를 오른쪽부터 읽어 신뢰 proxy가 아닌 첫 주소를 클라이언트로 본다. 이 구성이
+없는 배포에서는 켜지 않는다. 링크 공유를 켜는 것은 재식별 검토의 R1 후속 완화 뒤의 운영 결정이다.
+
 ## 체크인 저장 이후의 내보내기·복구
 
 M1-04a에서 export artifact `schemaVersion: 2`를 도입했다. 기존 v1 다운로드 파일은 변경하지 않으며

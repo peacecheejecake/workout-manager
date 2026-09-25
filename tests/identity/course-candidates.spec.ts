@@ -184,9 +184,9 @@ test('generates target-distance candidates, saves nothing, and only then picks o
   await expect(workbench.getByTestId('course-generation')).toContainText('목표 거리 후보');
 
   // The stored revision records the search that produced it and keeps the lineage.
-  const courseUrl = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(courseUrl);
-  const stored = await page.request.get(courseUrl.replace('/export.gpx', ''), { headers });
+  const storedId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
+  assert.ok(storedId);
+  const stored = await page.request.get(`/bff/v1/courses/${storedId}`, { headers });
   expect(stored.status()).toBe(200);
   const body = (await stored.json()) as {
     revision: {

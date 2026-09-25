@@ -72,8 +72,23 @@ export function privacyZoneSetDigest(zones: readonly CoursePrivacyZone[]): strin
   return createHash('sha256').update(JSON.stringify(material)).digest('hex');
 }
 
-function insideAnyZone(position: CoursePosition, zones: readonly CoursePrivacyZone[]): boolean {
-  return zones.some((zone) => greatCircleMeters(zone.center, position) <= zone.radiusMeters);
+/**
+ * A circle a disclosed line must stay out of (M2-01k-o). A protected area is one — its own
+ * centre and radius — and so is the wider, offset circle a shared link is trimmed against.
+ * The trim below is written against this shape so the two can never be cut by different
+ * rules.
+ */
+export interface ProtectedCircle {
+  readonly center: CoursePosition;
+  readonly radiusMeters: number;
+}
+
+/** Whether a position lies inside (or on the edge of) any of the circles. */
+export function insideAnyCircle(
+  position: CoursePosition,
+  circles: readonly ProtectedCircle[],
+): boolean {
+  return circles.some((zone) => greatCircleMeters(zone.center, position) <= zone.radiusMeters);
 }
 
 /**
@@ -83,28 +98,110 @@ function insideAnyZone(position: CoursePosition, zones: readonly CoursePrivacyZo
  * the case a per-vertex test cannot see. Because the drawn course is that line, a segment
  * that crosses an area means the trimmed course still describes it.
  */
-function segmentEntersAnyZone(
+function segmentEntersAnyCircle(
   from: CoursePosition,
   to: CoursePosition,
-  zones: readonly CoursePrivacyZone[],
+  circles: readonly ProtectedCircle[],
 ): boolean {
-  return zones.some(
+  return circles.some(
     (zone) => segmentDistanceToPointMeters(from, to, zone.center) <= zone.radiusMeters,
   );
 }
 
 /** Whether any drawn segment of a line enters a protected area. */
-function lineEntersAnyZone(
+export function lineEntersAnyCircle(
   coordinates: readonly CoursePosition[],
-  zones: readonly CoursePrivacyZone[],
+  circles: readonly ProtectedCircle[],
 ): boolean {
   for (let index = 1; index < coordinates.length; index += 1) {
     const from = coordinates[index - 1];
     const to = coordinates[index];
     if (from === undefined || to === undefined) continue;
-    if (segmentEntersAnyZone(from, to, zones)) return true;
+    if (segmentEntersAnyCircle(from, to, circles)) return true;
   }
   return false;
+}
+
+/** The line and waypoints left after a start/finish trim, and what was removed. */
+export interface TrimmedLine {
+  readonly coordinates: readonly CoursePosition[];
+  readonly waypoints: readonly CourseWaypoint[];
+  readonly removedVertexCount: number;
+  readonly removedLeadingVertexCount: number;
+  readonly removedTrailingVertexCount: number;
+  readonly removedWaypointCount: number;
+}
+
+/**
+ * The trim itself, against any set of circles.
+ *
+ * It refuses by name exactly as the privacy trim always has — nothing to remove, everything
+ * removed, a re-entry in the middle, or a kept line that still crosses a circle — and it
+ * only ever cuts the two ends.
+ */
+export function trimLineAgainstCircles(
+  sourceCoordinates: readonly CoursePosition[],
+  sourceWaypoints: readonly CourseWaypoint[],
+  circles: readonly ProtectedCircle[],
+): TrimmedLine {
+  if (circles.length === 0) throw new CourseTrimError('COURSE_TRIM_NO_PROTECTED_AREA');
+  const inside = sourceCoordinates.map((position) => insideAnyCircle(position, circles));
+  const removedVertexCount = inside.filter(Boolean).length;
+  // "Nothing to remove" is a statement about the drawn line, not about its vertices: a
+  // course whose vertices all sit outside an area can still be drawn straight through it,
+  // and saying "this course never enters a protected area" about such a line would be
+  // false. That case falls through to `COURSE_TRIM_LINE_CROSSES_AREA` below instead.
+  if (removedVertexCount === 0 && !lineEntersAnyCircle(sourceCoordinates, circles))
+    throw new CourseTrimError('COURSE_TRIM_CHANGES_NOTHING');
+  if (removedVertexCount === inside.length)
+    throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
+  const firstKept = inside.indexOf(false);
+  const lastKept = inside.lastIndexOf(false);
+  // Every removal between the first and last kept vertex is a re-entry: the owner's route
+  // goes back into a protected area in the middle. Dropping those vertices would leave the
+  // line jumping across the area in a straight stretch, so this is a refusal, by name.
+  for (let index = firstKept; index <= lastKept; index += 1)
+    if (inside[index]) throw new CourseTrimError('COURSE_TRIM_SPLITS_THE_LINE');
+  const coordinates = sourceCoordinates.slice(firstKept, lastKept + 1);
+  if (coordinates.length < 2) throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
+  // The kept vertices are outside every area; the line between them need not be. A trim
+  // whose result would still cross an area is refused rather than returned as a success —
+  // producing it would put the very coordinates the owner is protecting into the response,
+  // the GPX and the thumbnail of that course.
+  if (lineEntersAnyCircle(coordinates, circles))
+    throw new CourseTrimError('COURSE_TRIM_LINE_CROSSES_AREA');
+  // A waypoint inside a protected area goes, name and all: the name an owner gave the
+  // waypoint at their front door is as revealing as the coordinate.
+  const keptWaypoints = sourceWaypoints.filter(
+    (waypoint) => waypoint.role === 'via' && !insideAnyCircle(waypoint.position, circles),
+  );
+  const start = coordinates[0];
+  const finish = coordinates[coordinates.length - 1];
+  if (start === undefined || finish === undefined)
+    throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
+  const waypoints = courseWaypointListSchema.parse([
+    // The new ends are the ends of the trimmed line. They carry no name and no recorded
+    // sample: they are not the waypoints the owner placed, and saying otherwise would
+    // attach an observation ordinal to a position nothing observed as a waypoint.
+    { role: 'start', position: start, name: null, sourceSampleId: null, locked: false },
+    ...keptWaypoints.slice(0, courseLimits.waypoints - 2).map((waypoint) => ({
+      ...waypoint,
+      role: 'via' as const,
+    })),
+    { role: 'finish', position: finish, name: null, sourceSampleId: null, locked: false },
+  ]);
+  return {
+    coordinates,
+    waypoints,
+    removedVertexCount,
+    removedLeadingVertexCount: firstKept,
+    removedTrailingVertexCount: inside.length - 1 - lastKept,
+    // Waypoints that fell inside a protected area. The two ends are always replaced by the
+    // ends of the trimmed line, which is a different fact and not counted here.
+    removedWaypointCount: sourceWaypoints.filter((waypoint) =>
+      insideAnyCircle(waypoint.position, circles),
+    ).length,
+  };
 }
 
 export interface TrimmedCourseContent {
@@ -129,52 +226,7 @@ export interface TrimCourseInput {
 }
 
 export function trimCourseForPrivacy(input: TrimCourseInput): TrimmedCourseContent {
-  if (input.zones.length === 0) throw new CourseTrimError('COURSE_TRIM_NO_PROTECTED_AREA');
-  const inside = input.coordinates.map((position) => insideAnyZone(position, input.zones));
-  const removedVertexCount = inside.filter(Boolean).length;
-  // "Nothing to remove" is a statement about the drawn line, not about its vertices: a
-  // course whose vertices all sit outside an area can still be drawn straight through it,
-  // and saying "this course never enters a protected area" about such a line would be
-  // false. That case falls through to `COURSE_TRIM_LINE_CROSSES_AREA` below instead.
-  if (removedVertexCount === 0 && !lineEntersAnyZone(input.coordinates, input.zones))
-    throw new CourseTrimError('COURSE_TRIM_CHANGES_NOTHING');
-  if (removedVertexCount === inside.length)
-    throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
-  const firstKept = inside.indexOf(false);
-  const lastKept = inside.lastIndexOf(false);
-  // Every removal between the first and last kept vertex is a re-entry: the owner's route
-  // goes back into a protected area in the middle. Dropping those vertices would leave the
-  // line jumping across the area in a straight stretch, so this is a refusal, by name.
-  for (let index = firstKept; index <= lastKept; index += 1)
-    if (inside[index]) throw new CourseTrimError('COURSE_TRIM_SPLITS_THE_LINE');
-  const coordinates = input.coordinates.slice(firstKept, lastKept + 1);
-  if (coordinates.length < 2) throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
-  // The kept vertices are outside every area; the line between them need not be. A trim
-  // whose result would still cross an area is refused rather than returned as a success —
-  // producing it would put the very coordinates the owner is protecting into the response,
-  // the GPX and the thumbnail of that course.
-  if (lineEntersAnyZone(coordinates, input.zones))
-    throw new CourseTrimError('COURSE_TRIM_LINE_CROSSES_AREA');
-  // A waypoint inside a protected area goes, name and all: the name an owner gave the
-  // waypoint at their front door is as revealing as the coordinate.
-  const keptWaypoints = input.waypoints.filter(
-    (waypoint) => waypoint.role === 'via' && !insideAnyZone(waypoint.position, input.zones),
-  );
-  const start = coordinates[0];
-  const finish = coordinates[coordinates.length - 1];
-  if (start === undefined || finish === undefined)
-    throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
-  const waypoints = courseWaypointListSchema.parse([
-    // The new ends are the ends of the trimmed line. They carry no name and no recorded
-    // sample: they are not the waypoints the owner placed, and saying otherwise would
-    // attach an observation ordinal to a position nothing observed as a waypoint.
-    { role: 'start', position: start, name: null, sourceSampleId: null, locked: false },
-    ...keptWaypoints.slice(0, courseLimits.waypoints - 2).map((waypoint) => ({
-      ...waypoint,
-      role: 'via' as const,
-    })),
-    { role: 'finish', position: finish, name: null, sourceSampleId: null, locked: false },
-  ]);
+  const trimmed = trimLineAgainstCircles(input.coordinates, input.waypoints, input.zones);
   const generation: CourseGeneration = {
     kind: 'privacy-trimmed',
     sourceRevision: input.sourceRevision,
@@ -183,20 +235,16 @@ export function trimCourseForPrivacy(input: TrimCourseInput): TrimmedCourseConte
     policyVersion: PRIVACY_TRIM_POLICY_VERSION,
     zoneSetDigest: privacyZoneSetDigest(input.zones),
     appliedZoneCount: input.zones.length,
-    removedVertexCount,
-    removedLeadingVertexCount: firstKept,
-    removedTrailingVertexCount: inside.length - 1 - lastKept,
-    // Waypoints that fell inside a protected area. The two ends are always replaced by the
-    // ends of the trimmed line, which is a different fact and not counted here.
-    removedWaypointCount: input.waypoints.filter((waypoint) =>
-      insideAnyZone(waypoint.position, input.zones),
-    ).length,
-    vertexCount: coordinates.length,
+    removedVertexCount: trimmed.removedVertexCount,
+    removedLeadingVertexCount: trimmed.removedLeadingVertexCount,
+    removedTrailingVertexCount: trimmed.removedTrailingVertexCount,
+    removedWaypointCount: trimmed.removedWaypointCount,
+    vertexCount: trimmed.coordinates.length,
   };
   return {
-    coordinates,
-    waypoints,
+    coordinates: trimmed.coordinates,
+    waypoints: trimmed.waypoints,
     generation,
-    distanceMeters: plannedLineLengthMeters(coordinates),
+    distanceMeters: plannedLineLengthMeters(trimmed.coordinates),
   };
 }

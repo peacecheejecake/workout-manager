@@ -15,6 +15,7 @@
     "./routed": "./src/routed.ts",
     "./import": "./src/import.ts",
     "./privacy-trim": "./src/privacy-trim.ts",
+    "./disclosure": "./src/disclosure.ts",
     "./geo-data": "./src/geo-data.ts",
     "./candidates": "./src/candidates.ts",
     "./thumbnail": "./src/thumbnail.ts",

@@ -16,10 +16,37 @@ import {
   type CoursePreference,
   type CoursePreferenceList,
   type CoursePreferenceUpdate,
+  type CoursePosition,
   type CoursePrivacyZone,
 } from '@workout/contracts/courses';
 
+import {
+  activeShareSnapshotsIn,
+  drawStoredShareOffset,
+  insertShareOffsetIn,
+  revokeSharesIn,
+  type ShareSnapshot,
+  type StoredShareOffset,
+} from './course-sharing.js';
 import type { Database, Transaction } from './database.js';
+
+/**
+ * How a new protected area meets the links that already exist (M2-01k-o, B-1, B-6). Both
+ * are the domain's decisions, injected so this repository does not make them.
+ */
+export interface CoursePreferenceSharingOptions {
+  /** The new area's secret share offset. Defaults to a CSPRNG draw from the unit disc. */
+  readonly drawShareOffset?: () => StoredShareOffset;
+  /**
+   * Whether an existing link touches the new area's share circle. When absent every active
+   * link is revoked on any addition: without the geometry the safe answer is "it might".
+   */
+  readonly shareTouchesNewZone?: (
+    snapshot: ShareSnapshot,
+    zone: { readonly center: CoursePosition; readonly radiusMeters: number },
+    offset: StoredShareOffset,
+  ) => boolean;
+}
 
 /**
  * Per-owner course preferences and protected areas (M2-01j).
@@ -159,7 +186,11 @@ export interface CoursePreferenceRepository {
   ): Promise<CourseAccessibilityNote | null>;
 }
 
-export function createCoursePreferenceRepository(database: Database): CoursePreferenceRepository {
+export function createCoursePreferenceRepository(
+  database: Database,
+  sharing: CoursePreferenceSharingOptions = {},
+): CoursePreferenceRepository {
+  const drawOffset = sharing.drawShareOffset ?? drawStoredShareOffset;
   return {
     list(athleteId) {
       const tenantId = uuid.parse(athleteId);
@@ -318,12 +349,26 @@ export function createCoursePreferenceRepository(database: Database): CoursePref
         )
           throw new PrivacyZoneStateError('PRIVACY_ZONE_QUOTA_EXCEEDED');
         const at = await databaseNow(tx);
+        const zoneId = randomUUID();
         await tx.query(
           `INSERT INTO course_privacy_zone(athlete_id,zone_id,name,center_longitude,
              center_latitude,radius_meters,created_at,updated_at)
            VALUES($1,$2,$3,$4,$5,$6,$7,$7)`,
-          [tenantId, randomUUID(), name, center[0], center[1], radiusMeters, at],
+          [tenantId, zoneId, name, center[0], center[1], radiusMeters, at],
         );
+        // M2-01k-o. The area's secret share offset, drawn once, here (B-1) — and every link
+        // that now touches the area's share circle is revoked in the same transaction (B-6),
+        // so a link can never go on showing a place its owner has just protected.
+        const offset = drawOffset();
+        await insertShareOffsetIn(tx, zoneId, offset);
+        const touches = sharing.shareTouchesNewZone;
+        const touching = (await activeShareSnapshotsIn(tx))
+          .filter(
+            ({ snapshot }) =>
+              touches === undefined || touches(snapshot, { center, radiusMeters }, offset),
+          )
+          .map(({ shareId }) => shareId);
+        await revokeSharesIn(tx, touching, 'zone_added');
         return listZones(tx);
       });
     },
@@ -336,6 +381,18 @@ export function createCoursePreferenceRepository(database: Database): CoursePref
         // it re-checks this set: a removal must not slip between that check and the
         // revision it guards.
         await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tenantId]);
+        // M2-01k-o (R-7): every link cut against this area loses its reason to be safe with
+        // the area, and the area's offset goes with it (a cascade). They are revoked first.
+        const using = await tx.query(
+          `SELECT share_id FROM course_share WHERE athlete_id=$1 AND state='active'
+             AND $2::uuid=ANY(zone_ids)`,
+          [tenantId, zoneId],
+        );
+        await revokeSharesIn(
+          tx,
+          using.rows.map((row) => z.string().parse(row['share_id'])),
+          'zone_removed',
+        );
         const removed = await tx.query(
           'DELETE FROM course_privacy_zone WHERE athlete_id=$1 AND zone_id=$2',
           [tenantId, zoneId],

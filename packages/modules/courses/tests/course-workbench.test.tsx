@@ -78,6 +78,56 @@ const revision = {
   createdAt,
 };
 
+const receiptId = '66666666-6666-4666-8666-666666666666';
+const exportPreview = {
+  purpose: 'export',
+  courseId,
+  courseRevision: 2,
+  zoneSetDigest: 'c'.repeat(64),
+  zoneCount: 0,
+  outcome: 'no-zones',
+  blockedReason: null,
+  zones: [],
+  options: [
+    {
+      exposure: 'no-zones-exact',
+      coordinates: revision.geometry.coordinates,
+      start: [126.9779, 37.5665],
+      finish: [126.9799, 37.5671],
+      startShiftMeters: 0,
+      finishShiftMeters: 0,
+      vertexCount: 2,
+      distanceMeters: 1830.5,
+      removedWaypointCount: 0,
+      coordinateDigits: 5,
+      requiresAcknowledgement: true,
+      appendsRevision: false,
+    },
+  ],
+  defaultExposure: 'no-zones-exact',
+  includeNamesDefault: true,
+};
+const exportReceipt = {
+  receiptId,
+  purpose: 'export',
+  courseId,
+  courseRevision: 2,
+  zoneSetDigest: 'c'.repeat(64),
+  exposure: 'no-zones-exact',
+  includeNames: true,
+  confirmedAt: createdAt,
+  expiresAt: createdAt,
+};
+
+/** Open the export confirmation, tick the warning and confirm (M2-01k-o, D3a). */
+async function confirmExport() {
+  await userEvent.click(await screen.findByTestId('course-export'));
+  await userEvent.click(
+    await screen.findByLabelText('보호 구역이 없어 정확한 시작·끝이 포함된다는 것을 확인했습니다.'),
+  );
+  await userEvent.click(screen.getByRole('button', { name: '확인하고 GPX 내보내기' }));
+}
+
 function setup(overrides: (input: TransportRequest) => Reply | null = () => null) {
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
     const override = overrides(input);
@@ -114,6 +164,14 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
         200,
       );
     if (input.method === 'DELETE') return reply({ deleted: true });
+    // M2-01k-o. The shipped default: the server has no link route (the flag is off), and
+    // the owner has no protected area, so the export confirmation is the D3a warning.
+    if (input.path === '/bff/v1/courses/shares' && input.method === 'GET')
+      return reply({ error: { code: 'NOT_FOUND' } }, 404);
+    if (input.path === `/bff/v1/courses/${courseId}/disclosure-preview?purpose=export`)
+      return reply(exportPreview);
+    if (input.path === `/bff/v1/courses/${courseId}/disclosure-confirmations`)
+      return reply(exportReceipt);
     throw new Error(`unexpected request ${input.method} ${input.path}`);
   });
   const view = render(
@@ -182,12 +240,46 @@ describe('course workbench', () => {
     expect(screen.queryByLabelText('코스 이름')).toBeNull();
   });
 
-  it('links the GPX export to the owner authenticated path, not an object key', async () => {
+  // M2-01k-o: the export is a button that opens the confirmation. There is no address a
+  // middle click, "save link as" or a crawler could follow around it.
+  it('offers the GPX export as a button with no address to follow', async () => {
     setup();
     await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
-    const link = await screen.findByTestId('course-export');
-    expect(link).toHaveAttribute('href', `/bff/v1/courses/${courseId}/export.gpx`);
-    expect(link.getAttribute('href')).not.toContain('private/v1/tenants');
+    const control = await screen.findByTestId('course-export');
+    expect(control.tagName).toBe('BUTTON');
+    expect(control).toHaveAttribute('type', 'button');
+    expect(control).not.toHaveAttribute('href');
+    expect(control).not.toHaveAttribute('download');
+    expect(control).toHaveAttribute('data-course-id', courseId);
+    expect(screen.queryByRole('link', { name: 'GPX 내보내기' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'GPX 내보내기' })).toBe(control);
+    expect(document.querySelector('a[href*="export.gpx"]')).toBeNull();
+  });
+
+  // M2-01k-o T1/V1b: the button goes to the confirmation, never straight to a download.
+  it('opens the privacy confirmation and downloads nothing until it is confirmed', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { request } = setup();
+      await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+      await userEvent.click(await screen.findByTestId('course-export'));
+      const region = await screen.findByRole('region', { name: 'GPX 내보내기 전 확인' });
+      expect(
+        await within(region).findByText('보호 구역이 없어 정확한 시작·끝이 포함됩니다.'),
+      ).toBeInTheDocument();
+      expect(within(region).getByRole('button', { name: '확인하고 GPX 내보내기' })).toBeDisabled();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(
+        request.mock.calls.some(([input]) => input.path.endsWith('/disclosure-confirmations')),
+      ).toBe(false);
+      // With the flag off (the shipped default) nothing on this screen shares a course.
+      for (const forbidden of ['공유', '공개', '링크 복사'])
+        expect(screen.queryByRole('button', { name: new RegExp(forbidden) })).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('downloads the export with the session header a plain navigation cannot send', async () => {
@@ -205,10 +297,10 @@ describe('course workbench', () => {
     try {
       setup();
       await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
-      await userEvent.click(await screen.findByTestId('course-export'));
+      await confirmExport();
       await waitFor(() => expect(fetchMock).toHaveBeenCalled());
       const [path, init] = fetchMock.mock.calls[0] ?? [];
-      expect(path).toBe(`/bff/v1/courses/${courseId}/export.gpx`);
+      expect(path).toBe(`/bff/v1/courses/${courseId}/export.gpx?receipt=${receiptId}`);
       expect(init).toMatchObject({
         headers: { 'x-workout-session-id': 'session-1' },
         credentials: 'same-origin',
@@ -246,7 +338,7 @@ describe('course workbench', () => {
     try {
       const view = setup();
       await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
-      await userEvent.click(await screen.findByTestId('course-export'));
+      await confirmExport();
       await waitFor(() => expect(fetchMock).toHaveBeenCalled());
       // The session ends while the body is still on its way.
       view.unmount();
@@ -269,7 +361,7 @@ describe('course workbench', () => {
     try {
       setup();
       await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
-      await userEvent.click(await screen.findByTestId('course-export'));
+      await confirmExport();
       expect(
         await screen.findByText(/입력을 확인한 뒤 다시 시도하세요|요청을 완료하지 못했습니다/),
       ).toBeInTheDocument();

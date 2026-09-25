@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { expect, test, type Page } from '@playwright/test';
+import { confirmedGpx } from './course-disclosure-support';
 
 /**
  * M2-01j against the real stack: the real OIDC session, the real API, real PostgreSQL and
@@ -77,14 +78,16 @@ test('imports a GPX route through the screen, round-trips it and trims a protect
   await expect(workbench.getByTestId('course-generation')).toContainText('GPX 경로(rte)');
   await expect(workbench).toContainText('가져온 파일에서 만든 코스입니다');
 
-  const exportHref = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(exportHref);
-  const courseId = exportHref.split('/')[4];
+  const courseId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
   assert.ok(courseId);
 
   // 2. Round trip: export what we stored and import it again. The second course must carry
-  //    the same line.
-  const exported = await page.request.get(exportHref, { headers });
+  //    the same line. The GPX is given only behind a privacy confirmation (M2-01k-o); the
+  //    export path alone gets no body.
+  expect(
+    (await page.request.get(`/bff/v1/courses/${courseId}/export.gpx`, { headers })).status(),
+  ).toBe(409);
+  const { response: exported } = await confirmedGpx(page, headers, courseId, { prefer: 'exact' });
   expect(exported.status()).toBe(200);
   const exportedGpx = await exported.text();
   expect(exportedGpx).toContain('<rte>');
@@ -163,12 +166,12 @@ test('imports a GPX route through the screen, round-trips it and trims a protect
   expect(trimmedBody.revision.geometry.coordinates).toHaveLength(2);
   // The coordinates inside the protected area are gone from the response …
   expect(JSON.stringify(trimmedBody.revision.geometry.coordinates)).not.toContain('126.978');
-  // … and from the GPX the owner exports.
-  const trimmedExport = await page.request.get(exportHref, { headers });
+  // … and from the GPX the owner exports (confirmed; five decimals, M2-01k-o R-2).
+  const { response: trimmedExport } = await confirmedGpx(page, headers, courseId);
   const trimmedGpx = await trimmedExport.text();
-  expect(trimmedGpx).not.toContain('37.5660000');
-  expect(trimmedGpx).not.toContain('126.9780000');
-  expect(trimmedGpx).toContain('126.9950000');
+  expect(trimmedGpx).not.toContain('37.56600');
+  expect(trimmedGpx).not.toContain('126.97800');
+  expect(trimmedGpx).toContain('126.99500');
   // The revision it trimmed was not rewritten: the head moved on and the ledger kept both.
   const revisions = await page.request.get(`/bff/v1/courses/${courseId}`, { headers });
   expect(

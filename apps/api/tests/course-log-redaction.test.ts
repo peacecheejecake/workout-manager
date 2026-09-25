@@ -99,6 +99,8 @@ function setup(options: { version?: string; compute?: WalkingRoutePort['compute'
     courses: { courses: leaky(), tracks: leaky(), storage: leaky() },
     activityTracks: { tracks: leaky(), storage: leaky(), parser: leaky() },
     courseExtras: { courses: leaky(), preferences: leaky(), places: leaky(), elevation: null },
+    // M2-01k-o: the confirmed GPX export lives behind the disclosure routes now.
+    courseDisclosure: { sharing: leaky() },
     logStream: capture.stream,
     ...(options.version === undefined ? {} : { version: options.version }),
   });

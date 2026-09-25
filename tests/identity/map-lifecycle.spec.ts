@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { exportOnScreen } from './course-disclosure-support';
 import {
   activityImportResultSchema,
   importActivitySchema,
@@ -617,9 +618,9 @@ for (const shell of shells) {
       const mark = await lifecycleMark(page);
       await workbench.getByRole('button', { name, exact: true }).click();
       await expectLineDrawn(mapRegion(workbench, '코스 지도'));
-      // The owner's GPX download goes through a blob URL.
+      // The owner's GPX download goes through a blob URL, after its confirmation (M2-01k-o).
       const download = page.waitForEvent('download');
-      await workbench.getByTestId('course-export').click();
+      await exportOnScreen(workbench);
       await download;
       expect(kinds(await createdSince(page, mark))).toContain('blob-url');
       await workbench.getByRole('button', { name: '코스 목록으로 돌아가기' }).click();

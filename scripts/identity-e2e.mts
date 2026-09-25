@@ -40,6 +40,19 @@ import { renderCourseThumbnail } from '../packages/server/courses/src/thumbnail.
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.ts';
 import { createCourseRepository } from '../packages/server/persistence/src/courses.ts';
 import { createCoursePreferenceRepository } from '../packages/server/persistence/src/course-preferences.ts';
+import {
+  createCourseSharingRepository,
+  createSharedCourseReader,
+} from '../packages/server/persistence/src/course-sharing.ts';
+import {
+  drawShareOffset,
+  shareCircle,
+  sharedLineTouchesCircle,
+} from '../packages/server/courses/src/disclosure.ts';
+import {
+  courseSharingOff,
+  type CourseSharingConfiguration,
+} from '../apps/api/src/course-sharing.ts';
 import { loadGeoDatasets } from '../apps/api/src/geo-datasets.ts';
 import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
 import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deployment.ts';
@@ -332,6 +345,24 @@ try {
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
   closers.push(() => database.close());
+  const sharingMode = process.env['IDENTITY_E2E_COURSE_SHARING'] ?? 'off';
+  if (sharingMode !== 'on' && sharingMode !== 'off')
+    throw new Error(`Unsupported IDENTITY_E2E_COURSE_SHARING: ${sharingMode}`);
+  const courseSharing: CourseSharingConfiguration =
+    sharingMode === 'on'
+      ? {
+          enabled: true,
+          epoch: 1,
+          rateKey: Buffer.alloc(32, 5),
+          // The shells proxy from loopback; the E2E client is that loopback address.
+          trustedProxies: [],
+        }
+      : courseSharingOff;
+  const sharedCourseReader = courseSharing.enabled
+    ? createSharedCourseReader({ connectionString: runtimeUrl })
+    : undefined;
+  if (sharedCourseReader) closers.push(() => sharedCourseReader.close());
+  if (courseSharing.enabled) console.log('Identity E2E: course link sharing ON for this run.');
   const provider = await createOidcProvider({ ...oidcSettings, allowInsecureLocalhost: true });
   const identity = createIdentityService({
     store,
@@ -540,7 +571,11 @@ try {
     // and absent otherwise — in which case the screens say so rather than guessing.
     courseExtras: {
       courses: createCourseRepository(database),
-      preferences: createCoursePreferenceRepository(database),
+      preferences: createCoursePreferenceRepository(database, {
+        drawShareOffset: () => drawShareOffset(),
+        shareTouchesNewZone: (snapshot, zone, offset) =>
+          sharedLineTouchesCircle(snapshot, shareCircle(zone, offset)),
+      }),
       parser: createBoundedTrackParser({ execArgv: ['--import', 'tsx'] }),
       places: geoDatasets.places,
       elevation: geoDatasets.elevation,
@@ -552,6 +587,17 @@ try {
     // factory instead, through the same on-disk verification `configured.ts` uses; the
     // engine itself is started by the operator on loopback before this harness.
     walkingRoutes: await identityWalkingRoutes(database),
+    // M2-01k-o. The privacy confirmation and the confirmed GPX, always. Link sharing is OFF
+    // here exactly as in every shipped configuration, unless this run opts in with
+    // IDENTITY_E2E_COURSE_SHARING=on (the test environment §8 names for the link specs).
+    courseDisclosure: {
+      sharing: createCourseSharingRepository(database, {
+        drawShareOffset: () => drawShareOffset(),
+      }),
+      ...(courseSharing.enabled ? { links: { epoch: courseSharing.epoch } } : {}),
+    },
+    courseSharing,
+    ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
     allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],

@@ -455,6 +455,32 @@ const collections = [
     'course_id,note,written_at_revision,created_at,updated_at',
     'course_id',
   ],
+  // M2-01k-o (export v23). A protected area's secret share offset is an input nothing can
+  // rebuild, so it is exported like the centre. A link is exported as facts only: no token,
+  // no digest and no snapshot, so an export can never bring a link back.
+  [
+    'coursePrivacyZoneShareOffsets',
+    'course_privacy_zone_share_offset',
+    'zone_id,offset_x,offset_y,created_at',
+    'zone_id',
+  ],
+  [
+    'courseShares',
+    'course_share',
+    `share_id,course_id,course_revision,state,revoke_reason,include_names,created_at,expires_at,
+     revoked_at`,
+    'created_at,share_id',
+  ],
+  // M2-01ao's course-deletion ledger, exported in v23 like `activity_suppression` is: which
+  // course the owner deleted and when — no name, no coordinate. It is what a restore must
+  // keep deleted, and nothing can rebuild it. The runtime role has no SELECT on the ledger
+  // (049), so it is read through 050's tenant-bound definer function.
+  [
+    'courseDeletions',
+    '(SELECT * FROM public.export_course_deletions()) course_deletion',
+    'course_id,deleted_at',
+    'deleted_at,course_id',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -521,7 +547,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 22,
+          schemaVersion: 23,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

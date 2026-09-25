@@ -1161,11 +1161,65 @@ describe('failures that belong to the course they were started on', () => {
         }),
     ) as unknown as typeof globalThis.fetch;
     try {
-      setup();
+      // M2-01k-o: the export goes through its confirmation first (no protected area: the
+      // D3a warning to tick), then the download starts.
+      setup((input) => {
+        if (input.path.endsWith('/disclosure-preview?purpose=export'))
+          return reply({
+            purpose: 'export',
+            courseId,
+            courseRevision: 2,
+            zoneSetDigest: 'c'.repeat(64),
+            zoneCount: 0,
+            outcome: 'no-zones',
+            blockedReason: null,
+            zones: [],
+            options: [
+              {
+                exposure: 'no-zones-exact',
+                coordinates: [
+                  [126.9779, 37.5665],
+                  [126.9799, 37.5671],
+                ],
+                start: [126.9779, 37.5665],
+                finish: [126.9799, 37.5671],
+                startShiftMeters: 0,
+                finishShiftMeters: 0,
+                vertexCount: 2,
+                distanceMeters: 180,
+                removedWaypointCount: 0,
+                coordinateDigits: 5,
+                requiresAcknowledgement: true,
+                appendsRevision: false,
+              },
+            ],
+            defaultExposure: 'no-zones-exact',
+            includeNamesDefault: true,
+          });
+        if (input.path.endsWith('/disclosure-confirmations'))
+          return reply({
+            receiptId: '66666666-6666-4666-8666-666666666666',
+            purpose: 'export',
+            courseId,
+            courseRevision: 2,
+            zoneSetDigest: 'c'.repeat(64),
+            exposure: 'no-zones-exact',
+            includeNames: true,
+            confirmedAt: '2026-03-01T00:00:00.000Z',
+            expiresAt: '2026-03-01T01:00:00.000Z',
+          });
+        return null;
+      });
       await userEvent.click(await screen.findByRole('button', { name: 'Another loop' }));
       await screen.findByRole('region', { name: '경유지 편집' });
       await userEvent.click(screen.getByRole('button', { name: 'Seoul loop' }));
       await userEvent.click(await screen.findByTestId('course-export'));
+      await userEvent.click(
+        await screen.findByLabelText(
+          '보호 구역이 없어 정확한 시작·끝이 포함된다는 것을 확인했습니다.',
+        ),
+      );
+      await userEvent.click(screen.getByRole('button', { name: '확인하고 GPX 내보내기' }));
       await waitFor(() => expect(failExport).toBeDefined());
 
       await userEvent.click(screen.getByRole('button', { name: 'Another loop' }));

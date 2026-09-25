@@ -77,9 +77,7 @@ test('stores a thumbnail of the head revision and redraws it when a protected ar
   await page.goto('/courses');
   await workbench.getByRole('button', { name: 'M2-01l 썸네일 확인본', exact: true }).click();
   await expect(workbench.getByTestId('course-revision')).toHaveText('1');
-  const exportHref = await workbench.getByTestId('course-export').getAttribute('href');
-  assert.ok(exportHref);
-  const courseId = exportHref.split('/')[4];
+  const courseId = await workbench.getByTestId('course-export').getAttribute('data-course-id');
   assert.ok(courseId);
 
   // Whatever the render has managed so far, there is a picture on the screen and it is a

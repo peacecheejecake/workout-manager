@@ -15,6 +15,15 @@ const config: NextConfig = {
   agentRules: false,
   async headers() {
     return [
+      // M2-01k-o: the recipient's screen of a view-only link is never indexed and never
+      // sends a referrer (§3 B "응답 헤더", R7).
+      {
+        source: '/shared/:path*',
+        headers: [
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+        ],
+      },
       {
         source: '/ui-spike',
         headers: [
