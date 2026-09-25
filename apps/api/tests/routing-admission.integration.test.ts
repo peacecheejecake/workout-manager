@@ -11,6 +11,7 @@ import {
   type RoutingGraphManifest,
 } from '@workout/server-integrations/routing';
 import { grantCourses, grantOperations, migrate } from '@workout/server-persistence/migrate';
+import type * as ParseHost from '@workout/server-track-storage/parse-host';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -31,6 +32,25 @@ vi.mock('@workout/server-identity/oidc', () => ({
   // Startup OIDC discovery is a network call and not what this file is about.
   createOidcProvider: vi.fn(async () => ({ authorizationUrl: vi.fn(), exchange: vi.fn() })),
 }));
+
+/**
+ * The real parse host, with every parser the composition creates kept here so a test can
+ * reach it (M2-01aj). The only change is the child's loader: under the test runner the
+ * inherited `execArgv` does not load TypeScript, so the parse child gets `tsx` explicitly,
+ * as every other parse test in this app does.
+ */
+const createdParsers = vi.hoisted(() => [] as ParseHost.BoundedTrackParser[]);
+vi.mock('@workout/server-track-storage/parse-host', async (importOriginal) => {
+  const actual = await importOriginal<typeof ParseHost>();
+  return {
+    ...actual,
+    createBoundedTrackParser: (options: Parameters<typeof actual.createBoundedTrackParser>[0]) => {
+      const parser = actual.createBoundedTrackParser({ execArgv: ['--import', 'tsx'], ...options });
+      createdParsers.push(parser);
+      return parser;
+    },
+  };
+});
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
@@ -287,6 +307,72 @@ describe('an instance that shuts down (M2-01ah)', () => {
       [tenant],
     );
     expect(rows.rows).toEqual([{ released: true }]);
+  });
+});
+
+describe('parsers on shutdown (M2-01aj)', () => {
+  const selection = {
+    recordedTrackIndex: 0,
+    provenance: {
+      kind: 'activity-source',
+      activityId: '11111111-1111-4111-8111-111111111111',
+      sourceId: '22222222-2222-4222-8222-222222222222',
+      sourceRevision: 1,
+      trackRevision: 1,
+    },
+  } as const;
+  const gpx = (points: number) => {
+    let body = '';
+    for (let index = 0; index < points; index += 1)
+      body += `<trkpt lat="${37.5 + index * 1e-5}" lon="${127 + index * 1e-5}"><time>${new Date(
+        Date.parse('2026-03-01T00:00:00Z') + index * 1000,
+      ).toISOString()}</time></trkpt>`;
+    return new TextEncoder().encode(
+      `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>${body}</trkseg></trk></gpx>`,
+    );
+  };
+
+  it('closes them at once, not after the routing drain, so a running parse ends with the API', async () => {
+    const before = createdParsers.length;
+    const { control, api } = await instanceWithApi();
+    const parsers = createdParsers.slice(before);
+    // The composition's two parsers: course import and stored recordings.
+    expect(parsers).toHaveLength(2);
+    // A routing search the engine is still running holds a permit, so the drain waits.
+    const tenant = randomUUID();
+    const caller = new AbortController();
+    const pending = control.walkingRoutes.compute(tenant, request('drain'), {
+      signal: caller.signal,
+    });
+    await vi.waitFor(() => expect(engine.running).toBe(1));
+    caller.abort();
+    expect((await pending).result.outcome).toBe('cancelled');
+    // A parse in flight on each parser: a valid file that parses fine when left alone.
+    const parses = parsers.map((parser) =>
+      parser.parse(gpx(200), selection, { filename: 'shutdown.gpx' }),
+    );
+    for (const parser of parsers) expect(parser.processIds()).toHaveLength(1);
+    apis.splice(apis.indexOf(api), 1);
+    let closed = false;
+    const closing = api.close().then(() => {
+      closed = true;
+    });
+    // Both parses end as cancelled and their processes are gone while the drain still
+    // waits on the engine. Closed after the drain, they would parse to completion here.
+    expect(await Promise.all(parses)).toEqual([
+      { ok: false, code: 'TRACK_PARSE_CANCELLED' },
+      { ok: false, code: 'TRACK_PARSE_CANCELLED' },
+    ]);
+    for (const parser of parsers) {
+      expect(parser.processIds()).toEqual([]);
+      expect(parser.active()).toBe(0);
+    }
+    expect(closed).toBe(false);
+    expect(engine.running).toBe(1);
+    // The engine stops; the drain ends, and so does close.
+    engine.open();
+    await closing;
+    expect(closed).toBe(true);
   });
 });
 

@@ -43,10 +43,11 @@
  *           the contract's maximum waypoint count (12) spread along the long track (a ~26 km
  *           route) through the API.
  *           This is the workload the budget is about, bounded and short — not machine load.
- *   worker  the bounded parse host (`createBoundedTrackParser`): wall time, the smallest V8
- *           heap ceiling the long track parses under, and the concurrency bound at its limit.
- *           The phase and its metric ids keep their M2-01k-f name; since M2-01ai each parse
- *           runs in a child process (`--max-old-space-size`), not a worker thread.
+ *   worker  the bounded parse host (`createBoundedTrackParser`): wall time, the peak RSS of
+ *           each parse process (M2-01aj), the smallest V8 heap ceiling the long track parses
+ *           under, and the concurrency bound at its limit. The phase and its metric ids keep
+ *           their M2-01k-f name; since M2-01ai each parse runs in a child process
+ *           (`--max-old-space-size`), not a worker thread.
  *   parse   the same product functions in-process (warm): parse+normalize and map_path time,
  *           and the serialized sizes of both artifacts.
  *
@@ -224,45 +225,55 @@ const selection: StoredTrackSelection = {
 };
 
 // ---------------------------------------------------------------- worker phase
+/** How often the parse processes' RSS is read while a parse runs. */
+const CHILD_RSS_INTERVAL_MS = 20;
+
 /**
- * RSS of this process's live parse processes, sampled every `intervalMs` (M2-01ai: the parse
- * runs in a child process, so its memory is no longer inside this process's own RSS).
- * Returns the highest single-child reading and the highest sum. A sample can miss a peak
- * shorter than the interval: this is a record, not a budget.
+ * The RSS of the parse processes `parser` is running, read with `ps` every
+ * {@link CHILD_RSS_INTERVAL_MS} until `pending` settles (M2-01ai moved the parse into a child
+ * process, so its memory is no longer inside this process's own RSS; M2-01aj budgets it).
+ * The processes are the parser's own (`processIds()`), so tsx's esbuild service, which is
+ * also a child of this process, is never counted.
+ *
+ * Returns the highest single-process reading and the highest sum over the processes alive
+ * at one reading, or `null` for either when no reading was taken. A reading can miss a peak
+ * shorter than the interval, so the value is a lower bound of the true peak; the budget was
+ * derived from values read the same way.
  */
-function childRssSampler(intervalMs = 50) {
-  let peakChild = 0;
-  let peakSum = 0;
-  let running = true;
-  const loop = (async () => {
-    while (running) {
+async function withChildRss<T>(
+  parser: ReturnType<typeof createBoundedTrackParser>,
+  pending: Promise<T>,
+): Promise<{ value: T; peakChildMiB: number | null; peakSumMiB: number | null }> {
+  let settled = false;
+  const done = pending.finally(() => {
+    settled = true;
+  });
+  let peakChild: number | null = null;
+  let peakSum: number | null = null;
+  while (!settled) {
+    const pids = parser.processIds();
+    if (pids.length > 0) {
       try {
-        const { stdout } = await execFileAsync('ps', ['-A', '-o', 'ppid=,rss=,command=']);
-        // Only parse processes: tsx's esbuild service is also a child of this process.
-        const children = stdout
+        const { stdout } = await execFileAsync('ps', ['-o', 'rss=', '-p', pids.join(',')]);
+        const readings = stdout
           .split('\n')
-          .filter((line) => line.includes('parse-child'))
-          .map((line) => line.trim().split(/\s+/).slice(0, 2).map(Number))
-          .filter(([ppid, kib]) => ppid === process.pid && Number.isFinite(kib))
-          .map(([, kib]) => Math.round((kib as number) / 1024));
-        peakChild = Math.max(peakChild, ...children);
-        peakSum = Math.max(
-          peakSum,
-          children.reduce((sum, value) => sum + value, 0),
-        );
+          .map((line) => Number(line.trim()))
+          .filter((kib) => Number.isFinite(kib) && kib > 0)
+          .map((kib) => Math.round(kib / 1024));
+        if (readings.length > 0) {
+          peakChild = Math.max(peakChild ?? 0, ...readings);
+          peakSum = Math.max(
+            peakSum ?? 0,
+            readings.reduce((sum, value) => sum + value, 0),
+          );
+        }
       } catch {
-        // A failed `ps` is a missing reading, not a measurement.
+        // The process ended between `processIds()` and `ps`: a missing reading, not a zero.
       }
-      await new Promise((done) => setTimeout(done, intervalMs));
     }
-  })();
-  return {
-    stop: async () => {
-      running = false;
-      await loop;
-      return { peakChildMiB: peakChild, peakSumMiB: peakSum };
-    },
-  };
+    await Promise.race([done, new Promise((wait) => setTimeout(wait, CHILD_RSS_INTERVAL_MS))]);
+  }
+  return { value: await done, peakChildMiB: peakChild, peakSumMiB: peakSum };
 }
 
 async function workerPhase(fitBytes: Uint8Array, samples: number) {
@@ -270,7 +281,6 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
   // runs in a child process, not a worker thread; each sample includes starting it.
   console.log('worker phase (bounded parse process)');
   const parser = createBoundedTrackParser();
-  const childRss = childRssSampler();
   for (let index = 0; index < samples; index += 1) {
     const started = performance.now();
     const outcome = await parser.parse(fitBytes, selection, { filename: 'long.fit' });
@@ -279,9 +289,37 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
       throw new Error('WORKER_SAMPLE_COUNT');
     record('worker.parseMs', elapsed(started));
   }
+
+  // M2-01aj: the peak RSS of each parse process (default 256 MiB ceiling), one parse at a
+  // time. These are parses of their own, so reading the RSS (`ps` every 20 ms) never sits
+  // inside a time sample above.
+  let unread = 0;
+  for (let index = 0; index < samples; index += 1) {
+    const { value: outcome, peakChildMiB } = await withChildRss(
+      parser,
+      parser.parse(fitBytes, selection, { filename: 'long.fit' }),
+    );
+    if (!outcome.ok) throw new Error(`WORKER_PARSE_FAILED: ${outcome.code}`);
+    if (peakChildMiB === null) unread += 1;
+    else record('worker.parseProcessPeakRssMiB', peakChildMiB);
+  }
+  // For the record, not a budget: both processes of one parser at its bound at once. An API
+  // runs two parsers (course import, stored recordings), so up to twice this.
+  const pair = createBoundedTrackParser();
+  const atBound = await withChildRss(
+    pair,
+    Promise.all(
+      Array.from({ length: trackLimits.workerConcurrency }, () => pair.parse(fitBytes, selection)),
+    ),
+  );
+  if (!atBound.value.every((outcome) => outcome.ok)) throw new Error('WORKER_PAIR_PARSE_FAILED');
+  const perParse = observations['worker.parseProcessPeakRssMiB'] ?? [];
   details['parseProcessRss'] = {
-    ...(await childRss.stop()),
-    note: "ps RSS of this probe process's parse-child processes every 50 ms during the worker.parseMs samples (one parse at a time, default 256 MiB ceiling). Recorded, not budgeted: the parse memory left the API process in M2-01ai, and this is where it went.",
+    peakChildMiB: perParse.length === 0 ? null : Math.max(...perParse.map((s) => s.value)),
+    parsesWithoutReading: unread,
+    atBoundPeakSumMiB: atBound.peakSumMiB,
+    intervalMs: CHILD_RSS_INTERVAL_MS,
+    note: "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak.",
   };
 
   // The smallest V8 old-generation ceiling the long track parses under. Ascending ladder,
@@ -349,7 +387,8 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
     .filter((line) => line.trim().startsWith(`${process.pid} `) && line.includes('parse-child'));
   check(
     'worker-no-parse-process-left',
-    leftover.length === 0 && parser.processIds().length === 0 && bounded.processIds().length === 0,
+    leftover.length === 0 &&
+      [parser, pair, bounded].every((each) => each.processIds().length === 0),
     `${leftover.length} parse processes alive after the phase`,
   );
 }
@@ -510,7 +549,8 @@ async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
         }
         // The process's own high-water mark: API, parse host and this probe together. Since
         // M2-01ai the parse itself runs in a child process and is not in this number; the
-        // worker phase records where that memory went (details.parseProcessRss).
+        // worker phase measures and budgets that memory (worker.parseProcessPeakRssMiB,
+        // M2-01aj), and this budget was re-derived without it.
         record('api.processPeakRssMiB', Math.round(process.resourceUsage().maxRSS / 1024));
       }
       const failed = statuses.filter((status) => status !== 200);

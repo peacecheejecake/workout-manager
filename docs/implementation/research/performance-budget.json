@@ -161,21 +161,21 @@
         "phase": "api",
         "unit": "MiB",
         "statistic": "max",
-        "budget": 1100,
+        "budget": 800,
         "minimumSamples": 5,
-        "description": "Peak RSS of the process hosting the API (includes the probe itself and the synthetic FIT generator; until M2-01ai the parse workers were threads of this process. Since M2-01ai each parse runs in a child process bounded by its own --max-old-space-size, so its heap is no longer in this number; the budget is unchanged and was not re-baselined, and the probe records the RSS of the parse processes separately in details.parseProcessRss, unbudgeted).",
+        "description": "Peak RSS of the process hosting the API (includes the probe itself and the synthetic FIT generator). Since M2-01ai each parse runs in a child process, so parse memory is not in this number; it is budgeted separately as worker.parseProcessPeakRssMiB. M2-01aj re-derived this budget from three record-only runs of the child-process parser: the earlier baseline (716 MiB, budget 1,100) was taken while the parse workers were threads of this process, and that budget would have let this process grow 2.1x before failing.",
         "baseline": {
-          "statisticValue": 716,
-          "samples": 47,
+          "statisticValue": 530,
+          "samples": 60,
           "runs": [
-            "2026-09-24T03:06:45.593Z",
-            "2026-09-24T03:10:30.015Z",
-            "2026-09-24T05:25:24.995Z"
+            "2026-09-24T22:57:00.857Z",
+            "2026-09-24T22:58:06.341Z",
+            "2026-09-24T22:59:09.916Z"
           ],
-          "perRunStatistic": [664, 682, 716],
+          "perRunStatistic": [530, 495, 493],
           "loadAverage1m": {
-            "min": 16.75,
-            "max": 29.31
+            "min": 5.83,
+            "max": 8.43
           }
         },
         "headroom": {
@@ -329,6 +329,32 @@
         "headroom": {
           "factor": 2.0,
           "reason": "The smallest ceiling is read off a discrete ladder (16, 24, 32, 48, 64, 96, ...); 2x is the next rung pair up and stays far below the product ceiling of 256 MiB."
+        }
+      },
+      "worker.parseProcessPeakRssMiB": {
+        "phase": "worker",
+        "unit": "MiB",
+        "statistic": "max",
+        "budget": 300,
+        "minimumSamples": 5,
+        "description": "Peak RSS of one parse process (M2-01aj): the child process a bounded parser forks for each parse (default 256 MiB old-generation ceiling), read with ps every 20 ms while it parses the long track, one parse at a time, in parses separate from the worker.parseMs samples. A reading can miss a peak shorter than the interval, so a sample is a lower bound of the true peak; the baseline was read the same way. An API runs at most four of these processes at once (two parsers, concurrency 2 each).",
+        "baseline": {
+          "statisticValue": 197,
+          "samples": 60,
+          "runs": [
+            "2026-09-24T22:57:00.857Z",
+            "2026-09-24T22:58:06.341Z",
+            "2026-09-24T22:59:09.916Z"
+          ],
+          "perRunStatistic": [197, 193, 188],
+          "loadAverage1m": {
+            "min": 5.29,
+            "max": 7.04
+          }
+        },
+        "headroom": {
+          "factor": 1.5,
+          "reason": "Resident and heap memory move with GC timing and allocator behaviour, not with machine load; 1.5x admits that jitter and fails a regression that holds half again as much."
         }
       },
       "parse.parseNormalizeMs": {

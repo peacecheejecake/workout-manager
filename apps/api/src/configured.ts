@@ -300,8 +300,18 @@ export async function createConfiguredApi(
       close: async () => {
         // Permits whose engine search outlives the last answer are released when the engine
         // stops (M2-01ah); wait for that, bounded by their lease, before the pool goes away.
-        await routingAdmission.drain(ROUTING_PERMIT_LEASE_MILLISECONDS);
-        await Promise.all([store.close(), database.close(), closeParsers()]);
+        //
+        // The parsers close *together with* the drain, not after it (M2-01aj). Closing a
+        // parser cancels its running parses and kills their processes at once; left until
+        // after the drain, a parse would keep running for up to the permit lease on an API
+        // that is shutting down. The two share nothing: a parser holds only its child
+        // processes, and the drain waits only on routing permits released through the
+        // database pool, which stays open until both have finished.
+        await Promise.all([
+          closeParsers(),
+          routingAdmission.drain(ROUTING_PERMIT_LEASE_MILLISECONDS),
+        ]);
+        await Promise.all([store.close(), database.close()]);
       },
     });
     log = app.log;

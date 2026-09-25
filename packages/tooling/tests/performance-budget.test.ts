@@ -476,6 +476,9 @@ describe('assertMeasurableSourceTree', () => {
   });
 });
 
+/** Budgeted since M2-01aj: the peak RSS of one parse process (the parse left the API in M2-01ai). */
+const PARSE_PROCESS_RSS = 'worker.parseProcessPeakRssMiB';
+
 describe('the checked-in budget', () => {
   const budget = parseBudgetFile(
     JSON.parse(readFileSync(research('performance-budget.json'), 'utf8')),
@@ -489,6 +492,7 @@ describe('the checked-in budget', () => {
       'api.readMapPathMs',
       'worker.parseMs',
       'worker.minimumHeapCeilingMiB',
+      'worker.parseProcessPeakRssMiB',
       'engine.loadPeakRssMiB',
       'browser.next.navigationToDrawnMs',
       'browser.vite.navigationToDrawnMs',
@@ -531,6 +535,61 @@ describe('the checked-in budget', () => {
       expect(result.mode, file).toBe('judged');
       expect(evaluateBudget(budget, result.samples, phases).passed, file).toBe(true);
     }
+  });
+
+  describe('the parse process memory (M2-01aj)', () => {
+    const metric = budget.desktop.metrics[PARSE_PROCESS_RSS];
+    const judgedRun = JSON.parse(
+      readFileSync(research('performance-budget-result.json'), 'utf8'),
+    ) as { mode: string; samples: Record<string, BudgetSample[]> };
+
+    it('is a budgeted worker metric: the peak RSS of each parse process', () => {
+      expect(metric).toMatchObject({ phase: 'worker', unit: 'MiB', statistic: 'max' });
+      // Measured from three record-only runs, like every other budget.
+      expect(metric?.baseline.runs).toHaveLength(3);
+    });
+
+    it('comes with an API process budget re-derived from runs whose parse ran outside it', () => {
+      // Until M2-01ai the parse was a thread of the API process and its baseline (716 MiB)
+      // included it. The re-derived baseline is taken from the same runs as the parse process.
+      expect(budget.desktop.metrics['api.processPeakRssMiB']?.baseline.runs).toEqual(
+        metric?.baseline.runs,
+      );
+    });
+
+    it('is judged in the recorded judged run, and passed there', () => {
+      expect(judgedRun.mode).toBe('judged');
+      const judged = evaluateBudget(budget, judgedRun.samples, ['worker']);
+      const verdict = judged.metrics.find((each) => each.id === PARSE_PROCESS_RSS);
+      expect(verdict?.verdict).toBe('passed');
+      expect(verdict?.samples).toBeGreaterThanOrEqual(metric?.minimumSamples ?? Infinity);
+    });
+
+    it('fails a worker run whose parse process holds more than the budget, at any load', () => {
+      const over = (metric?.budget ?? 0) + 1;
+      const worker = {
+        ...judgedRun.samples,
+        [PARSE_PROCESS_RSS]: [
+          ...(judgedRun.samples[PARSE_PROCESS_RSS] ?? []).slice(1),
+          // Memory is never excused by load, however high.
+          { value: over, loadAverage1m: 500 },
+        ],
+      };
+      const judged = evaluateBudget(budget, worker, ['worker']);
+      expect(judged.passed).toBe(false);
+      expect(judged.inconclusive).toBe(false);
+      expect(judged.metrics.find((each) => each.id === PARSE_PROCESS_RSS)).toMatchObject({
+        verdict: 'failed',
+        observed: over,
+      });
+    });
+
+    it('fails a worker run that did not measure it', () => {
+      const { [PARSE_PROCESS_RSS]: _unmeasured, ...rest } = judgedRun.samples;
+      const judged = evaluateBudget(budget, rest, ['worker']);
+      expect(judged.passed).toBe(false);
+      expect(judged.metrics.find((each) => each.id === PARSE_PROCESS_RSS)?.verdict).toBe('missing');
+    });
   });
 
   describe('baselines re-derived from the recorded runs (N-h)', () => {
@@ -619,12 +678,14 @@ describe('the checked-in budget', () => {
     };
     const run3 = result.previousRuns.find((run) => run.executedAt.startsWith('2026-09-24T15:30'));
     expect(run3?.mode).toBe('judged');
-    const judged = evaluateBudget(budget, run3?.samples ?? {}, [
-      'api',
-      'engine',
-      'worker',
-      'parse',
-    ]);
+    // The parse-process metric came with M2-01aj; run 3 could not measure it, and without it
+    // the run would be `missing` a metric rather than inconclusive. Judge it by the rest.
+    const { [PARSE_PROCESS_RSS]: _added, ...before } = budget.desktop.metrics;
+    const judged = evaluateBudget(
+      { ...budget, desktop: { ...budget.desktop, metrics: before } },
+      run3?.samples ?? {},
+      ['api', 'engine', 'worker', 'parse'],
+    );
     expect(judged.passed).toBe(false);
     expect(judged.inconclusive).toBe(true);
     expect(

@@ -241,6 +241,20 @@
         "rollout probe 8/8, swap 24/24 and operational 26/26 on a scratch deployment of the round-2 profile (cdc22d00…, before the navigation pin; the final profile differs by that one logger line) (routing-profile-rollout.json, routing-swap-and-bounds-m2-01af.json, routing-operational-m2-01af.json; not persisted, the deployed graph is still c57f12f5975347e8); two rounds of independent review re-ran the engine checks"
       ],
       "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01af.md."
+    },
+    {
+      "node": "M2-01aj",
+      "date": "2026-09-25",
+      "rows": ["K-performance", "P7-parser-bounds"],
+      "decision": "Follow-up node M2-01aj budgeted the parse child process RSS, re-derived the API RSS budget and moved parser close ahead of the routing drain on shutdown; independent review approved and reproduced the close-order and budget evidence.",
+      "change": "2 row reasons updated, verdicts unchanged; counts unchanged (70/34/0/0/6).",
+      "executed": [
+        "scripts/probe-performance-budget.mts: 3 record-only baselines and a judged run on the reviewed tree (diffSha256 085b9a1f, recomputed by the independent review): 18/18 budgets, 10/10 checks; a second judged run by the review passed 18/18, another at load 13.5-23.4 failed worker.parseMs only (disclosed; 1-minute load lags short bursts, M2-01al)",
+        "apps/api/tests/routing-admission.integration.test.ts \"parsers on shutdown (M2-01aj)\": parses are cancelled while the routing drain still waits",
+        "packages/tooling/tests/performance-budget.test.ts: new metric, re-derived API baseline, verifyBaselinesAgainstRuns",
+        "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
+      ],
+      "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01aj.md."
     }
   ],
   "rounds": [
@@ -1755,9 +1769,10 @@
       "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"성능\"",
       "verdict": "passed",
       "evidence": [
-        "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)"
+        "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)",
+        "docs/implementation/progress/M2-01aj.md"
       ],
-      "reason": "M2-01ai amendment: still passed, desktop only. Judged runs on the child-process parser pass all 17 budgets with parse times unchanged. api.processPeakRssMiB no longer includes parse memory; the child's peak RSS (about 170 MiB, up to four children) is recorded without a budget until record-only baselines exist. The M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply; the evaluator now also fails a time budget when loaded samples counted as best case still exceed it.",
+      "reason": "M2-01aj amendment: still passed, desktop only. Parse child process peak RSS is now budgeted (worker.parseProcessPeakRssMiB, 300 MiB from three record-only baselines) and api.processPeakRssMiB is re-derived for the child-process architecture (1,100 -> 800 MiB); the implementer's judged run and one review judged run on the reviewed code pass 18/18; a third review run during a short load burst failed worker.parseMs only (M2-01al). Limits: child RSS is read every 20 ms, so it is a lower bound of the true peak; the combined RSS of up to four children is recorded only; the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply, and the 1-minute load average can lag short bursts (M2-01al).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1766,15 +1781,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01ai",
+        "node": "M2-01aj",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-f amendment: passed, desktop only. Budgets for the representative 20,000-point track are checked in (server path parse/normalize/map_path/API response, browser render time, API RSS, worker heap ceiling, browser JS heap, engine RSS under load) and asserted by one evaluator shared by the server probe and the browser spec; judged run 4 passed all budgets on the reviewed content. Limits: real-device budgets are not_executed; browser GPU is SwiftShader; budgets catch regressions of 2x or more and are not a latency SLO; browser samples are warm-cache; the admissible-load rule (time metrics over budget above their baseline load are inconclusive, never passed) was set after judged run 3 failed under load and is now enforced.",
+        "previousReason": "M2-01ai amendment: still passed, desktop only. Judged runs on the child-process parser pass all 17 budgets with parse times unchanged. api.processPeakRssMiB no longer includes parse memory; the child's peak RSS (about 170 MiB, up to four children) is recorded without a budget until record-only baselines exist. The M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply; the evaluator now also fails a time budget when loaded samples counted as best case still exceed it.",
         "executed": [
-          "packages/server/track-storage/tests/parse-process.test.ts: survival under the M2-01k-f M2b/M2d conditions (5 real host processes x 10 rungs x copies 8 and 10 x 2 runs: 174 TRACK_PARSE_MEMORY_EXCEEDED, 26 ok, every host exits 0), leak/cleanup, host death, output identity across 9 fixtures (JSON, deepStrictEqual and v8.serialize bytes)",
-          "independent review reproduced survival on the final code (3 hosts, 60 parses) and MA1 (base worker restored -> host rc 134, FATAL ERROR: Reached heap limit), plus MA4 and MA4+MA5",
-          "scripts/probe-performance-budget.mts judged runs on the final tree under the harness lock: 17/17 budgets, 10/10 checks (the independent review's run, hash 3071f97b, and the implementer's after the review fixes, hash 8d0ece18)",
-          "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
+          "scripts/probe-performance-budget.mts: 3 record-only baselines and a judged run on the reviewed tree (diffSha256 085b9a1f, recomputed by the independent review): 18/18 budgets, 10/10 checks; a second judged run by the review passed 18/18, another at load 13.5-23.4 failed worker.parseMs only (disclosed; 1-minute load lags short bursts, M2-01al)",
+          "apps/api/tests/routing-admission.integration.test.ts \"parsers on shutdown (M2-01aj)\": parses are cancelled while the routing drain still waits",
+          "packages/tooling/tests/performance-budget.test.ts: new metric, re-derived API baseline, verifyBaselinesAgainstRuns",
+          "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
         ]
       }
     },
@@ -2381,9 +2396,10 @@
       "quote": "파일 bytes·sample/segment 수·XML depth/text·정규화 출력·파싱 시간·메모리·worker 동시성에 구체적 상한과 초과 오류를 a에서 확정하고 각 경계/초과값을 시험한다.",
       "verdict": "passed",
       "evidence": [
-        "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)"
+        "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)",
+        "docs/implementation/progress/M2-01aj.md"
       ],
-      "reason": "M2-01ai amendment: passed, and the F1 limit is closed. Each parse now runs in a separate child process whose V8 heap is capped by --max-old-space-size (checked against the reported heap limit before any bytes are sent); exceeding it ends only the child and the API answers TRACK_PARSE_MEMORY_EXCEEDED and keeps serving (reproduced across 200 parses in 5 real host processes; restoring the in-process worker aborts the host). Parse time, memory and concurrency assertions from M2-01k-f still hold. Remaining limits: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
+      "reason": "M2-01aj amendment: still passed. On top of the M2-01ai heap ceiling in a separate child process, the child's process RSS now has a budget, and on API shutdown the parsers are cancelled at once instead of waiting for the routing drain (B1 killed). Remaining limits from M2-01ai are unchanged: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2391,15 +2407,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01ai",
+        "node": "M2-01aj",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-f amendment: passed, with F1 as the stated limit. Parse time (host deadline test, parser budget test), memory (real V8 heap-ceiling ladder in the probe) and worker concurrency (default limit test and probe check) each have executed assertions with killed mutants. Limit F1: a worker OOM is normally contained, but a native structured-clone allocation near the heap limit can abort the whole API process (reproduced under mutation); the fix is M2-01ai and is needed before untrusted production uploads.",
+        "previousReason": "M2-01ai amendment: passed, and the F1 limit is closed. Each parse now runs in a separate child process whose V8 heap is capped by --max-old-space-size (checked against the reported heap limit before any bytes are sent); exceeding it ends only the child and the API answers TRACK_PARSE_MEMORY_EXCEEDED and keeps serving (reproduced across 200 parses in 5 real host processes; restoring the in-process worker aborts the host). Parse time, memory and concurrency assertions from M2-01k-f still hold. Remaining limits: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
         "executed": [
-          "packages/server/track-storage/tests/parse-process.test.ts: survival under the M2-01k-f M2b/M2d conditions (5 real host processes x 10 rungs x copies 8 and 10 x 2 runs: 174 TRACK_PARSE_MEMORY_EXCEEDED, 26 ok, every host exits 0), leak/cleanup, host death, output identity across 9 fixtures (JSON, deepStrictEqual and v8.serialize bytes)",
-          "independent review reproduced survival on the final code (3 hosts, 60 parses) and MA1 (base worker restored -> host rc 134, FATAL ERROR: Reached heap limit), plus MA4 and MA4+MA5",
-          "scripts/probe-performance-budget.mts judged runs on the final tree under the harness lock: 17/17 budgets, 10/10 checks (the independent review's run, hash 3071f97b, and the implementer's after the review fixes, hash 8d0ece18)",
-          "mutants MA1-MA4, MA6, MA9-MA13, EM1-EM9, NB1-M1, NB1-M2, EM1b, NB2-M1, NB2-M3 each fail; MA5 and NB2-M2 survive as redundant layers; some mutant logs survive only as recovered session excerpts (progress doc section 5)"
+          "scripts/probe-performance-budget.mts: 3 record-only baselines and a judged run on the reviewed tree (diffSha256 085b9a1f, recomputed by the independent review): 18/18 budgets, 10/10 checks; a second judged run by the review passed 18/18, another at load 13.5-23.4 failed worker.parseMs only (disclosed; 1-minute load lags short bursts, M2-01al)",
+          "apps/api/tests/routing-admission.integration.test.ts \"parsers on shutdown (M2-01aj)\": parses are cancelled while the routing drain still waits",
+          "packages/tooling/tests/performance-budget.test.ts: new metric, re-derived API baseline, verifyBaselinesAgainstRuns",
+          "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
         ]
       }
     },

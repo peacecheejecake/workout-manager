@@ -1503,8 +1503,9 @@
       "title": "track parse child 메모리 예산과 종료 순서",
       "dependsOn": ["M2-01ai"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01ai 독립 검토의 비차단 후속. (a) parse child process의 peak RSS(`details.parseProcessRss`, 현재 약 170 MiB, API당 최대 4개)는 기록만 하고 예산이 없다. 기록 전용 기준선 run 3회로 metric과 예산을 performance-budget.json에 더하고, 서버 probe가 판정하게 한다. api.processPeakRssMiB는 이제 parse 메모리를 포함하지 않으므로 그 예산을 새 기준선에 맞게 다시 도출할지 결정한다. (b) apps/api/src/configured.ts의 close hook에서 parser close를 routing permit drain 앞이나 함께 두어, 종료 때 진행 중 parse가 drain 시간만큼 더 돌지 않게 한다(순서가 바뀌어도 routing admission과 공유 상태가 없음을 확인한다). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01ai.md §7, M2-01ai 2차 검토."
+      "status": "completed",
+      "scope": "M2-01ai 독립 검토의 비차단 후속. (a) parse child process의 peak RSS(`details.parseProcessRss`, 현재 약 170 MiB, API당 최대 4개)는 기록만 하고 예산이 없다. 기록 전용 기준선 run 3회로 metric과 예산을 performance-budget.json에 더하고, 서버 probe가 판정하게 한다. api.processPeakRssMiB는 이제 parse 메모리를 포함하지 않으므로 그 예산을 새 기준선에 맞게 다시 도출할지 결정한다. (b) apps/api/src/configured.ts의 close hook에서 parser close를 routing permit drain 앞이나 함께 두어, 종료 때 진행 중 parse가 drain 시간만큼 더 돌지 않게 한다(순서가 바뀌어도 routing admission과 공유 상태가 없음을 확인한다). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01ai.md §7, M2-01ai 2차 검토.",
+      "evidence": "docs/implementation/progress/M2-01aj.md"
     },
     {
       "id": "M2-01ak",
@@ -1513,6 +1514,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "M2-01af에서 분리. 저장소의 serving profile(request log off, com.graphhopper.resources·http·navigation OFF, POST /route)은 바뀌었지만 `.geo-build/routing-graph`의 배포 graph A(c57f12f5975347e8)는 옛 profile 사본(e72537c1…)으로 돌며, helper가 자동으로 붙이는 request-log override와 WARN threshold로만 보호된다. runbook \"serving profile 변경의 배포\" 절차대로 새 profile로 graph를 영속 위치에 다시 import하고(`--replace-served-graph` 없이 새 root에), blue/green으로 전환하고, 코스의 graph 인정을 다시 확인하고, 옛 graph로 rollback이 되는지 보인다. `.geo-build`는 다른 노드의 시험도 쓰므로 harness lock을 잡고 한 번에 하고, 전후 manifest·profile SHA-256과 새 graph id를 기록한다. 새 profile 위에서 engine log probe(R1, root INFO R8, navigate·spt·isochrone 포함)와 swap·운영 probe를 다시 실행해 기존 보고서를 갱신한다. 출처: docs/implementation/progress/M2-01af.md §7, §9."
+    },
+    {
+      "id": "M2-01al",
+      "title": "성능 판정 보강 3: RSS 측정 누락과 짧은 부하 급증",
+      "dependsOn": ["M2-01aj"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01aj 독립 검토의 비차단 후속. (a) parse child RSS를 읽지 못한 parse(`details.parseProcessRss.parsesWithoutReading`)가 0이 아니면 판정 run을 통과로 받지 않는 check를 둔다(지금은 minimumSamples 5라 20개 중 15개를 읽지 못해도 판정된다). (b) 1분 load average가 짧은 경합 급증을 늦게 반영해 허용 부하 안에서도 시간 예산이 거짓 실패할 수 있다(검토자 run 01:16Z에서 worker.parseMs p95 1,446 ms). 표본 단위로 더 촘촘한 부하 측정이나 한 번 자동 재실행 같은 방법을 정하고, 거짓 통과가 생기지 않음을 시험으로 보인다. (c) probe 로그를 Playwright가 지우는 test-results/ 밖에 두도록 문서·script를 고친다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01aj.md, M2-01aj 독립 검토."
     },
     {
       "id": "M2-01k",
