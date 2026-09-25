@@ -1596,8 +1596,17 @@
       "title": "tenant 객체 purge가 superuser가 아닌 소유자에서 아무것도 lease하지 못함",
       "dependsOn": [],
       "kind": "task",
+      "status": "completed",
+      "scope": "M2-01k-o 검토(peer r2)에서 확인: `tenant_object_purge`(044–046)는 FORCE RLS인데 policy가 하나도 없고, 044/045의 lease 함수는 `tenant_erasure`를 tenant 설정 없이 읽는다. 그래서 migration 소유 role이 superuser도 BYPASSRLS도 아닌 배포에서는 `lease_tenant_object_purge`가 자기 표(policy 없음)와 `tenant_erasure`의 행을 보지 못해 말소된 tenant의 객체를 지우지 못하고, 말소 체인(044의 `erase_account`)이 `tenant_object_purge`에 넣는 INSERT … ON CONFLICT도 기본 거부되어 계정 말소 자체가 실패할 수 있다(검토자가 SQL을 읽고 추정, 실행 확인 전). 시험 cluster의 소유자(workout_admin)가 superuser라 드러나지 않았다. superuser·BYPASSRLS가 아닌 소유 role로 `erase_account`와 purge 경로(lease·완료·erasure 확인)를 돌리는 통합 시험을 먼저 실패로 보이고, 정의자 함수가 필요한 행만 보도록 policy나 tenant 설정을 고친다(050이 read_course_share에서 한 방식 참고). 다른 정의자 함수의 가시성을 넓히지 않음을 upgrade 시험으로 보이고, 고친 것을 되돌리는 변이가 실패해야 한다. 출처: docs/implementation/progress/M2-01k-o.md §6, §8 항목 2.",
+      "evidence": "docs/implementation/progress/M2-01at.md"
+    },
+    {
+      "id": "M2-01au",
+      "title": "남은 queue·worker 경로를 superuser가 아닌 migration 소유 역할에서 돌게 함",
+      "dependsOn": ["M2-01at"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "M2-01k-o 검토(peer r2)에서 확인: `tenant_object_purge`(044–046)는 FORCE RLS인데 policy가 하나도 없고, 044/045의 lease 함수는 `tenant_erasure`를 tenant 설정 없이 읽는다. 그래서 migration 소유 role이 superuser도 BYPASSRLS도 아닌 배포에서는 `lease_tenant_object_purge`가 자기 표(policy 없음)와 `tenant_erasure`의 행을 보지 못해 말소된 tenant의 객체를 지우지 못하고, 말소 체인(044의 `erase_account`)이 `tenant_object_purge`에 넣는 INSERT … ON CONFLICT도 기본 거부되어 계정 말소 자체가 실패할 수 있다(검토자가 SQL을 읽고 추정, 실행 확인 전). 시험 cluster의 소유자(workout_admin)가 superuser라 드러나지 않았다. superuser·BYPASSRLS가 아닌 소유 role로 `erase_account`와 purge 경로(lease·완료·erasure 확인)를 돌리는 통합 시험을 먼저 실패로 보이고, 정의자 함수가 필요한 행만 보도록 policy나 tenant 설정을 고친다(050이 read_course_share에서 한 방식 참고). 다른 정의자 함수의 가시성을 넓히지 않음을 upgrade 시험으로 보이고, 고친 것을 되돌리는 변이가 실패해야 한다. 출처: docs/implementation/progress/M2-01k-o.md §6, §8 항목 2."
+      "scope": "M2-01at(051)이 두 object purge만 고쳤다. superuser도 BYPASSRLS도 아닌 migration 소유 역할에서 나머지 queue·상태 경로가 돌게 한다: `resource_object_cleanup`, `resource_derived_cleanup`, 두 reconcile-state 표, 썸네일·URL 수집·sweep·reap·prune worker(목록: docs/implementation/progress/M2-01at.md §5, B 36개·C 30개). owner 전용 policy는 051처럼 행마다 tenant를 세우는 읽기와 함께만 더한다. 먼저 `authorize_resource_object_cleanup`의 13개 생존 확인부터 고쳐 어떤 guard도 fail-open하지 않게 한다. plain 소유자에서 먼저 실패하고 고친 뒤 통과해야 하는 통합 시험: 추적·썸네일 참조가 있는 tenant의 `erase_account`, 추적이 있는 활동 삭제, upload protect/supersede, 각 worker의 lease. invoker 함수도 다시 감사한다(복원 replay `replay_absent_activity_deletion`·`replay_course_deletion`의 외래 id 거절이 plain 소유자에서 다른 tenant 행을 보지 못해 조용히 사라진다). 소유 이전 이야기도 다룬다: `*_definer` policy(047·049·050·051)가 적용 역할에 묶여 `REASSIGN OWNED`·`--no-owner` 복원 뒤 실패하는 것, migration 적용 중 잠금 순서. 051 lease의 INCONSISTENT 단계 비용(10만 행 약 0.75 s, 이전 35 ms)은 값싼 SQL 선별로 줄일지 판단한다. 각 수정을 되돌리는 변이가 실패해야 하고, 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01at.md §5·§8, M2-01at 독립 검토."
     },
     {
       "id": "M2-01k",

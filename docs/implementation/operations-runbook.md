@@ -94,6 +94,19 @@ rename이 없어 `grantOperations`를 다시 돌릴 필요는 없다.
 시스템이 만들지 않는 원장 상태다. 재시도로 고쳐지지 않으므로 사람이 조사한다. 자세한 근거는
 [M2-01y 기록](progress/M2-01y.md).
 
+migration 소유 역할(M2-01at, 051): 두 purge(말소 tenant·활동/코스)는 051부터 superuser도 BYPASSRLS도 아닌 소유
+역할에서 돈다(무장·lease·완료, 거절 조건 그대로). 단 **그 소유 역할이 051을 직접 적용했을 때만**이다. 051의 policy는 적용한
+역할(`current_user`)에 묶이므로, superuser가 051까지 적용한 뒤 `REASSIGN OWNED`로 소유를 넘기거나 `--no-owner` 복원을 다른
+역할로 하면 새 소유자에게는 policy가 없어 다시 `42501`로 실패한다(047·049·050의 `*_definer` policy도 같다). 소유를 바꿀 때는 이
+policy들의 대상 역할을 새 소유자로 바꾼다. 051은 한 트랜잭션에서 purge 표와 `tenant_erasure`·`activity_canonical`·`course`에
+AccessExclusive 잠금을 잡으므로 동시 말소·삭제와 교착하면 migration 전체가 되돌려진다 — runtime·worker를 멈추거나
+`lock_timeout`을 두고 적용한다. 051은 grant를 바꾸지 않으므로 helper를 다시 돌릴 필요가 없다. 051을
+적용하면 그런 소유 역할에서 044·046 backfill이 보지 못한 말소 tenant·삭제 활동·unavailable 코스가 그때 무장된다. 그러나
+**object 정리 queue(`resource_object_cleanup`)·파생 정리·sweep·썸네일·URL 수집 worker는 아직 그런 소유 역할에서 돌지
+않는다**(행을 보지 못하거나 queue에 쓰는 경로가 `42501`로 실패한다 — 추적이나 객체가 있는 활동 삭제, 객체가 있는 계정
+말소 포함). 그 후속이 끝나기 전에는 migration 소유 역할을 superuser나 BYPASSRLS로 둔다. 목록은
+[M2-01at 기록](progress/M2-01at.md) §5.
+
 ### 코스 삭제 원장 재적용 (M2-01ao)
 
 소유자가 지운 코스는 행이 물리 삭제되어 묘비가 남지 않는다. migration 049부터는 삭제가 같은 트랜잭션에서

@@ -53,6 +53,7 @@ const migrationFiles = [
   '048_garmin_unofficial.sql',
   '049_course_deletion_ledger.sql',
   '050_course_sharing.sql',
+  '051_object_purge_plain_owner.sql',
 ] as const;
 
 /**

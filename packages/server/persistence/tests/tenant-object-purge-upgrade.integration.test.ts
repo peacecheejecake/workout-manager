@@ -154,12 +154,13 @@ describe('tenant object purge migration upgrade of a populated database', () => 
     expect(functions.rows).toHaveLength(4);
     // Pinned: pg_catalog alone, or with pg_temp explicitly LAST. `erase_account` is read after a
     // full migrate, so it is the head of the chain; since 047 (M2-01ah review N1) the head pins
-    // `pg_catalog, pg_temp`, which keeps a temporary object from shadowing a catalog name.
+    // `pg_catalog, pg_temp`, which keeps a temporary object from shadowing a catalog name. The
+    // lease pins the same since M2-01at (051) replaced it.
     for (const row of functions.rows)
       expect(row, row.name).toMatchObject({
         definer: true,
         config:
-          row.name === 'erase_account'
+          row.name === 'erase_account' || row.name === 'lease_tenant_object_purge'
             ? ['search_path=pg_catalog, pg_temp']
             : ['search_path=pg_catalog'],
       });

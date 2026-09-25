@@ -17,13 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-o](progress/M2-01k-o.md)를 완료했다(사용자 승인 요구 2026-09-25). 코스 GPX 내보내기와 공유 링크 전에 privacy trim 확인 화면을
-거치고, 서버는 revision·보호 구역에 묶인 1시간 receipt로 둘 다 막는다. 보호 구역 안 좌표는 GPX와 링크 어디에도 나가지 않고, 소유자는
-경고 뒤 자기 GPX에만 정확한 끝을 실을 수 있다. 보기 전용 unlisted 링크는 `COURSE_SHARING` flag 뒤에 있고 **기본 꺼짐**이다. 계정 export는
-v23(공유 사실·구역 δ·코스 삭제 원장). S14-privacy-share를 passed로 올렸다(passed 84 → 85). 링크를 켜기 전에 후속 M2-01as(진행 방향·
-역투영 재식별 공격 완화, 사용자 결정)와 front proxy·복원 epoch 조건이 필요하다.
+[M2-01at](progress/M2-01at.md)를 완료했다. migration 소유 역할이 superuser도 BYPASSRLS도 아니면 두 object purge 표(FORCE RLS, policy
+없음) 때문에 `erase_account`·활동 삭제·`delete_course`가 `42501`로 실패하고 purge lease가 아무것도 보지 못하던 결함을 migration 051로
+고쳤다(소유자 전용 policy와 행마다 tenant를 세우는 읽기, backfill 재실행). 추적·썸네일 객체가 있는 계정 말소와 추적이 있는 활동 삭제는
+그런 소유 역할에서 여전히 `resource_object_cleanup`에서 실패한다. 나머지 queue·worker 경로는 후속 M2-01au다.
 
-직전 완료: [M2-01k-n](progress/M2-01k-n.md)(S09 차트 범위·랩·지도 연결).
+직전 완료: [M2-01k-o](progress/M2-01k-o.md)(코스 내보내기·공유 전 privacy 확인).
 
 ## 운영 메모
 
@@ -60,13 +59,15 @@ v23(공유 사실·구역 δ·코스 삭제 원장). S14-privacy-share를 passed
   독립 재식별 검토가 통과하기 전에는 켜지 않는다. rate key는 base64를 풀어 32 byte 이상이다.
 - migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
   쓴다). runbook에 이 단계는 아직 없다(후속).
-- `tenant_object_purge`(044–046)는 FORCE RLS에 policy가 없어, migration 소유 role이 superuser·BYPASSRLS가 아니면 purge lease가 아무것도
-  보지 못하고, 말소 체인의 INSERT도 거부되어 계정 말소가 실패할 수 있다(M2-01at, SQL 판독 기준). M2-01at 전까지는 소유 role이 superuser나 BYPASSRLS여야 purge가 돈다.
+- migration 소유 역할은 지금 superuser나 BYPASSRLS로 둔다. 051(M2-01at)부터 두 object purge는 그렇지 않은 소유 역할에서도 돌지만,
+  **그 역할이 051을 직접 적용했을 때만**이다(policy가 적용 역할에 묶여 소유 이전 뒤엔 다시 실패). 그리고 그런 소유 역할에서는 추적·썸네일
+  객체가 있는 계정 말소와 추적이 있는 활동 삭제가 여전히 `resource_object_cleanup`에서 `42501`로 실패하고, 정리 queue·sweep·썸네일·URL
+  수집 worker는 행을 보지 못한다(후속 M2-01au). 051은 grant를 바꾸지 않는다. 적용할 때는 runtime·worker를 멈추거나 `lock_timeout`을 둔다.
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01as, M2-01at. 이 중
-M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01as, M2-01au. 이 중
+M2-01ag·M2-01an·M2-01ap·M2-01ar·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
@@ -80,6 +81,8 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 - `tests/identity/oidc.spec.ts:55`(두 번째 탭 계정 전환, 30초 timeout)와 `tests/identity/activity-track-map.spec.ts:446`(Vite "저장된
   경로" 영역이 5초 안에 안 보임)이 M2-01am 병합 검증의 identity 두 회차에서 각각 한 번 실패했고, 같은 코드를 포함한 M2-01ak 병합 검증
   두 회차는 모두 통과했다(2026-09-25). 반복되면 별도 노드로 다룬다.
+- `tests/identity/plan-scenarios.spec.ts:287`(교차 branch 비교)이 M2-01k-o 병합 검증 identity 1회차(1분 load 약 84)에서 한 번 실패했고
+  2회차는 통과했다(2026-09-26). 반복되면 별도 노드로 다룬다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate
