@@ -1558,8 +1558,9 @@
       "title": "백업 뒤 삭제한 코스가 복원으로 되살아나는 공백",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01k-o 요구 작성 중 발견(요구 §4 발견 (a)). backup-restore drill에는 백업 이후 소유자가 지운 코스를 복원 뒤 다시 지우는 원장이 없다(delete_course·courses.remove 재생 경로 없음, grep 확인·drill로는 재현하지 않음). 그래서 백업 뒤 지운 코스와 그 좌표가 복원으로 소유자에게 돌아올 수 있다. 활동·tenant·객체 purge(M2-01x·y·z)와 같은 방식으로 코스 삭제를 복원 뒤 재적용할지 결정하고, drill check로 백업 → 코스 삭제 → 복원 → 코스 부재를 실제 PostgreSQL에서 단언한다. 재현이 먼저이며, 재현되지 않으면 그 근거를 기록하고 닫는다. 출처: docs/implementation/research/m2-01k-o-sharing-requirement.md §4."
+      "status": "completed",
+      "scope": "M2-01k-o 요구 작성 중 발견(요구 §4 발견 (a)). backup-restore drill에는 백업 이후 소유자가 지운 코스를 복원 뒤 다시 지우는 원장이 없다(delete_course·courses.remove 재생 경로 없음, grep 확인·drill로는 재현하지 않음). 그래서 백업 뒤 지운 코스와 그 좌표가 복원으로 소유자에게 돌아올 수 있다. 활동·tenant·객체 purge(M2-01x·y·z)와 같은 방식으로 코스 삭제를 복원 뒤 재적용할지 결정하고, drill check로 백업 → 코스 삭제 → 복원 → 코스 부재를 실제 PostgreSQL에서 단언한다. 재현이 먼저이며, 재현되지 않으면 그 근거를 기록하고 닫는다. 출처: docs/implementation/research/m2-01k-o-sharing-requirement.md §4.",
+      "evidence": "docs/implementation/progress/M2-01ao.md"
     },
     {
       "id": "M2-01ap",

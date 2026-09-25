@@ -94,6 +94,48 @@ rename이 없어 `grantOperations`를 다시 돌릴 필요는 없다.
 시스템이 만들지 않는 원장 상태다. 재시도로 고쳐지지 않으므로 사람이 조사한다. 자세한 근거는
 [M2-01y 기록](progress/M2-01y.md).
 
+### 코스 삭제 원장 재적용 (M2-01ao)
+
+소유자가 지운 코스는 행이 물리 삭제되어 묘비가 남지 않는다. migration 049부터는 삭제가 같은 트랜잭션에서
+`course_deletion` 원장 행(tenant, course id, 삭제 시각 — 이름·좌표 없음)을 남기고, 코스 디렉터리의 객체 purge를
+무장하며, 그 id를 다시 코스로 만들 수 없게 한다. 원장을 재적용하지 않으면 백업 뒤 지운 코스가 이름·좌표·즐겨찾기·
+메모·그림과 함께 소유자에게 되살아난다(M2-01ao에서 재현).
+
+**원장 캡처(백업 밖).** 복원에 쓸 원장은 원본 cluster의 `course_deletion` 표 전체(`athlete_id`, `course_id`,
+`deleted_at`)를 DB 밖에 독립 보존한 사본이다. 말소는 그 tenant의 원장 행도 지우므로, 말소 전에 그 tenant의 행을
+따로 캡처해 합친다(활동 삭제 원장과 같은 겹침). 항목에 다른 필드가 있으면 재적용하지 않는다.
+
+**언제.** 데이터와 **post-data**(제약·색인·trigger)까지 복원이 **모두** 끝난 뒤, runtime 접근을 열기 **전**에,
+말소 원장·활동 삭제 원장과 같은 복원 트랜잭션에서 한다. 재적용 함수는 스키마만 복원된 단계(pre-data, tenant 계정이
+아직 없음)는 `COURSE_REPLAY_TENANT_UNKNOWN`으로 거절하지만, 데이터 적재 중(행은 일부 있고 trigger·제약은 아직
+없음)에 부르면 코스를 `absent`로 기록한 뒤 남은 데이터 적재가 코스를 되살릴 수 있다. 그 단계를 함수가 알아볼 수는
+없으므로 순서는 절차가 보장한다.
+
+**role.** RLS를 우회하는 복원 관리자 role로 한다. `replay_course_deletion`은 invoker 함수라 우회하지 않는 role에서는
+다른 tenant의 코스를 보지 못한다. 그러면 다른 tenant가 가진 course id를 거절(`COURSE_REPLAY_FOREIGN_COURSE`)하지
+못하고 `absent`로 기록할 수 있다.
+
+항목마다 그 tenant 세션(`app.athlete_id`)으로:
+
+1. `tenant_erasure`에 있는 tenant의 항목은 **부르지 않고 계수한다**. 말소 재생이 이미 만족시켰으므로 코스 행이
+   없음을 확인만 한다(함수도 말소 tenant를 `COURSE_REPLAY_TENANT_ERASED`로 거절한다).
+2. 나머지는 `SELECT public.replay_course_deletion(tenant, course_id, deleted_at)`을 부른다. 반환값:
+   - `deleted` — 복원 cluster에 코스가 있었다. live 삭제와 같은 본문으로 그림을 supersede·queue하고, 코스 디렉터리
+     purge를 무장하고, search·proposal·revision·코스를 지우고(즐겨찾기·메모·그림 행·계보는 cascade), 원장 행을 쓴다.
+   - `absent` — 없었다(dump 뒤 생성·원장 전 삭제). 원장 행을 쓰고 purge를 무장한다. 객체 archive에 그 코스의
+     그림이 있을 수 있기 때문이다.
+   - `already_applied` — 원장 행이 이미 있고 코스가 없다. 아무것도 바꾸지 않는다(purge 행이 아예 없을 때만 무장).
+     같은 원장을 두 번 재적용해도 두 번째는 상태를 바꾸지 않는다.
+3. `deleted + absent + already_applied + 말소 계수 = 원장 항목 수`를 확인한다.
+
+세션 불일치, 비-canonical id, 없는·미래 삭제 시각, 말소되었거나 identity 계정이 없는 tenant, 다른 tenant가 가진
+course id는 모두 **예외로 재적용 전체를 rollback**한다. 조용히 건너뛰는 경로는 없다. 049 이전에 지운 코스는 원장
+행이 없어 재적용할 수 없다(049 이전 백업에서 복원하면 되살아날 수 있다). 그런 백업에서 복원했다면 소유자에게 코스
+목록을 확인해 달라고 알린다. 덤프 뒤에 만들고 말소한 tenant는 계정 원장을 먼저 재적용해야 말소로 계수된다(아니면
+`COURSE_REPLAY_TENANT_UNKNOWN`으로 재적용 전체가 막힌다). 덤프 뒤에 만들어 아직 살아 있는 계정은 그 계정 복구가 먼저
+필요하며 drill은 이 경우를 돌리지 않는다. 자세한 근거는
+[M2-01ao 기록](progress/M2-01ao.md).
+
 ## 체크인 저장 이후의 내보내기·복구
 
 M1-04a에서 export artifact `schemaVersion: 2`를 도입했다. 기존 v1 다운로드 파일은 변경하지 않으며

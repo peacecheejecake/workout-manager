@@ -353,6 +353,20 @@
         "mutants M8a (import source kind changed to bypass suppression) and M8b (ledger skip removed) each fail; the independent security review (four rounds, round 4 APPROVE on tree 15274da9) did not re-run mutants for this row"
       ],
       "note": "Re-judged by root from the temporary node's executed evidence and its independent review; see docs/implementation/progress/M1-06b-tmp.md."
+    },
+    {
+      "node": "M2-01ao",
+      "date": "2026-09-25",
+      "rows": ["K-recovery", "K-deletion"],
+      "decision": "Gap node M2-01ao closed the restore resurrection gap for owner-deleted courses with a course_deletion ledger (migration 049) replayed after restore. Independent review round 1 APPROVE with non-blocking findings (runbook, behavioural ordering test, wording, renumber text), all applied; round 2 APPROVE after the move onto main and the renumber from 048 to 049.",
+      "change": "No verdict change; K-recovery and K-deletion stay passed with added evidence and limits; counts unchanged (passed 81, partial 23, not_executed 6).",
+      "executed": [
+        "scripts/backup-restore-drill.mts --execute (PG_BIN postgresql@14): passed, 88 checks (78 on base + 10 for this node), re-run by the independent review with an identical check list; reproduced before the fix: a course the owner deleted after the backup came back readable, listed, with its favourite and thumbnail object; after the fix owner_deleted_courses_absent_after_replay_in_read_list_and_every_course_table and the picture and gap-purge checks pass",
+        "packages/server/persistence/tests/course-deletion-ledger.integration.test.ts (8) and course-deletion-ledger-upgrade.integration.test.ts (1) on a runner-made PostgreSQL 14 cluster: a deletion writes a ledger row, arms the course object purge held back past a running thumbnail lease, makes the id terminal, and replay is idempotent and fail-closed; erasure removes ledger and Garmin unofficial rows",
+        "pnpm test 3,791; pnpm test:integration 1+678; pnpm test:identity 249 passed, 3 skipped; courses.spec.ts 3/3",
+        "mutants MA, MB1, MB2, MC1, MC2, M1-M9 each fail; the independent review killed its own R1 (absent path not armed), R2 (purge armed after revisions are deleted; in round 2 by a behavioural test alone), R3 (thumbnails not superseded) and R5 (erasure chain skipping the Garmin wrapper), see progress section 8.1"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ao.md."
     }
   ],
   "rounds": [
@@ -1982,13 +1996,25 @@
       "evidence": [
         "pnpm exec tsx scripts/backup-restore-drill.mts --execute: passed, 62 checks, incl. restored_routed_course_revision_keeps_the_graph_that_computed_it, restored_course_thumbnail_object_is_readable_after_restore, restored_activity_deletion_reclaims_derived_courses_and_their_copies"
       ],
-      "reason": "",
+      "reason": "M2-01ao amendment: still passed, with evidence that now covers a course deleted after the backup. Before this node such a course came back on restore (reproduced); migration 049 records each owner deletion in a course_deletion ledger table, a copy of which is captured outside the database and replayed after restore, and the drill asserts the course is absent from read, list and every course table with its pictures reclaimed. Limits: courses deleted before migration 049 have no ledger row and can still come back from an older backup; independent production retention of the ledger is not proven.",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
         "executed": ["backup-restore-drill --execute: passed, 75 checks"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01ao",
+        "date": "2026-09-25",
+        "previousVerdict": "passed",
+        "previousReason": "",
+        "executed": [
+          "scripts/backup-restore-drill.mts --execute (PG_BIN postgresql@14): passed, 88 checks (78 on base + 10 for this node), re-run by the independent review with an identical check list; reproduced before the fix: a course the owner deleted after the backup came back readable, listed, with its favourite and thumbnail object; after the fix owner_deleted_courses_absent_after_replay_in_read_list_and_every_course_table and the picture and gap-purge checks pass",
+          "packages/server/persistence/tests/course-deletion-ledger.integration.test.ts (8) and course-deletion-ledger-upgrade.integration.test.ts (1) on a runner-made PostgreSQL 14 cluster: a deletion writes a ledger row, arms the course object purge held back past a running thumbnail lease, makes the id terminal, and replay is idempotent and fail-closed; erasure removes ledger and Garmin unofficial rows",
+          "pnpm test 3,791; pnpm test:integration 1+678; pnpm test:identity 249 passed, 3 skipped; courses.spec.ts 3/3",
+          "mutants MA, MB1, MB2, MC1, MC2, M1-M9 each fail; the independent review killed its own R1 (absent path not armed), R2 (purge armed after revisions are deleted; in round 2 by a behavioural test alone), R3 (thumbnails not superseded) and R5 (erasure chain skipping the Garmin wrapper), see progress section 8.1"
+        ]
+      }
     },
     {
       "id": "K-deletion",
@@ -1999,7 +2025,7 @@
         "tests/identity/course-acceptance.spec.ts steps 10-13: impact names only A, A unavailable/404/410, B revision/thumbnail/GPX bytes unchanged, B delete → 404",
         "packages/server/persistence/tests/courses.integration.test.ts:468 (:516-532 other courses stay available), :738 erasure"
       ],
-      "reason": "Actual object-file removal is covered by course-thumbnails.integration:998/984/1014, not by the E2E.",
+      "reason": "M2-01ao amendment: still passed. A course deletion now also leaves a ledger row, arms the course object purge held back past any running thumbnail lease, and makes the course id terminal, so restore cannot bring it back. Actual object-file removal is covered by course-thumbnails.integration:998/984/1014 and the drill, not by the E2E. The ledger is not in the account export yet (decide with M2-01k-o's export v23).",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
@@ -2009,7 +2035,19 @@
           "backup-restore-drill 75"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01ao",
+        "date": "2026-09-25",
+        "previousVerdict": "passed",
+        "previousReason": "Actual object-file removal is covered by course-thumbnails.integration:998/984/1014, not by the E2E.",
+        "executed": [
+          "scripts/backup-restore-drill.mts --execute (PG_BIN postgresql@14): passed, 88 checks (78 on base + 10 for this node), re-run by the independent review with an identical check list; reproduced before the fix: a course the owner deleted after the backup came back readable, listed, with its favourite and thumbnail object; after the fix owner_deleted_courses_absent_after_replay_in_read_list_and_every_course_table and the picture and gap-purge checks pass",
+          "packages/server/persistence/tests/course-deletion-ledger.integration.test.ts (8) and course-deletion-ledger-upgrade.integration.test.ts (1) on a runner-made PostgreSQL 14 cluster: a deletion writes a ledger row, arms the course object purge held back past a running thumbnail lease, makes the id terminal, and replay is idempotent and fail-closed; erasure removes ledger and Garmin unofficial rows",
+          "pnpm test 3,791; pnpm test:integration 1+678; pnpm test:identity 249 passed, 3 skipped; courses.spec.ts 3/3",
+          "mutants MA, MB1, MB2, MC1, MC2, M1-M9 each fail; the independent review killed its own R1 (absent path not armed), R2 (purge armed after revisions are deleted; in round 2 by a behavioural test alone), R3 (thumbnails not superseded) and R5 (erasure chain skipping the Garmin wrapper), see progress section 8.1"
+        ]
+      }
     },
     {
       "id": "K-performance",

@@ -51,6 +51,7 @@ const migrationFiles = [
   '046_object_scope_purge.sql',
   '047_routing_admission.sql',
   '048_garmin_unofficial.sql',
+  '049_course_deletion_ledger.sql',
 ] as const;
 
 /**

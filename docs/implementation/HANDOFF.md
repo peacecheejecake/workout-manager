@@ -17,13 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M1-06b-tmp](progress/M1-06b-tmp.md)를 완료했다(사용자 결정 2026-09-25의 임시 경로). 배포 설정이 지정한 소유자 앱 계정 하나만 앱
-설정에서 비공식 `garminconnect` 로그인(MFA 포함)을 해 처음 연결한 Garmin profile에 묶고, session token만 별도 AAD purpose로 암호화해
-둔다. "지금 가져오기"와 소유자가 켠 예약 수집이 ORIGINAL FIT을 기존 import 경로로 넣고 삭제 억제를 우회하지 않는다. 화면과 활동 출처에
-"비공식 임시 연결"과 위험을 표시한다. Python worker는 작업당 sandbox 자식 프로세스다. 합성 fixture 증거이며 **실제 Garmin 계정 실행은
-not_executed**다. EXT-G·M0-07b·M1-06b·M2-07·G2의 증거가 아니다. V2-A20은 partial 유지.
+[M2-01ao](progress/M2-01ao.md)를 완료했다. 백업 뒤 소유자가 지운 코스가 복원으로 되살아나던 공백(재현됨)을 migration 049의
+`course_deletion` 원장으로 막았다. 삭제는 원장 행(tenant·id·시각만)을 남기고 코스 객체 purge를 무장하며(실행 중 그림 lease 뒤로 미룸)
+id를 다시 쓸 수 없게 한다. 복원 뒤 원장을 재적용하면 코스와 그림이 사라진다(drill 88 checks). K-recovery·K-deletion은 passed 유지.
+049 이전에 지운 코스는 원장이 없어 옛 백업에서 되살아날 수 있고, 원장은 아직 계정 export에 없다(M2-01k-o의 export v23과 함께 판단).
 
-직전 완료: [M2-01al](progress/M2-01al.md)(성능 판정 보강 3).
+직전 완료: [M1-06b-tmp](progress/M1-06b-tmp.md)(임시 비공식 Garmin 앱 내 수집).
 
 ## 운영 메모
 
@@ -44,10 +43,13 @@ not_executed**다. EXT-G·M0-07b·M1-06b·M2-07·G2의 증거가 아니다. V2-A
   adapter를 켜지 않은 배포에도 실행한다(활동 출처 조회가 쓴다). MFA 대기 상태는
   인스턴스 메모리라 다중 인스턴스는 session affinity가 필요하다. 절차와 제거 방법은 [garmin-setup](garmin-setup.md)과 runbook에 있다.
 
+- 복원 절차에 코스 삭제 원장 재적용이 더해졌다(M2-01ao, runbook "코스 삭제 원장 재적용"). 원장은 DB 밖으로 캡처하고, data와
+  post-data 복원이 끝난 뒤 runtime 접근 전에 RLS를 우회하는 복원 admin 역할로, 계정 원장 다음에 재적용한다.
+
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01ar, M2-01k-o. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am·M2-01ao는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
@@ -57,6 +59,9 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
   그 spec만 다시 돌리면 통과했다(M2-01aq 검증, 2026-09-25). 반복되면 별도 노드로 다룬다.
 - `tests/identity/course-extras.spec.ts:95`(GPX 가져오기 상태 "코스를 가져왔습니다"가 5초 안에 보이지 않음)이 M2-01aq 병합 검증의 identity 2회차에서
   한 번 실패했다(1회차 통과, 제품 코드 변경 없음). 반복되면 별도 노드로 다룬다.
+- `packages/server/track-storage/tests/parse-host.test.ts`의 메모리 상한 시험이 1분 load 약 50에서 `TRACK_PARSE_MEMORY_EXCEEDED`
+  대신 `TRACK_OUTPUT_TOO_LARGE`로 한 번 실패했고, 그 파일만 두 번 다시 돌리면 15/15 통과했다(M2-01k-n 재검증, 2026-09-25).
+- main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate
 

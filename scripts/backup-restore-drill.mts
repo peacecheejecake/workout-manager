@@ -75,6 +75,7 @@ import {
 } from '../packages/server/persistence/src/resource-object-cleanup.js';
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
 import {
+  CourseNotFoundError,
   courseGeometrySha256,
   createCourseRepository,
 } from '../packages/server/persistence/src/courses.ts';
@@ -465,6 +466,76 @@ function assertCoachingCandidateRowsPurged(
 }
 
 // No database URL is accepted, and no inherited libpq configuration reaches subprocesses.
+// M2-01ao: replay a course-deletion ledger inside the caller's open restore transaction (the
+// caller commits or rolls back). Every entry must be accounted for; an erased tenant's entry
+// is satisfied by its erasure and counted, anything the database function cannot verify
+// throws, and an entry of any other shape is refused here before it reaches the database.
+type CourseDeletionReplay = {
+  deleted: string[];
+  absent: string[];
+  already_applied: string[];
+  erasure_satisfied: string[];
+};
+async function replayCourseDeletionLedger(
+  restored: Pool,
+  value: unknown,
+): Promise<CourseDeletionReplay> {
+  assert.ok(Array.isArray(value) && value.length > 0);
+  const outcome: CourseDeletionReplay = {
+    deleted: [],
+    absent: [],
+    already_applied: [],
+    erasure_satisfied: [],
+  };
+  for (const entry of value) {
+    assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
+    const row = entry as Record<string, unknown>;
+    assert.deepEqual(Object.keys(row).sort(), ['athlete_id', 'course_id', 'deleted_at']);
+    const owner = row['athlete_id'];
+    const courseId = row['course_id'];
+    const deletedAt = row['deleted_at'];
+    assert.ok(
+      typeof owner === 'string' &&
+        typeof courseId === 'string' &&
+        typeof deletedAt === 'string' &&
+        !Number.isNaN(Date.parse(deletedAt)),
+    );
+    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
+      owner,
+    ]);
+    if (erased.rowCount !== 0) {
+      assert.equal(
+        (
+          await restored.query('SELECT 1 FROM course WHERE athlete_id=$1 AND course_id=$2', [
+            owner,
+            courseId,
+          ])
+        ).rowCount,
+        0,
+      );
+      outcome.erasure_satisfied.push(courseId);
+      continue;
+    }
+    const applied = (
+      await restored.query<{ outcome: string }>(
+        'SELECT public.replay_course_deletion($1,$2,$3) AS outcome',
+        [owner, courseId, deletedAt],
+      )
+    ).rows[0]?.outcome;
+    assert.ok(applied === 'deleted' || applied === 'absent' || applied === 'already_applied');
+    outcome[applied].push(courseId);
+  }
+  assert.equal(
+    outcome.deleted.length +
+      outcome.absent.length +
+      outcome.already_applied.length +
+      outcome.erasure_satisfied.length,
+    value.length,
+  );
+  return outcome;
+}
+
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
 function run(bin: string, name: string, args: string[]): string {
   const result = spawnSync(join(bin, name), args, {
@@ -524,6 +595,7 @@ async function execute() {
     'post-backup-evidence-withdrawal-ledger.json',
   );
   const activityDeletionLedgerFile = join(directory, 'post-backup-activity-deletion-ledger.json');
+  const courseDeletionLedgerFile = join(directory, 'post-backup-course-deletion-ledger.json');
   const pools: Pool[] = [];
   const databases: Database[] = [];
   let started = false;
@@ -1577,6 +1649,28 @@ async function execute() {
     );
     assert.equal(doomedCourseCopy.status, 'available');
     if (doomedCourseCopy.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    // M2-01ao: a course the owner deletes explicitly after the backup, cut from the retained
+    // recording so nothing but that deletion can remove it. `delete_course` removes the rows
+    // outright, so the source keeps no tombstone of it the way it keeps an activity's.
+    const ownerDeletedCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(retainedFixture.activityId, retainedTrackId, 'Owner-deleted drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (ownerDeletedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    // And one the owner deleted before the backup: the dump already holds its ledger row and
+    // no course, so replaying the whole ledger must leave it as it is.
+    const preBackupDeletedCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(retainedFixture.activityId, retainedTrackId, 'Pre-backup deleted course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (preBackupDeletedCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    await courseRepo.remove(retainedAthlete, preBackupDeletedCourse.course.courseId, 1);
 
     // M2-01j: what the owner thinks of a course, and where they do not want a course to
     // say they have been. Neither is course content, so neither appears in a revision —
@@ -1606,6 +1700,17 @@ async function execute() {
       { expectedRevision: 1, note: 'Drill accessibility note: 12 steps, handrail' },
     );
     assert.equal(seededNote?.writtenAtRevision, 1);
+    // The owner-deleted course carries the owner's own facts too: a restore that brings the
+    // course back brings these back with it.
+    await preferenceRepo.write(retainedAthlete, ownerDeletedCourse.course.courseId, {
+      favourite: true,
+    });
+    const ownerDeletedNote = await preferenceRepo.writeAccessibilityNote(
+      retainedAthlete,
+      ownerDeletedCourse.course.courseId,
+      { expectedRevision: 1, note: 'Drill note on a course deleted after the backup' },
+    );
+    assert.equal(ownerDeletedNote?.writtenAtRevision, 1);
 
     // A course whose head was computed by our own pedestrian engine (M2-01h), plus one
     // reviewed-but-unsaved proposal. Both carry private planned coordinates, and the
@@ -2512,9 +2617,42 @@ async function execute() {
       `course-${randomUUID()}`,
     );
     if (doomedCourseV2.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    // M2-01ao: the same gap for two courses the owner deletes explicitly after the backup —
+    //  (d) the owner-deleted course, renamed to a second revision and drawn in the gap;
+    //  (e) a course created and drawn entirely in the gap (no row of the dump names it).
+    const ownerDeletedCourseV2 = await courseRepo.update(
+      retainedAthlete,
+      ownerDeletedCourse.course.courseId,
+      1,
+      courseContent(
+        retainedFixture.activityId,
+        retainedTrackId,
+        'Owner-deleted drill course renamed',
+        { kind: 'renamed' },
+      ),
+      `course-${randomUUID()}`,
+    );
+    if (ownerDeletedCourseV2.status !== 'available') throw new Error('COURSE_SEED_FAILED');
+    const gapBornCourse = await courseRepo.create(
+      retainedAthlete,
+      courseContent(retainedFixture.activityId, retainedTrackId, 'Gap-born drill course', {
+        kind: 'created',
+      }),
+      `course-${randomUUID()}`,
+    );
+    if (gapBornCourse.status !== 'available') throw new Error('COURSE_SEED_FAILED');
     await drainThumbnailQueue();
     const gapThumbnail = drawnThumbnails.get(`${doomedCourse.course.courseId}:2`);
     assert.ok(gapThumbnail, 'the renamed doomed course was drawn inside the gap');
+    const ownerDeletedThumbnail = drawnThumbnails.get(`${ownerDeletedCourse.course.courseId}:1`);
+    const ownerDeletedGapThumbnail = drawnThumbnails.get(`${ownerDeletedCourse.course.courseId}:2`);
+    const gapBornThumbnail = drawnThumbnails.get(`${gapBornCourse.course.courseId}:1`);
+    assert.ok(ownerDeletedThumbnail && ownerDeletedGapThumbnail && gapBornThumbnail);
+    // The pictures no row of the dump names: only a purge of the course's directory reaches
+    // them after the restore.
+    const courseGapObjects = [ownerDeletedGapThumbnail.storageRef, gapBornThumbnail.storageRef];
+    for (const ref of courseGapObjects)
+      assert.ok(await sourceObjectStorage.stat(validateObjectKey(ref)));
     const liveGapObjects = [
       ...liveGapTrack.artifacts.map((artifact) => artifact.storageRef),
       ...bornGapTrack.artifacts.map((artifact) => artifact.storageRef),
@@ -2615,7 +2753,27 @@ async function execute() {
       )
     ).rows;
     assert.equal(overlappingDeletion.length, 1);
+    // M2-01ao: the same overlap for courses. The erased tenant deletes one of its (now
+    // reclaimed) courses before the erasure; the erasure then removes the ledger row from the
+    // source, so the entry is carried from this capture, as the activity entry above is.
+    await courseRepo.remove(deletedAthlete, erasedRetryCourse.course.courseId, 1);
+    const overlappingCourseDeletion = (
+      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+        `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
+         WHERE athlete_id=$1`,
+        [deletedAthlete],
+      )
+    ).rows;
+    assert.deepEqual(
+      overlappingCourseDeletion.map((row) => row.course_id),
+      [erasedRetryCourse.course.courseId],
+    );
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
+    assert.equal(
+      (await source.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [deletedAthlete]))
+        .rowCount,
+      0,
+    );
     const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
     assert.throws(() =>
       parseConstraintRestoreLedger(
@@ -2781,6 +2939,40 @@ async function execute() {
         gapActivity.activityId,
         { expectedRevision: gapActivity.revision },
       );
+    // M2-01ao: the owner deletes both courses after the backup, through the real lifecycle.
+    await courseRepo.remove(retainedAthlete, ownerDeletedCourse.course.courseId, 2);
+    await courseRepo.remove(retainedAthlete, gapBornCourse.course.courseId, 1);
+    // The ledger is the whole table, captured outside the database like the others: every
+    // course the owner deleted, before or after the backup. Tenant, course id and when — no
+    // name and no coordinate.
+    const courseDeletionLedger = (
+      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+        `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
+         ORDER BY athlete_id,course_id`,
+      )
+    ).rows;
+    assert.deepEqual(
+      courseDeletionLedger.map((row) => row.course_id).sort(),
+      [
+        preBackupDeletedCourse.course.courseId,
+        ownerDeletedCourse.course.courseId,
+        gapBornCourse.course.courseId,
+      ].sort(),
+    );
+    assert.ok(courseDeletionLedger.every((row) => row.athlete_id === retainedAthlete));
+    const combinedCourseDeletionLedger = [
+      ...courseDeletionLedger,
+      ...overlappingCourseDeletion,
+    ].map((row) => ({
+      athlete_id: row.athlete_id,
+      course_id: row.course_id,
+      deleted_at: row.deleted_at.toISOString(),
+    }));
+    await writeFile(courseDeletionLedgerFile, JSON.stringify(combinedCourseDeletionLedger), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    checks.push('post_backup_course_deletion_ledger_captured_separately');
     const activityDeletionLedger = (
       await source.query<{
         athlete_id: string;
@@ -2817,6 +3009,43 @@ async function execute() {
     });
     // The source has already reclaimed those objects, so only the archive still holds them.
     checks.push('post_backup_activity_deletion_ledger_captured_separately');
+    // M2-01ao: the course-deletion replay belongs AFTER the restore is complete. A cluster
+    // whose schema is restored and whose data is not yet looks exactly like this one: the
+    // replay function exists, and no tenant does. Replaying there would record deletions of
+    // courses the data section then brings back, so the replay refuses it.
+    await admin.query('CREATE DATABASE drill_partial');
+    run(bin, 'pg_restore', [
+      '-h',
+      directory,
+      '-U',
+      'drill_admin',
+      '-d',
+      'drill_partial',
+      '--section=pre-data',
+      '--single-transaction',
+      '--exit-on-error',
+      '--no-owner',
+      archive,
+    ]);
+    const partial = pool('drill_partial');
+    const partialClient = await partial.connect();
+    try {
+      await partialClient.query('BEGIN');
+      await partialClient.query("SELECT set_config('app.athlete_id',$1,true)", [retainedAthlete]);
+      await assert.rejects(
+        () =>
+          partialClient.query('SELECT public.replay_course_deletion($1,$2,$3)', [
+            retainedAthlete,
+            ownerDeletedCourse.course.courseId,
+            combinedCourseDeletionLedger[0]?.deleted_at,
+          ]),
+        /COURSE_REPLAY_TENANT_UNKNOWN/,
+      );
+      await partialClient.query('ROLLBACK');
+    } finally {
+      partialClient.release();
+    }
+    checks.push('course_deletion_replay_refuses_a_cluster_whose_data_is_not_yet_restored');
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -2840,6 +3069,66 @@ async function execute() {
     for (const ref of erasedTenantObjects)
       assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
     checks.push('restore_brings_back_erased_tenant_course_rows_and_objects_before_replay');
+    // M2-01ao: the archive predates the owner's deletion, so before any replay the restored
+    // cluster holds the owner-deleted course at its first revision, with the owner's
+    // favourite mark, the accessibility note and the picture row — and the store holds both
+    // pictures. The gap-born course has no row at all. This is what the replay must undo.
+    assert.deepEqual(
+      (
+        await restored.query<{ status: string; head_revision: number }>(
+          'SELECT status,head_revision FROM course WHERE athlete_id=$1 AND course_id=$2',
+          [retainedAthlete, ownerDeletedCourse.course.courseId],
+        )
+      ).rows,
+      [{ status: 'available', head_revision: 1 }],
+    );
+    for (const table of [
+      'course_revision',
+      'course_revision_source',
+      'course_preference',
+      'course_accessibility_note',
+      'course_thumbnail',
+    ])
+      assert.equal(
+        (
+          await restored.query(`SELECT 1 FROM ${table} WHERE athlete_id=$1 AND course_id=$2`, [
+            retainedAthlete,
+            ownerDeletedCourse.course.courseId,
+          ])
+        ).rowCount,
+        1,
+        `${table} of the owner-deleted course restored`,
+      );
+    assert.equal(
+      (
+        await restored.query('SELECT 1 FROM course WHERE course_id=$1', [
+          gapBornCourse.course.courseId,
+        ])
+      ).rowCount,
+      0,
+    );
+    for (const ref of [ownerDeletedThumbnail.storageRef, ...courseGapObjects])
+      assert.ok(await restoredObjectStorageBeforeReplay.stat(validateObjectKey(ref)));
+    // The course deleted before the backup stays deleted: the dump has its ledger row and no
+    // course row. Only the two deletions after the backup are missing from the restored ledger.
+    assert.equal(
+      (
+        await restored.query('SELECT 1 FROM course WHERE course_id=$1', [
+          preBackupDeletedCourse.course.courseId,
+        ])
+      ).rowCount,
+      0,
+    );
+    assert.deepEqual(
+      (
+        await restored.query<{ course_id: string }>(
+          'SELECT course_id::text FROM course_deletion WHERE athlete_id=$1',
+          [retainedAthlete],
+        )
+      ).rows,
+      [{ course_id: preBackupDeletedCourse.course.courseId }],
+    );
+    checks.push('restore_brings_back_owner_deleted_course_with_its_owner_facts_and_pictures');
     // M2-01x: the gap upload came back with the archive and with no row at all — not in the
     // ledger, not in the reference index, not in the queue.
     for (const ref of gapObjects)
@@ -3293,6 +3582,20 @@ async function execute() {
       );
       assert.equal(erasureSatisfiedDeletions, 1);
       assert.equal(absentDeletions, 1);
+      // M2-01ao: course deletions after the backup are suppression too. Every entry is
+      // accounted for — applied to a restored course, recorded for a course the dump never
+      // had, found already applied, or satisfied by the tenant's erasure — or the whole
+      // replay rolls back.
+      const courseReplay = await replayCourseDeletionLedger(
+        restored,
+        JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
+      );
+      assert.deepEqual(courseReplay, {
+        deleted: [ownerDeletedCourse.course.courseId],
+        absent: [gapBornCourse.course.courseId],
+        already_applied: [preBackupDeletedCourse.course.courseId],
+        erasure_satisfied: [erasedRetryCourse.course.courseId],
+      });
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
@@ -3302,6 +3605,75 @@ async function execute() {
     checks.push('latest_activity_deletion_suppression_replayed_before_runtime_access');
     checks.push('overlapping_erasure_and_activity_deletion_ledgers_replay_without_rollback');
     checks.push('latest_evidence_withdrawal_and_consent_replayed_before_runtime_access');
+    checks.push('latest_course_deletion_ledger_replayed_before_runtime_access');
+    checks.push('overlapping_erasure_and_course_deletion_ledgers_replay_without_rollback');
+    // M2-01ao: replaying the same ledger again finds every entry applied and changes nothing —
+    // not the ledger, not a course, not a purge row.
+    const courseReplayState = async () =>
+      (
+        await restored.query(
+          `SELECT 'deletion' AS kind,athlete_id,course_id::text AS id,deleted_at::text AS detail
+             FROM course_deletion
+           UNION ALL SELECT 'purge',athlete_id,scope_id::text,
+             armed_at::text||' '||available_at::text||' '||coalesce(completed_at::text,'open')
+             FROM object_scope_purge WHERE scope_kind='course'
+           UNION ALL SELECT 'course',athlete_id,course_id::text,status||' '||updated_at::text
+             FROM course
+           ORDER BY 1,2,3`,
+        )
+      ).rows;
+    const courseStateAfterReplay = await courseReplayState();
+    const replayedCourseLedger = JSON.parse(
+      await readFile(courseDeletionLedgerFile, 'utf8'),
+    ) as unknown;
+    await restored.query('BEGIN');
+    try {
+      const again = await replayCourseDeletionLedger(restored, replayedCourseLedger);
+      assert.deepEqual(
+        { ...again, already_applied: [...again.already_applied].sort() },
+        {
+          deleted: [],
+          absent: [],
+          already_applied: [
+            preBackupDeletedCourse.course.courseId,
+            ownerDeletedCourse.course.courseId,
+            gapBornCourse.course.courseId,
+          ].sort(),
+          erasure_satisfied: [erasedRetryCourse.course.courseId],
+        },
+      );
+      await restored.query('COMMIT');
+    } catch (error) {
+      await restored.query('ROLLBACK');
+      throw error;
+    }
+    assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
+    checks.push('course_deletion_ledger_replay_is_idempotent');
+    // An entry the restored cluster cannot verify — here a tenant it has no account for —
+    // aborts the replay, and the caller's rollback leaves nothing of the entries before it.
+    await restored.query('BEGIN');
+    await assert.rejects(
+      () =>
+        replayCourseDeletionLedger(restored, [
+          ...(replayedCourseLedger as unknown[]),
+          {
+            athlete_id: randomUUID(),
+            course_id: randomUUID(),
+            deleted_at: new Date().toISOString(),
+          },
+        ]),
+      /COURSE_REPLAY_TENANT_UNKNOWN/,
+    );
+    await restored.query('ROLLBACK');
+    await restored.query('BEGIN');
+    await assert.rejects(() =>
+      replayCourseDeletionLedger(restored, [
+        { ...(replayedCourseLedger as Record<string, unknown>[])[0], name: 'no extra fields' },
+      ]),
+    );
+    await restored.query('ROLLBACK');
+    assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
+    checks.push('invalid_course_deletion_ledger_entry_fails_closed_with_caller_rollback');
     assertCoachingCandidateRowsPurged(
       await readCoachingCandidateRows(restored, withdrawnAthlete, withdrawnCandidate),
       'consent_withdrawn',
@@ -3847,6 +4219,15 @@ async function execute() {
     checks.push(
       'restored_activity_deletion_reclaims_course_thumbnail_objects_through_the_cleanup_worker',
     );
+    // M2-01ao: the replayed course deletion superseded the restored picture of the
+    // owner-deleted course and queued its object; the same worker run took it away.
+    assert.equal(
+      await restoredObjectStorage.stat(validateObjectKey(ownerDeletedThumbnail.storageRef)),
+      null,
+    );
+    checks.push(
+      'restored_course_deletion_reclaims_the_restored_picture_through_the_cleanup_worker',
+    );
     // M2-01s: the same worker run reclaims every object of the erased tenant the archive
     // brought back — track objects, the head and the superseded picture, the abandoned
     // render's temporary object and the orphan only the reference index named — so no byte
@@ -3976,7 +4357,7 @@ async function execute() {
       ).rowCount,
       0,
     );
-    for (const ref of liveGapObjects)
+    for (const ref of [...liveGapObjects, ...courseGapObjects])
       assert.ok(await restoredObjectStorage.stat(validateObjectKey(ref)));
     checks.push(
       'live_tenant_gap_uploads_survive_suppression_replay_queue_drain_sweeps_and_tenant_purge',
@@ -3993,6 +4374,10 @@ async function execute() {
       { scope_kind: 'activity', scope_id: bornGapImport.activityId },
       { scope_kind: 'course', scope_id: doomedCourse.course.courseId },
       { scope_kind: 'course', scope_id: doomedCourseCopy.course.courseId },
+      // M2-01ao: armed by the replayed course deletions — the restored course's and the
+      // gap-born course's directories.
+      { scope_kind: 'course', scope_id: ownerDeletedCourse.course.courseId },
+      { scope_kind: 'course', scope_id: gapBornCourse.course.courseId },
     ];
     const armedScopes = (
       await restored.query<{ scope_kind: string; scope_id: string; due: boolean }>(
@@ -4044,7 +4429,7 @@ async function execute() {
     const filesAfterScopePurge = new Set(await storedFiles());
     assert.deepEqual(
       filesBeforeScopePurge.filter((file) => !filesAfterScopePurge.has(file)).sort(),
-      [...liveGapObjects].sort(),
+      [...liveGapObjects, ...courseGapObjects].sort(),
     );
     for (const artifact of retainedTrack.artifacts)
       assert.ok(await restoredObjectStorage.stat(artifact.storageRef));
@@ -4065,6 +4450,11 @@ async function execute() {
     assert.equal(purgedBy.get(doomedCourse.course.courseId)?.objects_purged, '1');
     checks.push(
       'deleted_activity_and_reclaimed_course_scope_purges_armed_by_replay_reclaim_live_tenant_gap_uploads_and_spare_every_other_object',
+    );
+    assert.equal(purgedBy.get(ownerDeletedCourse.course.courseId)?.objects_purged, '1');
+    assert.equal(purgedBy.get(gapBornCourse.course.courseId)?.objects_purged, '1');
+    checks.push(
+      'replayed_course_deletion_scope_purges_reclaim_pictures_drawn_between_dump_and_archive_copy',
     );
     // Courses restored with the cluster. The retained one is intact; the two derived from
     // the deleted activity were reclaimed by the replayed suppression, and what is left is
@@ -4186,6 +4576,56 @@ async function execute() {
     assert.equal(restoredCandidateSet.candidate.evaluation.gradientSource, 'none');
     assert.deepEqual(restoredCandidateSet.candidate.geometry.coordinates, candidateLoop);
     checks.push('restored_target_distance_search_keeps_its_seed_and_evaluation_version');
+    // M2-01ao: what the owner deleted — after the backup, inside the gap, or before the
+    // backup — is not readable, not listed, and has no row left in any course table: not a
+    // revision, not a coordinate, not the favourite mark, the note or a picture row.
+    const ownerDeletedIds = [
+      ownerDeletedCourse.course.courseId,
+      gapBornCourse.course.courseId,
+      preBackupDeletedCourse.course.courseId,
+    ];
+    for (const deletedId of ownerDeletedIds)
+      await assert.rejects(
+        () => restoredCourses.read(retainedAthlete, deletedId),
+        CourseNotFoundError,
+      );
+    const restoredCourseList = JSON.stringify(await restoredCourses.list(retainedAthlete));
+    for (const deletedId of ownerDeletedIds) assert.ok(!restoredCourseList.includes(deletedId));
+    for (const table of [
+      'course',
+      'course_revision',
+      'course_revision_source',
+      'course_preference',
+      'course_accessibility_note',
+      'course_thumbnail',
+      'course_route_proposal',
+      'course_route_candidate_set',
+    ])
+      assert.equal(
+        (
+          await restored.query(
+            `SELECT 1 FROM ${table} WHERE athlete_id=$1 AND course_id=ANY($2::uuid[])`,
+            [retainedAthlete, ownerDeletedIds],
+          )
+        ).rowCount,
+        0,
+        `${table} row of an owner-deleted course after the replay`,
+      );
+    // Deletion is terminal: the id cannot become a course again.
+    await restored.query('BEGIN');
+    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [retainedAthlete]);
+    await assert.rejects(
+      () =>
+        restored.query(
+          `INSERT INTO course(athlete_id,course_id,name,visibility,status,head_revision,
+             revision_id,created_at,updated_at)
+           VALUES($1,$2,'Resurrected','private','available',1,$3,now(),now())`,
+          [retainedAthlete, ownerDeletedCourse.course.courseId, randomUUID()],
+        ),
+      /COURSE_DELETION_TERMINAL/,
+    );
+    await restored.query('ROLLBACK');
+    checks.push('owner_deleted_courses_absent_after_replay_in_read_list_and_every_course_table');
     for (const reclaimed of [doomedCourse.course.courseId, doomedCourseCopy.course.courseId]) {
       const read = await restoredCourses.read(retainedAthlete, reclaimed);
       assert.equal(read.status, 'unavailable');
@@ -5020,6 +5460,7 @@ async function execute() {
     restoreBeforeRuntimeAccess: [
       'replay_latest_external_erasure_ledger',
       'replay_latest_activity_deletion_ledger_rebuilding_suppression_for_absent_activities',
+      'replay_latest_course_deletion_ledger_after_the_restore_completes_arming_each_course_object_purge',
       'replay_latest_complete_external_constraint_ledger_before_runtime_access',
       'replay_latest_external_evidence_withdrawal_ledger_and_current_ai_consent',
       'invalidate_all_restored_sessions_and_login_attempts',
@@ -5037,6 +5478,7 @@ async function execute() {
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
       'Unofficial Garmin sessions (M1-06b-tmp) in the snapshot are discarded, never revived and never queued for revocation (they cannot be revoked at Garmin); the owner must log in again and end any Garmin-side session themselves.',
       'An activity recorded after the database dump and deleted before the ledger capture is absent from the restored cluster; its ledger entry must carry the source revision and content hash, from which the replay rebuilds a value-less deleted canonical row, the source head and the suppression row, and arms the purge of its object directory. An entry that cannot be verified (malformed, foreign id, unknown or erased tenant, conflicting source) aborts the replay.',
+      'Course deletions are replayed from an independently retained course-deletion ledger (tenant, course id, deletion time) captured after the backup; a replay against a cluster whose data is not restored, an unknown or erased tenant, or a course id another tenant holds aborts the replay. Courses deleted before migration 049 left no ledger row and can still be brought back by restoring a backup that predates their deletion.',
       'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
     ],
     sources: [
