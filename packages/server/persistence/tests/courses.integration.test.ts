@@ -2551,14 +2551,28 @@ describe('M2-01i target-distance candidates', () => {
   it('stays deadlock-free while stores, saves, reaping and deletion race on one tenant', async () => {
     // Every application writer here takes the tenant lock, so they queue; what this watches
     // for is a path that does not, meeting one that does, across the rows 042 now removes.
+    //
+    // Which saves win the free-for-all below is decided by the scheduler, and under load it
+    // can be none of the candidate saves (M2-01aq: that is how this test once failed, with
+    // everything else correct). So "a candidate save and a route save really ran in the race"
+    // is not left to luck. An anchor lane saves on a course of its own, cut from the same
+    // recording, while the free-for-all is still running on the other two: nothing else
+    // writes that course, so none of the reasons the race tolerates can apply to it, and every
+    // one of its saves has to land. It still shares the tenant lock, the tenant-wide reapers
+    // (which take its spent searches) and the account erasure with everything else.
     const { athlete, imported, stored: track, course } = await athleteWithCourse('Target loop');
-    const second = await courses.create(
-      athlete,
-      content({ activityId: imported.activityId, trackId: track.trackId, name: 'Second' }),
-      `course-${randomUUID()}`,
-    );
-    if (second.status !== 'available') throw new Error('course was not created');
-    const courseIds = [course.course.courseId, second.course.courseId];
+    const cut = async (name: string) => {
+      const made = await courses.create(
+        athlete,
+        content({ activityId: imported.activityId, trackId: track.trackId, name }),
+        `course-${randomUUID()}`,
+      );
+      if (made.status !== 'available') throw new Error('course was not created');
+      return made.course.courseId;
+    };
+    const courseIds = [course.course.courseId, await cut('Second')];
+    const anchorId = await cut('Anchor');
+    const anchorRounds = 3;
     const failures: string[] = [];
     const tolerated = new Set([
       'ROUTE_PROPOSAL_NOT_FOUND',
@@ -2572,13 +2586,117 @@ describe('M2-01i target-distance candidates', () => {
       // The course removed or the account erased under a store still in flight.
       'COURSE_NOT_FOUND',
     ]);
-    const done = { stores: 0, routeSaves: 0, candidateSaves: 0 };
+    const done = { stores: 0, routeSaves: 0, candidateSaves: 0, unchanged: 0 };
+    const anchor = { candidateSaves: 0, routeSaves: 0 };
+    let anchorRunning = true;
+    const codeOf = (error: unknown) =>
+      (error as { code?: string }).code ?? (error as Error).message;
     const record = (error: unknown) => {
-      const code = (error as { code?: string }).code ?? (error as Error).message;
+      const code = codeOf(error);
       if (!tolerated.has(code)) failures.push(code);
     };
-    const worker = async (seed: number) => {
-      for (let step = 0; step < 12; step += 1) {
+    // A save that answers without an error has to be the save that was asked for: the head
+    // one past the revision it expected, holding the content it sent. The one other answer
+    // the repository gives on purpose is "same content, same version" (the head already
+    // held exactly that). Anything else is a save lost without a reason.
+    const outcome = async (
+      saving: ReturnType<CourseRepository['update']>,
+      expected: number,
+      digest: string,
+    ) => {
+      const saved = await saving;
+      if (saved.status !== 'available' || saved.revision.contentDigest !== digest) return 'lost';
+      if (saved.course.headRevision === expected + 1) return 'advanced';
+      return saved.course.headRevision === expected ? 'unchanged' : 'lost';
+    };
+    const count = (result: 'advanced' | 'unchanged' | 'lost', kind: 'route' | 'candidate') => {
+      if (result === 'lost') failures.push('SAVE_LOST_WITHOUT_REASON');
+      else if (result === 'unchanged') done.unchanged += 1;
+      else if (kind === 'route') done.routeSaves += 1;
+      else done.candidateSaves += 1;
+    };
+    const anchorLane = async () => {
+      try {
+        for (let round = 0; round < anchorRounds; round += 1) {
+          const draft = 1 + round;
+          const input = candidateSetInput(anchorId, { count: 2, draftRevision: draft });
+          const set = await courses.storeRouteCandidateSet(athlete, input);
+          const pick = set.candidates[0];
+          const source = input.candidates[0];
+          const head = await courses.read(athlete, anchorId);
+          if (!pick || !source || head.status !== 'available') throw new Error('ANCHOR_GONE');
+          const picked = candidateContent(
+            { name: head.revision.name, lineage: head.revision.lineage },
+            set,
+            source,
+          );
+          const pickedAs = await outcome(
+            courses.update(
+              athlete,
+              anchorId,
+              head.course.headRevision,
+              picked,
+              `anchor-pick-${randomUUID()}`,
+              undefined,
+              {
+                consumeCandidate: {
+                  proposalId: pick.proposalId,
+                  candidateSetId: set.candidateSetId,
+                  draftRevision: draft,
+                  geometrySha256: courseGeometrySha256(picked.coordinates),
+                },
+              },
+            ),
+            head.course.headRevision,
+            picked.contentDigest,
+          );
+          if (pickedAs !== 'advanced') throw new Error(`ANCHOR_CANDIDATE_SAVE_${pickedAs}`);
+          anchor.candidateSaves += 1;
+          const routeInput = proposalInput(anchorId, draft);
+          const proposal = await courses.storeRouteProposal(athlete, routeInput);
+          const routeHead = await courses.headContent(athlete, anchorId);
+          const read = await courses.read(athlete, anchorId);
+          if (!routeHead || read.status !== 'available') throw new Error('ANCHOR_GONE');
+          const routed = {
+            ...routedContent(routeHead, routeInput),
+            contentDigest: hashOf(randomUUID()),
+          };
+          const routedAs = await outcome(
+            courses.update(
+              athlete,
+              anchorId,
+              read.course.headRevision,
+              routed,
+              `anchor-save-${randomUUID()}`,
+              { kind: 'reroute', anchor: true, round },
+              {
+                consumeProposal: {
+                  proposalId: proposal.proposalId,
+                  draftRevision: draft,
+                  geometrySha256: courseGeometrySha256(routeInput.coordinates),
+                },
+              },
+            ),
+            read.course.headRevision,
+            routed.contentDigest,
+          );
+          if (routedAs !== 'advanced') throw new Error(`ANCHOR_ROUTE_SAVE_${routedAs}`);
+          anchor.routeSaves += 1;
+        }
+      } catch (error) {
+        // Not `record`: nothing else writes the anchor course, so here even a reason the race
+        // tolerates means a save was lost.
+        failures.push(`ANCHOR:${codeOf(error)}`);
+      } finally {
+        anchorRunning = false;
+      }
+    };
+    const worker = async (seed: number, untilAnchorSettles: boolean) => {
+      // At least twelve steps, and the first-phase workers keep going until the anchor lane
+      // has settled, so every anchor save meets the race rather than an idle tenant. The cap
+      // only bounds a runaway loop; reaching it is reported, not passed.
+      let step = 0;
+      for (; step < 12 || (untilAnchorSettles && anchorRunning && step < 400); step += 1) {
         const courseId = courseIds[(seed + step) % courseIds.length] as string;
         const draft = 1 + ((seed * 7 + step) % 3);
         try {
@@ -2598,23 +2716,27 @@ describe('M2-01i target-distance candidates', () => {
               set,
               source,
             );
-            await courses.update(
-              athlete,
-              courseId,
-              head.course.headRevision,
-              picked,
-              `pick-${randomUUID()}`,
-              undefined,
-              {
-                consumeCandidate: {
-                  proposalId: pick.proposalId,
-                  candidateSetId: set.candidateSetId,
-                  draftRevision: draft,
-                  geometrySha256: courseGeometrySha256(picked.coordinates),
+            const pickedAs = await outcome(
+              courses.update(
+                athlete,
+                courseId,
+                head.course.headRevision,
+                picked,
+                `pick-${randomUUID()}`,
+                undefined,
+                {
+                  consumeCandidate: {
+                    proposalId: pick.proposalId,
+                    candidateSetId: set.candidateSetId,
+                    draftRevision: draft,
+                    geometrySha256: courseGeometrySha256(picked.coordinates),
+                  },
                 },
-              },
+              ),
+              head.course.headRevision,
+              picked.contentDigest,
             );
-            done.candidateSaves += 1;
+            count(pickedAs, 'candidate');
           } else {
             const input = proposalInput(courseId, draft);
             const proposal = await courses.storeRouteProposal(athlete, input);
@@ -2623,32 +2745,53 @@ describe('M2-01i target-distance candidates', () => {
             const head = await courses.headContent(athlete, courseId);
             const read = await courses.read(athlete, courseId);
             if (!head || read.status !== 'available') continue;
-            await courses.update(
-              athlete,
-              courseId,
-              read.course.headRevision,
-              { ...routedContent(head, input), contentDigest: hashOf(randomUUID()) },
-              `save-${randomUUID()}`,
-              { kind: 'reroute', seed, step },
-              {
-                consumeProposal: {
-                  proposalId: proposal.proposalId,
-                  draftRevision: draft,
-                  geometrySha256: courseGeometrySha256(input.coordinates),
+            const routed = { ...routedContent(head, input), contentDigest: hashOf(randomUUID()) };
+            const routedAs = await outcome(
+              courses.update(
+                athlete,
+                courseId,
+                read.course.headRevision,
+                routed,
+                `save-${randomUUID()}`,
+                { kind: 'reroute', seed, step },
+                {
+                  consumeProposal: {
+                    proposalId: proposal.proposalId,
+                    draftRevision: draft,
+                    geometrySha256: courseGeometrySha256(input.coordinates),
+                  },
                 },
-              },
+              ),
+              read.course.headRevision,
+              routed.contentDigest,
             );
-            done.routeSaves += 1;
+            count(routedAs, 'route');
           }
         } catch (error) {
           record(error);
         }
       }
+      if (untilAnchorSettles && anchorRunning) failures.push(`RACE_ENDED_BEFORE_ANCHOR@${step}`);
     };
-    await Promise.all(Array.from({ length: 6 }, (_, seed) => worker(seed)));
+    await Promise.all([
+      ...Array.from({ length: 6 }, (_, seed) => worker(seed, true)),
+      anchorLane(),
+    ]);
+    // The ledger as the first phase left it, read before the removals below reach it.
+    const anchorRevisions = await admin.query(
+      `SELECT count(*)::int AS total, max(course_revision)::int AS last FROM course_revision
+       WHERE athlete_id=$1 AND course_id=$2`,
+      [athlete, anchorId],
+    );
+    const anchorHead = await courses.read(athlete, anchorId);
+    // Asserted at the end, after the failure list, so a run that breaks shows why first.
+    const settled = {
+      revisions: anchorRevisions.rows[0],
+      head: anchorHead.status === 'available' ? anchorHead.course.headRevision : null,
+    };
     // Then the three removals that reach these rows from outside the store path, racing the
     // stores that are still going.
-    const tail = Promise.all(Array.from({ length: 3 }, (_, seed) => worker(seed + 10)));
+    const tail = Promise.all(Array.from({ length: 3 }, (_, seed) => worker(seed + 10, false)));
     const read = await courses.read(athlete, courseIds[1] as string);
     await Promise.allSettled([
       read.status === 'available'
@@ -2668,14 +2811,29 @@ describe('M2-01i target-distance candidates', () => {
       .catch((error: unknown) => record(error));
     expect(failures.filter((code) => /deadlock|40P01/i.test(code))).toEqual([]);
     expect(failures).toEqual([]);
-    // The race actually ran: the stores and saves it was meant to interleave happened. Most
-    // saves lose — to a concurrent store replacing what they picked, or to the revision
-    // CAS — which is the point; a few have to win for the consume paths to be in the race.
+    // The race actually ran: the stores it was meant to interleave happened. Most of the
+    // free-for-all's saves lose — to a concurrent store replacing what they picked, or to the
+    // revision CAS — which is the point, and how many win is the scheduler's business; that
+    // count is deliberately not asserted.
     expect(done.stores).toBeGreaterThan(30);
-    // Both consume paths, counted apart: one kind of save alone would leave the other
-    // function out of the race.
-    expect(done.routeSaves).toBeGreaterThan(0);
-    expect(done.candidateSaves).toBeGreaterThan(0);
+    // Both consume paths ran inside the race, counted apart — one kind of save alone would
+    // leave the other function out of it. These are the anchor's, so they do not depend on
+    // who wins: every one of them had to land.
+    expect(anchor).toEqual({ candidateSaves: anchorRounds, routeSaves: anchorRounds });
+    // And they are in the ledger: one revision per anchor save on top of the one the course
+    // was cut as, and the head on the last of them.
+    expect(settled).toEqual({
+      revisions: { total: 1 + 2 * anchorRounds, last: 1 + 2 * anchorRounds },
+      head: 1 + 2 * anchorRounds,
+    });
+    // Erasure left nothing of the tenant's courses, searches or candidates behind.
+    const left = await admin.query(
+      `SELECT (SELECT count(*) FROM course WHERE athlete_id=$1)::int AS courses,
+         (SELECT count(*) FROM course_route_candidate_set WHERE athlete_id=$1)::int AS searches,
+         (SELECT count(*) FROM course_route_proposal WHERE athlete_id=$1)::int AS proposals`,
+      [athlete],
+    );
+    expect(left.rows[0]).toEqual({ courses: 0, searches: 0, proposals: 0 });
   });
 
   it('keeps one tenant out of another tenant search', async () => {

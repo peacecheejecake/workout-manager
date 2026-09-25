@@ -17,12 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-j](progress/M2-01k-j.md)를 완료했다. 코스 편집기에서 시작점 A와 반환점 B로 왕복(A→B→A) 초안을 만들고 실제 엔진으로 계산한다.
-가는 길과 나란히 되돌아오는 겹침 구간(12 m 안, 방향 조건)을 지도와 검토 화면에 보이고, 목표 거리 오차·연결성·반복 구간·알려진 접근
-제한·경사 출처를 각 줄로 표시한다. 모르는 항목은 참된 이유와 함께 "확인되지 않음"이다. S14-loop-draft를 passed로 올렸다(passed 80 →
-81). P6-target-display는 graph에 있는 접근 제한·노면을 요청하지 않아 partial이며 M2-01ap로 이어진다.
+[M2-01aq](progress/M2-01aq.md)를 완료했다. 코스 후보 경합 통합 시험이 부하에서 후보 저장 0으로 실패하던 문제를, 경합은 그대로 두고 다른
+writer가 없는 anchor 코스에서 후보·경로 저장을 결정적으로 3회씩 하도록 바꿔 고쳤다. 성공 응답이 실제로 리비전을 남기는지도 확인해,
+옛 시험이 놓치던 "성공으로 답했지만 쓰지 않음" 변이를 잡는다. 제품 코드는 바꾸지 않았다.
 
-직전 완료: [M2-01k-b](progress/M2-01k-b.md)(S14 저장 전 고도·거리 확인).
+직전 완료: [M2-01k-j](progress/M2-01k-j.md)(왕복 초안과 목표 표시).
 
 ## 운영 메모
 
@@ -39,15 +38,15 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01aq, M2-01k-o, M1-06b-tmp. 이 중
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01k-o, M1-06b-tmp. 이 중
 M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01al·M2-01am·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
 
-- `packages/server/persistence/tests/courses.integration.test.ts` "stays deadlock-free while stores, saves, reaping and deletion race
-  on one tenant"는 높은 부하에서 후보 저장이 0이라 실패할 수 있다(M2-01aq). 낮은 부하에서 다시 돌리면 통과한다.
+- `tests/identity/session-attendance.spec.ts:123`("계획 초안 편집" 버튼이 보이지 않음)이 높은 부하(1분 load 32–40)에서 한 번 실패했고
+  그 spec만 다시 돌리면 통과했다(M2-01aq 검증, 2026-09-25). 반복되면 별도 노드로 다룬다.
 
 ## 남은 외부·실환경 gate
 

@@ -1564,8 +1564,9 @@
       "title": "코스 후보 경합 통합 시험의 부하 민감성",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "packages/server/persistence/tests/courses.integration.test.ts \"stays deadlock-free while stores, saves, reaping and deletion race on one tenant\"(:2678)가 부하(1분 load 약 42–68)에서 candidateSaves가 0이라 실패했고, 같은 tree를 낮은 부하에서 다시 돌리면 646건 모두 통과했다(M2-01k-b 병합 검증, 2026-09-25). 경합 결과에 기대는 단언(적어도 한 번의 후보 저장)이 시각에 의존한다. 시험이 경합 자체(교착 없음·불변식)를 단언하면서 후보 저장이 적어도 한 번 일어나도록 순서를 보장하거나, 그 단언의 전제를 바꾸고 이유를 적는다. 거짓 통과가 생기지 않음을 변이로 보인다."
+      "status": "completed",
+      "scope": "packages/server/persistence/tests/courses.integration.test.ts \"stays deadlock-free while stores, saves, reaping and deletion race on one tenant\"(:2678)가 부하(1분 load 약 42–68)에서 candidateSaves가 0이라 실패했고, 같은 tree를 낮은 부하에서 다시 돌리면 646건 모두 통과했다(M2-01k-b 병합 검증, 2026-09-25). 경합 결과에 기대는 단언(적어도 한 번의 후보 저장)이 시각에 의존한다. 시험이 경합 자체(교착 없음·불변식)를 단언하면서 후보 저장이 적어도 한 번 일어나도록 순서를 보장하거나, 그 단언의 전제를 바꾸고 이유를 적는다. 거짓 통과가 생기지 않음을 변이로 보인다.",
+      "evidence": "docs/implementation/progress/M2-01aq.md"
     },
     {
       "id": "M2-01k",
