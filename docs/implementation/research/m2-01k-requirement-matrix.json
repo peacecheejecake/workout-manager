@@ -268,6 +268,25 @@
         "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-m.md."
+    },
+    {
+      "node": "M2-01k-a",
+      "date": "2026-09-25",
+      "rows": [
+        "S13-card-thumbnail",
+        "S13-card-distance",
+        "S13-card-elevation",
+        "S13-card-surface",
+        "S13-card-last-used"
+      ],
+      "decision": "Gap node M2-01k-a added the S13 list cards through a new additive GET /courses/cards; two rounds of independent review (round 1 required the surface row to stay partial).",
+      "change": "4 rows partial -> passed; S13-card-surface reason updated, still partial; counts passed 73 -> 77, partial 31 -> 27.",
+      "executed": [
+        "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+        "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+        "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-a.md."
     }
   ],
   "rounds": [
@@ -389,8 +408,8 @@
     }
   ],
   "counts": {
-    "passed": 73,
-    "partial": 31,
+    "passed": 77,
+    "partial": 27,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -719,11 +738,11 @@
       "id": "S13-card-thumbnail",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "S13 코스 카드에 지도 썸네일",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 7 (stored SVG path = geometry, Bob 404)"
       ],
-      "reason": "Thumbnail is stored and shown in the course detail, not on the list card (M2-01l).",
+      "reason": "M2-01k-a amendment: passed. Each list card shows the course thumbnail (drawn from the head line, then the stored picture once ready), asserted per course in both shells; A1 killed in E2E.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -731,32 +750,54 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-a",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Thumbnail is stored and shown in the course detail, not on the list card (M2-01l).",
+        "executed": [
+          "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+          "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+          "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+        ]
+      }
     },
     {
       "id": "S13-card-distance",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "실제/추정 거리",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "List card shows no distance; detail shows planned line length; engine estimate only in the proposal review. Not asserted on a card.",
+      "reason": "M2-01k-a amendment: passed. Each card shows the planned distance with its basis: actual only for a recorded track (length of the simplified map line), the engine estimate for a routed course (none after a privacy trim), the imported file, or unknown; asserted by full text and data-basis per kind in both shells; A2, A6, A7 killed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-a",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "List card shows no distance; detail shows planned line length; engine estimate only in the proposal review. Not asserted on a card.",
+        "executed": [
+          "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+          "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+          "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+        ]
+      }
     },
     {
       "id": "S13-card-elevation",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "고도 데이터 출처",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-extras.spec.ts:192 accepts \"고도 데이터가 배포되어 있지 않습니다\" — NOT counted as evidence"
       ],
-      "reason": "Only the detail shows it; the E2E passes with no dataset; unit tests use a fake `no_dataset` transport; real dataset has 821 points (effective coverage ~0).",
+      "reason": "M2-01k-a amendment: passed, with a limit. Each card shows the elevation source: \"없음\" when no dataset is deployed, outside the region, or the dataset id and attribution with \"표본 n곳 중 k곳\"; the E2E matches the course /elevation answer and a dataset test refuses \"없음\" with the real dataset; A3, A8 killed. Limit: that dataset test is skipped where .geo-build is absent, so CI does not guard it, and the dataset is sparse (821 points).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -764,7 +805,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-a",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Only the detail shows it; the E2E passes with no dataset; unit tests use a fake `no_dataset` transport; real dataset has 821 points (effective coverage ~0).",
+        "executed": [
+          "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+          "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+          "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+        ]
+      }
     },
     {
       "id": "S13-card-surface",
@@ -774,7 +826,7 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts:413 and course-extras.spec.ts:193 assert \"확인되지 않음\""
       ],
-      "reason": "The state is a constant \"확인되지 않음\"; there is no surface data source. Detail only, not the card.",
+      "reason": "M2-01k-a amendment: still partial. The card now shows the surface confirmation status, honestly \"확인되지 않음\", but there is no surface data source: the contract fixes the value to unknown, so no confirmed state can occur, and A4 proves only that the string is rendered.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -782,7 +834,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-a",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "The state is a constant \"확인되지 않음\"; there is no surface data source. Detail only, not the card.",
+        "executed": [
+          "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+          "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+          "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+        ]
+      }
     },
     {
       "id": "S13-card-access-memo",
@@ -808,16 +871,27 @@
       "id": "S13-card-last-used",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "마지막 사용을 표시한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["tests/identity/course-extras.spec.ts:134 `lastUsedAt` not null (API only)"],
-      "reason": "The list card now renders '마지막 사용 <date>' (course-workbench.tsx), but no executed test asserts that text on the card; course-extras.spec.ts:134 still checks only the API lastUsedAt.",
+      "reason": "M2-01k-a amendment: passed. Each card shows \"사용 기록 없음\" before and \"마지막 사용 <server date>\" after the course is opened from the list, in both shells (A5 killed); a failed preferences read says \"확인하지 못함\" instead of claiming no use (B1 killed).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "previousReason": "On-screen display not asserted by an executed E2E (seen in Aside capture only).",
         "executed": ["pnpm test:identity x2 (course-extras.spec)"]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-a",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "The list card now renders '마지막 사용 <date>' (course-workbench.tsx), but no executed test asserts that text on the card; course-extras.spec.ts:134 still checks only the API lastUsedAt.",
+        "executed": [
+          "tests/identity/course-list-cards.spec.ts in the Next and Vite shells: three courses (stored FIT recording, saved route preview, GPX import) with per-card thumbnail path, distance text and basis, elevation equal to the course /elevation answer, surface status and last used before and after opening; 800 and 320 px without overflow; Bob sees none of Alice's cards; a second test names the .geo-build elevation dataset and refuses \"없음\" (skipped without the dataset, so CI does not guard it)",
+          "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
+          "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
+        ]
+      }
     },
     {
       "id": "S13-from-track",

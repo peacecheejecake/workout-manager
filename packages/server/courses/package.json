@@ -18,7 +18,8 @@
     "./geo-data": "./src/geo-data.ts",
     "./candidates": "./src/candidates.ts",
     "./thumbnail": "./src/thumbnail.ts",
-    "./log-audit": "./src/log-audit.ts"
+    "./log-audit": "./src/log-audit.ts",
+    "./course-cards": "./src/course-cards.ts"
   },
   "dependencies": {
     "@workout/contracts": "workspace:*",

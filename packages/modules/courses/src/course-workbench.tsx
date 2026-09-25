@@ -17,6 +17,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
+import type { CourseCard } from '@workout/contracts/course-cards';
 import type {
   CourseGeneration,
   CourseHead,
@@ -44,6 +45,7 @@ import {
   useAccessibilityNotes,
 } from './course-accessibility-note';
 import { CourseEditor } from './course-editor';
+import { CourseListCardFacts, type CourseCardRead } from './course-list-card';
 import { createCourseExtrasApi } from './course-extras-api';
 import { CourseThumbnail, StoredCourseThumbnail } from './course-thumbnail';
 import {
@@ -320,6 +322,30 @@ function Workbench({
     queryKey: [...scope, 'list'],
     queryFn: ({ signal }) => api.list(signal),
   });
+  // The S13 card facts (M2-01k-a) are their own read under the same scope, so every write
+  // that invalidates the scope refreshes them too and nothing crosses an account.
+  //
+  // A card describes an immutable head revision, so it is not re-read on every focus or
+  // mount: a write re-reads it through the scope invalidation, and the one fact that moves
+  // without a write — the stored thumbnail becoming ready — is caught below, from the
+  // detail read of the course the owner opens.
+  const cards = useQuery({
+    queryKey: [...scope, 'cards'],
+    queryFn: ({ signal }) => extrasApi.cards(signal),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const cardOf = useMemo(() => {
+    const byCourse = new Map<string, CourseCard>();
+    for (const card of cards.data?.cards ?? []) byCourse.set(card.course.courseId, card);
+    return byCourse;
+  }, [cards.data]);
+  const cardRead = (courseId: string): CourseCardRead =>
+    cards.isPending
+      ? { status: 'pending' }
+      : cards.isError
+        ? { status: 'error' }
+        : { status: 'ready', card: cardOf.get(courseId) };
   const detail = useQuery({
     queryKey: [...scope, 'detail', selected ?? ''],
     enabled: selected !== null,
@@ -453,6 +479,22 @@ function Workbench({
     });
   }, [list.data, preferenceOf, order]);
   const current = detail.data ?? null;
+  // The detail read of the open course already knows its stored picture is ready while its
+  // card still says otherwise: the picture was made after the card was read. `ready` is
+  // final for a revision, so this asks once and cannot loop.
+  const openCard = current?.status === 'available' ? cardOf.get(current.course.courseId) : null;
+  const cardThumbnailBehind =
+    current?.status === 'available' &&
+    openCard?.status === 'available' &&
+    openCard.course.headRevision === current.course.headRevision &&
+    current.thumbnail.status === 'ready' &&
+    openCard.thumbnail.state.status !== 'ready';
+  useEffect(() => {
+    if (cardThumbnailBehind)
+      void queries.invalidateQueries({
+        queryKey: ['users', athleteId, 'sessions', sessionId, 'courses', 'cards'],
+      });
+  }, [cardThumbnailBehind, queries, athleteId, sessionId]);
   // The course named by the address has no list click to carry its name into the rename
   // field, so it is taken from the course once it has been read — once, so it never
   // overwrites what the owner has started typing.
@@ -754,17 +796,27 @@ function Workbench({
                     {course.status === 'available'
                       ? `수정 번호 ${course.headRevision}`
                       : '사용 불가 · 원본 기록 삭제됨'}
-                    {preferenceOf.get(course.courseId)?.lastUsedAt
-                      ? ` · 마지막 사용 ${new Date(
-                          preferenceOf.get(course.courseId)?.lastUsedAt ?? '',
-                        ).toLocaleDateString('ko-KR')}`
-                      : ' · 사용 기록 없음'}
                     {` · ${accessibilityNoteSummary(
                       accessibilityNotes.byCourse.get(course.courseId),
                       course.status === 'available' ? course.headRevision : null,
                       accessibilityNotes,
                     )}`}
                   </span>
+                  <CourseListCardFacts
+                    courseName={course.name}
+                    sessionId={sessionId}
+                    read={cardRead(course.courseId)}
+                    lastUsed={
+                      preferences.isPending
+                        ? { status: 'pending' }
+                        : preferences.isError
+                          ? { status: 'error' }
+                          : {
+                              status: 'ready',
+                              lastUsedAt: preferenceOf.get(course.courseId)?.lastUsedAt ?? null,
+                            }
+                    }
+                  />
                 </li>
               ))}
             </ul>

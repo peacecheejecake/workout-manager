@@ -34,9 +34,18 @@ export const THUMBNAIL_VERTEX_BUDGET = courseThumbnailLimits.vertexBudget;
 export interface CourseThumbnailProps {
   readonly coordinates: readonly CoursePosition[];
   readonly label: string;
+  /**
+   * Test id of the picture. The detail keeps the default; a list card (M2-01k-a) names its
+   * own so the two pictures on one screen stay distinguishable.
+   */
+  readonly testId?: string;
 }
 
-export function CourseThumbnail({ coordinates, label }: CourseThumbnailProps) {
+export function CourseThumbnail({
+  coordinates,
+  label,
+  testId = 'course-thumbnail',
+}: CourseThumbnailProps) {
   const drawn = useMemo(() => courseThumbnailPath(coordinates), [coordinates]);
 
   if (drawn === null) return null;
@@ -46,7 +55,7 @@ export function CourseThumbnail({ coordinates, label }: CourseThumbnailProps) {
       viewBox={`0 0 ${courseThumbnailLimits.viewport} ${courseThumbnailLimits.viewport}`}
       role="img"
       aria-label={label}
-      data-testid="course-thumbnail"
+      data-testid={testId}
       data-source="drawn"
       data-vertices={drawn.vertexCount}
     >
@@ -100,6 +109,7 @@ export function StoredCourseThumbnail({
   contentHash,
   coordinates,
   label,
+  testId = 'course-thumbnail',
 }: StoredCourseThumbnailProps) {
   // The bytes are stored WITH the identity of the picture they are, not beside it. A
   // rendered frame therefore cannot show a picture that belongs to a different revision:
@@ -142,13 +152,13 @@ export function StoredCourseThumbnail({
   }, [courseId, sessionId, contentHash]);
 
   if (stored === null || stored.hash !== contentHash)
-    return <CourseThumbnail coordinates={coordinates} label={label} />;
+    return <CourseThumbnail coordinates={coordinates} label={label} testId={testId} />;
   return (
     <img
       className={styles.thumbnail}
       src={stored.url}
       alt={label}
-      data-testid="course-thumbnail"
+      data-testid={testId}
       data-source="stored"
     />
   );

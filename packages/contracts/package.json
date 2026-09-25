@@ -169,6 +169,10 @@
       "types": "./src/courses.ts",
       "default": "./dist/courses.js"
     },
+    "./course-cards": {
+      "types": "./src/course-cards.ts",
+      "default": "./dist/course-cards.js"
+    },
     "./geo-data": {
       "types": "./src/geo-data.ts",
       "default": "./dist/geo-data.js"

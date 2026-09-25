@@ -454,7 +454,7 @@ export function CourseElevationPanel({ api, courseId, scope }: CourseElevationPa
       ) : null}
       <p className={styles.note}>
         노면·계단·야간 통행 정보는 이 데이터에 없습니다. <strong>확인되지 않음</strong>으로 두며,
-        통행 가능이나 안전을 뜻하지 않습니다.
+        통행 가능 여부·안전을 뜻하지 않습니다.
       </p>
     </section>
   );

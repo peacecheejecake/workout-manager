@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import { transportReplySchema } from '@workout/contracts/core';
+import { courseCardListSchema } from '@workout/contracts/course-cards';
 import {
   courseAccessibilityNoteListSchema,
   courseAccessibilityNoteWriteResultSchema,
@@ -177,6 +178,10 @@ export function createCourseExtrasApi(transport: AuthenticatedTransport) {
         null,
         signal,
       );
+    },
+    /** The S13 list cards (M2-01k-a). Facts the server derived; the screen adds none. */
+    cards(signal?: AbortSignal) {
+      return request('/bff/v1/courses/cards', 'GET', courseCardListSchema, null, null, signal);
     },
   };
 }

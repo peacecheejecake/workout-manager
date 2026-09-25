@@ -17,12 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-m](progress/M2-01k-m.md)를 완료했다. S09 영향 탭을 관측·계산, 분류·추정, 상담 세 절로 나눴다. 분류는 연결한 계획 session에
-사용자가 쓴 목적·강도를 출처·계획 version·불확실성과 함께 보이고, 기록 기반 추정은 검증된 추정기가 없어 "추정 없음"으로 둔다.
-상담 절은 읽기만 하며 계획을 바꾸지 않는다. 화면 어디에도 위험 %·인과 수치·기여율이 없음을 두 shell에서 단언했다. 매트릭스 3행을
-passed로 올렸다(passed 70 → 73). 검토의 비차단 항목은 M2-01am으로 분리했다.
+[M2-01k-a](progress/M2-01k-a.md)를 완료했다. S13 목록 카드에 썸네일, 계획 거리와 근거(실제는 기록 track뿐, 엔진 추정, 가져온 파일,
+모름), 고도 출처("없음"·지역 밖·dataset과 표본 수), 노면 확인 상태, 마지막 사용을 보인다. 새 추가 route `GET /courses/cards`로 주고,
+다른 계정은 카드를 받지 못한다. 매트릭스 4행을 passed로 올렸다(passed 73 → 77). S13-card-surface는 노면 자료가 없어 partial이다.
+카드 route 비용(최악 요청당 CPU 약 3.85 s)과 재조회 조건 고정은 M2-01an이다. M2-01k-d의 `map-lifecycle.spec.ts`를 카드 썸네일에
+맞게 고쳤다(M2-01k-a.md §7).
 
-직전 완료: [M2-01aj](progress/M2-01aj.md)(parse child 메모리 예산, 종료 순서).
+직전 완료: [M2-01k-m](progress/M2-01k-m.md)(S09 영향 탭 세 절 분리).
 
 ## 운영 메모
 
@@ -39,9 +40,9 @@ passed로 올렸다(passed 70 → 73). 검토의 비차단 항목은 M2-01am으�
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M1-06b-tmp. 이 중
-M2-01k-a·b·j·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. M2-01ak는 공유
+task-graph에서 not_started인 ready 노드: M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M1-06b-tmp. 이 중
+M2-01k-b·j·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자
 승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 

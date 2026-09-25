@@ -1321,8 +1321,9 @@
       "title": "S13 목록 카드 표시",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "S13 카드에 썸네일·계획 거리(추정/실제 구분)·고도 출처·노면 확인 상태를 표시하고, 마지막 사용 문구와 함께 카드 단위로 두 shell E2E에서 단언한다. 고도가 배포되지 않았을 때는 \"없음\"을 말하고, 그 상태를 성공으로 받지 않는 시험을 둔다 닫을 매트릭스 행: S13-card-thumbnail, S13-card-distance, S13-card-elevation, S13-card-surface, S13-card-last-used. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "S13 카드에 썸네일·계획 거리(추정/실제 구분)·고도 출처·노면 확인 상태를 표시하고, 마지막 사용 문구와 함께 카드 단위로 두 shell E2E에서 단언한다. 고도가 배포되지 않았을 때는 \"없음\"을 말하고, 그 상태를 성공으로 받지 않는 시험을 둔다 닫을 매트릭스 행: S13-card-thumbnail, S13-card-distance, S13-card-elevation, S13-card-surface, S13-card-last-used. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-a.md"
     },
     {
       "id": "M2-01k-b",
@@ -1531,6 +1532,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "M2-01k-m 독립 검토의 비차단 후속. (a) 화면 전체 부정 단언을 넓힌다: u flag와 \\p{Nd}(전각 숫자), 숫자가 앞에 오는 위험·확률·가능성·비중·기여 표현, risk·percent·리스크·퍼센트·프로, 분수 형태 비중, 줄바꿈을 끼운 \"때문에\"와 역순 인과 문장. 심박 구간·날짜의 거짓 양성은 허용 목록으로 다룬다. 다른 형태의 비중을 넣는 변이가 실패해야 한다. (b) 관측 절 region의 접근 가능한 이름을 h3(\"관측·계산\")에 aria-labelledby로 맞추고 그 이름을 쓰는 spec을 고친다. (c) 저장된 계획 연결을 확인할 수 없는 경우(unavailable)와 달력 범위 밖(unsupported_calendar)의 문구를 각각 맞게 쓴다. (d) \"범위 초과이었습니다/미만이었습니다\" 문구를 고친다. (e) 상담 검토 링크를 실제로 열어 coach 화면이 대상만 미리 고르고 쓰기가 0임을 E2E로 단언한다. (f) 관련 상담 목록이 새 thread 생성 뒤 갱신되지 않을 수 있음을 열린 항목으로 두거나 무효화한다. 출처: docs/implementation/progress/M2-01k-m.md, M2-01k-m 독립 검토."
+    },
+    {
+      "id": "M2-01an",
+      "title": "코스 카드 요약 읽기와 갱신 조건 고정",
+      "dependsOn": ["M2-01k-a"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01k-a 독립 검토의 비차단 후속. (a) GET /courses/cards는 코스마다 head 전체 선을 읽고 두 번 검증해 최악(코스 200개 × 20,000 정점) 요청당 CPU 약 3.85 s다. persistence에서 카드에 필요한 요약(400점 이하 표본, 세대, 썸네일 상태, 거리·고도 근거)만 한 tenant 트랜잭션으로 돌려주는 읽기, 또는 revisionId로 묶은 LRU를 두고 같은 기준 부하에서 비용을 측정해 기록한다. 출력은 지금 카드와 같아야 한다(계약 시험). (b) 카드 목록 재조회 조건을 시험으로 고정한다: 상세와 카드가 모두 ready면 다시 읽지 않음, 같은 head revision 조건, refetchOnWindowFocus false. 각 조건을 되돌리는 변이가 실패해야 한다. 출처: docs/implementation/progress/M2-01k-a.md §6, M2-01k-a 2회차 독립 검토의 비차단 R1."
     },
     {
       "id": "M2-01k",

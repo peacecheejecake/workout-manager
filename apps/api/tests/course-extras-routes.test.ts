@@ -1005,3 +1005,159 @@ describe('accessibility notes (M2-01r, S13)', () => {
     ]);
   });
 });
+
+describe('S13 list cards (M2-01k-a)', () => {
+  const reclaimedId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const reclaimed = {
+    status: 'unavailable' as const,
+    courseId: reclaimedId,
+    name: '삭제된 원본',
+    visibility: 'private' as const,
+    reason: 'source_activity_deleted' as const,
+    reclaimedAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  };
+
+  it('cards every course of the signed-in owner from its own head read', async () => {
+    const { app, courses } = setup();
+    vi.mocked(courses.list).mockResolvedValue({ courses: [courseHead, reclaimed], total: 2 });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.total).toBe(2);
+    const [card, gone] = body.cards;
+    // Ownership comes from the session, never from the request.
+    expect(courses.list).toHaveBeenCalledWith(athleteId);
+    expect(courses.read).toHaveBeenCalledWith(athleteId, courseId);
+    expect(card.distance).toEqual({
+      plannedLineMeters: 140,
+      basis: { kind: 'imported-file', sourceKind: 'gpx-rte' },
+      privacyTrimmed: false,
+    });
+    expect(card.thumbnail.state).toEqual({ status: 'none' });
+    expect(card.thumbnail.drawnVertices).toEqual(courseRevision.geometry.coordinates);
+    expect(card.elevation).toMatchObject({
+      status: 'sampled',
+      sampledCount: 2,
+      knownCount: 1,
+      dataset: { datasetId: 'beef0123cafe' },
+    });
+    expect(card.surface).toEqual({ confirmation: 'unknown' });
+    // A reclaimed course is described by its reference and nothing else.
+    expect(gone).toEqual({ status: 'unavailable', course: reclaimed });
+    expect(courses.read).toHaveBeenCalledTimes(1);
+  });
+
+  it('says not_deployed when this server has no elevation dataset', async () => {
+    const { app } = setup({ datasets: false });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().cards[0].elevation).toEqual({ status: 'not_deployed' });
+  });
+
+  it('leaves out a course deleted between the list and its read', async () => {
+    const { app, courses } = setup();
+    vi.mocked(courses.read).mockRejectedValueOnce(new CourseNotFoundError());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ cards: [], total: 0 });
+  });
+
+  it('keeps the list order across concurrent reads and drops only the vanished course', async () => {
+    const { app, courses } = setup();
+    const ids = Array.from(
+      { length: 7 },
+      (_, index) => `${String(index + 1).repeat(8)}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    );
+    vi.mocked(courses.list).mockResolvedValue({
+      courses: ids.map((id) => ({ ...courseHead, courseId: id })),
+      total: ids.length,
+    });
+    vi.mocked(courses.read).mockImplementation(async (_athlete, id) => {
+      // Later courses answer sooner, so a completion-ordered list would come out reversed.
+      await new Promise((resolve) => setTimeout(resolve, (ids.length - ids.indexOf(id)) * 3));
+      if (id === ids[3]) throw new CourseNotFoundError();
+      return {
+        status: 'available',
+        course: { ...courseHead, courseId: id },
+        revision: { ...courseRevision, courseId: id },
+        thumbnail: { status: 'none' },
+      };
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { cards: { course: { courseId: string } }[]; total: number };
+    expect(body.cards.map((card) => card.course.courseId)).toEqual(
+      ids.filter((id) => id !== ids[3]),
+    );
+    expect(body.total).toBe(6);
+  });
+
+  it('stops reading once one read fails, and answers with the failure', async () => {
+    const { app, courses } = setup();
+    const ids = Array.from(
+      { length: 20 },
+      (_, index) =>
+        `${String(index % 10).repeat(8)}-${String(index).padStart(4, '0')}-4aaa-8aaa-aaaaaaaaaaaa`,
+    );
+    vi.mocked(courses.list).mockResolvedValue({
+      courses: ids.map((id) => ({ ...courseHead, courseId: id })),
+      total: ids.length,
+    });
+    vi.mocked(courses.read).mockImplementation(async (_athlete, id) => {
+      if (id === ids[0]) throw new Error('database gone');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return {
+        status: 'available',
+        course: { ...courseHead, courseId: id },
+        revision: { ...courseRevision, courseId: id },
+        thumbnail: { status: 'none' },
+      };
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(500);
+    // Long enough for a worker that kept draining to have read the whole list.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // The four reads already in flight when the first one failed, and no more.
+    expect(courses.read).toHaveBeenCalledTimes(4);
+  });
+
+  it('authenticates, and takes no query', async () => {
+    const anonymous = setup({ authenticated: false });
+    const refused = await anonymous.app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(anonymous.courses.list).not.toHaveBeenCalled();
+    const { app } = setup();
+    const withQuery = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/cards?athleteId=${athleteId}`,
+      headers: baseHeaders,
+    });
+    expect(withQuery.statusCode).toBe(400);
+  });
+});

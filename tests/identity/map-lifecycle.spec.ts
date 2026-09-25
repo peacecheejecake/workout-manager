@@ -585,12 +585,35 @@ for (const shell of shells) {
     }) => {
       const headers = await login(page);
       const name = `코스 수명 ${shell.name} ${randomUUID().slice(0, 8)}`;
-      await importCourse(page, headers, name);
+      const courseId = await importCourse(page, headers, name);
+      // The S13 list cards (M2-01k-a) hold a blob URL per stored picture for as long as the
+      // list is on screen, and the list outlives the course. Let this course's picture be
+      // made, and every card's stored picture land, before the mark, so what is counted
+      // after it is only what opening the course created.
+      await expect
+        .poll(
+          async () =>
+            (
+              (await (
+                await page.request.get(`http://127.0.0.1:3100/bff/v1/courses/${courseId}`, {
+                  headers,
+                })
+              ).json()) as { thumbnail: { status: string } }
+            ).thumbnail.status,
+          { timeout: 20_000 },
+        )
+        .toBe('ready');
       await instrumentLifecycle(page);
       await page.setViewportSize({ width: 390, height: 900 });
       await page.goto(`${shell.origin}/courses`);
       const workbench = page.getByRole('region', { name: '내 코스' });
       await expect(workbench.getByRole('button', { name, exact: true })).toBeVisible();
+      await expect(
+        workbench.locator('[data-testid="course-card"][data-card-status="ready"]').first(),
+      ).toBeAttached();
+      await expect(
+        workbench.locator('[data-thumbnail-state="ready"] [data-source="drawn"]'),
+      ).toHaveCount(0);
       const mark = await lifecycleMark(page);
       await workbench.getByRole('button', { name, exact: true }).click();
       await expectLineDrawn(mapRegion(workbench, '코스 지도'));

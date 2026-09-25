@@ -12,6 +12,7 @@ import {
   coursePrivacyZoneListSchema,
   courseReadResultSchema,
   type CourseGeneration,
+  type CourseReadResult,
   type CoursePrivacyZone,
 } from '@workout/contracts/courses';
 import {
@@ -19,6 +20,8 @@ import {
   placeSearchRequestSchema,
   placeSearchResultSchema,
 } from '@workout/contracts/geo-data';
+import { courseCardListSchema, type CourseCard } from '@workout/contracts/course-cards';
+import { courseCard } from '@workout/server-courses/course-cards';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import {
   CourseImportError,
@@ -77,6 +80,8 @@ const idempotencyKeySchema = z
 /** Base64 of a 4 MiB file plus the JSON around it, with room for neither much more. */
 const IMPORT_BODY_LIMIT = Math.ceil((courseLimits.importFileBytes / 3) * 4) + 4096;
 const SMALL_BODY_LIMIT = 4 * 1024;
+/** Head reads one card request runs at once (M2-01k-a). */
+const CARD_READ_CONCURRENCY = 4;
 
 export interface CourseExtrasServices {
   courses: CourseRepository;
@@ -356,6 +361,59 @@ export function registerCourseExtrasRoutes(
       const elevation = services.elevation;
       if (!elevation) return courseElevationResultSchema.parse({ outcome: 'no_dataset' });
       return courseElevationResultSchema.parse(elevation.profile(result.revision));
+    });
+
+    /**
+     * The S13 list cards (M2-01k-a): thumbnail, planned distance and what it is, elevation
+     * source and surface confirmation, for every course the owner has.
+     *
+     * A read beside `GET /courses` rather than new fields on it, because the list is a
+     * strict contract and an old client would refuse a field it does not know. Each card is
+     * built from the course's own head read, so it can say nothing the detail would not.
+     * A course deleted between the list and its read is simply not carded: it is gone.
+     */
+    extras.get('/courses/cards', async (request) => {
+      input(emptyQuery, request.query);
+      const athleteId = principal(request).athleteId;
+      const list = await execute(() => services.courses.list(athleteId));
+      const elevation = services.elevation ?? null;
+      // The repository validates what it reads, so the head read is used as it comes. A
+      // few reads run at once, in the list's order, so a long list neither serialises
+      // every read nor opens one transaction per course at the same moment.
+      const cards: (CourseCard | null)[] = new Array<CourseCard | null>(list.courses.length);
+      let next = 0;
+      // One read that fails fails the request; the other workers stop taking new reads
+      // instead of draining the list for an answer nobody will receive.
+      let failed = false;
+      const worker = async () => {
+        while (!failed && next < list.courses.length) {
+          const index = next;
+          next += 1;
+          const head = list.courses[index];
+          if (head === undefined) continue;
+          if (head.status === 'unavailable') {
+            cards[index] = courseCard({ status: 'unavailable', course: head }, elevation);
+            continue;
+          }
+          let read: CourseReadResult;
+          try {
+            read = await services.courses.read(athleteId, head.courseId);
+          } catch (error) {
+            if (error instanceof CourseNotFoundError) {
+              cards[index] = null;
+              continue;
+            }
+            failed = true;
+            throw error;
+          }
+          cards[index] = courseCard(read, elevation);
+        }
+      };
+      await execute(() =>
+        Promise.all(Array.from({ length: CARD_READ_CONCURRENCY }, () => worker())),
+      );
+      const present = cards.filter((card): card is CourseCard => card !== null);
+      return courseCardListSchema.parse({ cards: present, total: present.length });
     });
   });
 }
