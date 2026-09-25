@@ -38,13 +38,16 @@ import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
 import type { MapAdapterFactory, MapAdapterFailure } from '@workout/geo-kit/map-adapter';
 import type { MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
+import type { MapRenderIdleInfo, RenderedPathPiece } from '@workout/geo-kit/render-evidence';
 import { Button } from '@workout/ui-foundation/button';
 import { getLayoutMode, type LayoutMode } from '@workout/ui-foundation/responsive';
 import { StatusNotice } from '@workout/ui-foundation/status-notice';
 import { CourseFromSegment } from './course-from-segment';
 import { createDetailSelectionStore } from './detail-selection';
 import { useSharedDetailSelectionStore } from './detail-selection-provider';
-import { lapTimeRange, type TimeRange } from './detail-projection';
+import { lapTimeRange, recordInRange, type TimeRange } from './detail-projection';
+import { LapTable } from './detail-lap-table';
+import { Scrollable } from './detail-scrollable';
 import { MapLeaf } from './map-leaf';
 import {
   buildHighlightPath,
@@ -54,6 +57,7 @@ import {
   definiteSampleForRecord,
   indexStoredTrack,
   lapCorrespondence,
+  renderedHighlightSamples,
   samplesInRange,
   type InstantCorrespondence,
 } from './stored-track-geometry';
@@ -386,6 +390,11 @@ function StoredTrackView({
   const pickedSample = useStore(store, (state) => state.sample);
   const selectRecord = useStore(store, (state) => state.selectRecord);
   const selectSample = useStore(store, (state) => state.selectSample);
+  const selectLap = useStore(store, (state) => state.selectLap);
+  const selectRange = useStore(store, (state) => state.selectRange);
+  const beginRangeDrag = useStore(store, (state) => state.beginRangeDrag);
+  const endRangeDrag = useStore(store, (state) => state.endRangeDrag);
+  const cancelRangeDrag = useStore(store, (state) => state.cancelRangeDrag);
   const clearSelection = useStore(store, (state) => state.clear);
 
   const geometry = useMemo(() => buildStoredTrackGeometry(mapPath, pathId), [mapPath]);
@@ -480,6 +489,37 @@ function StoredTrackView({
     (nextIndex: number, time: number) => selectRecord(nextIndex, time),
     [selectRecord],
   );
+  // A range dragged on the chart goes to the shared store and nowhere else: the map and the
+  // lap table below read it from there, and nothing about it is sent to the server.
+  const onChartRange = useCallback((next: TimeRange) => selectRange(next), [selectRange]);
+  // A cancelled drag (pointercancel, Escape) puts back the selection it replaced.
+  const onChartRangeEnd = useCallback(
+    (outcome: 'commit' | 'cancel') => (outcome === 'cancel' ? cancelRangeDrag() : endRangeDrag()),
+    [cancelRangeDrag, endRangeDrag],
+  );
+
+  // What the renderer itself reports it drew of the highlight, from `queryRenderedFeatures`
+  // at each idle. It is shown as `data-rendered-highlight` on the map pane, so what is on the
+  // map — not what was handed to it — can be compared with the selected range.
+  const [drawnPieces, setDrawnPieces] = useState<readonly RenderedPathPiece[] | null>(null);
+  const onRenderIdle = useCallback((info: MapRenderIdleInfo) => {
+    const next = (info.renderedPieces ?? []).filter((piece) => piece.pathId === highlightPathId);
+    setDrawnPieces((previous) =>
+      previous !== null && JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+    );
+  }, []);
+  const renderedHighlight =
+    drawnPieces === null
+      ? undefined
+      : renderedHighlightSamples(highlight, highlightPathId, drawnPieces)
+          .map((piece) => (piece === 'stale' ? 'stale' : piece.join(',')))
+          .join('|');
+  const rangeShown =
+    range !== null && recordIndex === null && lapIndex === null && pickedSample === null;
+  const rangeObservations =
+    rangeShown && details !== null
+      ? details.records.filter((record) => recordInRange(record, range)).length
+      : 0;
 
   const adapterFactory = useMemo<MapAdapterFactory | undefined>(() => {
     if (createMapAdapter) return createMapAdapter;
@@ -656,6 +696,7 @@ function StoredTrackView({
           className={`${styles.pane} ${styles.mapPane}`}
           id={`${tabsId}-map-pane`}
           data-mounted={shows('map')}
+          data-rendered-highlight={renderedHighlight}
           {...(tabs
             ? { role: 'tabpanel', 'aria-labelledby': `${tabsId}-map` }
             : { role: 'group', 'aria-label': '저장된 경로 지도' })}
@@ -670,6 +711,7 @@ function StoredTrackView({
               fitRequest={fitRequest}
               onStatusChange={setMapStatus}
               onFailure={onFailure}
+              onRenderIdle={onRenderIdle}
               loadFailureFallback={
                 <p role="status">
                   지도 구성 요소를 불러오지 못했습니다. 아래 요약과 표본 목록은 그대로 사용할 수
@@ -726,12 +768,41 @@ function StoredTrackView({
               그대로 사용할 수 있습니다.
             </StatusNotice>
           ) : (
-            <TrackChartPane
-              records={details.records}
-              selected={recordIndex}
-              range={range}
-              onSelect={onChartSelect}
-            />
+            <>
+              <TrackChartPane
+                records={details.records}
+                selected={recordIndex}
+                range={range}
+                onSelect={onChartSelect}
+                onSelectRange={onChartRange}
+                onRangeDragStart={beginRangeDrag}
+                onRangeDragEnd={onChartRangeEnd}
+              />
+              <p className={styles.note} data-testid="route-range">
+                {rangeShown
+                  ? `선택 구간 UTC ${new Date(range.start).toISOString()} – ${new Date(
+                      range.end,
+                    ).toISOString()} (양끝 포함) · 관측 ${rangeObservations}개`
+                  : '선택 구간 없음'}
+              </p>
+              <h4 id={`${tabsId}-laps`}>랩</h4>
+              {details.laps.length === 0 ? (
+                <p className={styles.note}>저장된 랩이 없습니다.</p>
+              ) : (
+                // The table is wider than a split pane; its scroll buttons reach the columns
+                // past the edge without a pointer, and the range column sits next to the
+                // select column so the match is read first.
+                <Scrollable label="경로 랩 표">
+                  <LapTable
+                    caption="경로 랩 표"
+                    laps={details.laps}
+                    lapIndex={lapIndex}
+                    range={range}
+                    onSelectLap={selectLap}
+                  />
+                </Scrollable>
+              )}
+            </>
           )}
         </div>
 
@@ -909,11 +980,17 @@ function TrackChartPane({
   selected,
   range,
   onSelect,
+  onSelectRange,
+  onRangeDragStart,
+  onRangeDragEnd,
 }: {
   readonly records: ActivityDetails['records'];
   readonly selected: number | null;
   readonly range: TimeRange | null;
   readonly onSelect: (index: number, time: number) => void;
+  readonly onSelectRange: (range: TimeRange) => void;
+  readonly onRangeDragStart: () => void;
+  readonly onRangeDragEnd: (outcome: 'commit' | 'cancel') => void;
 }) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(records.length / recordsPerChartPage));
@@ -958,6 +1035,9 @@ function TrackChartPane({
               selected={selected}
               range={range}
               onSelect={onSelect}
+              onSelectRange={onSelectRange}
+              onRangeDragStart={onRangeDragStart}
+              onRangeDragEnd={onRangeDragEnd}
             />
             <LazyDetailChart
               records={listed}
@@ -965,6 +1045,9 @@ function TrackChartPane({
               selected={selected}
               range={range}
               onSelect={onSelect}
+              onSelectRange={onSelectRange}
+              onRangeDragStart={onRangeDragStart}
+              onRangeDragEnd={onRangeDragEnd}
             />
           </Suspense>
         </ChartBoundary>

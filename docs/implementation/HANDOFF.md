@@ -17,12 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01ak](progress/M2-01ak.md)를 완료했다(사용자 결정 2026-09-25). 보행 routing graph를 Geofabrik 월간 한국 전체 extract
-(`south-korea-260901.osm.pbf`, SHA-256 pin)와 저장소 serving profile로 새 root `.geo-build-routing/kr-260901/`에 만들었다(graph
-`188b65effcc6ef5c`). production composition 안에서 부하 중 전환과 부하 중 rollback이 실패 0이었고, 재전환 뒤 blue를 퇴역해도 green 단독으로 경로를 냈으며, 엔진 로그·swap·운영 probe가
-새 graph에서 통과했다. 38쌍 coverage는 35/2/1(등급 없음). 엔진 메모리 예산은 새 graph에 묶어 다시 잡았다(idle 1100, 부하 2000 MiB).
+[M2-01k-n](progress/M2-01k-n.md)를 완료했다. S09 경로 탭에서 차트를 끌어 시간 범위를 고르면 지도 강조(렌더러가 그린 표본)와 랩 표 행이 같은
+범위로 따라가고, GPS 끊김을 가로지른 범위는 두 조각으로 그린다. 터치는 누르고 기다린 뒤에만 끌기가 시작되어 페이지 스크롤을 뺏지 않는다.
+S09-range-link·V2-F13·V2-A18을 passed로 올렸다. 경로 탭의 키보드 전용 범위 입력과 차트 zoom 공유(R-S09)는 남았다.
 
-직전 완료: [M2-01am](progress/M2-01am.md)(S09 영향 탭 단언 보강).
+직전 완료: [M2-01ak](progress/M2-01ak.md)(전국 routing graph).
 
 ## 운영 메모
 
@@ -55,8 +54,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
+M2-01k-o·M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
@@ -67,6 +66,9 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
   한 번 실패했다(1회차 통과, 제품 코드 변경 없음). 반복되면 별도 노드로 다룬다.
 - `packages/server/track-storage/tests/parse-host.test.ts`의 메모리 상한 시험이 1분 load 약 50에서 `TRACK_PARSE_MEMORY_EXCEEDED`
   대신 `TRACK_OUTPUT_TOO_LARGE`로 한 번 실패했고, 그 파일만 두 번 다시 돌리면 15/15 통과했다(M2-01k-n 재검증, 2026-09-25).
+- `tests/identity/oidc.spec.ts:55`(두 번째 탭 계정 전환, 30초 timeout)와 `tests/identity/activity-track-map.spec.ts:446`(Vite "저장된
+  경로" 영역이 5초 안에 안 보임)이 M2-01am 병합 검증의 identity 두 회차에서 각각 한 번 실패했고, 같은 코드를 포함한 M2-01ak 병합 검증
+  두 회차는 모두 통과했다(2026-09-25). 반복되면 별도 노드로 다룬다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate

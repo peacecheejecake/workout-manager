@@ -3,7 +3,6 @@ import {
   lazy,
   Suspense,
   useId,
-  useRef,
   useState,
   type ReactNode,
   type ComponentProps,
@@ -16,13 +15,13 @@ import { createDetailSelectionStore, type DetailSelectionStore } from './detail-
 import { useSharedDetailSelectionStore } from './detail-selection-provider';
 import {
   detailsMatchActivity,
-  lapTimeRange,
-  lapOverlapsRange,
   recordInRange,
   recordTime,
   type TimeRange,
 } from './detail-projection';
 import type { DetailChart } from './detail-chart';
+import { LapTable } from './detail-lap-table';
+import { Scrollable } from './detail-scrollable';
 import styles from './activity-workbench.module.css';
 
 const loadChart = () =>
@@ -87,6 +86,10 @@ function Workbench({
   const range = useStore(store, (state) => state.range);
   const selectRecord = useStore(store, (state) => state.selectRecord);
   const selectLap = useStore(store, (state) => state.selectLap);
+  const selectRange = useStore(store, (state) => state.selectRange);
+  const beginRangeDrag = useStore(store, (state) => state.beginRangeDrag);
+  const endRangeDrag = useStore(store, (state) => state.endRangeDrag);
+  const cancelRangeDrag = useStore(store, (state) => state.cancelRangeDrag);
   const selectedRecord = details.records.find((record) => record.index === recordIndex);
   const selectedLap = details.laps.find((lap) => lap.index === lapIndex);
   const selectedPosition = details.records.findIndex((record) => record.index === recordIndex);
@@ -211,6 +214,11 @@ function Workbench({
             selected={recordIndex}
             range={range}
             onSelect={selectRecord}
+            onSelectRange={selectRange}
+            onRangeDragStart={beginRangeDrag}
+            onRangeDragEnd={(outcome) =>
+              outcome === 'cancel' ? cancelRangeDrag() : endRangeDrag()
+            }
           />
           <Pagination
             label="관측 표"
@@ -271,47 +279,13 @@ function Workbench({
             onPage={setLapPage}
           />
           <Scrollable label="랩 표">
-            <table className={styles.table}>
-              <caption>원본 랩 표</caption>
-              <thead>
-                <tr>
-                  <th>선택·원본 순번</th>
-                  <th>시작 UTC</th>
-                  <th>작성 UTC</th>
-                  <th>경과 시간</th>
-                  <th>타이머 시간</th>
-                  <th>거리</th>
-                  <th>평균 심박</th>
-                  <th>최대 심박</th>
-                </tr>
-              </thead>
-              <tbody>
-                {details.laps.slice(lapPage * 20, (lapPage + 1) * 20).map((lap) => (
-                  <tr
-                    key={lap.index}
-                    data-selected={lapIndex === lap.index}
-                    data-in-range={range !== null && lapOverlapsRange(lap, range)}
-                  >
-                    <td>
-                      <Button
-                        variant="secondary"
-                        aria-pressed={lapIndex === lap.index}
-                        onClick={() => selectLap(lap.index, lapTimeRange(lap))}
-                      >
-                        랩 {lap.index} 선택
-                      </Button>
-                    </td>
-                    <td>{time(lap.startedAt)}</td>
-                    <td>{time(lap.recordedAt)}</td>
-                    <td>{metric(lap.elapsedSeconds, '초')}</td>
-                    <td>{metric(lap.timerSeconds, '초')}</td>
-                    <td>{metric(lap.distanceMeters, 'm')}</td>
-                    <td>{metric(lap.averageHeartRateBpm, 'bpm')}</td>
-                    <td>{metric(lap.maximumHeartRateBpm, 'bpm')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <LapTable
+              caption="원본 랩 표"
+              laps={details.laps.slice(lapPage * 20, (lapPage + 1) * 20)}
+              lapIndex={lapIndex}
+              range={range}
+              onSelectLap={selectLap}
+            />
           </Scrollable>
           {!details.laps.length ? <p>저장된 랩이 없습니다.</p> : null}
         </section>
@@ -382,39 +356,6 @@ function Pagination({
         {label} 다음 페이지
       </Button>
     </div>
-  );
-}
-function Scrollable({ label, children }: { label: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const id = useId();
-  return (
-    <>
-      <div className={styles.actions}>
-        <Button
-          variant="secondary"
-          aria-controls={id}
-          onClick={() => ref.current?.scrollBy({ left: -240, behavior: 'auto' })}
-        >
-          {label} 왼쪽 스크롤
-        </Button>
-        <Button
-          variant="secondary"
-          aria-controls={id}
-          onClick={() => ref.current?.scrollBy({ left: 240, behavior: 'auto' })}
-        >
-          {label} 오른쪽 스크롤
-        </Button>
-      </div>
-      <div
-        id={id}
-        ref={ref}
-        className={styles.scroll}
-        role="region"
-        aria-label={`${label} 스크롤 영역`}
-      >
-        {children}
-      </div>
-    </>
   );
 }
 function RangeControls({ store }: { store: DetailSelectionStore }) {

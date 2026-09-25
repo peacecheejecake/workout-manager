@@ -287,6 +287,28 @@ export function definiteRecordForSample(
 }
 
 /**
+ * A content key over every vertex key and every break of a highlight, so two highlights
+ * that share their first and last sample and their length — but not their middle, or not
+ * where they break — never share a revision. Two independent 32-bit FNV-style hashes plus
+ * the counts; a collision needs all four to agree.
+ */
+export function highlightContentKey(keys: readonly string[], breaks: readonly number[]): string {
+  let first = 0x811c9dc5;
+  let second = 0x01000193;
+  const fold = (code: number) => {
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second + code, 0x5bd1e995) ^ (second >>> 15);
+  };
+  for (const key of keys) {
+    for (let index = 0; index < key.length; index += 1) fold(key.charCodeAt(index));
+    fold(0x1f); // key separator
+  }
+  fold(0x1e); // keys | breaks
+  for (const value of breaks) fold(value + 0x10000);
+  return `${keys.length}.${breaks.length}.${(first >>> 0).toString(36)}.${(second >>> 0).toString(36)}`;
+}
+
+/**
  * The drawn runs covered by a set of sample ids, as a path of its own.
  *
  * Used to highlight the time range a lap or an explicit range selection covers. Vertices
@@ -328,9 +350,49 @@ export function buildHighlightPath(
   return {
     id: pathId,
     role: 'candidate',
-    revision: `${geometry.path.revision}:${keys[0]}:${keys[keys.length - 1]}:${keys.length}`,
+    revision: `${geometry.path.revision}:${highlightContentKey(keys, breaks)}`,
     positions,
     breaks,
     vertexKeys: keys,
   };
+}
+
+/**
+ * What the renderer says it drew of one highlight path, as the sample ids of each drawn
+ * piece in drawn order.
+ *
+ * `pieces` are the renderer's own report (see `renderedPieces` in the kit's idle info). A
+ * piece is resolved through `highlight` only when it carries that path's revision; a piece
+ * of an earlier or later highlight is reported as `stale` rather than translated through
+ * the wrong vertex keys, so a highlight the renderer still shows after a change cannot pass
+ * for the current one.
+ */
+export function renderedHighlightSamples(
+  highlight: DisplayPath | null,
+  pathId: string,
+  pieces: readonly {
+    readonly pathId: string;
+    readonly revision: string;
+    readonly startIndex: number;
+  }[],
+): readonly (readonly string[] | 'stale')[] {
+  const own = pieces
+    .filter((piece) => piece.pathId === pathId)
+    .sort((left, right) => left.startIndex - right.startIndex);
+  const seen = new Set<string>();
+  const result: (readonly string[] | 'stale')[] = [];
+  for (const piece of own) {
+    const key = `${piece.revision}:${piece.startIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (highlight === null || piece.revision !== highlight.revision) {
+      result.push('stale');
+      continue;
+    }
+    const end =
+      (highlight.breaks ?? []).find((boundary) => boundary > piece.startIndex) ??
+      highlight.positions.length;
+    result.push((highlight.vertexKeys ?? []).slice(piece.startIndex, end));
+  }
+  return result;
 }

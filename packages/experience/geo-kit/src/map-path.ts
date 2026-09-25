@@ -210,6 +210,8 @@ export interface MapPathFeatureCollection {
     readonly properties: {
       readonly pathId: string;
       readonly role: MapPathRole;
+      /** The owning path's revision, so a drawn feature can be tied to the path it came from. */
+      readonly revision: string;
       readonly startIndex: number;
       readonly insufficient: boolean;
     };
@@ -229,6 +231,7 @@ export function toFeatureCollection(paths: readonly MapPath[]): MapPathFeatureCo
       const properties = {
         pathId: segment.pathId,
         role: segment.role,
+        revision: path.revision,
         startIndex: segment.startIndex,
         insufficient: segment.positions.length < 2,
       } as const;

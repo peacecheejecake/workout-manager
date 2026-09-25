@@ -87,6 +87,17 @@
   stroke: var(--ink);
   stroke-width: 2;
 }
+/* The chart takes horizontal drags as a range; vertical swipes still scroll the page. */
+.rangeSurface {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.band {
+  fill: var(--accent);
+  fill-opacity: 0.18;
+  pointer-events: none;
+}
 .summary {
   padding: var(--space-3);
   border: 1px solid var(--line);

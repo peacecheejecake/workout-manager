@@ -30,7 +30,7 @@ import {
 import { MapAdapterError } from './map-adapter';
 import type { MapAdapterFactory, MapAdapterHandle, MapAdapterOptions } from './map-adapter';
 import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-path';
-import { expectedVisibleGeometry, judgeRender } from './render-evidence';
+import { expectedVisibleGeometry, judgeRender, renderedPathPieces } from './render-evidence';
 
 const pathSourceId = 'geo-kit-paths';
 const selectionSourceId = 'geo-kit-selection';
@@ -327,15 +327,22 @@ async function initialise(
         return [...roles].sort();
       };
       const observe = () => {
-        const lineFeatures = query(pathLineLayerIds);
-        const renderedLineFeatures = lineFeatures.length;
-        const renderedPointFeatures = query([pathPointLayerId]).length;
+        // One query per layer group serves the counts, the drawn roles (M2-01k-j) and the
+        // drawn pieces (M2-01k-n).
+        const lines = query(pathLineLayerIds);
+        const points = query([pathPointLayerId]);
+        const renderedLineFeatures = lines.length;
+        const renderedPointFeatures = points.length;
         const viewport = map.getBounds();
         return {
           renderedPathFeatures: renderedLineFeatures + renderedPointFeatures,
           renderedLineFeatures,
           renderedPointFeatures,
-          renderedLineRoles: rolesOf(lineFeatures),
+          renderedLineRoles: rolesOf(lines),
+          renderedPieces: [
+            ...renderedPathPieces(lines, 'line'),
+            ...renderedPathPieces(points, 'point'),
+          ],
           pathFeatures: current.features.length,
           expected: expectedVisibleGeometry(current, {
             west: viewport.getWest(),

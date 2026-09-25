@@ -12,6 +12,14 @@ export interface TrackSampleSelection {
   readonly sampleId: string;
 }
 
+/** The selection a range drag replaces, kept so that a cancelled drag can put it back. */
+export interface SelectionSnapshot {
+  readonly recordIndex: number | null;
+  readonly lapIndex: number | null;
+  readonly range: TimeRange | null;
+  readonly sample: TrackSampleSelection | null;
+}
+
 export interface DetailSelectionState {
   rangeStart: string;
   rangeEnd: string;
@@ -39,6 +47,14 @@ export interface DetailSelectionState {
    */
   selectSample(sample: TrackSampleSelection, index: number | null, time: number | null): void;
   clear(): void;
+  /** The selection saved when a range drag started; `null` when no drag is in progress. */
+  rangeDragOrigin: SelectionSnapshot | null;
+  /** A chart press became a range drag: save the current selection. */
+  beginRangeDrag(): void;
+  /** The drag ended with its range: forget the saved selection. */
+  endRangeDrag(): void;
+  /** The drag was cancelled (pointercancel, Escape): restore the saved selection. */
+  cancelRangeDrag(): void;
 }
 const copiedRange = (range: TimeRange | null): TimeRange | null =>
   range === null ? null : { ...range };
@@ -76,6 +92,29 @@ export function createDetailSelectionStore() {
         range: index === null || time === null ? null : { start: time, end: time },
       }),
     clear: () => set({ recordIndex: null, lapIndex: null, range: null, sample: null }),
+    rangeDragOrigin: null,
+    beginRangeDrag: () =>
+      set((state) => ({
+        rangeDragOrigin: {
+          recordIndex: state.recordIndex,
+          lapIndex: state.lapIndex,
+          range: copiedRange(state.range),
+          sample: state.sample,
+        },
+      })),
+    endRangeDrag: () => set({ rangeDragOrigin: null }),
+    cancelRangeDrag: () =>
+      set((state) =>
+        state.rangeDragOrigin === null
+          ? {}
+          : {
+              recordIndex: state.rangeDragOrigin.recordIndex,
+              lapIndex: state.rangeDragOrigin.lapIndex,
+              range: copiedRange(state.rangeDragOrigin.range),
+              sample: state.rangeDragOrigin.sample,
+              rangeDragOrigin: null,
+            },
+      ),
   }));
 }
 export type DetailSelectionStore = ReturnType<typeof createDetailSelectionStore>;

@@ -396,6 +396,20 @@
         "engine memory budgets re-baselined on the new graph and bound to it (record-only x3, judged run passed); pnpm test 3,803, integration 1+669, identity x2 249 each (before the round-2 dangling-link test; the tooling tests, 314, were re-run after it); mutants MX1, MX2, MX4-MX7, MG1-MG3 each fail"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ak.md."
+    },
+    {
+      "node": "M2-01k-n",
+      "date": "2026-09-26",
+      "rows": ["S09-range-link", "V2-F13", "V2-A18"],
+      "decision": "User decided on 2026-09-24 to build a drag chart range, a linked lap table and an asserted map highlight. Gap node M2-01k-n built them. Independent review: r1 REQUEST CHANGES (touch drag during scroll, lap table keyboard scroll), r3 REQUEST CHANGES (slow tap regression), r4 REQUEST CHANGES (lost mouse release), r5 APPROVE; r2 was pinned but superseded by the rebase before it was reviewed.",
+      "change": "S09-range-link, V2-F13 and V2-A18 partial -> passed; R-S09 stays partial (no chart zoom sharing); counts passed 81 -> 84, partial 23 -> 20.",
+      "executed": [
+        "tests/identity/activity-range-link.spec.ts in both shells under the harness lock (4/4, re-run after each review round): a real pointer drag on the chart selects a range; the renderer's queryRenderedFeatures highlight equals the range's samples exactly, the route tab lap table marks the matching laps, a range across a GPS gap is drawn as two pieces (0:4,0:5|0:8,0:9), and no BFF or write request is made",
+        "packages/modules/activities tests (detail-chart-drag 20 cases, activity-range-link, detail-cursor-store; activities and geo-kit 461 passed): mouse drag after 6 px, touch/pen only after a 200 ms hold within 8 px, pointercancel/Escape restore, slow tap selects the tapped point within a 22 px hit radius, a lost mouse release ends the press, zero-length ranges are never committed, per-frame store writes, highlight revision hashes every vertex and break",
+        "E2E mutants N1 (map highlight off), N2 (lap link cut), N3a/N3b (range shifted one sample), L-text each 4/4 fail, G-gap-bridge fails the gap test in both shells; unit mutants B1a-B1c, B3, B3b, B4a, B4b, N2-rev, key-ends, T-no-hit-radius, Z-back-commits and others each fail",
+        "pnpm test 3,833 on 4c6b938 before the last review fixes, integration 1+669 after the rebase onto 8429efa; on the final tree activities and geo-kit 461, the new E2E and pnpm test:identity 253 passed; independent review in four rounds (tags r1, r3, r4, r5; r2 was pinned and superseded by the rebase before review), r5 APPROVE on tree fd28be22"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-n.md."
     }
   ],
   "rounds": [
@@ -517,8 +531,8 @@
     }
   ],
   "counts": {
-    "passed": 81,
-    "partial": 23,
+    "passed": 84,
+    "partial": 20,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -648,9 +662,12 @@
       "id": "S09-range-link",
       "source": "docs/.pre/01_product_screen_spec.md:137",
       "quote": "차트에서 구간을 선택하면 지도 경로와 lap table의 동일 시간 범위가 강조된다.",
-      "verdict": "partial",
-      "evidence": ["tests/identity/activity-workbench.spec.ts:35 (:157-174 range via UTC inputs)"],
-      "reason": "No drag range on the chart (range is typed); no lap table linked in the route tab; map highlight of the range not asserted.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/activity-workbench.spec.ts:35 (:157-174 range via UTC inputs)",
+        "tests/identity/activity-range-link.spec.ts (M2-01k-n: drag range, renderer highlight, lap rows, gap pieces, both shells)"
+      ],
+      "reason": "M2-01k-n amendment: passed. A pointer drag on the chart selects a time range; the map highlight drawn by the renderer equals the range's samples exactly and the route tab lap table marks the matching laps, in both shells (N1, N2, N3a, N3b fail). On touch a drag starts only after a hold so page scrolling is not taken over; a slow tap still selects the point. Limits: touch is covered by jsdom unit tests only (no real device); the route tab has no keyboard-only range input (the intervals tab UTC input on the same store is the keyboard alternative); a drag range is limited to one chart page of 500 observations.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -658,7 +675,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-n",
+        "date": "2026-09-26",
+        "previousVerdict": "partial",
+        "previousReason": "No drag range on the chart (range is typed); no lap table linked in the route tab; map highlight of the range not asserted.",
+        "executed": [
+          "tests/identity/activity-range-link.spec.ts in both shells under the harness lock (4/4, re-run after each review round): a real pointer drag on the chart selects a range; the renderer's queryRenderedFeatures highlight equals the range's samples exactly, the route tab lap table marks the matching laps, a range across a GPS gap is drawn as two pieces (0:4,0:5|0:8,0:9), and no BFF or write request is made",
+          "packages/modules/activities tests (detail-chart-drag 20 cases, activity-range-link, detail-cursor-store; activities and geo-kit 461 passed): mouse drag after 6 px, touch/pen only after a 200 ms hold within 8 px, pointercancel/Escape restore, slow tap selects the tapped point within a 22 px hit radius, a lost mouse release ends the press, zero-length ranges are never committed, per-frame store writes, highlight revision hashes every vertex and break",
+          "E2E mutants N1 (map highlight off), N2 (lap link cut), N3a/N3b (range shifted one sample), L-text each 4/4 fail, G-gap-bridge fails the gap test in both shells; unit mutants B1a-B1c, B3, B3b, B4a, B4b, N2-rev, key-ends, T-no-hit-radius, Z-back-commits and others each fail",
+          "pnpm test 3,833 on 4c6b938 before the last review fixes, integration 1+669 after the rebase onto 8429efa; on the final tree activities and geo-kit 461, the new E2E and pnpm test:identity 253 passed; independent review in four rounds (tags r1, r3, r4, r5; r2 was pinned and superseded by the rebase before review), r5 APPROVE on tree fd28be22"
+        ]
+      }
     },
     {
       "id": "S09-cursor-store",
@@ -1516,9 +1545,9 @@
       "id": "V2-F13",
       "source": "docs/.pre/05_implementation_requirements.md:91",
       "quote": "| V2-F13 | Linked workbench | 차트 시간 선택과 route/lap 선택 일치; GPS gaps S09 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S09-range-link, S09-gps-gap"],
-      "reason": "Single-sample round trip only; no range→lap table link.",
+      "reason": "M2-01k-n amendment: passed. The chart time range, the observed range text, the map samples and the lap rows are one selection in the same store and agree in both shells; GPS gaps are asserted separately (V2-A18). Same limits as S09-range-link.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1528,7 +1557,19 @@
         ],
         "note": "Executed through the rows it cites: S09-range-link, S09-gps-gap."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-n",
+        "date": "2026-09-26",
+        "previousVerdict": "partial",
+        "previousReason": "Single-sample round trip only; no range→lap table link.",
+        "executed": [
+          "tests/identity/activity-range-link.spec.ts in both shells under the harness lock (4/4, re-run after each review round): a real pointer drag on the chart selects a range; the renderer's queryRenderedFeatures highlight equals the range's samples exactly, the route tab lap table marks the matching laps, a range across a GPS gap is drawn as two pieces (0:4,0:5|0:8,0:9), and no BFF or write request is made",
+          "packages/modules/activities tests (detail-chart-drag 20 cases, activity-range-link, detail-cursor-store; activities and geo-kit 461 passed): mouse drag after 6 px, touch/pen only after a 200 ms hold within 8 px, pointercancel/Escape restore, slow tap selects the tapped point within a 22 px hit radius, a lost mouse release ends the press, zero-length ranges are never committed, per-frame store writes, highlight revision hashes every vertex and break",
+          "E2E mutants N1 (map highlight off), N2 (lap link cut), N3a/N3b (range shifted one sample), L-text each 4/4 fail, G-gap-bridge fails the gap test in both shells; unit mutants B1a-B1c, B3, B3b, B4a, B4b, N2-rev, key-ends, T-no-hit-radius, Z-back-commits and others each fail",
+          "pnpm test 3,833 on 4c6b938 before the last review fixes, integration 1+669 after the rebase onto 8429efa; on the final tree activities and geo-kit 461, the new E2E and pnpm test:identity 253 passed; independent review in four rounds (tags r1, r3, r4, r5; r2 was pinned and superseded by the rebase before review), r5 APPROVE on tree fd28be22"
+        ]
+      }
     },
     {
       "id": "V2-F14",
@@ -1726,9 +1767,9 @@
       "id": "V2-A18",
       "source": "docs/.pre/05_implementation_requirements.md:137",
       "quote": "| V2-A18 | GPS gap과 chart range 선택 | gap 보존, 시간 index 일치 |",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["see S09-gps-gap, S09-range-link"],
-      "reason": "Gap preservation is asserted at the feature level; a chart range selected across a gap is not asserted against the map.",
+      "reason": "M2-01k-n amendment: passed. A range selected across a GPS gap keeps the gap: the range counts the observations by time and the renderer draws two highlight pieces with no bridge (0:4,0:5|0:8,0:9); N3b (one sample shifted) and G-gap-bridge (bridge drawn) fail in both shells.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1738,7 +1779,19 @@
         ],
         "note": "Executed through the rows it cites: S09-range-link, S09-gps-gap."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-n",
+        "date": "2026-09-26",
+        "previousVerdict": "partial",
+        "previousReason": "Gap preservation is asserted at the feature level; a chart range selected across a gap is not asserted against the map.",
+        "executed": [
+          "tests/identity/activity-range-link.spec.ts in both shells under the harness lock (4/4, re-run after each review round): a real pointer drag on the chart selects a range; the renderer's queryRenderedFeatures highlight equals the range's samples exactly, the route tab lap table marks the matching laps, a range across a GPS gap is drawn as two pieces (0:4,0:5|0:8,0:9), and no BFF or write request is made",
+          "packages/modules/activities tests (detail-chart-drag 20 cases, activity-range-link, detail-cursor-store; activities and geo-kit 461 passed): mouse drag after 6 px, touch/pen only after a 200 ms hold within 8 px, pointercancel/Escape restore, slow tap selects the tapped point within a 22 px hit radius, a lost mouse release ends the press, zero-length ranges are never committed, per-frame store writes, highlight revision hashes every vertex and break",
+          "E2E mutants N1 (map highlight off), N2 (lap link cut), N3a/N3b (range shifted one sample), L-text each 4/4 fail, G-gap-bridge fails the gap test in both shells; unit mutants B1a-B1c, B3, B3b, B4a, B4b, N2-rev, key-ends, T-no-hit-radius, Z-back-commits and others each fail",
+          "pnpm test 3,833 on 4c6b938 before the last review fixes, integration 1+669 after the rebase onto 8429efa; on the final tree activities and geo-kit 461, the new E2E and pnpm test:identity 253 passed; independent review in four rounds (tags r1, r3, r4, r5; r2 was pinned and superseded by the rebase before review), r5 APPROVE on tree fd28be22"
+        ]
+      }
     },
     {
       "id": "V2-A20",

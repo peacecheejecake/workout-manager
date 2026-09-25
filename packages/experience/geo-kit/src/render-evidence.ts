@@ -116,8 +116,52 @@ export function collectionKey(collection: MapPathFeatureCollection): string {
   return `${collection.features.length}:${vertices}:${first >>> 0}:${second >>> 0}:${ids.join(',')}`;
 }
 
+/**
+ * One of our path pieces the renderer drew, identified by what the renderer itself returned
+ * for it: the owning path, that path's revision, and the index of the piece's first vertex.
+ * A piece split across tiles is reported once.
+ */
+export interface RenderedPathPiece {
+  readonly pathId: string;
+  readonly revision: string;
+  readonly startIndex: number;
+  readonly kind: 'line' | 'point';
+}
+
+/**
+ * The distinct pieces among rendered features, in a stable order. Features without our
+ * properties (none are expected on our layers) are ignored rather than guessed at.
+ */
+export function renderedPathPieces(
+  features: readonly { readonly properties?: unknown }[],
+  kind: RenderedPathPiece['kind'],
+): RenderedPathPiece[] {
+  const seen = new Map<string, RenderedPathPiece>();
+  for (const feature of features) {
+    const properties = feature.properties;
+    if (typeof properties !== 'object' || properties === null) continue;
+    const { pathId, revision, startIndex } = properties as Record<string, unknown>;
+    if (typeof pathId !== 'string' || typeof revision !== 'string') continue;
+    if (typeof startIndex !== 'number' || !Number.isInteger(startIndex)) continue;
+    const key = JSON.stringify([pathId, revision, startIndex, kind]);
+    if (!seen.has(key)) seen.set(key, { pathId, revision, startIndex, kind });
+  }
+  return [...seen.values()].sort(
+    (left, right) =>
+      left.pathId.localeCompare(right.pathId) ||
+      left.revision.localeCompare(right.revision) ||
+      left.startIndex - right.startIndex ||
+      left.kind.localeCompare(right.kind),
+  );
+}
+
 /** One observation, taken when the renderer went idle. */
 export interface MapRenderIdleInfo {
+  /**
+   * Which of our pieces the renderer drew in the viewport (line and point layers), read
+   * from `queryRenderedFeatures`. An owner uses it to show what is actually highlighted.
+   */
+  readonly renderedPieces?: readonly RenderedPathPiece[];
   /** Our path features the renderer drew in the viewport, line and point layers together. */
   readonly renderedPathFeatures: number;
   /** Drawn features on the line layer only. */

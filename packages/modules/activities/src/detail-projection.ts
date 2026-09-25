@@ -63,6 +63,29 @@ export function recordInRange(record: ActivityRecord, range: TimeRange): boolean
   const time = recordTime(record);
   return validRange(range) && time !== null && time >= range.start && time <= range.end;
 }
+/**
+ * The drawn observation nearest to an instant on the chart's time axis. Ties go to the
+ * earlier instant, then to the lower source index, so the same pointer position always
+ * snaps to the same observation.
+ */
+export function nearestChartPoint(points: readonly ChartPoint[], time: number): ChartPoint | null {
+  if (!Number.isFinite(time)) return null;
+  let best: ChartPoint | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const point of points) {
+    const distance = Math.abs(point.time - time);
+    if (
+      best === null ||
+      distance < bestDistance ||
+      (distance === bestDistance &&
+        (point.time < best.time || (point.time === best.time && point.index < best.index)))
+    ) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
 export function lapOverlapsRange(lap: ActivityLap, range: TimeRange): boolean {
   const lapRange = lapTimeRange(lap);
   return (

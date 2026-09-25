@@ -17,6 +17,8 @@ const renderer = vi.hoisted(() => ({
   drawn: new Map<string, number>(),
   /** The role property of every feature a layer drew, when the stand-in is told one. */
   roles: new Map<string, string>(),
+  /** Features with properties the stand-in returns per layer, after the counted ones. */
+  features: new Map<string, { properties: Record<string, unknown> }[]>(),
   handlers: new Map<string, ((event?: unknown) => void)[]>(),
   layers: [] as { id: string; type: string }[],
 }));
@@ -47,12 +49,15 @@ vi.mock('maplibre-gl', () => {
       renderer.layers.push(layer);
     }
     queryRenderedFeatures({ layers }: { layers: string[] }) {
-      return layers.flatMap((id) =>
-        Array.from({ length: renderer.drawn.get(id) ?? 0 }, () => {
-          const role = renderer.roles.get(id);
-          return role === undefined ? {} : { properties: { role } };
-        }),
-      );
+      return [
+        ...layers.flatMap((id) =>
+          Array.from({ length: renderer.drawn.get(id) ?? 0 }, () => {
+            const role = renderer.roles.get(id);
+            return role === undefined ? {} : { properties: { role } };
+          }),
+        ),
+        ...layers.flatMap((id) => renderer.features.get(id) ?? []),
+      ];
     }
     isSourceLoaded() {
       return true;
@@ -72,9 +77,14 @@ vi.mock('maplibre-gl', () => {
   return { Map: StandInMap, GeoJSONSource, addProtocol: vi.fn(), setWorkerUrl: vi.fn() };
 });
 
-async function adapterWith(drawn: Record<string, number>, roles: Record<string, string> = {}) {
+async function adapterWith(
+  drawn: Record<string, number>,
+  roles: Record<string, string> = {},
+  features: Record<string, { properties: Record<string, unknown> }[]> = {},
+) {
   renderer.drawn = new Map(Object.entries(drawn));
   renderer.roles = new Map(Object.entries(roles));
+  renderer.features = new Map(Object.entries(features));
   renderer.handlers.clear();
   renderer.layers = [];
   const { createMapLibreAdapter } = await import('../src/maplibre-adapter');
@@ -144,5 +154,39 @@ describe('MapLibre adapter render observation', () => {
     handle.setPaths(uncomputedDraft);
     for (const handler of renderer.handlers.get('idle') ?? []) handler();
     expect(observations.at(-1)?.renderedLineRoles).toEqual(['overlap', 'uncomputed']);
+  });
+
+  it('reports which of our pieces it drew, once per piece, from the rendered features', async () => {
+    const piece = (pathId: string, revision: string, startIndex: number) => ({
+      properties: { pathId, role: 'candidate', revision, startIndex, insufficient: false },
+    });
+    const { handle, observations } = await adapterWith(
+      {},
+      {},
+      {
+        // A line split across two tiles comes back twice.
+        'geo-kit-path-line': [
+          piece('range', 'r1', 3),
+          piece('range', 'r1', 0),
+          piece('range', 'r1', 3),
+        ],
+        'geo-kit-path-point': [piece('range', 'r1', 2), { properties: { pathId: 'range' } }],
+      },
+    );
+    handle.setPaths(uncomputedDraft);
+    for (const handler of renderer.handlers.get('idle') ?? []) handler();
+    const info = observations.at(-1);
+    expect(info?.renderedLineFeatures).toBe(3);
+    expect(info?.renderedPieces).toEqual([
+      { pathId: 'range', revision: 'r1', startIndex: 0, kind: 'line' },
+      { pathId: 'range', revision: 'r1', startIndex: 3, kind: 'line' },
+      { pathId: 'range', revision: 'r1', startIndex: 2, kind: 'point' },
+    ]);
+  });
+
+  it('carries each path revision on its features', () => {
+    expect(uncomputedDraft.features.map((feature) => feature.properties.revision)).toEqual([
+      'draft:1',
+    ]);
   });
 });

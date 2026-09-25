@@ -230,6 +230,49 @@ describe('the S09 cursor lives in the shared selection store', () => {
     expect(routeStatus()).toHaveTextContent(`선택 표본 ${shared().getState().sample?.sampleId}`);
     expect(observation()).toHaveTextContent(`선택한 관측 ${shared().getState().recordIndex}`);
 
+    // A range dragged on the route graph (M2-01k-n) is the same store's range: the interval
+    // workbench shows it, the pointer path sends nothing, and hover alone never started it.
+    const routeGraph = within(screen.getByRole('region', { name: '저장된 경로' })).getByRole(
+      'group',
+      { name: '저장된 경로 관측 그래프' },
+    );
+    const [graphSvg] = within(routeGraph).getAllByRole('img', { name: '원본 거리 (m) 차트' });
+    if (!graphSvg) throw new Error('no route graph');
+    graphSvg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 700, height: 190, right: 700, bottom: 190 }) as DOMRect;
+    const pointX = (index: number) =>
+      Number(
+        within(routeGraph)
+          .getAllByRole('button', { name: `차트 관측 ${index} 선택` })[0]
+          ?.getAttribute('cx'),
+      );
+    const beforeHover = shared().getState().range;
+    hover(graphSvg);
+    expect(shared().getState().range).toEqual(beforeHover);
+    act(() => {
+      fireEvent.pointerDown(graphSvg, {
+        clientX: pointX(1),
+        pointerId: 7,
+        pointerType: 'mouse',
+        isPrimary: true,
+        button: 0,
+      });
+      fireEvent.pointerMove(graphSvg, { clientX: pointX(2), pointerId: 7, buttons: 1 });
+      fireEvent.pointerMove(graphSvg, { clientX: pointX(3), pointerId: 7, buttons: 1 });
+      fireEvent.pointerUp(graphSvg, { clientX: pointX(3), pointerId: 7 });
+    });
+    const dragged = shared().getState();
+    expect(dragged.recordIndex).toBeNull();
+    expect(dragged.range).toEqual({
+      start: Date.parse(storedDetails().records[1]?.timestamp ?? ''),
+      end: Date.parse(storedDetails().records[3]?.timestamp ?? ''),
+    });
+    await waitFor(() =>
+      expect(observation()).toHaveTextContent(
+        `선택 구간 UTC: ${storedDetails().records[1]?.timestamp ?? ''}`,
+      ),
+    );
+
     // No request of any kind — no write, and no re-read — while the cursor moved.
     expect(request.mock.calls.slice(loads)).toEqual([]);
     expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);

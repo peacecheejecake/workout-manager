@@ -1448,8 +1448,9 @@
       "title": "S09 범위·lap·지도 연결",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "chart에서 drag로 시간 범위를 고르면 같은 범위가 경로 지도와 lap table에서 강조된다. 범위는 shared selection store에만 있고 움직임마다 서버에 쓰지 않는다. GPS gap을 가로지르는 범위도 시간 index로 맞추며 gap을 잇지 않는다. 완료: 두 shell E2E가 drag 범위 선택 뒤 지도의 강조 feature(실제 렌더러 `queryRenderedFeatures`)가 그 범위의 표본과 일치하고, lap table의 해당 행이 강조되며, 서버 쓰기가 0임을 단언한다. gap을 가로지른 범위를 따로 단언한다. 비공허성: 지도 강조를 끄는 변이, lap 연결을 끊는 변이, 범위를 한 표본 밀어 놓는 변이가 각각 실패한다 닫을 매트릭스 행: S09-range-link, V2-F13, V2-A18. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "chart에서 drag로 시간 범위를 고르면 같은 범위가 경로 지도와 lap table에서 강조된다. 범위는 shared selection store에만 있고 움직임마다 서버에 쓰지 않는다. GPS gap을 가로지르는 범위도 시간 index로 맞추며 gap을 잇지 않는다. 완료: 두 shell E2E가 drag 범위 선택 뒤 지도의 강조 feature(실제 렌더러 `queryRenderedFeatures`)가 그 범위의 표본과 일치하고, lap table의 해당 행이 강조되며, 서버 쓰기가 0임을 단언한다. gap을 가로지른 범위를 따로 단언한다. 비공허성: 지도 강조를 끄는 변이, lap 연결을 끊는 변이, 범위를 한 표본 밀어 놓는 변이가 각각 실패한다 닫을 매트릭스 행: S09-range-link, V2-F13, V2-A18. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-n.md"
     },
     {
       "id": "M2-01k-o",
