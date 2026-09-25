@@ -272,7 +272,8 @@ describe('a computed route', () => {
       instructions: false,
       calc_points: true,
       elevation: false,
-      details: ['road_class'],
+      // road_class is the edge evidence; the other three describe the edges (M2-01ap).
+      details: ['road_class', 'road_access', 'foot_access', 'surface'],
       max_visited_nodes: 1_000_000,
       timeout_ms: expect.any(Number) as number,
     });
@@ -491,6 +492,72 @@ describe('a straight line is never reported as a success', () => {
     const { transport } = stubTransport({
       status: 200,
       body: answerWith({ details: { road_class: [[0, 5, 'footway']] } }),
+    });
+    const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
+    expect(result.outcome).toBe('engine_contract_violation');
+  });
+
+  /**
+   * M2-01ap: the details that describe the edges travel with the result. The captured answer
+   * predates the request for them, so it reports road_class only; the others read `null` —
+   * not reported — and never as "no restriction".
+   */
+  it('hands on the details the engine reported, and null for the ones it did not', async () => {
+    const { transport } = stubTransport({ status: 200, body: realAnswer });
+    const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
+    if (result.outcome !== 'route_computed') throw new Error(result.outcome);
+    expect(result.pathDetails).toEqual({
+      roadClass: realAnswer.paths[0].details.road_class,
+      roadAccess: null,
+      footAccess: null,
+      surface: null,
+    });
+  });
+
+  it('hands on access, foot access and surface as the engine reported them', async () => {
+    const last = realAnswer.paths[0].points.coordinates.length - 1;
+    const details = {
+      road_class: realAnswer.paths[0].details.road_class,
+      road_access: [
+        [0, 3, 'private'],
+        [3, last, 'yes'],
+      ],
+      foot_access: [[0, last, true]],
+      surface: [
+        [0, 10, 'paving_stones'],
+        [10, last, 'missing'],
+      ],
+    };
+    const { transport } = stubTransport({ status: 200, body: answerWith({ details }) });
+    const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
+    if (result.outcome !== 'route_computed') throw new Error(result.outcome);
+    expect(result.pathDetails).toEqual({
+      roadClass: details.road_class,
+      roadAccess: details.road_access,
+      footAccess: details.foot_access,
+      surface: details.surface,
+    });
+  });
+
+  it.each([
+    ['an access detail that stops short of the geometry', { road_access: [[0, 3, 'private']] }],
+    [
+      'a surface detail with a gap',
+      {
+        surface: [
+          [0, 3, 'asphalt'],
+          [4, 47, 'missing'],
+        ],
+      },
+    ],
+    ['a foot access that is not a flag', { foot_access: [[0, 47, 'yes']] }],
+    ['an access value that is not a name', { road_access: [[0, 47, 3]] }],
+  ])('refuses %s: the engine contradicts its own line', async (_label, extra) => {
+    const { transport } = stubTransport({
+      status: 200,
+      body: answerWith({
+        details: { road_class: realAnswer.paths[0].details.road_class, ...extra },
+      }),
     });
     const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
     expect(result.outcome).toBe('engine_contract_violation');

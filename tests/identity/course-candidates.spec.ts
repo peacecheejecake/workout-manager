@@ -154,12 +154,20 @@ test('generates target-distance candidates, saves nothing, and only then picks o
 
   // Every bound and the seed are on screen, and the attempt log keeps the rejections.
   await expect(section.getByTestId('candidate-seed')).toHaveText(/^[0-9a-f]{16}$/);
-  await expect(section.getByTestId('evaluation-version')).toHaveText('1');
+  await expect(section.getByTestId('evaluation-version')).toHaveText('2');
   await expect(section.getByTestId('candidate-attempts')).toContainText('/ 8');
   await expect(section.getByRole('list', { name: '시도 기록' })).toBeVisible();
 
-  // A missing fact is reported as missing, never as satisfied.
-  await expect(section.getByTestId('candidate-knowledge-0')).toContainText('확인되지 않음');
+  // A missing fact is reported as missing, never as satisfied. The fixture engine traverses
+  // no graph, so it reports no surface or access and an unknown road class (M2-01ap).
+  await expect(section.getByTestId('candidate-stairs-0')).toHaveText(
+    /^확인되지 않음 \d+(\.\d+)?k?m \(도로 등급 미상\)$/,
+  );
+  for (const fact of ['surface', 'access'])
+    await expect(section.getByTestId(`candidate-${fact}-0`)).toHaveText(
+      '확인되지 않음 (엔진이 이 경로의 값을 답하지 않음)',
+    );
+  await expect(section.getByTestId('candidate-night-0')).toHaveText('확인되지 않음 (자료 없음)');
   await expect(section.getByTestId('candidate-gradient-0')).toHaveText(
     '확인되지 않음 (엔진 경사 자료 없음 · 고도 표본은 고도 확인 참조)',
   );
@@ -196,7 +204,7 @@ test('generates target-distance candidates, saves nothing, and only then picks o
         searchSeed: string;
         candidateSeed: string;
         generatorVersion: string;
-        evaluation: { evaluationVersion: number; knowledge: Record<string, string> };
+        evaluation: { evaluationVersion: number; knowledge: Record<string, unknown> };
         computation: { graph: { graphBuildId: string } };
       };
       lineage: { activityId: string }[];
@@ -207,8 +215,10 @@ test('generates target-distance candidates, saves nothing, and only then picks o
   expect(body.revision.generation.generatorVersion).toBe('target-distance-loop-v1');
   expect(body.revision.generation.searchSeed).toMatch(/^[0-9a-f]{16}$/);
   expect(body.revision.generation.candidateSeed).toMatch(/^[0-9a-f]{16}$/);
-  expect(body.revision.generation.evaluation.evaluationVersion).toBe(1);
-  expect(body.revision.generation.evaluation.knowledge['surface']).toBe('unknown');
+  expect(body.revision.generation.evaluation.evaluationVersion).toBe(2);
+  expect(body.revision.generation.evaluation.knowledge['surface']).toEqual({
+    status: 'not_reported',
+  });
   expect(body.revision.generation.computation.graph.graphBuildId).toBe('0123456789abcdef');
   expect(body.revision.lineage[0]?.activityId).toBe(activity.activityId);
   // The conditions the account export carries have no coordinate in them.

@@ -293,11 +293,11 @@ const seedSchema = z.string().regex(/^[0-9a-f]{16}$/, 'Expected a 16 character h
  * conditions follow, because the account export carries generation conditions verbatim.
  *
  * `knowledge` is the part that matters most and it is deliberately unforgiving. The plan
- * forbids treating a missing stair, surface or night-access fact as satisfied, and our
- * engine result carries none of them — the road-class detail M2-01g requests is used to
- * check the answer and is not returned. So each of those is typed as the literal
- * `'unknown'`: writing anything else is a contract change, not a value a caller can set.
- * The same goes for gradient — there is no elevation source in this build at all.
+ * forbids treating a missing stair, surface or night-access fact as satisfied, and in
+ * version 1 our engine result carried none of them — the road-class detail M2-01g requests
+ * was used to check the answer and was not returned. So each of those is typed as the
+ * literal `'unknown'`. Version 1 stays readable exactly as it was written: revisions and
+ * searches stored under it keep saying `unknown`, which was true when they were measured.
  */
 export const courseCandidateKnowledgeSchema = z.strictObject({
   stairs: z.literal('unknown'),
@@ -306,9 +306,122 @@ export const courseCandidateKnowledgeSchema = z.strictObject({
   accessRestrictions: z.literal('unknown'),
   gradient: z.literal('unknown'),
 });
+export type CourseCandidateKnowledgeV1 = z.infer<typeof courseCandidateKnowledgeSchema>;
 
-export const courseCandidateEvaluationSchema = z.strictObject({
-  evaluationVersion: z.literal(1),
+/** Stairs, by the engine's road class: `steps` is a stairway, any other known class is not. */
+export const courseRouteStairsValueSchema = z.enum(['steps', 'not_steps']);
+/** Surface as GraphHopper groups OSM `surface`. `missing` (no tag) is never a value here. */
+export const courseRouteSurfaceValueSchema = z.enum([
+  'paved',
+  'asphalt',
+  'concrete',
+  'paving_stones',
+  'cobblestone',
+  'unpaved',
+  'compacted',
+  'fine_gravel',
+  'gravel',
+  'ground',
+  'dirt',
+  'grass',
+  'sand',
+  'wood',
+  'other',
+]);
+/**
+ * An access restriction the graph records. `road_access=*` is GraphHopper's `road_access`,
+ * which comes from the vehicle and general access tags (`motorcar`, `motor_vehicle`,
+ * `vehicle`, `access`) — a restriction on record, not a statement that walking is forbidden.
+ * `foot_access=no` is the graph's foot parser refusing walking there. `road_access=yes` is
+ * never a value here: it is also what an untagged way reads, so it is not a finding.
+ */
+export const courseRouteAccessValueSchema = z.enum([
+  'road_access=destination',
+  'road_access=customers',
+  'road_access=delivery',
+  'road_access=forestry',
+  'road_access=agricultural',
+  'road_access=private',
+  'road_access=other',
+  'road_access=no',
+  'foot_access=no',
+]);
+
+const routeFactMeters = z.number().finite().nonnegative().max(1_000_000_000);
+
+function eachValueOnce(fact: { readonly known: readonly { readonly value: unknown }[] }): boolean {
+  return new Set(fact.known.map((entry) => entry.value)).size === fact.known.length;
+}
+
+const reportedRouteFact = <Value extends z.ZodEnum>(value: Value) =>
+  z.strictObject({
+    /** The engine reported this detail for every edge of the line. */
+    status: z.literal('reported'),
+    /**
+     * Length of the line the graph holds each value for, and how many separate stretches
+     * of it there are. Each value appears at most once. Only values that are a finding are
+     * here; everything else is `unknownMeters`.
+     */
+    known: z
+      .array(
+        z.strictObject({
+          value,
+          meters: routeFactMeters,
+          sections: z.number().int().min(1).max(courseLimits.vertices),
+        }),
+      )
+      .max(value.options.length),
+    /**
+     * Length the graph holds no finding for: no road class, no surface tag, or no
+     * restriction on record. Shown as "확인되지 않음", never as a satisfied condition.
+     */
+    unknownMeters: routeFactMeters,
+  });
+
+/** The engine did not report this detail, so nothing about it is known. */
+const unreportedRouteFact = z.strictObject({ status: z.literal('not_reported') });
+
+const routeFact = <Value extends z.ZodEnum>(value: Value) =>
+  z.discriminatedUnion('status', [reportedRouteFact(value), unreportedRouteFact]);
+
+/**
+ * What the engine's path details say about a computed line (M2-01ap, evaluation version 2).
+ *
+ * Measured from the `[from, to, value]` intervals the engine reported over the returned
+ * geometry, each interval's length taken from the geometry itself. Each fact separates the
+ * length the graph records a finding for from the length it records none for, so a line that
+ * is 90 % untagged says so instead of reading as clean:
+ *
+ * - `stairs` from `road_class` (`steps`, any other known class, or `other` = unknown);
+ * - `surface` from `surface` (`missing` = unknown);
+ * - `accessRestrictions` from `road_access` (anything but `yes`) and `foot_access` (`false`);
+ *   a stretch with neither on record is unknown, not "unrestricted".
+ *
+ * Night access and gradient stay `unknown`: the graph has no lighting, opening-hour or
+ * elevation data. No fact here is a check on the ground; it is what the graph was built from.
+ */
+export const courseRouteKnowledgeSchema = z
+  .strictObject({
+    stairs: routeFact(courseRouteStairsValueSchema),
+    surface: routeFact(courseRouteSurfaceValueSchema),
+    accessRestrictions: routeFact(courseRouteAccessValueSchema),
+    nightAccess: z.literal('unknown'),
+    gradient: z.literal('unknown'),
+  })
+  .superRefine((knowledge, context) => {
+    for (const key of ['stairs', 'surface', 'accessRestrictions'] as const) {
+      const fact = knowledge[key];
+      if (fact.status === 'reported' && !eachValueOnce(fact))
+        context.addIssue({
+          code: 'custom',
+          path: [key, 'known'],
+          message: 'Each value appears once',
+        });
+    }
+  });
+export type CourseRouteKnowledge = z.infer<typeof courseRouteKnowledgeSchema>;
+
+const courseCandidateEvaluationFields = {
   /** The approximation asked for. Never an achieved distance. */
   targetDistanceMeters: z.number().finite().min(1).max(targetDistanceLimits.maxTargetMeters),
   /** The engine's estimate along this line. */
@@ -335,14 +448,35 @@ export const courseCandidateEvaluationSchema = z.strictObject({
     repeatedRatio: z.number().finite().min(0).max(1),
     outAndBack: z.boolean(),
   }),
-  knowledge: courseCandidateKnowledgeSchema,
   /** Where gradient information came from. `none` means this build has none. */
   gradientSource: z.literal('none'),
   maxSnapDistanceMeters: z.number().finite().nonnegative().max(routingLimits.maxSnapMeters),
   waypointCount: z.number().int().min(2).max(courseLimits.waypoints),
   vertexCount: z.number().int().min(2).max(courseLimits.vertices),
-});
+};
+
+/**
+ * One candidate's evaluation, by version. Version 2 (M2-01ap) differs from version 1 only in
+ * `knowledge`: stairs, surface and access restrictions come from the engine's path details
+ * instead of being fixed to `unknown`. Version 1 still parses, so every revision, search and
+ * export written before it reads exactly as it was written; new searches write version 2.
+ */
+export const courseCandidateEvaluationSchema = z.discriminatedUnion('evaluationVersion', [
+  z.strictObject({
+    evaluationVersion: z.literal(1),
+    ...courseCandidateEvaluationFields,
+    knowledge: courseCandidateKnowledgeSchema,
+  }),
+  z.strictObject({
+    evaluationVersion: z.literal(2),
+    ...courseCandidateEvaluationFields,
+    knowledge: courseRouteKnowledgeSchema,
+  }),
+]);
 export type CourseCandidateEvaluation = z.infer<typeof courseCandidateEvaluationSchema>;
+export const courseCandidateEvaluationVersionSchema = z.union([z.literal(1), z.literal(2)]);
+/** The version new searches write. */
+export const currentCandidateEvaluationVersion = 2;
 
 /**
  * How one course revision's geometry was generated, and under what conditions.
@@ -984,6 +1118,14 @@ export const courseRouteProposalResultSchema = z.discriminatedUnion('outcome', [
   z.strictObject({
     outcome: z.literal('route_computed'),
     proposal: courseRouteProposalSchema,
+    /**
+     * What the engine's path details say about this proposal's line (M2-01ap): stairs,
+     * surface and access restrictions, each split into the length the graph records a
+     * finding for and the length it records none for. Measured from the same answer the
+     * proposal stores, in the same request, and returned for review only: it is not stored
+     * with the proposal and a saved `routed-waypoints` revision does not carry it.
+     */
+    knowledge: courseRouteKnowledgeSchema,
   }),
   routeProposalFailure('no_route'),
   routeProposalFailure('outside_coverage'),
@@ -1206,25 +1348,34 @@ export const courseRouteCandidateSchema = z.strictObject({
 });
 export type CourseRouteCandidate = z.infer<typeof courseRouteCandidateSchema>;
 
-export const courseRouteCandidateSetSchema = z.strictObject({
-  candidateSetId: uuid,
-  courseId: uuid,
-  requestId: idSchema.max(128),
-  draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
-  targetDistanceMeters: z
-    .number()
-    .finite()
-    .min(targetDistanceLimits.minTargetMeters)
-    .max(targetDistanceLimits.maxTargetMeters),
-  searchSeed: seedSchema,
-  generatorVersion: z.literal('target-distance-loop-v1'),
-  evaluationVersion: z.literal(1),
-  bounds: courseCandidateBoundsSchema,
-  search: courseCandidateSearchSummarySchema,
-  candidates: z.array(courseRouteCandidateSchema).min(1).max(targetDistanceLimits.maxCandidates),
-  createdAt: instantSchema,
-  expiresAt: instantSchema,
-});
+export const courseRouteCandidateSetSchema = z
+  .strictObject({
+    candidateSetId: uuid,
+    courseId: uuid,
+    requestId: idSchema.max(128),
+    draftRevision: z.number().int().min(1).max(courseLimits.maxDraftRevision),
+    targetDistanceMeters: z
+      .number()
+      .finite()
+      .min(targetDistanceLimits.minTargetMeters)
+      .max(targetDistanceLimits.maxTargetMeters),
+    searchSeed: seedSchema,
+    generatorVersion: z.literal('target-distance-loop-v1'),
+    /** The evaluation version of every candidate in the set (1 before M2-01ap, 2 after). */
+    evaluationVersion: courseCandidateEvaluationVersionSchema,
+    bounds: courseCandidateBoundsSchema,
+    search: courseCandidateSearchSummarySchema,
+    candidates: z.array(courseRouteCandidateSchema).min(1).max(targetDistanceLimits.maxCandidates),
+    createdAt: instantSchema,
+    expiresAt: instantSchema,
+  })
+  .refine(
+    (set) =>
+      set.candidates.every(
+        (candidate) => candidate.evaluation.evaluationVersion === set.evaluationVersion,
+      ),
+    { message: 'Every candidate carries the set evaluation version', path: ['candidates'] },
+  );
 export type CourseRouteCandidateSet = z.infer<typeof courseRouteCandidateSetSchema>;
 
 /**
@@ -1248,7 +1399,7 @@ const candidateFailure = <Code extends string>(outcome: Code) =>
       .max(targetDistanceLimits.maxTargetMeters),
     searchSeed: seedSchema,
     generatorVersion: z.literal('target-distance-loop-v1'),
-    evaluationVersion: z.literal(1),
+    evaluationVersion: courseCandidateEvaluationVersionSchema,
     bounds: courseCandidateBoundsSchema,
     search: courseCandidateSearchSummarySchema,
     /**

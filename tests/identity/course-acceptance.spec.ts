@@ -403,7 +403,9 @@ test('one account carries a recording through courses, thumbnails, exports and d
       outcome: 'candidates_generated',
     });
     await expect(candidates.getByTestId('candidate-set')).toBeVisible();
-    await expect(candidates.getByTestId('candidate-knowledge-0')).toContainText('확인되지 않음');
+    await expect(candidates.getByTestId('candidate-night-0')).toHaveText(
+      '확인되지 않음 (자료 없음)',
+    );
     // Generating is not saving.
     await expect(workbench.getByTestId('course-revision')).toHaveText('2');
     await candidates.getByRole('button', { name: '1번 후보 보기' }).click();

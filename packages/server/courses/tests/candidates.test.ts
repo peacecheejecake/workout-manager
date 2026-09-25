@@ -5,7 +5,7 @@ import {
   type CoursePosition,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
-import type { RouteComputationRecord } from '@workout/contracts/routing';
+import type { RouteComputationRecord, RoutePathDetails } from '@workout/contracts/routing';
 
 import {
   CandidateSearchError,
@@ -88,6 +88,19 @@ interface FakeOptions {
   readonly refuseWith?: (attempt: number) => CandidateRouteOutcome | null;
   /** Runs inside the call, so a test can make time pass or fire the search's deadline. */
   readonly during?: (attempt: number, signal: AbortSignal) => void;
+  /** What the engine reports about the edges; by default a footway with nothing on record. */
+  readonly pathDetailsFor?: (line: readonly CoursePosition[]) => RoutePathDetails;
+}
+
+/** A footway throughout, untagged: no stairs by class, no surface tag, no restriction. */
+function untaggedFootway(line: readonly CoursePosition[]): RoutePathDetails {
+  const last = line.length - 1;
+  return {
+    roadClass: [[0, last, 'footway']],
+    roadAccess: [[0, last, 'yes']],
+    footAccess: [[0, last, true]],
+    surface: [[0, last, 'missing']],
+  };
 }
 
 function fakeRouter(options: FakeOptions = {}) {
@@ -131,6 +144,7 @@ function fakeRouter(options: FakeOptions = {}) {
           snapDistanceMeters: 0,
         })),
         computation: computationFor(input.waypoints.length),
+        pathDetails: (options.pathDetailsFor ?? untaggedFootway)(line),
       };
     },
   };
@@ -561,17 +575,82 @@ describe('bounded target-distance candidate search', () => {
   it('never reports a fact it has no data for as satisfied', async () => {
     const { router } = fakeRouter({ distanceFor: () => 5_000 });
     const result = await search({ router });
+    expect(result.candidates.length).toBeGreaterThan(0);
     for (const candidate of result.candidates) {
-      expect(candidate.evaluation.knowledge).toEqual({
-        stairs: 'unknown',
-        surface: 'unknown',
+      const evaluation = candidate.evaluation;
+      if (evaluation.evaluationVersion !== 2) throw new Error('expected evaluation version 2');
+      const line = Math.round(polylineMeters(candidate.coordinates) * 10) / 10;
+      // An untagged footway: not a stairway by class, and nothing else on record — the
+      // whole line is unknown for surface and access, never "none".
+      expect(evaluation.knowledge).toEqual({
+        stairs: {
+          status: 'reported',
+          known: [{ value: 'not_steps', meters: line, sections: 1 }],
+          unknownMeters: 0,
+        },
+        surface: { status: 'reported', known: [], unknownMeters: line },
+        accessRestrictions: { status: 'reported', known: [], unknownMeters: line },
         nightAccess: 'unknown',
-        accessRestrictions: 'unknown',
         gradient: 'unknown',
       });
-      expect(candidate.evaluation.gradientSource).toBe('none');
-      expect(candidate.evaluation.connectivity).toBe('engine-attested-edges');
-      expect(candidate.evaluation.evaluationVersion).toBe(1);
+      expect(evaluation.gradientSource).toBe('none');
+      expect(evaluation.connectivity).toBe('engine-attested-edges');
+    }
+  });
+
+  it('measures stairs, surface and access restrictions from the details of each candidate', async () => {
+    const { router } = fakeRouter({
+      distanceFor: () => 5_000,
+      // Segment 0 is a private stairway of paving stones; the rest is untagged footway.
+      pathDetailsFor: (line) => {
+        const last = line.length - 1;
+        return {
+          roadClass: [
+            [0, 1, 'steps'],
+            [1, last, 'footway'],
+          ],
+          roadAccess: [
+            [0, 1, 'private'],
+            [1, last, 'yes'],
+          ],
+          footAccess: [[0, last, true]],
+          surface: [
+            [0, 1, 'paving_stones'],
+            [1, last, 'missing'],
+          ],
+        };
+      },
+    });
+    const result = await search({ router });
+    expect(result.candidates.length).toBeGreaterThan(0);
+    for (const candidate of result.candidates) {
+      const evaluation = candidate.evaluation;
+      if (evaluation.evaluationVersion !== 2) throw new Error('expected evaluation version 2');
+      const [first, second] = candidate.coordinates;
+      if (!first || !second) throw new Error('short line');
+      const step = Math.round(greatCircleMeters(first, second) * 10) / 10;
+      const rest =
+        Math.round(
+          (polylineMeters(candidate.coordinates) - greatCircleMeters(first, second)) * 10,
+        ) / 10;
+      expect(evaluation.knowledge.stairs).toEqual({
+        status: 'reported',
+        known: [
+          { value: 'not_steps', meters: rest, sections: 1 },
+          { value: 'steps', meters: step, sections: 1 },
+        ].sort((left, right) => right.meters - left.meters),
+        unknownMeters: 0,
+      });
+      expect(evaluation.knowledge.surface).toEqual({
+        status: 'reported',
+        known: [{ value: 'paving_stones', meters: step, sections: 1 }],
+        unknownMeters: rest,
+      });
+      expect(evaluation.knowledge.accessRestrictions).toEqual({
+        status: 'reported',
+        known: [{ value: 'road_access=private', meters: step, sections: 1 }],
+        unknownMeters: rest,
+      });
     }
   });
 

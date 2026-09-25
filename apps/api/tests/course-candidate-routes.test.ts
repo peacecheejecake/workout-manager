@@ -180,12 +180,24 @@ function engineFixture(
             snapped: waypoint,
             snapDistanceMeters: 0,
           })),
+          pathDetails: untaggedFootway(bentLine(parsed.waypoints).length),
         },
         retryAfterSeconds: null,
       };
     },
   );
   return { compute, signals };
+}
+
+/** A footway throughout with nothing on record (M2-01ap). */
+function untaggedFootway(vertexCount: number) {
+  const last = vertexCount - 1;
+  return {
+    roadClass: [[0, last, 'footway']] as [number, number, string][],
+    roadAccess: [[0, last, 'yes']] as [number, number, string][],
+    footAccess: [[0, last, true]] as [number, number, boolean][],
+    surface: [[0, last, 'missing']] as [number, number, string][],
+  };
 }
 
 function storedCandidate(coordinates: [number, number][]) {
@@ -323,7 +335,7 @@ function setup(
       // Echoed, not invented: the seed the route drew is the one that must be recorded.
       searchSeed: input.searchSeed,
       generatorVersion: 'target-distance-loop-v1' as const,
-      evaluationVersion: 1 as const,
+      evaluationVersion: 2 as const,
       bounds: {
         maxCandidates: targetDistanceLimits.maxCandidates,
         maxAttempts: targetDistanceLimits.maxAttempts,
@@ -347,6 +359,8 @@ function setup(
       candidates: input.candidates.map((entry, ordinal) => ({
         ...storedCandidate([...entry.coordinates] as [number, number][]).candidate,
         ordinal,
+        // Echoed as the search measured it, as the store does.
+        evaluation: entry.evaluation,
       })),
       createdAt,
       expiresAt: '2026-09-19T01:30:00.000Z',
@@ -405,7 +419,17 @@ describe('target-distance candidate route', () => {
     expect(body.outcome).toBe('candidates_generated');
     expect(body.set.candidates.length).toBeGreaterThan(0);
     expect(body.set.searchSeed).toMatch(/^[0-9a-f]{16}$/);
-    expect(body.set.evaluationVersion).toBe(1);
+    // New searches are measured under evaluation version 2 (M2-01ap).
+    expect(body.set.evaluationVersion).toBe(2);
+    for (const candidate of body.set.candidates as {
+      evaluation: { evaluationVersion: number; knowledge: { surface: unknown } };
+    }[]) {
+      expect(candidate.evaluation.evaluationVersion).toBe(2);
+      expect(candidate.evaluation.knowledge.surface).toMatchObject({
+        status: 'reported',
+        known: [],
+      });
+    }
     // A proposal, not a course: nothing was updated and nothing was created.
     expect(courses.update).not.toHaveBeenCalled();
     expect(courses.create).not.toHaveBeenCalled();

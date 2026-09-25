@@ -1,7 +1,9 @@
 import {
+  pathDetailsCoverGeometry,
   routingLimits,
   walkingRouteResultSchema,
   type RouteComputationRecord,
+  type RoutePathDetails,
   type RoutingGraphIdentity,
   type RoutingPosition,
   type WalkingRouteRequest,
@@ -36,6 +38,13 @@ import {
  *   through the rest in the requested order ({@link geometryVisitsWaypointsInOrder}).
  * - The reported distance must agree with the geometry it came with
  *   ({@link distanceMatchesGeometry}), and be positive.
+ *
+ * WHAT ELSE IS ASKED FOR (M2-01ap). `road_access`, `foot_access` and `surface` are requested
+ * alongside `road_class` and handed on as {@link RoutePathDetails}, so a candidate or a
+ * proposal can say what the graph records about stairs, surface and access restrictions. They
+ * are not evidence of anything the checks above rely on. One the engine leaves out is `null`
+ * (not reported); one it sends must cover the geometry like `road_class`, because an engine
+ * whose own bookkeeping disagrees with its line is not an answer to store.
  *
  * WHAT IS DELIBERATELY NOT CHECKED: whether the line looks straight. An earlier version
  * refused a geometry that stayed within 1 m of the chord over more than 200 m. Measured
@@ -167,8 +176,24 @@ const enginePathSchema = z.object({
   time: z.number().finite(),
   points: lineSchema,
   snapped_waypoints: lineSchema,
-  details: z.object({ road_class: z.array(detailIntervalSchema) }),
+  details: z.object({
+    road_class: z.array(detailIntervalSchema),
+    road_access: z.array(detailIntervalSchema).optional(),
+    foot_access: z.array(detailIntervalSchema).optional(),
+    surface: z.array(detailIntervalSchema).optional(),
+  }),
 });
+
+/**
+ * The details the adapter asks for, in the order it asks. `road_class` is the edge evidence
+ * every answer must carry; the other three describe the edges for the owner (M2-01ap).
+ */
+export const requestedPathDetails = [
+  'road_class',
+  'road_access',
+  'foot_access',
+  'surface',
+] as const;
 const engineRouteSchema = z.object({ paths: z.array(enginePathSchema).min(1) });
 const engineErrorSchema = z.object({
   message: z.string().max(2000).nullish(),
@@ -569,6 +594,8 @@ export class GraphHopperRoutingAdapter {
         !geometryVisitsWaypointsInOrder(coordinates, snapped) ||
         !edgeDetailsCoverGeometry(path.details.road_class, coordinates.length);
       if (violation) return failed('engine_contract_violation', identity, warnings);
+      const pathDetails = describedEdges(path.details, coordinates.length);
+      if (pathDetails === null) return failed('engine_contract_violation', identity, warnings);
 
       const computed = walkingRouteResultSchema.safeParse({
         outcome: 'route_computed',
@@ -577,6 +604,7 @@ export class GraphHopperRoutingAdapter {
         distanceMeters: path.distance,
         durationSeconds: path.time / 1000,
         snappedWaypoints,
+        pathDetails,
       });
       // The contract is the last gate: an answer that cannot be represented as a valid
       // result is a contract violation, not a route we store anyway.
@@ -648,8 +676,9 @@ export function graphhopperRouteBody(options: {
     instructions: false,
     calc_points: true,
     elevation: false,
-    // Requested so the answer can be checked against the edges it claims to use.
-    details: ['road_class'],
+    // `road_class` so the answer can be checked against the edges it claims to use; the rest
+    // so the edges can be described to the owner (M2-01ap).
+    details: [...requestedPathDetails],
     max_visited_nodes: options.maxVisitedNodes,
     // Per leg; the engine caps it at its configured `routing.timeout_ms`.
     timeout_ms: options.engineTimeoutMilliseconds,
@@ -745,6 +774,56 @@ export function edgeDetailsCoverGeometry(
     expected = to;
   }
   return expected === vertexCount - 1;
+}
+
+/**
+ * The engine's path details as the contract carries them, or `null` when one that was sent
+ * does not cover the geometry or holds a value of the wrong kind. A detail the engine did not
+ * send is `null` inside the result — not reported — and is never read as "no restriction".
+ */
+export function describedEdges(
+  details: {
+    readonly road_class: readonly (readonly [number, number, string | number | boolean])[];
+    readonly road_access?:
+      readonly (readonly [number, number, string | number | boolean])[] | undefined;
+    readonly foot_access?:
+      readonly (readonly [number, number, string | number | boolean])[] | undefined;
+    readonly surface?:
+      readonly (readonly [number, number, string | number | boolean])[] | undefined;
+  },
+  vertexCount: number,
+): RoutePathDetails | null {
+  const named = (
+    intervals: readonly (readonly [number, number, string | number | boolean])[] | undefined,
+  ): [number, number, string][] | null | 'invalid' => {
+    if (intervals === undefined) return null;
+    if (!pathDetailsCoverGeometry(intervals, vertexCount)) return 'invalid';
+    const out: [number, number, string][] = [];
+    for (const [from, to, value] of intervals) {
+      if (typeof value !== 'string' || !/^[a-z_]{1,32}$/.test(value)) return 'invalid';
+      out.push([from, to, value]);
+    }
+    return out;
+  };
+  const flags = (
+    intervals: readonly (readonly [number, number, string | number | boolean])[] | undefined,
+  ): [number, number, boolean][] | null | 'invalid' => {
+    if (intervals === undefined) return null;
+    if (!pathDetailsCoverGeometry(intervals, vertexCount)) return 'invalid';
+    const out: [number, number, boolean][] = [];
+    for (const [from, to, value] of intervals) {
+      if (typeof value !== 'boolean') return 'invalid';
+      out.push([from, to, value]);
+    }
+    return out;
+  };
+  const roadClass = named(details.road_class);
+  const roadAccess = named(details.road_access);
+  const footAccess = flags(details.foot_access);
+  const surface = named(details.surface);
+  if (roadClass === null || roadClass === 'invalid') return null;
+  if (roadAccess === 'invalid' || footAccess === 'invalid' || surface === 'invalid') return null;
+  return { roadClass, roadAccess, footAccess, surface };
 }
 
 /**

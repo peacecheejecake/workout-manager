@@ -3,7 +3,14 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
-import { courseLimits, type CourseGeneration } from '@workout/contracts/courses';
+import {
+  courseCandidateEvaluationSchema,
+  courseLimits,
+  courseRouteAccessValueSchema,
+  courseRouteSurfaceValueSchema,
+  type CourseCandidateEvaluation,
+  type CourseGeneration,
+} from '@workout/contracts/courses';
 import {
   courseCard,
   courseCardFromSource,
@@ -1577,6 +1584,132 @@ describe('M2-01i target-distance candidates', () => {
       [athlete, course.course.courseId],
     );
     expect(revisions.rows[0]?.['total']).toBe(1);
+  });
+
+  /**
+   * M2-01ap: a search measured under evaluation version 2 is stored as one, and a candidate
+   * whose knowledge lists every surface and every restriction value the contract allows —
+   * the largest a version-2 generation can be — still becomes a revision (migration 053
+   * widened the generation bound for exactly this).
+   */
+  it('stores and saves a version-2 search, however much its knowledge lists', async () => {
+    const { athlete, course } = await athleteWithCourse('Target loop');
+    const input = candidateSetInput(course.course.courseId);
+    const measure = <Value extends string>(value: Value, index: number) => ({
+      value,
+      meters: 123_456.7 + index,
+      sections: 19_999,
+    });
+    const largest: CourseCandidateEvaluation = courseCandidateEvaluationSchema.parse({
+      ...candidateEvaluation,
+      evaluationVersion: 2 as const,
+      knowledge: {
+        stairs: {
+          status: 'reported' as const,
+          known: ['steps' as const, 'not_steps' as const].map(measure),
+          unknownMeters: 987_654.3,
+        },
+        surface: {
+          status: 'reported' as const,
+          known: courseRouteSurfaceValueSchema.options.map(measure),
+          unknownMeters: 987_654.3,
+        },
+        accessRestrictions: {
+          status: 'reported' as const,
+          known: courseRouteAccessValueSchema.options.map(measure),
+          unknownMeters: 987_654.3,
+        },
+        nightAccess: 'unknown' as const,
+        gradient: 'unknown' as const,
+      },
+    });
+    const version2 = {
+      ...input,
+      candidates: input.candidates.map((candidate) => ({ ...candidate, evaluation: largest })),
+    };
+    // One search never mixes two versions.
+    await expect(
+      (async () =>
+        courses.storeRouteCandidateSet(athlete, {
+          ...version2,
+          candidates: [version2.candidates[0], input.candidates[1]].filter(
+            (candidate) => candidate !== undefined,
+          ),
+        }))(),
+    ).rejects.toThrow('COURSE_CANDIDATE_EVALUATION_MIXED');
+    const stored = await courses.storeRouteCandidateSet(athlete, version2);
+    expect(stored.evaluationVersion).toBe(2);
+    expect(stored.candidates.map((candidate) => candidate.evaluation)).toEqual([largest, largest]);
+    const row = await admin.query(
+      'SELECT evaluation_version FROM course_route_candidate_set WHERE candidate_set_id=$1',
+      [stored.candidateSetId],
+    );
+    expect(row.rows[0]?.['evaluation_version']).toBe(2);
+    const first = stored.candidates[0];
+    const source = input.candidates[0];
+    if (!first || !source) throw new Error('no candidate');
+    const content = candidateContent(
+      { name: 'Target loop', lineage: course.revision.lineage },
+      stored,
+      source,
+    );
+    const generation = content.generation;
+    if (generation.kind !== 'target-distance-loop') throw new Error('not a generated revision');
+    // Every other field of the generation at its own bound too, so this is the largest one.
+    const withLargest = {
+      ...content,
+      generation: {
+        ...generation,
+        computation: {
+          ...generation.computation,
+          requestId: 'r'.repeat(128),
+          graph: {
+            ...generation.computation.graph,
+            engineVersion: 'v'.repeat(64),
+            extractRegion: 'x'.repeat(120),
+          },
+          warnings: [
+            ...([
+              'no_route_may_be_engine_budget',
+              'snap_distance_notable',
+              'response_truncated_by_engine',
+              'engine_version_unknown',
+            ] as const),
+          ],
+        },
+        evaluation: { ...largest, vertexCount: source.coordinates.length },
+      },
+    };
+    const sizes = await admin.query<{ bytes: number }>(
+      'SELECT octet_length($1::jsonb::text) AS bytes',
+      [JSON.stringify(withLargest.generation)],
+    );
+    // Over the bound before 053, inside it after.
+    expect(sizes.rows[0]?.bytes).toBeGreaterThan(4096);
+    expect(sizes.rows[0]?.bytes).toBeLessThanOrEqual(8192);
+    const saved = await courses.update(
+      athlete,
+      course.course.courseId,
+      1,
+      withLargest,
+      `pick-${randomUUID()}`,
+      undefined,
+      {
+        consumeCandidate: {
+          proposalId: first.proposalId,
+          candidateSetId: stored.candidateSetId,
+          draftRevision: 2,
+          geometrySha256: courseGeometrySha256(withLargest.coordinates),
+        },
+      },
+    );
+    if (saved.status !== 'available') throw new Error('save failed');
+    const savedGeneration = saved.revision.generation;
+    if (savedGeneration.kind !== 'target-distance-loop') throw new Error('not generated');
+    expect(savedGeneration.evaluation).toEqual({
+      ...largest,
+      vertexCount: source.coordinates.length,
+    });
   });
 
   it('turns one picked candidate into a revision that names the search that made it', async () => {

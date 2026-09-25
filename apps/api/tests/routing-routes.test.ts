@@ -173,6 +173,12 @@ it.each([
             { requested: [126.9769, 37.5759], snapped: [126.9769, 37.5759], snapDistanceMeters: 0 },
             { requested: [126.9779, 37.5663], snapped: [126.9779, 37.5663], snapDistanceMeters: 0 },
           ],
+          pathDetails: {
+            roadClass: [[0, 1, 'footway']],
+            roadAccess: null,
+            footAccess: null,
+            surface: null,
+          },
         } as WalkingRouteResult)
       : ({ outcome, computation } as WalkingRouteResult);
   const { app } = setup(async () => ({ result, retryAfterSeconds: null }));

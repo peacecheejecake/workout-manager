@@ -438,6 +438,20 @@
         "37 unit mutants each fail (C1-C5, N1-N12, A1-A5, alB1-alB8, R1-R4, O3, H1, H2); pnpm test 3,911; independent review r1 REQUEST CHANGES (HEAD-keyed identity), r2 APPROVE on tree 8ad7eaa4"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ar.md."
+    },
+    {
+      "node": "M2-01ap",
+      "date": "2026-09-26",
+      "rows": ["P6-target-display"],
+      "decision": "Split from M2-01k-j: request the access, foot access and surface path details the deployed graph already encodes and show known restrictions, stairs and surface next to candidates and in the out-and-back review. Per the user's decision of 2026-09-26 the node has no per-task peer review; the M2-01 phase review by Codex covers it before main.",
+      "change": "P6-target-display partial -> passed; counts passed 85 -> 86, partial 19 -> 18.",
+      "executed": [
+        "tests/identity/course-out-and-back.spec.ts and course-candidates.spec.ts on the real GraphHopper engine (graph c57f12f5975347e8, 3 repeats, plus once after the move onto phase/m2-01): a public sample over the Seoullo 7017 overpass reports road_access=no over 1,338.4 m in 2 stretches and concrete surface, another reports steps over 47.3 m in 6 stretches and paving stones; the review and candidate rows show access, stairs, surface and night-access lines that exactly equal text built from the engine response by an independent helper; fixture mode shows each unknown with its reason",
+        "unit and integration: adapter requests road_class, road_access, foot_access and surface details and refuses a detail that does not cover the geometry; routeKnowledgeFromPathDetails splits recorded and unknown length per fact; candidate evaluation v2 alongside v1 (v1 still parses unchanged); migration 053 widens the candidate-set version and the revision generation size with an upgrade test",
+        "mutants P1 (details request dropped), P2a-c (review hides access/stairs/surface), P3a-c (candidate row hides them), P4 (editor drops the proposal knowledge) fail in the real-engine E2E; P5-P7 fail in unit or integration tests",
+        "pnpm test 3,944; pnpm test:integration 1+758; drill 97; pnpm test:identity x2 259 passed each on phase/m2-01; no per-task review (user decision 2026-09-26: M2-01 phase review by Codex)"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence; see docs/implementation/progress/M2-01ap.md. Pending the M2-01 phase review."
     }
   ],
   "rounds": [
@@ -559,8 +573,8 @@
     }
   ],
   "counts": {
-    "passed": 85,
-    "partial": 19,
+    "passed": 86,
+    "partial": 18,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -2774,9 +2788,9 @@
       "id": "P6-target-display",
       "source": "docs/implementation/map-implementation-plan.md:160",
       "quote": "연결성·목표 오차·중복/왕복 구간·알려진 접근 제한·경사 출처를 표시한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": ["docs/implementation/progress/M2-01k-j.md"],
-      "reason": "M2-01k-j amendment: still partial. Next to every target-distance candidate and in the out-and-back review, target error, connectivity, repeated/out-and-back section, known access restrictions and gradient source each have their own asserted line (J4-J6, J10 killed), and each unknown states its true reason. But known access restrictions and surface are available in the graph (road_access, foot_access, surface) and not requested, so the core \"show known access restrictions\" waits for M2-01ap.",
+      "reason": "M2-01ap amendment: passed. Next to every target-distance candidate and in the out-and-back review, target error, connectivity, the repeated/out-and-back section and the gradient source keep their own lines (M2-01k-j), and known access restrictions are now shown from the engine's own path details: the real engine asserts a known restriction (road_access=no on a pedestrian overpass), stairs and surface, and each line equals text built from the engine response. Limits: road_access is a vehicle-access value, stated as such on screen; gradient and night access have no data source and show as unknown with a reason; saved routed-waypoint revisions and course cards do not carry this knowledge; the display is not yet covered by the M2-01 phase review.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2785,15 +2799,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-j",
-        "date": "2026-09-25",
+        "node": "M2-01ap",
+        "date": "2026-09-26",
         "previousVerdict": "partial",
-        "previousReason": "Display not asserted by an executed test in this node.",
+        "previousReason": "M2-01k-j amendment: still partial. Next to every target-distance candidate and in the out-and-back review, target error, connectivity, repeated/out-and-back section, known access restrictions and gradient source each have their own asserted line (J4-J6, J10 killed), and each unknown states its true reason. But known access restrictions and surface are available in the graph (road_access, foot_access, surface) and not requested, so the core \"show known access restrictions\" waits for M2-01ap.",
         "executed": [
-          "tests/identity/course-out-and-back.spec.ts on the real GraphHopper engine (x3 in the node on base e00a992, and once by the independent round-2 review on the r2 tag merged with main 06754aa): A->B->A request, stored routed-waypoints revision on graph c57f12f5975347e8 with engine 10.0 and waypoints [A,B,A], overlap \"729m (100%) · 1곳\", target error, the renderer-reported overlap role, 0 coordinate lines in the engine log; fixture mode with course-candidates.spec.ts",
-          "packages/modules/courses/tests/course-out-and-back.test.tsx and course-candidates tests (full, partial and no overlap; crossing and acute departure are not overlap; each unknown's reason text)",
-          "mutants J1-J7, J9, J10 each fail (J1-J6b also in the real-engine E2E); J8 (grid query own cell only) is an equivalent mutant, confirmed by the independent review by argument and a 5.74 million-case random search",
-          "pnpm test and two identity runs on the merged tree"
+          "tests/identity/course-out-and-back.spec.ts and course-candidates.spec.ts on the real GraphHopper engine (graph c57f12f5975347e8, 3 repeats, plus once after the move onto phase/m2-01): a public sample over the Seoullo 7017 overpass reports road_access=no over 1,338.4 m in 2 stretches and concrete surface, another reports steps over 47.3 m in 6 stretches and paving stones; the review and candidate rows show access, stairs, surface and night-access lines that exactly equal text built from the engine response by an independent helper; fixture mode shows each unknown with its reason",
+          "unit and integration: adapter requests road_class, road_access, foot_access and surface details and refuses a detail that does not cover the geometry; routeKnowledgeFromPathDetails splits recorded and unknown length per fact; candidate evaluation v2 alongside v1 (v1 still parses unchanged); migration 053 widens the candidate-set version and the revision generation size with an upgrade test",
+          "mutants P1 (details request dropped), P2a-c (review hides access/stairs/surface), P3a-c (candidate row hides them), P4 (editor drops the proposal knowledge) fail in the real-engine E2E; P5-P7 fail in unit or integration tests",
+          "pnpm test 3,944; pnpm test:integration 1+758; drill 97; pnpm test:identity x2 259 passed each on phase/m2-01; no per-task review (user decision 2026-09-26: M2-01 phase review by Codex)"
         ]
       }
     },

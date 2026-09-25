@@ -4,6 +4,7 @@ import {
   type CourseCandidateEvaluation,
   type CourseCandidateSearchSummary,
   type CoursePosition,
+  type CourseRouteKnowledge,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
 import { analyseOutAndBack, isOutAndBack, type OutAndBackAnalysis } from './out-and-back';
@@ -100,6 +101,12 @@ export interface ComputedDraftRoute {
    * in.
    */
   readonly snappedWaypoints?: readonly CoursePosition[];
+  /**
+   * Stairs, surface and access restrictions the engine reported along this line (M2-01ap),
+   * as the proposal answer carried them. Absent for a route that came with none, which the
+   * review shows as not reported.
+   */
+  readonly knowledge?: CourseRouteKnowledge;
 }
 
 /**

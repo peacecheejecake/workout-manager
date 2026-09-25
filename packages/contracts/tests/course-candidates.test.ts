@@ -239,6 +239,90 @@ describe('target-distance candidate contract', () => {
     ).toBe(false);
   });
 
+  it('reads a version-2 evaluation with stairs, surface and access measured from the engine', () => {
+    const version2 = {
+      ...evaluation,
+      evaluationVersion: 2,
+      knowledge: {
+        stairs: {
+          status: 'reported',
+          known: [
+            { value: 'not_steps', meters: 4_700, sections: 3 },
+            { value: 'steps', meters: 23.6, sections: 2 },
+          ],
+          unknownMeters: 66.4,
+        },
+        surface: {
+          status: 'reported',
+          known: [{ value: 'paving_stones', meters: 611.2, sections: 4 }],
+          unknownMeters: 4_178.8,
+        },
+        accessRestrictions: { status: 'not_reported' },
+        nightAccess: 'unknown',
+        gradient: 'unknown',
+      },
+    };
+    expect(courseCandidateEvaluationSchema.parse(version2)).toEqual(version2);
+    // Version 1 still reads exactly as it was written.
+    expect(courseCandidateEvaluationSchema.parse(evaluation)).toEqual(evaluation);
+    // A version cannot borrow the other version's knowledge.
+    expect(
+      courseCandidateEvaluationSchema.safeParse({ ...evaluation, evaluationVersion: 2 }).success,
+    ).toBe(false);
+    expect(
+      courseCandidateEvaluationSchema.safeParse({ ...version2, evaluationVersion: 1 }).success,
+    ).toBe(false);
+    expect(
+      courseCandidateEvaluationSchema.safeParse({ ...evaluation, evaluationVersion: 3 }).success,
+    ).toBe(false);
+    const withKnowledge = (knowledge: Record<string, unknown>) =>
+      courseCandidateEvaluationSchema.safeParse({
+        ...version2,
+        knowledge: { ...version2.knowledge, ...knowledge },
+      }).success;
+    // `yes` and `missing` are not findings, and nothing is "satisfied".
+    for (const claim of [
+      {
+        accessRestrictions: {
+          status: 'reported',
+          known: [{ value: 'road_access=yes', meters: 1, sections: 1 }],
+          unknownMeters: 0,
+        },
+      },
+      {
+        surface: {
+          status: 'reported',
+          known: [{ value: 'missing', meters: 1, sections: 1 }],
+          unknownMeters: 0,
+        },
+      },
+      {
+        stairs: {
+          status: 'reported',
+          known: [
+            { value: 'steps', meters: 1, sections: 1 },
+            { value: 'steps', meters: 2, sections: 1 },
+          ],
+          unknownMeters: 0,
+        },
+      },
+      { stairs: { status: 'satisfied' } },
+      { stairs: 'unknown' },
+      { nightAccess: { status: 'reported', known: [], unknownMeters: 0 } },
+      { gradient: 'none' },
+    ])
+      expect(withKnowledge(claim), JSON.stringify(claim)).toBe(false);
+  });
+
+  it('refuses a search whose candidates were measured under another evaluation version', () => {
+    const parse = (value: unknown) =>
+      courseRouteCandidateResultSchema.safeParse({ outcome: 'candidates_generated', set: value })
+        .success;
+    expect(parse(candidateSet)).toBe(true);
+    expect(parse({ ...candidateSet, evaluationVersion: 2 })).toBe(false);
+    expect(parse({ ...candidateSet, evaluationVersion: 3 })).toBe(false);
+  });
+
   it('keeps the target, the engine estimate and the stored line apart', () => {
     const parsed = courseCandidateEvaluationSchema.parse(evaluation);
     expect(parsed.targetDistanceMeters).toBe(5_000);

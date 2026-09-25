@@ -35,11 +35,13 @@ export {
 export {
   ENGINE_HARD_STOP_GRACE_MILLISECONDS,
   GraphHopperRoutingAdapter,
+  describedEdges,
   distanceMatchesGeometry,
   engineReserveMilliseconds,
   edgeDetailsCoverGeometry,
   geometryVisitsWaypointsInOrder,
   graphhopperRouteBody,
+  requestedPathDetails,
   type GraphHopperAdapterOptions,
   type RoutingClock,
   type RoutingComputeContext,

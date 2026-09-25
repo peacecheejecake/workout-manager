@@ -7,6 +7,15 @@ import type { AuthenticatedTransport, TransportRequest } from '@workout/contract
 import type { MapViewProps } from '@workout/geo-kit/map-view';
 import { CourseWorkbench } from '../src/course-workbench';
 
+/** Proposal knowledge with nothing reported (M2-01ap): this test is not about the edges. */
+const unreportedKnowledge = {
+  stairs: { status: 'not_reported' },
+  surface: { status: 'not_reported' },
+  accessRestrictions: { status: 'not_reported' },
+  nightAccess: 'unknown',
+  gradient: 'unknown',
+} as const;
+
 type Reply = Awaited<ReturnType<AuthenticatedTransport['request']>>;
 const reply = (body: unknown, status = 200): Reply => ({
   status,
@@ -161,6 +170,7 @@ function computed(input: TransportRequest, graphBuildId = graph.graphBuildId, id
   const asked = input.body as { requestId: string; draftRevision: number };
   return reply({
     outcome: 'route_computed',
+    knowledge: unreportedKnowledge,
     proposal: proposal(asked.draftRevision, graphBuildId, id, asked.requestId),
   });
 }
@@ -518,6 +528,7 @@ describe('review, cancellation and draft identity', () => {
       const asked = input.body as { requestId: string; draftRevision: number };
       return reply({
         outcome: 'route_computed',
+        knowledge: unreportedKnowledge,
         proposal:
           attempt === 1
             ? proposal(asked.draftRevision, '0123456789abcdef', proposalId, asked.requestId)
@@ -573,6 +584,7 @@ describe('review, cancellation and draft identity', () => {
                 resolve(
                   reply({
                     outcome: 'route_computed',
+                    knowledge: unreportedKnowledge,
                     proposal: proposal(
                       asked.draftRevision,
                       '0123456789abcdef',
@@ -600,6 +612,7 @@ describe('review, cancellation and draft identity', () => {
       input.path === `/bff/v1/courses/${courseId}/route-proposals`
         ? reply({
             outcome: 'route_computed',
+            knowledge: unreportedKnowledge,
             // A well-formed answer, but to somebody else's question.
             proposal: proposal(1, '0123456789abcdef', proposalId, 'a-different-request'),
           })

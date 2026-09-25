@@ -18,6 +18,7 @@
     "./disclosure": "./src/disclosure.ts",
     "./geo-data": "./src/geo-data.ts",
     "./candidates": "./src/candidates.ts",
+    "./route-knowledge": "./src/route-knowledge.ts",
     "./thumbnail": "./src/thumbnail.ts",
     "./log-audit": "./src/log-audit.ts",
     "./course-cards": "./src/course-cards.ts"

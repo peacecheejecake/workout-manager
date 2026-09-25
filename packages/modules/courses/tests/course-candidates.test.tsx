@@ -124,8 +124,52 @@ const bounds = {
   distanceToleranceRatio: 0.25,
 };
 
-const evaluation = (ordinal: number) => ({
-  evaluationVersion: 1,
+/** Version 2 knowledge (M2-01ap): candidate 0 crosses a private stairway, candidate 1 was not told. */
+const knowledgeV2 = (ordinal: number) =>
+  ordinal === 0
+    ? {
+        stairs: {
+          status: 'reported',
+          known: [
+            { value: 'not_steps', meters: 4_700, sections: 3 },
+            { value: 'steps', meters: 23.6, sections: 2 },
+          ],
+          unknownMeters: 66.4,
+        },
+        surface: {
+          status: 'reported',
+          known: [{ value: 'concrete', meters: 517.6, sections: 1 }],
+          unknownMeters: 4_272.4,
+        },
+        accessRestrictions: {
+          status: 'reported',
+          known: [
+            { value: 'road_access=no', meters: 669.2, sections: 1 },
+            { value: 'road_access=private', meters: 24.6, sections: 1 },
+          ],
+          unknownMeters: 4_096.2,
+        },
+        nightAccess: 'unknown',
+        gradient: 'unknown',
+      }
+    : {
+        stairs: { status: 'not_reported' },
+        surface: { status: 'not_reported' },
+        accessRestrictions: { status: 'not_reported' },
+        nightAccess: 'unknown',
+        gradient: 'unknown',
+      };
+
+const knowledgeV1 = {
+  stairs: 'unknown',
+  surface: 'unknown',
+  nightAccess: 'unknown',
+  accessRestrictions: 'unknown',
+  gradient: 'unknown',
+};
+
+const evaluation = (ordinal: number, version: 1 | 2 = 2) => ({
+  evaluationVersion: version,
   targetDistanceMeters: 5_000,
   engineDistanceMeters: 4_800 + ordinal * 100,
   plannedLineMeters: 4_790 + ordinal * 100,
@@ -138,13 +182,7 @@ const evaluation = (ordinal: number) => ({
     repeatedRatio: ordinal === 1 ? 0.5 : 0,
     outAndBack: ordinal === 1,
   },
-  knowledge: {
-    stairs: 'unknown',
-    surface: 'unknown',
-    nightAccess: 'unknown',
-    accessRestrictions: 'unknown',
-    gradient: 'unknown',
-  },
+  knowledge: version === 1 ? knowledgeV1 : knowledgeV2(ordinal),
   gradientSource: 'none',
   maxSnapDistanceMeters: 3,
   waypointCount: 3,
@@ -156,7 +194,12 @@ const candidateProposalIds = [
   '66666666-6666-4666-8666-666666666662',
 ];
 
-const candidate = (ordinal: number, requestId: string, graphBuildId = graph.graphBuildId) => ({
+const candidate = (
+  ordinal: number,
+  requestId: string,
+  graphBuildId = graph.graphBuildId,
+  version: 1 | 2 = 2,
+) => ({
   proposalId: candidateProposalIds[ordinal],
   ordinal,
   attemptIndex: ordinal,
@@ -184,10 +227,14 @@ const candidate = (ordinal: number, requestId: string, graphBuildId = graph.grap
     snapDistanceMeters: 0,
   })),
   computation: computation(4, requestId, graphBuildId),
-  evaluation: evaluation(ordinal),
+  evaluation: evaluation(ordinal, version),
 });
 
-function generatedSet(input: TransportRequest, graphBuildId = graph.graphBuildId) {
+function generatedSet(
+  input: TransportRequest,
+  graphBuildId = graph.graphBuildId,
+  version: 1 | 2 = 2,
+) {
   const asked = input.body as { requestId: string; draftRevision: number };
   return reply({
     outcome: 'candidates_generated',
@@ -199,7 +246,7 @@ function generatedSet(input: TransportRequest, graphBuildId = graph.graphBuildId
       targetDistanceMeters: 5_000,
       searchSeed: 'feedfacefeedface',
       generatorVersion: 'target-distance-loop-v1',
-      evaluationVersion: 1,
+      evaluationVersion: version,
       bounds,
       search: {
         attemptsMade: 3,
@@ -231,8 +278,8 @@ function generatedSet(input: TransportRequest, graphBuildId = graph.graphBuildId
         stoppedBecause: 'attempt_limit',
       },
       candidates: [
-        candidate(0, asked.requestId, graphBuildId),
-        candidate(1, asked.requestId, graphBuildId),
+        candidate(0, asked.requestId, graphBuildId, version),
+        candidate(1, asked.requestId, graphBuildId, version),
       ],
       createdAt,
       expiresAt: '2026-03-01T00:30:00.000Z',
@@ -322,7 +369,7 @@ describe('target-distance candidates on screen', () => {
     const set = await screen.findByTestId('candidate-set');
     expect(set).toHaveTextContent('feedfacefeedface');
     expect(screen.getByTestId('candidate-duplicates')).toHaveTextContent('1');
-    expect(screen.getByTestId('evaluation-version')).toHaveTextContent('1');
+    expect(screen.getByTestId('evaluation-version')).toHaveTextContent('2');
     // Four proposals on screen, nothing written.
     expect(patches(request)).toHaveLength(0);
     expect(screen.queryByTestId('candidate-review')).toBeNull();
@@ -361,19 +408,33 @@ describe('target-distance candidates on screen', () => {
     expect(screen.getByTestId('candidate-error-1')).toHaveTextContent('−100m');
     expect(screen.getByTestId('candidate-repeat-0')).toHaveTextContent('0m (0%)');
     expect(screen.getByTestId('candidate-repeat-1')).toHaveTextContent('왕복 구간 많음');
+    // What the graph records along candidate 0, each fact on its own line (M2-01ap), and the
+    // rest of the line said to be unknown with the reason.
+    expect(screen.getByTestId('candidate-access-0')).toHaveTextContent(
+      'road_access=no(금지) 669m · 1곳 · road_access=private(사유) 25m · 1곳 · 확인되지 않음 4.10km (graph에 제한 값 없음 · 제한이 없다는 확인은 아님)',
+    );
+    expect(screen.getByTestId('candidate-stairs-0')).toHaveTextContent(
+      '계단 2곳 24m (highway=steps) · 계단 아닌 길 4.70km · 확인되지 않음 66m (도로 등급 미상)',
+    );
+    expect(screen.getByTestId('candidate-surface-0')).toHaveTextContent(
+      '콘크리트(concrete) 518m · 확인되지 않음 4.27km (graph에 노면 값 없음)',
+    );
+    // Candidate 1's engine said nothing about its edges: not reported, never clean.
+    for (const fact of ['access', 'stairs', 'surface'])
+      expect(screen.getByTestId(`candidate-${fact}-1`)).toHaveTextContent(
+        '확인되지 않음 (엔진이 이 경로의 값을 답하지 않음)',
+      );
+    expect(screen.getByTestId('candidate-set')).toHaveTextContent(
+      'road_access는 차량·일반 access 태그에서 온 값이라',
+    );
     // A missing fact is never a satisfied one.
     for (const ordinal of [0, 1]) {
-      expect(screen.getByTestId(`candidate-knowledge-${ordinal}`)).toHaveTextContent(
-        '계단 확인되지 않음 (엔진 도로 등급을 검증에만 쓰고 보관하지 않음) · 노면 확인되지 않음 (엔진에 요청하지 않음) · 야간 통행 확인되지 않음 (자료 없음)',
+      expect(screen.getByTestId(`candidate-night-${ordinal}`)).toHaveTextContent(
+        '확인되지 않음 (자료 없음)',
       );
-      // Each of the three is its own line, so hiding one cannot hide behind another
-      // (M2-01k-j): connectivity says what the engine attested, access restrictions and the
-      // gradient source say they are unknown.
+      // Each fact is its own line, so hiding one cannot hide behind another (M2-01k-j).
       expect(screen.getByTestId(`candidate-connectivity-${ordinal}`)).toHaveTextContent(
         '엔진이 지났다고 밝힌 도로 구간으로 이어짐',
-      );
-      expect(screen.getByTestId(`candidate-access-${ordinal}`)).toHaveTextContent(
-        '확인되지 않음 (엔진에 요청하지 않음)',
       );
       expect(screen.getByTestId(`candidate-gradient-${ordinal}`)).toHaveTextContent(
         '확인되지 않음 (엔진 경사 자료 없음 · 고도 표본은 고도 확인 참조)',
@@ -382,6 +443,25 @@ describe('target-distance candidates on screen', () => {
     expect(screen.getByTestId('candidate-attempts')).toHaveTextContent('3 / 8');
     expect(screen.getByRole('list', { name: '시도 기록' })).toHaveTextContent(
       '이미 제안한 후보와 대부분 겹침',
+    );
+  });
+
+  it('keeps showing a version-1 search with the reasons it was measured under', async () => {
+    setup((input) =>
+      input.path === candidatesPath ? generatedSet(input, graph.graphBuildId, 1) : null,
+    );
+    await openCourse();
+    await userEvent.click(screen.getByRole('button', { name: '목표 거리 후보 생성' }));
+    await screen.findByTestId('candidate-set');
+    expect(screen.getByTestId('evaluation-version')).toHaveTextContent('1');
+    expect(screen.getByTestId('candidate-access-0')).toHaveTextContent(
+      '확인되지 않음 (엔진에 요청하지 않음)',
+    );
+    expect(screen.getByTestId('candidate-stairs-0')).toHaveTextContent(
+      '확인되지 않음 (엔진 도로 등급을 검증에만 쓰고 보관하지 않음)',
+    );
+    expect(screen.getByTestId('candidate-surface-0')).toHaveTextContent(
+      '확인되지 않음 (엔진에 요청하지 않음)',
     );
   });
 

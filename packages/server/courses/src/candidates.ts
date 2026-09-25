@@ -8,9 +8,14 @@ import {
   type CoursePosition,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
-import type { RouteComputationRecord, RoutingPosition } from '@workout/contracts/routing';
+import type {
+  RouteComputationRecord,
+  RoutePathDetails,
+  RoutingPosition,
+} from '@workout/contracts/routing';
 
 import { greatCircleMeters } from './geo.js';
+import { routeKnowledgeFromPathDetails } from './route-knowledge.js';
 
 /**
  * Bounded target-distance candidate search (M2-01i).
@@ -43,10 +48,12 @@ import { greatCircleMeters } from './geo.js';
  * version travels with every candidate. The attempt log keeps the rejected attempts too: a
  * reader has to be able to see that eight computations produced two candidates.
  *
- * NOTHING HERE JUDGES PASSABILITY. The engine answering means a graph had edges. It is not
- * evidence about stairs, surface, opening hours or access restrictions — we have no such
- * data in this build, and {@link CourseCandidateEvaluation}'s `knowledge` says `unknown`
- * for each of them rather than treating a missing fact as satisfied.
+ * NOTHING HERE JUDGES PASSABILITY. The engine answering means a graph had edges. Stairs,
+ * surface and access restrictions are REPORTED, not judged (evaluation version 2, M2-01ap):
+ * {@link CourseCandidateEvaluation}'s `knowledge` says how much of the line the graph records
+ * each finding for and how much it records nothing for, and no candidate is dropped or
+ * preferred because of them. Opening hours, lighting and gradient stay `unknown`: the graph
+ * has none of them, and a missing fact is never treated as satisfied.
  */
 export class CandidateSearchError extends Error {
   constructor(
@@ -114,6 +121,8 @@ export type CandidateRouteAnswer =
       readonly durationSeconds: number;
       readonly snappedWaypoints: readonly CandidateSnappedWaypoint[];
       readonly computation: RouteComputationRecord;
+      /** What the engine reported about the edges under `coordinates` (M2-01ap). */
+      readonly pathDetails: RoutePathDetails;
     }
   | {
       readonly kind: 'refused';
@@ -412,6 +421,7 @@ function evaluate(input: {
   readonly engineDistanceMeters: number;
   readonly snappedWaypoints: readonly CandidateSnappedWaypoint[];
   readonly waypointCount: number;
+  readonly pathDetails: RoutePathDetails;
 }): CourseCandidateEvaluation {
   const first = input.coordinates[0];
   const last = input.coordinates[input.coordinates.length - 1];
@@ -419,7 +429,7 @@ function evaluate(input: {
   const repetition = repeatedSection(input.coordinates);
   const error = input.engineDistanceMeters - input.targetDistanceMeters;
   return {
-    evaluationVersion: 1,
+    evaluationVersion: 2,
     targetDistanceMeters: input.targetDistanceMeters,
     engineDistanceMeters: input.engineDistanceMeters,
     plannedLineMeters: polylineMeters(input.coordinates),
@@ -431,15 +441,9 @@ function evaluate(input: {
     },
     connectivity: 'engine-attested-edges',
     repetition,
-    // Not a shortcut: this build has no surface, stair, opening-hour or elevation data at
-    // all, and the plan forbids reading a missing fact as a satisfied one.
-    knowledge: {
-      stairs: 'unknown',
-      surface: 'unknown',
-      nightAccess: 'unknown',
-      accessRestrictions: 'unknown',
-      gradient: 'unknown',
-    },
+    // Stairs, surface and access from the engine's path details; opening hours, lighting and
+    // gradient stay unknown because the graph has none of them.
+    knowledge: routeKnowledgeFromPathDetails(input.coordinates, input.pathDetails),
     gradientSource: 'none',
     maxSnapDistanceMeters: maxSnap(input.snappedWaypoints),
     waypointCount: input.waypointCount,
@@ -682,6 +686,7 @@ export async function generateTargetDistanceCandidates(
       engineDistanceMeters: answer.distanceMeters,
       snappedWaypoints: answer.snappedWaypoints,
       waypointCount: waypoints.length,
+      pathDetails: answer.pathDetails,
     });
     if (!evaluation.loop.closed) {
       attempts.push({

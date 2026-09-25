@@ -1295,6 +1295,11 @@ export function createCourseRepository(
             evaluation: courseCandidateEvaluationSchema.parse(input.evaluation),
           };
         });
+      // One search, one evaluation version (M2-01ap): the set records the version its
+      // candidates were measured under, and a set mixing two would describe none of them.
+      const evaluationVersion = candidates[0]?.evaluation.evaluationVersion ?? 1;
+      if (candidates.some((item) => item.evaluation.evaluationVersion !== evaluationVersion))
+        throw new Error('COURSE_CANDIDATE_EVALUATION_MIXED');
       return database.tenant(tenantId, async (tx) => {
         await tenantLock(tx);
         const course = await tx.query(
@@ -1319,7 +1324,7 @@ export function createCourseRepository(
           `INSERT INTO course_route_candidate_set(athlete_id,candidate_set_id,course_id,
              draft_revision,request_id,target_distance_meters,search_seed,generator_version,
              evaluation_version,bounds,search,created_at,expires_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,'target-distance-loop-v1',1,$8::jsonb,$9::jsonb,
+           VALUES($1,$2,$3,$4,$5,$6,$7,'target-distance-loop-v1',$11,$8::jsonb,$9::jsonb,
              statement_timestamp(),statement_timestamp()+make_interval(secs=>$10))
            RETURNING ${CANDIDATE_SET_COLUMNS}`,
           [
@@ -1333,6 +1338,7 @@ export function createCourseRepository(
             JSON.stringify(bounds),
             JSON.stringify(search),
             ttlSeconds,
+            evaluationVersion,
           ],
         );
         const setRow = candidateSetRowSchema.parse(insertedSet.rows[0]);

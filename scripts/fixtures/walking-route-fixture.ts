@@ -112,6 +112,15 @@ export function createFixtureWalkingRoutePort() {
           snapped: waypoint,
           snapDistanceMeters: 0,
         })),
+        // A fixture traverses no graph, so it knows nothing about the edges under its line
+        // (M2-01ap): the road class is `other` (unknown, not "no stairs") and no surface or
+        // access detail is reported. A screen fed this must say "확인되지 않음" throughout.
+        pathDetails: {
+          roadClass: [[0, coordinates.length - 1, 'other']],
+          roadAccess: null,
+          footAccess: null,
+          surface: null,
+        },
       };
       return { result, retryAfterSeconds: null };
     },

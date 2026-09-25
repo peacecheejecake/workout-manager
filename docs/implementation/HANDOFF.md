@@ -17,14 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01au](progress/M2-01au.md)를 완료했다(부분집합, `phase/m2-01`). migration 052로 object·파생 cleanup queue와 두 reconcile state 표에
-소유자 전용 policy를 두고, 생존·게시 창·reclaim·settle 읽기를 행마다 그 행의 tenant(object key가 이름 붙인 tenant)로 하게 했다. 그래서
-superuser도 BYPASSRLS도 아닌 소유 역할에서도 추적·썸네일 객체가 있는 계정 말소, 추적이 있는 활동 삭제, upload protect/supersede,
-cleanup worker lease가 돈다. 복원 replay의 외래 id 거절을 고쳤고, `retarget_definer_policies()`로 소유 이전 뒤 policy를 새 소유자에게
-옮긴다. 051 lease의 INCONSISTENT 단계를 100행 창으로 좁혀 10만 행 lease가 약 0.7 s에서 1.3 ms가 됐다. 썸네일 render·URL 수집 worker,
-reap·prune, sweep window는 아직 그런 소유 역할에서 닫힌 채다(후속 M2-01av) — runbook의 superuser·BYPASSRLS 조건은 그대로다.
+[M2-01ap](progress/M2-01ap.md)를 완료했다(`phase/m2-01`). routing adapter가 `road_access`·`foot_access`·`surface`·`road_class` details를
+요청하고, 목표 거리 후보와 왕복 검토가 알려진 접근 제한·계단·노면을 따로 줄마다 보인다(모르는 구간은 이유와 함께 "확인되지 않음"). 후보
+평가 v2를 v1과 함께 두고 migration 053으로 저장 한도를 넓혔다. 실제 엔진이 서울로7017 보행 육교의 `road_access=no`와 계단을 보이는 것을
+단언한다. P6-target-display를 passed로 올렸다(passed 85 → 86). `road_access`는 차량 접근 값이며 화면이 그렇게 적는다. 경사·야간 접근은
+자료 원천이 없다.
 
-직전 완료: [M2-01ar](progress/M2-01ar.md)(성능 재실행과 재판정 정책).
+직전 완료: [M2-01au](progress/M2-01au.md)(plain 소유 역할의 cleanup queue·reconcile state).
 
 ## 운영 메모
 
@@ -76,8 +75,8 @@ reap·prune, sweep window는 아직 그런 소유 역할에서 닫힌 채다(후
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01as, M2-01av. 이 중
-M2-01ag·M2-01ap·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01as, M2-01av. 이 중
+M2-01ag·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험

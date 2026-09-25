@@ -14,6 +14,7 @@ import {
   courseRoutePreviewResultSchema,
   targetDistanceLimits,
   courseUpdateRequestSchema,
+  currentCandidateEvaluationVersion,
   type CourseEdit,
   type CourseGeneration,
   type CourseLineage,
@@ -27,6 +28,7 @@ import {
   targetDistanceGeneration,
   type CandidateLegRouter,
 } from '@workout/server-courses/candidates';
+import { routeKnowledgeFromPathDetails } from '@workout/server-courses/route-knowledge';
 import { mapPathSchema, trackLimits } from '@workout/contracts/tracks';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import { RoutedCourseError, routedCourseGeneration } from '@workout/server-courses/routed';
@@ -530,6 +532,7 @@ function candidateRouter(port: WalkingRoutePort, athleteId: string): CandidateLe
         durationSeconds: result.durationSeconds,
         snappedWaypoints: result.snappedWaypoints,
         computation: result.computation,
+        pathDetails: result.pathDetails,
       };
     },
   };
@@ -1018,6 +1021,12 @@ export function registerCourseRoutes(
             courseRouteProposalResultSchema.parse({
               outcome: 'route_computed',
               proposal: stored,
+              // From the same answer the proposal stores. The intervals index the engine's own
+              // geometry, so they are measured over that line, vertex for vertex.
+              knowledge: routeKnowledgeFromPathDetails(
+                result.geometry.coordinates,
+                result.pathDetails,
+              ),
             }),
           );
         },
@@ -1154,7 +1163,7 @@ export function registerCourseRoutes(
             targetDistanceMeters: body.targetDistanceMeters,
             searchSeed,
             generatorVersion: 'target-distance-loop-v1' as const,
-            evaluationVersion: 1 as const,
+            evaluationVersion: currentCandidateEvaluationVersion,
             bounds: search.bounds,
             search: search.search,
           };

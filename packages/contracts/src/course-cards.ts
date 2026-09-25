@@ -33,9 +33,11 @@ import { z } from 'zod';
  *   device-reported or GPS-recomputed distance and never an achieved one.
  * - **Elevation source.** Which dataset answered, and how much of this course it covers;
  *   or that no dataset is deployed, which is `not_deployed` and never an empty profile.
- * - **Surface.** There is no surface source in this build. The value is the literal
+ * - **Surface.** The card has no surface source. Since M2-01ap the engine's surface detail
+ *   reaches a proposal's review and a version-2 candidate evaluation, but a stored revision
+ *   in general does not carry it, and a card does not read it. The value is the literal
  *   `unknown`, so claiming anything else is a contract change, not a value a server can
- *   write (the same rule as `courseCandidateKnowledgeSchema`).
+ *   write (the same rule as `courseCandidateKnowledgeSchema`, version 1).
  * - **Thumbnail.** The stored-picture state of the head revision, plus the evenly spaced
  *   sample the stored picture is drawn from, so the card can draw the same picture while
  *   the stored one is pending, impossible or still loading. The sample is at most the
@@ -108,7 +110,7 @@ export const courseCardElevationSchema = z.discriminatedUnion('status', [
 ]);
 export type CourseCardElevation = z.infer<typeof courseCardElevationSchema>;
 
-/** No surface source exists in this build; see the file comment. */
+/** The card has no surface source; see the file comment. */
 export const courseCardSurfaceSchema = z.strictObject({
   confirmation: z.literal('unknown'),
 });

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 
+import type { CourseRouteKnowledge } from '@workout/contracts/courses';
 import type { WalkingRouteResult } from '@workout/contracts/routing';
+import { greatCircleMeters } from '@workout/server-courses/geo';
 import type { MapPath } from '@workout/contracts/tracks';
 import { courseGeometrySha256 } from '@workout/server-persistence/courses';
 import type { ObjectStorage } from '@workout/server-media/object-storage';
@@ -246,6 +248,19 @@ function walkingRouteFixture(
             snapped: waypoint,
             snapDistanceMeters: 0,
           })),
+          // A stairway on a private way first, then an untagged path (M2-01ap).
+          pathDetails: {
+            roadClass: [
+              [0, 1, 'steps'],
+              [1, 2, 'path'],
+            ] as [number, number, string][],
+            roadAccess: [
+              [0, 1, 'private'],
+              [1, 2, 'yes'],
+            ] as [number, number, string][],
+            footAccess: [[0, 2, true]] as [number, number, boolean][],
+            surface: [[0, 2, 'missing']] as [number, number, string][],
+          },
         },
         retryAfterSeconds,
       };
@@ -852,9 +867,42 @@ describe('course route proposals', () => {
       payload: computeBody,
     });
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { outcome: string; proposal: { proposalId: string } };
+    const body = response.json() as {
+      outcome: string;
+      proposal: { proposalId: string };
+      knowledge: CourseRouteKnowledge;
+    };
     expect(body.outcome).toBe('route_computed');
     expect(body.proposal.proposalId).toBe(proposalId);
+    // What the engine said about the edges, measured over the line it answered with.
+    const [first, second, third] = routedCoordinates;
+    if (!first || !second || !third) throw new Error('short line');
+    const stair = Math.round(greatCircleMeters(first, second) * 10) / 10;
+    const rest = Math.round(greatCircleMeters(second, third) * 10) / 10;
+    expect(body.knowledge).toEqual({
+      stairs: {
+        status: 'reported',
+        known: [
+          { value: 'steps', meters: stair, sections: 1 },
+          { value: 'not_steps', meters: rest, sections: 1 },
+        ].sort((left, right) => right.meters - left.meters),
+        unknownMeters: 0,
+      },
+      surface: {
+        status: 'reported',
+        known: [],
+        unknownMeters:
+          Math.round((greatCircleMeters(first, second) + greatCircleMeters(second, third)) * 10) /
+          10,
+      },
+      accessRestrictions: {
+        status: 'reported',
+        known: [{ value: 'road_access=private', meters: stair, sections: 1 }],
+        unknownMeters: rest,
+      },
+      nightAccess: 'unknown',
+      gradient: 'unknown',
+    });
     // The engine was asked for the draft revision, and the record carries it back.
     expect(walkingRoutes.compute.mock.calls[0]?.[1]).toMatchObject({
       requestRevision: 3,

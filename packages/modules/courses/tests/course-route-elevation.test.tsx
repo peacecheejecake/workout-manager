@@ -9,6 +9,15 @@ import { NewCourseWorkbench } from '../src/course-new';
 import { elevationRuns } from '../src/course-route-elevation';
 import { CourseWorkbench } from '../src/course-workbench';
 
+/** Proposal knowledge with nothing reported (M2-01ap): this test is not about the edges. */
+const unreportedKnowledge = {
+  stairs: { status: 'not_reported' },
+  surface: { status: 'not_reported' },
+  accessRestrictions: { status: 'not_reported' },
+  nightAccess: 'unknown',
+  gradient: 'unknown',
+} as const;
+
 /**
  * S14 "고도/거리 확인" before saving (M2-01k-b).
  *
@@ -561,6 +570,7 @@ describe('the elevation check of a stored proposal', () => {
         };
         return reply({
           outcome: 'route_computed',
+          knowledge: unreportedKnowledge,
           proposal: {
             proposalId,
             courseId,

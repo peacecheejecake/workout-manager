@@ -27,13 +27,17 @@ import {
   type RouteElevationSource,
 } from './course-route-elevation';
 import {
+  accessRestrictionsText,
   connectivityText,
   gradientSourceText,
-  knowledgeText,
+  nightAccessText,
   OutAndBackReview,
   outAndBackRefusals,
+  routedProposalFacts,
+  routeKnowledgeNote,
+  stairsText,
+  surfaceText,
   targetErrorText,
-  walkingConditionsText,
 } from './course-out-and-back';
 import { isOutAndBack } from './out-and-back';
 import { WaypointListEditor } from './course-waypoint-list';
@@ -336,6 +340,7 @@ export function CourseEditor({
         computedAt: proposal.computation.computedAt,
         warnings: proposal.computation.warnings,
         snappedWaypoints: proposal.snappedWaypoints.map((waypoint) => waypoint.snapped),
+        knowledge: answer.knowledge,
       });
       setMessage(
         applied
@@ -713,6 +718,7 @@ export function CourseEditor({
                 </li>
               ))}
             </ul>
+            <p className={styles.note}>{routeKnowledgeNote}</p>
             <ul className={styles.waypoints} aria-label="후보 목록">
               {candidateSet.candidates.map((candidate) => (
                 <li key={candidate.proposalId} data-testid={`candidate-${candidate.ordinal}`}>
@@ -741,14 +747,19 @@ export function CourseEditor({
                     </dd>
                     <dt>알려진 접근 제한</dt>
                     <dd data-testid={`candidate-access-${candidate.ordinal}`}>
-                      {knowledgeText(
-                        'accessRestrictions',
-                        candidate.evaluation.knowledge.accessRestrictions,
-                      )}
+                      {accessRestrictionsText(candidate.evaluation.knowledge)}
                     </dd>
-                    <dt>계단·노면·야간 통행</dt>
-                    <dd data-testid={`candidate-knowledge-${candidate.ordinal}`}>
-                      {walkingConditionsText(candidate.evaluation.knowledge)}
+                    <dt>계단</dt>
+                    <dd data-testid={`candidate-stairs-${candidate.ordinal}`}>
+                      {stairsText(candidate.evaluation.knowledge)}
+                    </dd>
+                    <dt>노면</dt>
+                    <dd data-testid={`candidate-surface-${candidate.ordinal}`}>
+                      {surfaceText(candidate.evaluation.knowledge)}
+                    </dd>
+                    <dt>야간 통행</dt>
+                    <dd data-testid={`candidate-night-${candidate.ordinal}`}>
+                      {nightAccessText(candidate.evaluation.knowledge)}
                     </dd>
                     <dt>경사 출처</dt>
                     <dd data-testid={`candidate-gradient-${candidate.ordinal}`}>
@@ -846,6 +857,11 @@ export function CourseEditor({
                 outAndBackTarget !== null && outAndBackTarget.draftRevision === route.draftRevision
                   ? outAndBackTarget.droppedVias
                   : 0
+              }
+              facts={
+                route.knowledge === undefined
+                  ? routedProposalFacts
+                  : { ...routedProposalFacts, knowledge: route.knowledge }
               }
             />
           ) : null}

@@ -189,23 +189,93 @@ export const snappedWaypointSchema = z.strictObject({
   snapDistanceMeters: z.number().finite().nonnegative().max(1_000_000),
 });
 
-const computed = z.strictObject({
-  outcome: z.literal('route_computed'),
-  computation: routeComputationRecordSchema,
-  geometry: z.strictObject({
-    type: z.literal('LineString'),
-    coordinates: z.array(routingPositionSchema).min(2).max(routingLimits.maxResponsePoints),
-  }),
-  /** Engine estimate along the computed line. Never a recorded or training distance. */
-  distanceMeters: z.number().finite().positive().max(routingLimits.maxRouteDistanceMeters),
-  /** Engine estimate of walking time. Never an actual duration. */
-  durationSeconds: z
-    .number()
-    .finite()
-    .nonnegative()
-    .max(30 * 24 * 3600),
-  snappedWaypoints: z.array(snappedWaypointSchema).min(2).max(routingLimits.maxWaypoints),
+/** A value the engine reported for an edge: its lowercase enum name, e.g. `steps`, `asphalt`. */
+const pathDetailValueSchema = z
+  .string()
+  .regex(/^[a-z_]{1,32}$/, 'Expected a lowercase detail value');
+const pathDetailIntervals = <Value extends z.ZodType>(value: Value) =>
+  z
+    .array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative(), value]))
+    .min(1)
+    .max(routingLimits.maxResponsePoints);
+
+/**
+ * What the engine reported about the edges under a computed line (M2-01ap).
+ *
+ * Each list is `[fromVertex, toVertex, value]` intervals over the returned geometry, exactly as
+ * GraphHopper derives them from the graph edges it traversed, and each covers the geometry from
+ * its first vertex to its last without a gap (checked below). The values are the graph's
+ * encoded values, named as the engine names them:
+ *
+ * - `roadClass` — OSM `highway` class; `steps` is a stairway, `other` an unclassified value. It
+ *   is always present: it is also the adapter's evidence that the line follows edges at all.
+ * - `roadAccess` — GraphHopper's `road_access`, read from the `motorcar`, `motor_vehicle`,
+ *   `vehicle` and `access` tags (its CAR restriction list). A **vehicle and general** access
+ *   value, not a pedestrian one: a pedestrian bridge closed to cars reads `no`. `yes` is also
+ *   what an untagged way gets.
+ * - `footAccess` — whether the graph's foot parser allowed walking there. The pedestrian
+ *   profile routes only over `true`, so on a computed line it is normally `true` throughout.
+ * - `surface` — OSM `surface`, grouped by GraphHopper; `missing` means no surface tag.
+ *
+ * `null` means the engine did not report that detail. It is never read as "no restriction".
+ * No detail here is a verified condition on the ground: they are what the graph was built from.
+ */
+export const routePathDetailsSchema = z.strictObject({
+  roadClass: pathDetailIntervals(pathDetailValueSchema),
+  roadAccess: pathDetailIntervals(pathDetailValueSchema).nullable(),
+  footAccess: pathDetailIntervals(z.boolean()).nullable(),
+  surface: pathDetailIntervals(pathDetailValueSchema).nullable(),
 });
+export type RoutePathDetails = z.infer<typeof routePathDetailsSchema>;
+
+/**
+ * Whether `[from, to, value]` intervals cover a geometry of `vertexCount` vertices as one
+ * contiguous run from the first vertex to the last.
+ */
+export function pathDetailsCoverGeometry(
+  intervals: readonly (readonly [number, number, unknown])[],
+  vertexCount: number,
+): boolean {
+  if (vertexCount < 2 || intervals.length === 0) return false;
+  let expected = 0;
+  for (const [from, to] of intervals) {
+    if (from !== expected || to <= from || to > vertexCount - 1) return false;
+    expected = to;
+  }
+  return expected === vertexCount - 1;
+}
+
+const computed = z
+  .strictObject({
+    outcome: z.literal('route_computed'),
+    computation: routeComputationRecordSchema,
+    geometry: z.strictObject({
+      type: z.literal('LineString'),
+      coordinates: z.array(routingPositionSchema).min(2).max(routingLimits.maxResponsePoints),
+    }),
+    /** Engine estimate along the computed line. Never a recorded or training distance. */
+    distanceMeters: z.number().finite().positive().max(routingLimits.maxRouteDistanceMeters),
+    /** Engine estimate of walking time. Never an actual duration. */
+    durationSeconds: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(30 * 24 * 3600),
+    snappedWaypoints: z.array(snappedWaypointSchema).min(2).max(routingLimits.maxWaypoints),
+    pathDetails: routePathDetailsSchema,
+  })
+  .superRefine((value, context) => {
+    const vertexCount = value.geometry.coordinates.length;
+    for (const key of ['roadClass', 'roadAccess', 'footAccess', 'surface'] as const) {
+      const intervals = value.pathDetails[key];
+      if (intervals !== null && !pathDetailsCoverGeometry(intervals, vertexCount))
+        context.addIssue({
+          code: 'custom',
+          path: ['pathDetails', key],
+          message: 'Path details must cover the geometry from its first vertex to its last',
+        });
+    }
+  });
 
 const failure = <Code extends string>(code: Code) =>
   z.strictObject({

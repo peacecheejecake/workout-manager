@@ -156,8 +156,17 @@ function segmentIndex(points: readonly Point[], cell: number): Map<string, Set<n
  * The way back is cut into short pieces; a piece whose midpoint lies within the tolerance of
  * the way out is on shared ground. Consecutive shared pieces form one stretch, and stretches
  * shorter than {@link outAndBackOverlapDefinition.minimumRunMeters} are dropped as the touch
- * where two lines meet. The answer depends on the lines, not on how many vertices the engine
- * used to encode them: the same walk split differently gives the same stretches.
+ * where two lines meet.
+ *
+ * HOW FAR "INDEPENDENT OF THE ENCODING" HOLDS. Splitting a straight stretch at different
+ * vertices gives the same stretches, and so does any curve drawn with vertices spaced well
+ * below its radius: the chords then stay within a fraction of a metre of the curve and run
+ * its way. It does NOT hold once the vertex spacing approaches the curve radius. A tight
+ * curve (radius around 10 m) drawn with ~10 m chords on one leg and finely on the other puts
+ * pieces of the fine leg within the tolerance of a chord that cuts across the bend at more
+ * than the alignment angle, and those pieces are dropped. The real engine gives both legs the
+ * same edge geometry in reverse, so the two legs share their vertices and this does not arise
+ * there; two independently drawn lines can differ (M2-01k-j round-2 review).
  */
 export function outAndBackOverlap(
   out: readonly CoursePosition[],

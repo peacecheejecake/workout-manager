@@ -3,12 +3,22 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { CoursePosition, CourseWaypoint } from '@workout/contracts/courses';
+import {
+  courseRouteKnowledgeSchema,
+  type CoursePosition,
+  type CourseWaypoint,
+} from '@workout/contracts/courses';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import type { MapViewProps } from '@workout/geo-kit/map-view';
 import { createCourseDraftStore, currentOutAndBack } from '../src/course-draft';
 import { draftMapPaths } from '../src/course-draft-context';
 import { CourseWorkbench } from '../src/course-workbench';
+import {
+  accessRestrictionsText,
+  nightAccessText,
+  stairsText,
+  surfaceText,
+} from '../src/course-out-and-back';
 import {
   analyseOutAndBack,
   isOutAndBack,
@@ -30,7 +40,7 @@ const B: CoursePosition = [126.9819, 37.5665];
 const northOf = (position: CoursePosition): CoursePosition => [position[0], position[1] + 0.001];
 
 describe('out-and-back overlap', () => {
-  it('reports the whole way back when it retraces the way out, however either is encoded', () => {
+  it('reports the whole way back when it retraces the way out, however the straight street is split', () => {
     const out: CoursePosition[] = [A, M, B];
     // The same street, split at different vertices: the answer is about the line.
     const back: CoursePosition[] = [B, [126.9809, 37.5665], [126.9789, 37.5665], A];
@@ -263,8 +273,46 @@ const revision = {
   createdAt,
 };
 
+/**
+ * What the engine reported about the edges of the answer (M2-01ap): two short stairways, two
+ * surfaces and one private stretch on record, and some of the line with nothing on record.
+ */
+const sampleKnowledge = {
+  stairs: {
+    status: 'reported',
+    known: [
+      { value: 'not_steps', meters: 600.4, sections: 1 },
+      { value: 'steps', meters: 38.2, sections: 2 },
+    ],
+    unknownMeters: 12.5,
+  },
+  surface: {
+    status: 'reported',
+    known: [
+      { value: 'paving_stones', meters: 420, sections: 3 },
+      { value: 'asphalt', meters: 180.6, sections: 1 },
+    ],
+    unknownMeters: 50.5,
+  },
+  accessRestrictions: {
+    status: 'reported',
+    known: [{ value: 'road_access=private', meters: 24.6, sections: 1 }],
+    unknownMeters: 626.5,
+  },
+  nightAccess: 'unknown',
+  gradient: 'unknown',
+} as const;
+
+const unreportedKnowledge = {
+  stairs: { status: 'not_reported' },
+  surface: { status: 'not_reported' },
+  accessRestrictions: { status: 'not_reported' },
+  nightAccess: 'unknown',
+  gradient: 'unknown',
+} as const;
+
 /** The engine's answer to whatever was asked: out along the street, back along the same one. */
-function answer(input: TransportRequest) {
+function answer(input: TransportRequest, knowledge: unknown = sampleKnowledge) {
   const asked = input.body as {
     requestId: string;
     draftRevision: number;
@@ -280,6 +328,7 @@ function answer(input: TransportRequest) {
   }
   return reply({
     outcome: 'route_computed',
+    knowledge,
     proposal: {
       proposalId,
       courseId,
@@ -330,9 +379,10 @@ function FakeMap(props: MapViewProps) {
   );
 }
 
-function setup() {
+function setup(knowledge: unknown = sampleKnowledge) {
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
-    if (input.path === `/bff/v1/courses/${courseId}/route-proposals`) return answer(input);
+    if (input.path === `/bff/v1/courses/${courseId}/route-proposals`)
+      return answer(input, knowledge);
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head], total: 1 });
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
@@ -351,7 +401,7 @@ function setup() {
 }
 
 describe('out-and-back in the editor', () => {
-  it('asks the engine for A→B→A and shows the overlap, the target error and the unknowns', async () => {
+  it('asks the engine for A→B→A and shows the overlap, the target error, what the graph records and the unknowns', async () => {
     const request = setup();
     await userEvent.click(await screen.findByRole('button', { name: head.name }));
     await screen.findByRole('region', { name: '경유지 편집' });
@@ -379,13 +429,20 @@ describe('out-and-back in the editor', () => {
     expect(within(review).getByTestId('route-connectivity')).toHaveTextContent(
       '엔진이 지났다고 밝힌 도로 구간으로 이어짐',
     );
-    // Each unknown says truthfully why: access is in the graph but not requested.
+    // What the graph records along the line, and the rest said to be unknown, with why.
     expect(within(review).getByTestId('route-access')).toHaveTextContent(
-      '확인되지 않음 (엔진에 요청하지 않음)',
+      'road_access=private(사유) 25m · 1곳 · 확인되지 않음 627m (graph에 제한 값 없음 · 제한이 없다는 확인은 아님)',
     );
-    expect(within(review).getByTestId('route-conditions')).toHaveTextContent(
-      '계단 확인되지 않음 (엔진 도로 등급을 검증에만 쓰고 보관하지 않음) · 노면 확인되지 않음 (엔진에 요청하지 않음) · 야간 통행 확인되지 않음 (자료 없음)',
+    expect(within(review).getByTestId('route-stairs')).toHaveTextContent(
+      '계단 2곳 38m (highway=steps) · 계단 아닌 길 600m · 확인되지 않음 13m (도로 등급 미상)',
     );
+    expect(within(review).getByTestId('route-surface')).toHaveTextContent(
+      '보도블록(paving_stones) 420m · 아스팔트(asphalt) 181m · 확인되지 않음 51m (graph에 노면 값 없음)',
+    );
+    expect(within(review).getByTestId('route-night')).toHaveTextContent(
+      '확인되지 않음 (자료 없음)',
+    );
+    expect(review).toHaveTextContent('road_access는 차량·일반 access 태그에서 온 값이라');
     expect(within(review).getByTestId('route-gradient')).toHaveTextContent(
       '확인되지 않음 (엔진 경사 자료 없음 · 고도 표본은 고도 확인 참조)',
     );
@@ -395,6 +452,18 @@ describe('out-and-back in the editor', () => {
     // And the map was handed the stretch walked twice as its own path.
     const map = screen.getByRole('list', { name: '지도 대역' });
     expect(within(map).getByText('course-overlap')).toHaveAttribute('data-role', 'overlap');
+  });
+
+  it('says the engine did not answer rather than showing a clean line', async () => {
+    setup(unreportedKnowledge);
+    await userEvent.click(await screen.findByRole('button', { name: head.name }));
+    await screen.findByRole('region', { name: '경유지 편집' });
+    await userEvent.click(screen.getByRole('button', { name: '왕복 초안 계산 (A→B→A)' }));
+    const review = await screen.findByTestId('out-and-back-review');
+    for (const id of ['route-access', 'route-stairs', 'route-surface'])
+      expect(within(review).getByTestId(id)).toHaveTextContent(
+        '확인되지 않음 (엔진이 이 경로의 값을 답하지 않음)',
+      );
   });
 
   it('says so when making the out-and-back left a via waypoint out', async () => {
@@ -413,5 +482,54 @@ describe('out-and-back in the editor', () => {
       .map(([input]) => input)
       .find((input) => input.path.endsWith('/route-proposals'));
     expect((sent?.body as { waypoints: CourseWaypoint[] }).waypoints).toHaveLength(3);
+  });
+});
+
+describe('the stairs, surface and access lines (M2-01ap)', () => {
+  const reported = (
+    stairs: unknown,
+    surface: unknown = { status: 'reported', known: [], unknownMeters: 0 },
+    accessRestrictions: unknown = { status: 'reported', known: [], unknownMeters: 0 },
+  ) =>
+    courseRouteKnowledgeSchema.parse({
+      stairs,
+      surface,
+      accessRestrictions,
+      nightAccess: 'unknown',
+      gradient: 'unknown',
+    });
+
+  it('says a line with no stairway class has none by class, and keeps the unknown apart', () => {
+    const knowledge = reported({
+      status: 'reported',
+      known: [{ value: 'not_steps', meters: 1_460, sections: 1 }],
+      unknownMeters: 20,
+    });
+    expect(stairsText(knowledge)).toBe(
+      '도로 등급에 계단 없음 1.46km · 확인되지 않음 20m (도로 등급 미상)',
+    );
+  });
+
+  it('never calls a wholly unknown line clean', () => {
+    const knowledge = reported(
+      { status: 'reported', known: [], unknownMeters: 800 },
+      { status: 'reported', known: [], unknownMeters: 800 },
+      { status: 'reported', known: [], unknownMeters: 800 },
+    );
+    expect(stairsText(knowledge)).toBe('확인되지 않음 800m (도로 등급 미상)');
+    expect(surfaceText(knowledge)).toBe('확인되지 않음 800m (graph에 노면 값 없음)');
+    expect(accessRestrictionsText(knowledge)).toBe(
+      '확인되지 않음 800m (graph에 제한 값 없음 · 제한이 없다는 확인은 아님)',
+    );
+    expect(nightAccessText(knowledge)).toBe('확인되지 않음 (자료 없음)');
+  });
+
+  it('shows a restriction the graph records against walking as a foot restriction', () => {
+    const knowledge = reported({ status: 'reported', known: [], unknownMeters: 0 }, undefined, {
+      status: 'reported',
+      known: [{ value: 'foot_access=no', meters: 12.4, sections: 1 }],
+      unknownMeters: 0,
+    });
+    expect(accessRestrictionsText(knowledge)).toBe('foot_access=no(도보 금지) 12m · 1곳');
   });
 });
