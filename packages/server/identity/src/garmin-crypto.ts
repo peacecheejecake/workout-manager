@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { GarminCipher } from './garmin-ports.js';
+/**
+ * Bound into the AAD with the key id and account, so an envelope decrypts only under the
+ * purpose it was written for. `unofficial-session` (M1-06b-tmp) keeps the temporary
+ * collector's library session from ever being read as an official OAuth credential, and
+ * the reverse.
+ */
+export type GarminCipherPurpose = 'tokens' | 'verifier' | 'unofficial-session';
 const envelopeSchema = z.strictObject({
   keyId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
   iv: z.string().base64(),
@@ -23,7 +30,7 @@ export function createGarminCipher(options: {
   );
   if (!keys.has(options.activeKeyId)) throw new Error('INVALID_GARMIN_KEYS');
   return {
-    encrypt(athleteId: string, purpose: 'tokens' | 'verifier', value: unknown): GarminCipher {
+    encrypt(athleteId: string, purpose: GarminCipherPurpose, value: unknown): GarminCipher {
       const key = keys.get(options.activeKeyId);
       if (!key) throw new Error('INVALID_GARMIN_KEYS');
       const iv = randomBytes(12);
@@ -41,7 +48,7 @@ export function createGarminCipher(options: {
         tag: cipher.getAuthTag().toString('base64'),
       };
     },
-    decrypt(athleteId: string, purpose: 'tokens' | 'verifier', input: GarminCipher): unknown {
+    decrypt(athleteId: string, purpose: GarminCipherPurpose, input: GarminCipher): unknown {
       const envelope = envelopeSchema.parse(input);
       const key = keys.get(envelope.keyId);
       if (!key) throw new Error('UNKNOWN_GARMIN_KEY');

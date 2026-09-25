@@ -15,6 +15,7 @@ import {
 } from '@workout/platform/private-browser-storage';
 import { OperationsPanel } from './operations-panel';
 import { GarminPanel } from './garmin-panel';
+import { GarminUnofficialEraseNotice, GarminUnofficialPanel } from './garmin-unofficial-panel';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),
@@ -344,10 +345,16 @@ function Account({
         onSignedOut={onSignedOut}
         onSessionChanged={onSessionChanged}
       />
+      <GarminUnofficialPanel
+        session={session}
+        onSignedOut={onSignedOut}
+        onSessionChanged={onSessionChanged}
+      />
       <OperationsPanel
         session={session}
         onSignedOut={onSignedOut}
         onSessionChanged={onSessionChanged}
+        eraseNotice={<GarminUnofficialEraseNotice session={session} />}
       />
     </section>
   );

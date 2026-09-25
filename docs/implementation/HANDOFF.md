@@ -17,13 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01al](progress/M2-01al.md)를 완료했다. 성능 판정 run은 parse child RSS를 읽지 못한 parse가 하나라도 있으면 실패한다. 1분 부하가
-놓치는 짧은 급증으로 시간 예산만 실패하면 공개되는 자동 재실행을 한 번 하고, 재실행이 스스로 통과할 때만 쌍이 통과한다(메모리·크기·
-check 실패는 재실행하지 않는다). probe 결과·로그는 Playwright·coverage가 지우는 디렉터리에 쓸 수 없고 `verification-logs/`에 둔다.
-K-performance·P7-parser-bounds는 passed 유지다. 예산의 몇 % 안쪽 회귀가 두 번 기회를 받는 한계, 브라우저 재실행과 수동 재판정
-정책은 M2-01ar로 이어진다.
+[M1-06b-tmp](progress/M1-06b-tmp.md)를 완료했다(사용자 결정 2026-09-25의 임시 경로). 배포 설정이 지정한 소유자 앱 계정 하나만 앱
+설정에서 비공식 `garminconnect` 로그인(MFA 포함)을 해 처음 연결한 Garmin profile에 묶고, session token만 별도 AAD purpose로 암호화해
+둔다. "지금 가져오기"와 소유자가 켠 예약 수집이 ORIGINAL FIT을 기존 import 경로로 넣고 삭제 억제를 우회하지 않는다. 화면과 활동 출처에
+"비공식 임시 연결"과 위험을 표시한다. Python worker는 작업당 sandbox 자식 프로세스다. 합성 fixture 증거이며 **실제 Garmin 계정 실행은
+not_executed**다. EXT-G·M0-07b·M1-06b·M2-07·G2의 증거가 아니다. V2-A20은 partial 유지.
 
-직전 완료: [M2-01aq](progress/M2-01aq.md)(코스 후보 경합 시험의 결정적 단언).
+직전 완료: [M2-01al](progress/M2-01al.md)(성능 판정 보강 3).
 
 ## 운영 메모
 
@@ -38,10 +38,16 @@ K-performance·P7-parser-bounds는 passed 유지다. 예산의 몇 % 안쪽 회�
 - track parser child는 컨테이너 메모리 한도 안에서 돈다. OS OOM-killer가 child를 죽이면 `TRACK_PARSE_WORKER_FAILED`로 보이고,
   heap 밖 메모리는 컨테이너 한도로만 묶인다(M2-01ai). parse child RSS 예산은 300 MiB다(M2-01aj). 동시 child 최대 4개의 합은 기록만 한다(컨테이너 크기는 4 × 300 + 800 MiB를 기준으로 잡는다).
 
+- 비공식 Garmin 수집(M1-06b-tmp)은 기본 꺼짐이다. 켜려면 `GARMIN_UNOFFICIAL_OWNER_ATHLETE_ID`,
+  `GARMIN_UNOFFICIAL_TOKEN_KEYS_JSON`·`GARMIN_UNOFFICIAL_TOKEN_KEY_ID`, `GARMIN_UNOFFICIAL_PROFILE_PIN_KEY`(회전 금지),
+  `GARMIN_UNOFFICIAL_PYTHON`(`uv sync --extra garmin`으로 만든 환경)이 필요하다. 048 적용 뒤 `grantGarminUnofficial`은
+  adapter를 켜지 않은 배포에도 실행한다(활동 출처 조회가 쓴다). MFA 대기 상태는
+  인스턴스 메모리라 다중 인스턴스는 session affinity가 필요하다. 절차와 제거 방법은 [garmin-setup](garmin-setup.md)과 runbook에 있다.
+
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01ar, M2-01k-o, M1-06b-tmp. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am·M2-01ao·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01ar, M2-01k-o. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am·M2-01ao는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
@@ -61,7 +67,8 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 - EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
   별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
-  수집을 하는 M1-06b-tmp를 진행한다([결정 기록](research/garmin-temporary-gate.md)). EXT-G·M0-07b·M1-06b·M2-07은 그대로
+  수집을 하는 M1-06b-tmp를 완료했다([결정 기록](research/garmin-temporary-gate.md)). 실제 Garmin 계정 실행은 소유자가 앱에서
+  로그인해야 하는 별도 증거이며 not_executed다. EXT-G·M0-07b·M1-06b·M2-07은 그대로
   not_started이고 G2는 공식 연동을 거친다.
 - 사용자 결정(2026-09-25): 코스 공유(M2-01k-o) [요구](research/m2-01k-o-sharing-requirement.md)를 승인했다. 범위는 확인 뒤 소유자
   GPX(A)와 보기 전용 unlisted 링크(B, 기본 꺼짐)이며, 링크는 보호 구역이 하나 이상 있어야 한다. B는 독립 재식별 검토의 차단 항목

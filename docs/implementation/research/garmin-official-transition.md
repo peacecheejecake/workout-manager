@@ -81,6 +81,15 @@ CLI(fetch) → login_read_only_source() → ReadOnlyActivitySource ┐
 `summaryId`/`activityId`와 그 안정성 보증이 de-duplication 키의 근거가 되어야 하며(3절), 두 경로의 산출물을
 같은 원장에 섞지 않는다.
 
+**추가(2026-09-25, M1-06b-tmp).** 사용자 결정으로 생긴 앱 내 임시 수집은 server 쪽 이음새를 하나 더 둔다.
+`@workout/server-integrations/garmin-collection`의 `GarminActivityCollector` interface와 provider 중립 runner다.
+임시 수집(`garmin-connect-unofficial`)과 공식 adapter(`garmin-official`)는 같은 interface를 구현하고, runner가 lease·
+암호화 credential CAS·기존 import 경로·삭제 억제·실패 정책을 공통으로 맡는다. 중복 판정은
+`garmin_activity_ledger`(Garmin 활동 ID 기준, 행마다 provider와 `official`을 기록)로 한다. 출처는 행 단위로
+구분되므로 위 문장의 "섞지 않는다"(CLI manifest)와 충돌하지 않는다. 공식 활동 ID가 Garmin Connect 활동 ID와 같은지는
+3절 "활동 identity" 항목으로 재확인하기 전까지 가정이다. 교체·제거 절차는
+[Garmin 설정](../garmin-setup.md#비공식-임시-수집-m1-06b-tmp)에 있다.
+
 ## 3. 권한 확보 후 실제 파트너 환경에서 재확인할 항목
 
 [M1-06c](../progress/M1-06c.md)는 "검증 공급자는 로컬 HTTP 합성 fixture다… token 만료 필드·permissions

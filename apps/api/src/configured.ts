@@ -57,6 +57,10 @@ import {
   createUnconfiguredGarminService,
 } from '@workout/server-identity/garmin-service';
 import { createGarminStore } from '@workout/server-persistence/garmin';
+import { createGarminUnofficialStore } from '@workout/server-persistence/garmin-unofficial';
+import { createGarminUnofficialWorker } from '@workout/server-integrations/garmin-unofficial-worker';
+import { createGarminUnofficialService } from '@workout/server-integrations/garmin-unofficial-service';
+import { configuredGarminUnofficial } from './garmin-unofficial-deployment.js';
 import { createApi } from './app.js';
 
 const environmentSchema = z.object({
@@ -131,10 +135,14 @@ export async function createConfiguredApi(
     env.PUBLIC_ORIGIN,
     allowInsecureLocalhost,
   );
+  // M1-06b-tmp: the temporary unofficial owner-only collector. Null (off) unless configured,
+  // and always null in CI.
+  const garminUnofficialDeployment = configuredGarminUnofficial(environment);
   // Discovery failures carry only a fixed reason (never provider text). Before the API's
   // logger exists they go to stderr as the same one-line JSON.
   let log: { warn(event: OidcEvent): void } | undefined;
   let routingLog: { warn(event: object): void } | undefined;
+  let garminUnofficialLog: { info(event: object): void } | undefined;
   const provider = await createOidcProvider(
     {
       issuer: env.OIDC_ISSUER,
@@ -206,6 +214,25 @@ export async function createConfiguredApi(
       publicOrigin: env.PUBLIC_ORIGIN,
       allowInsecureLocalhost,
     });
+    const activities = createActivityRepository(database);
+    const garminUnofficialStore = createGarminUnofficialStore(database);
+    // Fixed event names and codes only; never provider text, a session or a password.
+    const garminUnofficialEvent = (event: object) => garminUnofficialLog?.info(event);
+    const garminUnofficial =
+      garminUnofficialDeployment === null
+        ? undefined
+        : createGarminUnofficialService({
+            ownerAthleteId: garminUnofficialDeployment.ownerAthleteId,
+            store: garminUnofficialStore,
+            worker: createGarminUnofficialWorker({
+              python: garminUnofficialDeployment.python,
+              onEvent: garminUnofficialEvent,
+            }),
+            cipher: garminUnofficialDeployment.cipher,
+            profilePin: garminUnofficialDeployment.profilePin,
+            activities,
+            onEvent: garminUnofficialEvent,
+          });
     const app = createApi({
       ...(env.WORKOUT_RELEASE === undefined ? {} : { version: env.WORKOUT_RELEASE }),
       ...(options.logStream === undefined ? {} : { logStream: options.logStream }),
@@ -257,7 +284,9 @@ export async function createConfiguredApi(
             ),
           }
         : {}),
-      activities: createActivityRepository(database),
+      activities,
+      ...(garminUnofficial === undefined ? {} : { garminUnofficial }),
+      garminCollectionProvenance: garminUnofficialStore,
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
       dashboard: createDashboardRepository(database),
@@ -316,6 +345,11 @@ export async function createConfiguredApi(
     });
     log = app.log;
     routingLog = app.log;
+    garminUnofficialLog = app.log;
+    if (garminUnofficial !== undefined) {
+      app.log.info({ event: 'garmin_unofficial_enabled', official: false });
+      garminUnofficial.start();
+    }
     if (routing !== null)
       app.log.info({
         event: 'routing_admission_configured',

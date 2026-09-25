@@ -9,7 +9,10 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
-    "./routing": "./src/routing/index.ts"
+    "./routing": "./src/routing/index.ts",
+    "./garmin-collection": "./src/garmin/collection.ts",
+    "./garmin-unofficial-worker": "./src/garmin/unofficial-worker.ts",
+    "./garmin-unofficial-service": "./src/garmin/unofficial-service.ts"
   },
   "dependencies": {
     "@workout/contracts": "workspace:*",

@@ -94,7 +94,7 @@ export async function startFixtureOidc() {
         'cache-control': 'no-store',
       });
       reply.end(
-        `<!doctype html><html lang="en"><head><title>Fixture identity provider</title></head><body><main><h1>Fixture identity provider</h1><p>Local synthetic accounts for automated verification.</p><p><a href="/choose?id=${id}&amp;subject=alice">Sign in as Alice</a></p><p><a href="/choose?id=${id}&amp;subject=bob">Sign in as Bob</a></p></main></body></html>`,
+        `<!doctype html><html lang="en"><head><title>Fixture identity provider</title></head><body><main><h1>Fixture identity provider</h1><p>Local synthetic accounts for automated verification.</p><p><a href="/choose?id=${id}&amp;subject=alice">Sign in as Alice</a></p><p><a href="/choose?id=${id}&amp;subject=bob">Sign in as Bob</a></p><p><a href="/choose?id=${id}&amp;subject=carol">Sign in as Carol</a></p></main></body></html>`,
       );
       return;
     }
@@ -106,7 +106,7 @@ export async function startFixtureOidc() {
       if (
         !authorization ||
         authorization.expires <= Date.now() ||
-        (subject !== 'alice' && subject !== 'bob')
+        (subject !== 'alice' && subject !== 'bob' && subject !== 'carol')
       )
         return json(reply, 400, { error: 'invalid_request' });
       const code = random();

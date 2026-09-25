@@ -29,6 +29,7 @@ function operationsResponse() {
     audit: [],
   });
 }
+const unofficialBase = '/bff/v1/integrations/garmin-unofficial/';
 afterEach(() => {
   vi.unstubAllGlobals();
   window.history.replaceState(null, '', '/');
@@ -136,6 +137,8 @@ it('never relabels a historical successful receipt as the current consent after 
     vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      // The owner-only unofficial Garmin panel is off here (M1-06b-tmp).
+      if (path.startsWith(unofficialBase)) return response(null, 404);
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         commands += 1;
@@ -227,6 +230,8 @@ it('clears an expired server session and its private consent controls', async ()
     vi.fn(async (path: string) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      // The owner-only unofficial Garmin panel is off here (M1-06b-tmp).
+      if (path.startsWith(unofficialBase)) return response(null, 404);
       if (path === '/bff/v1/session') return response(session);
       reads += 1;
       return reads === 1
@@ -322,4 +327,40 @@ describe('M2-01w: sign-in failure screen and provider sign-out', () => {
     await screen.findByRole('link', { name: 'OIDC로 로그인' });
     expect(navigate).not.toHaveBeenCalled();
   });
+});
+
+it('shows the unofficial Garmin panel apart from the official one and warns in account deletion', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (path: string) => {
+      if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
+      if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/session') return response(session);
+      if (path === `${unofficialBase}status`)
+        return response({
+          provider: 'garmin-connect-unofficial',
+          official: false,
+          state: 'not_connected',
+          connectedAt: null,
+          profilePinned: false,
+          mfaExpiresAt: null,
+          schedule: { enabled: false, paused: false, intervalHours: 6, nextRunAt: null },
+          blockedUntil: null,
+          loginLockedUntil: null,
+          runRequested: false,
+          lastRun: null,
+        });
+      return response({ kind: 'ai', granted: false, revision: 1 });
+    }),
+  );
+  render(<IdentityWorkspace />);
+  const official = await screen.findByRole('heading', { name: 'Garmin 연결 설정' });
+  const unofficial = await screen.findByRole('heading', { name: '비공식 임시 Garmin 연결' });
+  expect(official.closest('section')).not.toBe(unofficial.closest('section'));
+  expect(
+    official.compareDocumentPosition(unofficial) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const deletion = screen.getByRole('heading', { name: '앱 계정과 데이터 삭제' });
+  const notice = await screen.findByText(/비공식 임시 Garmin 연결: 계정을 삭제하면/);
+  expect(deletion.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

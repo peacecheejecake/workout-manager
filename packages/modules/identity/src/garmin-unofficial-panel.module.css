@@ -1,0 +1,100 @@
+.panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-6, 24px);
+  color: var(--ink, #182131);
+}
+.panel button,
+.panel input {
+  font: inherit;
+}
+.panel button {
+  min-height: 44px;
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-control, 12px);
+  background: var(--surface-strong, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+.panel button:disabled,
+.panel input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.panel button:focus-visible,
+.panel input:focus-visible {
+  outline: 2px solid var(--accent, #6256b8);
+  outline-offset: 3px;
+}
+.warning {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-4, 16px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border: 2px solid var(--danger, #a8344b);
+  border-radius: var(--radius-control, 12px);
+  background: var(--surface, #f7f8fa);
+  color: var(--ink, #182131);
+}
+.warning ul {
+  margin-block: var(--space-2, 8px) 0;
+  padding-inline-start: var(--space-5, 20px);
+}
+.state {
+  font-weight: 600;
+}
+.form {
+  display: grid;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+  max-width: 32rem;
+  margin-block: var(--space-4, 16px);
+}
+.form input:not([type='checkbox']) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--space-2, 8px);
+  border: 1px solid var(--ink-muted, #536075);
+  border-radius: var(--radius-control, 12px);
+  background: var(--surface-strong, #fff);
+  color: inherit;
+}
+.form > button {
+  justify-self: start;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: 44px;
+  margin-block: var(--space-2, 8px);
+  cursor: pointer;
+}
+.toggle input {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin: 0;
+  flex: none;
+}
+.disconnect {
+  margin-block: var(--space-4, 16px);
+  padding-block-start: var(--space-2, 8px);
+  border-block-start: 1px solid var(--line, #d6dbe3);
+}
+.run {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1, 4px) var(--space-3, 12px);
+}
+.run dd {
+  min-width: 0;
+  margin: 0;
+}

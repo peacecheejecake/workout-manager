@@ -29,6 +29,7 @@ import {
   migrate,
   grantOperations,
   grantGarmin,
+  grantGarminUnofficial,
   grantCheckIns,
   grantSessionCompletions,
   grantPlanScenarios,
@@ -45,6 +46,7 @@ import {
   grantCourseThumbnailWorker,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
+import { createGarminUnofficialStore } from '../packages/server/persistence/src/garmin-unofficial.js';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.js';
 import { createActivityRepository } from '../packages/server/persistence/src/activities.js';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.js';
@@ -594,6 +596,7 @@ async function execute() {
     );
     await grantOperations(url('drill_source'), 'drill_runtime');
     await grantGarmin(url('drill_source'), 'drill_runtime');
+    await grantGarminUnofficial(url('drill_source'), 'drill_runtime');
     await grantCheckIns(url('drill_source'), 'drill_runtime');
     await grantSessionCompletions(url('drill_source'), 'drill_runtime');
     await grantPlanScenarios(url('drill_source'), 'drill_runtime');
@@ -1145,6 +1148,54 @@ async function execute() {
     );
     checks.push('two_synthetic_tenants_seeded');
     checks.push('synthetic_candidate_bodies_in_source_export_v13_historical_v8_artifact_readable');
+    // M1-06b-tmp: the retained tenant also holds an unofficial Garmin session (sealed under a
+    // throwaway key), a pinned profile and one ledger entry. The export carries none of the
+    // session; the restore below must not bring the session back.
+    const unofficialStore = createGarminUnofficialStore(sourceDb);
+    const unofficialIv = randomBytes(12),
+      unofficialCipher = createCipheriv('aes-256-gcm', randomBytes(32), unofficialIv);
+    const unofficialEnvelope = {
+      keyId: 'synthetic',
+      iv: unofficialIv.toString('base64'),
+      ciphertext: Buffer.concat([
+        unofficialCipher.update('synthetic-unofficial-session'),
+        unofficialCipher.final(),
+      ]).toString('base64'),
+      tag: unofficialCipher.getAuthTag().toString('base64'),
+    };
+    assert.equal(
+      await unofficialStore.commitLogin({
+        athleteId: retainedAthlete,
+        profileHash: 'd'.repeat(64),
+        encryptedSession: unofficialEnvelope,
+        now: new Date(),
+      }),
+      'connected',
+    );
+    const unofficialSource = (
+      await sourceDb.tenant(retainedAthlete, (tx) =>
+        tx.query('SELECT kind,source_id FROM activity_source_head WHERE athlete_id=$1 LIMIT 1', [
+          retainedAthlete,
+        ]),
+      )
+    ).rows[0];
+    assert.ok(unofficialSource);
+    await unofficialStore.recordCollected({
+      athleteId: retainedAthlete,
+      garminActivityId: '4242',
+      provider: 'garmin-connect-unofficial',
+      outcome: 'imported',
+      sources: [
+        { kind: String(unofficialSource['kind']), sourceId: String(unofficialSource['source_id']) },
+      ],
+      now: new Date(),
+    });
+    const unofficialExport = JSON.stringify(
+      await createOperationsRepository(sourceDb).exportAccount(retainedAthlete),
+    );
+    assert.ok(!unofficialExport.includes(unofficialEnvelope.ciphertext));
+    assert.ok(!unofficialExport.includes('encrypted_session'));
+    checks.push('unofficial_garmin_session_seeded_and_absent_from_export');
     // These extra tenants add no identity, provider connection or activity to the original checks.
     const withdrawnAthlete = randomUUID();
     const {
@@ -3133,6 +3184,17 @@ async function execute() {
       await restored.query(
         'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
       );
+      // M1-06b-tmp: an unofficial Garmin session in the backup may be one the owner has since
+      // disconnected, erased or rotated, and it can never be revoked at Garmin. It is never
+      // revived: every restored session is discarded and the owner logs in again. The pinned
+      // profile and the activity ledger are kept (they are not credentials); an in-flight run
+      // is closed. Nothing is added to the official revocation queue.
+      await restored.query(
+        "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,clock_timestamp()) WHERE state='running'",
+      );
+      await restored.query(
+        "UPDATE garmin_unofficial_connection SET state=CASE WHEN state='connected' THEN 'reconnect_required' ELSE state END,encrypted_session=NULL,session_generation=session_generation+1,lease_id=NULL,lease_until=NULL,run_requested_at=NULL",
+      );
       // Activity deletions that happened after the backup are suppression, not a cache:
       // the restored cluster must re-apply them before any runtime read, and must reclaim
       // the track objects the archive brought back with them.
@@ -3366,6 +3428,37 @@ async function execute() {
     ).rows;
     assert.deepEqual(replayedCleanup, cleanupLedger);
     checks.push('all_restored_garmin_credentials_invalidated_latest_cleanup_ledger_preserved');
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT count(*)::int AS count FROM garmin_unofficial_connection WHERE encrypted_session IS NOT NULL',
+        )
+      ).rows[0].count,
+      0,
+    );
+    assert.deepEqual(
+      (
+        await restored.query(
+          'SELECT state,profile_hash FROM garmin_unofficial_connection WHERE athlete_id=$1',
+          [retainedAthlete],
+        )
+      ).rows,
+      [{ state: 'reconnect_required', profile_hash: 'd'.repeat(64) }],
+    );
+    assert.equal(
+      (
+        await restored.query(
+          "SELECT count(*)::int AS count FROM garmin_activity_ledger WHERE athlete_id=$1 AND garmin_activity_id='4242'",
+          [retainedAthlete],
+        )
+      ).rows[0].count,
+      1,
+    );
+    assert.deepEqual(
+      (await restored.query('SELECT * FROM garmin_private.revocation ORDER BY id')).rows,
+      cleanupLedger,
+    );
+    checks.push('restored_unofficial_garmin_sessions_discarded_pin_and_ledger_kept');
     const restoreDb = database('drill_restore');
     const restoredConstraints = createCoachingConstraintRepository(restoreDb);
     assert.deepEqual(
@@ -4931,6 +5024,7 @@ async function execute() {
       'replay_latest_external_evidence_withdrawal_ledger_and_current_ai_consent',
       'invalidate_all_restored_sessions_and_login_attempts',
       'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
+      'discard_restored_unofficial_garmin_sessions_keeping_pin_and_ledger',
     ],
     checks,
     checkCount: checks.length,
@@ -4941,6 +5035,7 @@ async function execute() {
       'Requires an independently retained, complete and current evidence withdrawal ledger with explicit exists/absent AI consent states covering backup owners, current consent owners and snapshot owners captured together; a missing, incomplete or stale ledger cannot authorize production restoration.',
       'Model output is untrusted and capped at 1 MiB per row; account export remains capped at 8 MiB. The restore replay uses the evidence withdrawal trigger to purge output before runtime access.',
       'Garmin revocation requires the current encrypted cleanup ledger outside the restored snapshot; all restored connection tokens are discarded and users must reconnect.',
+      'Unofficial Garmin sessions (M1-06b-tmp) in the snapshot are discarded, never revived and never queued for revocation (they cannot be revoked at Garmin); the owner must log in again and end any Garmin-side session themselves.',
       'An activity recorded after the database dump and deleted before the ledger capture is absent from the restored cluster; its ledger entry must carry the source revision and content hash, from which the replay rebuilds a value-less deleted canonical row, the source head and the suppression row, and arms the purge of its object directory. An entry that cannot be verified (malformed, foreign id, unknown or erased tenant, conflicting source) aborts the replay.',
       'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
     ],

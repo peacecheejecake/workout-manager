@@ -45,6 +45,10 @@ Garmin OAuth 추가 후에는 백업 안의 모든 Garmin credential·미완료 
 내용을 노출하지 않는다. 최신 cleanup 원장이 없으면 안전한 철회 재개의 증거가 부족하다.
 기존 활동·계획 복구와 Garmin 재연결 상태는 구분한다. [Garmin 설정](garmin-setup.md) 참고.
 
+비공식 임시 Garmin 수집(M1-06b-tmp)의 session도 백업에서 되살리지 않는다. 복원된 모든 비공식 session을 지우고
+연결을 재연결 필요로 둔다. 철회할 방법이 없으므로 철회 queue에 넣지 않으며, profile 고정과 활동 원장은 유지한다.
+절차는 [Garmin 설정의 비공식 임시 수집](garmin-setup.md#비공식-임시-수집-m1-06b-tmp) 절에 있다.
+
 이 저장소에는 원격 암호화 backup 저장소·별도 삭제 원장 전달 파이프라인·retention/만료 job·재해복구
 인프라가 없다. 운영 배포 전 이를 구성하고 실제 RPO/RTO·복구 훈련을 별도로 검증해야 한다.
 백업 사본의 삭제는 앱 거래와 즉시 동기화되지 않는다는 점을 계정 화면에 표시한다.

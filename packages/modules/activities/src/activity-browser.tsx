@@ -24,6 +24,7 @@ import styles from './activity-browser.module.css';
 import { activityContextSchema } from '@workout/contracts/activity-context';
 import { BrowserBlockFilter } from './browser-block-filter';
 import { ActivityDelete } from './activity-delete';
+import { CollectionProvenance } from './collection-provenance';
 import { ActivityBatchDelete } from './activity-batch-delete';
 import { ActivityBatchLink } from './activity-batch-link';
 import { ActivityBatchExport } from './activity-batch-export';
@@ -582,6 +583,12 @@ function Workspace({
                     </p>
                     <p>출처 식별자: {detail.data.activity.source.sourceId}</p>
                     <p>원본 내용 해시: {detail.data.activity.source.contentHash}</p>
+                    <CollectionProvenance
+                      athleteId={athleteId}
+                      sessionId={sessionId}
+                      activityId={detail.data.activity.id}
+                      transport={transport}
+                    />
                     <p>
                       요약 관측 시각:{' '}
                       <time dateTime={detail.data.observedAt}>{detail.data.observedAt}</time>

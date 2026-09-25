@@ -1,4 +1,10 @@
 import { registerGarminRoutes, registerGarminCallback } from './garmin-routes.js';
+import {
+  classifyGarminUnofficialError,
+  registerGarminUnofficialRoutes,
+  type GarminCollectionProvenancePort,
+} from './garmin-unofficial-routes.js';
+import type { GarminUnofficialService } from '@workout/server-integrations/garmin-unofficial-service';
 import { GarminError, type GarminService } from '@workout/server-identity/garmin-service';
 import {
   registerProductRoutes,
@@ -27,6 +33,13 @@ export interface ApiOptions extends ProductRepositories {
   auth: AuthenticationPort;
   identity?: IdentityService;
   garmin?: GarminService;
+  /**
+   * The TEMPORARY, UNOFFICIAL owner-only Garmin collector (M1-06b-tmp). Absent unless the
+   * deployment configures it; its routes are then not registered at all.
+   */
+  garminUnofficial?: GarminUnofficialService;
+  /** Collection provenance of stored activities; kept after the adapter is removed. */
+  garminCollectionProvenance?: GarminCollectionProvenancePort;
   consent: ConsentPort;
   allowedOrigins: readonly string[];
   logStream?: Writable;
@@ -95,6 +108,8 @@ function requireCsrf(request: FastifyRequest, principal: Principal, origins: Rea
 }
 
 function classifyError(error: unknown): { statusCode: number; code: string } {
+  const unofficial = classifyGarminUnofficialError(error);
+  if (unofficial !== null) return unofficial;
   if (error instanceof GarminError)
     return {
       statusCode:
@@ -188,6 +203,10 @@ export function createApi(options: ApiOptions): FastifyInstance {
     });
   });
   if (options.close !== undefined) app.addHook('onClose', options.close);
+  if (options.garminUnofficial !== undefined) {
+    const unofficial = options.garminUnofficial;
+    app.addHook('onClose', () => unofficial.close());
+  }
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: { code: 'NOT_FOUND' } }),
   );
@@ -277,6 +296,12 @@ export function createApi(options: ApiOptions): FastifyInstance {
       }
       registerProductRoutes(routes, options, principal);
       registerGarminRoutes(routes, options.garmin, principal);
+      registerGarminUnofficialRoutes(
+        routes,
+        options.garminUnofficial,
+        options.garminCollectionProvenance,
+        principal,
+      );
       routes.get('/session', async (request) => {
         const value = principal(request);
         return value.method === 'cookie'

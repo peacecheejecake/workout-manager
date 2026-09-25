@@ -50,6 +50,7 @@ const migrationFiles = [
   '045_tenant_object_purge_visibility.sql',
   '046_object_scope_purge.sql',
   '047_routing_admission.sql',
+  '048_garmin_unofficial.sql',
 ] as const;
 
 /**
@@ -190,6 +191,27 @@ export async function grantGarmin(connectionString: string, runtimeRole: string)
     ]) {
       await pool.query(`GRANT EXECUTE ON FUNCTION public.${signature} TO "${runtimeRole}"`);
     }
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * The temporary unofficial collector (M1-06b-tmp). The runtime role reads and writes its own
+ * tenant's rows only (RLS) and gets nothing on the official connection or the revocation queue
+ * beyond what grantGarmin already gives: an unofficial session is never queued for revocation.
+ */
+export async function grantGarminUnofficial(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE,DELETE ON garmin_unofficial_connection,garmin_unofficial_run,
+       garmin_activity_ledger,garmin_activity_ledger_source TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
@@ -15,6 +15,8 @@ export interface OperationsPanelProps {
   session: { athleteId: string; sessionId: string; csrfToken: string };
   onSignedOut(): void;
   onSessionChanged(): void;
+  /** Extra erasure warnings composed by the host, shown inside the account-deletion section. */
+  eraseNotice?: ReactNode;
 }
 const sessionChangedSchema = z.object({ error: z.object({ code: z.literal('SESSION_CHANGED') }) });
 type RequestState = 'idle' | 'pending' | 'error';
@@ -29,7 +31,12 @@ export function OperationsPanel(props: OperationsPanelProps) {
   );
 }
 
-function OperationsLifetime({ session, onSignedOut, onSessionChanged }: OperationsPanelProps) {
+function OperationsLifetime({
+  session,
+  onSignedOut,
+  onSessionChanged,
+  eraseNotice,
+}: OperationsPanelProps) {
   const headingId = useId();
   const confirmationId = useId();
   const client = useQueryClient();
@@ -272,6 +279,7 @@ function OperationsLifetime({ session, onSignedOut, onSessionChanged }: Operatio
             백업 사본은 별도로 보관됩니다. 보관 기간이 만료되거나 삭제 정보를 반영한 안전한 복구
             절차가 적용될 때까지 남을 수 있습니다.
           </p>
+          {eraseNotice}
           <label htmlFor={confirmationId}>삭제 확인 문구</label>
           <input
             id={confirmationId}

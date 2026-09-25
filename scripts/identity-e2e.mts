@@ -80,9 +80,23 @@ import {
   grantCoachingRunWorker,
   grantCoreEvidenceSnapshots,
   grantGarmin,
+  grantGarminUnofficial,
   grantGarminWorker,
   migrate,
 } from '../packages/server/persistence/src/migrate.ts';
+import { createGarminUnofficialStore } from '../packages/server/persistence/src/garmin-unofficial.ts';
+import { createGarminUnofficialWorker } from '../packages/server/integrations/src/garmin/unofficial-worker.ts';
+import {
+  createGarminProfilePin,
+  createGarminUnofficialService,
+} from '../packages/server/integrations/src/garmin/unofficial-service.ts';
+import { unofficialSessionCipher } from '../apps/api/src/garmin-unofficial-deployment.ts';
+import {
+  unofficialOwner,
+  unofficialPython,
+  unofficialScenarioPath,
+  writeUnofficialScenario,
+} from './fixtures/garmin-unofficial.ts';
 import { createIdentityService } from '../packages/server/identity/src/service.ts';
 import { createOidcProvider } from '../packages/server/identity/src/oidc.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
@@ -230,6 +244,7 @@ try {
     );
     await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
     await grantGarmin(adminUrl, 'workout_runtime');
+    await grantGarminUnofficial(adminUrl, 'workout_runtime');
     await admin.query(
       'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
@@ -290,6 +305,27 @@ try {
     const providerServer = await startFixtureOidc();
     closers.push(() => providerServer.close());
   }
+  // M1-06b-tmp: the temporary unofficial collector, owned by the fixture account "Carol".
+  // Her account is created up front with a fixed id so the owner setting can name it, as a
+  // deployment names its owner. The provider is the Python worker's synthetic one.
+  if (oidcMode === 'fixture') {
+    const owner = new Pool({ connectionString: adminUrl });
+    try {
+      await owner.query(
+        'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+        [unofficialOwner.athleteId, fixtureOidc.issuer, unofficialOwner.subject],
+      );
+    } finally {
+      await owner.end();
+    }
+  }
+  await writeUnofficialScenario();
+  closers.push(() => rm(unofficialScenarioPath(), { force: true }));
+  const unofficialInterpreter = unofficialPython(join(import.meta.dirname, '..'));
+  if (unofficialInterpreter === null)
+    console.log(
+      'Identity E2E: no Python environment (run `uv sync`); the unofficial Garmin collector is off.',
+    );
   const garminServer = await startFixtureGarmin();
   closers.push(() => garminServer.close());
   const store = createIdentityRepository({ connectionString: runtimeUrl });
@@ -407,9 +443,32 @@ try {
   // Present only when a dataset directory is configured for the run; otherwise place
   // search and elevation answer `no_dataset`, which is a state the screens show.
   const geoDatasets = await loadGeoDatasets();
+  const garminUnofficialStore = createGarminUnofficialStore(database);
+  const activities = createActivityRepository(database);
+  const garminUnofficial =
+    unofficialInterpreter === null
+      ? undefined
+      : createGarminUnofficialService({
+          ownerAthleteId: unofficialOwner.athleteId,
+          store: garminUnofficialStore,
+          worker: createGarminUnofficialWorker({
+            python: unofficialInterpreter,
+            fixture: unofficialScenarioPath(),
+            minIntervalSeconds: 1,
+          }),
+          cipher: unofficialSessionCipher({
+            activeKeyId: 'fixture-unofficial',
+            keys: { 'fixture-unofficial': Buffer.alloc(32, 11).toString('base64') },
+          }),
+          profilePin: createGarminProfilePin(Buffer.alloc(32, 13)),
+          activities,
+        });
+  garminUnofficial?.start();
   const api = createApi({
     auth: identity,
     identity,
+    ...(garminUnofficial === undefined ? {} : { garminUnofficial }),
+    garminCollectionProvenance: garminUnofficialStore,
     garmin: createGarminService({
       store: createGarminStore(database),
       provider: garminProvider,
@@ -448,7 +507,7 @@ try {
       enabled: true,
       environment: 'test',
     }),
-    activities: createActivityRepository(database),
+    activities,
     activityContext: createActivityContextRepository(database),
     operations: createOperationsRepository(database),
     resources: createPrivateTextResourceRepository(database),

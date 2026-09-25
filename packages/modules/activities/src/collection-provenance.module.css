@@ -1,0 +1,17 @@
+.unofficial {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 2px solid var(--danger, #a8344b);
+  border-radius: var(--radius-control, 12px);
+  background: var(--surface, #f7f8fa);
+  color: var(--ink, #182131);
+}
+.unofficial p {
+  margin-block: var(--space-1, 4px);
+}
+.official {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -109,6 +109,10 @@
       "types": "./src/garmin.ts",
       "default": "./dist/garmin.js"
     },
+    "./garmin-unofficial": {
+      "types": "./src/garmin-unofficial.ts",
+      "default": "./dist/garmin-unofficial.js"
+    },
     "./check-ins": {
       "types": "./src/check-ins.ts",
       "default": "./dist/check-ins.js"

@@ -48,6 +48,7 @@
     "./course-preferences": "./src/course-preferences.ts",
     "./operations": "./src/operations.ts",
     "./garmin": "./src/garmin.ts",
+    "./garmin-unofficial": "./src/garmin-unofficial.ts",
     "./check-ins": "./src/check-ins.ts",
     "./dashboard": "./src/dashboard.ts",
     "./activity-context": "./src/activity-context.ts",

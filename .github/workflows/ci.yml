@@ -25,6 +25,14 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # M1-06b-tmp: the unofficial Garmin collector's bridge tests and E2E drive the Python
+      # worker with its SYNTHETIC provider. The default install only: `uv sync --locked`
+      # without `--extra garmin` never pulls garminconnect or curl_cffi.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.8'
+          python-version: '3.13'
+      - run: uv sync --locked
       - run: pnpm check
       - run: pnpm test:coverage
       - run: pnpm build
@@ -136,6 +144,14 @@ jobs:
             sudo apt-get install --no-install-recommends --yes postgresql-16
           fi
           echo "PG_BIN=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+      # M1-06b-tmp: the unofficial Garmin collector's bridge tests and E2E drive the Python
+      # worker with its SYNTHETIC provider. The default install only: `uv sync --locked`
+      # without `--extra garmin` never pulls garminconnect or curl_cffi.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.8'
+          python-version: '3.13'
+      - run: uv sync --locked
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - name: Verify login, tenant consent isolation and logout

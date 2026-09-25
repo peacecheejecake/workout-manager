@@ -340,6 +340,19 @@
         "unit mutants A1, B1-B8, C1-C6 each fail (15/15); the independent review re-killed four of its own path-guard mutants"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01al.md."
+    },
+    {
+      "node": "M1-06b-tmp",
+      "date": "2026-09-25",
+      "rows": ["V2-A20"],
+      "decision": "User decided on 2026-09-25 to use a temporary unofficial python-garminconnect gate for owner-only in-app collection until the official Garmin integration (EXT-G). Temporary node M1-06b-tmp built it under the conditions in docs/implementation/research/garmin-temporary-gate.md; four independent security review rounds, round 4 APPROVE.",
+      "change": "No verdict change; V2-A20 stays partial with new evidence; counts unchanged (passed 81, partial 23, not_executed 6). The node is not evidence for EXT-G, M0-07b, M1-06b, M2-07 or G2.",
+      "executed": [
+        "apps/api/tests/garmin-unofficial-collector.integration.test.ts on a runner-made PostgreSQL 14 cluster: an activity collected then deleted is not downloaded again (the collection ledger skips it), and a manually imported activity deleted by the owner comes back from collection as `suppressed`",
+        "tests/identity/garmin-unofficial.spec.ts in both shells under the harness lock (4 passed), including a collection re-run after deletion; full pnpm test:identity x2 on the pre-review tree (base e00a992; 232 passed, 3 skipped each) and once after the review round 2 fixes (249 passed, 3 skipped); the final round 3 change (worker bridge only) re-ran the worker and API tests",
+        "mutants M8a (import source kind changed to bypass suppression) and M8b (ledger skip removed) each fail; the independent security review (four rounds, round 4 APPROVE on tree 15274da9) did not re-run mutants for this row"
+      ],
+      "note": "Re-judged by root from the temporary node's executed evidence and its independent review; see docs/implementation/progress/M1-06b-tmp.md."
     }
   ],
   "rounds": [
@@ -1689,7 +1702,7 @@
       "evidence": [
         "tests/identity/course-acceptance.spec.ts step 12: re-import of the same source is `suppressed`"
       ],
-      "reason": "Exercised through the user import API, not a provider event.",
+      "reason": "M1-06b-tmp amendment: still partial. A collection path now receives the same activity again after a local deletion in two cases (collected then deleted: the collection ledger prevents a re-download; imported manually then deleted: the collected import is `suppressed`), executed in PostgreSQL integration tests and both-shell E2E with mutants M8a and M8b failing. The provider is a synthetic fixture behind the temporary owner-only unofficial adapter, the real Garmin account run is not_executed, and there is still no product provider event path (official M1-06b), so this is not passed.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1697,7 +1710,18 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M1-06b-tmp",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Exercised through the user import API, not a provider event.",
+        "executed": [
+          "apps/api/tests/garmin-unofficial-collector.integration.test.ts on a runner-made PostgreSQL 14 cluster: an activity collected then deleted is not downloaded again (the collection ledger skips it), and a manually imported activity deleted by the owner comes back from collection as `suppressed`",
+          "tests/identity/garmin-unofficial.spec.ts in both shells under the harness lock (4 passed), including a collection re-run after deletion; full pnpm test:identity x2 on the pre-review tree (base e00a992; 232 passed, 3 skipped each) and once after the review round 2 fixes (249 passed, 3 skipped); the final round 3 change (worker bridge only) re-ran the worker and API tests",
+          "mutants M8a (import source kind changed to bypass suppression) and M8b (ledger skip removed) each fail; the independent security review (four rounds, round 4 APPROVE on tree 15274da9) did not re-run mutants for this row"
+        ]
+      }
     },
     {
       "id": "V2-A34",
