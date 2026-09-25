@@ -326,6 +326,20 @@
         "pnpm test and two identity runs on the merged tree"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-j.md."
+    },
+    {
+      "node": "M2-01al",
+      "date": "2026-09-25",
+      "rows": ["K-performance", "P7-parser-bounds"],
+      "decision": "Gap node M2-01al hardened the performance evaluator after the M2-01aj review: unread child RSS fails a judged run, a time-only failure gets one disclosed re-run, and outputs are refused under directories tools delete. Independent review round 1 APPROVE with non-blocking N1-N5; N1-N3 applied and re-reviewed (round 2 APPROVE); N4, N5 and the browser re-run are split to M2-01ar.",
+      "change": "No verdict change; K-performance and P7-parser-bounds stay passed with updated reasons and limits; counts unchanged (passed 81, partial 23, not_executed 6).",
+      "executed": [
+        "scripts/probe-performance-budget.mts judged server run 2026-09-25T03:50:57Z under the harness lock (load 3.91-4.85): 18/18 budgets, 11/11 checks including the new worker-parse-process-rss-read-every-parse (20 of 20), passed on the first attempt; sourceTree diffSha256 2f1b47bd; after review round 1 only the output-path guard and unit tests changed (diffSha256 00a40cf3), and the independent re-review confirmed the guard cannot change a sample or verdict",
+        "probe controls R1-R8 (docs/implementation/progress/M2-01al.md section 3.3): unread child RSS fails the run (R1) and passed before (R2); an injected first-attempt burst is re-run once and passes (R3) and fails without the re-run (R4); a real regression fails both attempts (R5, 502 and 499 ms against 200); a memory failure is never re-run (R6); a log under test-results/ is refused before measuring (R8) and was written without the guard (R7)",
+        "packages/tooling/tests/performance-budget.test.ts 60/60; re-judging every recorded run with the new evaluator changed no verdict",
+        "unit mutants A1, B1-B8, C1-C6 each fail (15/15); the independent review re-killed four of its own path-guard mutants"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01al.md."
     }
   ],
   "rounds": [
@@ -1982,7 +1996,7 @@
         "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)",
         "docs/implementation/progress/M2-01aj.md"
       ],
-      "reason": "M2-01aj amendment: still passed, desktop only. Parse child process peak RSS is now budgeted (worker.parseProcessPeakRssMiB, 300 MiB from three record-only baselines) and api.processPeakRssMiB is re-derived for the child-process architecture (1,100 -> 800 MiB); the implementer's judged run and one review judged run on the reviewed code pass 18/18; a third review run during a short load burst failed worker.parseMs only (M2-01al). Limits: child RSS is read every 20 ms, so it is a lower bound of the true peak; the combined RSS of up to four children is recorded only; the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply, and the 1-minute load average can lag short bursts (M2-01al).",
+      "reason": "M2-01al amendment: still passed, desktop only. A judged run now fails when any parse had no child RSS reading, and any failure of time budgets alone gets one disclosed automatic re-run (aimed at short load bursts the 1-minute load average misses, but applied whatever the cause) whose pair passes only if the re-run passes by itself; memory, size and check failures are never re-run. Probe results and logs can no longer be written where Playwright or coverage tools delete them. The judged run passes 18/18 budgets and 11/11 checks. Limits: a time regression within a few percent of its budget gets two attempts (about 0.5 per attempt becomes about 0.75 for the pair), while one clearly past the budget fails both; the browser spec has no re-run and a manual re-run after a failed pair is not yet restricted (M2-01ar); the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) and the M2-01aj child-RSS sampling limits still apply.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1991,15 +2005,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01aj",
+        "node": "M2-01al",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01ai amendment: still passed, desktop only. Judged runs on the child-process parser pass all 17 budgets with parse times unchanged. api.processPeakRssMiB no longer includes parse memory; the child's peak RSS (about 170 MiB, up to four children) is recorded without a budget until record-only baselines exist. The M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply; the evaluator now also fails a time budget when loaded samples counted as best case still exceed it.",
+        "previousReason": "M2-01aj amendment: still passed, desktop only. Parse child process peak RSS is now budgeted (worker.parseProcessPeakRssMiB, 300 MiB from three record-only baselines) and api.processPeakRssMiB is re-derived for the child-process architecture (1,100 -> 800 MiB); the implementer's judged run and one review judged run on the reviewed code pass 18/18; a third review run during a short load burst failed worker.parseMs only (M2-01al). Limits: child RSS is read every 20 ms, so it is a lower bound of the true peak; the combined RSS of up to four children is recorded only; the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply, and the 1-minute load average can lag short bursts (M2-01al).",
         "executed": [
-          "scripts/probe-performance-budget.mts: 3 record-only baselines and a judged run on the reviewed tree (diffSha256 085b9a1f, recomputed by the independent review): 18/18 budgets, 10/10 checks; a second judged run by the review passed 18/18, another at load 13.5-23.4 failed worker.parseMs only (disclosed; 1-minute load lags short bursts, M2-01al)",
-          "apps/api/tests/routing-admission.integration.test.ts \"parsers on shutdown (M2-01aj)\": parses are cancelled while the routing drain still waits",
-          "packages/tooling/tests/performance-budget.test.ts: new metric, re-derived API baseline, verifyBaselinesAgainstRuns",
-          "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
+          "scripts/probe-performance-budget.mts judged server run 2026-09-25T03:50:57Z under the harness lock (load 3.91-4.85): 18/18 budgets, 11/11 checks including the new worker-parse-process-rss-read-every-parse (20 of 20), passed on the first attempt; sourceTree diffSha256 2f1b47bd; after review round 1 only the output-path guard and unit tests changed (diffSha256 00a40cf3), and the independent re-review confirmed the guard cannot change a sample or verdict",
+          "probe controls R1-R8 (docs/implementation/progress/M2-01al.md section 3.3): unread child RSS fails the run (R1) and passed before (R2); an injected first-attempt burst is re-run once and passes (R3) and fails without the re-run (R4); a real regression fails both attempts (R5, 502 and 499 ms against 200); a memory failure is never re-run (R6); a log under test-results/ is refused before measuring (R8) and was written without the guard (R7)",
+          "packages/tooling/tests/performance-budget.test.ts 60/60; re-judging every recorded run with the new evaluator changed no verdict",
+          "unit mutants A1, B1-B8, C1-C6 each fail (15/15); the independent review re-killed four of its own path-guard mutants"
         ]
       }
     },
@@ -2621,7 +2635,7 @@
         "packages/track-parsing/tests/limits.test.ts: file bytes at/over bound (:47-52), samples (:76-77), segment/track/depth/text (:80-107)",
         "docs/implementation/progress/M2-01aj.md"
       ],
-      "reason": "M2-01aj amendment: still passed. On top of the M2-01ai heap ceiling in a separate child process, the child's process RSS now has a budget, and on API shutdown the parsers are cancelled at once instead of waiting for the routing drain (B1 killed). Remaining limits from M2-01ai are unchanged: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
+      "reason": "M2-01al amendment: still passed. No product code changed; the parse child process RSS budget can no longer pass when readings are missing (a judged run fails unless every parse was read). Remaining limits from M2-01ai and M2-01aj are unchanged: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2629,15 +2643,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01aj",
+        "node": "M2-01al",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01ai amendment: passed, and the F1 limit is closed. Each parse now runs in a separate child process whose V8 heap is capped by --max-old-space-size (checked against the reported heap limit before any bytes are sent); exceeding it ends only the child and the API answers TRACK_PARSE_MEMORY_EXCEEDED and keeps serving (reproduced across 200 parses in 5 real host processes; restoring the in-process worker aborts the host). Parse time, memory and concurrency assertions from M2-01k-f still hold. Remaining limits: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
+        "previousReason": "M2-01aj amendment: still passed. On top of the M2-01ai heap ceiling in a separate child process, the child's process RSS now has a budget, and on API shutdown the parsers are cancelled at once instead of waiting for the routing drain (B1 killed). Remaining limits from M2-01ai are unchanged: an OS OOM-killer SIGKILL reads as TRACK_PARSE_WORKER_FAILED; off-heap memory is bounded only by the container; an orphaned child can outlive a killed host until its next yield (within the 5 s parse budget).",
         "executed": [
-          "scripts/probe-performance-budget.mts: 3 record-only baselines and a judged run on the reviewed tree (diffSha256 085b9a1f, recomputed by the independent review): 18/18 budgets, 10/10 checks; a second judged run by the review passed 18/18, another at load 13.5-23.4 failed worker.parseMs only (disclosed; 1-minute load lags short bursts, M2-01al)",
-          "apps/api/tests/routing-admission.integration.test.ts \"parsers on shutdown (M2-01aj)\": parses are cancelled while the routing drain still waits",
-          "packages/tooling/tests/performance-budget.test.ts: new metric, re-derived API baseline, verifyBaselinesAgainstRuns",
-          "mutants B1 (old close order), P1 (child RSS not recorded), P2 (child holds 160 MiB more), E1, E2 each fail; the independent review re-killed B1, P2 and its own no-close mutant"
+          "scripts/probe-performance-budget.mts judged server run 2026-09-25T03:50:57Z under the harness lock (load 3.91-4.85): 18/18 budgets, 11/11 checks including the new worker-parse-process-rss-read-every-parse (20 of 20), passed on the first attempt; sourceTree diffSha256 2f1b47bd; after review round 1 only the output-path guard and unit tests changed (diffSha256 00a40cf3), and the independent re-review confirmed the guard cannot change a sample or verdict",
+          "probe controls R1-R8 (docs/implementation/progress/M2-01al.md section 3.3): unread child RSS fails the run (R1) and passed before (R2); an injected first-attempt burst is re-run once and passes (R3) and fails without the re-run (R4); a real regression fails both attempts (R5, 502 and 499 ms against 200); a memory failure is never re-run (R6); a log under test-results/ is refused before measuring (R8) and was written without the guard (R7)",
+          "packages/tooling/tests/performance-budget.test.ts 60/60; re-judging every recorded run with the new evaluator changed no verdict",
+          "unit mutants A1, B1-B8, C1-C6 each fail (15/15); the independent review re-killed four of its own path-guard mutants"
         ]
       }
     },

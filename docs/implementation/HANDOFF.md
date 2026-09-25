@@ -17,11 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01aq](progress/M2-01aq.md)를 완료했다. 코스 후보 경합 통합 시험이 부하에서 후보 저장 0으로 실패하던 문제를, 경합은 그대로 두고 다른
-writer가 없는 anchor 코스에서 후보·경로 저장을 결정적으로 3회씩 하도록 바꿔 고쳤다. 성공 응답이 실제로 리비전을 남기는지도 확인해,
-옛 시험이 놓치던 "성공으로 답했지만 쓰지 않음" 변이를 잡는다. 제품 코드는 바꾸지 않았다.
+[M2-01al](progress/M2-01al.md)를 완료했다. 성능 판정 run은 parse child RSS를 읽지 못한 parse가 하나라도 있으면 실패한다. 1분 부하가
+놓치는 짧은 급증으로 시간 예산만 실패하면 공개되는 자동 재실행을 한 번 하고, 재실행이 스스로 통과할 때만 쌍이 통과한다(메모리·크기·
+check 실패는 재실행하지 않는다). probe 결과·로그는 Playwright·coverage가 지우는 디렉터리에 쓸 수 없고 `verification-logs/`에 둔다.
+K-performance·P7-parser-bounds는 passed 유지다. 예산의 몇 % 안쪽 회귀가 두 번 기회를 받는 한계, 브라우저 재실행과 수동 재판정
+정책은 M2-01ar로 이어진다.
 
-직전 완료: [M2-01k-j](progress/M2-01k-j.md)(왕복 초안과 목표 표시).
+직전 완료: [M2-01aq](progress/M2-01aq.md)(코스 후보 경합 시험의 결정적 단언).
 
 ## 운영 메모
 
@@ -38,8 +40,8 @@ writer가 없는 anchor 코스에서 후보·경로 저장을 결정적으로 3�
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01k-o, M1-06b-tmp. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01al·M2-01am·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ao, M2-01ap, M2-01ar, M2-01k-o, M1-06b-tmp. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am·M2-01ao·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
@@ -47,6 +49,8 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 
 - `tests/identity/session-attendance.spec.ts:123`("계획 초안 편집" 버튼이 보이지 않음)이 높은 부하(1분 load 32–40)에서 한 번 실패했고
   그 spec만 다시 돌리면 통과했다(M2-01aq 검증, 2026-09-25). 반복되면 별도 노드로 다룬다.
+- `tests/identity/course-extras.spec.ts:95`(GPX 가져오기 상태 "코스를 가져왔습니다"가 5초 안에 보이지 않음)이 M2-01aq 병합 검증의 identity 2회차에서
+  한 번 실패했다(1회차 통과, 제품 코드 변경 없음). 반복되면 별도 노드로 다룬다.
 
 ## 남은 외부·실환경 gate
 

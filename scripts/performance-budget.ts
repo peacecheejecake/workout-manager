@@ -22,6 +22,11 @@
  *   failure the loaded samples could explain; it never
  *   turns one into a pass, and it never excuses memory or size metrics, which do not depend
  *   on CPU contention.
+ * - One disclosed re-run (M2-01al): a judged attempt that failed only time budgets, with every
+ *   check and every memory and size budget met, is measured once more in full
+ *   ({@link retryDecision}); the pair passes only if the re-run passes by itself
+ *   ({@link combineAttempts}). The 1-minute load average lags a short burst, so the
+ *   admissible-load rule alone cannot tell one from a regression.
  * - A budget's baseline is checked against the recorded baseline runs it names
  *   ({@link verifyBaselinesAgainstRuns}): its sample count, per-run statistics, statistic
  *   and load range must be what those runs' samples give.
@@ -30,10 +35,10 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { loadavg } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export type BudgetStatistic = 'p50' | 'p95' | 'max';
 export type BudgetUnit = 'ms' | 'MiB' | 'bytes';
@@ -390,6 +395,179 @@ export function evaluateBudget(
       id,
       verdict: 'not_executed' as const,
     })),
+  };
+}
+
+// ---------------------------------------------------------------- one disclosed re-run (M2-01al)
+
+/**
+ * A judged run is measured at most this many times: the first attempt and one re-run.
+ *
+ * Why a re-run and not a finer load reading (M2-01al (b)). The 1-minute load average is an
+ * exponential average; it lags a short contention burst by tens of seconds, and reading it
+ * more often reads the same lagging number. In the M2-01aj reviewer's run (2026-09-25T01:16Z)
+ * the first seven `worker.parseMs` samples were 883–1,511 ms at load 13.73–17.92, the load
+ * rose to 21.61 only once the parses were back at 440–480 ms, and it never passed the metric's
+ * admissible 23.21: no load reading taken at, or even after, those samples would have told
+ * them apart from an admissible-load regression. So the admissible-load rule stays as it is,
+ * and a first attempt that failed **only time budgets** is measured once more, in full.
+ */
+export const MAX_JUDGED_ATTEMPTS = 2;
+
+export type RetryDecision =
+  | { readonly retry: true; readonly timeMetrics: readonly string[] }
+  | { readonly retry: false; readonly reason: string };
+
+/**
+ * Whether judged attempt number `attempt` (1-based) may be measured once more: only when every
+ * check passed and every metric that did not pass is a time budget (`ms`) that was `failed` or
+ * `inconclusive`. A memory or size metric that did not pass, a `missing` or `insufficient`
+ * metric, or a failed check is never re-run: CPU contention cannot explain it. Never after the
+ * last attempt.
+ */
+export function retryDecision(
+  evaluation: BudgetEvaluation,
+  checksPassed: boolean,
+  attempt: number,
+): RetryDecision {
+  if (attempt >= MAX_JUDGED_ATTEMPTS) return { retry: false, reason: 'no attempt left' };
+  if (!checksPassed) return { retry: false, reason: 'a check failed' };
+  if (evaluation.passed) return { retry: false, reason: 'passed' };
+  const notPassed = evaluation.metrics.filter((metric) => metric.verdict !== 'passed');
+  const refused = notPassed.filter(
+    (metric) =>
+      metric.unit !== 'ms' || (metric.verdict !== 'failed' && metric.verdict !== 'inconclusive'),
+  );
+  if (notPassed.length === 0 || refused.length > 0)
+    return {
+      retry: false,
+      reason: `not only time budgets: ${
+        refused.map((metric) => `${metric.id}:${metric.verdict}`).join(', ') || 'none judged'
+      }`,
+    };
+  return { retry: true, timeMetrics: notPassed.map((metric) => metric.id) };
+}
+
+export interface JudgedAttempt {
+  readonly evaluation: BudgetEvaluation;
+  readonly checksPassed: boolean;
+}
+
+/**
+ * The verdict of a run that was measured twice. The re-run is a whole new measurement judged
+ * by the unchanged evaluator, and it has to pass by itself: every budget of every phase and
+ * every check. So the pair passes only when
+ *
+ * - the first attempt was eligible ({@link retryDecision}): it failed only time budgets, and
+ *   every memory and size budget and every check passed in it; and
+ * - the second attempt passed completely.
+ *
+ * A memory or size metric is therefore met in both attempts, never excused by the re-run. A
+ * regression present in both attempts fails. When the pair does not pass it is `inconclusive`
+ * only if both attempts were (loaded samples could explain both); a time budget `failed` at an
+ * admissible load in either attempt keeps it `failed`.
+ */
+export function combineAttempts(
+  first: JudgedAttempt,
+  second: JudgedAttempt,
+): { readonly passed: boolean; readonly inconclusive: boolean } {
+  if (!retryDecision(first.evaluation, first.checksPassed, 1).retry)
+    return { passed: false, inconclusive: false };
+  if (second.checksPassed && second.evaluation.passed) return { passed: true, inconclusive: false };
+  return {
+    passed: false,
+    inconclusive:
+      first.evaluation.inconclusive && second.checksPassed && second.evaluation.inconclusive,
+  };
+}
+
+// ---------------------------------------------------------------- where output may go (M2-01al)
+
+/**
+ * Directories a tool empties on its own: Playwright clears `test-results/` (its output
+ * directory) when it starts and rewrites `playwright-report/`; Vitest's coverage run clears
+ * `coverage/`. The probe logs of M2-01ai and M2-01aj were lost that way. Neither a result nor
+ * a log may be written under one of them inside the repository.
+ */
+export const WIPED_OUTPUT_DIRECTORIES = ['test-results', 'playwright-report', 'coverage'] as const;
+
+/** Ignored by git and Prettier and emptied by no tool: probe and verification logs go here. */
+export const VERIFICATION_LOG_DIRECTORY = 'verification-logs';
+
+/**
+ * `path` with its nearest existing ancestor resolved through symbolic links (`realpathSync`)
+ * and the not-yet-existing rest appended, so a link such as `verification-logs/x ->
+ * ../test-results` is judged by where it leads.
+ */
+function realOutputPath(path: string): string {
+  const missing: string[] = [];
+  let existing = path;
+  // Bounded (path segments plus links followed), so a cycle of dangling links cannot spin.
+  for (let hops = 0; hops < 256; hops += 1) {
+    try {
+      return join(realpathSync(existing), ...missing.reverse());
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+      const parent = dirname(existing);
+      if (parent === existing) return path;
+      // A dangling link (its target not created yet) is followed to where it will write.
+      let link: string | null = null;
+      try {
+        if (lstatSync(existing).isSymbolicLink()) link = readlinkSync(existing);
+      } catch {
+        link = null;
+      }
+      if (link !== null) existing = resolve(parent, link);
+      else {
+        missing.push(basename(existing));
+        existing = parent;
+      }
+    }
+  }
+  // Refused rather than guessed: a path that cannot be resolved is not shown to be durable.
+  throw new Error(`OUTPUT_PATH_UNRESOLVABLE: ${path}`);
+}
+
+/**
+ * Resolves an output path against the repository and refuses one inside it that lies under a
+ * {@link WIPED_OUTPUT_DIRECTORIES} directory, at any depth. Segments are compared without
+ * case (APFS and the default macOS volume are case-insensitive, so `Test-Results/` is
+ * `test-results/`), and symbolic links are followed first (review N3).
+ */
+export function assertDurableOutputPath(repositoryRoot: string, path: string): string {
+  const absolute = resolve(repositoryRoot, path);
+  const root = realOutputPath(resolve(repositoryRoot));
+  const inside = relative(root, realOutputPath(absolute));
+  if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return absolute;
+  const wiped = inside
+    .split(sep)
+    .find((segment) =>
+      (WIPED_OUTPUT_DIRECTORIES as readonly string[]).includes(segment.toLowerCase()),
+    );
+  if (wiped !== undefined)
+    throw new Error(
+      `OUTPUT_PATH_WIPED_BY_TOOL: ${inside} lies under ${wiped}/, which a tool empties; use ${VERIFICATION_LOG_DIRECTORY}/`,
+    );
+  return absolute;
+}
+
+// ---------------------------------------------------------------- parse process RSS coverage (M2-01al)
+
+export const PARSE_PROCESS_RSS_CHECK = 'worker-parse-process-rss-read-every-parse';
+
+/**
+ * M2-01al (a): the RSS of every parse measured for `worker.parseProcessPeakRssMiB` must have
+ * been read. `minimumSamples` (5) alone would let a run judge the budget on 5 readings of 20
+ * parses; a parse whose RSS was never read has an unknown peak, not one within budget.
+ */
+export function parseProcessRssCheck(
+  parses: number,
+  parsesWithoutReading: number,
+): { readonly id: string; readonly passed: boolean; readonly detail: string } {
+  return {
+    id: PARSE_PROCESS_RSS_CHECK,
+    passed: parses > 0 && parsesWithoutReading === 0,
+    detail: `${parses - parsesWithoutReading} of ${parses} parses had their RSS read (${parsesWithoutReading} without a reading)`,
   };
 }
 

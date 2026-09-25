@@ -6,6 +6,8 @@ dist/
 coverage/
 playwright-report/
 test-results/
+# Probe and verification logs (M2-01al): Playwright empties test-results/, coverage empties coverage/.
+verification-logs/
 .venv/
 __pycache__/
 .pytest_cache/

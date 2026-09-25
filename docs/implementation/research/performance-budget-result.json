@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k-f",
-  "executedAt": "2026-09-24T23:11:29.507Z",
-  "finishedAt": "2026-09-24T23:12:31.259Z",
+  "executedAt": "2026-09-25T03:50:57.567Z",
+  "finishedAt": "2026-09-25T03:52:01.601Z",
   "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
   "mode": "judged",
   "budgetFile": "docs/implementation/research/performance-budget.json",
   "sourceTree": {
-    "head": "d22f76069cc1ccb200a70808dedb62277dec168b",
+    "head": "06754aa69c2ef12968b3bd09188a61558187636c",
     "dirtyPaths": [
-      "apps/api/src/configured.ts",
-      "apps/api/tests/routing-admission.integration.test.ts",
       "packages/tooling/tests/performance-budget.test.ts",
-      "scripts/probe-performance-budget.mts"
+      "scripts/performance-budget.ts",
+      "scripts/probe-performance-budget.mts",
+      "tests/performance/long-track-render.spec.ts"
     ],
-    "diffSha256": "085b9a1f0ebc14a2685963c8dcb3294422f782ef3883dfd1142be6608b1a25ae",
-    "allowDirtyReason": "M2-01aj judged run on the final tree: probe measures parse-process RSS; tests; budget re-derived",
-    "allowedProductPaths": ["apps/api/src/configured.ts"]
+    "diffSha256": "2f1b47bd379799c8558d9bbe79f5859feb547cc3947ea37b676c3c141ee6d1b5",
+    "allowDirtyReason": "M2-01al uncommitted node files (evaluator, probe, unit test, browser spec comment)",
+    "allowedProductPaths": []
   },
   "phases": ["api", "engine", "worker", "parse"],
   "samplesPerMetric": 20,
@@ -32,10 +32,18 @@
     "cpus": 8,
     "memoryGiB": 32,
     "node": "v24.12.0",
-    "loadAverageAtStart": [3.55, 4.35, 10],
-    "loadAverageAtEnd": [3.62, 4.18, 9.52]
+    "loadAverageAtStart": [4.46, 6.74, 11.64],
+    "loadAverageAtEnd": [4.54, 6.3, 11.11]
   },
   "passed": true,
+  "attempt": {
+    "number": 1,
+    "of": 2,
+    "retry": {
+      "retry": false,
+      "reason": "passed"
+    }
+  },
   "checks": [
     {
       "id": "api-map-path-carries-the-whole-track",
@@ -53,9 +61,14 @@
       "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26400 m"
     },
     {
+      "id": "worker-parse-process-rss-read-every-parse",
+      "passed": true,
+      "detail": "20 of 20 parses had their RSS read (0 without a reading)"
+    },
+    {
       "id": "worker-heap-ceiling-is-a-real-threshold",
       "passed": true,
-      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok"
+      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:TRACK_PARSE_MEMORY_EXCEEDED 48:ok"
     },
     {
       "id": "worker-concurrency-bound-at-limit",
@@ -99,11 +112,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 535
+        "observed": 566
       },
       {
         "id": "api.finalizeMs",
@@ -112,11 +125,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 7
+        "observed": 11
       },
       {
         "id": "api.readMapPathMs",
@@ -125,11 +138,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 4
+        "observed": 9
       },
       {
         "id": "api.readNormalizedMs",
@@ -138,11 +151,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 7
+        "observed": 10
       },
       {
         "id": "api.readMapPathBytes",
@@ -151,8 +164,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
         "observed": 970464
@@ -164,8 +177,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
         "observed": 5365290
@@ -177,11 +190,11 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.17,
-          "max": 3.47
+          "min": 4.45,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 510
+        "observed": 517
       },
       {
         "id": "engine.idleRssMiB",
@@ -190,11 +203,11 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.33,
-          "max": 3.47
+          "min": 4.25,
+          "max": 4.66
         },
         "verdict": "passed",
-        "observed": 300
+        "observed": 289
       },
       {
         "id": "engine.loadPeakRssMiB",
@@ -203,11 +216,11 @@
         "unit": "MiB",
         "samples": 9,
         "loadAverage1m": {
-          "min": 3.33,
-          "max": 3.33
+          "min": 4.25,
+          "max": 4.25
         },
         "verdict": "passed",
-        "observed": 525
+        "observed": 513
       },
       {
         "id": "engine.routeUnderLoadMs",
@@ -216,11 +229,11 @@
         "unit": "ms",
         "samples": 36,
         "loadAverage1m": {
-          "min": 3.33,
-          "max": 3.33
+          "min": 4.25,
+          "max": 4.25
         },
         "verdict": "passed",
-        "observed": 81
+        "observed": 73
       },
       {
         "id": "worker.parseMs",
@@ -229,11 +242,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.97,
-          "max": 3.14
+          "min": 3.91,
+          "max": 4.08
         },
         "verdict": "passed",
-        "observed": 440
+        "observed": 465
       },
       {
         "id": "worker.concurrentAtBoundMs",
@@ -242,11 +255,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.41,
-          "max": 3.62
+          "min": 4.57,
+          "max": 4.85
         },
         "verdict": "passed",
-        "observed": 518
+        "observed": 523
       },
       {
         "id": "worker.minimumHeapCeilingMiB",
@@ -255,11 +268,11 @@
         "unit": "MiB",
         "samples": 2,
         "loadAverage1m": {
-          "min": 3.5,
-          "max": 3.5
+          "min": 4.62,
+          "max": 4.62
         },
         "verdict": "passed",
-        "observed": 32
+        "observed": 48
       },
       {
         "id": "worker.parseProcessPeakRssMiB",
@@ -268,11 +281,11 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.55,
-          "max": 3.77
+          "min": 3.99,
+          "max": 4.15
         },
         "verdict": "passed",
-        "observed": 189
+        "observed": 197
       },
       {
         "id": "parse.parseNormalizeMs",
@@ -281,11 +294,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.41,
-          "max": 3.62
+          "min": 4.54,
+          "max": 4.85
         },
         "verdict": "passed",
-        "observed": 149
+        "observed": 155
       },
       {
         "id": "parse.mapPathMs",
@@ -294,11 +307,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.41,
-          "max": 3.62
+          "min": 4.54,
+          "max": 4.85
         },
         "verdict": "passed",
-        "observed": 18
+        "observed": 21
       },
       {
         "id": "parse.normalizedBytes",
@@ -307,8 +320,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.41,
-          "max": 3.62
+          "min": 4.54,
+          "max": 4.85
         },
         "verdict": "passed",
         "observed": 5365364
@@ -320,8 +333,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.41,
-          "max": 3.62
+          "min": 4.54,
+          "max": 4.85
         },
         "verdict": "passed",
         "observed": 970538
@@ -349,1450 +362,1450 @@
   "samples": {
     "api.uploadParseMs": [
       {
-        "value": 562,
-        "loadAverage1m": 3.27
+        "value": 590,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 521,
-        "loadAverage1m": 3.27
+        "value": 552,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 515,
-        "loadAverage1m": 3.27
+        "value": 541,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 512,
-        "loadAverage1m": 3.27
+        "value": 560,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 510,
-        "loadAverage1m": 3.27
+        "value": 566,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 505,
-        "loadAverage1m": 3.27
+        "value": 543,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 516,
-        "loadAverage1m": 3.17
+        "value": 538,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 520,
-        "loadAverage1m": 3.17
+        "value": 566,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 509,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 504,
-        "loadAverage1m": 3.17
+        "value": 550,
+        "loadAverage1m": 4.45
       },
       {
         "value": 535,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
-        "value": 509,
-        "loadAverage1m": 3.17
+        "value": 529,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 508,
-        "loadAverage1m": 3.17
+        "value": 547,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 504,
-        "loadAverage1m": 3.17
+        "value": 538,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 507,
-        "loadAverage1m": 3.17
+        "value": 535,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 509,
-        "loadAverage1m": 3.47
+        "value": 545,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 535,
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 539,
+        "loadAverage1m": 4.66
       },
       {
         "value": 522,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
-        "value": 520,
-        "loadAverage1m": 3.47
+        "value": 518,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 499,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 526,
-        "loadAverage1m": 3.47
+        "value": 524,
+        "loadAverage1m": 4.66
       }
     ],
     "api.finalizeMs": [
       {
+        "value": 11,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 4.45
+      },
+      {
         "value": 10,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.45
       },
       {
         "value": 5,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 16,
+        "loadAverage1m": 4.45
       },
       {
         "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.66
       },
       {
         "value": 5,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 4.66
       },
       {
         "value": 6,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.66
       },
       {
         "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       }
     ],
     "api.readMapPathMs": [
       {
-        "value": 4,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.27
+        "value": 5,
+        "loadAverage1m": 4.58
       },
       {
         "value": 4,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.58
       },
       {
         "value": 4,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 9,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 9,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.45
       },
       {
         "value": 3,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.45
       },
       {
         "value": 3,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.66
       },
       {
         "value": 3,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 4.66
       },
       {
         "value": 3,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.47
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       }
     ],
     "api.readMapPathBytes": [
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 970464,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       }
     ],
     "api.readNormalizedMs": [
       {
+        "value": 17,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 4.58
+      },
+      {
         "value": 7,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 7,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 8,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.58
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 8,
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 10,
+        "loadAverage1m": 4.45
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.27
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 6,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.45
       },
       {
-        "value": 5,
-        "loadAverage1m": 3.47
+        "value": 6,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 5,
-        "loadAverage1m": 3.47
+        "value": 6,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 5,
-        "loadAverage1m": 3.47
+        "value": 7,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 5,
-        "loadAverage1m": 3.47
+        "value": 7,
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 4.66
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 4.66
       }
     ],
     "api.readNormalizedBytes": [
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.17
+        "loadAverage1m": 4.45
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       },
       {
         "value": 5365290,
-        "loadAverage1m": 3.47
+        "loadAverage1m": 4.66
       }
     ],
     "api.processPeakRssMiB": [
       {
-        "value": 351,
-        "loadAverage1m": 3.27
+        "value": 363,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 381,
-        "loadAverage1m": 3.27
+        "value": 389,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 402,
-        "loadAverage1m": 3.27
+        "value": 437,
+        "loadAverage1m": 4.58
       },
       {
         "value": 450,
-        "loadAverage1m": 3.27
+        "loadAverage1m": 4.58
       },
       {
-        "value": 452,
-        "loadAverage1m": 3.27
+        "value": 456,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 460,
-        "loadAverage1m": 3.27
+        "value": 459,
+        "loadAverage1m": 4.58
       },
       {
-        "value": 482,
-        "loadAverage1m": 3.17
+        "value": 489,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 482,
-        "loadAverage1m": 3.17
+        "value": 492,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 482,
-        "loadAverage1m": 3.17
+        "value": 492,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 482,
-        "loadAverage1m": 3.17
+        "value": 492,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 491,
-        "loadAverage1m": 3.17
+        "value": 497,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 491,
-        "loadAverage1m": 3.17
+        "value": 498,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 496,
-        "loadAverage1m": 3.17
+        "value": 498,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 508,
-        "loadAverage1m": 3.17
+        "value": 498,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 508,
-        "loadAverage1m": 3.17
+        "value": 506,
+        "loadAverage1m": 4.45
       },
       {
-        "value": 508,
-        "loadAverage1m": 3.47
+        "value": 506,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 510,
-        "loadAverage1m": 3.47
+        "value": 506,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 510,
-        "loadAverage1m": 3.47
+        "value": 517,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 510,
-        "loadAverage1m": 3.47
+        "value": 517,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 510,
-        "loadAverage1m": 3.47
+        "value": 517,
+        "loadAverage1m": 4.66
       }
     ],
     "engine.idleRssMiB": [
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 288,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 289,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 289,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 289,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 289,
+        "loadAverage1m": 4.66
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.47
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.35
+        "value": 289,
+        "loadAverage1m": 4.36
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       }
     ],
     "engine.routeUnderLoadMs": [
       {
-        "value": 77,
-        "loadAverage1m": 3.33
+        "value": 69,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 81,
-        "loadAverage1m": 3.33
+        "value": 76,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 65,
+        "loadAverage1m": 4.25
       },
       {
         "value": 73,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
       },
       {
-        "value": 83,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 41,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 38,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 44,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 50,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 55,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 53,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 49,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 36,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 38,
-        "loadAverage1m": 3.33
+        "value": 39,
+        "loadAverage1m": 4.25
       },
       {
         "value": 32,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 30,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 34,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 38,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 36,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 37,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
       },
       {
         "value": 42,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 40,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 43,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 49,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 45,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 47,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 27,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 33,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 30,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 31,
-        "loadAverage1m": 3.33
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
       },
       {
         "value": 36,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 52,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 53,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 46,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 49,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 31,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 26,
+        "loadAverage1m": 4.25
       },
       {
         "value": 29,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 33,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 29,
+        "loadAverage1m": 4.25
       },
       {
         "value": 34,
-        "loadAverage1m": 3.33
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 31,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 34,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 29,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 30,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 39,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 34,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 36,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 35,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 30,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 29,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 35,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 38,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 31,
+        "loadAverage1m": 4.25
+      },
+      {
+        "value": 32,
+        "loadAverage1m": 4.25
       }
     ],
     "engine.loadPeakRssMiB": [
       {
-        "value": 300,
-        "loadAverage1m": 3.33
+        "value": 289,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 359,
-        "loadAverage1m": 3.33
+        "value": 347,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 363,
-        "loadAverage1m": 3.33
+        "value": 350,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 392,
-        "loadAverage1m": 3.33
+        "value": 372,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 392,
-        "loadAverage1m": 3.33
+        "value": 373,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 403,
-        "loadAverage1m": 3.33
+        "value": 399,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 476,
-        "loadAverage1m": 3.33
+        "value": 470,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 525,
-        "loadAverage1m": 3.33
+        "value": 512,
+        "loadAverage1m": 4.25
       },
       {
-        "value": 525,
-        "loadAverage1m": 3.33
+        "value": 513,
+        "loadAverage1m": 4.25
       }
     ],
     "worker.parseMs": [
       {
+        "value": 465,
+        "loadAverage1m": 3.91
+      },
+      {
+        "value": 445,
+        "loadAverage1m": 3.91
+      },
+      {
+        "value": 437,
+        "loadAverage1m": 3.91
+      },
+      {
+        "value": 444,
+        "loadAverage1m": 3.91
+      },
+      {
         "value": 440,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 430,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 442,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 432,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 431,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 426,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 424,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 432,
-        "loadAverage1m": 3.14
-      },
-      {
-        "value": 430,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 427,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 435,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 433,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 430,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 433,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 431,
-        "loadAverage1m": 2.97
-      },
-      {
-        "value": 431,
-        "loadAverage1m": 2.97
+        "loadAverage1m": 3.91
       },
       {
         "value": 437,
-        "loadAverage1m": 2.97
+        "loadAverage1m": 3.91
       },
       {
-        "value": 437,
-        "loadAverage1m": 2.97
+        "value": 439,
+        "loadAverage1m": 3.91
       },
       {
-        "value": 428,
-        "loadAverage1m": 2.97
+        "value": 446,
+        "loadAverage1m": 3.91
       },
       {
         "value": 433,
-        "loadAverage1m": 2.97
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 440,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 438,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 450,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 451,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 455,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 465,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 458,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 445,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 441,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 441,
+        "loadAverage1m": 4.08
+      },
+      {
+        "value": 451,
+        "loadAverage1m": 3.99
       }
     ],
     "worker.parseProcessPeakRssMiB": [
       {
-        "value": 181,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 181,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 179,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 185,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 183,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 189,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 180,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 179,
-        "loadAverage1m": 3.77
-      },
-      {
-        "value": 180,
-        "loadAverage1m": 3.77
-      },
-      {
         "value": 177,
-        "loadAverage1m": 3.55
-      },
-      {
-        "value": 186,
-        "loadAverage1m": 3.55
-      },
-      {
-        "value": 185,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 3.99
       },
       {
         "value": 187,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 187,
+        "loadAverage1m": 3.99
       },
       {
         "value": 183,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 3.99
       },
       {
         "value": 183,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 3.99
       },
       {
-        "value": 179,
-        "loadAverage1m": 3.55
+        "value": 192,
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 3.99
       },
       {
         "value": 182,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 182,
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 179,
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 187,
+        "loadAverage1m": 3.99
+      },
+      {
+        "value": 183,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 181,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 197,
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 4.15
       },
       {
         "value": 186,
-        "loadAverage1m": 3.55
+        "loadAverage1m": 4.15
+      },
+      {
+        "value": 189,
+        "loadAverage1m": 4.15
       }
     ],
     "worker.minimumHeapCeilingMiB": [
       {
         "value": 32,
-        "loadAverage1m": 3.5
+        "loadAverage1m": 4.62
       },
       {
-        "value": 32,
-        "loadAverage1m": 3.5
+        "value": 48,
+        "loadAverage1m": 4.62
       }
     ],
     "worker.concurrentAtBoundMs": [
       {
-        "value": 506,
-        "loadAverage1m": 3.5
+        "value": 520,
+        "loadAverage1m": 4.62
       },
       {
-        "value": 524,
-        "loadAverage1m": 3.5
+        "value": 517,
+        "loadAverage1m": 4.62
       },
       {
-        "value": 503,
-        "loadAverage1m": 3.5
-      },
-      {
-        "value": 506,
-        "loadAverage1m": 3.5
-      },
-      {
-        "value": 515,
-        "loadAverage1m": 3.5
-      },
-      {
-        "value": 507,
-        "loadAverage1m": 3.5
-      },
-      {
-        "value": 506,
-        "loadAverage1m": 3.5
-      },
-      {
-        "value": 513,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 514,
-        "loadAverage1m": 3.62
+        "value": 516,
+        "loadAverage1m": 4.62
       },
       {
         "value": 512,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.62
       },
       {
-        "value": 514,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 508,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 505,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 514,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 510,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 507,
-        "loadAverage1m": 3.62
-      },
-      {
-        "value": 510,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 504,
-        "loadAverage1m": 3.41
+        "value": 512,
+        "loadAverage1m": 4.62
       },
       {
         "value": 518,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.57
       },
       {
-        "value": 506,
-        "loadAverage1m": 3.41
+        "value": 522,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 510,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 542,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 518,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 523,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 509,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 517,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 513,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 513,
+        "loadAverage1m": 4.57
+      },
+      {
+        "value": 517,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 518,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 512,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 519,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 507,
+        "loadAverage1m": 4.85
       }
     ],
     "parse.parseNormalizeMs": [
       {
-        "value": 146,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 167,
-        "loadAverage1m": 3.41
+        "value": 148,
+        "loadAverage1m": 4.85
       },
       {
         "value": 146,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 164,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 153,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 143,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 137,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 137,
+        "loadAverage1m": 4.85
       },
       {
         "value": 138,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
-        "value": 138,
-        "loadAverage1m": 3.41
+        "value": 143,
+        "loadAverage1m": 4.85
       },
       {
-        "value": 138,
-        "loadAverage1m": 3.41
+        "value": 139,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 155,
+        "loadAverage1m": 4.85
       },
       {
         "value": 140,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
-        "value": 139,
-        "loadAverage1m": 3.41
+        "value": 135,
+        "loadAverage1m": 4.54
       },
       {
-        "value": 139,
-        "loadAverage1m": 3.41
+        "value": 135,
+        "loadAverage1m": 4.54
       },
       {
-        "value": 139,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 138,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 138,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 149,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 133,
-        "loadAverage1m": 3.41
+        "value": 132,
+        "loadAverage1m": 4.54
       },
       {
         "value": 134,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 133,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 132,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 134,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
-        "value": 132,
-        "loadAverage1m": 3.62
+        "value": 134,
+        "loadAverage1m": 4.54
       },
       {
-        "value": 132,
-        "loadAverage1m": 3.62
+        "value": 145,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 133,
+        "loadAverage1m": 4.54
       }
     ],
     "parse.mapPathMs": [
       {
-        "value": 16,
-        "loadAverage1m": 3.41
+        "value": 20,
+        "loadAverage1m": 4.85
       },
       {
-        "value": 17,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 16,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 16,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 15,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 15,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 15,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 15,
-        "loadAverage1m": 3.41
+        "value": 20,
+        "loadAverage1m": 4.85
       },
       {
         "value": 21,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 18,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
-        "value": 13,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 3.41
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 3.41
+        "value": 18,
+        "loadAverage1m": 4.85
       },
       {
         "value": 14,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 20,
+        "loadAverage1m": 4.85
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 19,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 4.54
       },
       {
         "value": 17,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 21,
+        "loadAverage1m": 4.54
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 4.54
       }
     ],
     "parse.normalizedBytes": [
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.54
       },
       {
         "value": 5365364,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.54
       }
     ],
     "parse.mapPathBytes": [
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.85
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.41
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.54
       },
       {
         "value": 970538,
-        "loadAverage1m": 3.62
+        "loadAverage1m": 4.54
       }
     ]
   },
   "summary": {
     "api.uploadParseMs": {
       "n": 20,
-      "min": 499,
-      "p50": 510,
-      "p95": 535,
-      "max": 562
+      "min": 518,
+      "p50": 539,
+      "p95": 566,
+      "max": 590
     },
     "api.finalizeMs": {
       "n": 20,
-      "min": 4,
+      "min": 5,
       "p50": 6,
-      "p95": 7,
-      "max": 10
+      "p95": 11,
+      "max": 16
     },
     "api.readMapPathMs": {
       "n": 20,
       "min": 3,
-      "p50": 3,
-      "p95": 4,
-      "max": 4
+      "p50": 4,
+      "p95": 9,
+      "max": 9
     },
     "api.readMapPathBytes": {
       "n": 20,
@@ -1803,10 +1816,10 @@
     },
     "api.readNormalizedMs": {
       "n": 20,
-      "min": 5,
-      "p50": 5,
-      "p95": 7,
-      "max": 7
+      "min": 6,
+      "p50": 7,
+      "p95": 10,
+      "max": 17
     },
     "api.readNormalizedBytes": {
       "n": 20,
@@ -1817,72 +1830,72 @@
     },
     "api.processPeakRssMiB": {
       "n": 20,
-      "min": 351,
-      "p50": 482,
-      "p95": 510,
-      "max": 510
+      "min": 363,
+      "p50": 492,
+      "p95": 517,
+      "max": 517
     },
     "engine.idleRssMiB": {
       "n": 20,
-      "min": 300,
-      "p50": 300,
-      "p95": 300,
-      "max": 300
+      "min": 288,
+      "p50": 289,
+      "p95": 289,
+      "max": 289
     },
     "engine.routeUnderLoadMs": {
       "n": 36,
-      "min": 27,
-      "p50": 38,
-      "p95": 81,
-      "max": 83
+      "min": 26,
+      "p50": 34,
+      "p95": 73,
+      "max": 76
     },
     "engine.loadPeakRssMiB": {
       "n": 9,
-      "min": 300,
-      "p50": 392,
-      "p95": 525,
-      "max": 525
+      "min": 289,
+      "p50": 373,
+      "p95": 513,
+      "max": 513
     },
     "worker.parseMs": {
       "n": 20,
-      "min": 424,
-      "p50": 431,
-      "p95": 440,
-      "max": 442
+      "min": 433,
+      "p50": 444,
+      "p95": 465,
+      "max": 465
     },
     "worker.parseProcessPeakRssMiB": {
       "n": 20,
       "min": 177,
-      "p50": 182,
-      "p95": 187,
-      "max": 189
+      "p50": 184,
+      "p95": 192,
+      "max": 197
     },
     "worker.minimumHeapCeilingMiB": {
       "n": 2,
       "min": 32,
       "p50": 32,
-      "p95": 32,
-      "max": 32
+      "p95": 48,
+      "max": 48
     },
     "worker.concurrentAtBoundMs": {
       "n": 20,
-      "min": 503,
-      "p50": 508,
-      "p95": 518,
-      "max": 524
+      "min": 507,
+      "p50": 517,
+      "p95": 523,
+      "max": 542
     },
     "parse.parseNormalizeMs": {
       "n": 20,
       "min": 132,
       "p50": 138,
-      "p95": 149,
-      "max": 167
+      "p95": 155,
+      "max": 164
     },
     "parse.mapPathMs": {
       "n": 20,
-      "min": 13,
+      "min": 14,
       "p50": 15,
-      "p95": 18,
+      "p95": 21,
       "max": 21
     },
     "parse.normalizedBytes": {
@@ -1902,7 +1915,7 @@
   },
   "details": {
     "engineWarmUp": {
-      "ms": 144,
+      "ms": 136,
       "status": 200,
       "outcome": "route_computed",
       "distance": 26400
@@ -1914,9 +1927,9 @@
       "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
     },
     "parseProcessRss": {
-      "peakChildMiB": 189,
+      "peakChildMiB": 197,
       "parsesWithoutReading": 0,
-      "atBoundPeakSumMiB": 354,
+      "atBoundPeakSumMiB": 347,
       "intervalMs": 20,
       "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
     },
@@ -1946,6 +1959,10 @@
         },
         {
           "ceilingMb": 32,
+          "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+        },
+        {
+          "ceilingMb": 48,
           "outcome": "ok"
         }
       ]
@@ -22075,6 +22092,1960 @@
             },
             {
               "ceilingMb": 48,
+              "outcome": "ok"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-24T23:11:29.507Z",
+      "finishedAt": "2026-09-24T23:12:31.259Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "judged",
+      "budgetFile": "docs/implementation/research/performance-budget.json",
+      "sourceTree": {
+        "head": "d22f76069cc1ccb200a70808dedb62277dec168b",
+        "dirtyPaths": [
+          "apps/api/src/configured.ts",
+          "apps/api/tests/routing-admission.integration.test.ts",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/probe-performance-budget.mts"
+        ],
+        "diffSha256": "085b9a1f0ebc14a2685963c8dcb3294422f782ef3883dfd1142be6608b1a25ae",
+        "allowDirtyReason": "M2-01aj judged run on the final tree: probe measures parse-process RSS; tests; budget re-derived",
+        "allowedProductPaths": ["apps/api/src/configured.ts"]
+      },
+      "phases": ["api", "engine", "worker", "parse"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [3.55, 4.35, 10],
+        "loadAverageAtEnd": [3.62, 4.18, 9.52]
+      },
+      "passed": true,
+      "checks": [
+        {
+          "id": "api-map-path-carries-the-whole-track",
+          "passed": true,
+          "detail": "20000 vertices for 20000 samples"
+        },
+        {
+          "id": "api-every-request-succeeded",
+          "passed": true,
+          "detail": "120 requests, non-200: none"
+        },
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26400 m"
+        },
+        {
+          "id": "worker-heap-ceiling-is-a-real-threshold",
+          "passed": true,
+          "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok"
+        },
+        {
+          "id": "worker-concurrency-bound-at-limit",
+          "passed": true,
+          "detail": "bound 2: 2 parsed, 1 TRACK_PARSER_BUSY, active after 0"
+        },
+        {
+          "id": "worker-no-parse-process-left",
+          "passed": true,
+          "detail": "0 parse processes alive after the phase"
+        },
+        {
+          "id": "budget-heap-below-product-ceiling",
+          "passed": true,
+          "detail": "96 MiB <= 256 MiB (docs/implementation/research/performance-budget.json)"
+        },
+        {
+          "id": "budget-parse-time-below-parser-deadline",
+          "passed": true,
+          "detail": "980 ms < 5000 ms"
+        },
+        {
+          "id": "budget-route-time-below-routing-deadline",
+          "passed": true,
+          "detail": "200 ms < 8000 ms"
+        },
+        {
+          "id": "budget-normalized-below-output-limit",
+          "passed": true,
+          "detail": "6000000 B < 8388608 B"
+        }
+      ],
+      "evaluation": {
+        "passed": true,
+        "inconclusive": false,
+        "metrics": [
+          {
+            "id": "api.uploadParseMs",
+            "statistic": "p95",
+            "budget": 1300,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 535
+          },
+          {
+            "id": "api.finalizeMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 7
+          },
+          {
+            "id": "api.readMapPathMs",
+            "statistic": "p95",
+            "budget": 30,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 4
+          },
+          {
+            "id": "api.readNormalizedMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 7
+          },
+          {
+            "id": "api.readMapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 970464
+          },
+          {
+            "id": "api.readNormalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 5365290
+          },
+          {
+            "id": "api.processPeakRssMiB",
+            "statistic": "max",
+            "budget": 800,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.17,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 510
+          },
+          {
+            "id": "engine.idleRssMiB",
+            "statistic": "max",
+            "budget": 470,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.33,
+              "max": 3.47
+            },
+            "verdict": "passed",
+            "observed": 300
+          },
+          {
+            "id": "engine.loadPeakRssMiB",
+            "statistic": "max",
+            "budget": 800,
+            "unit": "MiB",
+            "samples": 9,
+            "loadAverage1m": {
+              "min": 3.33,
+              "max": 3.33
+            },
+            "verdict": "passed",
+            "observed": 525
+          },
+          {
+            "id": "engine.routeUnderLoadMs",
+            "statistic": "p95",
+            "budget": 200,
+            "unit": "ms",
+            "samples": 36,
+            "loadAverage1m": {
+              "min": 3.33,
+              "max": 3.33
+            },
+            "verdict": "passed",
+            "observed": 81
+          },
+          {
+            "id": "worker.parseMs",
+            "statistic": "p95",
+            "budget": 980,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.97,
+              "max": 3.14
+            },
+            "verdict": "passed",
+            "observed": 440
+          },
+          {
+            "id": "worker.concurrentAtBoundMs",
+            "statistic": "p95",
+            "budget": 2600,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.41,
+              "max": 3.62
+            },
+            "verdict": "passed",
+            "observed": 518
+          },
+          {
+            "id": "worker.minimumHeapCeilingMiB",
+            "statistic": "max",
+            "budget": 96,
+            "unit": "MiB",
+            "samples": 2,
+            "loadAverage1m": {
+              "min": 3.5,
+              "max": 3.5
+            },
+            "verdict": "passed",
+            "observed": 32
+          },
+          {
+            "id": "worker.parseProcessPeakRssMiB",
+            "statistic": "max",
+            "budget": 300,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.55,
+              "max": 3.77
+            },
+            "verdict": "passed",
+            "observed": 189
+          },
+          {
+            "id": "parse.parseNormalizeMs",
+            "statistic": "p95",
+            "budget": 710,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.41,
+              "max": 3.62
+            },
+            "verdict": "passed",
+            "observed": 149
+          },
+          {
+            "id": "parse.mapPathMs",
+            "statistic": "p95",
+            "budget": 130,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.41,
+              "max": 3.62
+            },
+            "verdict": "passed",
+            "observed": 18
+          },
+          {
+            "id": "parse.normalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.41,
+              "max": 3.62
+            },
+            "verdict": "passed",
+            "observed": 5365364
+          },
+          {
+            "id": "parse.mapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.41,
+              "max": 3.62
+            },
+            "verdict": "passed",
+            "observed": 970538
+          }
+        ],
+        "realDevice": [
+          {
+            "id": "device.ios.navigationToDrawnMs",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.jsHeapAfterDrawnMiB",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.panFrameP95Ms",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.android.navigationToDrawnMs",
+            "verdict": "not_executed"
+          }
+        ]
+      },
+      "samples": {
+        "api.uploadParseMs": [
+          {
+            "value": 562,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 521,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 515,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 505,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 516,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 520,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 535,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 520,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 499,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 526,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.finalizeMs": [
+          {
+            "value": 10,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.readMapPathMs": [
+          {
+            "value": 4,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.readMapPathBytes": [
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.readNormalizedMs": [
+          {
+            "value": 7,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.readNormalizedBytes": [
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "api.processPeakRssMiB": [
+          {
+            "value": 351,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 381,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 402,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 450,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 452,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 460,
+            "loadAverage1m": 3.27
+          },
+          {
+            "value": 482,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 482,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 482,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 482,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 491,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 491,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 496,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 3.17
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.47
+          }
+        ],
+        "engine.idleRssMiB": [
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.47
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.35
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 77,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 81,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 73,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 83,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 55,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 53,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 30,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 37,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 45,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 27,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 33,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 30,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 3.33
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 300,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 359,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 363,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 392,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 392,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 403,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 476,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 525,
+            "loadAverage1m": 3.33
+          },
+          {
+            "value": 525,
+            "loadAverage1m": 3.33
+          }
+        ],
+        "worker.parseMs": [
+          {
+            "value": 440,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 430,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 442,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 432,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 431,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 426,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 424,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 432,
+            "loadAverage1m": 3.14
+          },
+          {
+            "value": 430,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 427,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 435,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 430,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 431,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 431,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 428,
+            "loadAverage1m": 2.97
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.97
+          }
+        ],
+        "worker.parseProcessPeakRssMiB": [
+          {
+            "value": 181,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 181,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 179,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 185,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 189,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 180,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 179,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 180,
+            "loadAverage1m": 3.77
+          },
+          {
+            "value": 177,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 186,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 185,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 187,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 179,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 3.55
+          },
+          {
+            "value": 186,
+            "loadAverage1m": 3.55
+          }
+        ],
+        "worker.minimumHeapCeilingMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 3.5
+          }
+        ],
+        "worker.concurrentAtBoundMs": [
+          {
+            "value": 506,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 524,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 503,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 515,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 3.5
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 514,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 514,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 505,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 514,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 3.41
+          }
+        ],
+        "parse.parseNormalizeMs": [
+          {
+            "value": 146,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 167,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 146,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 140,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 139,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 139,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 139,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 149,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 133,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 133,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 132,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 132,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 132,
+            "loadAverage1m": 3.62
+          }
+        ],
+        "parse.mapPathMs": [
+          {
+            "value": 16,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 16,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 16,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 21,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 13,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 3.62
+          }
+        ],
+        "parse.normalizedBytes": [
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 3.62
+          }
+        ],
+        "parse.mapPathBytes": [
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.41
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.62
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 3.62
+          }
+        ]
+      },
+      "summary": {
+        "api.uploadParseMs": {
+          "n": 20,
+          "min": 499,
+          "p50": 510,
+          "p95": 535,
+          "max": 562
+        },
+        "api.finalizeMs": {
+          "n": 20,
+          "min": 4,
+          "p50": 6,
+          "p95": 7,
+          "max": 10
+        },
+        "api.readMapPathMs": {
+          "n": 20,
+          "min": 3,
+          "p50": 3,
+          "p95": 4,
+          "max": 4
+        },
+        "api.readMapPathBytes": {
+          "n": 20,
+          "min": 970464,
+          "p50": 970464,
+          "p95": 970464,
+          "max": 970464
+        },
+        "api.readNormalizedMs": {
+          "n": 20,
+          "min": 5,
+          "p50": 5,
+          "p95": 7,
+          "max": 7
+        },
+        "api.readNormalizedBytes": {
+          "n": 20,
+          "min": 5365290,
+          "p50": 5365290,
+          "p95": 5365290,
+          "max": 5365290
+        },
+        "api.processPeakRssMiB": {
+          "n": 20,
+          "min": 351,
+          "p50": 482,
+          "p95": 510,
+          "max": 510
+        },
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 300,
+          "p50": 300,
+          "p95": 300,
+          "max": 300
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 27,
+          "p50": 38,
+          "p95": 81,
+          "max": 83
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 300,
+          "p50": 392,
+          "p95": 525,
+          "max": 525
+        },
+        "worker.parseMs": {
+          "n": 20,
+          "min": 424,
+          "p50": 431,
+          "p95": 440,
+          "max": 442
+        },
+        "worker.parseProcessPeakRssMiB": {
+          "n": 20,
+          "min": 177,
+          "p50": 182,
+          "p95": 187,
+          "max": 189
+        },
+        "worker.minimumHeapCeilingMiB": {
+          "n": 2,
+          "min": 32,
+          "p50": 32,
+          "p95": 32,
+          "max": 32
+        },
+        "worker.concurrentAtBoundMs": {
+          "n": 20,
+          "min": 503,
+          "p50": 508,
+          "p95": 518,
+          "max": 524
+        },
+        "parse.parseNormalizeMs": {
+          "n": 20,
+          "min": 132,
+          "p50": 138,
+          "p95": 149,
+          "max": 167
+        },
+        "parse.mapPathMs": {
+          "n": 20,
+          "min": 13,
+          "p50": 15,
+          "p95": 18,
+          "max": 21
+        },
+        "parse.normalizedBytes": {
+          "n": 20,
+          "min": 5365364,
+          "p50": 5365364,
+          "p95": 5365364,
+          "max": 5365364
+        },
+        "parse.mapPathBytes": {
+          "n": 20,
+          "min": 970538,
+          "p50": 970538,
+          "p95": 970538,
+          "max": 970538
+        }
+      },
+      "details": {
+        "engineWarmUp": {
+          "ms": 144,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 26400
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        },
+        "parseProcessRss": {
+          "peakChildMiB": 189,
+          "parsesWithoutReading": 0,
+          "atBoundPeakSumMiB": 354,
+          "intervalMs": 20,
+          "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
+        },
+        "heapCeilingLadder": [
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
+              "outcome": "ok"
+            }
+          ],
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
               "outcome": "ok"
             }
           ]

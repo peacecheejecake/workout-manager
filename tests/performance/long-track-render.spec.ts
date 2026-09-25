@@ -15,6 +15,7 @@ import {
   describeEvaluation,
   evaluateBudget,
   parseBudgetFile,
+  assertDurableOutputPath,
   assertMeasurableSourceTree,
   repoRelative,
   sampleNow,
@@ -47,7 +48,10 @@ import { expectLineDrawn, mapRegion } from '../identity/map-evidence';
  *                      p95 is not the maximum, so one outlier cannot decide the budget)
  *   PERF_RECORD_ONLY=1 record samples without judging them (baseline runs)
  *   PERF_BUDGET        another budget file (controlled checks)
- *   PERF_OUT           where to write the result (default: the research file)
+ *   PERF_OUT           where to write the result (default: the research file). Never under
+ *                      test-results/, playwright-report/ or coverage/ (M2-01al): this very
+ *                      Playwright run empties test-results/. Redirect the console output to
+ *                      verification-logs/ for the same reason.
  *   PERF_ALLOW_DIRTY   reason to measure although the scanned paths (packages/, apps/, scripts/,
  *                      tests/, root workspace and Playwright files) differ from HEAD;
  *   PERF_ALLOW_PRODUCT comma-separated product files (anything under packages/ or apps/ that
@@ -61,9 +65,11 @@ const recordOnly = process.env.PERF_RECORD_ONLY === '1';
 const budgetPath =
   process.env.PERF_BUDGET ??
   join(repositoryRoot, 'docs/implementation/research/performance-budget.json');
-const outPath =
+const outPath = assertDurableOutputPath(
+  repositoryRoot,
   process.env.PERF_OUT ??
-  join(repositoryRoot, 'docs/implementation/research/performance-budget-browser-result.json');
+    join(repositoryRoot, 'docs/implementation/research/performance-budget-browser-result.json'),
+);
 /** A string only MapLibre GL's own library code carries (one of its error messages). */
 const MAPLIBRE_SIGNATURE = 'Style is not done loading';
 const MAPLIBRE_WORKER = /maplibre-gl-worker(-dev)?\.mjs/;

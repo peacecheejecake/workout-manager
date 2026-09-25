@@ -24,6 +24,23 @@
  *                                      fixtures (src/, Next app/ routes, migrations, config).
  *                                      Any other changed product file is refused, so a leftover
  *                                      mutant stops the run. Checks source, not build output.
+ *   --log=PATH                         where the console output is also written (appended).
+ *                                      Default: verification-logs/performance-budget/<start>.log
+ *                                      (git- and Prettier-ignored, emptied by no tool).
+ *   --no-retry                         judge the first attempt only (controlled checks)
+ *
+ * Output location (M2-01al): neither --out nor --log may lie under test-results/,
+ * playwright-report/ or coverage/ in the repository. Playwright empties test-results/ when it
+ * starts and Vitest's coverage empties coverage/; the M2-01ai and M2-01aj logs were lost that
+ * way. Keep probe logs, redirected shell output included, in verification-logs/.
+ *
+ * One disclosed re-run (M2-01al): when a judged attempt passed every check and every memory and
+ * size budget but failed or left inconclusive a time budget, the probe waits
+ * RETRY_PAUSE_MS and measures every requested phase again in a fresh process
+ * (`--retry-of=<first attempt's executedAt>`). Both attempts are recorded; the second carries
+ * `attempt.retryOf` and the first attempt's non-passing metrics. The pair passes only if the
+ * re-run passes by itself (scripts/performance-budget.ts, `combineAttempts`). The 1-minute load
+ * average lags a short burst of contention, so the admissible-load rule cannot catch one.
  *
  * Opt-in, refuses CI, and is NOT part of `pnpm test`: a budget judged on a shared, loaded
  * machine belongs in a separate step whose failure a person reads, not in a suite whose
@@ -54,15 +71,17 @@
  * Every sample records the 1-minute load average when it was taken. The run exits non-zero
  * when any budget or check fails, or when a time budget is `inconclusive` (exceeded above the
  * baseline's highest load; see scripts/performance-budget.ts) — that run must be repeated at
- * an admissible load and is neither a pass nor a regression.
+ * an admissible load and is neither a pass nor a regression. With the re-run, the exit code is
+ * the pair's verdict.
  */
 import { randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { cpus, loadavg, tmpdir, totalmem } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
+import { format, promisify } from 'node:util';
 
 import { trackLimits } from '../packages/contracts/src/tracks.ts';
 import { routingLimits, walkingRouteResultSchema } from '../packages/contracts/src/routing.ts';
@@ -87,9 +106,17 @@ import {
   type BudgetEvaluation,
   type BudgetPhase,
   type BudgetSample,
+  assertDurableOutputPath,
   assertMeasurableSourceTree,
+  combineAttempts,
+  MAX_JUDGED_ATTEMPTS,
+  parseProcessRssCheck,
   repoRelative,
+  retryDecision,
+  VERIFICATION_LOG_DIRECTORY,
   writeResultWithHistory,
+  type RetryDecision,
+  type SourceTreeState,
 } from './performance-budget.ts';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -106,6 +133,8 @@ const ALL_PHASES = ['api', 'engine', 'worker', 'parse'] as const;
 type ServerPhase = (typeof ALL_PHASES)[number];
 const execFileAsync = promisify(execFile);
 const MiB = 2 ** 20;
+/** How long the probe waits before its one re-run, so a short burst can pass (M2-01al). */
+const RETRY_PAUSE_MS = 30_000;
 
 export interface ProbeOptions {
   readonly phases: readonly ServerPhase[];
@@ -116,6 +145,11 @@ export interface ProbeOptions {
   readonly evaluatePath: string | null;
   readonly allowDirtyReason: string | null;
   readonly allowedProductPaths: readonly string[];
+  /** `null`: the default under verification-logs/, named by the start time. */
+  readonly logPath: string | null;
+  readonly retry: boolean;
+  /** Set only on the re-run the probe starts itself: the first attempt's `executedAt`. */
+  readonly retryOf: string | null;
 }
 
 export function parseProbeArguments(args: readonly string[]): ProbeOptions | null {
@@ -128,10 +162,17 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
   let evaluatePath: string | null = null;
   let allowDirtyReason: string | null = null;
   let allowedProductPaths: string[] = [];
+  let logPath: string | null = null;
+  let retry = true;
+  let retryOf: string | null = null;
   for (const argument of args) {
     if (argument === '--execute') continue;
     if (argument === '--record-only') {
       recordOnly = true;
+      continue;
+    }
+    if (argument === '--no-retry') {
+      retry = false;
       continue;
     }
     const separator = argument.indexOf('=');
@@ -152,8 +193,12 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
     else if (name === '--evaluate') evaluatePath = resolve(value);
     else if (name === '--allow-dirty') allowDirtyReason = value;
     else if (name === '--allow-product') allowedProductPaths = value.split(',');
+    else if (name === '--log') logPath = resolve(value);
+    else if (name === '--retry-of') retryOf = value;
     else return null;
   }
+  // A re-run is judged and is never re-run again.
+  if (retryOf !== null && (recordOnly || evaluatePath !== null || !retry)) return null;
   return {
     phases,
     samples,
@@ -163,7 +208,69 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
     evaluatePath,
     allowDirtyReason,
     allowedProductPaths,
+    logPath,
+    retry,
+    retryOf,
   };
+}
+
+/** Everything the probe prints also goes to `path` (appended), which survives Playwright. */
+function teeConsoleTo(path: string) {
+  mkdirSync(dirname(path), { recursive: true });
+  const print = console.log.bind(console);
+  console.log = (...args: unknown[]) => {
+    print(...args);
+    appendFileSync(path, `${format(...args)}\n`);
+  };
+}
+
+/**
+ * Starts the one re-run in a fresh process, so no state of the first attempt (module-level
+ * samples, the process's own peak RSS, warm caches) reaches it. Same arguments, the same log,
+ * and `--retry-of`. Resolves to the re-run's exit code.
+ */
+async function startRetry(firstExecutedAt: string, logPath: string): Promise<number> {
+  const args = process.argv
+    .slice(2)
+    .filter((argument) => !argument.startsWith('--log=') && !argument.startsWith('--retry-of='));
+  const child = spawn(
+    process.execPath,
+    [
+      ...process.execArgv,
+      fileURLToPath(import.meta.url),
+      ...args,
+      `--log=${logPath}`,
+      `--retry-of=${firstExecutedAt}`,
+    ],
+    { stdio: 'inherit' },
+  );
+  return new Promise((done, fail) => {
+    child.once('error', fail);
+    child.once('exit', (code, signal) => done(code ?? (signal === null ? 1 : 128)));
+  });
+}
+
+interface FirstAttempt {
+  readonly executedAt: string;
+  readonly mode: string;
+  readonly sourceTree: SourceTreeState;
+  readonly evaluation: BudgetEvaluation;
+  readonly checks: readonly { id: string; passed: boolean }[];
+}
+
+/** The first attempt as the result file records it: the latest run, named by `--retry-of`. */
+async function readFirstAttempt(outPath: string, executedAt: string): Promise<FirstAttempt> {
+  const recorded = JSON.parse(await readFile(outPath, 'utf8')) as Partial<FirstAttempt>;
+  if (
+    recorded.executedAt !== executedAt ||
+    recorded.mode !== 'judged' ||
+    recorded.sourceTree === undefined ||
+    recorded.evaluation === undefined ||
+    recorded.evaluation === null ||
+    !Array.isArray(recorded.checks)
+  )
+    throw new Error(`RETRY_FIRST_ATTEMPT_NOT_FOUND: ${executedAt}`);
+  return recorded as FirstAttempt;
 }
 
 // ---------------------------------------------------------------- recording
@@ -303,6 +410,9 @@ async function workerPhase(fitBytes: Uint8Array, samples: number) {
     if (peakChildMiB === null) unread += 1;
     else record('worker.parseProcessPeakRssMiB', peakChildMiB);
   }
+  // M2-01al (a): a parse whose RSS was never read does not count as within budget.
+  const coverage = parseProcessRssCheck(samples, unread);
+  check(coverage.id, coverage.passed, coverage.detail);
   // For the record, not a budget: both processes of one parser at its bound at once. An API
   // runs two parsers (course import, stored recordings), so up to twice this.
   const pair = createBoundedTrackParser();
@@ -702,12 +812,28 @@ async function main() {
     console.log(
       'Opt-in only: node --import tsx scripts/probe-performance-budget.mts --execute ' +
         '[--phases=api,engine,worker,parse] [--samples=N] [--record-only] [--budget=PATH] ' +
-        '[--out=PATH] [--evaluate=RESULT.json]. The api/engine phases bind the fixture OIDC ' +
-        'provider on 4400 (hold the harness lock) and the routing engine on loopback 8991.',
+        '[--out=PATH] [--evaluate=RESULT.json] [--log=PATH] [--no-retry]. The api/engine ' +
+        'phases bind the fixture OIDC provider on 4400 (hold the harness lock) and the ' +
+        `routing engine on loopback 8991. Logs go to ${VERIFICATION_LOG_DIRECTORY}/, never test-results/.`,
     );
     return;
   }
   if (process.env.CI) throw new Error('Performance budget probes are disabled in CI');
+  // M2-01al (c): refuse a result or log path that a tool would empty, before measuring.
+  assertDurableOutputPath(repositoryRoot, options.outPath);
+  const logPath = assertDurableOutputPath(
+    repositoryRoot,
+    options.logPath ??
+      join(
+        VERIFICATION_LOG_DIRECTORY,
+        'performance-budget',
+        `${new Date().toISOString().replaceAll(':', '-')}.log`,
+      ),
+  );
+  teeConsoleTo(logPath);
+  console.log(
+    `probe-performance-budget ${process.argv.slice(2).join(' ')} (log ${repoRelative(repositoryRoot, logPath)})`,
+  );
 
   if (options.evaluatePath !== null) {
     // Re-judge recorded samples: no measurement, same evaluator, possibly another budget.
@@ -758,8 +884,55 @@ async function main() {
     );
     console.log(describeEvaluation(evaluation));
   }
+
+  // M2-01al (b): the one re-run. The first attempt says whether it may be re-run; the re-run
+  // reads the first attempt back and records the pair's verdict.
+  let attempt: Record<string, unknown> | null = null;
+  let retry: RetryDecision | null = null;
+  let pair: ReturnType<typeof combineAttempts> | null = null;
+  if (evaluation !== null && options.retryOf === null) {
+    retry = options.retry
+      ? retryDecision(
+          evaluation,
+          checks.every((entry) => entry.passed),
+          1,
+        )
+      : { retry: false, reason: '--no-retry' };
+    attempt = { number: 1, of: MAX_JUDGED_ATTEMPTS, retry };
+  } else if (evaluation !== null && options.retryOf !== null) {
+    const first = await readFirstAttempt(options.outPath, options.retryOf);
+    check(
+      'retry-measured-the-same-tree',
+      first.sourceTree.head === sourceTree.head &&
+        first.sourceTree.diffSha256 === sourceTree.diffSha256,
+      `first attempt ${first.sourceTree.head.slice(0, 7)}/${first.sourceTree.diffSha256?.slice(0, 8) ?? 'clean'}, re-run ${sourceTree.head.slice(0, 7)}/${sourceTree.diffSha256?.slice(0, 8) ?? 'clean'}`,
+    );
+    pair = combineAttempts(
+      { evaluation: first.evaluation, checksPassed: first.checks.every((entry) => entry.passed) },
+      { evaluation, checksPassed: checks.every((entry) => entry.passed) },
+    );
+    attempt = {
+      number: 2,
+      of: MAX_JUDGED_ATTEMPTS,
+      retryOf: first.executedAt,
+      firstAttemptNotPassed: first.evaluation.metrics
+        .filter((metric) => metric.verdict !== 'passed')
+        .map((metric) => ({
+          id: metric.id,
+          verdict: metric.verdict,
+          observed: metric.observed,
+          budget: metric.budget,
+          loadAverage1m: metric.loadAverage1m,
+        })),
+      ownVerdict: checks.every((entry) => entry.passed) && evaluation.passed,
+      pair,
+      rule: 'Re-run once, in full, only after a first attempt that failed only time budgets with every check and every memory and size budget met. The pair passes only if the re-run passes by itself (scripts/performance-budget.ts combineAttempts).',
+    };
+  }
   const checksPassed = checks.every((entry) => entry.passed);
-  const passed = checksPassed && (evaluation === null ? null : evaluation.passed);
+  // On the re-run, `passed` is the pair's verdict (`attempt.ownVerdict` keeps the re-run's own).
+  const passed =
+    pair !== null ? pair.passed : checksPassed && (evaluation === null ? null : evaluation.passed);
   await writeResultWithHistory(options.outPath, {
     schemaVersion: 1,
     node: 'M2-01k-f',
@@ -789,6 +962,8 @@ async function main() {
       loadAverageAtEnd: loadavg().map((value) => Math.round(value * 100) / 100),
     },
     passed,
+    // M2-01al: which attempt this is and, on the first, whether it is re-run and why.
+    ...(attempt === null ? {} : { attempt }),
     checks,
     evaluation,
     samples: observations,
@@ -813,7 +988,10 @@ async function main() {
     JSON.stringify({
       passed,
       // Repeat at an admissible load: a time budget was exceeded above the baseline's load.
-      inconclusive: checksPassed && evaluation?.inconclusive === true,
+      inconclusive:
+        pair !== null ? pair.inconclusive : checksPassed && evaluation?.inconclusive === true,
+      attempt: options.retryOf === null ? 1 : 2,
+      ...(retry === null ? {} : { retry }),
       failedChecks: checks.filter((entry) => !entry.passed).map((entry) => entry.id),
       failedMetrics:
         evaluation?.metrics
@@ -824,6 +1002,14 @@ async function main() {
   );
   if (passed === false || (options.recordOnly && !checksPassed)) process.exitCode = 1;
   console.log(`process peak RSS ${mib(process.resourceUsage().maxRSS * 1024)} MiB`);
+  if (retry?.retry === true) {
+    console.log(
+      `RETRY: the first attempt failed only time budgets (${retry.timeMetrics.join(', ')}); ` +
+        `measuring every phase once more after ${RETRY_PAUSE_MS / 1000} s. The pair passes only if the re-run passes.`,
+    );
+    await new Promise((done) => setTimeout(done, RETRY_PAUSE_MS));
+    process.exitCode = await startRetry(startedAt, logPath);
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

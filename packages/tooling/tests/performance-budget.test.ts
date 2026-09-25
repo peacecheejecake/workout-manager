@@ -1,17 +1,25 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  assertDurableOutputPath,
   assertMeasurableSourceTree,
+  combineAttempts,
   evaluateBudget,
+  PARSE_PROCESS_RSS_CHECK,
   parseBudgetFile,
+  parseProcessRssCheck,
   percentile,
   recordedRuns,
   repoRelative,
+  retryDecision,
+  VERIFICATION_LOG_DIRECTORY,
   verifyBaselinesAgainstRuns,
+  WIPED_OUTPUT_DIRECTORIES,
+  type BudgetEvaluation,
   type BudgetSample,
   type PerformanceBudgetFile,
 } from '../../../scripts/performance-budget';
@@ -34,7 +42,7 @@ function budgetWith(
       budget: number;
       statistic?: 'p95' | 'max';
       minimumSamples?: number;
-      unit?: 'ms' | 'MiB';
+      unit?: 'ms' | 'MiB' | 'bytes';
     }
   >,
 ): PerformanceBudgetFile {
@@ -699,5 +707,340 @@ describe('the checked-in budget', () => {
       'api.readNormalizedMs',
       'worker.parseMs',
     ]);
+  });
+});
+
+describe('the parse process RSS of every parse is read (M2-01al a)', () => {
+  it('fails the check when any parse had no reading, however many were read', () => {
+    expect(parseProcessRssCheck(20, 0)).toMatchObject({
+      id: PARSE_PROCESS_RSS_CHECK,
+      passed: true,
+    });
+    // minimumSamples (5) alone would judge 5 readings of 20 parses; so would 19 of 20.
+    expect(parseProcessRssCheck(20, 15).passed).toBe(false);
+    expect(parseProcessRssCheck(20, 1).passed).toBe(false);
+    expect(parseProcessRssCheck(20, 1).detail).toBe(
+      '19 of 20 parses had their RSS read (1 without a reading)',
+    );
+    // No parse at all is no evidence.
+    expect(parseProcessRssCheck(0, 0).passed).toBe(false);
+  });
+
+  it('is a passed check of the recorded judged run, which read every parse', () => {
+    const latest = JSON.parse(readFileSync(research('performance-budget-result.json'), 'utf8')) as {
+      mode: string;
+      checks: { id: string; passed: boolean }[];
+      details: { parseProcessRss: { parsesWithoutReading: number } };
+    };
+    expect(latest.mode).toBe('judged');
+    expect(latest.checks.find((each) => each.id === PARSE_PROCESS_RSS_CHECK)?.passed).toBe(true);
+    expect(latest.details.parseProcessRss.parsesWithoutReading).toBe(0);
+  });
+});
+
+describe('one disclosed re-run (M2-01al b)', () => {
+  const budget = budgetWith({
+    'parse.time': { budget: 100 },
+    'parse.memory': { budget: 100, unit: 'MiB' },
+    'parse.size': { budget: 100, unit: 'bytes' },
+  });
+  const ok = samples([90, 90, 90, 90, 90], 20);
+  const judge = (
+    observed: Partial<Record<'parse.time' | 'parse.memory' | 'parse.size', BudgetSample[]>>,
+  ): BudgetEvaluation =>
+    evaluateBudget(
+      budget,
+      { 'parse.time': ok, 'parse.memory': ok, 'parse.size': ok, ...observed },
+      ['parse'],
+    );
+  // The fixture's admissible load is 30 (its baseline maximum).
+  const slow = judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20) });
+  const loaded = judge({ 'parse.time': samples([150, 150, 150, 150, 150], 99) });
+  const passing = judge({});
+
+  it('re-runs a first attempt that failed only a time budget, even at an admissible load', () => {
+    expect(slow.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe('failed');
+    expect(retryDecision(slow, true, 1)).toEqual({ retry: true, timeMetrics: ['parse.time'] });
+    // An inconclusive time budget is re-run too: the re-run is the repeat the rule asks for.
+    expect(loaded.inconclusive).toBe(true);
+    expect(retryDecision(loaded, true, 1)).toEqual({ retry: true, timeMetrics: ['parse.time'] });
+  });
+
+  it('never re-runs for a memory or size budget, a missing or thin metric, or a failed check', () => {
+    const over = samples([150, 150, 150, 150, 150], 99);
+    for (const evaluation of [
+      judge({ 'parse.memory': over }),
+      judge({ 'parse.size': over }),
+      // A slow time budget next to a memory failure: the memory failure decides.
+      judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20), 'parse.memory': over }),
+      // parse.size missing.
+      evaluateBudget(budget, { 'parse.time': over, 'parse.memory': ok }, ['parse']),
+      // parse.size insufficient (4 of 5 samples).
+      judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20), 'parse.size': ok.slice(1) }),
+    ])
+      expect(retryDecision(evaluation, true, 1).retry).toBe(false);
+    expect(retryDecision(slow, false, 1)).toEqual({ retry: false, reason: 'a check failed' });
+    expect(retryDecision(passing, true, 1).retry).toBe(false);
+  });
+
+  it('never re-runs a time budget that was missing or had too few samples (review N2)', () => {
+    // Only the time metric is short of evidence; memory and size passed. Unmeasured is not
+    // slow: nothing a burst could explain, so there is nothing to re-run.
+    const missingTime = evaluateBudget(budget, { 'parse.memory': ok, 'parse.size': ok }, ['parse']);
+    expect(missingTime.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe(
+      'missing',
+    );
+    expect(retryDecision(missingTime, true, 1)).toEqual({
+      retry: false,
+      reason: 'not only time budgets: parse.time:missing',
+    });
+    const thinTime = judge({ 'parse.time': samples([150, 150, 150, 150], 20) });
+    expect(thinTime.metrics.find((metric) => metric.id === 'parse.time')?.verdict).toBe(
+      'insufficient',
+    );
+    expect(retryDecision(thinTime, true, 1)).toEqual({
+      retry: false,
+      reason: 'not only time budgets: parse.time:insufficient',
+    });
+  });
+
+  it('re-runs at most once', () => {
+    expect(retryDecision(slow, true, 2)).toEqual({ retry: false, reason: 'no attempt left' });
+  });
+
+  it('passes only when the re-run passes by itself', () => {
+    expect(
+      combineAttempts(
+        { evaluation: slow, checksPassed: true },
+        { evaluation: passing, checksPassed: true },
+      ),
+    ).toEqual({ passed: true, inconclusive: false });
+    // A real regression at an admissible load is slow in the re-run too: failed.
+    expect(
+      combineAttempts(
+        { evaluation: slow, checksPassed: true },
+        { evaluation: slow, checksPassed: true },
+      ),
+    ).toEqual({ passed: false, inconclusive: false });
+    // The re-run is judged whole: a check or a memory budget it fails fails the pair.
+    expect(
+      combineAttempts(
+        { evaluation: slow, checksPassed: true },
+        { evaluation: passing, checksPassed: false },
+      ).passed,
+    ).toBe(false);
+    expect(
+      combineAttempts(
+        { evaluation: slow, checksPassed: true },
+        {
+          evaluation: judge({ 'parse.memory': samples([150, 150, 150, 150, 150], 20) }),
+          checksPassed: true,
+        },
+      ).passed,
+    ).toBe(false);
+  });
+
+  it('never excuses memory: a first attempt with a memory failure fails, whatever the re-run', () => {
+    const memoryAndTime = judge({
+      'parse.time': samples([150, 150, 150, 150, 150], 20),
+      'parse.memory': samples([150, 150, 150, 150, 150], 20),
+    });
+    expect(
+      combineAttempts(
+        { evaluation: memoryAndTime, checksPassed: true },
+        { evaluation: passing, checksPassed: true },
+      ),
+    ).toEqual({ passed: false, inconclusive: false });
+    // Nor a failed check of the first attempt.
+    expect(
+      combineAttempts(
+        { evaluation: slow, checksPassed: false },
+        { evaluation: passing, checksPassed: true },
+      ).passed,
+    ).toBe(false);
+  });
+
+  it('keeps a pair inconclusive only when both attempts were', () => {
+    expect(
+      combineAttempts(
+        { evaluation: loaded, checksPassed: true },
+        { evaluation: loaded, checksPassed: true },
+      ),
+    ).toEqual({ passed: false, inconclusive: true });
+    // A time budget failed at an admissible load in either attempt keeps the pair failed.
+    for (const [first, second] of [
+      [slow, loaded],
+      [loaded, slow],
+    ] as const)
+      expect(
+        combineAttempts(
+          { evaluation: first, checksPassed: true },
+          { evaluation: second, checksPassed: true },
+        ),
+      ).toEqual({ passed: false, inconclusive: false });
+  });
+
+  describe('on the M2-01aj reviewer burst (2026-09-25T01:16Z, worker.parseMs)', () => {
+    const checkedIn = parseBudgetFile(
+      JSON.parse(readFileSync(research('performance-budget.json'), 'utf8')),
+    );
+    const parseBudget: PerformanceBudgetFile = {
+      ...checkedIn,
+      desktop: {
+        ...checkedIn.desktop,
+        metrics: Object.fromEntries(
+          Object.entries(checkedIn.desktop.metrics).filter(([id]) => id === 'worker.parseMs'),
+        ),
+      },
+    };
+    // The reviewer's 20 samples in order, each with the 1-minute load it was taken at: seven
+    // slow parses at load 13.73–17.92; the load reached 21.61 only after they were fast again.
+    const burst: BudgetSample[] = (
+      [
+        [1511, 13.73],
+        [1412, 13.73],
+        [1446, 17.92],
+        [1345, 17.92],
+        [1260, 17.92],
+        [1060, 17.92],
+        [883, 17.92],
+        [837, 21.61],
+        [634, 21.61],
+        [457, 21.61],
+        [471, 21.61],
+        [444, 21.61],
+        [448, 21.61],
+        [444, 21.61],
+        [440, 21.61],
+        [484, 21.61],
+        [468, 21.61],
+        [454, 20.12],
+        [455, 20.12],
+        [451, 20.12],
+      ] as const
+    ).map(([value, loadAverage1m]) => ({ value, loadAverage1m }));
+    const firstAttempt = evaluateBudget(parseBudget, { 'worker.parseMs': burst }, ['worker']);
+
+    it('is failed, not inconclusive, under the unchanged admissible-load rule', () => {
+      // Every sample lies below the admissible 23.21: the lagging load cannot excuse the burst.
+      expect(checkedIn.desktop.metrics['worker.parseMs']?.baseline.loadAverage1m.max).toBe(23.21);
+      expect(firstAttempt.metrics[0]).toMatchObject({ verdict: 'failed', observed: 1446 });
+      expect(retryDecision(firstAttempt, true, 1).retry).toBe(true);
+    });
+
+    it('passes with a re-run at the recorded judged speed, and fails with one as slow', () => {
+      const judged = JSON.parse(
+        readFileSync(research('performance-budget-result.json'), 'utf8'),
+      ) as { samples: Record<string, BudgetSample[]> };
+      const fast = evaluateBudget(
+        parseBudget,
+        { 'worker.parseMs': judged.samples['worker.parseMs'] ?? [] },
+        ['worker'],
+      );
+      expect(fast.passed).toBe(true);
+      const first = { evaluation: firstAttempt, checksPassed: true };
+      expect(combineAttempts(first, { evaluation: fast, checksPassed: true }).passed).toBe(true);
+      expect(combineAttempts(first, { evaluation: firstAttempt, checksPassed: true }).passed).toBe(
+        false,
+      );
+    });
+  });
+});
+
+describe('output that survives the test runners (M2-01al c)', () => {
+  const repository = fileURLToPath(new URL('../../../', import.meta.url));
+
+  it('refuses a result or log under a directory that Playwright or coverage empties', () => {
+    expect(WIPED_OUTPUT_DIRECTORIES).toEqual(['test-results', 'playwright-report', 'coverage']);
+    for (const path of [
+      'test-results/m2-01al/probe.log',
+      'playwright-report/result.json',
+      'coverage/m2-01aj/identity.log',
+      'apps/web/test-results/probe.log',
+    ])
+      expect(() => assertDurableOutputPath('/repo', path), path).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+    expect(assertDurableOutputPath('/repo', 'verification-logs/m2-01al/probe.log')).toBe(
+      '/repo/verification-logs/m2-01al/probe.log',
+    );
+    expect(assertDurableOutputPath('/repo', '/repo/docs/implementation/research/result.json')).toBe(
+      '/repo/docs/implementation/research/result.json',
+    );
+    // Outside the repository no tool of this workspace empties anything: the caller's choice.
+    expect(assertDurableOutputPath('/repo', '/elsewhere/test-results/x.log')).toBe(
+      '/elsewhere/test-results/x.log',
+    );
+    // A file named like one of them is not under it.
+    expect(() => assertDurableOutputPath('/repo', 'verification-logs/coverage.log')).not.toThrow();
+  });
+
+  it('matches the directory names without case, as the case-insensitive volume does (review N3)', () => {
+    for (const path of [
+      'Test-Results/a.log',
+      'TEST-RESULTS/m2-01al/probe.log',
+      'Playwright-Report/result.json',
+      'apps/web/Coverage/x.log',
+    ])
+      expect(() => assertDurableOutputPath('/repo', path), path).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+  });
+
+  it('follows symbolic links to where the output would land (review N3)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'budget-output-'));
+    try {
+      mkdirSync(join(root, 'test-results'));
+      mkdirSync(join(root, 'verification-logs'));
+      mkdirSync(join(root, 'kept'));
+      // An existing directory reached through a link, at the file's own parent or higher.
+      symlinkSync('../test-results', join(root, 'verification-logs/link'));
+      expect(() => assertDurableOutputPath(root, 'verification-logs/link/a.log')).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+      expect(() => assertDurableOutputPath(root, 'verification-logs/link/deeper/a.log')).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+      // A link to a directory not created yet (Playwright creates it on its next run).
+      symlinkSync('../coverage/m2-01al', join(root, 'verification-logs/dangling'));
+      expect(() => assertDurableOutputPath(root, 'verification-logs/dangling/a.log')).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+      // The file itself a link into one of them.
+      symlinkSync('../test-results/a.log', join(root, 'verification-logs/file.log'));
+      expect(() => assertDurableOutputPath(root, 'verification-logs/file.log')).toThrow(
+        'OUTPUT_PATH_WIPED_BY_TOOL',
+      );
+      // A link that leads somewhere durable is accepted, under its own name.
+      symlinkSync('../kept', join(root, 'verification-logs/good'));
+      expect(assertDurableOutputPath(root, 'verification-logs/good/a.log')).toBe(
+        join(root, 'verification-logs/good/a.log'),
+      );
+      // A cycle of dangling links is refused, not followed forever.
+      symlinkSync('loop-b', join(root, 'verification-logs/loop-a'));
+      symlinkSync('loop-a', join(root, 'verification-logs/loop-b'));
+      expect(() => assertDurableOutputPath(root, 'verification-logs/loop-a/x.log')).toThrow(
+        /OUTPUT_PATH_UNRESOLVABLE|ELOOP/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the verification log directory out of git and Prettier', () => {
+    expect(WIPED_OUTPUT_DIRECTORIES).not.toContain(VERIFICATION_LOG_DIRECTORY);
+    // Exits 0 only when the path is ignored.
+    expect(() =>
+      execFileSync('git', [
+        '-C',
+        repository,
+        'check-ignore',
+        '-q',
+        `${VERIFICATION_LOG_DIRECTORY}/m2-01al/probe.log`,
+      ]),
+    ).not.toThrow();
+    expect(readFileSync(join(repository, '.prettierignore'), 'utf8').split('\n')).toContain(
+      `${VERIFICATION_LOG_DIRECTORY}/`,
+    );
   });
 });

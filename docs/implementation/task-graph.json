@@ -1524,8 +1524,17 @@
       "title": "성능 판정 보강 3: RSS 측정 누락과 짧은 부하 급증",
       "dependsOn": ["M2-01aj"],
       "kind": "task",
+      "status": "completed",
+      "scope": "M2-01aj 독립 검토의 비차단 후속. (a) parse child RSS를 읽지 못한 parse(`details.parseProcessRss.parsesWithoutReading`)가 0이 아니면 판정 run을 통과로 받지 않는 check를 둔다(지금은 minimumSamples 5라 20개 중 15개를 읽지 못해도 판정된다). (b) 1분 load average가 짧은 경합 급증을 늦게 반영해 허용 부하 안에서도 시간 예산이 거짓 실패할 수 있다(검토자 run 01:16Z에서 worker.parseMs p95 1,446 ms). 표본 단위로 더 촘촘한 부하 측정이나 한 번 자동 재실행 같은 방법을 정하고, 거짓 통과가 생기지 않음을 시험으로 보인다. (c) probe 로그를 Playwright가 지우는 test-results/ 밖에 두도록 문서·script를 고친다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01aj.md, M2-01aj 독립 검토.",
+      "evidence": "docs/implementation/progress/M2-01al.md"
+    },
+    {
+      "id": "M2-01ar",
+      "title": "성능 판정 보강 4: 브라우저 재실행과 수동 재판정 정책",
+      "dependsOn": ["M2-01al"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "M2-01aj 독립 검토의 비차단 후속. (a) parse child RSS를 읽지 못한 parse(`details.parseProcessRss.parsesWithoutReading`)가 0이 아니면 판정 run을 통과로 받지 않는 check를 둔다(지금은 minimumSamples 5라 20개 중 15개를 읽지 못해도 판정된다). (b) 1분 load average가 짧은 경합 급증을 늦게 반영해 허용 부하 안에서도 시간 예산이 거짓 실패할 수 있다(검토자 run 01:16Z에서 worker.parseMs p95 1,446 ms). 표본 단위로 더 촘촘한 부하 측정이나 한 번 자동 재실행 같은 방법을 정하고, 거짓 통과가 생기지 않음을 시험으로 보인다. (c) probe 로그를 Playwright가 지우는 test-results/ 밖에 두도록 문서·script를 고친다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01aj.md, M2-01aj 독립 검토."
+      "scope": "M2-01al 독립 검토의 비차단 후속. (a) 브라우저 spec(tests/performance/long-track-render.spec.ts)에는 재실행이 없어 짧은 부하 급증이 브라우저 시간 예산을 거짓 실패시킬 수 있다. spec 밖 runner가 retryDecision·combineAttempts로 공개되는 재실행 한 번을 하게 하거나, 하지 않는 이유를 적는다. (b) 검토 N4: 재실행 쌍이 실패한 뒤 사람이 probe를 다시 돌려 통과시키면 재실행 한도가 사실상 풀린다. 실패한 쌍 뒤의 새 판정 run은 원인을 고친 변경이나 부하 탓이라는 기록된 사유가 있을 때만 받도록 결과 파일에서 강제할지 정하고, 강제하면 시험하며 강제하지 않으면 이유를 적는다. (c) 검토 N5: 재실행 자격에 첫 시도 p50이 예산 안이라는 조건을 더할지 기록된 run으로 판단한다. 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01al.md §7."
     },
     {
       "id": "M2-01am",
