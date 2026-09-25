@@ -17,12 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01at](progress/M2-01at.md)를 완료했다. migration 소유 역할이 superuser도 BYPASSRLS도 아니면 두 object purge 표(FORCE RLS, policy
-없음) 때문에 `erase_account`·활동 삭제·`delete_course`가 `42501`로 실패하고 purge lease가 아무것도 보지 못하던 결함을 migration 051로
-고쳤다(소유자 전용 policy와 행마다 tenant를 세우는 읽기, backfill 재실행). 추적·썸네일 객체가 있는 계정 말소와 추적이 있는 활동 삭제는
-그런 소유 역할에서 여전히 `resource_object_cleanup`에서 실패한다. 나머지 queue·worker 경로는 후속 M2-01au다.
+[M2-01an](progress/M2-01an.md)를 완료했다. `GET /courses/cards`가 코스마다 전체 선을 읽고 두 번 검증하던 것을, 카드에 필요한 표본(최대 600
+정점)·세대·썸네일 상태·고도 근거만 한 tenant 트랜잭션에서 25코스씩 나눈 문장으로 읽게 바꿨다. 출력은 옛 경로와 같다(19코스 계약 시험).
+최악 기준(200코스 × 20,000정점) 요청당 CPU가 약 9 s에서 0.5–2 s로 줄었고, 가장 느린 문장(고도 영역 밖)은 약 266 ms로 5 s
+`statement_timeout`에 19배 여유가 있다. 카드 목록 재조회 조건(ready면 다시 읽지 않음, 같은 head, focus 재조회 없음, 60초 신선)을 시험으로
+고정했다. 행 판정 변화는 없다.
 
-직전 완료: [M2-01k-o](progress/M2-01k-o.md)(코스 내보내기·공유 전 privacy 확인).
+직전 완료: [M2-01at](progress/M2-01at.md)(plain 소유 역할의 object purge).
 
 ## 운영 메모
 
@@ -66,8 +67,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01as, M2-01au. 이 중
-M2-01ag·M2-01an·M2-01ap·M2-01ar·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01ar, M2-01as, M2-01au. 이 중
+M2-01ag·M2-01ap·M2-01ar·M2-01as·M2-01au는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
@@ -83,6 +84,8 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
   두 회차는 모두 통과했다(2026-09-25). 반복되면 별도 노드로 다룬다.
 - `tests/identity/plan-scenarios.spec.ts:287`(교차 branch 비교)이 M2-01k-o 병합 검증 identity 1회차(1분 load 약 84)에서 한 번 실패했고
   2회차는 통과했다(2026-09-26). 반복되면 별도 노드로 다룬다.
+- `apps/api/tests/course-sharing.integration.test.ts` T23(분당 rate limit 창)이 M2-01an 검증의 통합 1회차에서 `expected 200 to be 404`로
+  한 번 실패했고, 그 파일만·전체를 다시 돌리면 통과했다(2026-09-26). 시각 창에 기대는 단언이라 반복되면 별도 노드로 다룬다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate

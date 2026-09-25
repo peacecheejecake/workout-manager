@@ -1,0 +1,615 @@
+{
+  "probe": "probe-course-cards-cost",
+  "node": "M2-01an",
+  "measuredAt": "2026-09-25T17:18:39.540Z",
+  "command": "node --import tsx scripts/probe-course-cards-cost.mts --execute",
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M1 Pro",
+    "logicalCpus": 8,
+    "totalMemoryGiB": 32,
+    "node": "v24.12.0",
+    "postgres": "14.15 (Homebrew)",
+    "loadAverageAtStart": [28.146, 33.208, 30.892],
+    "loadAverageAtEnd": [22.037, 29.287, 29.78]
+  },
+  "fixture": {
+    "synthetic": true,
+    "coursesPerTenant": 200,
+    "verticesPerCourse": 20000,
+    "tenants": [
+      "inside-box: lines inside the Seoul elevation box",
+      "outside-box: lines near Busan, outside it"
+    ],
+    "elevationDataset": {
+      "kind": "elevation",
+      "datasetId": "2fa973c2e348",
+      "datasetVersion": 1,
+      "region": "Seoul (BBBike city extract)",
+      "sourceExtractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+      "licence": "ODbL-1.0",
+      "licenceUrl": "https://www.openstreetmap.org/copyright",
+      "attribution": "장소·고도 데이터 © OpenStreetMap contributors (ODbL 1.0)",
+      "updateCadence": "월 1회, basemap·routing graph와 같은 extract에서 함께 빌드",
+      "builtAt": "2026-09-22T17:04:48.758Z",
+      "featureCount": 821,
+      "bbox": [126.734, 37.413, 127.269, 37.715]
+    },
+    "stored": {
+      "courses": 400,
+      "vertices": "8000000",
+      "revision_table": "142 MB"
+    },
+    "seedMilliseconds": 31376
+  },
+  "method": {
+    "rounds": 5,
+    "warmUpPerPath": 1,
+    "order": "alternating before/after per round",
+    "before": "list + head read of every course (4 at a time) + courseCard (M2-01k-a route)",
+    "after": "readCardSources (one tenant transaction, line statements of COURSE_CARD_LINE_CHUNK courses) + courseCardFromSource (M2-01an route)",
+    "lineStatements": "wall time of each line statement as the API sees it; worst chunk vs the 5 s statement_timeout; plus 3 runs with all 200 lines in one statement (the first-review shape) for comparison",
+    "bothEndIn": "courseCardListSchema.parse + JSON.stringify",
+    "apiCpu": "process.cpuUsage user+system of this process during the request",
+    "databaseCpu": "ps cputime of the private cluster (postmaster and children), 10 ms resolution",
+    "equality": "isDeepStrictEqual(before, after) on every round; a difference aborts the probe"
+  },
+  "results": [
+    {
+      "tenant": "inside-box",
+      "elevationDataset": "2fa973c2e348",
+      "cards": 200,
+      "lineStatements": {
+        "chunkCourses": 25,
+        "statementTimeoutMilliseconds": 5000,
+        "worstChunkMilliseconds": 52,
+        "medianChunkMaxMilliseconds": 50,
+        "unchunkedSingleStatement": [
+          {
+            "loadAverageBefore": [29.758, 32.554, 30.806],
+            "count": 1,
+            "maxMilliseconds": 333,
+            "totalMilliseconds": 333
+          },
+          {
+            "loadAverageBefore": [29.217, 32.395, 30.76],
+            "count": 1,
+            "maxMilliseconds": 324,
+            "totalMilliseconds": 324
+          },
+          {
+            "loadAverageBefore": [28.559, 32.206, 30.702],
+            "count": 1,
+            "maxMilliseconds": 295,
+            "totalMilliseconds": 295
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "wallMilliseconds": 4903,
+          "apiCpuMilliseconds": 8027,
+          "databaseCpuMilliseconds": 1130
+        },
+        "after": {
+          "wallMilliseconds": 539,
+          "apiCpuMilliseconds": 403,
+          "databaseCpuMilliseconds": 280
+        }
+      },
+      "rounds": [
+        {
+          "round": 0,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4337,
+            "apiCpuMilliseconds": 6251,
+            "databaseCpuMilliseconds": 1130,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [27.681, 32.509, 30.728],
+            "loadAverageAfter": [27.706, 32.434, 30.712]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 538,
+            "apiCpuMilliseconds": 347,
+            "databaseCpuMilliseconds": 290,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [27.706, 32.434, 30.712],
+            "loadAverageAfter": [27.706, 32.434, 30.712],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 43,
+              "totalMilliseconds": 312
+            }
+          }
+        },
+        {
+          "round": 1,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5118,
+            "apiCpuMilliseconds": 8304,
+            "databaseCpuMilliseconds": 1130,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [27.706, 32.434, 30.712],
+            "loadAverageAfter": [28.29, 32.476, 30.737]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 591,
+            "apiCpuMilliseconds": 467,
+            "databaseCpuMilliseconds": 270,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [27.706, 32.434, 30.712],
+            "loadAverageAfter": [27.706, 32.434, 30.712],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 50,
+              "totalMilliseconds": 326
+            }
+          }
+        },
+        {
+          "round": 2,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4868,
+            "apiCpuMilliseconds": 8027,
+            "databaseCpuMilliseconds": 1110,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [28.29, 32.476, 30.737],
+            "loadAverageAfter": [29.388, 32.634, 30.803]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 579,
+            "apiCpuMilliseconds": 448,
+            "databaseCpuMilliseconds": 280,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [29.388, 32.634, 30.803],
+            "loadAverageAfter": [29.388, 32.634, 30.803],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 52,
+              "totalMilliseconds": 328
+            }
+          }
+        },
+        {
+          "round": 3,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4903,
+            "apiCpuMilliseconds": 7992,
+            "databaseCpuMilliseconds": 1100,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [29.677, 32.64, 30.815],
+            "loadAverageAfter": [29.302, 32.513, 30.781]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 539,
+            "apiCpuMilliseconds": 403,
+            "databaseCpuMilliseconds": 290,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [29.677, 32.64, 30.815],
+            "loadAverageAfter": [29.677, 32.64, 30.815],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 50,
+              "totalMilliseconds": 311
+            }
+          }
+        },
+        {
+          "round": 4,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4963,
+            "apiCpuMilliseconds": 8164,
+            "databaseCpuMilliseconds": 1300,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [29.302, 32.513, 30.781],
+            "loadAverageAfter": [29.758, 32.554, 30.806]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 513,
+            "apiCpuMilliseconds": 349,
+            "databaseCpuMilliseconds": 130,
+            "responseBytes": 3360872,
+            "loadAverageBefore": [29.758, 32.554, 30.806],
+            "loadAverageAfter": [29.758, 32.554, 30.806],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 42,
+              "totalMilliseconds": 297
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tenant": "outside-box",
+      "elevationDataset": "2fa973c2e348",
+      "cards": 200,
+      "lineStatements": {
+        "chunkCourses": 25,
+        "statementTimeoutMilliseconds": 5000,
+        "worstChunkMilliseconds": 266,
+        "medianChunkMaxMilliseconds": 228,
+        "unchunkedSingleStatement": [
+          {
+            "loadAverageBefore": [29.479, 31.732, 30.602],
+            "count": 1,
+            "maxMilliseconds": 1986,
+            "totalMilliseconds": 1986
+          },
+          {
+            "loadAverageBefore": [29.04, 31.604, 30.563],
+            "count": 1,
+            "maxMilliseconds": 1764,
+            "totalMilliseconds": 1764
+          },
+          {
+            "loadAverageBefore": [28.19, 31.336, 30.479],
+            "count": 1,
+            "maxMilliseconds": 1798,
+            "totalMilliseconds": 1798
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "wallMilliseconds": 5016,
+          "apiCpuMilliseconds": 8275,
+          "databaseCpuMilliseconds": 1120
+        },
+        "after": {
+          "wallMilliseconds": 1873,
+          "apiCpuMilliseconds": 328,
+          "databaseCpuMilliseconds": 1630
+        }
+      },
+      "rounds": [
+        {
+          "round": 0,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4948,
+            "apiCpuMilliseconds": 8222,
+            "databaseCpuMilliseconds": 1150,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.918, 31.951, 30.629],
+            "loadAverageAfter": [27.764, 31.852, 30.602]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 1850,
+            "apiCpuMilliseconds": 319,
+            "databaseCpuMilliseconds": 1630,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.764, 31.852, 30.602],
+            "loadAverageAfter": [27.542, 31.738, 30.568],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 225,
+              "totalMilliseconds": 1676
+            }
+          }
+        },
+        {
+          "round": 1,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5320,
+            "apiCpuMilliseconds": 8359,
+            "databaseCpuMilliseconds": 1150,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.542, 31.738, 30.568],
+            "loadAverageAfter": [27.259, 31.609, 30.53]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 1873,
+            "apiCpuMilliseconds": 330,
+            "databaseCpuMilliseconds": 1620,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.542, 31.738, 30.568],
+            "loadAverageAfter": [27.542, 31.738, 30.568],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 220,
+              "totalMilliseconds": 1695
+            }
+          }
+        },
+        {
+          "round": 2,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5053,
+            "apiCpuMilliseconds": 8290,
+            "databaseCpuMilliseconds": 1110,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.259, 31.609, 30.53],
+            "loadAverageAfter": [27.398, 31.565, 30.521]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 1894,
+            "apiCpuMilliseconds": 319,
+            "databaseCpuMilliseconds": 1630,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.398, 31.565, 30.521],
+            "loadAverageAfter": [27.206, 31.456, 30.488],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 228,
+              "totalMilliseconds": 1718
+            }
+          }
+        },
+        {
+          "round": 3,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4951,
+            "apiCpuMilliseconds": 8244,
+            "databaseCpuMilliseconds": 1110,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.206, 31.456, 30.488],
+            "loadAverageAfter": [27.189, 31.382, 30.467]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 1865,
+            "apiCpuMilliseconds": 328,
+            "databaseCpuMilliseconds": 1640,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.206, 31.456, 30.488],
+            "loadAverageAfter": [27.206, 31.456, 30.488],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 230,
+              "totalMilliseconds": 1689
+            }
+          }
+        },
+        {
+          "round": 4,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5016,
+            "apiCpuMilliseconds": 8275,
+            "databaseCpuMilliseconds": 1120,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [27.189, 31.382, 30.467],
+            "loadAverageAfter": [28.215, 31.525, 30.523]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 2166,
+            "apiCpuMilliseconds": 452,
+            "databaseCpuMilliseconds": 1680,
+            "responseBytes": 3338844,
+            "loadAverageBefore": [28.215, 31.525, 30.523],
+            "loadAverageAfter": [29.479, 31.732, 30.602],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 266,
+              "totalMilliseconds": 1944
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tenant": "inside-box-no-dataset",
+      "elevationDataset": null,
+      "cards": 200,
+      "lineStatements": {
+        "chunkCourses": 25,
+        "statementTimeoutMilliseconds": 5000,
+        "worstChunkMilliseconds": 48,
+        "medianChunkMaxMilliseconds": 40,
+        "unchunkedSingleStatement": [
+          {
+            "loadAverageBefore": [25.415, 30.266, 30.127],
+            "count": 1,
+            "maxMilliseconds": 245,
+            "totalMilliseconds": 245
+          },
+          {
+            "loadAverageBefore": [24.5, 29.995, 30.032],
+            "count": 1,
+            "maxMilliseconds": 262,
+            "totalMilliseconds": 262
+          },
+          {
+            "loadAverageBefore": [23.259, 29.646, 29.909],
+            "count": 1,
+            "maxMilliseconds": 248,
+            "totalMilliseconds": 248
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "wallMilliseconds": 5282,
+          "apiCpuMilliseconds": 8228,
+          "databaseCpuMilliseconds": 1140
+        },
+        "after": {
+          "wallMilliseconds": 429,
+          "apiCpuMilliseconds": 273,
+          "databaseCpuMilliseconds": 250
+        }
+      },
+      "rounds": [
+        {
+          "round": 0,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5595,
+            "apiCpuMilliseconds": 8350,
+            "databaseCpuMilliseconds": 1210,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [27.165, 31.012, 30.374],
+            "loadAverageAfter": [27.792, 31.078, 30.401]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 403,
+            "apiCpuMilliseconds": 273,
+            "databaseCpuMilliseconds": 240,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [27.792, 31.078, 30.401],
+            "loadAverageAfter": [27.792, 31.078, 30.401],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 37,
+              "totalMilliseconds": 261
+            }
+          }
+        },
+        {
+          "round": 1,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5295,
+            "apiCpuMilliseconds": 8249,
+            "databaseCpuMilliseconds": 1140,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [27.792, 31.078, 30.401],
+            "loadAverageAfter": [26.68, 30.73, 30.285]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 455,
+            "apiCpuMilliseconds": 263,
+            "databaseCpuMilliseconds": 250,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [27.792, 31.078, 30.401],
+            "loadAverageAfter": [27.792, 31.078, 30.401],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 43,
+              "totalMilliseconds": 281
+            }
+          }
+        },
+        {
+          "round": 2,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5282,
+            "apiCpuMilliseconds": 8197,
+            "databaseCpuMilliseconds": 1160,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [26.68, 30.73, 30.285],
+            "loadAverageAfter": [26.706, 30.668, 30.265]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 455,
+            "apiCpuMilliseconds": 289,
+            "databaseCpuMilliseconds": 260,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [26.706, 30.668, 30.265],
+            "loadAverageAfter": [26.706, 30.668, 30.265],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 40,
+              "totalMilliseconds": 293
+            }
+          }
+        },
+        {
+          "round": 3,
+          "order": ["after", "before"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 4982,
+            "apiCpuMilliseconds": 8122,
+            "databaseCpuMilliseconds": 1100,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [26.706, 30.668, 30.265],
+            "loadAverageAfter": [26.409, 30.541, 30.222]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 423,
+            "apiCpuMilliseconds": 251,
+            "databaseCpuMilliseconds": 250,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [26.706, 30.668, 30.265],
+            "loadAverageAfter": [26.706, 30.668, 30.265],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 37,
+              "totalMilliseconds": 270
+            }
+          }
+        },
+        {
+          "round": 4,
+          "order": ["before", "after"],
+          "identical": true,
+          "before": {
+            "label": "before",
+            "wallMilliseconds": 5124,
+            "apiCpuMilliseconds": 8228,
+            "databaseCpuMilliseconds": 1130,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [26.409, 30.541, 30.222],
+            "loadAverageAfter": [25.415, 30.266, 30.127]
+          },
+          "after": {
+            "label": "after",
+            "wallMilliseconds": 429,
+            "apiCpuMilliseconds": 295,
+            "databaseCpuMilliseconds": 240,
+            "responseBytes": 3239633,
+            "loadAverageBefore": [25.415, 30.266, 30.127],
+            "loadAverageAfter": [25.415, 30.266, 30.127],
+            "lineStatements": {
+              "count": 8,
+              "maxMilliseconds": 48,
+              "totalMilliseconds": 267
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

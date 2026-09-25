@@ -3,7 +3,13 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
-import { courseLimits } from '@workout/contracts/courses';
+import { courseLimits, type CourseGeneration } from '@workout/contracts/courses';
+import {
+  courseCard,
+  courseCardFromSource,
+  courseCardVertexIndices,
+} from '@workout/server-courses/course-cards';
+import { createElevationIndex, type ElevationIndex } from '@workout/server-courses/geo-data';
 
 import { createActivityRepository, type ActivityRepository } from '../src/activities.js';
 import {
@@ -2853,5 +2859,456 @@ describe('M2-01i target-distance candidates', () => {
         first.proposalId,
       ),
     ).toBeNull();
+  });
+});
+
+/**
+ * M2-01an: the S13 card read is held to the card the whole head read gives.
+ *
+ * `readCardSources` reads no line whole: one statement for every head with its generation,
+ * length and thumbnail row, one for the vertices a card draws and samples and whether the
+ * line reaches the elevation box. The reference is what the route did before it —
+ * `list`, then `read` of every course, then `courseCard` — on the same stored courses.
+ */
+describe('M2-01an card read', () => {
+  const west = 126.734;
+  const south = 37.413;
+  const east = 127.269;
+  const north = 37.715;
+  const elevation = createElevationIndex({
+    identity: {
+      kind: 'elevation',
+      datasetId: 'beef0123cafe',
+      datasetVersion: 1,
+      region: 'Seoul',
+      sourceExtractSha256: 'a'.repeat(64),
+      licence: 'ODbL-1.0',
+      licenceUrl: 'https://www.openstreetmap.org/copyright',
+      attribution: '© OpenStreetMap contributors',
+      updateCadence: '월 1회',
+      builtAt: '2026-03-01T00:00:00.000Z',
+      featureCount: 3,
+      bbox: [west, south, east, north],
+    },
+    maxSourceDistanceMeters: 150,
+    points: [
+      { position: [126.9779, 37.5665], elevationMeters: 38 },
+      { position: [126.9642, 37.5561], elevationMeters: 61 },
+      { position: [west, south], elevationMeters: 12 },
+    ],
+  });
+
+  /** A long line with long decimal expansions, so exact storage round-trips are exercised. */
+  const longLine = (length: number, origin: [number, number]): [number, number][] =>
+    Array.from({ length }, (_, index) => [
+      origin[0] - index * 1.234567e-6,
+      origin[1] - index * 5.4321987e-7,
+    ]);
+
+  const imported: CourseGeneration = {
+    kind: 'imported-file',
+    format: 'gpx',
+    sourceKind: 'gpx-trk',
+    itemIndex: 0,
+    parserId: 'gpx-track-v1',
+    parserVersion: 1,
+    fileSha256: 'a'.repeat(64),
+    fileByteLength: 200,
+    originalFilename: null,
+    fileCreator: null,
+    vertexCount: 2,
+    importedWaypointCount: 0,
+    ignoredFileWaypointCount: 0,
+  };
+  const routed = (line: readonly [number, number][]): CourseGeneration => ({
+    kind: 'routed-waypoints',
+    computation: routeComputation(`req-${randomUUID()}`, 1),
+    engineDistanceMeters: 1912.4,
+    engineDurationSeconds: 1300,
+    maxSnapDistanceMeters: 4,
+    waypointCount: 2,
+    vertexCount: line.length,
+  });
+  const trimmed = (
+    sourceGenerationKind: Extract<
+      CourseGeneration,
+      { kind: 'privacy-trimmed' }
+    >['sourceGenerationKind'],
+    line: readonly [number, number][],
+  ): CourseGeneration => ({
+    kind: 'privacy-trimmed',
+    sourceRevision: 1,
+    sourceGenerationKind,
+    sourceGraphBuildId: sourceGenerationKind === 'routed-waypoints' ? '0123456789abcdef' : null,
+    policyVersion: 1,
+    zoneSetDigest: 'f'.repeat(64),
+    appliedZoneCount: 1,
+    removedVertexCount: 1,
+    removedLeadingVertexCount: 1,
+    removedTrailingVertexCount: 0,
+    removedWaypointCount: 0,
+    vertexCount: line.length,
+  });
+
+  function lineContent(
+    name: string,
+    line: [number, number][],
+    generation: CourseGeneration,
+  ): PreparedCourseContent {
+    const first = line[0];
+    const last = line[line.length - 1];
+    if (first === undefined || last === undefined) throw new Error('a line needs two vertices');
+    return {
+      name,
+      coordinates: line,
+      waypoints: [
+        { role: 'start', position: first, name: null, sourceSampleId: null, locked: false },
+        { role: 'finish', position: last, name: null, sourceSampleId: null, locked: false },
+      ],
+      generation,
+      edit: { kind: 'imported' },
+      lineage: [],
+      distanceMeters: 1234.5 + line.length,
+      contentDigest: hashOf(JSON.stringify([name, line, generation.kind])),
+    };
+  }
+
+  async function create(athlete: string, content: PreparedCourseContent) {
+    const created = await courses.create(athlete, content, `course-${randomUUID()}`);
+    if (created.status !== 'available') throw new Error('course was not created');
+    return created;
+  }
+
+  /** Put a head revision's thumbnail row into one state, as the owner role can. */
+  async function thumbnail(athlete: string, courseId: string, revision: number, set: string) {
+    await admin.query(
+      `UPDATE course_thumbnail SET ${set} WHERE athlete_id=$1 AND course_id=$2 AND course_revision=$3`,
+      [athlete, courseId, revision],
+    );
+  }
+
+  /** The route before M2-01an: the list, every head read whole, `courseCard`. */
+  async function cardsFromWholeReads(athlete: string, index: ElevationIndex | null) {
+    const list = await courses.list(athlete);
+    const cards = [];
+    for (const head of list.courses)
+      cards.push(
+        head.status === 'unavailable'
+          ? courseCard({ status: 'unavailable', course: head }, index)
+          : courseCard(await courses.read(athlete, head.courseId), index),
+      );
+    return cards;
+  }
+
+  async function cardsFromCardRead(
+    athlete: string,
+    index: ElevationIndex | null,
+    repository: CourseRepository = courses,
+  ) {
+    const sources = await repository.readCardSources(athlete, {
+      vertexIndices: (vertexCount) => courseCardVertexIndices(vertexCount, index),
+      region: index === null ? null : index.identity.bbox,
+    });
+    return sources.map((source) => courseCardFromSource(source, index));
+  }
+
+  it('gives the same cards as the whole head reads, for every kind of course', async () => {
+    // A course cut from a recording, and one reclaimed when its recording was deleted.
+    const { athlete } = await athleteWithCourse('Recorded');
+    const doomed = await activities.importActivity(athlete, importInput());
+    const doomedTrack = await storeTrack(athlete, doomed.activityId, doomed.revision);
+    await courses.create(
+      athlete,
+      content({ activityId: doomed.activityId, trackId: doomedTrack.trackId, name: 'Doomed' }),
+      `course-${randomUUID()}`,
+    );
+    await activities.deleteActivity(athlete, doomed.activityId, {
+      expectedRevision: doomed.revision,
+    });
+
+    // The maximum line, through Seoul and two elevation facts; a stored picture is ready.
+    const long = longLine(courseLimits.vertices, [126.9779, 37.5665]);
+    const routedLong = await create(athlete, lineContent('Long', long, routed(long)));
+    await thumbnail(
+      athlete,
+      routedLong.course.courseId,
+      1,
+      `state='ready',storage_ref='private/v1/test/${randomUUID()}.svg',content_hash='${'c'.repeat(64)}',
+       size_bytes=300,media_type='image/svg+xml',viewport=100,vertex_count=400,
+       renderer_id='course-thumbnail-svg-v1',renderer_version=1,ready_at=clock_timestamp()`,
+    );
+    // Just past the thumbnail budget: the stride and the whole line differ by one vertex.
+    const justOver = longLine(401, [127.01, 37.52]);
+    const importedOver = await create(athlete, lineContent('401', justOver, imported));
+    await thumbnail(
+      athlete,
+      importedOver.course.courseId,
+      1,
+      `state='failed',failure_code='RENDER_TIMEOUT',failure_retryable=true,
+       failed_at=clock_timestamp(),attempt_count=2`,
+    );
+    const trimmedRouted = await create(
+      athlete,
+      lineContent(
+        'Trimmed routed',
+        longLine(4_999, [126.99, 37.55]),
+        trimmed('routed-waypoints', longLine(4_999, [126.99, 37.55])),
+      ),
+    );
+    await thumbnail(
+      athlete,
+      trimmedRouted.course.courseId,
+      1,
+      `state='failed',failure_code='RENDER_REFUSED',failure_retryable=false,
+       failed_at=clock_timestamp(),attempt_count=5`,
+    );
+    const two: [number, number][] = [
+      [126.9642, 37.5561],
+      [126.9651, 37.5569],
+    ];
+    const trimmedFile = await create(
+      athlete,
+      lineContent('Trimmed file', two, trimmed('imported-file', two)),
+    );
+    await thumbnail(
+      athlete,
+      trimmedFile.course.courseId,
+      1,
+      `state='unavailable',unavailable_reason='line_too_short_to_draw'`,
+    );
+    await create(athlete, lineContent('Trim of trim', two, trimmed('privacy-trimmed', two)));
+    // Only the south-west corner of the box, exactly: inside, edges included.
+    const corner: [number, number][] = [
+      [west, south],
+      [west - 0.01, south - 0.01],
+    ];
+    const onCorner = await create(athlete, lineContent('Corner', corner, imported));
+    await admin.query('DELETE FROM course_thumbnail WHERE athlete_id=$1 AND course_id=$2', [
+      athlete,
+      onCorner.course.courseId,
+    ]);
+    // A hair outside the same corner: no vertex inside, so outside the region.
+    await create(
+      athlete,
+      lineContent(
+        'Hair outside',
+        [
+          [west - 1e-9, south],
+          [west - 0.01, south - 0.01],
+        ],
+        imported,
+      ),
+    );
+    const paris = await create(
+      athlete,
+      lineContent(
+        'Paris',
+        [
+          [2.35, 48.85],
+          [2.36, 48.86],
+        ],
+        imported,
+      ),
+    );
+    await thumbnail(
+      athlete,
+      paris.course.courseId,
+      1,
+      `state='superseded',superseded_at=clock_timestamp()`,
+    );
+    // A course whose head is its second revision: the card is of the head, not the first.
+    const edited = await create(athlete, lineContent('Edited', justOver, imported));
+    const moved = longLine(640, [127.0, 37.51]);
+    await courses.update(
+      athlete,
+      edited.course.courseId,
+      1,
+      lineContent('Edited', moved, routed(moved)),
+      `course-${randomUUID()}`,
+    );
+    // Outside the box except one vertex that neither sample takes (index 1): only a walk
+    // of the whole line can see it, and the card must.
+    const hidden = longLine(courseLimits.vertices, [129.0, 35.1]);
+    hidden[1] = [127.0, 37.55];
+    expect(courseCardVertexIndices(hidden.length, elevation)).not.toContain(1);
+    await create(athlete, lineContent('Hidden inside', hidden, imported));
+    // Both sides of the thumbnail budget (401 is above).
+    await create(athlete, lineContent('399', longLine(399, [127.1, 37.6]), imported));
+    await create(athlete, lineContent('400', longLine(400, [127.1, 37.6]), imported));
+    // The other corner and the other two bounds, each exactly and a hair past.
+    await create(
+      athlete,
+      lineContent(
+        'North-east corner',
+        [
+          [east, north],
+          [east + 0.01, north + 0.01],
+        ],
+        imported,
+      ),
+    );
+    await create(
+      athlete,
+      lineContent(
+        'Hair east',
+        [
+          [east + 1e-9, 37.5],
+          [east + 0.01, 37.51],
+        ],
+        imported,
+      ),
+    );
+    await create(
+      athlete,
+      lineContent(
+        'Hair north',
+        [
+          [127.0, north + 1e-9],
+          [127.01, north + 0.01],
+        ],
+        imported,
+      ),
+    );
+    // Inside the longitude band all the way, south of the box all the way: only the
+    // latitude half of the question keeps it out, on every vertex of the walk.
+    const southBand = longLine(courseLimits.vertices, [127.1, 37.3]);
+    expect(southBand.every(([longitude]) => longitude >= west && longitude <= east)).toBe(true);
+    await create(athlete, lineContent('South of the box', southBand, imported));
+    // Outside except one unsampled vertex exactly on the north-east corner.
+    const hiddenCorner = longLine(courseLimits.vertices, [129.0, 35.1]);
+    hiddenCorner[3] = [east, north];
+    expect(courseCardVertexIndices(hiddenCorner.length, elevation)).not.toContain(3);
+    await create(athlete, lineContent('Hidden corner', hiddenCorner, imported));
+
+    // The split into several line statements changes nothing either.
+    const chunked = createCourseRepository(database, { cardLineChunkCourses: 2 });
+    for (const index of [elevation, null]) {
+      const reference = await cardsFromWholeReads(athlete, index);
+      expect(reference).toHaveLength(19);
+      expect(await cardsFromCardRead(athlete, index)).toEqual(reference);
+      expect(await cardsFromCardRead(athlete, index, chunked)).toEqual(reference);
+    }
+    // The cases are the ones meant: each thumbnail state, both region answers, a reclaim.
+    const cards = await cardsFromCardRead(athlete, elevation);
+    const byName = new Map(cards.map((card) => [card.course.name, card]));
+    const stateOf = (name: string) => {
+      const card = byName.get(name);
+      return card?.status === 'available' ? card.thumbnail.state.status : card?.status;
+    };
+    expect(
+      ['Long', '401', 'Trimmed routed', 'Trimmed file', 'Corner', 'Paris', 'Edited', 'Doomed'].map(
+        stateOf,
+      ),
+    ).toEqual([
+      'ready',
+      'retrying',
+      'abandoned',
+      'unavailable',
+      'none',
+      'none',
+      'pending',
+      'unavailable',
+    ]);
+    const elevationOf = (name: string) => {
+      const card = byName.get(name);
+      return card?.status === 'available' ? card.elevation : null;
+    };
+    expect(elevationOf('Corner')).toMatchObject({ status: 'sampled', knownCount: 1 });
+    expect(elevationOf('Hair outside')).toMatchObject({ status: 'outside_region' });
+    expect(elevationOf('Hidden inside')).toMatchObject({ status: 'sampled' });
+    expect(elevationOf('Paris')).toMatchObject({ status: 'outside_region' });
+    expect(elevationOf('North-east corner')).toMatchObject({ status: 'sampled' });
+    expect(elevationOf('Hair east')).toMatchObject({ status: 'outside_region' });
+    expect(elevationOf('Hair north')).toMatchObject({ status: 'outside_region' });
+    expect(elevationOf('South of the box')).toMatchObject({ status: 'outside_region' });
+    expect(elevationOf('Hidden corner')).toMatchObject({ status: 'sampled' });
+    for (const [name, drawn] of [
+      ['399', 399],
+      ['400', 400],
+      ['401', 400],
+    ] as const) {
+      const card = byName.get(name);
+      expect(card?.status === 'available' && card.thumbnail.drawnVertices.length).toBe(drawn);
+    }
+    expect(elevationOf('Long')).toMatchObject({
+      status: 'sampled',
+      sampledCount: courseLimits.elevationProfilePoints,
+    });
+    const edited2 = byName.get('Edited');
+    expect(edited2?.status === 'available' && edited2.course.headRevision).toBe(2);
+  });
+
+  it('reads only the signed-in tenant, and nothing for a tenant without courses', async () => {
+    const mine = await athleteWithCourse('Mine');
+    const other = await athleteWithCourse('Theirs');
+    const cards = await cardsFromCardRead(mine.athlete, elevation);
+    expect(cards.map((card) => card.course.courseId)).toEqual([mine.course.course.courseId]);
+    expect(cards.map((card) => card.course.courseId)).not.toContain(other.course.course.courseId);
+    expect(await cardsFromCardRead(randomUUID(), elevation)).toEqual([]);
+  });
+
+  /** The repository over a database whose line statements run `before` first. */
+  function beforeLineStatements(before: (statement: number) => Promise<void>) {
+    let statements = 0;
+    const intercepted: Database = {
+      ...database,
+      tenant: (athleteId, operation) =>
+        database.tenant(athleteId, (tx) =>
+          operation({
+            athleteId: tx.athleteId,
+            query: async (sql, values) => {
+              if (sql.includes('jsonb_to_recordset')) {
+                statements += 1;
+                await before(statements);
+              }
+              return tx.query(sql, values);
+            },
+          }),
+        ),
+    };
+    return {
+      repository: (chunk?: number) =>
+        createCourseRepository(
+          intercepted,
+          chunk === undefined ? {} : { cardLineChunkCourses: chunk },
+        ),
+      statements: () => statements,
+    };
+  }
+
+  it('reads the lines in statements of the configured number of courses', async () => {
+    const { athlete } = await athleteWithCourse('First');
+    for (let index = 0; index < 4; index += 1)
+      await create(athlete, lineContent(`Line ${index}`, longLine(50, [127.0, 37.5]), imported));
+    const counted = beforeLineStatements(async () => {});
+    const cards = await cardsFromCardRead(athlete, elevation, counted.repository(2));
+    expect(cards).toEqual(await cardsFromWholeReads(athlete, elevation));
+    // Five available courses, two per statement.
+    expect(counted.statements()).toBe(3);
+  });
+
+  it('leaves out a course deleted between the head statement and its line statement', async () => {
+    const { athlete, course } = await athleteWithCourse('Deleted meanwhile');
+    const kept = await create(athlete, lineContent('Kept', longLine(50, [127.0, 37.5]), imported));
+    const deleting = beforeLineStatements(async (statement) => {
+      // On another connection, after this transaction has already read the heads.
+      if (statement === 1) {
+        const removed = await courses.remove(athlete, course.course.courseId, 1);
+        expect(removed.deleted).toBe(true);
+      }
+    });
+    const cards = await cardsFromCardRead(athlete, elevation, deleting.repository());
+    expect(deleting.statements()).toBe(1);
+    expect(cards.map((card) => card.course.courseId)).toEqual([kept.course.courseId]);
+  });
+
+  it('refuses a vertex index past the end of the stored line instead of drawing a hole', async () => {
+    const { athlete } = await athleteWithCourse('Short');
+    await expect(
+      courses.readCardSources(athlete, {
+        vertexIndices: (vertexCount) => [0, vertexCount],
+        region: null,
+      }),
+    ).rejects.toThrow();
   });
 });

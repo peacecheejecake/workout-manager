@@ -99,9 +99,40 @@ export function createPlaceIndex(document: PlaceDatasetDocument): PlaceIndex {
   };
 }
 
+/**
+ * What a profile needs from a line, without the line (M2-01an).
+ *
+ * A profile looks at two things only: whether ANY vertex lies inside the dataset's box, and
+ * the vertices at `elevationProfileVertexIndices(vertexCount)`. A reader that cannot afford
+ * the whole line — the S13 card list, up to 200 courses of 20,000 vertices — asks storage
+ * for exactly these and hands them here, and `profile` below goes through the same function
+ * with the whole line, so the two cannot disagree.
+ */
+export interface ElevationLineSample {
+  readonly vertexCount: number;
+  /** Whether any vertex of the whole line lies inside `identity.bbox`, edges included. */
+  readonly touchesRegion: boolean;
+  /** The vertex at an index `elevationProfileVertexIndices(vertexCount)` names. */
+  positionAt(vertexIndex: number): CoursePosition | undefined;
+}
+
 export interface ElevationIndex {
   readonly identity: ElevationDatasetDocument['identity'];
   profile(revision: Pick<CourseRevision, 'geometry'>): CourseElevationResult;
+  profileOfSample(sample: ElevationLineSample): CourseElevationResult;
+}
+
+/**
+ * Which vertices a profile looks at: all of a short line, an even stride of a long one.
+ * The one definition of that stride.
+ */
+export function elevationProfileVertexIndices(vertexCount: number): readonly number[] {
+  const wanted = Math.min(vertexCount, courseLimits.elevationProfilePoints);
+  return wanted >= vertexCount
+    ? Array.from({ length: vertexCount }, (_, index) => index)
+    : Array.from({ length: wanted }, (_, step) =>
+        Math.round((step * (vertexCount - 1)) / (wanted - 1)),
+      );
 }
 
 const CELL_DEGREES = 0.01;
@@ -192,41 +223,43 @@ export function createElevationIndex(document: ElevationDatasetDocument): Elevat
     return best;
   }
 
+  function profileOfSample(sample: ElevationLineSample): CourseElevationResult {
+    if (!sample.touchesRegion)
+      return courseElevationResultSchema.parse({
+        outcome: 'outside_region',
+        dataset: document.identity,
+      });
+    // A long course is sampled at an even stride rather than summarised: the reader sees
+    // which vertices were looked at, and the vertex count of the whole line.
+    const points = elevationProfileVertexIndices(sample.vertexCount).map((vertexIndex) => {
+      const position = sample.positionAt(vertexIndex);
+      const found = position === undefined ? null : nearest(position);
+      return {
+        vertexIndex,
+        elevationMeters: found?.elevationMeters ?? null,
+        sourceDistanceMeters: found?.distance ?? null,
+      };
+    });
+    return courseElevationResultSchema.parse({
+      outcome: 'profile',
+      dataset: document.identity,
+      maxSourceDistanceMeters: radius,
+      points,
+      knownCount: points.filter((point) => point.elevationMeters !== null).length,
+      vertexCount: sample.vertexCount,
+    });
+  }
+
   return {
     identity: document.identity,
     profile(revision) {
       const coordinates = revision.geometry.coordinates;
-      if (!coordinates.some((position) => withinBbox(position, document.identity.bbox)))
-        return courseElevationResultSchema.parse({
-          outcome: 'outside_region',
-          dataset: document.identity,
-        });
-      // A long course is sampled at an even stride rather than summarised: the reader sees
-      // which vertices were looked at, and the vertex count of the whole line.
-      const wanted = Math.min(coordinates.length, courseLimits.elevationProfilePoints);
-      const indices =
-        wanted >= coordinates.length
-          ? coordinates.map((_, index) => index)
-          : Array.from({ length: wanted }, (_, step) =>
-              Math.round((step * (coordinates.length - 1)) / (wanted - 1)),
-            );
-      const points = indices.map((vertexIndex) => {
-        const position = coordinates[vertexIndex];
-        const found = position === undefined ? null : nearest(position);
-        return {
-          vertexIndex,
-          elevationMeters: found?.elevationMeters ?? null,
-          sourceDistanceMeters: found?.distance ?? null,
-        };
-      });
-      return courseElevationResultSchema.parse({
-        outcome: 'profile',
-        dataset: document.identity,
-        maxSourceDistanceMeters: radius,
-        points,
-        knownCount: points.filter((point) => point.elevationMeters !== null).length,
+      return profileOfSample({
         vertexCount: coordinates.length,
+        touchesRegion: coordinates.some((position) => withinBbox(position, document.identity.bbox)),
+        positionAt: (vertexIndex) => coordinates[vertexIndex],
       });
     },
+    profileOfSample,
   };
 }

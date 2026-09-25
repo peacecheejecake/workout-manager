@@ -4,7 +4,17 @@ import {
   CoursePreferenceError,
   PrivacyZoneStateError,
 } from '@workout/server-persistence/course-preferences';
-import { CourseNotFoundError, type CourseRepository } from '@workout/server-persistence/courses';
+import {
+  CourseNotFoundError,
+  type CourseCardSourceRequest,
+  type CourseRepository,
+} from '@workout/server-persistence/courses';
+import {
+  courseLimits,
+  courseThumbnailLimits,
+  type CourseReadResult,
+} from '@workout/contracts/courses';
+import { courseCard } from '@workout/server-courses/course-cards';
 import { createBoundedTrackParser } from '@workout/server-track-storage/parse-host';
 import { createElevationIndex, createPlaceIndex } from '@workout/server-courses/geo-data';
 import { privacyZoneSetDigest } from '@workout/server-courses/privacy-trim';
@@ -166,6 +176,45 @@ const elevationIndex = createElevationIndex({
   points: [{ position: [127.02, 37.5], elevationMeters: 42 }],
 });
 
+const none = { status: 'none' as const };
+
+/**
+ * What storage answers for one course, derived here from a whole head read the way the
+ * repository derives it from the stored line: the vertices asked for and whether any vertex
+ * lies in the asked box. The repository's own answer is held to `courseCard` of the real
+ * head read in the persistence integration suite (M2-01an).
+ */
+function cardSourceOf(read: CourseReadResult, request: CourseCardSourceRequest) {
+  if (read.status === 'unavailable') return { status: 'unavailable' as const, course: read.course };
+  const coordinates = read.revision.geometry.coordinates;
+  const region = request.region;
+  return {
+    status: 'available' as const,
+    course: read.course,
+    generation: read.revision.generation,
+    distanceMeters: read.revision.distanceMeters,
+    thumbnail: read.thumbnail,
+    line: {
+      vertexCount: coordinates.length,
+      vertices: new Map(
+        request
+          .vertexIndices(coordinates.length)
+          .map((index) => [index, coordinates[index] as [number, number]]),
+      ),
+      touchesRegion:
+        region === null
+          ? null
+          : coordinates.some(
+              ([longitude, latitude]) =>
+                longitude >= region[0] &&
+                longitude <= region[2] &&
+                latitude >= region[1] &&
+                latitude <= region[3],
+            ),
+    },
+  };
+}
+
 const instances: ReturnType<typeof createApi>[] = [];
 
 // Every app's log stream is kept and audited after each test (M2-01k-c2).
@@ -212,6 +261,12 @@ function setup(
       thumbnail: { status: 'none' },
     }),
     list: vi.fn().mockResolvedValue({ courses: [courseHead], total: 1 }),
+    readCardSources: vi.fn(async (_athlete: string, request: CourseCardSourceRequest) => [
+      cardSourceOf(
+        { status: 'available', course: courseHead, revision: courseRevision, thumbnail: none },
+        request,
+      ),
+    ]),
     headContent: vi.fn().mockResolvedValue({
       courseId,
       courseRevision: 1,
@@ -1121,7 +1176,7 @@ describe('accessibility notes (M2-01r, S13)', () => {
   });
 });
 
-describe('S13 list cards (M2-01k-a)', () => {
+describe('S13 list cards (M2-01k-a, M2-01an)', () => {
   const reclaimedId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
   const reclaimed = {
     status: 'unavailable' as const,
@@ -1133,10 +1188,24 @@ describe('S13 list cards (M2-01k-a)', () => {
     createdAt,
     updatedAt: createdAt,
   };
+  const available = {
+    status: 'available' as const,
+    course: courseHead,
+    revision: courseRevision,
+    thumbnail: none,
+  };
+  /** A 20,000-vertex line inside the elevation box, passing over the dataset's one fact. */
+  const longLine = Array.from(
+    { length: courseLimits.vertices },
+    (_, index) => [127.02 + index * 1e-6, 37.5 + index * 1e-6] as [number, number],
+  );
 
-  it('cards every course of the signed-in owner from its own head read', async () => {
+  it('cards every course of the signed-in owner from one card read, in its order', async () => {
     const { app, courses } = setup();
-    vi.mocked(courses.list).mockResolvedValue({ courses: [courseHead, reclaimed], total: 2 });
+    vi.mocked(courses.readCardSources).mockImplementation(async (_athlete, request) => [
+      cardSourceOf(available, request),
+      cardSourceOf({ status: 'unavailable', course: reclaimed }, request),
+    ]);
     const response = await app.inject({
       method: 'GET',
       url: '/bff/v1/courses/cards',
@@ -1146,9 +1215,10 @@ describe('S13 list cards (M2-01k-a)', () => {
     const body = response.json();
     expect(body.total).toBe(2);
     const [card, gone] = body.cards;
-    // Ownership comes from the session, never from the request.
-    expect(courses.list).toHaveBeenCalledWith(athleteId);
-    expect(courses.read).toHaveBeenCalledWith(athleteId, courseId);
+    // Ownership comes from the session, never from the request, and no line is read whole.
+    expect(courses.readCardSources).toHaveBeenCalledWith(athleteId, expect.anything());
+    expect(courses.read).not.toHaveBeenCalled();
+    expect(courses.list).not.toHaveBeenCalled();
     expect(card.distance).toEqual({
       plannedLineMeters: 140,
       basis: { kind: 'imported-file', sourceKind: 'gpx-rte' },
@@ -1165,11 +1235,29 @@ describe('S13 list cards (M2-01k-a)', () => {
     expect(card.surface).toEqual({ confirmation: 'unknown' });
     // A reclaimed course is described by its reference and nothing else.
     expect(gone).toEqual({ status: 'unavailable', course: reclaimed });
-    expect(courses.read).toHaveBeenCalledTimes(1);
   });
 
-  it('says not_deployed when this server has no elevation dataset', async () => {
-    const { app } = setup({ datasets: false });
+  it('asks storage for the drawn and sampled vertices and the dataset box, nothing more', async () => {
+    const { app, courses } = setup();
+    await app.inject({ method: 'GET', url: '/bff/v1/courses/cards', headers: baseHeaders });
+    const request = vi.mocked(courses.readCardSources).mock.calls[0]?.[1];
+    expect(request?.region).toEqual(elevationIndex.identity.bbox);
+    const asked = request?.vertexIndices(courseLimits.vertices) ?? [];
+    // 400 drawn plus 200 sampled at most, ascending, both ends included.
+    expect(asked.length).toBeGreaterThan(courseThumbnailLimits.vertexBudget);
+    expect(asked.length).toBeLessThanOrEqual(
+      courseThumbnailLimits.vertexBudget + courseLimits.elevationProfilePoints,
+    );
+    expect([...asked].sort((left, right) => left - right)).toEqual(asked);
+    expect(new Set(asked).size).toBe(asked.length);
+    expect(asked[0]).toBe(0);
+    expect(asked.at(-1)).toBe(courseLimits.vertices - 1);
+    // A short line is asked for whole.
+    expect(request?.vertexIndices(3)).toEqual([0, 1, 2]);
+  });
+
+  it('says not_deployed, and asks for neither a box nor sampled vertices, without a dataset', async () => {
+    const { app, courses } = setup({ datasets: false });
     const response = await app.inject({
       method: 'GET',
       url: '/bff/v1/courses/cards',
@@ -1177,74 +1265,79 @@ describe('S13 list cards (M2-01k-a)', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().cards[0].elevation).toEqual({ status: 'not_deployed' });
+    const request = vi.mocked(courses.readCardSources).mock.calls[0]?.[1];
+    expect(request?.region).toBeNull();
+    expect(request?.vertexIndices(courseLimits.vertices)).toHaveLength(
+      courseThumbnailLimits.vertexBudget,
+    );
   });
 
-  it('leaves out a course deleted between the list and its read', async () => {
+  it('cards a 20,000-vertex line exactly as the whole head read would', async () => {
+    const whole = {
+      ...available,
+      revision: {
+        ...courseRevision,
+        geometry: { type: 'LineString' as const, coordinates: longLine },
+      },
+      thumbnail: {
+        status: 'pending' as const,
+        courseRevision: 1,
+        queuedAt: createdAt,
+      },
+    };
+    for (const datasets of [true, false]) {
+      const { app, courses } = setup({ datasets });
+      vi.mocked(courses.readCardSources).mockImplementation(async (_athlete, request) => [
+        cardSourceOf(whole, request),
+      ]);
+      const response = await app.inject({
+        method: 'GET',
+        url: '/bff/v1/courses/cards',
+        headers: baseHeaders,
+      });
+      expect(response.statusCode).toBe(200);
+      const [card] = response.json().cards;
+      expect(card).toEqual(courseCard(whole, datasets ? elevationIndex : null));
+      expect(card.thumbnail.drawnVertices).toHaveLength(courseThumbnailLimits.vertexBudget);
+      if (datasets) expect(card.elevation.sampledCount).toBe(courseLimits.elevationProfilePoints);
+    }
+  });
+
+  it('says outside_region when no vertex of the line is inside the dataset box', async () => {
     const { app, courses } = setup();
-    vi.mocked(courses.read).mockRejectedValueOnce(new CourseNotFoundError());
+    const far = {
+      ...available,
+      revision: {
+        ...courseRevision,
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [
+            [129.0, 35.1],
+            [129.01, 35.11],
+          ] as [number, number][],
+        },
+      },
+    };
+    vi.mocked(courses.readCardSources).mockImplementation(async (_athlete, request) => [
+      cardSourceOf(far, request),
+    ]);
     const response = await app.inject({
       method: 'GET',
       url: '/bff/v1/courses/cards',
       headers: baseHeaders,
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ cards: [], total: 0 });
+    const [card] = response.json().cards;
+    expect(card.elevation).toEqual({ status: 'outside_region', dataset: elevationIndex.identity });
+    expect(card).toEqual(courseCard(far, elevationIndex));
   });
 
-  it('keeps the list order across concurrent reads and drops only the vanished course', async () => {
+  it('fails the request, rather than drawing a hole, when an asked vertex is missing', async () => {
     const { app, courses } = setup();
-    const ids = Array.from(
-      { length: 7 },
-      (_, index) => `${String(index + 1).repeat(8)}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
-    );
-    vi.mocked(courses.list).mockResolvedValue({
-      courses: ids.map((id) => ({ ...courseHead, courseId: id })),
-      total: ids.length,
-    });
-    vi.mocked(courses.read).mockImplementation(async (_athlete, id) => {
-      // Later courses answer sooner, so a completion-ordered list would come out reversed.
-      await new Promise((resolve) => setTimeout(resolve, (ids.length - ids.indexOf(id)) * 3));
-      if (id === ids[3]) throw new CourseNotFoundError();
-      return {
-        status: 'available',
-        course: { ...courseHead, courseId: id },
-        revision: { ...courseRevision, courseId: id },
-        thumbnail: { status: 'none' },
-      };
-    });
-    const response = await app.inject({
-      method: 'GET',
-      url: '/bff/v1/courses/cards',
-      headers: baseHeaders,
-    });
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as { cards: { course: { courseId: string } }[]; total: number };
-    expect(body.cards.map((card) => card.course.courseId)).toEqual(
-      ids.filter((id) => id !== ids[3]),
-    );
-    expect(body.total).toBe(6);
-  });
-
-  it('stops reading once one read fails, and answers with the failure', async () => {
-    const { app, courses } = setup();
-    const ids = Array.from(
-      { length: 20 },
-      (_, index) =>
-        `${String(index % 10).repeat(8)}-${String(index).padStart(4, '0')}-4aaa-8aaa-aaaaaaaaaaaa`,
-    );
-    vi.mocked(courses.list).mockResolvedValue({
-      courses: ids.map((id) => ({ ...courseHead, courseId: id })),
-      total: ids.length,
-    });
-    vi.mocked(courses.read).mockImplementation(async (_athlete, id) => {
-      if (id === ids[0]) throw new Error('database gone');
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return {
-        status: 'available',
-        course: { ...courseHead, courseId: id },
-        revision: { ...courseRevision, courseId: id },
-        thumbnail: { status: 'none' },
-      };
+    vi.mocked(courses.readCardSources).mockImplementation(async (_athlete, request) => {
+      const source = cardSourceOf(available, request);
+      if (source.status === 'available') source.line.vertices.delete(1);
+      return [source];
     });
     const response = await app.inject({
       method: 'GET',
@@ -1252,10 +1345,17 @@ describe('S13 list cards (M2-01k-a)', () => {
       headers: baseHeaders,
     });
     expect(response.statusCode).toBe(500);
-    // Long enough for a worker that kept draining to have read the whole list.
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    // The four reads already in flight when the first one failed, and no more.
-    expect(courses.read).toHaveBeenCalledTimes(4);
+  });
+
+  it('answers with the failure when the card read fails', async () => {
+    const { app, courses } = setup();
+    vi.mocked(courses.readCardSources).mockRejectedValue(new Error('database gone'));
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/courses/cards',
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(500);
   });
 
   it('authenticates, and takes no query', async () => {
@@ -1266,7 +1366,7 @@ describe('S13 list cards (M2-01k-a)', () => {
       headers: baseHeaders,
     });
     expect(refused.statusCode).toBe(401);
-    expect(anonymous.courses.list).not.toHaveBeenCalled();
+    expect(anonymous.courses.readCardSources).not.toHaveBeenCalled();
     const { app } = setup();
     const withQuery = await app.inject({
       method: 'GET',

@@ -121,15 +121,27 @@ export const courseThumbnailRendererVersion = 1;
 export function sampleCourseThumbnailVertices(
   coordinates: readonly CoursePosition[],
 ): readonly CoursePosition[] {
-  const budget = courseThumbnailLimits.vertexBudget;
-  if (coordinates.length <= budget) return coordinates;
-  const step = (coordinates.length - 1) / (budget - 1);
+  if (coordinates.length <= courseThumbnailLimits.vertexBudget) return coordinates;
   const sampled: CoursePosition[] = [];
-  for (let index = 0; index < budget; index += 1) {
-    const position = coordinates[Math.round(index * step)];
+  for (const vertexIndex of courseThumbnailVertexIndices(coordinates.length)) {
+    const position = coordinates[vertexIndex];
     if (position !== undefined) sampled.push(position);
   }
   return sampled;
+}
+
+/**
+ * Which vertices of a line of `vertexCount` the thumbnail sample takes, in order.
+ *
+ * The one definition of the stride: `sampleCourseThumbnailVertices` takes exactly these, and a
+ * reader that holds only the vertex count (the S13 card read, M2-01an) asks storage for these
+ * and nothing else, so the two cannot pick different vertices.
+ */
+export function courseThumbnailVertexIndices(vertexCount: number): readonly number[] {
+  const budget = courseThumbnailLimits.vertexBudget;
+  if (vertexCount <= budget) return Array.from({ length: vertexCount }, (_, index) => index);
+  const step = (vertexCount - 1) / (budget - 1);
+  return Array.from({ length: budget }, (_, index) => Math.round(index * step));
 }
 
 /**

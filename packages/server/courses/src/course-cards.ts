@@ -5,12 +5,17 @@ import {
   type CourseCardElevation,
 } from '@workout/contracts/course-cards';
 import {
+  courseThumbnailVertexIndices,
   sampleCourseThumbnailVertices,
   type CourseGeneration,
+  type CoursePosition,
   type CourseReadResult,
+  type CourseThumbnailState,
 } from '@workout/contracts/courses';
 
-import type { ElevationIndex } from './geo-data.js';
+import type { CourseElevationResult } from '@workout/contracts/geo-data';
+
+import { elevationProfileVertexIndices, type ElevationIndex } from './geo-data.js';
 
 /**
  * Building one S13 list card from what the server already holds (M2-01k-a).
@@ -59,7 +64,10 @@ export function courseCardElevation(
   elevation: ElevationIndex | null,
 ): CourseCardElevation {
   if (elevation === null) return { status: 'not_deployed' };
-  const profile = elevation.profile(revision);
+  return cardElevationOf(elevation.profile(revision));
+}
+
+function cardElevationOf(profile: CourseElevationResult): CourseCardElevation {
   switch (profile.outcome) {
     case 'no_dataset':
       return { status: 'not_deployed' };
@@ -76,6 +84,11 @@ export function courseCardElevation(
   }
 }
 
+/**
+ * The card of one whole head read. Since M2-01an the list route builds cards with
+ * `courseCardFromSource`; this stays as the definition that one is held to (the contract
+ * test in the persistence integration suite compares the two on the same stored courses).
+ */
 export function courseCard(read: CourseReadResult, elevation: ElevationIndex | null): CourseCard {
   if (read.status === 'unavailable')
     return courseCardSchema.parse({ status: 'unavailable', course: read.course });
@@ -93,6 +106,93 @@ export function courseCard(read: CourseReadResult, elevation: ElevationIndex | n
       drawnVertices: sampleCourseThumbnailVertices(revision.geometry.coordinates),
     },
     elevation: courseCardElevation(revision, elevation),
+    surface: { confirmation: 'unknown' },
+  });
+}
+
+/**
+ * What storage hands over for one card when it does not read the whole line (M2-01an).
+ *
+ * A card needs the head, the generation, the planned length, the head revision's thumbnail
+ * state and — from the line itself — only its vertex count, the vertices at
+ * `courseCardVertexIndices`, and whether any vertex lies inside the elevation dataset's box.
+ * Reading all 20,000 vertices of 200 courses to use at most 600 of each was the whole cost
+ * of the card list; this is the same card without it.
+ */
+export type CourseCardSource =
+  | {
+      readonly status: 'unavailable';
+      readonly course: Extract<CourseReadResult, { status: 'unavailable' }>['course'];
+    }
+  | {
+      readonly status: 'available';
+      readonly course: Extract<CourseReadResult, { status: 'available' }>['course'];
+      readonly generation: CourseGeneration;
+      readonly distanceMeters: number;
+      readonly thumbnail: CourseThumbnailState;
+      readonly line: {
+        readonly vertexCount: number;
+        /** Exactly the vertices `courseCardVertexIndices(vertexCount, …)` names. */
+        readonly vertices: ReadonlyMap<number, CoursePosition>;
+        /** Whether any vertex lies inside the elevation box; `null` when none was asked. */
+        readonly touchesRegion: boolean | null;
+      };
+    };
+
+/**
+ * The vertices a card of a line of `vertexCount` looks at, ascending and without repeats:
+ * the thumbnail's stride, and the elevation profile's when this server has a dataset.
+ */
+export function courseCardVertexIndices(
+  vertexCount: number,
+  elevation: ElevationIndex | null,
+): readonly number[] {
+  const wanted = new Set(courseThumbnailVertexIndices(vertexCount));
+  if (elevation !== null)
+    for (const vertexIndex of elevationProfileVertexIndices(vertexCount)) wanted.add(vertexIndex);
+  return [...wanted].sort((left, right) => left - right);
+}
+
+/**
+ * The same card `courseCard` builds from a whole head read, built from a card source.
+ * A vertex the source was asked for and does not hold is a broken read, not an unknown.
+ */
+export function courseCardFromSource(
+  source: CourseCardSource,
+  elevation: ElevationIndex | null,
+): CourseCard {
+  if (source.status === 'unavailable')
+    return courseCardSchema.parse({ status: 'unavailable', course: source.course });
+  const { line } = source;
+  const vertexAt = (vertexIndex: number): CoursePosition => {
+    const position = line.vertices.get(vertexIndex);
+    if (position === undefined) throw new Error('COURSE_CARD_VERTEX_MISSING');
+    return position;
+  };
+  let cardElevation: CourseCardElevation = { status: 'not_deployed' };
+  if (elevation !== null) {
+    if (line.touchesRegion === null) throw new Error('COURSE_CARD_REGION_NOT_READ');
+    cardElevation = cardElevationOf(
+      elevation.profileOfSample({
+        vertexCount: line.vertexCount,
+        touchesRegion: line.touchesRegion,
+        positionAt: vertexAt,
+      }),
+    );
+  }
+  return courseCardSchema.parse({
+    status: 'available',
+    course: source.course,
+    distance: {
+      plannedLineMeters: source.distanceMeters,
+      basis: courseDistanceBasis(source.generation),
+      privacyTrimmed: source.generation.kind === 'privacy-trimmed',
+    },
+    thumbnail: {
+      state: source.thumbnail,
+      drawnVertices: courseThumbnailVertexIndices(line.vertexCount).map(vertexAt),
+    },
+    elevation: cardElevation,
     surface: { confirmation: 'unknown' },
   });
 }

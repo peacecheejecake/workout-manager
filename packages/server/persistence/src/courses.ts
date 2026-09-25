@@ -214,6 +214,33 @@ export interface CourseHeadContent {
   readonly lineage: readonly CourseLineage[];
 }
 
+/** Which parts of each head line a card read asks for (M2-01an). */
+export interface CourseCardSourceRequest {
+  /** The vertices wanted from a line of this many vertices: ascending, no repeats. */
+  vertexIndices(vertexCount: number): readonly number[];
+  /** `[west, south, east, north]`: whether any vertex lies inside, edges included. */
+  readonly region: readonly [number, number, number, number] | null;
+}
+
+/** One card's worth of a course, as `readCardSources` returns it. */
+export type CourseCardSourceRead =
+  | {
+      readonly status: 'unavailable';
+      readonly course: Extract<ReadResult, { status: 'unavailable' }>['course'];
+    }
+  | {
+      readonly status: 'available';
+      readonly course: Extract<ReadResult, { status: 'available' }>['course'];
+      readonly generation: CourseGeneration;
+      readonly distanceMeters: number;
+      readonly thumbnail: CourseThumbnailState;
+      readonly line: {
+        readonly vertexCount: number;
+        readonly vertices: ReadonlyMap<number, CoursePosition>;
+        readonly touchesRegion: boolean | null;
+      };
+    };
+
 export interface CourseRepository {
   /**
    * Which course a completed command under this key produced and at which revision, or
@@ -242,6 +269,20 @@ export interface CourseRepository {
   ): Promise<ReadResult>;
   read(athleteId: string, courseId: string): Promise<ReadResult>;
   list(athleteId: string): Promise<CourseListResult>;
+  /**
+   * What the S13 card list needs of every course, in list order and in one tenant
+   * transaction (M2-01an), without reading any head line whole.
+   *
+   * The head, generation, planned length and thumbnail state come from one statement; from
+   * each head line only its vertex count, the vertices `request.vertexIndices` names and —
+   * when `request.region` is given — whether any vertex lies inside that box come back. A
+   * course whose head revision is gone by the time its line is read (deleted or reclaimed
+   * in between) is left out, as the per-course read used to leave it out.
+   */
+  readCardSources(
+    athleteId: string,
+    request: CourseCardSourceRequest,
+  ): Promise<readonly CourseCardSourceRead[]>;
   /** The head content an edit starts from. `null` when the course has been reclaimed. */
   headContent(athleteId: string, courseId: string): Promise<CourseHeadContent | null>;
   update(
@@ -442,7 +483,14 @@ async function readThumbnail(
      FROM course_thumbnail WHERE athlete_id=$1 AND course_id=$2 AND course_revision=$3`,
     [tx.athleteId, courseId, courseRevision],
   );
-  const row = found.rows[0];
+  return thumbnailStateOf(found.rows[0], courseRevision);
+}
+
+/** The read model of one `course_thumbnail` row of `courseRevision`, or of no row at all. */
+function thumbnailStateOf(
+  row: Record<string, unknown> | undefined,
+  courseRevision: number,
+): CourseThumbnailState {
   if (!row) return courseThumbnailStateSchema.parse({ status: 'none' });
   const state = z
     .enum(['queued', 'rendering', 'prepared', 'ready', 'unavailable', 'failed', 'superseded'])
@@ -511,6 +559,191 @@ async function readCourse(tx: Transaction, courseId: string): Promise<ReadResult
     revision: revision(parsed, await lineageOf(tx, courseId, parsed.course_revision)),
     thumbnail: await readThumbnail(tx, courseId, parsed.course_revision),
   });
+}
+
+const cardHeadRowSchema = headRowSchema.extend({
+  head_course_revision: z.number().int().positive().nullable(),
+  head_generation: z.unknown(),
+  head_distance_meters: z.coerce.number().finite().nullable(),
+  head_vertex_count: z.number().int().min(2).max(courseLimits.vertices).nullable(),
+});
+
+const cardLineRowSchema = z.object({
+  course_id: uuid,
+  vertex_count: z.number().int().min(2).max(courseLimits.vertices),
+  vertices: z.array(coursePositionSchema),
+  touches_region: z.boolean().nullable(),
+});
+
+/**
+ * The S13 card sources of every course (M2-01an). Two kinds of statement in the caller's
+ * tenant transaction:
+ *
+ * 1. Every head, in list order, with its head revision's generation, planned length and
+ *    vertex count and its thumbnail row — the same columns the list, the head read and
+ *    `readThumbnail` read, joined rather than asked course by course.
+ * 2. For every available head, `chunkCourses` heads per statement, from its line and
+ *    nothing else: the vertices the caller
+ *    named and, when asked, whether any vertex lies inside the box. The line is taken out of
+ *    the stored document ONCE per course (`OFFSET 0` keeps the planner from inlining it into
+ *    every lookup, which would decompress the whole document again for each vertex). The box
+ *    question asks the named vertices first and walks the whole line only when none of them
+ *    is inside; both walks stop at the first vertex inside. (A jsonpath filter was tried and
+ *    measured: PostgreSQL 14 evaluates it over every vertex even for `exists`, which cost
+ *    more than the whole-line reads it replaced — see the M2-01an progress record.)
+ *
+ * Revisions are immutable, so the second statement names the exact `(course, revision)` the
+ * first saw; a revision gone in between (course deleted or reclaimed) simply has no row.
+ */
+async function readCardSources(
+  tx: Transaction,
+  request: CourseCardSourceRequest,
+  chunkCourses: number,
+): Promise<CourseCardSourceRead[]> {
+  const found = await tx.query(
+    `SELECT c.course_id,c.name,c.status,c.head_revision,c.revision_id,c.unavailable_reason,
+       c.reclaimed_at,c.created_at,c.updated_at,
+       r.course_revision AS head_course_revision,r.generation AS head_generation,
+       r.distance_meters AS head_distance_meters,r.vertex_count AS head_vertex_count,
+       t.state,t.revision_id AS thumbnail_revision_id,t.content_hash,t.size_bytes,t.media_type,
+       t.viewport,t.vertex_count AS thumbnail_vertex_count,t.renderer_id,t.renderer_version,
+       t.unavailable_reason AS thumbnail_unavailable_reason,t.failure_code,t.failure_retryable,
+       t.attempt_count,t.created_at AS thumbnail_created_at,t.ready_at
+     FROM course c
+     LEFT JOIN course_revision r ON r.athlete_id=c.athlete_id AND r.course_id=c.course_id
+       AND r.course_revision=c.head_revision
+     LEFT JOIN course_thumbnail t ON t.athlete_id=c.athlete_id AND t.course_id=c.course_id
+       AND t.course_revision=c.head_revision
+     WHERE c.athlete_id=$1 ORDER BY c.created_at,c.course_id LIMIT $2`,
+    [tx.athleteId, courseLimits.coursesPerTenant],
+  );
+  type Available = Extract<CourseCardSourceRead, { status: 'available' }>;
+  type AvailableHead = Omit<Available, 'line'> & {
+    readonly vertexCount: number;
+    readonly vertexIndices: readonly number[];
+  };
+  const heads: (Extract<CourseCardSourceRead, { status: 'unavailable' }> | AvailableHead | null)[] =
+    found.rows.map((raw) => {
+      const row = cardHeadRowSchema.parse(raw);
+      const course = head(row);
+      if (course.status === 'unavailable') return { status: 'unavailable', course };
+      // The head names a revision that is not there: the per-course read reported this as
+      // not found, and the list left the course out. So does this.
+      if (
+        row.head_course_revision === null ||
+        row.head_distance_meters === null ||
+        row.head_vertex_count === null
+      )
+        return null;
+      const thumbnail = thumbnailStateOf(
+        raw['state'] === null
+          ? undefined
+          : {
+              state: raw['state'],
+              revision_id: raw['thumbnail_revision_id'],
+              content_hash: raw['content_hash'],
+              size_bytes: raw['size_bytes'],
+              media_type: raw['media_type'],
+              viewport: raw['viewport'],
+              vertex_count: raw['thumbnail_vertex_count'],
+              renderer_id: raw['renderer_id'],
+              renderer_version: raw['renderer_version'],
+              unavailable_reason: raw['thumbnail_unavailable_reason'],
+              failure_code: raw['failure_code'],
+              failure_retryable: raw['failure_retryable'],
+              attempt_count: raw['attempt_count'],
+              created_at: raw['thumbnail_created_at'],
+              ready_at: raw['ready_at'],
+            },
+        row.head_course_revision,
+      );
+      return {
+        status: 'available',
+        course,
+        generation: courseGenerationSchema.parse(row.head_generation),
+        distanceMeters: row.head_distance_meters,
+        thumbnail,
+        vertexCount: row.head_vertex_count,
+        vertexIndices: request.vertexIndices(row.head_vertex_count),
+      };
+    });
+  const wanted = heads.flatMap((entry) =>
+    entry?.status === 'available'
+      ? [
+          {
+            course_id: entry.course.courseId,
+            course_revision: entry.course.headRevision,
+            vertex_indices: entry.vertexIndices,
+          },
+        ]
+      : [],
+  );
+  const lines = new Map<string, z.infer<typeof cardLineRowSchema>>();
+  // A few courses per statement, not all of them: the box question can walk every vertex
+  // of every line (a tenant whose courses all lie outside the box), and one statement over
+  // 200 × 20,000 vertices came within reach of the tenant transaction's 5 s
+  // `statement_timeout`. Revisions are immutable, so splitting inside the same
+  // transaction changes nothing about what is read.
+  for (let start = 0; start < wanted.length; start += chunkCourses) {
+    const chunk = wanted.slice(start, start + chunkCourses);
+    const region = request.region;
+    // Whether the vertex at `index` lies inside the box `$3` = [west, south, east, north],
+    // edges included, compared as float8: each stored number is the shortest text of the
+    // double it was written from, so it parses back to that double and compares exactly as
+    // the whole-line check in `@workout/server-courses/geo-data` does.
+    const inside = (index: string) =>
+      `(g.coordinates->${index}->>0)::float8 BETWEEN ($3::float8[])[1] AND ($3::float8[])[3]
+       AND (g.coordinates->${index}->>1)::float8 BETWEEN ($3::float8[])[2] AND ($3::float8[])[4]`;
+    const read = await tx.query(
+      `SELECT w.course_id,jsonb_array_length(g.coordinates) AS vertex_count,
+         coalesce(s.vertices,'[]'::jsonb) AS vertices,
+         CASE WHEN $3::float8[] IS NULL THEN NULL ELSE (
+           EXISTS (SELECT 1 FROM unnest(w.vertex_indices) AS x(i) WHERE ${inside('x.i')})
+           OR EXISTS (SELECT 1 FROM generate_series(0,jsonb_array_length(g.coordinates)-1) AS y(i)
+             WHERE ${inside('y.i')})
+         ) END AS touches_region
+       FROM jsonb_to_recordset($2::jsonb)
+         AS w(course_id uuid,course_revision integer,vertex_indices integer[])
+       JOIN course_revision r ON r.athlete_id=$1 AND r.course_id=w.course_id
+         AND r.course_revision=w.course_revision
+       CROSS JOIN LATERAL (SELECT r.geometry->'coordinates' AS coordinates OFFSET 0) g
+       CROSS JOIN LATERAL (
+         SELECT jsonb_agg(g.coordinates->u.vertex_index ORDER BY u.position) AS vertices
+         FROM unnest(w.vertex_indices) WITH ORDINALITY AS u(vertex_index,position)
+       ) s`,
+      [tx.athleteId, JSON.stringify(chunk), region === null ? null : [...region]],
+    );
+    for (const raw of read.rows) {
+      const line = cardLineRowSchema.parse(raw);
+      lines.set(line.course_id, line);
+    }
+  }
+  const sources: CourseCardSourceRead[] = [];
+  for (const entry of heads) {
+    if (entry === null) continue;
+    if (entry.status === 'unavailable') {
+      sources.push(entry);
+      continue;
+    }
+    const line = lines.get(entry.course.courseId);
+    if (line === undefined) continue;
+    const { vertexCount, vertexIndices, ...rest } = entry;
+    // The indices were chosen from the count recorded beside the line. A line that is not
+    // that long, or that could not answer every index (`->` past the end is null, which the
+    // row schema refuses), is a broken read and fails the request rather than a card.
+    if (line.vertex_count !== vertexCount || line.vertices.length !== vertexIndices.length)
+      throw new Error('COURSE_CARD_LINE_MISMATCH');
+    const vertices = new Map<number, CoursePosition>();
+    vertexIndices.forEach((vertexIndex, position) => {
+      const vertex = line.vertices[position];
+      if (vertex !== undefined) vertices.set(vertexIndex, vertex);
+    });
+    sources.push({
+      ...rest,
+      line: { vertexCount, vertices, touchesRegion: line.touches_region },
+    });
+  }
+  return sources;
 }
 
 function digest(value: unknown) {
@@ -826,6 +1059,18 @@ function validateContent(content: PreparedCourseContent): PreparedCourseContent 
 }
 
 /**
+ * Courses whose lines one card-read statement looks at (M2-01an). The measured worst case —
+ * every line 20,000 vertices, all outside the elevation box so each is walked whole — is
+ * recorded in the M2-01an progress record against the 5 s `statement_timeout`.
+ */
+export const COURSE_CARD_LINE_CHUNK = 25;
+
+export interface CourseRepositoryOptions {
+  /** Courses per card-read line statement; tests shrink it to exercise the split. */
+  readonly cardLineChunkCourses?: number;
+}
+
+/**
  * The private course ledger.
  *
  * Nothing in here writes to an Activity, a source revision, an overlay or a PlanVersion:
@@ -834,7 +1079,16 @@ function validateContent(content: PreparedCourseContent): PreparedCourseContent 
  * expected revision, and a repeated write that would produce identical content returns the
  * head it already has instead of appending a copy of it.
  */
-export function createCourseRepository(database: Database): CourseRepository {
+export function createCourseRepository(
+  database: Database,
+  options: CourseRepositoryOptions = {},
+): CourseRepository {
+  const cardLineChunk = z
+    .number()
+    .int()
+    .min(1)
+    .max(courseLimits.coursesPerTenant)
+    .parse(options.cardLineChunkCourses ?? COURSE_CARD_LINE_CHUNK);
   return {
     replayCommand(athleteId, rawKey, request) {
       const tenantId = uuid.parse(athleteId);
@@ -896,6 +1150,11 @@ export function createCourseRepository(database: Database): CourseRepository {
         const courses = rows.rows.map((row) => head(headRowSchema.parse(row)));
         return courseListSchema.parse({ courses, total: courses.length });
       });
+    },
+
+    readCardSources(athleteId, request) {
+      const tenantId = uuid.parse(athleteId);
+      return database.tenant(tenantId, (tx) => readCardSources(tx, request, cardLineChunk));
     },
 
     headContent(athleteId, rawCourseId) {

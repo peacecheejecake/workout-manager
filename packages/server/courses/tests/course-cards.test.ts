@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { courseCardSchema } from '@workout/contracts/course-cards';
 import {
+  courseLimits,
   courseReadResultSchema,
   courseThumbnailLimits,
+  courseThumbnailVertexIndices,
+  sampleCourseThumbnailVertices,
   type CourseGeneration,
   type CourseReadResult,
 } from '@workout/contracts/courses';
 import type { RouteComputationRecord } from '@workout/contracts/routing';
 
-import { courseCard, courseDistanceBasis } from '../src/course-cards.js';
-import { createElevationIndex } from '../src/geo-data.js';
+import {
+  courseCard,
+  courseCardFromSource,
+  courseCardVertexIndices,
+  courseDistanceBasis,
+  type CourseCardSource,
+} from '../src/course-cards.js';
+import { createElevationIndex, elevationProfileVertexIndices } from '../src/geo-data.js';
 
 /**
  * The S13 list card, derived (M2-01k-a).
@@ -299,6 +308,132 @@ describe('course card thumbnail', () => {
     );
     expect(card).toEqual({ status: 'unavailable', course: expect.objectContaining({ courseId }) });
     expect(Object.keys(card)).toEqual(['status', 'course']);
+  });
+});
+
+/**
+ * The card from a card source (M2-01an): what storage returns when it does not read the
+ * line whole. Here the source is cut from a whole read the way storage cuts it; the
+ * persistence integration suite holds storage's own answer to the same `courseCard`.
+ */
+function sourceOf(whole: CourseReadResult, index: typeof elevation | null): CourseCardSource {
+  if (whole.status === 'unavailable') return { status: 'unavailable', course: whole.course };
+  const coordinates = whole.revision.geometry.coordinates;
+  const bbox = index?.identity.bbox;
+  return {
+    status: 'available',
+    course: whole.course,
+    generation: whole.revision.generation,
+    distanceMeters: whole.revision.distanceMeters,
+    thumbnail: whole.thumbnail,
+    line: {
+      vertexCount: coordinates.length,
+      vertices: new Map(
+        courseCardVertexIndices(coordinates.length, index).map((vertexIndex) => [
+          vertexIndex,
+          coordinates[vertexIndex] as [number, number],
+        ]),
+      ),
+      touchesRegion:
+        bbox === undefined
+          ? null
+          : coordinates.some(
+              ([longitude, latitude]) =>
+                longitude >= bbox[0] &&
+                longitude <= bbox[2] &&
+                latitude >= bbox[1] &&
+                latitude <= bbox[3],
+            ),
+    },
+  };
+}
+
+describe('course card from a card source (M2-01an)', () => {
+  const generations = [
+    recorded,
+    routed,
+    imported,
+    trimmedFrom('recorded-segment'),
+    trimmedFrom('routed-waypoints'),
+    trimmedFrom('imported-file'),
+    trimmedFrom('privacy-trimmed'),
+  ];
+  const lengths = [2, 3, 199, 200, 201, 399, 400, 401, 1000, 4_999, 20_000];
+  const lineOf = (length: number): [number, number][] =>
+    Array.from({ length }, (_, index) => [127.02 + index * 1e-6, 37.5 + index * 7e-7]);
+
+  it('is the same card as the whole head read, for every generation, length and dataset', () => {
+    for (const generation of generations)
+      for (const length of lengths)
+        for (const index of [elevation, null]) {
+          const whole = read(generation, lineOf(length));
+          expect(courseCardFromSource(sourceOf(whole, index), index)).toEqual(
+            courseCard(whole, index),
+          );
+        }
+  });
+
+  it('is the same card outside the dataset box, and for an unavailable course', () => {
+    const far = read(recorded, [
+      [2.35, 48.85],
+      [2.36, 48.86],
+    ]);
+    expect(courseCardFromSource(sourceOf(far, elevation), elevation)).toEqual(
+      courseCard(far, elevation),
+    );
+    const gone: CourseReadResult = {
+      status: 'unavailable',
+      course: {
+        status: 'unavailable',
+        courseId,
+        name: '삭제된 원본',
+        visibility: 'private',
+        reason: 'source_activity_deleted',
+        reclaimedAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    };
+    expect(courseCardFromSource(sourceOf(gone, elevation), elevation)).toEqual(
+      courseCard(gone, elevation),
+    );
+  });
+
+  it('asks for at most the drawn and the sampled vertices, ascending and without repeats', () => {
+    for (const length of [2, 200, 400, 401, 20_000]) {
+      const both = courseCardVertexIndices(length, elevation);
+      const drawnOnly = courseCardVertexIndices(length, null);
+      expect(both).toEqual([...new Set(both)].sort((left, right) => left - right));
+      expect(drawnOnly).toEqual(courseThumbnailVertexIndices(length));
+      expect(both.length).toBeLessThanOrEqual(
+        courseThumbnailLimits.vertexBudget + courseLimits.elevationProfilePoints,
+      );
+      for (const vertexIndex of elevationProfileVertexIndices(length))
+        expect(both).toContain(vertexIndex);
+    }
+  });
+
+  it('refuses a source that lacks an asked vertex or never said whether it reaches the box', () => {
+    const whole = read(recorded, lineOf(1000));
+    const source = sourceOf(whole, elevation);
+    assert(source.status === 'available');
+    const holed = new Map(source.line.vertices);
+    holed.delete(courseThumbnailVertexIndices(1000)[7] as number);
+    expect(() =>
+      courseCardFromSource({ ...source, line: { ...source.line, vertices: holed } }, elevation),
+    ).toThrow('COURSE_CARD_VERTEX_MISSING');
+    expect(() =>
+      courseCardFromSource({ ...source, line: { ...source.line, touchesRegion: null } }, elevation),
+    ).toThrow('COURSE_CARD_REGION_NOT_READ');
+  });
+
+  it('takes exactly the vertices the thumbnail sampler takes', () => {
+    for (let length = 2; length <= 2_000; length += 1) {
+      const line = Array.from({ length }, (_, index) => [index, 0] as [number, number]);
+      expect(courseThumbnailVertexIndices(length)).toEqual(
+        sampleCourseThumbnailVertices(line).map(([vertexIndex]) => vertexIndex),
+      );
+    }
   });
 });
 

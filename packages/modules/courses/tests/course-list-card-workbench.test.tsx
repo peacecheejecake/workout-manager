@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { focusManager, onlineManager } from '@tanstack/react-query';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import { CourseWorkbench } from '../src/course-workbench';
@@ -91,21 +92,33 @@ const card = (thumbnail: unknown) => ({
   surface: { confirmation: 'unknown' },
 });
 
-function setup(options: { preferencesFail?: boolean; detailThumbnail?: unknown } = {}) {
+function setup(
+  options: {
+    preferencesFail?: boolean;
+    detailThumbnail?: unknown;
+    /** The card's thumbnail state on each read; the last one repeats. */
+    cardThumbnails?: unknown[];
+    /** The head revision the detail read reports, when it is newer than the card's. */
+    detailHeadRevision?: number;
+  } = {},
+) {
   let cardReads = 0;
+  // By default the first read predates the stored picture and any later one sees it.
+  const cardThumbnails = options.cardThumbnails ?? [{ status: 'none' }, ready];
+  const detailRevision = options.detailHeadRevision ?? head.headRevision;
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head], total: 1 });
     if (input.path === '/bff/v1/courses/cards' && input.method === 'GET') {
       cardReads += 1;
-      // The first read predates the stored picture; any later one sees it.
-      return reply({ cards: [card(cardReads === 1 ? { status: 'none' } : ready)], total: 1 });
+      const thumbnail = cardThumbnails[Math.min(cardReads, cardThumbnails.length) - 1];
+      return reply({ cards: [card(thumbnail)], total: 1 });
     }
     if (input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET')
       return reply({
         status: 'available',
-        course: head,
-        revision,
+        course: { ...head, headRevision: detailRevision },
+        revision: { ...revision, courseRevision: detailRevision },
         thumbnail: options.detailThumbnail ?? { status: 'none' },
       });
     if (input.path === '/bff/v1/courses/preferences' && input.method === 'GET')
@@ -177,5 +190,68 @@ describe('course list card in the workbench', () => {
     await screen.findByTestId('course-revision');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(cardReads()).toBe(1);
+  });
+
+  describe('when the card list is read again (M2-01an)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      act(() => focusManager.setFocused(undefined));
+    });
+
+    it('does not re-read when the open course and its card both already have the picture', async () => {
+      const { cardReads } = setup({ detailThumbnail: ready, cardThumbnails: [ready] });
+      await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+      await screen.findByTestId('course-revision');
+      // The card itself says the picture is ready.
+      await waitFor(() =>
+        expect(
+          within(row()).getByTestId('course-card-thumbnail').closest('[data-thumbnail-state]'),
+        ).toHaveAttribute('data-thumbnail-state', 'ready'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(cardReads()).toBe(1);
+    });
+
+    it('does not re-read for a picture of a head revision the card does not describe', async () => {
+      // The open course is already at revision 3 with its picture; the card still describes
+      // revision 2. A picture of 3 says nothing about the card of 2, so the card is not
+      // re-read on its account (the write that made revision 3 refreshes the list itself).
+      const { cardReads } = setup({
+        detailThumbnail: { ...ready, courseRevision: 3 },
+        detailHeadRevision: 3,
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+      await screen.findByTestId('course-revision');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(cardReads()).toBe(1);
+    });
+
+    it('keeps the cards fresh for a minute: a reconnect inside it does not re-read', async () => {
+      const { cardReads } = setup();
+      await screen.findByRole('button', { name: 'Seoul loop' });
+      await waitFor(() => expect(within(row()).getByTestId('course-card-surface')).toBeVisible());
+      expect(cardReads()).toBe(1);
+      // A reconnect refetches only stale queries, so this reads again only if the cards
+      // stopped being fresh before their 60 seconds.
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 59_000);
+      act(() => onlineManager.setOnline(false));
+      act(() => onlineManager.setOnline(true));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(cardReads()).toBe(1);
+    });
+
+    it('does not re-read when the window regains focus, even once the cards are stale', async () => {
+      const { cardReads } = setup();
+      await screen.findByRole('button', { name: 'Seoul loop' });
+      await waitFor(() => expect(within(row()).getByTestId('course-card-surface')).toBeVisible());
+      expect(cardReads()).toBe(1);
+      // Past the 60-second freshness window, so only the focus rule can keep it from reading.
+      const later = Date.now() + 61_000;
+      vi.spyOn(Date, 'now').mockReturnValue(later);
+      act(() => focusManager.setFocused(false));
+      act(() => focusManager.setFocused(true));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(cardReads()).toBe(1);
+    });
   });
 });

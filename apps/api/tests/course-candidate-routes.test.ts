@@ -294,6 +294,7 @@ function setup(
       },
     ),
     list: vi.fn().mockResolvedValue({ courses: [courseHead], total: 1 }),
+    readCardSources: vi.fn().mockRejectedValue(new Error('not used')),
     headContent: vi.fn().mockResolvedValue({
       courseId,
       courseRevision: 1,
