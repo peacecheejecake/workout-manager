@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,22 +8,35 @@ import { describe, expect, it } from 'vitest';
 import {
   assertDurableOutputPath,
   assertMeasurableSourceTree,
+  attemptAfter,
   combineAttempts,
   evaluateBudget,
+  firstAttemptOf,
+  judgedOutcomes,
+  legacyTreeIdentity,
   PARSE_PROCESS_RSS_CHECK,
   parseBudgetFile,
   parseProcessRssCheck,
   percentile,
   recordedRuns,
   repoRelative,
+  RERUN_POLICY_SINCE,
+  rerunPolicyFor,
+  RETRY_SAME_TREE_CHECK,
   retryDecision,
   runContext,
+  sameTreeCheck,
+  secondAttemptRecord,
+  treeIdentity,
   VERIFICATION_LOG_DIRECTORY,
   verifyBaselinesAgainstRuns,
+  verifyHistoryKept,
+  verifyRerunPolicy,
   WIPED_OUTPUT_DIRECTORIES,
   type BudgetEvaluation,
   type BudgetSample,
   type PerformanceBudgetFile,
+  type RecordedRun,
 } from '../../../scripts/performance-budget';
 
 /**
@@ -765,8 +779,11 @@ describe('one disclosed re-run (M2-01al b)', () => {
       { 'parse.time': ok, 'parse.memory': ok, 'parse.size': ok, ...observed },
       ['parse'],
     );
-  // The fixture's admissible load is 30 (its baseline maximum).
-  const slow = judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20) });
+  // The fixture's admissible load is 30 (its baseline maximum). `slow` is a burst: two of five
+  // samples over the budget, the median within it (M2-01ar: a failed time budget is re-run only
+  // then).
+  const slowTime = samples([90, 150, 90, 150, 90], 20);
+  const slow = judge({ 'parse.time': slowTime });
   const loaded = judge({ 'parse.time': samples([150, 150, 150, 150, 150], 99) });
   const passing = judge({});
 
@@ -779,16 +796,18 @@ describe('one disclosed re-run (M2-01al b)', () => {
   });
 
   it('never re-runs for a memory or size budget, a missing or thin metric, or a failed check', () => {
-    const over = samples([150, 150, 150, 150, 150], 99);
+    // Over the budget with the median within it (M2-01ar): only the unit refuses the re-run,
+    // not the median condition.
+    const over = samples([90, 150, 90, 90, 90], 99);
     for (const evaluation of [
       judge({ 'parse.memory': over }),
       judge({ 'parse.size': over }),
       // A slow time budget next to a memory failure: the memory failure decides.
-      judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20), 'parse.memory': over }),
+      judge({ 'parse.time': slowTime, 'parse.memory': over }),
       // parse.size missing.
       evaluateBudget(budget, { 'parse.time': over, 'parse.memory': ok }, ['parse']),
       // parse.size insufficient (4 of 5 samples).
-      judge({ 'parse.time': samples([150, 150, 150, 150, 150], 20), 'parse.size': ok.slice(1) }),
+      judge({ 'parse.time': slowTime, 'parse.size': ok.slice(1) }),
     ])
       expect(retryDecision(evaluation, true, 1).retry).toBe(false);
     expect(retryDecision(slow, false, 1)).toEqual({ retry: false, reason: 'a check failed' });
@@ -854,8 +873,8 @@ describe('one disclosed re-run (M2-01al b)', () => {
 
   it('never excuses memory: a first attempt with a memory failure fails, whatever the re-run', () => {
     const memoryAndTime = judge({
-      'parse.time': samples([150, 150, 150, 150, 150], 20),
-      'parse.memory': samples([150, 150, 150, 150, 150], 20),
+      'parse.time': slowTime,
+      'parse.memory': samples([90, 150, 90, 90, 90], 20),
     });
     expect(
       combineAttempts(
@@ -1134,4 +1153,651 @@ describe('engine memory budgets are bound to the graph they were baselined on (M
         '138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085',
       );
   });
+});
+
+describe('a re-run only for a burst: the median condition (M2-01ar c, review N5)', () => {
+  const budget = budgetWith({
+    'parse.time': { budget: 100 },
+    'parse.memory': { budget: 100, unit: 'MiB' },
+  });
+  const ok = samples([90, 90, 90, 90, 90], 20);
+  const judge = (time: BudgetSample[]) =>
+    evaluateBudget(budget, { 'parse.time': time, 'parse.memory': ok }, ['parse']);
+  const passing = judge(ok);
+
+  it('records the median of every judged metric, whatever its statistic', () => {
+    const evaluation = judge(samples([90, 150, 60, 150, 95], 20));
+    expect(evaluation.metrics.find((metric) => metric.id === 'parse.time')).toMatchObject({
+      statistic: 'max',
+      observed: 150,
+      median: 95,
+      verdict: 'failed',
+    });
+    expect(
+      evaluateBudget(budget, { 'parse.memory': ok }, ['parse']).metrics.find(
+        (metric) => metric.id === 'parse.time',
+      )?.median,
+    ).toBeNull();
+  });
+
+  it('refuses the re-run when a time budget failed at an admissible load with its median over it', () => {
+    // A regression moves the whole distribution: re-running it only gives it a second chance.
+    const shifted = judge(samples([90, 150, 150, 90, 150], 20));
+    expect(retryDecision(shifted, true, 1)).toEqual({
+      retry: false,
+      reason: 'median over budget: parse.time:p50 150 > 100',
+    });
+    expect(
+      combineAttempts(
+        { evaluation: shifted, checksPassed: true },
+        { evaluation: passing, checksPassed: true },
+      ),
+    ).toEqual({ passed: false, inconclusive: false });
+  });
+
+  it('re-runs a burst that left the median within the budget, up to the budget itself', () => {
+    const burst = judge(samples([150, 150, 90, 90, 90], 20));
+    expect(retryDecision(burst, true, 1)).toEqual({ retry: true, timeMetrics: ['parse.time'] });
+    const atBudget = judge(samples([150, 150, 100, 90, 90], 20));
+    expect(atBudget.metrics.find((metric) => metric.id === 'parse.time')?.median).toBe(100);
+    expect(retryDecision(atBudget, true, 1).retry).toBe(true);
+  });
+
+  it('leaves an inconclusive time budget alone: its loaded samples already explain the excess', () => {
+    const loaded = judge(samples([150, 150, 150, 150, 150], 99));
+    expect(loaded.inconclusive).toBe(true);
+    expect(retryDecision(loaded, true, 1)).toEqual({ retry: true, timeMetrics: ['parse.time'] });
+  });
+
+  it('does not re-run a failed time budget recorded without a median (before M2-01ar)', () => {
+    const burst = judge(samples([150, 150, 90, 90, 90], 20));
+    const legacy = {
+      ...burst,
+      metrics: burst.metrics.map(({ median: _median, ...metric }) => metric),
+    } as unknown as BudgetEvaluation;
+    expect(retryDecision(legacy, true, 1)).toEqual({
+      retry: false,
+      reason: 'median over budget: parse.time:p50 unrecorded > 100',
+    });
+  });
+
+  it('takes no re-run from a recorded first attempt that did not pass', () => {
+    // The M2-01aj reviewer burst (median 471, budget 980) keeps its re-run (M2-01al block). Run
+    // 3 (2026-09-24T15:30Z, load up to 124) had worker.parseMs at a median of 1,058 ms over 980;
+    // it is inconclusive, so the median condition does not apply and it is still re-run.
+    const checkedIn = parseBudgetFile(
+      JSON.parse(readFileSync(research('performance-budget.json'), 'utf8')),
+    );
+    const result = JSON.parse(readFileSync(research('performance-budget-result.json'), 'utf8')) as {
+      previousRuns: { executedAt: string; samples: Record<string, BudgetSample[]> }[];
+    };
+    const run3 = result.previousRuns.find((run) => run.executedAt.startsWith('2026-09-24T15:30'));
+    const timeOnly = Object.fromEntries(
+      Object.entries(checkedIn.desktop.metrics).filter(
+        ([, metric]) => metric.unit === 'ms' && metric.phase !== 'browser',
+      ),
+    );
+    const judged = evaluateBudget(
+      { ...checkedIn, desktop: { ...checkedIn.desktop, metrics: timeOnly } },
+      Object.fromEntries(Object.entries(run3?.samples ?? {}).filter(([id]) => id in timeOnly)),
+      ['api', 'engine', 'worker', 'parse'],
+    );
+    expect(judged.metrics.find((metric) => metric.id === 'worker.parseMs')).toMatchObject({
+      verdict: 'inconclusive',
+      median: 1058,
+    });
+    expect(retryDecision(judged, true, 1).retry).toBe(true);
+  });
+});
+
+/** A judged run as a result file records it, for the re-run policy. */
+function judgedRun(
+  executedAt: string,
+  outcome: {
+    head?: string;
+    diff?: string | null;
+    passed: boolean;
+    inconclusive?: boolean;
+    attempt?: Record<string, unknown>;
+    rerunPolicy?: Record<string, unknown>;
+    mode?: string;
+    /** The measured content; by default one per (head, diff), as distinct trees. */
+    content?: string;
+    /** A record from before `contentSha256` (M2-01ar r0 and earlier). */
+    legacy?: boolean;
+  },
+): RecordedRun {
+  const head = outcome.head ?? 'aaaaaaa';
+  const diff = outcome.diff ?? null;
+  const content =
+    outcome.content ??
+    createHash('sha256')
+      .update(`${head}:${diff ?? 'clean'}`)
+      .digest('hex');
+  return {
+    executedAt,
+    mode: outcome.mode ?? 'judged',
+    samples: {},
+    sourceTree: {
+      head,
+      diffSha256: diff,
+      ...(outcome.legacy === true ? {} : { contentSha256: content }),
+    },
+    passed: outcome.passed,
+    checks: [{ id: 'c', passed: true }],
+    evaluation: {
+      passed: outcome.passed,
+      inconclusive: outcome.inconclusive ?? false,
+      metrics: [],
+    },
+    ...(outcome.attempt === undefined ? {} : { attempt: outcome.attempt }),
+    ...(outcome.rerunPolicy === undefined ? {} : { rerunPolicy: outcome.rerunPolicy }),
+  } as RecordedRun;
+}
+const firstOfPair = { number: 1, of: 2, retry: { retry: true, timeMetrics: ['t'] } };
+const secondOf = (retryOf: string, inconclusive = false) => ({
+  number: 2,
+  of: 2,
+  retryOf,
+  pair: { passed: false, inconclusive },
+});
+const tree = { head: 'aaaaaaa', diffSha256: null };
+const T = (minute: number) => `2026-09-26T10:${String(minute).padStart(2, '0')}:00.000Z`;
+
+describe('a failed judgement stands (M2-01ar b, review N4)', () => {
+  it('reads one outcome per judged measurement: a single attempt, or a pair', () => {
+    const outcomes = judgedOutcomes([
+      judgedRun(T(1), { passed: true }),
+      judgedRun(T(2), { passed: false, inconclusive: true }),
+      judgedRun(T(3), { passed: false, attempt: firstOfPair }),
+      judgedRun(T(4), { passed: false, attempt: secondOf(T(3)) }),
+      judgedRun(T(5), { passed: false, attempt: firstOfPair }),
+      judgedRun(T(6), { passed: true, attempt: { ...secondOf(T(5)), pair: { passed: true } } }),
+      // A first attempt whose re-run was never recorded: the pair did not pass.
+      judgedRun(T(7), { passed: false, attempt: firstOfPair }),
+      judgedRun(T(8), { passed: false, mode: 'record-only (baseline, not judged)' }),
+    ]);
+    expect(outcomes.map((outcome) => [outcome.executedAt, outcome.verdict])).toEqual([
+      [T(1), 'passed'],
+      [T(2), 'inconclusive'],
+      [T(4), 'failed'],
+      [T(6), 'passed'],
+      [T(7), 'failed'],
+    ]);
+  });
+
+  it('refuses a new judged run on the tree of a failed pair unless it records a reason', () => {
+    const runs = [
+      judgedRun(T(1), { passed: false, attempt: firstOfPair }),
+      judgedRun(T(2), { passed: false, attempt: secondOf(T(1)) }),
+    ];
+    expect(() => rerunPolicyFor(runs, tree, T(9), null)).toThrow('RERUN_AFTER_FAILED_JUDGEMENT');
+    expect(() => rerunPolicyFor(runs, tree, T(9), '   ')).toThrow('RERUN_AFTER_FAILED_JUDGEMENT');
+    expect(rerunPolicyFor(runs, tree, T(9), ' load 40 from another build ')).toMatchObject({
+      failedOnThisTree: T(2),
+      reason: 'load 40 from another build',
+      previous: { executedAt: T(2), verdict: 'failed' },
+    });
+  });
+
+  it('refuses it after a single failed attempt too, but not after an inconclusive one', () => {
+    expect(() => rerunPolicyFor([judgedRun(T(1), { passed: false })], tree, T(9), null)).toThrow(
+      'RERUN_AFTER_FAILED_JUDGEMENT',
+    );
+    // The admissible-load rule itself asks for the repeat of an inconclusive outcome.
+    expect(
+      rerunPolicyFor([judgedRun(T(1), { passed: false, inconclusive: true })], tree, T(9), null),
+    ).toMatchObject({ failedOnThisTree: null, reason: null });
+    expect(
+      rerunPolicyFor(
+        [
+          judgedRun(T(1), { passed: false, attempt: firstOfPair }),
+          judgedRun(T(2), { passed: false, attempt: secondOf(T(1), true) }),
+        ],
+        tree,
+        T(9),
+        null,
+      ).failedOnThisTree,
+    ).toBeNull();
+  });
+
+  it('needs no reason on a changed tree (records without a content hash): another HEAD or difference', () => {
+    const runs = [judgedRun(T(1), { passed: false, diff: 'd1' })];
+    for (const changed of [
+      { head: 'bbbbbbb', diffSha256: 'd1' },
+      { head: 'aaaaaaa', diffSha256: 'd2' },
+      { head: 'aaaaaaa', diffSha256: null },
+    ])
+      expect(rerunPolicyFor(runs, changed, T(9), null)).toMatchObject({
+        failedOnThisTree: null,
+        previous: { executedAt: T(1), verdict: 'failed' },
+      });
+    expect(() => rerunPolicyFor(runs, { head: 'aaaaaaa', diffSha256: 'd1' }, T(9), null)).toThrow(
+      'RERUN_AFTER_FAILED_JUDGEMENT',
+    );
+    expect(treeIdentity({ head: 'aaaaaaa', diffSha256: null })).toBe('head:aaaaaaa:clean');
+    expect(treeIdentity({ head: '' })).toBeNull();
+  });
+
+  it('judges by the latest outcome on the tree, whatever happened on other trees in between', () => {
+    // Failed here, then a reasoned run passed here: the next one needs no reason.
+    expect(
+      rerunPolicyFor(
+        [
+          judgedRun(T(1), { passed: false }),
+          judgedRun(T(2), { passed: true, rerunPolicy: { reason: 'load' } }),
+        ],
+        tree,
+        T(9),
+        null,
+      ).failedOnThisTree,
+    ).toBeNull();
+    // Failed here, passed on another tree, back here: still this tree's failure.
+    expect(() =>
+      rerunPolicyFor(
+        [judgedRun(T(1), { passed: false }), judgedRun(T(2), { passed: true, head: 'bbbbbbb' })],
+        tree,
+        T(9),
+        null,
+      ),
+    ).toThrow('RERUN_AFTER_FAILED_JUDGEMENT');
+    // Only outcomes before the run count.
+    expect(
+      rerunPolicyFor([judgedRun(T(10), { passed: false })], tree, T(9), null).failedOnThisTree,
+    ).toBeNull();
+  });
+
+  describe('in the result file', () => {
+    const since = (minute: number) =>
+      new Date(Date.parse(RERUN_POLICY_SINCE) + minute * 60_000).toISOString();
+    const policy = (failedOnThisTree: string | null, reason: string | null = null) => ({
+      failedOnThisTree,
+      reason,
+    });
+
+    it('holds the checked-in result files', () => {
+      for (const file of [
+        'performance-budget-result.json',
+        'performance-budget-browser-result.json',
+      ])
+        expect(() =>
+          verifyRerunPolicy(recordedRuns(JSON.parse(readFileSync(research(file), 'utf8')))),
+        ).not.toThrow();
+    });
+
+    it('refuses a judged run after a failure on its tree that records no reason', () => {
+      const failed = judgedRun(since(1), { passed: false, rerunPolicy: policy(null) });
+      expect(() =>
+        verifyRerunPolicy([
+          failed,
+          judgedRun(since(2), { passed: true, rerunPolicy: policy(since(1)) }),
+        ]),
+      ).toThrow(`RERUN_WITHOUT_REASON: ${since(2)}`);
+      expect(() =>
+        verifyRerunPolicy([
+          failed,
+          judgedRun(since(2), { passed: true, rerunPolicy: policy(since(1), 'load 41') }),
+        ]),
+      ).not.toThrow();
+      // On another tree it needs none.
+      expect(() =>
+        verifyRerunPolicy([
+          failed,
+          judgedRun(since(2), { passed: true, head: 'bbbbbbb', rerunPolicy: policy(null) }),
+        ]),
+      ).not.toThrow();
+    });
+
+    it('refuses a judged run that does not record its policy, or misreports the failure it follows', () => {
+      expect(() => verifyRerunPolicy([judgedRun(since(1), { passed: true })])).toThrow(
+        `RERUN_POLICY_NOT_RECORDED: ${since(1)}`,
+      );
+      expect(() =>
+        verifyRerunPolicy([
+          judgedRun(since(1), { passed: false, rerunPolicy: policy(null) }),
+          judgedRun(since(2), { passed: true, rerunPolicy: policy(null, 'load 41') }),
+        ]),
+      ).toThrow(`RERUN_POLICY_MISREPORTED: ${since(2)}`);
+      // Runs recorded before the rule are left as they are.
+      expect(() =>
+        verifyRerunPolicy([
+          judgedRun('2026-09-24T15:30:05.154Z', { passed: false }),
+          judgedRun('2026-09-24T15:58:23.437Z', { passed: true }),
+        ]),
+      ).not.toThrow();
+    });
+
+    it('allows one re-run, of a first attempt that decided on it', () => {
+      const first = judgedRun(since(1), {
+        passed: false,
+        attempt: firstOfPair,
+        rerunPolicy: policy(null),
+      });
+      const second = judgedRun(since(2), { passed: false, attempt: secondOf(since(1)) });
+      expect(() => verifyRerunPolicy([first, second])).not.toThrow();
+      expect(() =>
+        verifyRerunPolicy([
+          first,
+          second,
+          judgedRun(since(3), { passed: true, attempt: secondOf(since(1)) }),
+        ]),
+      ).toThrow(`RETRY_REPEATED: ${since(1)}`);
+      expect(() =>
+        verifyRerunPolicy([
+          judgedRun(since(1), {
+            passed: false,
+            attempt: { number: 1, of: 2, retry: { retry: false, reason: 'a check failed' } },
+            rerunPolicy: policy(null),
+          }),
+          judgedRun(since(2), { passed: true, attempt: secondOf(since(1)) }),
+        ]),
+      ).toThrow(`RETRY_WITHOUT_ELIGIBLE_FIRST_ATTEMPT: ${since(2)}`);
+    });
+  });
+});
+
+describe('the browser re-run, driven from outside the spec (M2-01ar a)', () => {
+  const budget = budgetWith({
+    'browser.time': { budget: 100 },
+    'browser.heap': { budget: 100, unit: 'MiB' },
+  });
+  const ok = samples([90, 90, 90, 90, 90], 20);
+  const judge = (time: BudgetSample[], heap = ok) =>
+    evaluateBudget(budget, { 'browser.time': time, 'browser.heap': heap }, ['parse']);
+  const burst = judge(samples([150, 90, 90, 90, 90], 20));
+  const started = '2026-09-26T10:00:00.000Z';
+  const recorded = (evaluation: BudgetEvaluation, extra: Record<string, unknown> = {}) => ({
+    executedAt: '2026-09-26T10:05:00.000Z',
+    mode: 'judged',
+    sourceTree: { head: 'aaaaaaa', diffSha256: 'd1' },
+    evaluation,
+    checks: [{ id: 'browser-next-maplibre-not-loaded-before-route-tab', passed: true }],
+    attempt: { number: 1, of: 2, retry: retryDecision(evaluation, true, 1) },
+    previousRuns: [],
+    ...extra,
+  });
+
+  it('re-runs the attempt the spec just recorded when the rule allows it', () => {
+    expect(attemptAfter(recorded(burst), started)).toEqual({
+      action: 'retry',
+      retryOf: '2026-09-26T10:05:00.000Z',
+      timeMetrics: ['browser.time'],
+    });
+  });
+
+  it('stops after a pass, a memory failure, a regression-shaped time failure or a failed check', () => {
+    expect(attemptAfter(recorded(judge(ok)), started)).toEqual({
+      action: 'stop',
+      reason: 'passed',
+    });
+    expect(attemptAfter(recorded(judge(ok, samples([150, 90, 90, 90, 90]))), started)).toEqual({
+      action: 'stop',
+      reason: 'not only time budgets: browser.heap:failed',
+    });
+    expect(attemptAfter(recorded(judge(samples([150, 150, 150, 90, 90]))), started)).toEqual({
+      action: 'stop',
+      reason: 'median over budget: browser.time:p50 150 > 100',
+    });
+    expect(
+      attemptAfter(
+        recorded(burst, {
+          checks: [{ id: 'x', passed: false }],
+          attempt: { number: 1, retry: { retry: false, reason: 'a check failed' } },
+        }),
+        started,
+      ),
+    ).toEqual({ action: 'stop', reason: 'a check failed' });
+  });
+
+  it('never re-runs on a result it did not see written, or on one that is not judged', () => {
+    expect(attemptAfter(null, started)).toEqual({
+      action: 'stop',
+      reason: 'the attempt wrote no result',
+    });
+    // An older run left in the file: the attempt crashed before writing.
+    expect(
+      attemptAfter(recorded(burst, { executedAt: '2026-09-26T09:59:59.999Z' }), started),
+    ).toEqual({ action: 'stop', reason: 'the attempt wrote no result' });
+    expect(
+      attemptAfter(recorded(burst, { mode: 'record-only (baseline, not judged)' }), started),
+    ).toEqual({ action: 'stop', reason: 'not judged' });
+  });
+
+  it('refuses a record whose re-run claim the rule does not give, or that claims none', () => {
+    expect(() =>
+      attemptAfter(
+        recorded(judge(ok), { attempt: { number: 1, retry: { retry: true, timeMetrics: [] } } }),
+        started,
+      ),
+    ).toThrow('RETRY_DECISION_MISMATCH');
+    expect(() =>
+      attemptAfter(
+        recorded(burst, { attempt: { number: 1, retry: { retry: false, reason: 'no runner' } } }),
+        started,
+      ),
+    ).toThrow('RETRY_DECISION_MISMATCH');
+    expect(() => attemptAfter(recorded(burst, { attempt: undefined }), started)).toThrow(
+      'RETRY_ATTEMPT_NOT_RECORDED',
+    );
+  });
+
+  it('records the pair on the re-run, and checks that it measured the same tree', () => {
+    const first = firstAttemptOf(recorded(burst), '2026-09-26T10:05:00.000Z');
+    expect(() => firstAttemptOf(recorded(burst), '2026-09-26T10:06:00.000Z')).toThrow(
+      'RETRY_FIRST_ATTEMPT_NOT_FOUND',
+    );
+    expect(sameTreeCheck(first, { head: 'aaaaaaa', diffSha256: 'd1' })).toMatchObject({
+      id: RETRY_SAME_TREE_CHECK,
+      passed: true,
+    });
+    expect(sameTreeCheck(first, { head: 'aaaaaaa', diffSha256: 'd2' }).passed).toBe(false);
+    const passed = secondAttemptRecord(first, judge(ok), true);
+    expect(passed.pair).toEqual({ passed: true, inconclusive: false });
+    expect(passed.attempt).toMatchObject({
+      number: 2,
+      retryOf: '2026-09-26T10:05:00.000Z',
+      ownVerdict: true,
+      firstAttemptNotPassed: [{ id: 'browser.time', verdict: 'failed', observed: 150, median: 90 }],
+    });
+    // The re-run passes by itself or the pair fails; a failed same-tree check fails it.
+    expect(secondAttemptRecord(first, judge(ok), false).pair.passed).toBe(false);
+    expect(secondAttemptRecord(first, burst, true).pair.passed).toBe(false);
+  });
+});
+
+describe('the re-run policy keys on the measured content, not HEAD (M2-01ar review r1 B1)', () => {
+  function repository() {
+    const root = mkdtempSync(join(tmpdir(), 'budget-content-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+    const write = (path: string, content: string) => {
+      mkdirSync(join(root, path, '..'), { recursive: true });
+      writeFileSync(join(root, path), content);
+    };
+    git('init', '-q');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'user.name', 'fixture');
+    write('packages/kit/src/a.ts', 'export const a = 1;\n');
+    write('scripts/probe.mts', 'export const slow = false;\n');
+    write('scripts/other.mts', 'export {};\n');
+    write('docs/notes.md', 'notes\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'fixture');
+    const tree = () => assertMeasurableSourceTree(root, 'fixture');
+    return { git, write, tree, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  }
+  const failedOn = (tree: object): RecordedRun =>
+    ({
+      executedAt: T(1),
+      mode: 'judged',
+      samples: {},
+      sourceTree: tree,
+      passed: false,
+      checks: [{ id: 'c', passed: true }],
+      evaluation: { passed: false, inconclusive: false, metrics: [] },
+    }) as RecordedRun;
+
+  it('keeps the identity across a docs-only commit and a commit of the measured difference', () => {
+    const { git, write, tree, cleanup } = repository();
+    try {
+      write('scripts/probe.mts', 'export const slow = true;\n');
+      const failed = tree();
+      expect(failed.contentSha256).toMatch(/^[0-9a-f]{64}$/);
+      const runs = [failedOn(failed)];
+
+      // A docs-only commit: HEAD moves, the measured code does not.
+      write('docs/notes.md', 'more notes\n');
+      git('add', 'docs/notes.md');
+      git('commit', '-q', '-m', 'docs');
+      const afterDocs = tree();
+      expect(afterDocs.head).not.toBe(failed.head);
+      expect(afterDocs.contentSha256).toBe(failed.contentSha256);
+      expect(() => rerunPolicyFor(runs, afterDocs, T(9), null)).toThrow(
+        'RERUN_AFTER_FAILED_JUDGEMENT',
+      );
+
+      // Committing the failed difference unchanged: clean tree, same content.
+      git('add', 'scripts/probe.mts');
+      git('commit', '-q', '-m', 'the same code');
+      const committed = tree();
+      expect(committed.diffSha256).toBeNull();
+      expect(committed.contentSha256).toBe(failed.contentSha256);
+      expect(() => rerunPolicyFor(runs, committed, T(9), null)).toThrow(
+        'RERUN_AFTER_FAILED_JUDGEMENT',
+      );
+
+      // A real change to scanned code is a new measurement.
+      write('scripts/probe.mts', 'export const slow = false;\n');
+      const changed = tree();
+      expect(changed.contentSha256).not.toBe(failed.contentSha256);
+      expect(rerunPolicyFor(runs, changed, T(9), null).failedOnThisTree).toBeNull();
+      // So is a new or a deleted scanned file.
+      write('scripts/probe.mts', 'export const slow = true;\n');
+      expect(tree().contentSha256).toBe(failed.contentSha256);
+      write('scripts/extra.mts', 'export const b = 2;\n');
+      expect(tree().contentSha256).not.toBe(failed.contentSha256);
+      rmSync(join(git('rev-parse', '--show-toplevel').trim(), 'scripts/extra.mts'));
+      rmSync(join(git('rev-parse', '--show-toplevel').trim(), 'scripts/other.mts'));
+      expect(tree().contentSha256).not.toBe(failed.contentSha256);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('compares a record without a content hash by the HEAD-based identity it was written with', () => {
+    const legacy = judgedRun(T(1), { passed: false, legacy: true });
+    const sameHead = { head: 'aaaaaaa', diffSha256: null, contentSha256: 'f'.repeat(64) };
+    expect(legacyTreeIdentity(sameHead)).toBe('head:aaaaaaa:clean');
+    expect(() => rerunPolicyFor([legacy], sameHead, T(9), null)).toThrow(
+      'RERUN_AFTER_FAILED_JUDGEMENT',
+    );
+    expect(
+      rerunPolicyFor([legacy], { ...sameHead, head: 'bbbbbbb' }, T(9), null).failedOnThisTree,
+    ).toBeNull();
+  });
+
+  it('refuses a judged run since the rule that records no content hash', () => {
+    const since = new Date(Date.parse(RERUN_POLICY_SINCE) + 60_000).toISOString();
+    expect(() =>
+      verifyRerunPolicy([
+        judgedRun(since, {
+          passed: true,
+          legacy: true,
+          rerunPolicy: { failedOnThisTree: null, reason: null },
+        }),
+      ]),
+    ).toThrow(`RERUN_POLICY_TREE_UNKNOWN: ${since}`);
+  });
+
+  it('refuses in the result file a run after a docs-only commit that records no reason', () => {
+    const since = (minute: number) =>
+      new Date(Date.parse(RERUN_POLICY_SINCE) + minute * 60_000).toISOString();
+    const content = 'e'.repeat(64);
+    expect(() =>
+      verifyRerunPolicy([
+        judgedRun(since(1), {
+          passed: false,
+          content,
+          rerunPolicy: { failedOnThisTree: null, reason: null },
+        }),
+        judgedRun(since(2), {
+          passed: true,
+          head: 'bbbbbbb',
+          content,
+          rerunPolicy: { failedOnThisTree: null, reason: null },
+        }),
+      ]),
+    ).toThrow(`RERUN_WITHOUT_REASON: ${since(2)}`);
+  });
+});
+
+describe('a re-run cannot predate the attempt it names (M2-01ar review r1 item 9, O3)', () => {
+  it('refuses a re-run recorded before its first attempt', () => {
+    const since = (minute: number) =>
+      new Date(Date.parse(RERUN_POLICY_SINCE) + minute * 60_000).toISOString();
+    expect(() =>
+      verifyRerunPolicy([
+        judgedRun(since(1), { passed: true, attempt: secondOf(since(2)) }),
+        judgedRun(since(2), {
+          passed: false,
+          attempt: firstOfPair,
+          rerunPolicy: { failedOnThisTree: null, reason: null },
+        }),
+      ]),
+    ).toThrow(`RETRY_WITHOUT_ELIGIBLE_FIRST_ATTEMPT: ${since(1)}`);
+  });
+});
+
+describe('a result file only grows (M2-01ar review r1 item 2)', () => {
+  const runs = [judgedRun(T(1), { passed: false }), judgedRun(T(2), { passed: true })];
+
+  it('refuses a removed or edited run and accepts appended ones', () => {
+    expect(() =>
+      verifyHistoryKept(runs, [...runs, judgedRun(T(3), { passed: true })]),
+    ).not.toThrow();
+    expect(() => verifyHistoryKept(runs, [runs[1] as RecordedRun])).toThrow(
+      `RESULT_HISTORY_RUN_REMOVED: ${T(1)}`,
+    );
+    expect(() =>
+      verifyHistoryKept(runs, [judgedRun(T(1), { passed: true }), runs[1] as RecordedRun]),
+    ).toThrow(`RESULT_HISTORY_RUN_EDITED: ${T(1)}`);
+  });
+
+  // Against the committed version (HEAD) and the merge base with main, when git has them (a
+  // shallow CI checkout may not have the merge base: that comparison is then not made).
+  const repository = fileURLToPath(new URL('../../..', import.meta.url));
+  const show = (revision: string, file: string): string | null => {
+    try {
+      return execFileSync(
+        'git',
+        ['-C', repository, 'show', `${revision}:docs/implementation/research/${file}`],
+        { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
+      );
+    } catch {
+      return null;
+    }
+  };
+  const mergeBase = (() => {
+    try {
+      return execFileSync('git', ['-C', repository, 'merge-base', 'HEAD', 'main'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return null;
+    }
+  })();
+  for (const file of ['performance-budget-result.json', 'performance-budget-browser-result.json'])
+    for (const revision of ['HEAD', mergeBase]) {
+      const earlier = revision === null ? null : show(revision, file);
+      it.runIf(earlier !== null)(
+        `keeps every run of ${file} at ${revision ?? 'no merge base'}`,
+        () => {
+          verifyHistoryKept(
+            recordedRuns(JSON.parse(earlier ?? '{}')),
+            recordedRuns(JSON.parse(readFileSync(research(file), 'utf8'))),
+          );
+        },
+      );
+    }
 });

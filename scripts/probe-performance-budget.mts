@@ -28,6 +28,10 @@
  *                                      Default: verification-logs/performance-budget/<start>.log
  *                                      (git- and Prettier-ignored, emptied by no tool).
  *   --no-retry                         judge the first attempt only (controlled checks)
+ *   --rerun-reason=TEXT                why a judged run is made again on a tree whose latest
+ *                                      judged outcome failed (M2-01ar). Without it such a run
+ *                                      is refused before it measures; it is recorded as
+ *                                      `rerunPolicy.reason`. A changed tree needs none.
  *
  * Output location (M2-01al): neither --out nor --log may lie under test-results/,
  * playwright-report/ or coverage/ in the repository. Playwright empties test-results/ when it
@@ -41,6 +45,12 @@
  * `attempt.retryOf` and the first attempt's non-passing metrics. The pair passes only if the
  * re-run passes by itself (scripts/performance-budget.ts, `combineAttempts`). The 1-minute load
  * average lags a short burst of contention, so the admissible-load rule cannot catch one.
+ *
+ * Since M2-01ar a time budget failed at an admissible load is re-run only while its median is
+ * within the budget (a burst slows the tail, a regression the whole distribution), and a new
+ * judged run on a tree whose latest judged outcome failed needs --rerun-reason: otherwise
+ * running the probe until it passes would lift the one re-run. Every judged first attempt
+ * records `rerunPolicy`; the unit tests hold the result file to both rules.
  *
  * Engine graph (M2-01ak): the engine memory budgets are bound to the graph they were baselined
  * on, the national graph. A judged run that includes the engine phase must point at that
@@ -113,17 +123,21 @@ import {
   type BudgetSample,
   assertDurableOutputPath,
   assertMeasurableSourceTree,
-  combineAttempts,
+  firstAttemptOf,
   MAX_JUDGED_ATTEMPTS,
   parseProcessRssCheck,
+  recordedRuns,
   repoRelative,
+  rerunPolicyFor,
   retryDecision,
   runContext,
+  sameTreeCheck,
+  secondAttemptRecord,
   VERIFICATION_LOG_DIRECTORY,
   writeResultWithHistory,
   type RecordedRun,
+  type RerunPolicy,
   type RetryDecision,
-  type SourceTreeState,
 } from './performance-budget.ts';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -157,6 +171,8 @@ export interface ProbeOptions {
   readonly retry: boolean;
   /** Set only on the re-run the probe starts itself: the first attempt's `executedAt`. */
   readonly retryOf: string | null;
+  /** M2-01ar: why a judged run follows a failed judgement on the same tree. */
+  readonly rerunReason: string | null;
 }
 
 export function parseProbeArguments(args: readonly string[]): ProbeOptions | null {
@@ -172,6 +188,7 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
   let logPath: string | null = null;
   let retry = true;
   let retryOf: string | null = null;
+  let rerunReason: string | null = null;
   for (const argument of args) {
     if (argument === '--execute') continue;
     if (argument === '--record-only') {
@@ -202,6 +219,7 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
     else if (name === '--allow-product') allowedProductPaths = value.split(',');
     else if (name === '--log') logPath = resolve(value);
     else if (name === '--retry-of') retryOf = value;
+    else if (name === '--rerun-reason') rerunReason = value;
     else return null;
   }
   // A re-run is judged and is never re-run again.
@@ -218,6 +236,7 @@ export function parseProbeArguments(args: readonly string[]): ProbeOptions | nul
     logPath,
     retry,
     retryOf,
+    rerunReason,
   };
 }
 
@@ -257,27 +276,14 @@ async function startRetry(firstExecutedAt: string, logPath: string): Promise<num
   });
 }
 
-interface FirstAttempt {
-  readonly executedAt: string;
-  readonly mode: string;
-  readonly sourceTree: SourceTreeState;
-  readonly evaluation: BudgetEvaluation;
-  readonly checks: readonly { id: string; passed: boolean }[];
-}
-
-/** The first attempt as the result file records it: the latest run, named by `--retry-of`. */
-async function readFirstAttempt(outPath: string, executedAt: string): Promise<FirstAttempt> {
-  const recorded = JSON.parse(await readFile(outPath, 'utf8')) as Partial<FirstAttempt>;
-  if (
-    recorded.executedAt !== executedAt ||
-    recorded.mode !== 'judged' ||
-    recorded.sourceTree === undefined ||
-    recorded.evaluation === undefined ||
-    recorded.evaluation === null ||
-    !Array.isArray(recorded.checks)
-  )
-    throw new Error(`RETRY_FIRST_ATTEMPT_NOT_FOUND: ${executedAt}`);
-  return recorded as FirstAttempt;
+/** Every run the result file at `path` records, or none when there is no file yet. */
+async function runsAt(path: string): Promise<RecordedRun[]> {
+  try {
+    return recordedRuns(JSON.parse(await readFile(path, 'utf8')));
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return [];
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------- recording
@@ -837,7 +843,7 @@ async function main() {
     console.log(
       'Opt-in only: node --import tsx scripts/probe-performance-budget.mts --execute ' +
         '[--phases=api,engine,worker,parse] [--samples=N] [--record-only] [--budget=PATH] ' +
-        '[--out=PATH] [--evaluate=RESULT.json] [--log=PATH] [--no-retry]. The api/engine ' +
+        '[--out=PATH] [--evaluate=RESULT.json] [--log=PATH] [--no-retry] [--rerun-reason=TEXT]. The api/engine ' +
         'phases bind the fixture OIDC provider on 4400 (hold the harness lock) and the ' +
         `routing engine on loopback 8991. Logs go to ${VERIFICATION_LOG_DIRECTORY}/, never test-results/. ` +
         'The engine memory budgets are bound to the national graph (M2-01ak): a judged run with the engine ' +
@@ -897,6 +903,12 @@ async function main() {
   );
   const fitBytes = longTrackFitBytes();
   const startedAt = new Date().toISOString();
+  // M2-01ar (review N4): refused here, before measuring, when this tree's latest judged
+  // outcome failed and no reason was given. The re-run the probe starts itself is exempt.
+  const rerunPolicy: RerunPolicy | null =
+    options.recordOnly || options.retryOf !== null
+      ? null
+      : rerunPolicyFor(await runsAt(options.outPath), sourceTree, startedAt, options.rerunReason);
   const loadAtStart = loadavg().map((value) => Math.round(value * 100) / 100);
   if (options.phases.includes('api') || options.phases.includes('engine'))
     await servicePhases(fitBytes, options);
@@ -920,7 +932,7 @@ async function main() {
   // reads the first attempt back and records the pair's verdict.
   let attempt: Record<string, unknown> | null = null;
   let retry: RetryDecision | null = null;
-  let pair: ReturnType<typeof combineAttempts> | null = null;
+  let pair: ReturnType<typeof secondAttemptRecord>['pair'] | null = null;
   if (evaluation !== null && options.retryOf === null) {
     retry = options.retry
       ? retryDecision(
@@ -931,34 +943,19 @@ async function main() {
       : { retry: false, reason: '--no-retry' };
     attempt = { number: 1, of: MAX_JUDGED_ATTEMPTS, retry };
   } else if (evaluation !== null && options.retryOf !== null) {
-    const first = await readFirstAttempt(options.outPath, options.retryOf);
-    check(
-      'retry-measured-the-same-tree',
-      first.sourceTree.head === sourceTree.head &&
-        first.sourceTree.diffSha256 === sourceTree.diffSha256,
-      `first attempt ${first.sourceTree.head.slice(0, 7)}/${first.sourceTree.diffSha256?.slice(0, 8) ?? 'clean'}, re-run ${sourceTree.head.slice(0, 7)}/${sourceTree.diffSha256?.slice(0, 8) ?? 'clean'}`,
+    const first = firstAttemptOf(
+      JSON.parse(await readFile(options.outPath, 'utf8')),
+      options.retryOf,
     );
-    pair = combineAttempts(
-      { evaluation: first.evaluation, checksPassed: first.checks.every((entry) => entry.passed) },
-      { evaluation, checksPassed: checks.every((entry) => entry.passed) },
+    const same = sameTreeCheck(first, sourceTree);
+    check(same.id, same.passed, same.detail);
+    const second = secondAttemptRecord(
+      first,
+      evaluation,
+      checks.every((entry) => entry.passed),
     );
-    attempt = {
-      number: 2,
-      of: MAX_JUDGED_ATTEMPTS,
-      retryOf: first.executedAt,
-      firstAttemptNotPassed: first.evaluation.metrics
-        .filter((metric) => metric.verdict !== 'passed')
-        .map((metric) => ({
-          id: metric.id,
-          verdict: metric.verdict,
-          observed: metric.observed,
-          budget: metric.budget,
-          loadAverage1m: metric.loadAverage1m,
-        })),
-      ownVerdict: checks.every((entry) => entry.passed) && evaluation.passed,
-      pair,
-      rule: 'Re-run once, in full, only after a first attempt that failed only time budgets with every check and every memory and size budget met. The pair passes only if the re-run passes by itself (scripts/performance-budget.ts combineAttempts).',
-    };
+    pair = second.pair;
+    attempt = second.attempt;
   }
   const checksPassed = checks.every((entry) => entry.passed);
   // On the re-run, `passed` is the pair's verdict (`attempt.ownVerdict` keeps the re-run's own).
@@ -995,6 +992,8 @@ async function main() {
     passed,
     // M2-01al: which attempt this is and, on the first, whether it is re-run and why.
     ...(attempt === null ? {} : { attempt }),
+    // M2-01ar: the judged outcome this run follows, and why it was made again after a failure.
+    ...(rerunPolicy === null ? {} : { rerunPolicy }),
     checks,
     evaluation,
     samples: observations,

@@ -26,7 +26,13 @@
  *   check and every memory and size budget met, is measured once more in full
  *   ({@link retryDecision}); the pair passes only if the re-run passes by itself
  *   ({@link combineAttempts}). The 1-minute load average lags a short burst, so the
- *   admissible-load rule alone cannot tell one from a regression.
+ *   admissible-load rule alone cannot tell one from a regression. Since M2-01ar a time budget
+ *   failed at an admissible load is re-run only while its median is within the budget, and the
+ *   browser spec gets the same re-run from a runner outside it
+ *   (scripts/run-browser-performance-budget.mts, {@link attemptAfter}).
+ * - A failed judgement stands (M2-01ar): a new judged run on the tree whose latest judged
+ *   outcome failed needs a recorded reason ({@link rerunPolicyFor}), and the result files are
+ *   held to that and to the one re-run ({@link verifyRerunPolicy}).
  * - A budget's baseline is checked against the recorded baseline runs it names
  *   ({@link verifyBaselinesAgainstRuns}): its sample count, per-run statistics, statistic
  *   and load range must be what those runs' samples give.
@@ -35,7 +41,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { loadavg } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -106,6 +112,12 @@ export interface MetricEvaluation {
   readonly verdict: MetricVerdict;
   readonly statistic: BudgetStatistic;
   readonly observed: number | null;
+  /**
+   * M2-01ar: the nearest-rank p50 of the same samples, whatever the budget's statistic. A
+   * re-run is refused when a `failed` time budget's median is over the budget too
+   * ({@link retryDecision}). `null` when nothing was observed.
+   */
+  readonly median: number | null;
   readonly budget: number;
   readonly unit: BudgetUnit;
   readonly samples: number;
@@ -420,7 +432,7 @@ export function evaluateBudget(
         loads.length === 0 ? null : { min: Math.min(...loads), max: Math.max(...loads) },
     };
     if (samples.length === 0) {
-      metrics.push({ ...base, verdict: 'missing', observed: null });
+      metrics.push({ ...base, verdict: 'missing', observed: null, median: null });
       continue;
     }
     const values = samples.map((sample) => sample.value);
@@ -432,7 +444,7 @@ export function evaluateBudget(
         : observed <= metric.budget
           ? 'passed'
           : exceededVerdict(metric, samples);
-    metrics.push({ ...base, verdict, observed });
+    metrics.push({ ...base, verdict, observed, median: statisticOf(values, 'p50') });
   }
   const passed = metrics.length > 0 && metrics.every((metric) => metric.verdict === 'passed');
   return {
@@ -475,6 +487,16 @@ export type RetryDecision =
  * `inconclusive`. A memory or size metric that did not pass, a `missing` or `insufficient`
  * metric, or a failed check is never re-run: CPU contention cannot explain it. Never after the
  * last attempt.
+ *
+ * M2-01ar (review N5): a time budget `failed` at an admissible load is re-run only when its
+ * median is still within the budget. A short burst slows the tail and leaves the median where
+ * it was (the M2-01aj reviewer burst: p95 1,446 ms, median 471 ms, budget 980 ms); a
+ * regression moves the whole distribution. Replayed on the recorded runs, a regression that
+ * failed a first attempt and would be passed by a faster re-run is refused this way in 1,025 of
+ * 14,519 cases, while no recorded first attempt that failed at an admissible load loses its
+ * re-run (docs/implementation/progress/M2-01ar.md §1.3). An `inconclusive` metric is left
+ * alone: its loaded samples already explain the excess, and the re-run is the repeat the
+ * admissible-load rule asks for.
  */
 export function retryDecision(
   evaluation: BudgetEvaluation,
@@ -495,6 +517,19 @@ export function retryDecision(
       reason: `not only time budgets: ${
         refused.map((metric) => `${metric.id}:${metric.verdict}`).join(', ') || 'none judged'
       }`,
+    };
+  // A record written before M2-01ar has no median: not shown to be a tail, so not re-run.
+  const shifted = notPassed.filter(
+    (metric) =>
+      metric.verdict === 'failed' &&
+      (typeof metric.median !== 'number' || metric.median > metric.budget),
+  );
+  if (shifted.length > 0)
+    return {
+      retry: false,
+      reason: `median over budget: ${shifted
+        .map((metric) => `${metric.id}:p50 ${metric.median ?? 'unrecorded'} > ${metric.budget}`)
+        .join(', ')}`,
     };
   return { retry: true, timeMetrics: notPassed.map((metric) => metric.id) };
 }
@@ -530,6 +565,348 @@ export function combineAttempts(
     inconclusive:
       first.evaluation.inconclusive && second.checksPassed && second.evaluation.inconclusive,
   };
+}
+
+// ---------------------------------------------------------------- the two attempts as recorded (M2-01ar)
+
+/** The re-run rule as both probes record it on the second attempt. */
+export const RETRY_RULE =
+  'Re-run once, in full, only after a first attempt that failed only time budgets with every check and every memory and size budget met, and with the median of every time budget failed at an admissible load still within it. The pair passes only if the re-run passes by itself (scripts/performance-budget.ts retryDecision, combineAttempts).';
+
+export const RETRY_SAME_TREE_CHECK = 'retry-measured-the-same-tree';
+
+/** A judged first attempt as a result file records it, read back by its re-run. */
+export interface RecordedAttempt {
+  readonly executedAt: string;
+  readonly sourceTree: { readonly head: string; readonly diffSha256: string | null };
+  readonly evaluation: BudgetEvaluation;
+  readonly checks: readonly { readonly id: string; readonly passed: boolean }[];
+}
+
+/**
+ * The first attempt named by `--retry-of` / `PERF_RETRY_OF`: the latest run of the result file,
+ * judged, with its source tree, evaluation and checks. Anything else is refused.
+ */
+export function firstAttemptOf(recorded: unknown, executedAt: string): RecordedAttempt {
+  if (
+    !isRecord(recorded) ||
+    recorded['executedAt'] !== executedAt ||
+    recorded['mode'] !== 'judged' ||
+    !isRecord(recorded['sourceTree']) ||
+    typeof recorded['sourceTree']['head'] !== 'string' ||
+    !isRecord(recorded['evaluation']) ||
+    !Array.isArray(recorded['evaluation']['metrics']) ||
+    !Array.isArray(recorded['checks'])
+  )
+    throw new Error(`RETRY_FIRST_ATTEMPT_NOT_FOUND: ${executedAt}`);
+  return recorded as unknown as RecordedAttempt;
+}
+
+/** The re-run must have measured the tree the first attempt measured. */
+export function sameTreeCheck(
+  first: RecordedAttempt,
+  tree: Pick<SourceTreeState, 'head' | 'diffSha256'>,
+): { readonly id: string; readonly passed: boolean; readonly detail: string } {
+  const label = (each: { head: string; diffSha256: string | null }) =>
+    `${each.head.slice(0, 7)}/${each.diffSha256?.slice(0, 8) ?? 'clean'}`;
+  return {
+    id: RETRY_SAME_TREE_CHECK,
+    passed: first.sourceTree.head === tree.head && first.sourceTree.diffSha256 === tree.diffSha256,
+    detail: `first attempt ${label(first.sourceTree)}, re-run ${label(tree)}`,
+  };
+}
+
+/** The `attempt` block and the pair's verdict of a second attempt. */
+export function secondAttemptRecord(
+  first: RecordedAttempt,
+  evaluation: BudgetEvaluation,
+  checksPassed: boolean,
+): {
+  readonly pair: ReturnType<typeof combineAttempts>;
+  readonly attempt: Readonly<Record<string, unknown>>;
+} {
+  const pair = combineAttempts(
+    { evaluation: first.evaluation, checksPassed: first.checks.every((entry) => entry.passed) },
+    { evaluation, checksPassed },
+  );
+  return {
+    pair,
+    attempt: {
+      number: 2,
+      of: MAX_JUDGED_ATTEMPTS,
+      retryOf: first.executedAt,
+      firstAttemptNotPassed: first.evaluation.metrics
+        .filter((metric) => metric.verdict !== 'passed')
+        .map((metric) => ({
+          id: metric.id,
+          verdict: metric.verdict,
+          observed: metric.observed,
+          median: metric.median ?? null,
+          budget: metric.budget,
+          loadAverage1m: metric.loadAverage1m,
+        })),
+      ownVerdict: checksPassed && evaluation.passed,
+      pair,
+      rule: RETRY_RULE,
+    },
+  };
+}
+
+export type NextAttempt =
+  | { readonly action: 'retry'; readonly retryOf: string; readonly timeMetrics: readonly string[] }
+  | { readonly action: 'stop'; readonly reason: string };
+
+/**
+ * M2-01ar (a): what a runner outside the browser spec does once the first attempt has ended.
+ * It reads back the latest run of the result file, which must be the judged first attempt this
+ * runner started (`executedAt` not before `startedAt`), and re-runs only if
+ * {@link retryDecision} says so on the recorded evaluation and checks. The spec records the
+ * same decision; a record that claims otherwise is refused rather than followed.
+ */
+export function attemptAfter(recorded: unknown, startedAt: string): NextAttempt {
+  if (
+    !isRecord(recorded) ||
+    typeof recorded['executedAt'] !== 'string' ||
+    recorded['executedAt'] < startedAt
+  )
+    return { action: 'stop', reason: 'the attempt wrote no result' };
+  if (recorded['mode'] !== 'judged') return { action: 'stop', reason: 'not judged' };
+  const first = firstAttemptOf(recorded, recorded['executedAt']);
+  const attempt = recorded['attempt'];
+  if (!isRecord(attempt) || attempt['number'] !== 1 || !isRecord(attempt['retry']))
+    throw new Error(`RETRY_ATTEMPT_NOT_RECORDED: ${first.executedAt}`);
+  const decision = retryDecision(
+    first.evaluation,
+    first.checks.every((entry) => entry.passed),
+    1,
+  );
+  if (attempt['retry']['retry'] !== decision.retry)
+    throw new Error(
+      `RETRY_DECISION_MISMATCH: ${first.executedAt} records retry ${String(attempt['retry']['retry'])}, the rule gives ${String(decision.retry)}`,
+    );
+  return decision.retry
+    ? { action: 'retry', retryOf: first.executedAt, timeMetrics: decision.timeMetrics }
+    : { action: 'stop', reason: decision.reason };
+}
+
+// ---------------------------------------------------------------- a new judged run after a failed one (M2-01ar)
+
+/**
+ * From this time on, every judged first attempt written to a result file must carry a
+ * `rerunPolicy` block, and {@link verifyRerunPolicy} holds it to the rule below. Runs recorded
+ * before it were written by probes that did not know the rule and are left as they are.
+ */
+export const RERUN_POLICY_SINCE = '2026-09-25T15:00:00.000Z';
+
+export const RERUN_RULE =
+  'A judged run on source content (sourceTree.contentSha256) whose latest judged outcome failed is accepted only with a recorded reason (rerunReason); changed content of a scanned file needs none, while a commit, a rebase or a docs-only change does not change the content. An inconclusive outcome needs none: the admissible-load rule itself asks for the repeat.';
+
+export type OutcomeVerdict = 'passed' | 'failed' | 'inconclusive';
+
+/** The final verdict of one judged measurement: a single attempt, or a first attempt and its re-run. */
+export interface JudgedOutcome {
+  readonly executedAt: string;
+  /** {@link treeIdentity}; null for a run that recorded no source tree. */
+  readonly tree: string | null;
+  /** {@link legacyTreeIdentity}, for comparing with a record that has no content hash. */
+  readonly legacyTree: string | null;
+  readonly verdict: OutcomeVerdict;
+}
+
+/**
+ * The identity of the measured code (review r1 B1): `content:<contentSha256>`. HEAD is not
+ * part of it, so a docs-only commit, a rebase or committing the failed difference unchanged
+ * keeps the identity, and only a change to a scanned file changes it. A record written before
+ * `contentSha256` existed falls back to {@link legacyTreeIdentity}.
+ */
+export function treeIdentity(tree: unknown): string | null {
+  if (!isRecord(tree)) return null;
+  const content = tree['contentSha256'];
+  if (typeof content === 'string' && /^[0-9a-f]{64}$/.test(content)) return `content:${content}`;
+  return legacyTreeIdentity(tree);
+}
+
+/** The M2-01ar r0 identity, `head:<head>:<diffSha256 or clean>`; changes with every commit. */
+export function legacyTreeIdentity(tree: unknown): string | null {
+  if (!isRecord(tree) || typeof tree['head'] !== 'string' || tree['head'] === '') return null;
+  const diff = tree['diffSha256'];
+  return `head:${tree['head']}:${typeof diff === 'string' ? diff : 'clean'}`;
+}
+
+/**
+ * Whether an outcome was measured on the tree `tree` names. Both with a content hash: the
+ * contents decide. Otherwise (a record from before the content hash): the old HEAD-based
+ * identity decides, as it did when that record was written.
+ */
+function sameMeasuredTree(outcome: JudgedOutcome, tree: unknown): boolean {
+  const identity = treeIdentity(tree);
+  if (identity?.startsWith('content:') && outcome.tree?.startsWith('content:'))
+    return outcome.tree === identity;
+  const legacy = legacyTreeIdentity(tree);
+  return legacy !== null && outcome.legacyTree === legacy;
+}
+
+const attemptOf = (run: unknown) => {
+  const attempt = isRecord(run) ? run['attempt'] : undefined;
+  return isRecord(attempt) ? attempt : null;
+};
+
+/**
+ * The judged outcomes a result file records, oldest first. A re-run concludes its pair (its
+ * `passed` is the pair's verdict). A first attempt that decided on a re-run concludes nothing
+ * by itself; if its re-run was never recorded, the pair did not pass and counts as failed.
+ */
+export function judgedOutcomes(runs: readonly RecordedRun[]): JudgedOutcome[] {
+  const judged = runs.filter((run) => run.mode === 'judged');
+  const concluded = new Set(
+    judged
+      .map(attemptOf)
+      .filter((attempt) => attempt?.['number'] === 2)
+      .map((attempt) => attempt?.['retryOf']),
+  );
+  const outcomes: JudgedOutcome[] = [];
+  for (const run of judged) {
+    const record = run as unknown as Record<string, unknown>;
+    const attempt = attemptOf(run);
+    const tree = treeIdentity(record['sourceTree']);
+    const legacyTree = legacyTreeIdentity(record['sourceTree']);
+    let verdict: OutcomeVerdict;
+    if (attempt?.['number'] === 2) {
+      const pair = attempt['pair'];
+      verdict =
+        record['passed'] === true
+          ? 'passed'
+          : isRecord(pair) && pair['inconclusive'] === true
+            ? 'inconclusive'
+            : 'failed';
+    } else if (isRecord(attempt?.['retry']) && attempt['retry']['retry'] === true) {
+      if (concluded.has(run.executedAt)) continue;
+      verdict = 'failed';
+    } else {
+      const evaluation = record['evaluation'];
+      const checks = record['checks'];
+      verdict =
+        record['passed'] === true
+          ? 'passed'
+          : isRecord(evaluation) &&
+              evaluation['inconclusive'] === true &&
+              Array.isArray(checks) &&
+              checks.every((entry) => isRecord(entry) && entry['passed'] === true)
+            ? 'inconclusive'
+            : 'failed';
+    }
+    outcomes.push({ executedAt: run.executedAt, tree, legacyTree, verdict });
+  }
+  return outcomes.sort((a, b) => (a.executedAt < b.executedAt ? -1 : 1));
+}
+
+export interface RerunPolicy {
+  /** The latest judged outcome before this run, on any tree. */
+  readonly previous: JudgedOutcome | null;
+  /** The latest judged outcome on this run's tree, when it failed: this run must say why. */
+  readonly failedOnThisTree: string | null;
+  readonly reason: string | null;
+  readonly rule: string;
+}
+
+/**
+ * M2-01ar (review N4). A re-run pair that failed on a tree is that tree's verdict; running the
+ * probe again until it passes would lift the one-re-run limit. So a new judged run on the tree
+ * whose latest judged outcome failed is refused before it measures anything, unless it states
+ * a reason (typically why the failure was load, not the code). "The tree" is the content of
+ * the scanned files ({@link treeIdentity}), not HEAD: committing, rebasing or a docs-only
+ * commit does not make a new measurement. Changed code does and needs no reason; what changed
+ * is in its `sourceTree`. Both are recorded.
+ */
+export function rerunPolicyFor(
+  runs: readonly RecordedRun[],
+  tree: Pick<SourceTreeState, 'head' | 'diffSha256'> & { readonly contentSha256?: string },
+  executedAt: string,
+  reason: string | null,
+): RerunPolicy {
+  const identity = treeIdentity(tree);
+  const before = judgedOutcomes(runs).filter((outcome) => outcome.executedAt < executedAt);
+  const onThisTree = before.filter((outcome) => sameMeasuredTree(outcome, tree));
+  const latestHere = onThisTree.at(-1);
+  const failedOnThisTree = latestHere?.verdict === 'failed' ? latestHere.executedAt : null;
+  const stated = reason?.trim() ? reason.trim() : null;
+  if (failedOnThisTree !== null && stated === null)
+    throw new Error(
+      `RERUN_AFTER_FAILED_JUDGEMENT: the latest judged outcome on this tree (${identity ?? 'unknown'}) failed at ${failedOnThisTree}; change the code or record why it was not the code (--rerun-reason / PERF_RERUN_REASON)`,
+    );
+  return { previous: before.at(-1) ?? null, failedOnThisTree, reason: stated, rule: RERUN_RULE };
+}
+
+/**
+ * Holds a result file to the rule of {@link rerunPolicyFor} and to the one re-run, so neither
+ * depends on the probe having been used honestly:
+ *
+ * - every judged first attempt since {@link RERUN_POLICY_SINCE} records its `rerunPolicy`, the
+ *   failed outcome it follows on its tree is the one the file shows, and it has a reason then;
+ * - every re-run names a recorded first attempt that decided on a re-run, and no first attempt
+ *   is re-run twice.
+ */
+export function verifyRerunPolicy(runs: readonly RecordedRun[]): void {
+  const judged = runs.filter((run) => run.mode === 'judged');
+  const retried = new Set<string>();
+  for (const run of judged) {
+    const record = run as unknown as Record<string, unknown>;
+    const attempt = attemptOf(run);
+    if (attempt?.['number'] === 2) {
+      const retryOf = attempt['retryOf'];
+      const first = judged.filter(
+        (each) =>
+          each.executedAt === retryOf &&
+          each.executedAt < run.executedAt &&
+          attemptOf(each)?.['number'] === 1 &&
+          isRecord(attemptOf(each)?.['retry']) &&
+          (attemptOf(each)?.['retry'] as Record<string, unknown>)['retry'] === true,
+      );
+      if (typeof retryOf !== 'string' || first.length !== 1)
+        throw new Error(`RETRY_WITHOUT_ELIGIBLE_FIRST_ATTEMPT: ${run.executedAt}`);
+      if (retried.has(retryOf)) throw new Error(`RETRY_REPEATED: ${retryOf}`);
+      retried.add(retryOf);
+      continue;
+    }
+    if (run.executedAt < RERUN_POLICY_SINCE) continue;
+    const policy = record['rerunPolicy'];
+    if (!isRecord(policy)) throw new Error(`RERUN_POLICY_NOT_RECORDED: ${run.executedAt}`);
+    // Since the rule, a run is identified by what it measured, not by where HEAD was.
+    if (!treeIdentity(record['sourceTree'])?.startsWith('content:'))
+      throw new Error(`RERUN_POLICY_TREE_UNKNOWN: ${run.executedAt}`);
+    const tree = record['sourceTree'] as Pick<SourceTreeState, 'head' | 'diffSha256'> & {
+      readonly contentSha256: string;
+    };
+    const reason = typeof policy['reason'] === 'string' ? policy['reason'] : null;
+    let expected: RerunPolicy;
+    try {
+      expected = rerunPolicyFor(runs, tree, run.executedAt, reason);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('RERUN_AFTER_FAILED_JUDGEMENT'))
+        throw new Error(`RERUN_WITHOUT_REASON: ${run.executedAt}: ${error.message}`);
+      throw error;
+    }
+    if (policy['failedOnThisTree'] !== expected.failedOnThisTree)
+      throw new Error(`RERUN_POLICY_MISREPORTED: ${run.executedAt}`);
+  }
+}
+
+/**
+ * M2-01ar (review r1 item 2): a result file only grows. Every run `before` records (an earlier
+ * version of the file: HEAD's, or the merge base's) must still be in `after`, byte for byte as
+ * JSON, so a failed run cannot be deleted or edited away to lift the rule above.
+ */
+export function verifyHistoryKept(
+  before: readonly RecordedRun[],
+  after: readonly RecordedRun[],
+): void {
+  const kept = new Map(after.map((run) => [run.executedAt, JSON.stringify(run)]));
+  for (const run of before) {
+    const now = kept.get(run.executedAt);
+    if (now === undefined) throw new Error(`RESULT_HISTORY_RUN_REMOVED: ${run.executedAt}`);
+    if (now !== JSON.stringify(run))
+      throw new Error(`RESULT_HISTORY_RUN_EDITED: ${run.executedAt}`);
+  }
 }
 
 // ---------------------------------------------------------------- where output may go (M2-01al)
@@ -686,6 +1063,14 @@ export interface SourceTreeState {
    * a reviewed tree. `null` when the tree is clean.
    */
   readonly diffSha256: string | null;
+  /**
+   * M2-01ar (review r1 B1): SHA-256 over (path, git blob id) of every scanned file in the
+   * working tree, whatever is committed. The measured code itself: a docs-only commit, a
+   * rebase, or committing the measured difference unchanged keeps it; a change to a scanned
+   * file changes it. `head` and `diffSha256` say where the tree stands relative to git; this
+   * says what was run.
+   */
+  readonly contentSha256: string;
   readonly allowDirtyReason: string | null;
   readonly allowedProductPaths: readonly string[];
 }
@@ -803,10 +1188,34 @@ export function assertMeasurableSourceTree(
     }
     diffSha256 = hash.digest('hex');
   }
+  // M2-01ar (review r1 B1): the content of every scanned file as it lies in the working tree.
+  // Unchanged tracked files are named by their index blob; changed and untracked ones are
+  // hashed from their bytes the way git would store them; deleted ones are left out.
+  const blobs = new Map<string, string>();
+  for (const entry of run(['ls-files', '-s', '-z', '--', ...MEASURED_DIRECTORIES]).split('\0')) {
+    const tab = entry.indexOf('\t');
+    if (tab < 0) continue;
+    blobs.set(entry.slice(tab + 1), entry.slice(0, tab).split(' ')[1] ?? '');
+  }
+  for (const path of dirtyPaths) blobs.delete(path);
+  const present = dirtyPaths.filter((path) => existsSync(join(repositoryRoot, path)));
+  if (present.length > 0) {
+    const hashed = execFileSync('git', ['-C', repositoryRoot, 'hash-object', '--stdin-paths'], {
+      encoding: 'utf8',
+      input: `${present.join('\n')}\n`,
+      maxBuffer: 256 * 1024 * 1024,
+    })
+      .trim()
+      .split('\n');
+    present.forEach((path, index) => blobs.set(path, hashed[index] ?? ''));
+  }
+  const content = createHash('sha256');
+  for (const path of [...blobs.keys()].sort()) content.update(`${path}\0${blobs.get(path)}\n`);
   return {
     head,
     dirtyPaths,
     diffSha256,
+    contentSha256: content.digest('hex'),
     allowDirtyReason: dirtyPaths.length > 0 ? allowDirtyReason : null,
     allowedProductPaths: [...allowedProductPaths].sort(),
   };

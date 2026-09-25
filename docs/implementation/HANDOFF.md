@@ -17,13 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01an](progress/M2-01an.md)를 완료했다. `GET /courses/cards`가 코스마다 전체 선을 읽고 두 번 검증하던 것을, 카드에 필요한 표본(최대 600
-정점)·세대·썸네일 상태·고도 근거만 한 tenant 트랜잭션에서 25코스씩 나눈 문장으로 읽게 바꿨다. 출력은 옛 경로와 같다(19코스 계약 시험).
-최악 기준(200코스 × 20,000정점) 요청당 CPU가 약 9 s에서 0.5–2 s로 줄었고, 가장 느린 문장(고도 영역 밖)은 약 266 ms로 5 s
-`statement_timeout`에 19배 여유가 있다. 카드 목록 재조회 조건(ready면 다시 읽지 않음, 같은 head, focus 재조회 없음, 60초 신선)을 시험으로
-고정했다. 행 판정 변화는 없다.
+[M2-01ar](progress/M2-01ar.md)를 완료했다. 성능 판정 규칙을 조였다: 브라우저 시간 예산도 spec 밖 runner(`scripts/run-browser-performance-budget.mts`)로
+공개 재실행 한 번을 받고, 분포 전체(p50)가 예산을 넘은 시간 실패는 재실행하지 않으며, 실패한 판정 뒤 같은 코드 내용(`contentSha256`)에서
+새 판정 run을 하려면 `--rerun-reason`을 기록해야 한다(결과 파일에서 강제, 이력 삭제·편집도 거부). K-performance는 passed 유지.
 
-직전 완료: [M2-01at](progress/M2-01at.md)(plain 소유 역할의 object purge).
+직전 완료: [M2-01an](progress/M2-01an.md)(코스 카드 요약 읽기).
 
 ## 운영 메모
 
@@ -65,10 +63,14 @@
   객체가 있는 계정 말소와 추적이 있는 활동 삭제가 여전히 `resource_object_cleanup`에서 `42501`로 실패하고, 정리 queue·sweep·썸네일·URL
   수집 worker는 행을 보지 못한다(후속 M2-01au). 051은 grant를 바꾸지 않는다. 적용할 때는 runtime·worker를 멈추거나 `lock_timeout`을 둔다.
 
+- 성능 판정 run은 M2-01ar 뒤의 probe로만 기록한다. 2026-09-25T15:00Z 뒤에 옛 probe로 기록한 판정 run은 `verifyRerunPolicy`가
+  거부한다. 브라우저 판정은 harness lock 아래에서 `node --import tsx scripts/run-browser-performance-budget.mts --execute`로 돌린다. 이력
+  검사는 `git merge-base HEAD main`을 부르므로 CI checkout은 history와 로컬 `main` ref가 있어야 한다(지금은 없으면 skip으로 보고된다).
+
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01ar, M2-01as, M2-01au. 이 중
-M2-01ag·M2-01ap·M2-01ar·M2-01as·M2-01au는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01as, M2-01au. 이 중
+M2-01ag·M2-01ap·M2-01as·M2-01au는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험

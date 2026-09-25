@@ -14,13 +14,22 @@ import {
 import {
   describeEvaluation,
   evaluateBudget,
+  firstAttemptOf,
+  MAX_JUDGED_ATTEMPTS,
   parseBudgetFile,
   assertDurableOutputPath,
   assertMeasurableSourceTree,
+  recordedRuns,
   repoRelative,
+  rerunPolicyFor,
+  retryDecision,
+  sameTreeCheck,
   sampleNow,
+  secondAttemptRecord,
   writeResultWithHistory,
   type BudgetSample,
+  type RecordedRun,
+  type RetryDecision,
 } from '../../scripts/performance-budget';
 import { expectLineDrawn, mapRegion } from '../identity/map-evidence';
 
@@ -58,6 +67,17 @@ import { expectLineDrawn, mapRegion } from '../identity/map-evidence';
  *                      is not a test or fixture) that may differ from HEAD; any other changed
  *                      product file is refused (see the server probe). The guard checks
  *                      source only: rebuild the shells before this step.
+ *   PERF_RERUN_REASON  why a judged run is made again on a tree whose latest judged outcome
+ *                      in PERF_OUT failed (M2-01ar); without it the run is refused before it
+ *                      measures. A changed tree needs none. Recorded as `rerunPolicy.reason`.
+ *
+ * One disclosed re-run (M2-01ar): run a judged measurement through
+ * `node --import tsx scripts/run-browser-performance-budget.mts`, which runs this spec, reads the
+ * attempt back and, when `retryDecision` allows it (only time budgets failed, their medians
+ * within budget, every check and memory budget met), runs it once more after 30 s with
+ * PERF_RETRY_OF set. The re-run records the pair (`attempt`, `combineAttempts`); its `passed` is
+ * the pair's verdict. Set by the runner only: PERF_ATTEMPT_RUNNER=1, PERF_RETRY_OF. Run
+ * directly, the spec records `retry: false` with the reason that no runner was there to re-run.
  */
 const repositoryRoot = join(import.meta.dirname, '../..');
 const samplesPerShell = Number(process.env.PERF_SAMPLES ?? '20');
@@ -70,6 +90,20 @@ const outPath = assertDurableOutputPath(
   process.env.PERF_OUT ??
     join(repositoryRoot, 'docs/implementation/research/performance-budget-browser-result.json'),
 );
+/** Set by scripts/run-browser-performance-budget.mts only (M2-01ar). */
+const underRunner = process.env.PERF_ATTEMPT_RUNNER === '1';
+const retryOf = process.env.PERF_RETRY_OF ?? null;
+const rerunReason = process.env.PERF_RERUN_REASON ?? null;
+
+/** Every run the result file records, or none when there is no file yet. */
+async function runsAt(path: string): Promise<RecordedRun[]> {
+  try {
+    return recordedRuns(JSON.parse(await readFile(path, 'utf8')));
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
 /** A string only MapLibre GL's own library code carries (one of its error messages). */
 const MAPLIBRE_SIGNATURE = 'Style is not done loading';
 const MAPLIBRE_WORKER = /maplibre-gl-worker(-dev)?\.mjs/;
@@ -247,6 +281,17 @@ test('the long track meets the browser budget in both shells, and MapLibre loads
     ? null
     : parseBudgetFile(JSON.parse(await readFile(budgetPath, 'utf8')));
   expect(samplesPerShell).toBeGreaterThanOrEqual(5);
+  // A re-run is judged and started by the runner only.
+  expect(retryOf === null || (!recordOnly && underRunner)).toBe(true);
+  // M2-01ar (review N4): refused before measuring when this tree's latest judged outcome
+  // failed and no reason was given. The runner's re-run is exempt: it is the one re-run.
+  const rerunPolicy =
+    recordOnly || retryOf !== null
+      ? null
+      : rerunPolicyFor(await runsAt(outPath), sourceTree, new Date().toISOString(), rerunReason);
+  // The first attempt the re-run completes, read before measuring so a missing one fails fast.
+  const first =
+    retryOf === null ? null : firstAttemptOf(JSON.parse(await readFile(outPath, 'utf8')), retryOf);
   const context = await browser.newContext();
   const setup = await context.newPage();
   const headers = await login(setup);
@@ -323,7 +368,26 @@ test('the long track meets the browser budget in both shells, and MapLibre loads
 
   const evaluation = budget === null ? null : evaluateBudget(budget, observations, ['browser']);
   if (evaluation) console.log(describeEvaluation(evaluation));
+  if (first !== null) checks.push(sameTreeCheck(first, sourceTree));
   const checksPassed = checks.every((entry) => entry.passed);
+  // M2-01ar (a): the first attempt says whether the runner re-runs it; the re-run records the pair.
+  let attempt: Record<string, unknown> | null = null;
+  let pair: { readonly passed: boolean; readonly inconclusive: boolean } | null = null;
+  if (evaluation !== null && first === null) {
+    const retry: RetryDecision = underRunner
+      ? retryDecision(evaluation, checksPassed, 1)
+      : {
+          retry: false,
+          reason: 'run without scripts/run-browser-performance-budget.mts: nothing would re-run it',
+        };
+    attempt = { number: 1, of: MAX_JUDGED_ATTEMPTS, retry };
+    console.log(`attempt 1: ${JSON.stringify(retry)}`);
+  } else if (evaluation !== null && first !== null) {
+    const second = secondAttemptRecord(first, evaluation, checksPassed);
+    pair = second.pair;
+    attempt = second.attempt;
+    console.log(`attempt 2 of ${first.executedAt}: pair ${JSON.stringify(pair)}`);
+  }
   await writeResultWithHistory(outPath, {
     schemaVersion: 1,
     node: 'M2-01k-f',
@@ -344,11 +408,19 @@ test('the long track meets the browser budget in both shells, and MapLibre loads
       memoryGiB: Math.round(totalmem() / 2 ** 30),
       loadAverageAtEnd: loadavg().map((value) => Math.round(value * 100) / 100),
     },
-    passed: recordOnly ? null : checksPassed && evaluation?.passed === true,
+    // On the re-run, `passed` is the pair's verdict (`attempt.ownVerdict` keeps the re-run's own).
+    passed: recordOnly
+      ? null
+      : pair !== null
+        ? pair.passed
+        : checksPassed && evaluation?.passed === true,
+    ...(attempt === null ? {} : { attempt }),
+    ...(rerunPolicy === null ? {} : { rerunPolicy }),
     checks,
     evaluation,
     samples: observations,
   });
   for (const entry of checks) expect(entry.passed, `${entry.id}: ${entry.detail}`).toBe(true);
   if (evaluation) expect(evaluation.passed, describeEvaluation(evaluation)).toBe(true);
+  if (pair !== null) expect(pair.passed, `the pair with ${retryOf ?? '-'}`).toBe(true);
 });

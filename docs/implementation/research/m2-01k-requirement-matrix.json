@@ -424,6 +424,20 @@
         "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent reviews; see docs/implementation/progress/M2-01k-o.md."
+    },
+    {
+      "node": "M2-01ar",
+      "date": "2026-09-26",
+      "rows": ["K-performance"],
+      "decision": "Gap node M2-01ar closed the M2-01al review's non-blocking items: a browser re-run through a runner, enforcing the re-judgement policy after a failed pair in the result file, and a median condition for re-run eligibility. Independent review r1 REQUEST CHANGES (the policy keyed on HEAD was bypassed by any commit), r2 APPROVE after keying it on scanned code content.",
+      "change": "No verdict change; K-performance stays passed with tighter rules and updated limits; counts unchanged (passed 85, partial 19, not_executed 6).",
+      "executed": [
+        "packages/tooling/tests/performance-budget.test.ts 94/94: re-run rule with the new median condition (p50 within budget for time budgets failed at admissible load), content-keyed re-judgement policy (contentSha256 over the scanned working-tree files; docs-only commits, rebases and committing failed code unchanged no longer bypass it, tested on a real git fixture), one re-run per first attempt and ordering enforced in the result file, history kept (verifyHistoryKept against HEAD and the merge base)",
+        "probe controls with an injected sample into control result files under verification-logs (checked-in budgets; no run added to the checked-in result files): a first-attempt burst is re-run and the pair passes; a shifted distribution is not re-run; a new run on the same content without a reason is refused before measuring, including after a temporary docs-only commit and after committing the whole diff; with --rerun-reason it measures and records the reason",
+        "browser controls through the new runner scripts/run-browser-performance-budget.mts under the harness lock: burst re-run passes, shifted distribution not re-run, same-tree repeat refused",
+        "37 unit mutants each fail (C1-C5, N1-N12, A1-A5, alB1-alB8, R1-R4, O3, H1, H2); pnpm test 3,911; independent review r1 REQUEST CHANGES (HEAD-keyed identity), r2 APPROVE on tree 8ad7eaa4"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ar.md."
     }
   ],
   "rounds": [
@@ -2171,7 +2185,7 @@
         "scripts/probe-course-performance.mts → docs/implementation/research/course-performance.json (desktop, this machine, single caller)",
         "docs/implementation/progress/M2-01aj.md"
       ],
-      "reason": "M2-01al amendment: still passed, desktop only. A judged run now fails when any parse had no child RSS reading, and any failure of time budgets alone gets one disclosed automatic re-run (aimed at short load bursts the 1-minute load average misses, but applied whatever the cause) whose pair passes only if the re-run passes by itself; memory, size and check failures are never re-run. Probe results and logs can no longer be written where Playwright or coverage tools delete them. The judged run passes 18/18 budgets and 11/11 checks. Limits: a time regression within a few percent of its budget gets two attempts (about 0.5 per attempt becomes about 0.75 for the pair), while one clearly past the budget fails both; the browser spec has no re-run and a manual re-run after a failed pair is not yet restricted (M2-01ar); the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) and the M2-01aj child-RSS sampling limits still apply.",
+      "reason": "M2-01ar amendment: still passed, desktop only. Budgets, the verdict calculation and the measurement code are unchanged and the judged runs (server 2026-09-25T11:25Z, browser 2026-09-24T05:40Z) still stand; the rules on when a run may pass are tighter. Browser time budgets now get the same one disclosed re-run as the server, through a runner outside the spec. A time failure whose whole distribution is over budget (p50 over) is not re-run. After a failed judged outcome, a new judged run on the same scanned code content needs a recorded reason, the result file enforces that, one re-run per first attempt and unchanged history. Limits: a regression right at the budget still passes a pair about 0.75 of the time; a trivial edit to any scanned file counts as changed code and the reason text is not verified; the history check needs the merge base, which a shallow CI checkout lacks; the checked-in browser judged run predates the runner; a long burst at admissible load that pushes more than half the samples over budget gets no re-run and stays failed until a reason is recorded; the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) and the M2-01aj child-RSS sampling limits still apply.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2180,15 +2194,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01al",
-        "date": "2026-09-25",
+        "node": "M2-01ar",
+        "date": "2026-09-26",
         "previousVerdict": "passed",
-        "previousReason": "M2-01aj amendment: still passed, desktop only. Parse child process peak RSS is now budgeted (worker.parseProcessPeakRssMiB, 300 MiB from three record-only baselines) and api.processPeakRssMiB is re-derived for the child-process architecture (1,100 -> 800 MiB); the implementer's judged run and one review judged run on the reviewed code pass 18/18; a third review run during a short load burst failed worker.parseMs only (M2-01al). Limits: child RSS is read every 20 ms, so it is a lower bound of the true peak; the combined RSS of up to four children is recorded only; the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) still apply, and the 1-minute load average can lag short bursts (M2-01al).",
+        "previousReason": "M2-01al amendment: still passed, desktop only. A judged run now fails when any parse had no child RSS reading, and any failure of time budgets alone gets one disclosed automatic re-run (aimed at short load bursts the 1-minute load average misses, but applied whatever the cause) whose pair passes only if the re-run passes by itself; memory, size and check failures are never re-run. Probe results and logs can no longer be written where Playwright or coverage tools delete them. The judged run passes 18/18 budgets and 11/11 checks. Limits: a time regression within a few percent of its budget gets two attempts (about 0.5 per attempt becomes about 0.75 for the pair), while one clearly past the budget fails both; the browser spec has no re-run and a manual re-run after a failed pair is not yet restricted (M2-01ar); the M2-01k-f limits (real devices, SwiftShader, 2x regressions, warm cache, admissible-load rule set after run 3) and the M2-01aj child-RSS sampling limits still apply.",
         "executed": [
-          "scripts/probe-performance-budget.mts judged server run 2026-09-25T03:50:57Z under the harness lock (load 3.91-4.85): 18/18 budgets, 11/11 checks including the new worker-parse-process-rss-read-every-parse (20 of 20), passed on the first attempt; sourceTree diffSha256 2f1b47bd; after review round 1 only the output-path guard and unit tests changed (diffSha256 00a40cf3), and the independent re-review confirmed the guard cannot change a sample or verdict",
-          "probe controls R1-R8 (docs/implementation/progress/M2-01al.md section 3.3): unread child RSS fails the run (R1) and passed before (R2); an injected first-attempt burst is re-run once and passes (R3) and fails without the re-run (R4); a real regression fails both attempts (R5, 502 and 499 ms against 200); a memory failure is never re-run (R6); a log under test-results/ is refused before measuring (R8) and was written without the guard (R7)",
-          "packages/tooling/tests/performance-budget.test.ts 60/60; re-judging every recorded run with the new evaluator changed no verdict",
-          "unit mutants A1, B1-B8, C1-C6 each fail (15/15); the independent review re-killed four of its own path-guard mutants"
+          "packages/tooling/tests/performance-budget.test.ts 94/94: re-run rule with the new median condition (p50 within budget for time budgets failed at admissible load), content-keyed re-judgement policy (contentSha256 over the scanned working-tree files; docs-only commits, rebases and committing failed code unchanged no longer bypass it, tested on a real git fixture), one re-run per first attempt and ordering enforced in the result file, history kept (verifyHistoryKept against HEAD and the merge base)",
+          "probe controls with an injected sample into control result files under verification-logs (checked-in budgets; no run added to the checked-in result files): a first-attempt burst is re-run and the pair passes; a shifted distribution is not re-run; a new run on the same content without a reason is refused before measuring, including after a temporary docs-only commit and after committing the whole diff; with --rerun-reason it measures and records the reason",
+          "browser controls through the new runner scripts/run-browser-performance-budget.mts under the harness lock: burst re-run passes, shifted distribution not re-run, same-tree repeat refused",
+          "37 unit mutants each fail (C1-C5, N1-N12, A1-A5, alB1-alB8, R1-R4, O3, H1, H2); pnpm test 3,911; independent review r1 REQUEST CHANGES (HEAD-keyed identity), r2 APPROVE on tree 8ad7eaa4"
         ]
       }
     },
