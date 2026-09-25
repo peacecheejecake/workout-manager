@@ -884,6 +884,121 @@ describe('self-hosted place search and elevation', () => {
     expect(response.statusCode).toBe(404);
   });
 
+  describe('elevation of a line that is not saved yet (M2-01k-b)', () => {
+    const line = {
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [127.02, 37.5],
+          [127.03, 37.51],
+          [127.021, 37.501],
+        ],
+      },
+    };
+
+    it('samples the unsaved line with the same index, and a gap stays null', async () => {
+      const { app, courses } = setup();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles',
+        headers: baseHeaders,
+        payload: line,
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.outcome).toBe('profile');
+      expect(body.dataset.datasetId).toBe('beef0123cafe');
+      expect(body.vertexCount).toBe(3);
+      expect(
+        body.points.map((point: { elevationMeters: number | null }) => point.elevationMeters),
+      ).toEqual([42, null, 42]);
+      expect(body.points[1]).toEqual({
+        vertexIndex: 1,
+        elevationMeters: null,
+        sourceDistanceMeters: null,
+      });
+      expect(body.knownCount).toBe(2);
+      expect(body).not.toHaveProperty('ascentMeters');
+      // It is not a course read: nothing about a stored course is consulted or written.
+      expect(courses.read).not.toHaveBeenCalled();
+    });
+
+    it('says so when no elevation dataset is deployed', async () => {
+      const { app } = setup({ datasets: false });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles',
+        headers: baseHeaders,
+        payload: line,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ outcome: 'no_dataset' });
+    });
+
+    it('answers outside the region rather than with an empty profile', async () => {
+      const { app } = setup();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles',
+        headers: baseHeaders,
+        payload: {
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [2.35, 48.85],
+              [2.36, 48.86],
+            ],
+          },
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().outcome).toBe('outside_region');
+    });
+
+    it('refuses a line that is not a bounded course line, and a line in the address', async () => {
+      const { app } = setup();
+      for (const payload of [
+        { geometry: { type: 'LineString', coordinates: [[127.02, 37.5]] } },
+        { ...line, courseId },
+        { ...line, maxSourceDistanceMeters: 10_000 },
+      ]) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/bff/v1/courses/elevation-profiles',
+          headers: baseHeaders,
+          payload,
+        });
+        expect(response.statusCode).toBe(400);
+      }
+      const inQuery = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles?lon=127.02&lat=37.5',
+        headers: baseHeaders,
+        payload: line,
+      });
+      expect(inQuery.statusCode).toBe(400);
+    });
+
+    it('requires a session and, for a cookie session, the CSRF token', async () => {
+      const unauthenticated = setup({ authenticated: false });
+      const refused = await unauthenticated.app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles',
+        headers: baseHeaders,
+        payload: line,
+      });
+      expect(refused.statusCode).toBe(401);
+      const { app } = setup();
+      const forged = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/elevation-profiles',
+        headers: { cookie: 'session=fixture', 'x-workout-session-id': 'current' },
+        payload: line,
+      });
+      expect(forged.statusCode).toBe(403);
+    });
+  });
+
   it('authenticates place search and elevation', async () => {
     const { app } = setup({ authenticated: false });
     const search = await app.inject({

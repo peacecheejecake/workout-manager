@@ -870,6 +870,7 @@ function Workbench({
                 <CourseEditor
                   key={current.course.courseId}
                   api={api}
+                  elevation={extrasApi}
                   current={current}
                   pickedPosition={picked}
                   onSaved={onSaved}

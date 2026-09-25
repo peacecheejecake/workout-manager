@@ -17,13 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-a](progress/M2-01k-a.md)를 완료했다. S13 목록 카드에 썸네일, 계획 거리와 근거(실제는 기록 track뿐, 엔진 추정, 가져온 파일,
-모름), 고도 출처("없음"·지역 밖·dataset과 표본 수), 노면 확인 상태, 마지막 사용을 보인다. 새 추가 route `GET /courses/cards`로 주고,
-다른 계정은 카드를 받지 못한다. 매트릭스 4행을 passed로 올렸다(passed 73 → 77). S13-card-surface는 노면 자료가 없어 partial이다.
-카드 route 비용(최악 요청당 CPU 약 3.85 s)과 재조회 조건 고정은 M2-01an이다. M2-01k-d의 `map-lifecycle.spec.ts`를 카드 썸네일에
-맞게 고쳤다(M2-01k-a.md §7).
+[M2-01k-b](progress/M2-01k-b.md)를 완료했다. S14에서 저장되지 않은 미리보기·제안의 고도를 자체 dataset으로 저장 전에 확인하게 하고(새
+`POST /courses/elevation-profiles`), 확인이 답하기 전에는 검토 checkbox와 저장을 막는다. 모르는 표본은 "모름"과 빗금으로 보이고 0이나
+평지로 만들지 않는다. 두 shell에서 검색 → 지점 → 계산 → 고도/거리 확인 → 저장 순서를 단언했다. 매트릭스 3행을 passed로 올렸다(passed
+77 → 80). dataset이 희소해 실제 선 대부분이 "모름"이다(P6-place-elevation-data). 목표 거리 후보 저장 경로에는 고도 확인이 없다.
 
-직전 완료: [M2-01k-m](progress/M2-01k-m.md)(S09 영향 탭 세 절 분리).
+직전 완료: [M2-01k-a](progress/M2-01k-a.md)(S13 목록 카드).
 
 ## 운영 메모
 
@@ -40,8 +39,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-b, M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01k-o, M1-06b-tmp. 이 중
-M2-01k-b·j·n은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-j, M2-01k-n, M2-01ag, M2-01ak, M2-01al, M2-01am, M2-01an, M2-01ao, M2-01k-o, M1-06b-tmp. 이 중
+M2-01k-j·n과 M2-01k-o·M2-01ag·M2-01ak·M2-01al·M2-01am·M1-06b-tmp는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 

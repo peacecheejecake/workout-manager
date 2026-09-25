@@ -1330,8 +1330,9 @@
       "title": "S14 저장 전 고도·거리와 검토 표시",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "저장되지 않은 미리보기·제안 선의 고도 프로파일(자체 데이터, 결손 표시)을 조회하게 하고, 검토 화면의 엔진 거리·고도를 E2E로 단언한다. 순서는 검색 → 지점 → 계산 → 고도/거리 확인 → 저장이다 닫을 매트릭스 행: S14-flow, S14-elevation-distance-check, FUT-07-1. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6."
+      "status": "completed",
+      "scope": "저장되지 않은 미리보기·제안 선의 고도 프로파일(자체 데이터, 결손 표시)을 조회하게 하고, 검토 화면의 엔진 거리·고도를 E2E로 단언한다. 순서는 검색 → 지점 → 계산 → 고도/거리 확인 → 저장이다 닫을 매트릭스 행: S14-flow, S14-elevation-distance-check, FUT-07-1. 판정 규칙은 M2-01k 매트릭스 헤더와 같다(이 노드에서 실행한 시험이 핵심을 단언하고 기능이 없으면 실패함을 변이로 보인다). 출처: docs/implementation/progress/M2-01k.md §13.6.",
+      "evidence": "docs/implementation/progress/M2-01k-b.md"
     },
     {
       "id": "M2-01k-c1",

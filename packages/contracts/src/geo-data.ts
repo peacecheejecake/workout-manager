@@ -127,6 +127,29 @@ export const courseElevationResultSchema = z.discriminatedUnion('outcome', [
 export type CourseElevationResult = z.infer<typeof courseElevationResultSchema>;
 
 /**
+ * Elevation along a line that is not a course yet (M2-01k-b, S14 "고도/거리 확인").
+ *
+ * A route preview on an empty map and a stored route proposal are both reviewed **before**
+ * anything is saved, so the elevation check has to answer for a line that has no course
+ * revision to read. The request carries that line and nothing else — no course id, no
+ * owner, no dataset choice, no radius — and the answer is the same
+ * `courseElevationResultSchema` a saved course gets, sampled by the same index with the
+ * same rules: `null` where nothing is known, never zero, never interpolated.
+ *
+ * It is a POST on purpose, exactly like place search: the line is a precise private
+ * position, and a request line is logged while a body is not. Nothing is stored.
+ *
+ * Additive: a new request schema and a new route. No existing field or route changed.
+ */
+export const lineElevationRequestSchema = z.strictObject({
+  geometry: z.strictObject({
+    type: z.literal('LineString'),
+    coordinates: z.array(coursePositionSchema).min(2).max(courseLimits.vertices),
+  }),
+});
+export type LineElevationRequest = z.infer<typeof lineElevationRequestSchema>;
+
+/**
  * The dataset documents themselves, as the build writes them and the server reads them.
  * Validated at the boundary like any other untrusted input: a file on disk is not a
  * promise, and a malformed one disables the feature instead of degrading it silently.

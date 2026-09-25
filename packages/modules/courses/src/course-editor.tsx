@@ -20,6 +20,11 @@ import {
   type ComputedDraftRoute,
 } from './course-draft';
 import { useCourseDraft, useCourseDraftStore } from './course-draft-context';
+import {
+  RouteElevationProfile,
+  useRouteElevationCheck,
+  type RouteElevationSource,
+} from './course-route-elevation';
 import { WaypointListEditor } from './course-waypoint-list';
 import styles from './courses.module.css';
 
@@ -160,6 +165,8 @@ function minutes(seconds: number): string {
 
 export interface CourseEditorProps {
   readonly api: CourseApi;
+  /** Our own elevation data, asked about a computed proposal before it can be saved. */
+  readonly elevation: RouteElevationSource;
   readonly current: Extract<CourseReadResult, { status: 'available' }>;
   /** The last position the owner pointed at on the map, or `null`. */
   readonly pickedPosition: CoursePosition | null;
@@ -176,6 +183,7 @@ export interface CourseEditorProps {
 
 export function CourseEditor({
   api,
+  elevation,
   current,
   pickedPosition,
   onSaved,
@@ -184,6 +192,8 @@ export function CourseEditor({
   const store = useCourseDraftStore();
   const state = useCourseDraft((value) => value);
   const route = currentRoute(state);
+  // S14: compute → elevation/distance check → save (M2-01k-b).
+  const elevationCheck = useRouteElevationCheck(elevation, route);
   const [message, setMessage] = useState('');
   const [computing, setComputing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -747,6 +757,7 @@ export function CourseEditor({
         <div className={styles.review} role="group" aria-label="계산된 경로 검토">
           <h4>계산된 경로 (제안)</h4>
           <RouteReviewSummary route={route} />
+          <RouteElevationProfile check={elevationCheck} />
           {graphChanged ? (
             <p role="alert" data-testid="graph-changed">
               이 코스는 다른 지도 데이터({headGraph})로 계산되어 있었습니다. 저장하면 새 지도
@@ -756,6 +767,7 @@ export function CourseEditor({
           <label>
             <input
               type="checkbox"
+              disabled={!elevationCheck.settled}
               checked={reviewed}
               onChange={(event) =>
                 setReviewedProposal(
@@ -772,6 +784,7 @@ export function CourseEditor({
               void (
                 route &&
                 reviewed &&
+                elevationCheck.settled &&
                 save({
                   kind: 'reroute',
                   proposalId: route.proposalId,
@@ -780,7 +793,7 @@ export function CourseEditor({
                 })
               )
             }
-            disabled={!reviewed || saving}
+            disabled={!reviewed || !elevationCheck.settled || saving}
           >
             검토한 경로 저장
           </Button>

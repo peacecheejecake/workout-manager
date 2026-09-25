@@ -17,6 +17,7 @@ import {
 } from '@workout/contracts/courses';
 import {
   courseElevationResultSchema,
+  lineElevationRequestSchema,
   placeSearchRequestSchema,
   placeSearchResultSchema,
 } from '@workout/contracts/geo-data';
@@ -82,6 +83,8 @@ const IMPORT_BODY_LIMIT = Math.ceil((courseLimits.importFileBytes / 3) * 4) + 40
 const SMALL_BODY_LIMIT = 4 * 1024;
 /** Head reads one card request runs at once (M2-01k-a). */
 const CARD_READ_CONCURRENCY = 4;
+/** One line at the course geometry bound, plus the JSON around it. */
+const LINE_BODY_LIMIT = courseLimits.geometryBytes + SMALL_BODY_LIMIT;
 
 export interface CourseExtrasServices {
   courses: CourseRepository;
@@ -414,6 +417,27 @@ export function registerCourseExtrasRoutes(
       );
       const present = cards.filter((card): card is CourseCard => card !== null);
       return courseCardListSchema.parse({ cards: present, total: present.length });
+    });
+
+    /**
+     * Elevation along a line that is not saved yet (M2-01k-b): the route preview of a new
+     * course, or a stored proposal under review. S14's order is search → points → routing
+     * → elevation/distance check → save, so this is asked **before** anything is written.
+     *
+     * The same index and the same rules as a saved course: `null` where nothing is known,
+     * no zero, no interpolation, no ascent total. The line is in the body (a request line is
+     * logged, a body is not) and nothing is stored. Without a dataset the answer is
+     * `no_dataset`, which the screen states rather than drawing a flat line.
+     */
+    extras.post('/courses/elevation-profiles', { bodyLimit: LINE_BODY_LIMIT }, async (request) => {
+      input(emptyQuery, request.query);
+      // Authentication is enforced by the plugin this is registered in; deriving the
+      // principal here keeps that true for this route as well.
+      principal(request);
+      const body = input(lineElevationRequestSchema, request.body);
+      const elevation = services.elevation;
+      if (!elevation) return courseElevationResultSchema.parse({ outcome: 'no_dataset' });
+      return courseElevationResultSchema.parse(elevation.profile(body));
     });
   });
 }

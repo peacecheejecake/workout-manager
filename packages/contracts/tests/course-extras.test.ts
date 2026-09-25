@@ -9,7 +9,7 @@ import {
   courseRevisionSchema,
   courseUpdateRequestSchema,
 } from '../src/courses.js';
-import { placeSearchRequestSchema } from '../src/geo-data.js';
+import { lineElevationRequestSchema, placeSearchRequestSchema } from '../src/geo-data.js';
 
 /**
  * Contract rules for the rest of S13/S14 (M2-01j).
@@ -243,5 +243,55 @@ describe('place search request', () => {
     expect(placeSearchRequestSchema.safeParse({ query: '남산', near: [200, 0] }).success).toBe(
       false,
     );
+  });
+});
+
+describe('line elevation request (M2-01k-b)', () => {
+  const line = {
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [127.02, 37.5],
+        [127.03, 37.51],
+      ],
+    },
+  };
+
+  it('carries a line and nothing that would steer the answer', () => {
+    expect(lineElevationRequestSchema.parse(line).geometry.coordinates).toHaveLength(2);
+    for (const extra of [
+      { courseId: '11111111-1111-4111-8111-111111111111' },
+      { maxSourceDistanceMeters: 10_000 },
+      { datasetId: '0123456789ab' },
+      { elevations: [0, 0] },
+    ])
+      expect(lineElevationRequestSchema.safeParse({ ...line, ...extra }).success).toBe(false);
+  });
+
+  it('bounds the line like a course geometry', () => {
+    expect(
+      lineElevationRequestSchema.safeParse({
+        geometry: { type: 'LineString', coordinates: [[127.02, 37.5]] },
+      }).success,
+    ).toBe(false);
+    expect(
+      lineElevationRequestSchema.safeParse({
+        geometry: {
+          type: 'LineString',
+          coordinates: Array.from({ length: courseLimits.vertices + 1 }, () => [127.02, 37.5]),
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      lineElevationRequestSchema.safeParse({
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [127.02, 37.5, 12],
+            [127.03, 37.51, 14],
+          ],
+        },
+      }).success,
+    ).toBe(false);
   });
 });

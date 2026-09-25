@@ -56,6 +56,9 @@ function metresBetween(from: readonly [number, number], to: readonly [number, nu
   return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+/** How much longer the fixture says its path is than the line it returns (see below). */
+export const ENGINE_DISTANCE_OVER_LINE = 1.04;
+
 export function createFixtureWalkingRoutePort() {
   return {
     async compute(_athleteId: string, rawRequest: unknown) {
@@ -69,12 +72,18 @@ export function createFixtureWalkingRoutePort() {
         if (!from || !to) continue;
         coordinates.push(...bentLeg(from, to));
       }
-      let distanceMeters = 0;
+      let lineMeters = 0;
       for (let index = 1; index < coordinates.length; index += 1) {
         const previous = coordinates[index - 1];
         const current = coordinates[index];
-        if (previous && current) distanceMeters += metresBetween(previous, current);
+        if (previous && current) lineMeters += metresBetween(previous, current);
       }
+      // What an engine reports is the length of the path it walked on its own network, and
+      // the line it hands back is a simplified drawing of that path, so the two are not the
+      // same number. The fixture keeps them apart on purpose (M2-01k-b): a screen that
+      // measured the drawn line and called it the engine's distance would otherwise show
+      // exactly the right value here and pass.
+      const distanceMeters = lineMeters * ENGINE_DISTANCE_OVER_LINE;
       const result: WalkingRouteResult = {
         outcome: 'route_computed',
         computation: {

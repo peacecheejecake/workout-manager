@@ -17,6 +17,7 @@ import {
 import {
   courseElevationResultSchema,
   placeSearchResultSchema,
+  type LineElevationRequest,
   type PlaceSearchRequest,
 } from '@workout/contracts/geo-data';
 
@@ -182,6 +183,20 @@ export function createCourseExtrasApi(transport: AuthenticatedTransport) {
     /** The S13 list cards (M2-01k-a). Facts the server derived; the screen adds none. */
     cards(signal?: AbortSignal) {
       return request('/bff/v1/courses/cards', 'GET', courseCardListSchema, null, null, signal);
+    },
+    /**
+     * Elevation along a line that is not saved yet (M2-01k-b): a route preview or a stored
+     * proposal under review. A POST, so the line never appears in a request line.
+     */
+    elevationProfile(input: LineElevationRequest, signal?: AbortSignal) {
+      return request(
+        '/bff/v1/courses/elevation-profiles',
+        'POST',
+        courseElevationResultSchema,
+        input,
+        null,
+        signal,
+      );
     },
   };
 }

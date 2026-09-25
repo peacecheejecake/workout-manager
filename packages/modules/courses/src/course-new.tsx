@@ -15,6 +15,11 @@ import { CourseDraftProvider, useCourseDraft, useCourseDraftStore } from './cour
 import { outcomes, provesNothingWasStored, RouteReviewSummary } from './course-editor';
 import { CoursePlaceSearch } from './course-extras';
 import { createCourseExtrasApi } from './course-extras-api';
+import {
+  RouteElevationProfile,
+  useRouteElevationCheck,
+  type RouteElevationSource,
+} from './course-route-elevation';
 import { WaypointListEditor } from './course-waypoint-list';
 import { useLayoutModeFromViewport } from './course-layout';
 import { CourseMapPane } from './course-workbench';
@@ -146,6 +151,7 @@ function NewCourseScreen({
             />
             <NewCourseEditor
               api={api}
+              elevation={extrasApi}
               sessionId={sessionId}
               pickedPosition={picked}
               onCreated={onCreated}
@@ -174,6 +180,8 @@ const noCoordinates: readonly never[] = [];
 
 export interface NewCourseEditorProps {
   readonly api: CourseApi;
+  /** Our own elevation data, asked about the previewed line before it can be saved. */
+  readonly elevation: RouteElevationSource;
   readonly sessionId: string;
   readonly pickedPosition: CoursePosition | null;
   readonly onCreated: (courseId: string) => void;
@@ -185,6 +193,7 @@ export interface NewCourseEditorProps {
  */
 export function NewCourseEditor({
   api,
+  elevation,
   sessionId,
   pickedPosition,
   onCreated,
@@ -192,6 +201,9 @@ export function NewCourseEditor({
   const store = useCourseDraftStore();
   const state = useCourseDraft((value) => value);
   const route = currentRoute(state);
+  // S14: compute → elevation/distance check → save. The check must have answered for this
+  // preview before the review can be confirmed or the save sent (M2-01k-b).
+  const elevationCheck = useRouteElevationCheck(elevation, route);
   const [message, setMessage] = useState('');
   const [computing, setComputing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -302,7 +314,7 @@ export function NewCourseEditor({
   }
 
   async function save() {
-    if (route === null || !isReviewed) return;
+    if (route === null || !isReviewed || !elevationCheck.settled) return;
     const digest = digests.get(route.proposalId);
     if (digest === undefined) return;
     const parsedName = courseNameSchema.safeParse(name.trim());
@@ -398,6 +410,7 @@ export function NewCourseEditor({
         <div className={styles.review} role="group" aria-label="계산된 경로 검토">
           <h4>계산된 경로 (제안)</h4>
           <RouteReviewSummary route={route} />
+          <RouteElevationProfile check={elevationCheck} />
           <TextField
             label="새 코스 이름"
             value={name}
@@ -407,6 +420,7 @@ export function NewCourseEditor({
           <label>
             <input
               type="checkbox"
+              disabled={!elevationCheck.settled}
               checked={isReviewed}
               onChange={(event) =>
                 setReviewed(
@@ -418,7 +432,10 @@ export function NewCourseEditor({
             />
             위 내용을 검토했습니다.
           </label>
-          <Button onClick={() => void save()} disabled={!isReviewed || saving}>
+          <Button
+            onClick={() => void save()}
+            disabled={!isReviewed || !elevationCheck.settled || saving}
+          >
             검토한 경로로 새 코스 저장
           </Button>
         </div>

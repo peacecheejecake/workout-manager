@@ -1,0 +1,96 @@
+/*
+ * M2-01k-b: the elevation half of the S14 review, for a line that is not saved yet.
+ * Only tokens defined in packages/ui/foundation/src/tokens.css are used.
+ */
+.check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.heading {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.summary dt {
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+.summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart {
+  display: block;
+  /* The 1px border is inside the 100%: content-box sizing overflowed the check by 2px. */
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 32rem;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-strong);
+}
+
+/* A gap is marked, never drawn as a value: a hatched band with no line across it. */
+.gap {
+  opacity: 0.55;
+}
+
+.hatch {
+  stroke: var(--ink-muted);
+  stroke-width: 1.5;
+}
+
+.line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.point {
+  fill: var(--accent);
+}
+
+.axis {
+  fill: var(--ink-muted);
+  font-size: 10px;
+}
+
+.note {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.samples summary {
+  cursor: pointer;
+  border-radius: var(--radius-control);
+}
+
+.samples summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.samples ol {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.5rem;
+  font-size: 0.875rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}

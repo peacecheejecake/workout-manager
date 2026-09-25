@@ -298,6 +298,20 @@
         "the three existing no-share assertions (tests/identity/course-extras.spec.ts:201-204, course-workbench.test.tsx:124, course-extras.test.tsx:1103) re-run in this commit's pnpm test and two identity runs"
       ],
       "note": "Plan amendment only; no product code. See docs/implementation/research/m2-01k-o-sharing-requirement.md §7."
+    },
+    {
+      "node": "M2-01k-b",
+      "date": "2026-09-25",
+      "rows": ["S14-flow", "S14-elevation-distance-check", "FUT-07-1"],
+      "decision": "Gap node M2-01k-b added a pre-save elevation profile for unsaved lines and a save gate in the S14 editor; two rounds of independent review (round 1 required the mobile and tablet check, which found and fixed a 2 px overflow).",
+      "change": "3 rows partial -> passed; counts passed 77 -> 80, partial 27 -> 24.",
+      "executed": [
+        "tests/identity/course-elevation-review.spec.ts in the Next and Vite shells: search -> points -> compute -> elevation/distance check -> save with the exact request order, save blocked while the check is held (even on a forced click), profile equal to the response sample by sample (unknown as \"모름\", never 0), engine distance shown, saved values equal to the reviewed ones; no_dataset stated in words; layout at 320/768/1280 px with no overflow and keyboard reach to retry, sample list and checkbox; real engine x3 on the pre-rebase tree",
+        "packages/modules/courses/tests/course-route-elevation.test.tsx and apps/api course-extras-routes tests (new POST /courses/elevation-profiles: auth, CSRF, strict body, no coordinate in logs)",
+        "mutants M1, M1b, M2, M3, M4, M5, S1 and F1 each fail; the independent review re-killed its own editor-gate, new-course-gate and F1 mutants",
+        "pnpm test and two identity runs on the merged tree"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-b.md."
     }
   ],
   "rounds": [
@@ -419,8 +433,8 @@
     }
   ],
   "counts": {
-    "passed": 77,
-    "partial": 27,
+    "passed": 80,
+    "partial": 24,
     "failed": 0,
     "missing": 0,
     "not_executed": 6
@@ -958,11 +972,12 @@
       "id": "S14-flow",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "S14 지도 편집은 검색→시작/경유/도착 지점→foot profile routing→고도/거리 확인→저장이다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
-        "tests/identity/course-acceptance.spec.ts step 3 (coordinates → routing → review → save, real engine ×3)"
+        "tests/identity/course-acceptance.spec.ts step 3 (coordinates → routing → review → save, real engine ×3)",
+        "docs/implementation/progress/M2-01k-b.md"
       ],
-      "reason": "Search -> points -> foot routing -> save now works from an empty map (course-new-edit.spec, including a place-search start; real engine x3). Elevation is still only available for a saved head, so 'check elevation, then save' cannot happen in that order.",
+      "reason": "M2-01k-b amendment: passed for the waypoint-routing flow (new-course preview and a stored course's computed proposal): in both shells the request order is exactly search -> points -> routing -> elevation/distance check -> save, and nothing can be saved while the check is outstanding (M3, M1, S1 killed). A failed or mismatched check lets the owner save after seeing \"모름\" (documented policy). Limit: saving a target-distance candidate skips the elevation check.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -972,7 +987,19 @@
           "tests/identity/course-acceptance.spec.ts (real engine x3)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-b",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Search -> points -> foot routing -> save now works from an empty map (course-new-edit.spec, including a place-search start; real engine x3). Elevation is still only available for a saved head, so 'check elevation, then save' cannot happen in that order.",
+        "executed": [
+          "tests/identity/course-elevation-review.spec.ts in the Next and Vite shells: search -> points -> compute -> elevation/distance check -> save with the exact request order, save blocked while the check is held (even on a forced click), profile equal to the response sample by sample (unknown as \"모름\", never 0), engine distance shown, saved values equal to the reviewed ones; no_dataset stated in words; layout at 320/768/1280 px with no overflow and keyboard reach to retry, sample list and checkbox; real engine x3 on the pre-rebase tree",
+          "packages/modules/courses/tests/course-route-elevation.test.tsx and apps/api course-extras-routes tests (new POST /courses/elevation-profiles: auth, CSRF, strict body, no coordinate in logs)",
+          "mutants M1, M1b, M2, M3, M4, M5, S1 and F1 each fail; the independent review re-killed its own editor-gate, new-course-gate and F1 mutants",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "S14-drag-and-buttons",
@@ -1135,16 +1162,28 @@
       "id": "S14-elevation-distance-check",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "고도/거리 확인",
-      "verdict": "partial",
-      "evidence": [],
-      "reason": "Engine distance is shown in the proposal review (seen in Aside); elevation is not available before saving. Neither is asserted by an executed E2E.",
+      "verdict": "passed",
+      "evidence": ["docs/implementation/progress/M2-01k-b.md"],
+      "reason": "M2-01k-b amendment: passed, with a limit. The elevation of an unsaved preview or proposal is read from the project's own dataset through a new POST route before saving, the screen matches the answer sample by sample (unknown hatched and listed as \"모름\", never 0 or flat) and the engine distance is shown (M1, M1b, M2, M4, M5, S1 killed). Limit: the dataset is sparse (821 OSM ele points, 150 m radius), so most real lines read \"모름\"; the row shows the check happens honestly before save, not that elevation data is good (P6-place-elevation-data).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-b",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Engine distance is shown in the proposal review (seen in Aside); elevation is not available before saving. Neither is asserted by an executed E2E.",
+        "executed": [
+          "tests/identity/course-elevation-review.spec.ts in the Next and Vite shells: search -> points -> compute -> elevation/distance check -> save with the exact request order, save blocked while the check is held (even on a forced click), profile equal to the response sample by sample (unknown as \"모름\", never 0), engine distance shown, saved values equal to the reviewed ones; no_dataset stated in words; layout at 320/768/1280 px with no overflow and keyboard reach to retry, sample list and checkbox; real engine x3 on the pre-rebase tree",
+          "packages/modules/courses/tests/course-route-elevation.test.tsx and apps/api course-extras-routes tests (new POST /courses/elevation-profiles: auth, CSRF, strict body, no coordinate in logs)",
+          "mutants M1, M1b, M2, M3, M4, M5, S1 and F1 each fail; the independent review re-killed its own editor-gate, new-course-gate and F1 mutants",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "S14-providers",
@@ -1704,11 +1743,12 @@
       "id": "FUT-07-1",
       "source": "docs/.pre/06_follow_up_backlog.md:279",
       "quote": "- [ ] 실제 공급자가 반환한 경로와 거리·출처를 표시하고 검토한 결과만 저장한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
-        "tests/identity/course-acceptance.spec.ts real engine ×3: review shows `route-graph` = c57f12f5975347e8, save disabled until review checkbox, revision unchanged until save"
+        "tests/identity/course-acceptance.spec.ts real engine ×3: review shows `route-graph` = c57f12f5975347e8, save disabled until review checkbox, revision unchanged until save",
+        "docs/implementation/progress/M2-01k-b.md"
       ],
-      "reason": "Distance display is not asserted (seen in Aside only).",
+      "reason": "M2-01k-b amendment: passed. On the real engine x3 (graph c57f12f5975347e8) both shells show the engine distance and graph provenance, save only after the review, and store the geometry, engine distance and graph id that were reviewed. Limit: the client-distance mutant (M2) is distinguishable only in fixture mode and unit tests, because on the real engine the line length and engine distance agree to 1 m; the real-engine runs were on the pre-rebase tree.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1717,7 +1757,19 @@
           "pnpm test:identity x2 (178 passed, 3 skipped = oidc-certified real-OP specs, each run)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k-b",
+        "date": "2026-09-25",
+        "previousVerdict": "partial",
+        "previousReason": "Distance display is not asserted (seen in Aside only).",
+        "executed": [
+          "tests/identity/course-elevation-review.spec.ts in the Next and Vite shells: search -> points -> compute -> elevation/distance check -> save with the exact request order, save blocked while the check is held (even on a forced click), profile equal to the response sample by sample (unknown as \"모름\", never 0), engine distance shown, saved values equal to the reviewed ones; no_dataset stated in words; layout at 320/768/1280 px with no overflow and keyboard reach to retry, sample list and checkbox; real engine x3 on the pre-rebase tree",
+          "packages/modules/courses/tests/course-route-elevation.test.tsx and apps/api course-extras-routes tests (new POST /courses/elevation-profiles: auth, CSRF, strict body, no coordinate in logs)",
+          "mutants M1, M1b, M2, M3, M4, M5, S1 and F1 each fail; the independent review re-killed its own editor-gate, new-course-gate and F1 mutants",
+          "pnpm test and two identity runs on the merged tree"
+        ]
+      }
     },
     {
       "id": "FUT-07-2",
