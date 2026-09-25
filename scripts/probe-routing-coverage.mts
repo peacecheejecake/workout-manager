@@ -297,7 +297,7 @@ function systemClock() {
 /** A stubbed transport used only for the straight-line control. No engine is involved. */
 function echoTransport(info: string, waypoints: readonly Position[]): RoutingEngineTransport {
   return {
-    async get(input) {
+    async send(input) {
       if (input.path === '/info')
         return { status: 200, bodyText: info, truncated: false, byteLength: info.length };
       const body = JSON.stringify({

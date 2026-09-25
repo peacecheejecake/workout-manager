@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k-e",
+  "measuredAt": "2026-09-24T20:43:35.974Z",
+  "what": "Blue/green graph replacement, production tenant bounds, cancellation and distinct outcomes against two self-hosted GraphHopper engines on loopback, the production API composition, fixture OIDC and an isolated PostgreSQL. Not a coverage review.",
+  "machine": {
+    "label": "this machine (desktop), single caller",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "node": "v24.12.0"
+  },
+  "deployment": {
+    "deployment": "relocated (ROUTING_GRAPH_ROOT)",
+    "note": "Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still c57f12f5975347e8 (.geo-build/routing-graph).",
+    "servedGraphBuildId": "c57f12f5975347e8"
+  },
+  "graphs": {
+    "A": {
+      "graphBuildId": "844e72c4db12082a",
+      "extractRegion": "Seoul (BBBike city extract)",
+      "extractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+      "graphImportedAt": "2026-09-24T20:43:11.000Z",
+      "roadDataAt": "2026-09-18T23:00:00.000Z",
+      "graphContentSha256": "73d6f9ddfd45e20a65f1e16247cc7862e19af1ae3ea3cd043d15bbd23581e6f2",
+      "profileConfigSha256": "cdc22d00cafb85e0df76ce7a34a618671c34df772effc13b243ba1d9bb7ee86f"
+    },
+    "C": {
+      "graphBuildId": "a7db3aa5cda0528e",
+      "extractRegion": "Seoul clip bbox 126.90,37.49,127.06,37.62 of the BBBike Seoul extract",
+      "extractSha256": "9bf6476581a4d8d2c45d9d405a69c5e893abe67b15a41d5536aeb58b71f9e35f",
+      "graphImportedAt": "2026-09-24T20:43:24.000Z",
+      "roadDataAt": "2026-09-18T23:00:00.000Z",
+      "graphContentSha256": "208cf97eafaa9e007a821ec39e8499353a091481be3c6e026dcaa56d816c8585",
+      "profileConfigSha256": "cdc22d00cafb85e0df76ce7a34a618671c34df772effc13b243ba1d9bb7ee86f",
+      "derivedFrom": {
+        "extractSha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "tool": "osmium version 1.19.1",
+        "bbox": "126.90,37.49,127.06,37.62",
+        "strategy": "complete_ways",
+        "clipDeterministic": null
+      },
+      "builtThisRun": true,
+      "importMilliseconds": 4458,
+      "note": "A different extract (a clip of the allowlisted Seoul extract), not newer map data. The allowlisted URL offered no newer extract."
+    }
+  },
+  "observations": {
+    "engineRssMiBAfterStart": {
+      "blue": 274,
+      "green": 238
+    },
+    "switchUnderLoad": {
+      "seen": [
+        {
+          "index": 0,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 1,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 2,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 3,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        },
+        {
+          "index": 4,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        },
+        {
+          "index": 5,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        }
+      ],
+      "result": {
+        "from": "844e72c4db12082a",
+        "to": "a7db3aa5cda0528e"
+      },
+      "moveMilliseconds": 46
+    },
+    "rollbackUnderLoad": {
+      "seen": [
+        {
+          "index": 0,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        },
+        {
+          "index": 1,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        },
+        {
+          "index": 2,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "a7db3aa5cda0528e"
+        },
+        {
+          "index": 3,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 4,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 5,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        }
+      ],
+      "result": {
+        "from": "a7db3aa5cda0528e",
+        "to": "844e72c4db12082a"
+      },
+      "moveMilliseconds": 46
+    },
+    "inFlightAcrossRollback": {
+      "startedBeforeRollbackBy": 40,
+      "rollbackReturnedAtMilliseconds": 46,
+      "finishedAtMilliseconds": 121,
+      "result": {
+        "outcome": "route_computed",
+        "graph": "a7db3aa5cda0528e",
+        "identitySource": "engine",
+        "computationMilliseconds": 115,
+        "deadlineMilliseconds": 8000,
+        "waypointCount": 4,
+        "warnings": [],
+        "distanceMeters": 57437,
+        "vertices": 1728,
+        "worstSnapMeters": 26.3
+      }
+    },
+    "admissionResets": {
+      "bounds": {
+        "historyCleared": 21,
+        "permitsHeld": 0
+      },
+      "twoInstances": {
+        "historyCleared": 3,
+        "permitsHeld": 0,
+        "waitedMilliseconds": 0
+      },
+      "engineCap": {
+        "historyCleared": 2,
+        "permitsHeld": 0,
+        "waitedMilliseconds": 0
+      },
+      "outcomes": {
+        "historyCleared": 1,
+        "permitsHeld": 0
+      },
+      "cancellation": {
+        "historyCleared": 2,
+        "permitsHeld": 1
+      }
+    },
+    "twoInstances": {
+      "answers": [
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        },
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        },
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        },
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        }
+      ],
+      "loggedRefusals": []
+    },
+    "engineCap": {
+      "answers": [
+        {
+          "status": 429,
+          "outcome": "overloaded",
+          "retryAfter": "1"
+        },
+        {
+          "status": 200,
+          "outcome": "route_computed",
+          "retryAfter": null
+        }
+      ],
+      "loggedRefusals": [
+        {
+          "event": "routing_admission_refused",
+          "reason": "engine_capacity",
+          "engineInFlight": 1,
+          "engineConcurrency": 1
+        }
+      ]
+    },
+    "outcomes": {
+      "noRoute": {
+        "outcome": "no_route",
+        "graph": "844e72c4db12082a",
+        "identitySource": "engine",
+        "computationMilliseconds": 7,
+        "deadlineMilliseconds": 8000,
+        "waypointCount": 2,
+        "warnings": []
+      },
+      "offshore": {
+        "outcome": "outside_coverage",
+        "graph": "844e72c4db12082a",
+        "identitySource": "engine",
+        "computationMilliseconds": 5,
+        "deadlineMilliseconds": 8000,
+        "waypointCount": 2,
+        "warnings": []
+      },
+      "farSnap": {
+        "outcome": "snap_too_far",
+        "graph": "844e72c4db12082a",
+        "identitySource": "engine",
+        "computationMilliseconds": 7,
+        "deadlineMilliseconds": 8000,
+        "waypointCount": 2,
+        "warnings": []
+      }
+    },
+    "permitAfterDisconnect": {
+      "clients": ["disconnected", "disconnected"],
+      "thirdStatusAt": 87,
+      "thirdStatus": 429,
+      "admittedAt": 300
+    },
+    "timeout": {
+      "long": {
+        "outcome": "timeout",
+        "graph": "844e72c4db12082a",
+        "identitySource": "engine",
+        "computationMilliseconds": 154,
+        "deadlineMilliseconds": 200,
+        "waypointCount": 5,
+        "warnings": ["timeout_may_be_no_route"]
+      },
+      "noRouteUnderSameBudget": {
+        "outcome": "no_route",
+        "graph": "844e72c4db12082a",
+        "identitySource": "engine",
+        "computationMilliseconds": 5,
+        "deadlineMilliseconds": 200,
+        "waypointCount": 2,
+        "warnings": []
+      }
+    },
+    "cancellation": {
+      "natural": {
+        "deadlineMilliseconds": 8000,
+        "cancelAfter": null,
+        "outcome": "route_computed",
+        "answeredAt": 218,
+        "engineReleasedAt": 216
+      },
+      "cancelledMidSearch": {
+        "deadlineMilliseconds": 8000,
+        "cancelAfter": 60,
+        "outcome": "cancelled",
+        "answeredAt": 63,
+        "engineReleasedAt": 214
+      },
+      "cancelledWithTightBudget": {
+        "deadlineMilliseconds": 200,
+        "cancelAfter": 60,
+        "outcome": "cancelled",
+        "answeredAt": 62,
+        "engineReleasedAt": 152
+      }
+    },
+    "engineRssMiBAtEnd": {
+      "blue": 733
+    }
+  },
+  "checks": [
+    {
+      "id": "graph-c-from-a-different-extract",
+      "passed": true,
+      "detail": "A 844e72c4db12082a extract 7e13e2adf102 / C a7db3aa5cda0528e extract 9bf6476581a4 (clip of A's extract)"
+    },
+    {
+      "id": "blue-serves-graph-a",
+      "passed": true,
+      "detail": "KRC-01 {\"outcome\":\"route_computed\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":90,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[],\"distanceMeters\":1282,\"vertices\":48,\"worstSnapMeters\":10}; Gangdong {\"outcome\":\"route_computed\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":76,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[],\"distanceMeters\":17630,\"vertices\":419,\"worstSnapMeters\":3.2}"
+    },
+    {
+      "id": "course-saved-on-a",
+      "passed": true,
+      "detail": "1:null 2:844e72c4db12082a"
+    },
+    {
+      "id": "refused-switches-change-nothing",
+      "passed": true,
+      "detail": "green engine pinned to A: ROUTING_SWITCH_ENGINE_NOT_SERVING/graph_mismatch; no engine: ROUTING_SWITCH_ENGINE_NOT_SERVING/engine_unavailable; blue's own port: ROUTING_SWITCH_SAME_ENGINE; active 844e72c4db12082a"
+    },
+    {
+      "id": "switch-is-one-step-under-load",
+      "passed": true,
+      "detail": "0:200:route_computed:A 1:200:route_computed:A 2:200:route_computed:A 3*:200:route_computed:C 4*:200:route_computed:C 5*:200:route_computed:C (switch 46 ms, * = started after it returned)"
+    },
+    {
+      "id": "green-serves-graph-c-with-its-own-coverage",
+      "passed": true,
+      "detail": "Gangdong on C: {\"outcome\":\"outside_coverage\",\"graph\":\"a7db3aa5cda0528e\",\"identitySource\":\"engine\",\"computationMilliseconds\":11,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]} (on A it was route_computed)"
+    },
+    {
+      "id": "switch-recomputes-nothing-and-needs-acknowledgement",
+      "passed": true,
+      "detail": "stored 1:null:aa80fa37 2:844e72c4db12082a:6bbe9227; proposal on a7db3aa5cda0528e; save acknowledging A->A 409"
+    },
+    {
+      "id": "rollback-is-one-step-under-load",
+      "passed": true,
+      "detail": "0:200:route_computed:C 1:200:route_computed:C 2:200:route_computed:C 3*:200:route_computed:A 4*:200:route_computed:A 5*:200:route_computed:A (rollback 46 ms)"
+    },
+    {
+      "id": "in-flight-computation-finishes-where-it-started",
+      "passed": true,
+      "detail": "started on C, rollback returned at 46 ms, finished at 121 ms on C (route_computed)"
+    },
+    {
+      "id": "rollback-returns-exactly-graph-a",
+      "passed": true,
+      "detail": "active 844e72c4db12082a; Gangdong route_computed on 844e72c4db12082a; stored unchanged true"
+    },
+    {
+      "id": "rollback-to-a-stopped-engine-is-refused",
+      "passed": true,
+      "detail": "ROUTING_SWITCH_ENGINE_NOT_SERVING/engine_unavailable; next computation on 844e72c4db12082a"
+    },
+    {
+      "id": "waypoint-bound",
+      "passed": true,
+      "detail": "12 waypoints: 200 route_computed; 13: 422 INVALID_ROUTING_REQUEST"
+    },
+    {
+      "id": "distance-bounds",
+      "passed": true,
+      "detail": "one 38 km leg: 422 ROUTING_LEG_TOO_LONG; five legs of at most 25 km, 114 km in all: 422 ROUTING_SPAN_TOO_LARGE"
+    },
+    {
+      "id": "concurrency-bound",
+      "passed": true,
+      "detail": "three at once: 200:route_computed, 200:route_computed, 429:overloaded; refused retry-after 1"
+    },
+    {
+      "id": "tenant-bound-shared-by-two-api-instances",
+      "passed": true,
+      "detail": "four at once, two through each instance, starting with no permit held: 200:route_computed, 429:overloaded, 200:route_computed, 429:overloaded; logged (non-tenant) refusals 0"
+    },
+    {
+      "id": "engine-cap-across-tenants-and-instances",
+      "passed": true,
+      "detail": "cap 1, starting with no permit held, alice via instance A and bob via instance B at once: 429:overloaded, 200:route_computed; logged refusals [{\"reason\":\"engine_capacity\",\"engineInFlight\":1,\"engineConcurrency\":1}]"
+    },
+    {
+      "id": "deadline-and-response-points-as-configured",
+      "passed": true,
+      "detail": "longest route {\"outcome\":\"route_computed\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":389,\"deadlineMilliseconds\":8000,\"waypointCount\":5,\"warnings\":[],\"distanceMeters\":119744,\"vertices\":2338,\"worstSnapMeters\":33.3}; bounds 8000 ms and 20,000 vertices are recorded, not reached, in this region"
+    },
+    {
+      "id": "no-route-observed",
+      "passed": true,
+      "detail": "200 {\"outcome\":\"no_route\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":7,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]}"
+    },
+    {
+      "id": "outside-coverage-observed",
+      "passed": true,
+      "detail": "200 {\"outcome\":\"outside_coverage\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":5,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]}"
+    },
+    {
+      "id": "snap-too-far-observed",
+      "passed": true,
+      "detail": "200 {\"outcome\":\"snap_too_far\",\"graph\":\"844e72c4db12082a\",\"identitySource\":\"engine\",\"computationMilliseconds\":7,\"deadlineMilliseconds\":8000,\"waypointCount\":2,\"warnings\":[]} (production snap limit 120 m)"
+    },
+    {
+      "id": "disconnected-client-keeps-permit-until-engine-stops",
+      "passed": true,
+      "detail": "two clients disconnected at 80 ms; a third request at 87 ms: 429 retry-after 1; admitted again at 300 ms"
+    },
+    {
+      "id": "timeout-observed-and-kept-apart-from-no-route",
+      "passed": true,
+      "detail": "deadline 200 ms: four long legs -> timeout [timeout_may_be_no_route] after 154 ms; the NoRoute pair under the same budget -> no_route [] after 5 ms"
+    },
+    {
+      "id": "response-point-bound-enforced",
+      "passed": true,
+      "detail": "bound 1,000: long route (2,338 vertices at the production bound) -> engine_contract_violation; KRC-01 -> route_computed (48 vertices)"
+    },
+    {
+      "id": "cancellation-answers-at-once-and-engine-stops-by-its-budget",
+      "passed": true,
+      "detail": "uncancelled search 216 ms; cancelled at 60 ms with the 8 s budget: answered 63 ms, engine stopped 214 ms; with a 200 ms budget: answered 62 ms, engine stopped 152 ms"
+    }
+  ],
+  "result": "all_checks_passed"
+}

@@ -341,7 +341,7 @@ export async function createConfiguredWalkingRoutes(
     });
     return {
       graphBuildId: deployment.graphBuildId,
-      engineOrigin: endpoint.resolve('/info', new URLSearchParams()).origin,
+      engineOrigin: endpoint.resolve('/info').origin,
       adapter,
       service: new WalkingRouteService({ adapter, admission, clock }),
     };

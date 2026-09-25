@@ -48,7 +48,7 @@ async function serviceWith(
 ) {
   const clock = new ControllableClock();
   const transport: RoutingEngineTransport = {
-    async get(input) {
+    async send(input) {
       if (input.path === '/info')
         return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
       if (options.engineCalls) options.engineCalls.count += 1;
@@ -231,7 +231,7 @@ describe('an asynchronous, shared admission (M2-01ah)', () => {
     const clock = new ControllableClock();
     const engineCalls = { count: 0 };
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
         engineCalls.count += 1;

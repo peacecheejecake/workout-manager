@@ -500,40 +500,78 @@ profile은 M2-01d 측정용 `scripts/geo/graphhopper-foot.yml`이 아니라 serv
 (다르면 `PROFILE_CONFIG_MISMATCH`).
 
 엔진은 같은 graph·profile로 loopback에 띄운다. 인자는 `scripts/geo/graphhopper-launch.mjs`의
-`graphhopperJavaArguments`가 만든다. 저장소의 모든 기동 경로(`startEngine`, probe들)가 이 함수를 쓴다.
-손으로 띄울 때도 같은 인자를 쓴다:
+`graphhopperJavaArguments`가 만든다. 저장소의 모든 기동 경로(`startEngine`, probe들)가 이 함수를 쓰고, 손으로
+띄울 때도 같은 helper의 명령줄을 쓴다(M2-01af). `java` 명령을 손으로 조립하지 않는다:
 
 ```sh
-java -Xmx2048m -Xms512m \
-  -Ddw.graphhopper.datareader.file=<.geo-build/source/region.osm.pbf> \
-  -Ddw.graphhopper.graph.location=<.geo-build/routing-graph/foot> \
-  -Ddw.server.request_log.type=external \
-  -jar <.geo-build/graphhopper/graphhopper-web.jar> server <.geo-build/routing-graph/config-serving.yml>
+# 네 경로는 모두 절대 경로다(상대 경로는 ABSOLUTE_PATH_REQUIRED로 거절된다).
+node scripts/geo/graphhopper-launch.mjs \
+  --jar <절대 경로: .geo-build/graphhopper/graphhopper-web.jar> \
+  --config <절대 경로: 그 graph 디렉터리 옆의 config-serving.yml> \
+  --extract <절대 경로: .geo-build/source/region.osm.pbf> \
+  --graph <절대 경로: routing-graph-manifest.json이 든 graph 디렉터리>
+# 인자만 보려면 --print. 두 번째 엔진(green)은 --application-port 8993 --admin-port 8994
+# (1–65535 정수만 받는다). profile을 읽을 수 없으면 helper가 명령줄을 만들지 않는다.
 ```
 
-**`-Ddw.server.request_log.type=external`은 빼면 안 된다(M2-01k-c2).** adapter는 모든 waypoint를 요청 줄
-(`GET /route?...&point=lat,lon`)에 담는다. Dropwizard 기본 request log는 그 줄을 stdout에 쓰므로, 이 인자가
-없으면 정확한 waypoint가 엔진 로그에 남는다. 보호는 **두 겹**이고 어느 하나만으로는 부족하다.
+**엔진 로그에 waypoint가 남지 않게 하는 것(M2-01k-c2, M2-01af).** 정확한 waypoint가 엔진 로그에 들어가는 길은
+둘이다. Dropwizard 기본 request log는 요청 줄마다 한 줄을 쓰고(`GET /route?...&point=lat,lon`이면 waypoint
+포함), GraphHopper의 HTTP resource와 exception mapper는 요청 내용을 INFO로 찍는다(`RouteResource`·`SPTResource`·
+`IsochroneResource`·`MapMatchingResource`·`NavigateResource`의 점, `MultiExceptionMapper`·
+`IllegalArgumentExceptionMapper`가 인용하는 실패 점).
 
-1. **이 기동 인자.** `external` 형식은 jar 안에서 `CustomRequestLog(Slf4jRequestLogWriter, ClassicLogFormat)`를
-   만든다(`logback-access.xml`은 읽지 않는다). 그래서 요청 줄은 애플리케이션 logger
-   `org.eclipse.jetty.server.RequestLog`에 INFO로 가고, **경로만 담고 query string은 담지 않는다.**
-2. **serving profile 콘솔 appender의 `threshold: WARN`.** 1의 INFO 요청 줄을 떨어뜨린다. GraphHopper
-   `com.graphhopper.resources.RouteResource`가 route 요청마다 INFO로 **waypoint 자체**
-   (`[37.57…,126.97…, …]`)를 찍는데, 그 줄을 막는 것은 이 threshold뿐이다. 그러므로 INFO 수준 appender를
-   더하지 않는다: file appender, 더 낮은 threshold, `-Ddw.logging.appenders[0].threshold=INFO` 같은 기동 인자
-   모두 안 된다. 하나라도 더하면 waypoint가 샌다.
+1. **serving profile 자체(M2-01af 이후).** `server.request_log.appenders: []`로 request log를 끈다(실제 jar에서
+   요청 줄 0). `logging.level: WARN`이라 INFO 이벤트가 아예 생기지 않는다. 그리고 `logging.loggers`에서 세 package
+   **`com.graphhopper.resources`·`com.graphhopper.http`·`com.graphhopper.navigation`을 통째로 `OFF`**에 고정한다.
+   앞의 둘에는 WARN·ERROR 호출이 없다(jar 바이트코드). `navigation`은 `NavigateResource`의 ERROR 하나(실패한
+   navigate 응답)와 `NavigateResponseConverter`의 WARN 하나를 잃는다. adapter는 `/navigate`를 부르지 않는다. 그래서
+   helper 없이 저장소 밖에서 띄워도, INFO appender를 더해도, **root level을 INFO로** 낮춰도 이 세 package에서는
+   waypoint가 남지 않는다. 그 밖의 INFO 줄(`GraphHopper`, 준비·import class 등)은 이름으로 보면 기동 코드이지만
+   내용을 확인하지 않았다.
+   **DEBUG는 안전하지 않다.** root를 DEBUG로 낮추면 세 package 밖의 debug 줄(Dropwizard
+   `JsonProcessingExceptionMapper`, Jetty, `GHJerseyViolationExceptionMapper` 등)이 요청 내용을 담을 수 있다. 서빙
+   엔진의 root level은 INFO 아래로 내리지 않는다.
+2. **모든 appender의 `threshold: WARN`.** 1 아래의 두 번째 겹이다. INFO appender는 더하지 않는다.
+3. **adapter는 `POST /route`(JSON body)로 보낸다(M2-01af).** 요청 줄에는 경로만 있고 query string이 없다.
+   request log가 켜진 profile로 띄운 엔진이라도 adapter 요청의 요청 줄에는 waypoint가 없다.
+4. **기동 인자 `-Ddw.server.request_log.type=external`**은 request log를 스스로 끄지 않는 profile에만 helper가
+   붙인다: M2-01d 측정 profile과 **M2-01af 이전에 빌드된 graph의 profile 사본**(지금 배포된 graph A의
+   `config-serving.yml`)이다. 그 사본은 manifest가 해시를 고정하므로 graph를 교체할 때까지 그대로다. 새 profile에
+   이 인자를 더하면 jar가 기동을 거절한다(`Unrecognized field at: server.request_log.appenders`). 그래서 helper가
+   profile을 읽고 정한다. 손으로 인자를 넣거나 빼지 않는다.
 
-profile 파일에 `server.request_log.appenders: []`를 직접 넣는 것은 **다음 graph 재빌드 때** 한다(M2-01k-e가
-준비 중). profile 해시가 graph manifest(`profileConfigSha256`)와 graph id에 묶여 있어서, 지금 파일을
-고치면 배포된 graph가 `PROFILE_CONFIG_MISMATCH`로 거절된다. 그전까지는 위 두 겹(기동 인자와 WARN
-threshold)이 보호다. `RouteResource` logger를 WARN/OFF로 고정하는 일과 `POST /route` 검토는 후속 노드에서
-한다. profile이 request log를 스스로 끄면 helper는 기동 인자를 자동으로 뺀다.
+검증은 `node --import tsx scripts/probe-routing-engine-logs.mts --execute`다. 실제 jar를 helper로 띄우고
+adapter와 같은 `POST /route`와 옛 모양의 `GET /route?...&point=`를 보낸 뒤, 심은 좌표가 엔진 stdout/stderr에
+0건이고 query 담은 요청 줄이 0건이어야 PASS다. 점을 INFO로 찍는 다른 resource도 지나도록 `/spt`·`/isochrone`·
+`/navigate`도 보낸다. `--console-threshold INFO`는 appender를 INFO로 낮춘 사본으로, 거기에 `--root-level INFO`를 더하면 root level까지
+낮춘 사본으로 같은 판정을 한다(package 고정과 request log 끄기만으로 막히는지). `--request-log-override add|omit`은
+helper 판단을 강제해 override 유무를 비교한다. `--config <옛 profile> --request-log-override omit --requests adapter`는
+request log가 켜진 엔진에서 adapter 요청 모양만 판정한다.
 
-검증은 `node --import tsx scripts/probe-routing-engine-logs.mts --execute`다. 실제 jar를 이 helper로
-띄우고, 심은 좌표가 엔진 stdout/stderr에 0건이어야 PASS다. `--console-threshold INFO`를 붙이면 기동 인자만의
-보장을 본다. 요청 줄은 query를 담지 않아야 PASS이고, 이때 `RouteResource` 줄의 waypoint는 보고만 한다.
-graph 교체·rollback은 아래 blue/green 절차를 따른다(M2-01k-e).
+### serving profile 변경의 배포 — M2-01af 재빌드
+
+profile 해시는 graph manifest의 `profileConfigSha256`과 graph id에 묶여 있다. 그래서 profile을 바꾸면 **전체
+재import**가 필요하고 graph id가 바뀐다. 배포된 graph를 제자리에서 덮지 않는다:
+
+1. 새 graph를 `.geo-build` 밖에 만든다:
+   `ROUTING_GRAPH_ROOT=<절대 경로> node --import tsx scripts/build-routing-graph.mts --execute`. 그 디렉터리에
+   `foot/`(graph + manifest)와 `config-serving.yml`(저장소 profile 사본)이 생긴다. graph manifest가 이미 있는
+   디렉터리 위로의 전체 import는 `FULL_IMPORT_OVER_EXISTING_GRAPH_REFUSED`로 거절된다(서빙 중일 수 있는 graph와 그
+   profile 사본을 제자리에서 지우기 때문이다). 제자리 교체가 정말 의도라면 `--replace-served-graph`를 준다. 이 절차는
+   그 플래그를 쓰지 않는다.
+2. 아래 blue/green 절차로 옮긴다. green은 1의 graph와 **그 디렉터리의** `config-serving.yml`로 띄우고, 전환
+   파일의 `ROUTING_GRAPH_DIRECTORY`·`ROUTING_PROFILE_CONFIG`도 그 둘을 가리킨다. 새 graph를 옛 profile 사본으로
+   가리키면 `PROFILE_CONFIG_MISMATCH`로 거절되고 아무것도 바뀌지 않는다.
+3. 저장된 코스는 재계산되지 않는다. 새 graph에서 제안한 경로를 저장하려면 양측 확인
+   `acknowledgedGraph: {previous: <옛 id>, next: <새 id>}`가 필요하다(옛 id를 next로 적으면 409
+   `COURSE_GRAPH_ACKNOWLEDGEMENT_STALE`).
+4. 확인한 뒤 blue를 끄고, 새 디렉터리를 다음 배포 위치로 삼는다.
+
+실측 절차 전체는 `ROUTING_GRAPH_ROOT=<1의 경로> node --import tsx scripts/probe-routing-profile-rollout.mts --execute`
+(하네스 잠금 보유)로 재현한다. 같은 변수를 주면 `probe-routing-operational.mts`와
+`probe-routing-swap-and-bounds.mts`도 새 profile의 deployment 위에서 돈다. 그때는 `--report-name <다른 파일>.json`이
+필수다. 두 probe의 기본 보고서는 배포된 graph의 기록이라 옮긴(scratch) deployment 결과로 덮지 않는다. 옮긴
+deployment의 보고서에는 "scratch, 영속하지 않음, 배포 graph는 여전히 …"라는 `deployment` 항목이 들어간다.
 
 identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다
 (기본은 fixture 엔진).
@@ -544,11 +582,11 @@ identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_RO
 API가 참조 하나를 바꿔 한 번에 옮겨 간다. 이전 절차(엔진 재시작 → API 재배포 두 단계, 그 사이 `graph_mismatch`)는
 더 쓰지 않는다.
 
-1. green 엔진을 blue와 **똑같이** 띄운다: 같은 jar, 같은 serving profile, `graphhopperJavaArguments`가 만든 인자
-   (`-Ddw.server.request_log.type=external` 포함 — 빼면 waypoint가 엔진 로그에 남는다, 위 절). 다른 것은 port뿐이며
-   helper의 `ports`(`{application: 8993, admin: 8994}`)로 옮긴다. 이것은
+1. green 엔진을 blue와 **같은 방식으로** 띄운다: 같은 jar, green graph가 빌드된 serving profile, helper가 만든 인자
+   (request-log override는 helper가 profile을 읽고 정한다, 위 절). port는 helper의 `ports`
+   (`--application-port 8993 --admin-port 8994`)로 옮긴다. 이것은
    `-Ddw.server.application_connectors[0].port=8993`, `-Ddw.server.admin_connectors[0].port=8994`가 된다.
-   profile 파일은 복사하지 않는다(manifest가 그 해시를 고정한다).
+   port를 바꾸려고 profile 파일을 복사·수정하지 않는다(manifest가 그 해시를 고정한다).
 2. API 기동 환경에 `ROUTING_SWITCH_FILE=<절대 경로>`를 둔다. 파일은 API 프로세스의 uid가 소유하고 group·other 쓰기가
    없어야 한다(예: `chmod 600`). 일반 파일이 아니면(FIFO·디렉터리·장치) `ROUTING_SWITCH_FILE_NOT_REGULAR`, 소유자가 다르면 `ROUTING_SWITCH_FILE_NOT_OWNED`,
    group·other 쓰기가 있으면 `ROUTING_SWITCH_FILE_WRITABLE_BY_OTHERS`로 거절한다(FIFO에서도 막히지 않는다). 교체할 때 그 파일에

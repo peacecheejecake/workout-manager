@@ -227,6 +227,20 @@
         "pnpm test and two identity runs on the merged tree"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01k-d.md."
+    },
+    {
+      "node": "M2-01af",
+      "date": "2026-09-25",
+      "rows": ["P7-no-coordinates-in-logs"],
+      "decision": "Follow-up node M2-01af (split from M2-01k-c2) moved waypoint log protection into the GraphHopper serving profile and the request shape; three rounds of independent review found two more INFO emitters (SPTResource, NavigateResource), both now covered by package pins. Replacing the deployed graph is split to M2-01ak.",
+      "change": "P7-no-coordinates-in-logs reason updated (limit reduced), verdict unchanged; counts unchanged (70/34/0/0/6).",
+      "executed": [
+        "scripts/probe-routing-engine-logs.mts on the real GraphHopper 10.0 engine under the harness lock: new serving profile through the helper (R1) and with root and console at INFO and no launch override (R8), sending POST /route, out-of-bounds, /spt, /isochrone and /navigate with planted synthetic points: 0 planted coordinates; the old GET request control leaks",
+        "packages/tooling/tests/graphhopper-launch.test.mjs (strict profile grammar shared by the launch helper and the guard; request_log appenders [] and the resources, http and navigation packages at OFF or WARN+), build-routing-graph.test.mjs, routing adapter/endpoint/service/manifest and apps/api routing-deployment tests",
+        "mutants MP1 (profile request_log removed), MP2 (resources INFO), MP4 (class pins only), MP5 (navigation pin removed) fail the engine probe at root INFO and the guard; MP3, MF2, MF4, MA1 (adapter back to GET) fail their tests",
+        "rollout probe 8/8, swap 24/24 and operational 26/26 on a scratch deployment of the round-2 profile (cdc22d00…, before the navigation pin; the final profile differs by that one logger line) (routing-profile-rollout.json, routing-swap-and-bounds-m2-01af.json, routing-operational-m2-01af.json; not persisted, the deployed graph is still c57f12f5975347e8); two rounds of independent review re-ran the engine checks"
+      ],
+      "note": "Re-judged by root from the node's executed evidence and its independent review; see docs/implementation/progress/M2-01af.md."
     }
   ],
   "rounds": [
@@ -2587,9 +2601,10 @@
         "docs/implementation/progress/M2-01k-c2.md",
         "scripts/probe-routing-engine-logs.mts",
         "packages/tooling/tests/graphhopper-launch.test.mjs",
-        "packages/server/courses/src/log-audit.ts"
+        "packages/server/courses/src/log-audit.ts",
+        "docs/implementation/progress/M2-01af.md"
       ],
-      "reason": "M2-01k-c2 amendment: passed with limits. The API and thumbnail worker log streams are audited (no coordinate, waypoint, object key, token or body; trace id and version on every line), each forbidden kind killed by a mutant. Independent review found the routing engine's default Dropwizard access log wrote exact waypoints (GET /route?...&point=lat,lon); every in-repo engine launch now passes -Ddw.server.request_log.type=external through one helper, proven on the real engine. Limits: protection depends on two things until the serving profile is rebuilt (M2-01af): the launch override on in-repo launch paths (request lines keep the path only) AND the WARN threshold on every logging appender (the only thing that stops GraphHopper's RouteResource INFO line, which carries the waypoints). Launches outside the repo are not controlled.",
+      "reason": "M2-01af amendment: passed with a reduced limit. The API and thumbnail-worker log audit from M2-01k-c2 is unchanged. The engine side now holds by the serving profile itself and the request shape: the profile disables the request log and pins com.graphhopper.resources, http and navigation to OFF, and the adapter sends POST /route with a JSON body so waypoints never reach a request line. On the real engine with that profile, no launch override and root and console at INFO, route, spt, isochrone and navigate requests log 0 planted coordinates; removing any pin leaks (MP1, MP2, MP4, MP5). Limits: DEBUG is not claimed safe; the guard sees only in-repo profiles; other GraphHopper INFO emitters were identified by name as import/startup code and not content-checked; the deployed graph in .geo-build still runs the old profile copy, protected by the helper override and WARN threshold, until M2-01ak replaces it.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2597,15 +2612,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-c2",
-        "date": "2026-09-24",
-        "previousVerdict": "partial",
-        "previousReason": "Course/routing/track route tests discard logs; no assertion on them.",
+        "node": "M2-01af",
+        "date": "2026-09-25",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-c2 amendment: passed with limits. The API and thumbnail worker log streams are audited (no coordinate, waypoint, object key, token or body; trace id and version on every line), each forbidden kind killed by a mutant. Independent review found the routing engine's default Dropwizard access log wrote exact waypoints (GET /route?...&point=lat,lon); every in-repo engine launch now passes -Ddw.server.request_log.type=external through one helper, proven on the real engine. Limits: protection depends on two things until the serving profile is rebuilt (M2-01af): the launch override on in-repo launch paths (request lines keep the path only) AND the WARN threshold on every logging appender (the only thing that stops GraphHopper's RouteResource INFO line, which carries the waypoints). Launches outside the repo are not controlled.",
         "executed": [
-          "log audit helper @workout/server-courses/log-audit over real API/worker streams: six route test files (per-file minimum lines), course-log-redaction with leaky adapters, course-lifecycle and activity-track-lifecycle integration, thumbnail worker (7 outcomes + failure event)",
-          "17 code mutants (MA1-MA9, MW1-MW7, MI1) each fail",
-          "real GraphHopper 10.0 probe scripts/probe-routing-engine-logs.mts through the shared launch helper: 0 planted coordinates; EM1 (override removed) and EM2/EM4 (threshold INFO) fail",
-          "guard test packages/tooling/tests/graphhopper-launch.test.mjs 9/9: every launch path uses the helper, every appender threshold WARN or higher, strict fail-closed profile grammar; independent review bypasses X1-X3, B1-B3, U1, U3 all refused"
+          "scripts/probe-routing-engine-logs.mts on the real GraphHopper 10.0 engine under the harness lock: new serving profile through the helper (R1) and with root and console at INFO and no launch override (R8), sending POST /route, out-of-bounds, /spt, /isochrone and /navigate with planted synthetic points: 0 planted coordinates; the old GET request control leaks",
+          "packages/tooling/tests/graphhopper-launch.test.mjs (strict profile grammar shared by the launch helper and the guard; request_log appenders [] and the resources, http and navigation packages at OFF or WARN+), build-routing-graph.test.mjs, routing adapter/endpoint/service/manifest and apps/api routing-deployment tests",
+          "mutants MP1 (profile request_log removed), MP2 (resources INFO), MP4 (class pins only), MP5 (navigation pin removed) fail the engine probe at root INFO and the guard; MP3, MF2, MF4, MA1 (adapter back to GET) fail their tests",
+          "rollout probe 8/8, swap 24/24 and operational 26/26 on a scratch deployment of the round-2 profile (cdc22d00…, before the navigation pin; the final profile differs by that one logger line) (routing-profile-rollout.json, routing-swap-and-bounds-m2-01af.json, routing-operational-m2-01af.json; not persisted, the deployed graph is still c57f12f5975347e8); two rounds of independent review re-ran the engine checks"
         ]
       }
     },

@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01af",
+  "measuredAt": "2026-09-24T20:43:20.514Z",
+  "what": "Blue/green rollout from the served graph on the pre-M2-01af serving profile to a full re-import on the new one, through the production API composition, fixture OIDC and an isolated PostgreSQL. Not a coverage review.",
+  "machine": {
+    "label": "this machine (desktop), single caller",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "node": "v24.12.0"
+  },
+  "deployment": {
+    "deployment": "relocated (ROUTING_GRAPH_ROOT)",
+    "note": "Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still c57f12f5975347e8 (.geo-build/routing-graph).",
+    "servedGraphBuildId": "c57f12f5975347e8"
+  },
+  "graphs": {
+    "old": {
+      "root": ".geo-build/routing-graph",
+      "graphBuildId": "c57f12f5975347e8",
+      "profileConfigSha256": "e72537c13ecc3fd70dc2197822ff1c247fa5fd8ab37763683419174b2730e37d",
+      "graphImportedAt": "2026-09-21T14:09:12.000Z",
+      "graphContentSha256": "c5fbcdecf780a5052c97e6e063ab88294523b38f691b2cf3b6a8629578a12499"
+    },
+    "new": {
+      "root": "relocated (ROUTING_GRAPH_ROOT)",
+      "graphBuildId": "844e72c4db12082a",
+      "profileConfigSha256": "cdc22d00cafb85e0df76ce7a34a618671c34df772effc13b243ba1d9bb7ee86f",
+      "graphImportedAt": "2026-09-24T20:43:11.000Z",
+      "graphContentSha256": "73d6f9ddfd45e20a65f1e16247cc7862e19af1ae3ea3cd043d15bbd23581e6f2",
+      "note": "Full re-import of the same allowlisted extract with the M2-01af serving profile; not newer map data."
+    }
+  },
+  "observations": {
+    "switchUnderLoad": {
+      "seen": [
+        {
+          "index": 0,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 1,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 2,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 3,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 4,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 5,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 6,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        }
+      ],
+      "result": {
+        "from": "c57f12f5975347e8",
+        "to": "844e72c4db12082a"
+      },
+      "moveMilliseconds": 103
+    },
+    "admissionBeforeRollback": {
+      "historyCleared": 10,
+      "permitsHeld": 0
+    },
+    "rollbackUnderLoad": {
+      "seen": [
+        {
+          "index": 0,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 1,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 2,
+          "startedAfterMove": false,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "844e72c4db12082a"
+        },
+        {
+          "index": 3,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 4,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        },
+        {
+          "index": 5,
+          "startedAfterMove": true,
+          "status": 200,
+          "outcome": "route_computed",
+          "graph": "c57f12f5975347e8"
+        }
+      ],
+      "result": {
+        "from": "844e72c4db12082a",
+        "to": "c57f12f5975347e8"
+      },
+      "moveMilliseconds": 3
+    }
+  },
+  "checks": [
+    {
+      "id": "green-is-a-full-reimport-on-the-new-profile",
+      "passed": true,
+      "detail": "old c57f12f5975347e8 profile e72537c13ecc / new 844e72c4db12082a profile cdc22d00cafb (repository cdc22d00cafb); same extract 7e13e2adf102; imported 2026-09-21T14:09:12.000Z / 2026-09-24T20:43:11.000Z"
+    },
+    {
+      "id": "override-only-where-the-profile-leaves-the-request-log-on",
+      "passed": true,
+      "detail": "blue with override, green without override"
+    },
+    {
+      "id": "course-saved-on-the-old-graph",
+      "passed": true,
+      "detail": "1:null 2:c57f12f5975347e8"
+    },
+    {
+      "id": "new-graph-refused-with-the-old-profile",
+      "passed": true,
+      "detail": "switch to the new graph with the old profile copy: PROFILE_CONFIG_MISMATCH; active c57f12f5975347e8"
+    },
+    {
+      "id": "switch-to-the-new-profile-is-one-step-under-load",
+      "passed": true,
+      "detail": "0:200:route_computed:old 1:200:route_computed:old 2:200:route_computed:old 3:200:route_computed:old 4*:200:route_computed:new 5*:200:route_computed:new 6*:200:route_computed:new (103 ms, * = started after it returned)"
+    },
+    {
+      "id": "course-graph-acknowledgement-rechecked",
+      "passed": true,
+      "detail": "stored after the switch 1:null:9836ddf3 2:old:f1b69727; proposal on new; save acknowledging old->old 409; old->new 200; stored now 1:null 2:old 3:new"
+    },
+    {
+      "id": "rollback-to-the-old-profile-is-one-step-under-load",
+      "passed": true,
+      "detail": "0:200:route_computed:new 1:200:route_computed:new 2:200:route_computed:new 3*:200:route_computed:old 4*:200:route_computed:old 5*:200:route_computed:old (3 ms, * = started after it returned)"
+    },
+    {
+      "id": "no-engine-logged-a-waypoint",
+      "passed": true,
+      "detail": "waypoint hits: blue 0, green 0; request lines: blue 0, green 0"
+    }
+  ],
+  "result": "all_checks_passed"
+}

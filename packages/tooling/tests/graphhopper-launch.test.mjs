@@ -6,19 +6,30 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   REQUEST_LOG_OVERRIDE,
+  blockLines,
   graphhopperJavaArguments,
+  isQuietProfileLine as isQuiet,
   profileDisablesRequestLog,
+  profileLines,
+  refuseProfileLine as refuse,
+  requestLogSetting,
 } from '../../../scripts/geo/graphhopper-launch.mjs';
 
 /**
- * M2-01k-c2: no GraphHopper launch writes waypoints to the engine's log.
+ * M2-01k-c2, M2-01af: no GraphHopper launch writes waypoints to the engine's log.
  *
- * Two things keep them out, and this file guards both:
+ * What keeps them out, and this file guards each:
  *
- * 1. The launch override: request lines go to the application logger without the query.
- *    Every launch in the repository must be built by the helper that adds it.
- * 2. Every console/file appender threshold of each GraphHopper profile at WARN or higher.
- *    `RouteResource` prints the waypoints at INFO, and only the threshold stops that line.
+ * 1. The serving profile itself (M2-01af): `server.request_log.appenders: []` switches the
+ *    request log off, and `logging.loggers` pins `RouteResource` (which prints each route
+ *    request's points at INFO) to WARN or higher. That holds for any launch of the profile,
+ *    with or without the repository's helper.
+ * 2. Every console/file appender threshold of each GraphHopper profile at WARN or higher, a
+ *    second layer under the logger pin.
+ * 3. For a profile that does not switch the request log off itself (the M2-01d measurement
+ *    profile, and serving-profile copies deployed before M2-01af), the launch override:
+ *    request lines go to the application logger without the query. Every launch in the
+ *    repository must be built by the helper that adds it.
  */
 const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const geoDirectory = join(repositoryRoot, 'scripts/geo');
@@ -32,17 +43,20 @@ afterEach(async () => {
   await Promise.all(scratch.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-function argumentsFor(configPath) {
+const logProbe = 'scripts/probe-routing-engine-logs.mts';
+
+function argumentsFor(configPath, extra = {}) {
   return graphhopperJavaArguments({
     jarPath: '/jar/graphhopper-web.jar',
     configPath,
     extractPath: '/extract.osm.pbf',
     graphPath: '/graph',
+    ...extra,
   });
 }
 
 // ---------------------------------------------------------------------------------------
-// Appender thresholds, read by a strict line grammar that fails closed.
+// Profile logging settings, read by a strict line grammar that fails closed.
 //
 // Why a grammar and not a YAML parser: no YAML parser is a dependency of this workspace (the
 // only copy is js-yaml as a transitive dependency under node_modules/.pnpm, which the
@@ -54,99 +68,119 @@ function argumentsFor(configPath) {
 // CRLF or a BOM — throws. A spelling YAML accepts but this grammar does not know is refused,
 // never skipped.
 //
-// Rules (re-checks of trees 29167499 and 73b11518):
+// Rules (re-checks of trees 29167499 and 73b11518, extended in M2-01af):
 //
 // - Column 0 holds only comments, blank lines and `graphhopper:`, `server:`, `logging:` —
 //   the exact top-level keys the profiles use — each at most once (Jackson keeps the last of
 //   duplicate keys, so a second `logging` would replace the block read here).
-// - `logging:` holds `level:` and `appenders:` at most once each, and nothing else.
-//   `loggers:` is refused rather than read: its entries carry their own `appenders`, and with
-//   `additive: false` they bypass the root ones, so a per-logger INFO console for
-//   `RouteResource` would print waypoints while every root appender reads WARN. Reading it
-//   correctly means reproducing Dropwizard's inheritance; refusing it makes any per-logger
-//   configuration a reviewed change to this guard. No profile uses it today.
+// - `logging:` holds `level:`, `loggers:` and `appenders:` at most once each, and nothing
+//   else. Each line belongs to the section opened last.
+// - `loggers:` (M2-01af) holds only the string form `    <java.logger.name>: <LEVEL>`, each
+//   logger at most once. That form sets a level and nothing else: the logger keeps the root
+//   appenders, so their thresholds still apply. The object form (`level`, `additive`,
+//   its own `appenders`) is refused rather than read: with `additive: false` a per-logger
+//   INFO console for `RouteResource` would print waypoints while every root appender reads
+//   WARN (re-check tree 29167499, X1). Reading it correctly means reproducing Dropwizard's
+//   inheritance; refusing it makes any per-logger appender a reviewed change to this guard.
 // - `appenders:` is a block list. Each item starts `    - type: <word>`. Its fields are
 //   `      <key>: <plain value>` with a letters-only key, each key at most once, and a plain
 //   value that starts with no YAML indicator. `threshold` must be one of the log levels.
+// - `server:` (M2-01af) is read for one thing, `request_log`. Its direct keys must be spelled
+//   `  <snake_case>:` with nothing after the colon, each at most once, so no other spelling of
+//   `request_log` (quoted, flow, merge key, inline value) can sit beside the one read here.
+//   `request_log:` may hold exactly one line, `    appenders: []`, and nothing else.
 
 const SAFE_THRESHOLDS = new Set(['WARN', 'ERROR', 'OFF']);
-const TOP_LEVEL_KEYS = new Set(['graphhopper', 'server', 'logging']);
 const LEVEL = '(?:ALL|TRACE|DEBUG|INFO|WARN|ERROR|OFF)';
 const PLAIN_VALUE = String.raw`[A-Za-z0-9_/.][A-Za-z0-9_/.:+-]*`;
+const JAVA_NAME = String.raw`[a-z][A-Za-z0-9_$]*(?:\.[A-Za-z][A-Za-z0-9_$]*)*`;
 const LOGGING_LINE_SHAPES = [
   { kind: 'level', pattern: new RegExp(`^ {2}level: (${LEVEL})$`) },
+  { kind: 'loggers', pattern: /^ {2}loggers:$/ },
   { kind: 'appenders', pattern: /^ {2}appenders:$/ },
+  { kind: 'logger', pattern: new RegExp(`^ {4}(${JAVA_NAME}): (${LEVEL})$`) },
   { kind: 'item', pattern: /^ {4}- type: ([a-z][a-z-]*)$/ },
   { kind: 'threshold', pattern: new RegExp(`^ {6}threshold: (${LEVEL})$`) },
   { kind: 'field', pattern: new RegExp(`^ {6}([A-Za-z]+): (${PLAIN_VALUE})$`) },
 ];
+/**
+ * The GraphHopper 10.0 packages whose loggers write request content at INFO (M2-01af review,
+ * jar bytecode and the real engine): the HTTP resources (`RouteResource`, `SPTResource`,
+ * `IsochroneResource`, `MapMatchingResource` log the request's points) and the exception
+ * mappers (`MultiExceptionMapper`, `IllegalArgumentExceptionMapper` quote the failing point).
+ * Pinned whole: a class-by-class list missed `SPTResource`, and the review saw it print a
+ * planted waypoint with the root level at INFO. `resources` and `http` log nothing at WARN or
+ * ERROR; `navigation` is listed below.
+ */
+export const RESOURCES_PACKAGE = 'com.graphhopper.resources';
+export const REQUEST_CONTENT_PACKAGES = [
+  RESOURCES_PACKAGE,
+  'com.graphhopper.http',
+  // Review round 2: NavigateResource (registered by GraphHopperApplication, not the bundle)
+  // logs the request's points at INFO. Pinning the package also drops its one ERROR and
+  // NavigateResponseConverter's one WARN; the adapter never calls /navigate.
+  'com.graphhopper.navigation',
+];
 
-function refuse(code, line) {
-  throw new Error(line === undefined ? code : `${code}: ${JSON.stringify(line.slice(0, 60))}`);
-}
+/**
+ * @returns {{
+ *   level: string | null,
+ *   appenders: { type: string, threshold: string | null }[],
+ *   loggers: Map<string, string>,
+ * }}
+ */
+export function loggingSettings(profileText) {
+  const { lines, starts } = profileLines(profileText);
+  const loggingStart = starts.get('logging');
+  if (loggingStart === undefined) refuse('PROFILE_HAS_NO_LOGGING_BLOCK');
 
-/** @returns {{ type: string, threshold: string | null }[]} */
-export function loggingAppenders(profileText) {
-  if (profileText.startsWith('\uFEFF')) refuse('BOM_NOT_ACCEPTED');
-  if (profileText.includes('\r')) refuse('CARRIAGE_RETURN_NOT_ACCEPTED');
-  if (profileText.includes('\t')) refuse('TAB_NOT_ACCEPTED');
-  // SnakeYAML also breaks lines on NEL (U+0085), LS (U+2028) and PS (U+2029), so a comment
-  // line split here only on `\n` could carry live YAML (re-check tree f7ccdc6a). The profiles
-  // are pure ASCII: refuse everything outside printable ASCII and `\n`.
-  if (/[^\x20-\x7E\n]/.test(profileText)) refuse('NON_ASCII_OR_CONTROL_CHARACTER');
-  const lines = profileText.split('\n');
-  const isQuiet = (line) => line.trim() === '' || /^\s*#/.test(line);
-
-  // Top level: an exact set of keys, each once.
-  const seen = new Set();
-  let loggingStart = -1;
-  for (const [index, line] of lines.entries()) {
-    if (isQuiet(line) || /^ /.test(line)) continue;
-    const key = /^([a-z]+):$/.exec(line)?.[1];
-    if (key === undefined || !TOP_LEVEL_KEYS.has(key)) refuse('UNREADABLE_TOP_LEVEL_LINE', line);
-    if (seen.has(key)) throw new Error(`DUPLICATE_TOP_LEVEL_KEY: ${key}`);
-    seen.add(key);
-    if (key === 'logging') loggingStart = index;
-  }
-  if (loggingStart === -1) refuse('PROFILE_HAS_NO_LOGGING_BLOCK');
-
-  // Inside `logging:`: every line matches exactly one allowed shape.
+  // Inside `logging:`: every line matches exactly one allowed shape, in the right section.
   const appenders = [];
-  let levelSeen = false;
-  let appendersSeen = false;
+  const loggers = new Map();
+  /** @type {string | null} */
+  let level = null;
+  const seenKeys = new Set();
+  /** @type {'none' | 'loggers' | 'appenders'} */
+  let section = 'none';
   /** @type {Set<string> | null} */
   let fieldsOfItem = null;
-  for (const line of lines.slice(loggingStart + 1)) {
-    if (/^\S/.test(line) && !isQuiet(line)) break;
+  for (const line of blockLines(lines, loggingStart)) {
     if (isQuiet(line)) continue;
     const shape = LOGGING_LINE_SHAPES.find(({ pattern }) => pattern.test(line));
     if (shape === undefined) {
       const key = /^ {2}([a-z]+):/.exec(line)?.[1];
-      if (key !== undefined && key !== 'level' && key !== 'appenders')
+      if (key !== undefined && !['level', 'loggers', 'appenders'].includes(key))
         throw new Error(`UNREVIEWED_LOGGING_KEY: ${key}`);
       refuse('UNREADABLE_LOGGING_LINE', line);
     }
     const match = shape.pattern.exec(line) ?? [];
+    if (shape.kind === 'level') level = match[1] ?? null;
     switch (shape.kind) {
       case 'level':
-        if (levelSeen) refuse('DUPLICATE_LOGGING_KEY', 'level');
-        levelSeen = true;
-        fieldsOfItem = null;
-        break;
+      case 'loggers':
       case 'appenders':
-        if (appendersSeen) refuse('DUPLICATE_LOGGING_KEY', 'appenders');
-        appendersSeen = true;
+        if (seenKeys.has(shape.kind)) refuse('DUPLICATE_LOGGING_KEY', shape.kind);
+        seenKeys.add(shape.kind);
+        section = shape.kind === 'level' ? 'none' : shape.kind;
         fieldsOfItem = null;
         break;
+      case 'logger': {
+        if (section !== 'loggers') refuse('LOGGER_OUTSIDE_LOGGERS', line);
+        const name = match[1] ?? '';
+        if (loggers.has(name)) refuse('DUPLICATE_LOGGER', name);
+        loggers.set(name, match[2] ?? '');
+        break;
+      }
       case 'item':
-        if (!appendersSeen) refuse('APPENDER_OUTSIDE_APPENDERS', line);
+        if (section !== 'appenders') refuse('APPENDER_OUTSIDE_APPENDERS', line);
         appenders.push({ type: match[1] ?? '', threshold: null });
         fieldsOfItem = new Set(['type']);
         break;
       case 'threshold':
       case 'field': {
         const key = shape.kind === 'threshold' ? 'threshold' : (match[1] ?? '');
-        if (fieldsOfItem === null) refuse('APPENDER_FIELD_BEFORE_ITEM', line);
+        if (section !== 'appenders' || fieldsOfItem === null)
+          refuse('APPENDER_FIELD_BEFORE_ITEM', line);
         if (fieldsOfItem.has(key)) refuse('DUPLICATE_APPENDER_FIELD', key);
         fieldsOfItem.add(key);
         const current = appenders.at(-1);
@@ -156,8 +190,14 @@ export function loggingAppenders(profileText) {
       }
     }
   }
-  if (!appendersSeen || appenders.length === 0) refuse('PROFILE_HAS_NO_APPENDERS');
-  return appenders;
+  if (!seenKeys.has('appenders') || appenders.length === 0) refuse('PROFILE_HAS_NO_APPENDERS');
+  if (seenKeys.has('loggers') && loggers.size === 0) refuse('EMPTY_LOGGERS');
+  return { level, appenders, loggers };
+}
+
+/** @returns {{ type: string, threshold: string | null }[]} */
+export function loggingAppenders(profileText) {
+  return loggingSettings(profileText).appenders;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -232,10 +272,10 @@ async function launchOffenders() {
       const rules = launchRules(chunk);
       if (rules.length === 0) continue;
       const where = relative(repositoryRoot, path);
-      if (path === runbookPath) {
-        // The one documented manual launch: it must carry the override.
-        if (!chunk.includes(REQUEST_LOG_OVERRIDE))
-          offenders.push(`${where}: runbook without override`);
+      // Documentation has no helper to call: a raw `java` launch there (the runbook's before
+      // M2-01af) is an offender. The runbook launches through the helper's command line.
+      if (path.endsWith('.md')) {
+        offenders.push(`${where}: documented java launch (use the helper's command line)`);
         continue;
       }
       const problem = codeLaunchProblem(text, chunk, rules);
@@ -267,42 +307,118 @@ export function codeLaunchProblem(fileText, chunk, rules = launchRules(chunk)) {
   return null;
 }
 
+async function graphhopperProfiles() {
+  const profiles = (await readdir(geoDirectory)).filter((name) =>
+    /^graphhopper-.*\.ya?ml$/.test(name),
+  );
+  expect(profiles).toContain('graphhopper-foot-serving.yml');
+  return profiles;
+}
+
 describe('GraphHopper launch arguments', () => {
-  it('disable the request log for the deployed serving profile, before -jar', () => {
+  it('add no request-log override for the serving profile, which switches the log off itself', () => {
     const args = argumentsFor(servingProfile);
-    expect(args).toContain(REQUEST_LOG_OVERRIDE);
-    // A JVM system property after -jar would be an application argument and do nothing.
-    expect(args.indexOf(REQUEST_LOG_OVERRIDE)).toBeLessThan(args.indexOf('-jar'));
+    // M2-01af: the profile is safe on its own, so the helper adds nothing that disagrees
+    // with it. Dropwizard refuses `appenders` under the `external` type the override selects.
+    expect(args).not.toContain(REQUEST_LOG_OVERRIDE);
+    expect(args.filter((arg) => arg.startsWith('-Ddw.server.request_log'))).toEqual([]);
     expect(args.slice(-2)).toEqual(['server', servingProfile]);
-    // The helper never touches logging: a logging override could lower a threshold.
+    // The helper never touches logging: a logging override could lower a threshold or
+    // unpin a logger.
     expect(args.filter((arg) => arg.startsWith('-Ddw.logging'))).toEqual([]);
   });
 
-  it('leave the override out once a profile disables the request log itself', async () => {
+  it('add the override, before -jar, for a profile that leaves the request log on', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'gh-launch-'));
     scratch.push(directory);
-    const profile = join(directory, 'serving.yml');
+    // The M2-01d measurement profile, and serving-profile copies deployed before M2-01af.
+    const measurement = join(geoDirectory, 'graphhopper-foot.yml');
+    const withoutSetting = join(directory, 'serving-before-m2-01af.yml');
     const text = await readFile(servingProfile, 'utf8');
-    const disabled = text.replace(/^server:\n/m, 'server:\n  request_log:\n    appenders: []\n');
-    await writeFile(profile, disabled);
-    expect(profileDisablesRequestLog(disabled)).toBe(true);
-    expect(argumentsFor(profile)).not.toContain(REQUEST_LOG_OVERRIDE);
+    const enabled = text.replace('  request_log:\n    appenders: []\n', '');
+    expect(enabled).not.toBe(text);
+    await writeFile(withoutSetting, enabled);
+    for (const profile of [measurement, withoutSetting]) {
+      const args = argumentsFor(profile);
+      expect(args, profile).toContain(REQUEST_LOG_OVERRIDE);
+      // A JVM system property after -jar would be an application argument and do nothing.
+      expect(args.indexOf(REQUEST_LOG_OVERRIDE)).toBeLessThan(args.indexOf('-jar'));
+      expect(args.filter((arg) => arg.startsWith('-Ddw.logging'))).toEqual([]);
+    }
     // A profile that merely mentions the key, or keeps appenders, is not trusted.
-    expect(profileDisablesRequestLog(text)).toBe(false);
-    expect(
+    expect(profileDisablesRequestLog(enabled)).toBe(false);
+    // A request log with appenders is not a shape the strict reader knows: refused, not trusted.
+    expect(() =>
       profileDisablesRequestLog('server:\n  request_log:\n    appenders:\n      - type: console\n'),
-    ).toBe(false);
+    ).toThrow('UNREVIEWED_REQUEST_LOG_LINE');
+  });
+
+  it("decide exactly as the guard's strict reader does, for every GraphHopper profile", async () => {
+    for (const name of await graphhopperProfiles()) {
+      const text = await readFile(join(geoDirectory, name), 'utf8');
+      expect(profileDisablesRequestLog(text), name).toBe(requestLogSetting(text) === 'disabled');
+    }
+  });
+
+  /**
+   * M2-01af review F2: a file-wide pattern called each of these "disabled" and left the
+   * override out, while the strict reader said `default` or refused. Now the helper uses the
+   * strict reader, so for each one it either adds the override or refuses to build a command
+   * line at all. It never leaves the override out.
+   */
+  it('never leave the override out for a profile the strict reader does not call disabled', async () => {
+    const real = await readFile(servingProfile, 'utf8');
+    const requestLog = '  request_log:\n    appenders: []\n';
+    const enabled = real.replace(requestLog, '');
+    expect(enabled).not.toBe(real);
+    const corpus = {
+      under_graphhopper: enabled.replace('graphhopper:\n', `graphhopper:\n${requestLog}`),
+      under_logging: enabled.replace('logging:\n', `logging:\n${requestLog}`),
+      inside_block_scalar: enabled.replace(
+        'graphhopper:\n',
+        `graphhopper:\n  note: |\n  ${requestLog.replaceAll('\n  ', '\n    ')}`,
+      ),
+      second_request_log_in_server: real.replace(
+        requestLog,
+        `${requestLog}  request_log:\n    type: classic\n`,
+      ),
+      duplicate_appenders: real.replace(
+        requestLog,
+        `${requestLog}    appenders:\n      - type: console\n`,
+      ),
+      camel_case_beside: real.replace(
+        requestLog,
+        `${requestLog}  requestLog:\n    type: classic\n`,
+      ),
+      type_external_beside: real.replace(requestLog, `${requestLog}    type: external\n`),
+      second_document: `${real}---\nserver:\n  request_log:\n    type: classic\n`,
+    };
+    const directory = await mkdtemp(join(tmpdir(), 'gh-launch-corpus-'));
+    scratch.push(directory);
+    for (const [name, text] of Object.entries(corpus)) {
+      expect(text, name).not.toBe(real);
+      const profile = join(directory, `${name}.yml`);
+      await writeFile(profile, text);
+      let verdict;
+      try {
+        verdict = requestLogSetting(text);
+      } catch {
+        verdict = 'refused';
+      }
+      expect(verdict, name).not.toBe('disabled');
+      if (verdict === 'refused') expect(() => argumentsFor(profile), name).toThrow();
+      else expect(argumentsFor(profile), name).toContain(REQUEST_LOG_OVERRIDE);
+    }
   });
 });
 
-describe('GraphHopper profile appender thresholds', () => {
-  it('are WARN or higher on every appender of every GraphHopper profile', async () => {
-    const profiles = (await readdir(geoDirectory)).filter((name) =>
-      /^graphhopper-.*\.ya?ml$/.test(name),
-    );
-    expect(profiles).toContain('graphhopper-foot-serving.yml');
-    for (const name of profiles) {
-      const appenders = loggingAppenders(await readFile(join(geoDirectory, name), 'utf8'));
+describe('GraphHopper profile logging', () => {
+  const safeAppender = '    - type: console\n      threshold: WARN\n';
+  it('are WARN or higher on every appender and every logger of every GraphHopper profile', async () => {
+    for (const name of await graphhopperProfiles()) {
+      const { appenders, loggers } = loggingSettings(
+        await readFile(join(geoDirectory, name), 'utf8'),
+      );
       for (const appender of appenders)
         expect(
           { profile: name, type: appender.type, threshold: appender.threshold },
@@ -312,7 +428,95 @@ describe('GraphHopper profile appender thresholds', () => {
           type: appender.type,
           threshold: expect.toSatisfy((value) => SAFE_THRESHOLDS.has(String(value))),
         });
+      // A logger's level is a floor, not a threshold: WARN+ only, so none reads as a switch
+      // that turns verbose output back on.
+      for (const [logger, level] of loggers)
+        expect({ profile: name, logger, level }).toEqual({
+          profile: name,
+          logger,
+          level: expect.toSatisfy((value) => SAFE_THRESHOLDS.has(String(value))),
+        });
     }
+  });
+
+  /**
+   * M2-01af: the serving profile is safe by itself, for a launch that does not go through
+   * the helper. The request log is off in the file; the root level is WARN, so no INFO event
+   * is produced; and both GraphHopper packages that write request content at INFO are pinned
+   * at WARN or higher, so a root level lowered to INFO does not bring those lines back. (A
+   * more specific logger inside them could lower it again; the rule above refuses any logger
+   * below WARN.) Nothing here makes DEBUG safe.
+   */
+  it('the serving profile switches the request log off and pins the request-content packages itself', async () => {
+    const text = await readFile(servingProfile, 'utf8');
+    expect(requestLogSetting(text)).toBe('disabled');
+    const { level, loggers } = loggingSettings(text);
+    expect(level, 'the root level').toEqual(
+      expect.toSatisfy((value) => SAFE_THRESHOLDS.has(String(value))),
+    );
+    for (const logger of REQUEST_CONTENT_PACKAGES)
+      expect({ logger, level: loggers.get(logger) }, 'writes request content at INFO').toEqual({
+        logger,
+        level: expect.toSatisfy((value) => SAFE_THRESHOLDS.has(String(value))),
+      });
+  });
+
+  it('read the request log and the loggers by the same strict grammar', async () => {
+    const real = await readFile(servingProfile, 'utf8');
+    const requestLog = '  request_log:\n    appenders: []\n';
+    const pin = `    ${RESOURCES_PACKAGE}: OFF\n`;
+    expect(real.split(requestLog)).toHaveLength(2);
+    expect(real.split(pin)).toHaveLength(2);
+    const withRequestLog = (replacement) => real.replace(requestLog, replacement);
+    const withPin = (replacement) => real.replace(pin, replacement);
+
+    // Accepted: the setting absent (the default request log), and other plain loggers.
+    expect(requestLogSetting(withRequestLog(''))).toBe('default');
+    expect(requestLogSetting(real.replace(/^server:\n(?: .*\n|\n)*/m, ''))).toBe('default');
+    expect([
+      ...loggingSettings(withPin(`${pin}    org.eclipse.jetty: ERROR\n`)).loggers.keys(),
+    ]).toEqual([RESOURCES_PACKAGE, 'org.eclipse.jetty', ...REQUEST_CONTENT_PACKAGES.slice(1)]);
+
+    const refusedRequestLog = {
+      appender_list: withRequestLog('  request_log:\n    appenders:\n      - type: console\n'),
+      flow_appender: withRequestLog('  request_log:\n    appenders: [{type: console}]\n'),
+      type_beside_empty_list: withRequestLog(`${requestLog}    type: classic\n`),
+      empty_block: withRequestLog('  request_log:\n'),
+      inline_value: withRequestLog('  request_log: {appenders: []}\n'),
+      quoted_key: withRequestLog('  "request_log":\n    appenders: []\n'),
+      second_request_log: withRequestLog(`${requestLog}  request_log:\n    type: external\n`),
+      merge_key: withRequestLog(`${requestLog}  <<: *defaults\n`),
+      duplicate_empty_list: withRequestLog(`${requestLog}    appenders: []\n`),
+      three_space_indent: withRequestLog('  request_log:\n   appenders: []\n'),
+    };
+    for (const [name, text] of Object.entries(refusedRequestLog))
+      expect(() => requestLogSetting(text), name).toThrow();
+
+    const refusedLoggers = {
+      // X1 (re-check tree 29167499): a per-logger appender for RouteResource at INFO, in the
+      // object form. The root appender still reads WARN, and the real engine printed the
+      // planted waypoints.
+      X1_object_form: withPin(
+        `    ${RESOURCES_PACKAGE}.RouteResource:\n      level: INFO\n      additive: false\n` +
+          '      appenders:\n        - type: console\n          threshold: INFO\n',
+      ),
+      quoted_logger: withPin(`    "${RESOURCES_PACKAGE}": OFF\n`),
+      duplicate_logger: withPin(`${pin}    ${RESOURCES_PACKAGE}: INFO\n`),
+      unknown_level: withPin(`    ${RESOURCES_PACKAGE}: QUIET\n`),
+      quoted_level: withPin(`    ${RESOURCES_PACKAGE}: "OFF"\n`),
+      flow_loggers: real.replace(
+        / {2}loggers:\n {4}.*\n/,
+        `  loggers: {${RESOURCES_PACKAGE}: OFF}\n`,
+      ),
+      second_loggers: real.replace('  appenders:\n', `  loggers:\n${pin}  appenders:\n`),
+      logger_among_appenders: real.replace(
+        safeAppender,
+        `${safeAppender}    org.eclipse.jetty: ERROR\n`,
+      ),
+      empty_loggers: real.replace(/( {2}loggers:\n)(?: {4}.*\n)+/, '$1'),
+    };
+    for (const [name, text] of Object.entries(refusedLoggers))
+      expect(() => loggingSettings(text), name).toThrow();
   });
 
   it('read every appender, so one safe appender cannot hide an unsafe one', () => {
@@ -339,13 +543,14 @@ describe('GraphHopper profile appender thresholds', () => {
     const safe = profile('    - type: console\n      threshold: WARN\n');
     expect(loggingAppenders(safe)).toEqual([{ type: 'console', threshold: 'WARN' }]);
     // X1 (re-check tree 29167499): a per-logger appender for RouteResource at INFO. The root
-    // appender still reads WARN, and the real engine printed the planted waypoints.
+    // appender still reads WARN, and the real engine printed the planted waypoints. Only the
+    // string form of a logger is read (M2-01af); the object form stays refused.
     expect(() =>
       loggingAppenders(
         `${safe}  loggers:\n    com.graphhopper.resources.RouteResource:\n      level: INFO\n` +
           '      additive: false\n      appenders:\n        - type: console\n          threshold: INFO\n',
       ),
-    ).toThrow('UNREVIEWED_LOGGING_KEY: loggers');
+    ).toThrow('UNREADABLE_LOGGING_LINE');
     // X2: a second top-level `logging:` at the end. Jackson keeps the last duplicate key.
     expect(() =>
       loggingAppenders(
@@ -390,7 +595,7 @@ describe('GraphHopper profile appender thresholds', () => {
         '  appenders: [{type: console, threshold: INFO}]\n',
       ),
       nested_appender_field: replaced(`${safeLine}      layout:\n        type: json\n`),
-      duplicate_logging_level: real.replace('  level: INFO\n', '  level: INFO\n  level: DEBUG\n'),
+      duplicate_logging_level: real.replace('  level: WARN\n', '  level: WARN\n  level: DEBUG\n'),
       unknown_top_level_key: `${real}metrics:\n  frequency: 1m\n`,
       // Re-check tree f7ccdc6a: YAML line breaks this reader does not split on.
       U1_line_separator_in_comment: replaced(
@@ -451,8 +656,28 @@ describe('GraphHopper launches in the repository', () => {
     expect(codeLaunchProblem(dashJar, dashJar)).not.toBeNull();
   });
 
-  it('go through the helper everywhere, and the runbook snippet carries the override', async () => {
+  it('go through the helper everywhere, the runbook included', async () => {
     expect(await launchOffenders()).toEqual([]);
+  });
+
+  it("leave the helper's request-log decision to the profile, except in the log probe", async () => {
+    // `requestLogOverride` lets the engine-log probe run a profile with and without the
+    // override. A launcher that passed it could start a profile that leaves the request log
+    // on without the override.
+    const allowed = new Set([helperPath, thisFile, join(repositoryRoot, logProbe)]);
+    const offenders = [];
+    for (const path of await repositoryFiles()) {
+      if (allowed.has(path) || !CODE_FILE.test(basename(path))) continue;
+      const text = await readFile(path, 'utf8').catch(() => '');
+      if (text.includes('requestLogOverride')) offenders.push(relative(repositoryRoot, path));
+    }
+    expect(offenders).toEqual([]);
+    expect(() => argumentsFor(servingProfile, { requestLogOverride: 'sometimes' })).toThrow(
+      'UNKNOWN_REQUEST_LOG_OVERRIDE_CHOICE',
+    );
+    expect(argumentsFor(servingProfile, { requestLogOverride: 'add' })).toContain(
+      REQUEST_LOG_OVERRIDE,
+    );
   });
 
   it('are found where they actually are: the known launchers are scanned, not skipped', async () => {
@@ -460,14 +685,18 @@ describe('GraphHopper launches in the repository', () => {
     for (const launcher of [
       'scripts/build-routing-graph.mts',
       'scripts/probe-routing-engines.mjs',
-      'scripts/probe-routing-engine-logs.mts',
+      logProbe,
       'docs/implementation/operations-runbook.md',
       'package.json',
     ])
       expect(scanned).toContain(launcher);
+    // The runbook's manual launch is the helper's command line, in a code block that is
+    // scanned like any other.
     const runbook = await readFile(runbookPath, 'utf8');
     expect(
-      launchableChunks(runbookPath, runbook).some((chunk) => launchRules(chunk).length > 0),
+      launchableChunks(runbookPath, runbook).some((chunk) =>
+        /\bnode scripts\/geo\/graphhopper-launch\.mjs\b/.test(chunk),
+      ),
     ).toBe(true);
   });
 });

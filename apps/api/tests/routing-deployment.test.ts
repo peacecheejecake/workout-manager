@@ -116,7 +116,7 @@ const local = () => ({ admission: new TenantAdmissionControl({ now: () => Date.n
 function engine(info: typeof engineInfo = engineInfo) {
   const calls: string[] = [];
   const transport: RoutingEngineTransport = {
-    async get(request) {
+    async send(request) {
       calls.push(request.path);
       const body = request.path === '/info' ? info : realAnswer;
       return { status: 200, bodyText: JSON.stringify(body), truncated: false, byteLength: 1 };
@@ -288,10 +288,10 @@ describe('blue/green graph replacement (M2-01k-e)', () => {
     const blueReleases: (() => void)[] = [];
     let holdBlue = false;
     const transportFactory = (endpoint: RoutingEngineEndpoint): RoutingEngineTransport => {
-      const port = endpoint.resolve('/info', new URLSearchParams()).port;
+      const port = endpoint.resolve('/info').port;
       const which = port === '8991' ? state.blue : state.green;
       return {
-        async get(input) {
+        async send(input) {
           if (!which.up) throw new RoutingTransportError('ENGINE_UNREACHABLE');
           if (input.path === '/info')
             return {

@@ -16,22 +16,42 @@ export interface RoutingEngineResponse {
 export class RoutingTransportError extends Error {
   constructor(
     readonly code:
-      'ENGINE_UNREACHABLE' | 'ENGINE_REDIRECTED' | 'ENGINE_RESPONSE_TOO_LARGE' | 'ENGINE_ABORTED',
+      | 'ENGINE_UNREACHABLE'
+      | 'ENGINE_REDIRECTED'
+      | 'ENGINE_RESPONSE_TOO_LARGE'
+      | 'ENGINE_ABORTED'
+      /** A method and path that do not belong together; nothing was sent. */
+      | 'ENGINE_REQUEST_SHAPE_REFUSED',
   ) {
     super(code);
     this.name = 'RoutingTransportError';
   }
 }
 
-export interface RoutingEngineTransportRequest {
-  readonly path: string;
-  readonly query: URLSearchParams;
+/** A JSON object body. The transport serialises it; callers never build request text. */
+export type RoutingEngineJsonBody = Readonly<Record<string, unknown>>;
+
+/**
+ * One call to the engine. Which method goes with which path is part of the type, and the
+ * transport checks it again at run time.
+ *
+ * A route request carries the user's waypoints, so it is a POST with a JSON body
+ * (M2-01af). A request line (method, path, query string) is exactly what an access log
+ * writes, and Dropwizard's default request log writes one for every call. With the
+ * waypoints in the body, an engine launched without the repository's logging settings has
+ * nothing to leak there. `/info` and `/health` carry nothing and stay GETs. No request has
+ * a query string: the endpoint cannot build one.
+ */
+export type RoutingEngineTransportRequest = {
   readonly signal: AbortSignal;
   readonly maxBytes: number;
-}
+} & (
+  | { readonly method: 'GET'; readonly path: '/info' | '/health' }
+  | { readonly method: 'POST'; readonly path: '/route'; readonly json: RoutingEngineJsonBody }
+);
 
 export interface RoutingEngineTransport {
-  get(request: RoutingEngineTransportRequest): Promise<RoutingEngineResponse>;
+  send(request: RoutingEngineTransportRequest): Promise<RoutingEngineResponse>;
 }
 
 type FetchLike = (input: URL, init: RequestInit) => Promise<Response>;
@@ -46,15 +66,27 @@ export function createFetchRoutingTransport(
   fetchImplementation: FetchLike = (input, init) => fetch(input, init),
 ): RoutingEngineTransport {
   return {
-    async get({ path, query, signal, maxBytes }) {
-      const url = endpoint.resolve(path, query);
+    async send(request) {
+      const { path, signal, maxBytes } = request;
+      // The type pairs them already; this also holds for JavaScript callers and casts.
+      const shapeHolds =
+        request.method === 'POST'
+          ? path === '/route' && typeof request.json === 'object' && request.json !== null
+          : request.method === 'GET' && (path === '/info' || path === '/health');
+      if (!shapeHolds) throw new RoutingTransportError('ENGINE_REQUEST_SHAPE_REFUSED');
+      const url = endpoint.resolve(path);
       let response: Response;
       try {
         response = await fetchImplementation(url, {
-          method: 'GET',
+          method: request.method,
           redirect: 'error',
           credentials: 'omit',
-          headers: { accept: 'application/json' },
+          ...(request.method === 'POST'
+            ? {
+                headers: { accept: 'application/json', 'content-type': 'application/json' },
+                body: JSON.stringify(request.json),
+              }
+            : { headers: { accept: 'application/json' } }),
           signal,
         });
       } catch (error) {

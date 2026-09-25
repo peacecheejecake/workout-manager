@@ -17,13 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01k-d](progress/M2-01k-d.md)를 완료했다. S09가 지도·그래프·요약 pane을 한꺼번에 mount하고 CSS로만 숨기던 결함을 고쳐, 각
-pane은 처음 보일 때 mount하고 숨겨도 유지한다. 태블릿은 세 pane을 쌓지 않고 지도|그래프 전환과 옆 요약을 쓴다. 두 shell에서 지도
-코드가 경로 탭 전에는 오지 않음, unmount 때 WebGL·worker 상태·listener·ResizeObserver·blob URL 해제, 네 지도 화면의 외부 요청 0을
-변이와 함께 단언했다. 매트릭스 3행을 passed로 올렸다(passed 67 → 70). R-state-retention(초안 유지 미실행), P5-logout-clear(늦은
-응답 재진입은 시험한 감지 경로로 만들 수 없어 취소만 증명, 보이는 채 재확인하지 않는 탭은 미시험), R-S09(chart zoom 기능 없음)는 partial로 남겼다.
+[M2-01af](progress/M2-01af.md)를 완료했다. routing 엔진의 waypoint 로그 보호를 serving profile 자체와 요청 모양으로 옮겼다. profile은
+request log를 끄고 `com.graphhopper.resources`·`http`·`navigation` package를 OFF로 고정하며, adapter는 `POST /route`(JSON body)로 보내
+요청 줄에 좌표가 없다. 실제 엔진에서 launch override 없이 root·콘솔을 INFO로 낮춰도 route·spt·isochrone·navigate 요청이 심은 좌표를
+0개 남긴다. launch helper와 guard는 같은 엄격한 profile reader를 쓰고, graph 빌드는 서빙 중인 graph를 명시 flag 없이 덮지 않는다.
+DEBUG는 안전하다고 주장하지 않는다.
 
-직전 완료: [M2-01ai](progress/M2-01ai.md)(track parser child process 격리, F1 해소).
+직전 완료: [M2-01k-d](progress/M2-01k-d.md)(S09 pane 필요 시 mount, 지도 수명 정리).
 
 ## 운영 메모
 
@@ -31,6 +31,8 @@ pane은 처음 보일 때 mount하고 숨겨도 유지한다. 태블릿은 세 p
 - routing을 켠 API를 여러 인스턴스로 운영할 수 있다(M2-01ah). 모든 인스턴스는 같은 PostgreSQL과 같은 한도 설정을 쓰고, 047 적용
   뒤 `grantCourses`를 다시 실행한다. graph 교체는 인스턴스마다 전환하며 그동안 graph가 섞인다(runbook). 배포는 web을 API보다 먼저
   또는 함께 한다(옛 web bundle은 `timeout_may_be_no_route`를 해석하지 못한다).
+- `.geo-build`의 배포 routing graph A는 아직 옛 profile 사본으로 돈다. 저장소 helper가 request-log override와 WARN threshold를
+  자동으로 붙이므로 보호되지만, 새 profile로의 교체는 M2-01ak로 한다.
 - 후속(M2-01k-l 검토 비차단): 연결·해제 PATCH가 실패하면 keyboard focus가 body로 떨어진다. 활동 상세 재조회 중 미디어 panel을
   유지하는 gate에 시험이 없다.
 - track parser child는 컨테이너 메모리 한도 안에서 돈다. OS OOM-killer가 child를 죽이면 `TRACK_PARSE_WORKER_FAILED`로 보이고,
@@ -38,11 +40,11 @@ pane은 처음 보일 때 mount하고 숨겨도 유지한다. 태블릿은 세 p
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-m, M2-01k-n, M2-01af, M2-01ag, M2-01aj. 이 중
-M2-01k-a·b·j와 M2-01af는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01k-m·n은 M2-01k-d가 끝나 진행할 수 있다(S09 pane은 이제 처음 보일 때 mount한다).
-M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자 승인이
-필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-a, M2-01k-b, M2-01k-j, M2-01k-m, M2-01k-n, M2-01ag, M2-01aj, M2-01ak, M1-06b-tmp. 이 중
+M2-01k-a·b·j·m·n과 M2-01aj는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. M2-01ak는 공유
+`.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 의존이 풀렸지만 코드 전에 사용자
+승인이 필요하다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 남은 외부·실환경 gate
 
@@ -56,7 +58,8 @@ M2-01ag는 같은 코스 목록 pane을 바꾸는 M2-01k-a 뒤에 진행한다. 
   수집을 하는 M1-06b-tmp를 진행한다([결정 기록](research/garmin-temporary-gate.md)). EXT-G·M0-07b·M1-06b·M2-07은 그대로
   not_started이고 G2는 공식 연동을 거친다.
 - 사용자 결정(2026-09-25): 코스 공유(M2-01k-o)는 코드 전에 요구(공유 범위·ACL·철회·재식별 검토)를 먼저 작성해 승인받는다.
-  운영 OIDC는 Google을 후보로 평가한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
+  운영 OIDC는 Google을 평가했고([평가](research/ext-oidc-google-evaluation.md): Google 단독은 prompt=login·새 auth_time·OP
+  로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
   독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.
 
 다음 세션은 working tree와 위 계획을 확인하고 M2-01a/d부터 진행한다. 실제 외부·실환경

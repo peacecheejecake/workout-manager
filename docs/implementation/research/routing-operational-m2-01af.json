@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01k",
+  "measuredAt": "2026-09-24T20:43:55.611Z",
+  "what": "Production API composition (createConfiguredApi) against the self-hosted GraphHopper engine on loopback, fixture OIDC, isolated PostgreSQL. Not a coverage review.",
+  "machine": {
+    "label": "this machine (desktop), single caller",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "memoryGiB": 32,
+    "node": "v24.12.0"
+  },
+  "deployment": {
+    "deployment": "relocated (ROUTING_GRAPH_ROOT)",
+    "note": "Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still c57f12f5975347e8 (.geo-build/routing-graph).",
+    "servedGraphBuildId": "c57f12f5975347e8"
+  },
+  "graphs": {
+    "A": {
+      "graphBuildId": "844e72c4db12082a",
+      "graphImportedAt": "2026-09-24T20:43:11.000Z",
+      "graphContentSha256": "73d6f9ddfd45e20a65f1e16247cc7862e19af1ae3ea3cd043d15bbd23581e6f2",
+      "profileConfigSha256": "cdc22d00cafb85e0df76ce7a34a618671c34df772effc13b243ba1d9bb7ee86f"
+    },
+    "B": {
+      "graphBuildId": "91540e1e809a7759",
+      "graphImportedAt": "2026-09-24T20:43:42.000Z",
+      "graphContentSha256": "be8102ce80d44b1ad83b3bd751e42d85eb893fb6b70c76b5819708ce5cbc16d7",
+      "profileConfigSha256": "cdc22d00cafb85e0df76ce7a34a618671c34df772effc13b243ba1d9bb7ee86f",
+      "builtThisRun": true,
+      "importMilliseconds": 8322,
+      "note": "Re-import of the same allowlisted extract with the same engine and profile; a distinct build, not newer map data."
+    }
+  },
+  "timingsMilliseconds": {
+    "engine-start-A": [1188, 1147],
+    "engine-rss-mib-after-start-A": [273, 271],
+    "direct-route": [98],
+    "course-proposal": [25, 16, 80, 17, 90, 18],
+    "candidate-search": [119],
+    "engine-start-B": [1139],
+    "engine-rss-mib-after-start-B": [276]
+  },
+  "checks": [
+    {
+      "id": "graph-identities-distinct",
+      "passed": true,
+      "detail": "A 844e72c4db12082a / B 91540e1e809a7759"
+    },
+    {
+      "id": "graph-b-same-inputs-different-import",
+      "passed": true,
+      "detail": "import A 2026-09-24T20:43:11.000Z / B 2026-09-24T20:43:42.000Z"
+    },
+    {
+      "id": "unconfigured-routes-absent",
+      "passed": true,
+      "detail": "status 404"
+    },
+    {
+      "id": "half-configured-refuses-start",
+      "passed": true,
+      "detail": "ROUTING_CONFIGURATION_INCOMPLETE: ROUTING_GRAPH_DIRECTORY, ROUTING_ENGINE_ARTIFACT, ROUTING_PROFILE_CONFIG"
+    },
+    {
+      "id": "unverifiable-deployment-refuses-start",
+      "passed": true,
+      "detail": "PROFILE_CONFIG_MISMATCH"
+    },
+    {
+      "id": "configured-direct-route-real-engine",
+      "passed": true,
+      "detail": "status 200 route_computed graph 844e72c4db12082a distance 1281.8 m vertices 48"
+    },
+    {
+      "id": "import-has-no-graph",
+      "passed": true,
+      "detail": "imported-file"
+    },
+    {
+      "id": "proposal-real-engine-A",
+      "passed": true,
+      "detail": "status 200 route_computed"
+    },
+    {
+      "id": "proposal-changes-nothing",
+      "passed": true,
+      "detail": "revisions 1"
+    },
+    {
+      "id": "reviewed-save-under-A",
+      "passed": true,
+      "detail": "status 200"
+    },
+    {
+      "id": "candidates-real-engine-A",
+      "passed": true,
+      "detail": "{\"outcome\":\"candidates_generated\",\"candidates\":4,\"graphs\":[\"844e72c4db12082a\"],\"attemptsMade\":5,\"elapsedMilliseconds\":101,\"stoppedBecause\":\"candidate_limit\",\"engineDistances\":[1798,2013,2323,1769],\"errorRatios\":[-0.101,0.006,0.161,-0.115]}"
+    },
+    {
+      "id": "candidate-pick-saved-under-A",
+      "passed": true,
+      "detail": "status 200"
+    },
+    {
+      "id": "head-computed-on-A",
+      "passed": true,
+      "detail": "revisions 1:null 2:844e72c4db12082a 3:844e72c4db12082a"
+    },
+    {
+      "id": "pinned-api-refuses-replaced-engine",
+      "passed": true,
+      "detail": "status 502 graph_mismatch"
+    },
+    {
+      "id": "mismatch-writes-nothing",
+      "passed": true,
+      "detail": "revisions 3"
+    },
+    {
+      "id": "swap-recomputes-nothing",
+      "passed": true,
+      "detail": "revisions 1:null:d61e21bd 2:844e72c4db12082a:cb3f6fbb 3:844e72c4db12082a:9599b65c"
+    },
+    {
+      "id": "proposal-real-engine-B",
+      "passed": true,
+      "detail": "status 200 route_computed"
+    },
+    {
+      "id": "cross-graph-save-needs-acknowledgement",
+      "passed": true,
+      "detail": "status 409 {\"error\":{\"code\":\"COURSE_GRAPH_ACKNOWLEDGEMENT_STALE\"},\"requestId\":\"61aeb604-7cb"
+    },
+    {
+      "id": "acknowledged-save-on-B-appends",
+      "passed": true,
+      "detail": "status 200 head 4:91540e1e809a7759 (was 3)"
+    },
+    {
+      "id": "rollback-engine-refused-by-api-on-B",
+      "passed": true,
+      "detail": "status 502 graph_mismatch"
+    },
+    {
+      "id": "rollback-recomputes-nothing",
+      "passed": true,
+      "detail": "head 4:91540e1e809a7759"
+    },
+    {
+      "id": "rollback-returns-exact-graph-A",
+      "passed": true,
+      "detail": "route_computed 844e72c4db12082a"
+    },
+    {
+      "id": "rollback-save-keeps-history",
+      "passed": true,
+      "detail": "1:null 2:844e72c4db12082a 3:844e72c4db12082a 4:91540e1e809a7759 5:844e72c4db12082a"
+    },
+    {
+      "id": "tenant-rate-bound",
+      "passed": true,
+      "detail": "statuses 200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,429 retry-after 60"
+    },
+    {
+      "id": "rate-bound-is-per-tenant",
+      "passed": true,
+      "detail": "other tenant status 200"
+    },
+    {
+      "id": "engine-down-is-distinct-and-stores-nothing",
+      "passed": true,
+      "detail": "status 502 engine_unavailable"
+    }
+  ],
+  "findings": [
+    {
+      "id": "iterative-recompute-refused-by-proposal-quota",
+      "requirement": "S14 edit loop (move a waypoint, recompute, review) and V2-A35 rapid successive waypoint edits",
+      "expected": "Each recompute of the latest draft succeeds; only the latest draft can be saved from the editor.",
+      "observed": "12 unsaved recomputes of one course within the 30 min TTL: 1:200:route_computed:19ms 2:200:route_computed:16ms 3:200:route_computed:15ms 4:200:route_computed:17ms 5:200:route_computed:49ms 6:200:route_computed:14ms 7:200:route_computed:16ms 8:200:route_computed:15ms 9:200:route_computed:15ms 10:429:overloaded:5ms 11:429:overloaded:3ms 12:429:overloaded:3ms. The refusal comes after the engine computed the route. Unsaved siblings of a picked candidate also keep holding slots: 0 on the routed course."
+    }
+  ],
+  "result": "all_checks_passed"
+}

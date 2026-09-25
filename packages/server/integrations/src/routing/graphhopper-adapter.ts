@@ -12,7 +12,11 @@ import { z } from 'zod';
 import { haversineMeters, polylineLengthMeters } from './geo.js';
 import { assertVerifiedDeployment, type RoutingDeployment } from './deployment.js';
 import { graphBuildIdFromManifest, type RoutingGraphManifest } from './graph-manifest.js';
-import { RoutingTransportError, type RoutingEngineTransport } from './transport.js';
+import {
+  RoutingTransportError,
+  type RoutingEngineJsonBody,
+  type RoutingEngineTransport,
+} from './transport.js';
 
 /**
  * Adapter for the self-hosted GraphHopper open-source engine (selected in M2-01d).
@@ -292,9 +296,9 @@ export class GraphHopperRoutingAdapter {
   > {
     let response;
     try {
-      response = await this.#transport.get({
+      response = await this.#transport.send({
+        method: 'GET',
         path: '/info',
-        query: new URLSearchParams(),
         signal,
         maxBytes: routingLimits.maxEngineResponseBytes,
       });
@@ -460,21 +464,12 @@ export class GraphHopperRoutingAdapter {
       );
       if (engineTimeoutMilliseconds < 1) return failed('timeout', identity, warnings);
 
-      const query = new URLSearchParams({
-        profile: this.#pinned.engineProfileName,
-        'ch.disable': 'true',
-        points_encoded: 'false',
-        instructions: 'false',
-        calc_points: 'true',
-        elevation: 'false',
-        // Requested so the answer can be checked against the edges it claims to use.
-        details: 'road_class',
-        max_visited_nodes: String(this.#maxVisitedNodes),
-        // Per leg; the engine caps it at its configured `routing.timeout_ms`.
-        timeout_ms: String(engineTimeoutMilliseconds),
+      const json = graphhopperRouteBody({
+        profileName: this.#pinned.engineProfileName,
+        waypoints: request.waypoints,
+        maxVisitedNodes: this.#maxVisitedNodes,
+        engineTimeoutMilliseconds,
       });
-      for (const [longitude, latitude] of request.waypoints)
-        query.append('point', `${latitude},${longitude}`);
 
       // The engine connection's own bound: the deadline plus a grace period, and only then
       // is it cut. Until then it stays open so the engine's real finish is observed.
@@ -485,9 +480,10 @@ export class GraphHopperRoutingAdapter {
       );
       const routeStartedAt = this.#clock.now().getTime();
       const routeCall = this.#transport
-        .get({
+        .send({
+          method: 'POST',
           path: '/route',
-          query,
+          json,
           signal: hardStop.signal,
           maxBytes: routingLimits.maxEngineResponseBytes,
         })
@@ -626,6 +622,38 @@ export class GraphHopperRoutingAdapter {
     if (status >= 500) return 'engine_unavailable';
     return 'engine_contract_violation';
   }
+}
+
+/**
+ * The body of one `POST /route` (M2-01af). Exported so the real-engine log probe sends
+ * exactly what the adapter sends.
+ *
+ * The parameters are the ones the adapter used to put in the query string, with the same
+ * values. GraphHopper reads `points` and `details` as fields of its request and every other
+ * key as a hint, the same hints the GET query set (`GHRequest.putHint` is its
+ * `@JsonAnySetter`). Points are `[longitude, latitude]` here, GeoJSON order, where the GET
+ * `point` parameter was `latitude,longitude`.
+ */
+export function graphhopperRouteBody(options: {
+  readonly profileName: string;
+  readonly waypoints: readonly RoutingPosition[];
+  readonly maxVisitedNodes: number;
+  readonly engineTimeoutMilliseconds: number;
+}): RoutingEngineJsonBody {
+  return {
+    profile: options.profileName,
+    points: options.waypoints.map(([longitude, latitude]) => [longitude, latitude]),
+    'ch.disable': true,
+    points_encoded: false,
+    instructions: false,
+    calc_points: true,
+    elevation: false,
+    // Requested so the answer can be checked against the edges it claims to use.
+    details: ['road_class'],
+    max_visited_nodes: options.maxVisitedNodes,
+    // Per leg; the engine caps it at its configured `routing.timeout_ms`.
+    timeout_ms: options.engineTimeoutMilliseconds,
+  };
 }
 
 function transportOutcome(error: unknown, signal: AbortSignal): FailureOutcome {

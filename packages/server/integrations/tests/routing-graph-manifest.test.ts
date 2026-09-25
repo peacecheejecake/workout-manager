@@ -21,7 +21,7 @@ import {
 import { deploymentPaths, verifiedDeployment } from './deployment-fixture.js';
 
 const noopTransport: RoutingEngineTransport = {
-  get: async () => ({ status: 200, bodyText: '{}', truncated: false, byteLength: 2 }),
+  send: async () => ({ status: 200, bodyText: '{}', truncated: false, byteLength: 2 }),
 };
 
 const directories: string[] = [];

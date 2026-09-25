@@ -1,12 +1,22 @@
 /**
- * M2-01k-c2 — what the real routing engine writes to its own log.
+ * M2-01k-c2, M2-01af — what the real routing engine writes to its own log.
  *
- * The adapter sends every waypoint in the request line (`GET /route?...&point=lat,lon`). This
- * probe starts the real GraphHopper jar with the **serving profile from the repository**
- * (`scripts/geo/graphhopper-foot-serving.yml`), on loopback ports that no harness uses, over
- * a scratch copy of the deployed graph. It sends requests with planted, distinctive
- * coordinates in the adapter's exact query shape, captures everything the engine writes to
- * stdout and stderr, and searches it for those coordinates.
+ * This probe starts the real GraphHopper jar with a serving profile (by default the one in the
+ * repository, `scripts/geo/graphhopper-foot-serving.yml`), on loopback ports that no harness
+ * uses, over a scratch copy of the deployed graph. It sends requests carrying planted,
+ * distinctive coordinates, captures everything the engine writes to stdout and stderr, and
+ * searches it for those coordinates.
+ *
+ * Two kinds of request, each through every way a route request can end:
+ *
+ * - **adapter**: exactly what the adapter sends since M2-01af, a `POST /route` whose JSON body
+ *   is built by the adapter's own `graphhopperRouteBody` and sent by its real fetch
+ *   transport. Route computed, outside the graph, over the node budget, unknown profile.
+ * - **query**: a `GET /route?...&point=lat,lon`, the pre-M2-01af shape, which any other
+ *   client could still send. Route computed, and a malformed point. These show that the
+ *   profile keeps waypoints out of the log even for a request line that carries them. It also
+ *   sends `/spt`, `/isochrone` and `/navigate` with planted points: their resources log them
+ *   at INFO too (M2-01af review rounds 1 and 2).
  *
  * Nothing under `.geo-build` is written: the graph is copied to a temporary directory,
  * which is removed afterwards. The deployed `config-serving.yml` copy is not used, so the
@@ -14,14 +24,25 @@
  *
  * Usage: node --import tsx scripts/probe-routing-engine-logs.mts --execute
  *        [--config <path>] [--port <application port>] [--console-threshold <LEVEL>]
- * Exit 0 when the engine answered every request and logged no planted coordinate.
+ *        [--request-log-override profile|add|omit] [--requests all|adapter]
+ *        [--root-level INFO|WARN|ERROR]
  *
- * `--console-threshold INFO` runs a scratch copy of the profile with every console appender
- * lowered to INFO, which is what any INFO-level appender would see. It then judges only
- * what the launch override guarantees on its own. Request lines must still carry no query
- * string and no `point=`. They do carry the path, and GraphHopper's own `RouteResource` INFO
- * line does carry the waypoints (reported, not judged). That second line is stopped only by
- * the WARN threshold.
+ * - `--console-threshold INFO` runs a scratch copy of the profile with every console
+ *   appender lowered to INFO, which is what any INFO-level appender would see. The profile's
+ *   own settings (request log off, `RouteResource` pinned) must then still keep every
+ *   planted coordinate out.
+ * - `--root-level INFO` also lowers the profile's root logging level in that scratch copy: what
+ *   an operator lowering it for a diagnosis would get. The package pins must still hold.
+ *   DEBUG is not offered: nothing here claims DEBUG is safe.
+ * - `--request-log-override` is passed to the launch helper. `profile` (the default, what
+ *   every launcher does) adds the override exactly when the profile leaves the request log
+ *   on; `add` and `omit` force it, to show what the profile does with and without it.
+ * - `--requests adapter` sends only the adapter's requests, to judge the adapter's request
+ *   shape on a profile that leaves the request log on.
+ *
+ * The verdict is the same in every mode: the engine answered every request, the adapter's
+ * route and (when sent) the query route were computed, no request line carries a query
+ * string or `point=`, and the whole log holds no planted coordinate. Exit 0 on PASS.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -34,6 +55,11 @@ import {
   coordinateProbes,
   formatLogFindings,
 } from '../packages/server/courses/src/log-audit.ts';
+import {
+  createFetchRoutingTransport,
+  createRoutingEngineEndpoint,
+  graphhopperRouteBody,
+} from '../packages/server/integrations/src/routing/index.ts';
 import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -52,21 +78,30 @@ const configPath = resolve(
 );
 const port = Number(argument('--port') ?? '8995');
 const consoleThreshold = argument('--console-threshold');
+const rootLevel = argument('--root-level');
+if (rootLevel !== undefined && !/^(?:INFO|WARN|ERROR)$/.test(rootLevel))
+  throw new Error('--root-level takes INFO, WARN or ERROR (DEBUG is never claimed safe)');
 if (consoleThreshold !== undefined && !/^(?:TRACE|DEBUG|INFO|WARN|ERROR)$/.test(consoleThreshold))
   throw new Error('--console-threshold takes a log level');
+const overrideChoice = argument('--request-log-override') ?? 'profile';
+if (overrideChoice !== 'profile' && overrideChoice !== 'add' && overrideChoice !== 'omit')
+  throw new Error('--request-log-override takes profile, add or omit');
+const requestSet = argument('--requests') ?? 'all';
+if (requestSet !== 'all' && requestSet !== 'adapter')
+  throw new Error('--requests takes all or adapter');
 
 /** A request line in Jetty's classic/NCSA format: `"GET /route?... HTTP/1.1"`. */
 const REQUEST_LINE = /"(?:GET|POST|HEAD|PUT|DELETE|OPTIONS) ([^" ]*) HTTP\/[\d.]+"/g;
 
 /** Planted waypoints: distinctive decimals that appear nowhere else in the engine's output. */
 const start: readonly [number, number] = [126.9765432, 37.5712345];
-const inside: readonly (readonly [number, number])[] = [start, [126.9812345, 37.5654321]];
+const inside: readonly [number, number][] = [[...start], [126.9812345, 37.5654321]];
 const outside: readonly [number, number] = [127.9876543, 36.1234567];
 
 const wait = (milliseconds: number) => new Promise((done) => setTimeout(done, milliseconds));
 
-/** The adapter's query, exactly: graphhopper-adapter.ts builds the same parameters. */
-function routeQuery(points: readonly (readonly [number, number])[], maxVisitedNodes = 1_000_000) {
+/** The pre-M2-01af query shape: what a client putting waypoints in the URL sends. */
+function routeQuery(points: readonly (readonly [number, number])[]) {
   const query = new URLSearchParams({
     profile: 'foot',
     'ch.disable': 'true',
@@ -75,10 +110,17 @@ function routeQuery(points: readonly (readonly [number, number])[], maxVisitedNo
     calc_points: 'true',
     elevation: 'false',
     details: 'road_class',
-    max_visited_nodes: String(maxVisitedNodes),
+    max_visited_nodes: '1000000',
   });
   for (const [longitude, latitude] of points) query.append('point', `${latitude},${longitude}`);
   return query.toString();
+}
+
+interface Answer {
+  readonly name: string;
+  readonly kind: 'adapter' | 'query' | 'info';
+  readonly status: number;
+  readonly paths: number | null;
 }
 
 async function main() {
@@ -86,34 +128,46 @@ async function main() {
     process.stdout.write('Pass --execute to start the real engine.\n');
     return;
   }
-  const scratch = await mkdtemp(join(tmpdir(), 'c2-engine-logs-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'af-engine-logs-'));
   const graphCopy = join(scratch, 'foot');
   await cp(deployedGraph, graphCopy, { recursive: true });
   let engineConfig = configPath;
-  if (consoleThreshold !== undefined) {
+  if (consoleThreshold !== undefined || rootLevel !== undefined) {
     const text = await readFile(configPath, 'utf8');
-    const lowered = text.replace(/^( {6}threshold: )\w+$/gm, `$1${consoleThreshold}`);
-    if (lowered === text) throw new Error('NO_THRESHOLD_TO_LOWER');
+    let lowered = text;
+    if (consoleThreshold !== undefined) {
+      lowered = lowered.replace(/^( {6}threshold: )\w+$/gm, `$1${consoleThreshold}`);
+      if (lowered === text) throw new Error('NO_THRESHOLD_TO_LOWER');
+    }
+    if (rootLevel !== undefined) {
+      // The root level is the only two-space `level:` line in the profiles.
+      const before = lowered;
+      lowered = lowered.replace(/^( {2}level: )\w+$/m, `$1${rootLevel}`);
+      if (lowered === before && !before.includes(`  level: ${rootLevel}\n`))
+        throw new Error('NO_ROOT_LEVEL_TO_SET');
+    }
     engineConfig = join(scratch, 'serving-lowered.yml');
     await writeFile(engineConfig, lowered);
   }
   let log = '';
   let engine: ChildProcess | undefined;
   try {
+    const launch = {
+      jarPath,
+      configPath: engineConfig,
+      extractPath,
+      graphPath: graphCopy,
+      heapMegabytes: 1024,
+      initialHeapMegabytes: 256,
+      ports: { application: port, admin: port + 1 },
+      requestLogOverride: overrideChoice,
+    };
+    const javaArguments = graphhopperJavaArguments(launch);
     // The same command line every launcher uses, so this proves what production runs.
-    engine = spawn(
-      'java',
-      graphhopperJavaArguments({
-        jarPath,
-        configPath: engineConfig,
-        extractPath,
-        graphPath: graphCopy,
-        heapMegabytes: 1024,
-        initialHeapMegabytes: 256,
-        ports: { application: port, admin: port + 1 },
-      }),
-      { stdio: ['ignore', 'pipe', 'pipe'], cwd: dirname(jarPath) },
-    );
+    engine = spawn('java', graphhopperJavaArguments(launch), {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: dirname(jarPath),
+    });
     for (const stream of [engine.stdout, engine.stderr]) {
       stream?.setEncoding('utf8');
       stream?.on('data', (chunk: string) => {
@@ -123,8 +177,31 @@ async function main() {
     const base = `http://127.0.0.1:${port}`;
     let ready = false;
     for (let attempt = 0; attempt < 240 && !ready; attempt += 1) {
-      // The startup log carries no request yet, so its tail is safe to show.
-      if (engine.exitCode !== null) throw new Error(`ENGINE_EXITED: ${log.slice(0, 1500)}`);
+      // The startup log carries no request yet, so its head is safe to show.
+      if (engine.exitCode !== null) {
+        const reason = log
+          .split('\n')
+          .filter((line) => /error|exception|unrecognized|has an error/i.test(line))
+          .slice(0, 4)
+          .map((line) => line.slice(0, 200));
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              config: configPath.replace(repositoryRoot, ''),
+              requestLogOverride: overrideChoice,
+              overrideInArguments: javaArguments.includes('-Ddw.server.request_log.type=external'),
+              engineStarted: false,
+              exitCode: engine.exitCode,
+              reason,
+              verdict: 'ENGINE_REFUSED_CONFIGURATION',
+            },
+            null,
+            1,
+          )}\n`,
+        );
+        process.exitCode = 2;
+        return;
+      }
       try {
         const response = await fetch(`${base}/health`);
         await response.text();
@@ -137,30 +214,76 @@ async function main() {
     if (!ready) throw new Error('ENGINE_NOT_READY');
     const startupBytes = log.length;
 
-    // Every way a route request can end: computed, outside the graph, over the node budget,
-    // a malformed point and an unknown profile. Each carries planted coordinates.
-    const requests = [
-      { name: 'route_computed', path: `/route?${routeQuery(inside)}` },
-      { name: 'outside_coverage', path: `/route?${routeQuery([start, outside])}` },
-      { name: 'node_budget', path: `/route?${routeQuery(inside, 10)}` },
+    // The adapter's own request builder and transport: what production sends.
+    const transport = createFetchRoutingTransport(createRoutingEngineEndpoint(`${base}/`));
+    const adapterRequests = [
+      { name: 'route_computed', profileName: 'foot', waypoints: inside, maxVisitedNodes: 1e6 },
       {
-        name: 'malformed_point',
-        path: `/route?profile=foot&point=${start[1]},x${start[0]}`,
+        name: 'outside_coverage',
+        profileName: 'foot',
+        waypoints: [[...start], [...outside]] as [number, number][],
+        maxVisitedNodes: 1e6,
       },
-      {
-        name: 'unknown_profile',
-        path: `/route?${routeQuery(inside).replace('profile=foot', 'profile=nope')}`,
-      },
-      { name: 'info', path: '/info' },
+      { name: 'node_budget', profileName: 'foot', waypoints: inside, maxVisitedNodes: 10 },
+      { name: 'unknown_profile', profileName: 'nope', waypoints: inside, maxVisitedNodes: 1e6 },
     ];
-    const answers: { name: string; status: number; paths: number | null }[] = [];
-    for (const request of requests) {
+    const answers: Answer[] = [];
+    for (const request of adapterRequests) {
+      const response = await transport.send({
+        method: 'POST',
+        path: '/route',
+        json: graphhopperRouteBody({ ...request, engineTimeoutMilliseconds: 5_000 }),
+        signal: AbortSignal.timeout(30_000),
+        maxBytes: 4 * 1024 * 1024,
+      });
+      const body = JSON.parse(response.bodyText) as { paths?: unknown[] };
+      answers.push({
+        name: request.name,
+        kind: 'adapter',
+        status: response.status,
+        paths: Array.isArray(body.paths) ? body.paths.length : null,
+      });
+    }
+    const queryRequests =
+      requestSet === 'all'
+        ? [
+            { name: 'route_computed', path: `/route?${routeQuery(inside)}` },
+            { name: 'malformed_point', path: `/route?profile=foot&point=${start[1]},x${start[0]}` },
+            // M2-01af review F1: the other resources that log a request's point at INFO.
+            {
+              name: 'spt',
+              path: `/spt?profile=foot&point=${start[1]},${start[0]}&time_limit=30`,
+            },
+            {
+              name: 'isochrone',
+              path: `/isochrone?profile=foot&point=${start[1]},${start[0]}&time_limit=30`,
+            },
+            // Review round 2: NavigateResource logs the points too. `roundabout_exits` and
+            // `voice_units` are required for a 200.
+            {
+              name: 'navigate',
+              path:
+                `/navigate/directions/v5/gh/foot/${inside.map(([lon, lat]) => `${lon},${lat}`).join(';')}` +
+                '?steps=true&geometries=polyline6&overview=full&voice_instructions=true' +
+                '&banner_instructions=true&roundabout_exits=true&voice_units=metric',
+            },
+          ]
+        : [];
+    for (const request of [...queryRequests, { name: 'info', path: '/info' }]) {
       const response = await fetch(`${base}${request.path}`, {
         headers: { accept: 'application/json' },
       });
-      const body = (await response.json()) as { paths?: unknown[] };
+      // `/spt` answers CSV; only the JSON answers carry `paths`.
+      const text = await response.text();
+      let body: { paths?: unknown[] } = {};
+      try {
+        body = JSON.parse(text) as { paths?: unknown[] };
+      } catch {
+        // not JSON
+      }
       answers.push({
         name: request.name,
+        kind: request.name === 'info' ? 'info' : 'query',
         status: response.status,
         paths: Array.isArray(body.paths) ? body.paths.length : null,
       });
@@ -177,28 +300,48 @@ async function main() {
       probes: planted,
       minRecords: 0,
     }).filter((finding) => finding.rule.startsWith('probe-'));
-    const routeComputed = answers[0]?.status === 200 && answers[0].paths === 1;
+    const computed = (kind: Answer['kind']) =>
+      answers.some(
+        (answer) =>
+          answer.kind === kind &&
+          answer.name === 'route_computed' &&
+          answer.status === 200 &&
+          answer.paths === 1,
+      );
+    const adapterRouteComputed = computed('adapter');
+    const queryRouteComputed = requestSet === 'adapter' ? null : computed('query');
     const everyRequestAnswered = answers.every((answer) => answer.status > 0);
     const requestTargets = [...log.matchAll(REQUEST_LINE)].map((match) => match[1] ?? '');
     const requestTargetsWithQuery = requestTargets.filter(
       (target) => target.includes('?') || target.includes('point='),
     ).length;
     const routeResourceLines = lines.filter((line) => line.includes('RouteResource')).length;
-    // The default run judges the whole log. The lowered-threshold run judges only what the
-    // launch override guarantees by itself: request lines exist and none carries a query.
+    // The resources that log a point must actually have been reached, or their silence proves
+    // nothing.
+    const otherResourcesAnswered =
+      requestSet === 'adapter' ||
+      ['spt', 'isochrone', 'navigate'].every((name) =>
+        answers.some((answer) => answer.name === name && answer.status === 200),
+      );
     const verdict =
-      consoleThreshold === undefined
-        ? routeComputed && everyRequestAnswered && findings.length === 0
-        : routeComputed &&
-          everyRequestAnswered &&
-          requestTargets.length > 0 &&
-          requestTargetsWithQuery === 0;
+      adapterRouteComputed &&
+      queryRouteComputed !== false &&
+      otherResourcesAnswered &&
+      everyRequestAnswered &&
+      requestTargetsWithQuery === 0 &&
+      findings.length === 0;
     const result = {
       config: configPath.replace(repositoryRoot, ''),
       consoleThreshold: consoleThreshold ?? 'as in profile',
+      rootLevel: rootLevel ?? 'as in profile',
+      otherResourcesAnswered,
+      requestLogOverride: overrideChoice,
+      overrideInArguments: javaArguments.includes('-Ddw.server.request_log.type=external'),
+      requests: requestSet,
       port,
       answers,
-      routeComputed,
+      adapterRouteComputed,
+      queryRouteComputed,
       logLines: lines.length,
       logLinesAfterStartup: log.slice(startupBytes).split('\n').filter(Boolean).length,
       requestLines: requestTargets.length,
@@ -208,6 +351,16 @@ async function main() {
       routeResourceLines,
       plantedCoordinateHits: findings.length,
       findings: formatLogFindings(findings).split('\n').filter(Boolean).slice(0, 10),
+      // Which logger wrote each offending line: the logback name field, never the content.
+      findingLoggers: [
+        ...new Set(
+          findings.map(
+            (finding) =>
+              /^[A-Z]+ +\[[^\]]*\] ([\w.$]+):/.exec(lines[finding.line - 1] ?? '')?.[1] ??
+              'unattributed',
+          ),
+        ),
+      ],
       verdict: verdict ? 'PASS' : 'FAIL',
     };
     process.stdout.write(`${JSON.stringify(result, null, 1)}\n`);

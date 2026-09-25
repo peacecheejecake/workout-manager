@@ -10,10 +10,9 @@ describe('routing engine endpoint', () => {
   it('accepts a loopback base URL and builds only known engine paths', () => {
     const endpoint = createRoutingEngineEndpoint('http://127.0.0.1:8991/');
     expect(endpoint.host).toBe('127.0.0.1');
-    expect(endpoint.resolve('/route', new URLSearchParams({ profile: 'foot' })).toString()).toBe(
-      'http://127.0.0.1:8991/route?profile=foot',
-    );
-    expect(() => endpoint.resolve('/nearest', new URLSearchParams())).toThrow(RoutingEndpointError);
+    // No query string can be built: nothing a request carries travels in the URL (M2-01af).
+    expect(endpoint.resolve('/route').toString()).toBe('http://127.0.0.1:8991/route');
+    expect(() => endpoint.resolve('/nearest')).toThrow(RoutingEndpointError);
   });
 
   it.each([
@@ -45,7 +44,7 @@ describe('routing engine endpoint', () => {
   it('cannot be steered by a path that tries to escape the allowed set', () => {
     const endpoint = createRoutingEngineEndpoint('http://127.0.0.1:8991/');
     for (const path of ['/route/../../evil', '//evil.example/route', 'http://evil.example/route'])
-      expect(() => endpoint.resolve(path, new URLSearchParams())).toThrow(RoutingEndpointError);
+      expect(() => endpoint.resolve(path)).toThrow(RoutingEndpointError);
   });
 });
 
@@ -58,9 +57,9 @@ describe('routing engine transport', () => {
       calls.push(init);
       return new Response('{}', { status: 200 });
     });
-    await transport.get({
+    await transport.send({
+      method: 'GET',
       path: '/info',
-      query: new URLSearchParams(),
       signal: new AbortController().signal,
       maxBytes: 1024,
     });
@@ -73,9 +72,9 @@ describe('routing engine transport', () => {
     Object.defineProperty(redirected, 'redirected', { value: true });
     const transport = createFetchRoutingTransport(endpoint, async () => redirected);
     await expect(
-      transport.get({
+      transport.send({
+        method: 'GET',
         path: '/info',
-        query: new URLSearchParams(),
         signal: new AbortController().signal,
         maxBytes: 1024,
       }),
@@ -88,9 +87,10 @@ describe('routing engine transport', () => {
       async () => new Response('x'.repeat(5000), { status: 200 }),
     );
     await expect(
-      transport.get({
+      transport.send({
+        method: 'POST',
         path: '/route',
-        query: new URLSearchParams(),
+        json: {},
         signal: new AbortController().signal,
         maxBytes: 100,
       }),
@@ -104,9 +104,10 @@ describe('routing engine transport', () => {
       throw new DOMException('aborted', 'AbortError');
     });
     await expect(
-      transport.get({
+      transport.send({
+        method: 'POST',
         path: '/route',
-        query: new URLSearchParams(),
+        json: {},
         signal: controller.signal,
         maxBytes: 1024,
       }),

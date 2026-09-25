@@ -25,15 +25,20 @@ graphhopper:
   profiles_ch: []
   profiles_lm: []
   routing.non_ch.max_waypoint_distance: 1000000
-  # Last-resort backstop only. Measured on 2026-09-21 with GraphHopper 10.0: when this
-  # budget is exhausted the engine answers `ConnectionNotFoundException`, i.e. a timeout
-  # is indistinguishable from a genuinely disconnected pair. It is therefore set far
-  # above the adapter deadline (8 s) and is NOT the primary bound. The primary
-  # engine-side bound is the per-request `max_visited_nodes` parameter the adapter
-  # always sends, which answers with a distinct `MaximumNodesExceededException`.
+  # Last-resort backstop only: the cap on the per-request `timeout_ms`. The adapter sends
+  # `max_visited_nodes` and a per-leg `timeout_ms` taken from its own deadline with every
+  # route request (M2-01k-e), and those are the engine-side bounds that act. An exhausted
+  # budget answers `ConnectionNotFoundException`, like a disconnected pair, so the adapter
+  # tells the two apart by time. Set far above the adapter deadline (8 s).
   routing.timeout_ms: 30000
 
 server:
+  # M2-01af: no request log. Dropwizard's default request log writes every request line,
+  # and a GET line carries its query. The adapter now POSTs its waypoints, but this file
+  # must be safe for any client and for a launch outside the repository's helper. An empty
+  # appender list is how Dropwizard switches it off (`isEnabled` is `!appenders.isEmpty()`).
+  request_log:
+    appenders: []
   application_connectors:
     - type: http
       port: 8991
@@ -44,7 +49,27 @@ server:
       bind_host: 127.0.0.1
 
 logging:
-  level: INFO
+  # M2-01af: nothing below WARN is produced. GraphHopper 10.0 writes request content at INFO
+  # from its HTTP endpoints: RouteResource, SPTResource, IsochroneResource, MapMatchingResource
+  # and NavigateResource log the request's points, and MultiExceptionMapper and
+  # IllegalArgumentExceptionMapper quote the failing point. The console threshold already hid
+  # every INFO line, so this loses nothing that was visible.
+  level: WARN
+  # The three packages holding those endpoints are also pinned OFF, so a root level lowered to
+  # INFO for a diagnosis does not bring the lines back. `resources` and `http` log nothing at
+  # WARN or ERROR (jar bytecode). `navigation` does: NavigateResource has one ERROR (a failed
+  # navigate answer) and NavigateResponseConverter one WARN, and OFF drops both. The adapter
+  # never calls /navigate, so that is the chosen tradeoff. Only these packages were checked
+  # for content; other INFO emitters in the jar (GraphHopper, LM/CH/subnetwork preparation,
+  # the OSM reader, GTFS, GHUtility, LocationIndexTree, ...) look like import and startup code
+  # by name and were not content-checked. This covers INFO only: at DEBUG, other emitters
+  # (Dropwizard's JsonProcessingExceptionMapper, Jetty, GHJerseyViolationExceptionMapper) can
+  # carry request content, so the root level is never lowered below INFO on a serving engine.
+  loggers:
+    com.graphhopper.resources: OFF
+    com.graphhopper.http: OFF
+    com.graphhopper.navigation: OFF
+  # A third, independent layer: no appender accepts anything below WARN.
   appenders:
     - type: console
       threshold: WARN

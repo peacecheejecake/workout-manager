@@ -9,6 +9,7 @@ import {
   GraphHopperRoutingAdapter,
   GraphManifestError,
   RoutingTransportError,
+  createFetchRoutingTransport,
   createRoutingEngineEndpoint,
   type GraphHopperAdapterOptions,
   edgeDetailsCoverGeometry,
@@ -56,6 +57,12 @@ const request: WalkingRouteRequest = {
   ],
 };
 
+/** The JSON body of a `/route` call. Anything but a POST with a body fails the test. */
+function routeJson(input: RoutingEngineTransportRequest): Record<string, unknown> {
+  if (input.method !== 'POST') throw new Error(`route call was a ${input.method}`);
+  return { ...input.json };
+}
+
 class FixedClock {
   #milliseconds: number;
   constructor(start = Date.parse('2026-09-21T12:00:00.000Z')) {
@@ -77,7 +84,7 @@ interface StubbedRoute {
 function stubTransport(route: StubbedRoute, engineInfo: unknown = info) {
   const seen: RoutingEngineTransportRequest[] = [];
   const transport: RoutingEngineTransport = {
-    async get(input) {
+    async send(input) {
       seen.push(input);
       if (input.path === '/info')
         return {
@@ -196,7 +203,7 @@ describe('graph identity', () => {
     let engineInfo: Record<string, unknown> = { ...info };
     let infoCalls = 0;
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         if (input.path === '/info') {
           infoCalls += 1;
           return {
@@ -253,11 +260,82 @@ describe('a computed route', () => {
     expect(result.computation.warnings).toEqual([]);
     // The request carries the engine-side search budget and the flexible algorithm.
     const routeCall = seen.find((call) => call.path === '/route');
-    expect(routeCall?.query.get('max_visited_nodes')).toBe('1000000');
-    expect(routeCall?.query.get('ch.disable')).toBe('true');
-    expect(routeCall?.query.getAll('point')).toEqual(['37.5759,126.9769', '37.5663,126.9779']);
-    expect(routeCall?.query.get('profile')).toBe('foot');
-    expect(routeCall?.query.get('details')).toBe('road_class');
+    if (routeCall === undefined) throw new Error('no route call');
+    expect(routeJson(routeCall)).toEqual({
+      profile: 'foot',
+      points: [
+        [126.9769, 37.5759],
+        [126.9779, 37.5663],
+      ],
+      'ch.disable': true,
+      points_encoded: false,
+      instructions: false,
+      calc_points: true,
+      elevation: false,
+      details: ['road_class'],
+      max_visited_nodes: 1_000_000,
+      timeout_ms: expect.any(Number) as number,
+    });
+  });
+
+  /**
+   * M2-01af: an access log writes the request line. The waypoints travel in the body of a
+   * POST, so no request line the adapter produces carries them, whatever the engine's
+   * logging settings are. Checked on the URLs the real fetch transport builds.
+   */
+  it('keeps every waypoint out of the request line: the route is a POST with a JSON body', async () => {
+    const sent: { url: string; method: string; body: string | null }[] = [];
+    const endpoint = createRoutingEngineEndpoint('http://127.0.0.1:8991/');
+    const transport = createFetchRoutingTransport(endpoint, async (url, init) => {
+      sent.push({
+        url: url.toString(),
+        method: String(init.method),
+        body: typeof init.body === 'string' ? init.body : null,
+      });
+      const body = url.pathname === '/info' ? info : realAnswer;
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const result = await (await adapterFor(transport)).adapter.computeWalkingRoute(request);
+    expect(result.outcome).toBe('route_computed');
+    expect(sent.map(({ url, method }) => `${method} ${url}`)).toEqual([
+      'GET http://127.0.0.1:8991/info',
+      'POST http://127.0.0.1:8991/route',
+    ]);
+    for (const { url } of sent) {
+      expect(url).not.toContain('?');
+      for (const [longitude, latitude] of request.waypoints) {
+        expect(url).not.toContain(String(longitude));
+        expect(url).not.toContain(String(latitude));
+      }
+    }
+    const body = JSON.parse(sent[1]?.body ?? 'null') as { points?: unknown };
+    expect(body.points).toEqual(request.waypoints);
+  });
+
+  it('refuses a route request in any other shape before anything is sent', async () => {
+    let calls = 0;
+    const transport = createFetchRoutingTransport(
+      createRoutingEngineEndpoint('http://127.0.0.1:8991/'),
+      async () => {
+        calls += 1;
+        return new Response('{}', { status: 200 });
+      },
+    );
+    const signal = new AbortController().signal;
+    for (const shape of [
+      { method: 'GET', path: '/route' },
+      { method: 'POST', path: '/info', json: {} },
+      { method: 'POST', path: '/route', json: null },
+      { method: 'PUT', path: '/route', json: {} },
+    ])
+      await expect(
+        transport.send({
+          ...shape,
+          signal,
+          maxBytes: 1024,
+        } as unknown as RoutingEngineTransportRequest),
+      ).rejects.toMatchObject({ code: 'ENGINE_REQUEST_SHAPE_REFUSED' });
+    expect(calls).toBe(0);
   });
 
   it('is a valid contract result', async () => {
@@ -269,7 +347,7 @@ describe('a computed route', () => {
   it('measures the computation against the injected clock', async () => {
     const clock = new FixedClock();
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         clock.advance(120);
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
@@ -494,11 +572,11 @@ describe('failures stay apart', () => {
   it('reports a ConnectionNotFound that came back inside the engine budget as no_route', async () => {
     const clock = new FixedClock();
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
         // The engine searched for less than the budget it was given, so it did not time out.
-        clock.advance(Number(input.query.get('timeout_ms')) - 1);
+        clock.advance(Number(routeJson(input).timeout_ms) - 1);
         return {
           status: 400,
           bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
@@ -515,11 +593,11 @@ describe('failures stay apart', () => {
   it('reports a ConnectionNotFound that came back after the engine budget as timeout', async () => {
     const clock = new FixedClock();
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
         // GraphHopper answers an exhausted timeout_ms exactly like a disconnected pair.
-        clock.advance(Number(input.query.get('timeout_ms')));
+        clock.advance(Number(routeJson(input).timeout_ms));
         return {
           status: 400,
           bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
@@ -541,10 +619,10 @@ describe('failures stay apart', () => {
    */
   function connectionNotFoundAfter(clock: FixedClock, budgets: number) {
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
-        clock.advance(Number(input.query.get('timeout_ms')) * budgets);
+        clock.advance(Number(routeJson(input).timeout_ms) * budgets);
         return {
           status: 400,
           bodyText: JSON.stringify(engineError('ConnectionNotFoundException')),
@@ -587,7 +665,7 @@ describe('failures stay apart', () => {
     const late = new FixedClock();
     const spent = await adapterFor(
       {
-        get: async (input) => {
+        send: async (input) => {
           late.advance(9_000);
           if (input.path === '/info')
             return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
@@ -614,7 +692,7 @@ describe('failures stay apart', () => {
 
   it('reports an unreachable engine rather than any fallback geometry', async () => {
     const transport: RoutingEngineTransport = {
-      async get() {
+      async send() {
         throw new RoutingTransportError('ENGINE_UNREACHABLE');
       },
     };
@@ -626,7 +704,7 @@ describe('failures stay apart', () => {
   it('reports a caller cancellation as cancelled', async () => {
     const controller = new AbortController();
     const transport: RoutingEngineTransport = {
-      async get(input): Promise<RoutingEngineResponse> {
+      async send(input): Promise<RoutingEngineResponse> {
         if (input.path === '/info')
           return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
         controller.abort();
@@ -644,7 +722,7 @@ describe('failures stay apart', () => {
   it('reports its own deadline as a timeout, not as a cancellation', async () => {
     vi.useFakeTimers();
     const transport: RoutingEngineTransport = {
-      get(input) {
+      send(input) {
         if (input.path === '/info')
           return Promise.resolve({
             status: 200,
@@ -687,7 +765,7 @@ describe('the engine search is bounded, and cancellation is honest about it (M2-
     let answer: (response: RoutingEngineResponse) => void = () => undefined;
     const routeCalls: RoutingEngineTransportRequest[] = [];
     const transport: RoutingEngineTransport = {
-      get(input) {
+      send(input) {
         if (input.path === '/info')
           return Promise.resolve({
             status: 200,
@@ -721,7 +799,7 @@ describe('the engine search is bounded, and cancellation is honest about it (M2-
     const clock = new FixedClock();
     const seen: RoutingEngineTransportRequest[] = [];
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         seen.push(input);
         // The identity check takes 300 ms of the deadline.
         if (input.path === '/info') {
@@ -741,7 +819,7 @@ describe('the engine search is bounded, and cancellation is honest about it (M2-
     await adapter.computeWalkingRoute(threeWaypoints);
     const route = seen.find((entry) => entry.path === '/route');
     // (8000 - 300 - 500) / 2 legs: GraphHopper arms the timeout once per leg.
-    expect(route?.query.get('timeout_ms')).toBe('3600');
+    expect(route && routeJson(route).timeout_ms).toBe(3600);
     expect(engineReserveMilliseconds(8_000)).toBe(500);
     expect(engineReserveMilliseconds(400)).toBe(100);
   });
@@ -750,7 +828,7 @@ describe('the engine search is bounded, and cancellation is honest about it (M2-
     const clock = new FixedClock();
     const seen: string[] = [];
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         seen.push(input.path);
         clock.advance(7_600);
         return { status: 200, bodyText: JSON.stringify(info), truncated: false, byteLength: 1 };
@@ -788,7 +866,7 @@ describe('the engine search is bounded, and cancellation is honest about it (M2-
     const controller = new AbortController();
     const seen: string[] = [];
     const transport: RoutingEngineTransport = {
-      async get(input) {
+      async send(input) {
         seen.push(input.path);
         controller.abort();
         throw new RoutingTransportError('ENGINE_ABORTED');

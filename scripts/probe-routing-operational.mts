@@ -58,8 +58,11 @@ import {
 import { createConfiguredApi } from '../apps/api/src/configured.ts';
 import {
   importRoutingGraph,
+  probeReportPath,
+  relocatedDeploymentNote,
   routingGraphConfig,
   routingGraphDirectory,
+  routingGraphRoot,
   sha256File,
   startEngine,
   stopEngine,
@@ -73,12 +76,12 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
 const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
-/** Graph B: a second import of the same extract, kept beside graph A and never over it. */
-const graphBDirectory = join(workRoot, 'routing-graph', 'swap-b', 'foot');
-const reportPath = join(
-  repositoryRoot,
-  'docs/implementation/research/routing-operational-acceptance.json',
-);
+/**
+ * Graph B: a second import of the same extract, kept beside graph A and never over it. It
+ * follows `ROUTING_GRAPH_ROOT` with graph A (M2-01af), so a run on a relocated deployment
+ * builds its graph B there too, and never in `.geo-build`.
+ */
+const graphBDirectory = join(routingGraphRoot, 'swap-b', 'foot');
 const ENGINE_PORT = 8991;
 export const PUBLIC_ORIGIN = 'http://127.0.0.1:3100';
 
@@ -295,15 +298,23 @@ const routingEnv = (deployment: Deployment) => ({
 
 async function main() {
   const argv = process.argv.slice(2);
-  if (!argv.includes('--execute') || argv.some((a) => a !== '--execute' && a !== '--rebuild-b')) {
+  const reportNameIndex = argv.indexOf('--report-name');
+  const flags = argv.filter((_, index) => index !== reportNameIndex + 1 || reportNameIndex === -1);
+  if (
+    !argv.includes('--execute') ||
+    flags.some((a) => a !== '--execute' && a !== '--rebuild-b' && a !== '--report-name')
+  ) {
     console.log(
-      'Opt-in only: node --import tsx scripts/probe-routing-operational.mts --execute [--rebuild-b]. ' +
+      'Opt-in only: node --import tsx scripts/probe-routing-operational.mts --execute [--rebuild-b] ' +
+        '[--report-name <file>.json, required with ROUTING_GRAPH_ROOT]. ' +
         'Runs the production API composition against the self-hosted engine on loopback, binds the ' +
         'fixture OIDC provider on 4400 (hold the harness lock), and writes a report. Never use as CI.',
     );
     return;
   }
   if (process.env.CI) throw new Error('Routing engine runs are disabled in CI');
+  // Before any engine starts: a relocated run must name its own report (M2-01af).
+  probeReportPath(argv, 'routing-operational-acceptance.json');
   if (detectedBin === undefined) throw new Error('MISSING_PREREQUISITE: PostgreSQL binaries');
   for (const required of [extractPath, jarPath, routingGraphConfig]) await stat(required);
 
@@ -894,16 +905,21 @@ async function main() {
       memoryGiB: Math.round(totalmem() / 2 ** 30),
       node: process.version,
     },
+    // M2-01af: where the deployment came from, without the machine's paths.
+    // M2-01af: a relocated deployment is scratch; say so, and name the served graph.
+    deployment: (await relocatedDeploymentNote()) ?? { deployment: '.geo-build/routing-graph' },
     graphs: {
       A: {
         graphBuildId: graphA,
         graphImportedAt: deploymentA.manifest.graphImportedAt,
         graphContentSha256: deploymentA.manifest.graphContentSha256,
+        profileConfigSha256: deploymentA.manifest.profileConfigSha256,
       },
       B: {
         graphBuildId: graphB,
         graphImportedAt: deploymentB.manifest.graphImportedAt,
         graphContentSha256: deploymentB.manifest.graphContentSha256,
+        profileConfigSha256: deploymentB.manifest.profileConfigSha256,
         builtThisRun: graphBBuilt,
         importMilliseconds: graphBImportMilliseconds,
         note: 'Re-import of the same allowlisted extract with the same engine and profile; a distinct build, not newer map data.',
@@ -914,6 +930,7 @@ async function main() {
     findings,
     result: failed.length === 0 ? 'all_checks_passed' : 'checks_failed',
   };
+  const reportPath = probeReportPath(process.argv.slice(2), 'routing-operational-acceptance.json');
   await mkdir(dirname(reportPath), { recursive: true });
   const temporary = `${reportPath}.tmp`;
   await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`);

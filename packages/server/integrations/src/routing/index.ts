@@ -39,6 +39,7 @@ export {
   engineReserveMilliseconds,
   edgeDetailsCoverGeometry,
   geometryVisitsWaypointsInOrder,
+  graphhopperRouteBody,
   type GraphHopperAdapterOptions,
   type RoutingClock,
   type RoutingComputeContext,
@@ -53,6 +54,7 @@ export {
 export {
   RoutingTransportError,
   createFetchRoutingTransport,
+  type RoutingEngineJsonBody,
   type RoutingEngineResponse,
   type RoutingEngineTransport,
   type RoutingEngineTransportRequest,

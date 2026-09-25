@@ -29,8 +29,13 @@ export class RoutingEndpointError extends Error {
 export const defaultRoutingEngineHosts = Object.freeze(['127.0.0.1', 'localhost', '[::1]']);
 
 export interface RoutingEngineEndpoint {
-  /** Absolute URL of one engine path. Never built from anything a user supplied. */
-  resolve(path: string, query: URLSearchParams): URL;
+  /**
+   * Absolute URL of one engine path, never with a query string. Never built from anything
+   * a user supplied. There is deliberately no way to add a query (M2-01af): a request line
+   * is what access logs write, so nothing a request carries may travel in it. Parameters
+   * go in a POST body (`transport.ts`).
+   */
+  resolve(path: string): URL;
   readonly host: string;
 }
 
@@ -62,11 +67,10 @@ export function createRoutingEngineEndpoint(
   const origin = parsed.origin;
   return {
     host: parsed.hostname,
-    resolve(path, query) {
+    resolve(path) {
       // A closed set of paths, so a future caller cannot smuggle one in.
       if (!enginePaths.includes(path)) throw new RoutingEndpointError('ENDPOINT_PATH_NOT_ALLOWED');
       const url = new URL(`${origin}${path}`);
-      url.search = query.toString();
       if (url.origin !== origin) throw new RoutingEndpointError('ENDPOINT_HOST_NOT_ALLOWED');
       return url;
     },

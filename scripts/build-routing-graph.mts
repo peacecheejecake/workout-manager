@@ -2,7 +2,13 @@
  * M2-01g: build the pedestrian routing graph and write the manifest that binds it to the
  * extract, profile and engine artifact it was built from.
  *
- *   node --import tsx scripts/build-routing-graph.mts --execute [--reuse]
+ *   node --import tsx scripts/build-routing-graph.mts --execute [--reuse | --replace-served-graph]
+ *   ROUTING_GRAPH_ROOT=<absolute dir outside .geo-build> node --import tsx ... --execute
+ *     (a green deployment beside the served one; see `routingGraphRootFrom`)
+ *
+ * A full import over a directory that already holds a graph manifest is refused unless
+ * `--replace-served-graph` is given (`fullImportRefusal`): the blue/green procedure builds
+ * beside the served graph instead of over it.
  *
  * Opt-in only, refuses to run in CI. Downloads nothing that is not already in the
  * operations allowlist and contacts no external routing service.
@@ -16,8 +22,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -39,9 +45,67 @@ const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 const servingConfigSource = join(repositoryRoot, 'scripts/geo/graphhopper-foot-serving.yml');
 
-/** Built here, separate from M2-01d's measurement graph, which stays untouched. */
-export const routingGraphDirectory = join(workRoot, 'routing-graph', 'foot');
-export const routingGraphConfig = join(workRoot, 'routing-graph', 'config-serving.yml');
+/**
+ * Where the served graph and its profile copy live: `.geo-build/routing-graph`, separate from
+ * M2-01d's measurement graph, which stays untouched.
+ *
+ * `ROUTING_GRAPH_ROOT` (an absolute directory outside `.geo-build`) moves the whole layout,
+ * graph, profile copy and the operational probe's graph B, somewhere else (M2-01af). A
+ * rebuild with a changed profile then produces a green deployment beside the served one
+ * instead of overwriting it, which is what the blue/green procedure needs, and the shared
+ * `.geo-build` cache is not written. The build, the operational probe and the swap probe
+ * all read these constants, so one variable points all three at the same deployment.
+ */
+export function routingGraphRootFrom(value: string | undefined): string {
+  if (value === undefined || value === '') return join(workRoot, 'routing-graph');
+  if (!isAbsolute(value)) throw new Error('ROUTING_GRAPH_ROOT_NOT_ABSOLUTE');
+  const root = resolve(value);
+  if (root === resolve(workRoot) || root.startsWith(`${resolve(workRoot)}${sep}`))
+    throw new Error('ROUTING_GRAPH_ROOT_INSIDE_GEO_BUILD: leave it unset for .geo-build');
+  return root;
+}
+export const routingGraphRoot = routingGraphRootFrom(process.env.ROUTING_GRAPH_ROOT);
+export const routingGraphDirectory = join(routingGraphRoot, 'foot');
+export const routingGraphConfig = join(routingGraphRoot, 'config-serving.yml');
+
+/** True when `ROUTING_GRAPH_ROOT` moved the deployment out of `.geo-build`. */
+export const routingGraphRelocated = routingGraphRoot !== routingGraphRootFrom(undefined);
+
+/**
+ * Where a probe writes its report (M2-01af review F3). The canonical report of each probe
+ * records the served deployment, and other nodes rewrite it. A run on a relocated (scratch)
+ * deployment therefore must name a different file with `--report-name <name>.json`, written
+ * beside the canonical one in `docs/implementation/research`.
+ */
+export function probeReportPath(argv: readonly string[], canonicalName: string): string {
+  const index = argv.indexOf('--report-name');
+  const named = index === -1 ? undefined : argv[index + 1];
+  if (named !== undefined && !/^[a-z0-9][a-z0-9.-]*\.json$/.test(named))
+    throw new Error('REPORT_NAME_MUST_BE_A_PLAIN_JSON_FILE_NAME');
+  if (routingGraphRelocated && (named === undefined || named === canonicalName))
+    throw new Error(
+      `RELOCATED_RUN_NEEDS_ITS_OWN_REPORT: pass --report-name other than ${canonicalName}`,
+    );
+  return join(repositoryRoot, 'docs/implementation/research', named ?? canonicalName);
+}
+
+/**
+ * What a report must say about a relocated deployment: it is scratch, not persisted, and the
+ * served graph is still the one under `.geo-build`. Null for the served deployment.
+ */
+export async function relocatedDeploymentNote(): Promise<Record<string, string> | null> {
+  if (!routingGraphRelocated) return null;
+  const servedManifest = join(routingGraphRootFrom(undefined), 'foot', ROUTING_GRAPH_MANIFEST_FILE);
+  const served = await readFile(servedManifest, 'utf8').then(
+    (text) => graphBuildIdFromManifest(routingGraphManifestSchema.parse(JSON.parse(text))),
+    () => 'unknown (no served manifest on this machine)',
+  );
+  return {
+    deployment: 'relocated (ROUTING_GRAPH_ROOT)',
+    note: `Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still ${served} (.geo-build/routing-graph).`,
+    servedGraphBuildId: served,
+  };
+}
 
 const EXTRACT_REGION = 'Seoul (BBBike city extract)';
 const ENGINE_PORT = 8991;
@@ -235,12 +299,39 @@ export async function importRoutingGraph(options: {
   return manifest;
 }
 
+/**
+ * A full import empties `graphDirectory` first (`importRoutingGraph`) and the build then
+ * overwrites the profile copy beside it. Over a directory that already holds a graph manifest
+ * that is an in-place replacement of a graph that may be served: the blue/green procedure
+ * builds the new graph beside it instead (`ROUTING_GRAPH_ROOT`). So a full import over a
+ * manifest is refused unless `--replace-served-graph` says the replacement is intended
+ * (M2-01af review F4). Returns the refusal code, or null when the import may proceed.
+ */
+export async function fullImportRefusal(
+  graphDirectory: string,
+  replaceServedGraph: boolean,
+): Promise<string | null> {
+  if (replaceServedGraph) return null;
+  const hasManifest = await stat(join(graphDirectory, ROUTING_GRAPH_MANIFEST_FILE)).then(
+    () => true,
+    () => false,
+  );
+  return hasManifest ? 'FULL_IMPORT_OVER_EXISTING_GRAPH_REFUSED' : null;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const reuse = argv.includes('--reuse');
-  if (!argv.includes('--execute') || argv.some((a) => a !== '--execute' && a !== '--reuse')) {
+  const replaceServedGraph = argv.includes('--replace-served-graph');
+  const known = new Set(['--execute', '--reuse', '--replace-served-graph']);
+  if (
+    !argv.includes('--execute') ||
+    argv.some((a) => !known.has(a)) ||
+    (reuse && replaceServedGraph)
+  ) {
     console.log(
-      'Opt-in only: node --import tsx scripts/build-routing-graph.mts --execute [--reuse]. ' +
+      'Opt-in only: node --import tsx scripts/build-routing-graph.mts --execute ' +
+        '[--reuse | --replace-served-graph]. ' +
         'Imports the pedestrian graph from the allowlisted extract already under .geo-build and writes ' +
         'the graph manifest. Never use as CI.',
     );
@@ -310,6 +401,14 @@ async function main() {
     return;
   }
 
+  // Nothing is touched before this check: neither the graph nor the profile copy beside it.
+  const refusal = await fullImportRefusal(routingGraphDirectory, replaceServedGraph);
+  if (refusal !== null)
+    throw new Error(
+      `${refusal}: ${routingGraphDirectory} already holds a graph. Build the new one beside it ` +
+        '(ROUTING_GRAPH_ROOT=<absolute dir outside .geo-build>) and switch with the blue/green ' +
+        'procedure, or pass --replace-served-graph when replacing it in place is intended.',
+    );
   await copyFile(servingConfigSource, routingGraphConfig);
   const manifest = await importRoutingGraph({
     graphDirectory: routingGraphDirectory,
@@ -323,6 +422,7 @@ async function main() {
       graphDirectory: routingGraphDirectory,
       graphBuildId: graphBuildIdFromManifest(manifest),
       graphContentSha256: manifest.graphContentSha256,
+      profileConfigSha256: manifest.profileConfigSha256,
       engineVersion: manifest.engineVersion,
       graphImportedAt: manifest.graphImportedAt,
       roadDataAt: manifest.roadDataAt,

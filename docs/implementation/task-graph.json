@@ -1468,8 +1468,9 @@
       "title": "routing 엔진 serving profile 로그 강화와 graph 재구축",
       "dependsOn": ["M2-01k-c2", "M2-01k-e"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M2-01k-c2에서 분리. 지금 routing 엔진의 waypoint 로그 보호는 두 가지에만 기대고 있다: 저장소 안 실행 경로의 -Ddw.server.request_log.type=external override(요청 줄에서 query 제거)와 모든 logging appender의 WARN threshold(GraphHopper RouteResource의 INFO 줄에 waypoint가 있음). 다음 graph 재구축에서 serving profile 파일 자체에 server.request_log.appenders: []를 넣고 com.graphhopper.resources.RouteResource logger를 WARN 또는 OFF로 고정한다. profile SHA-256이 graph manifest의 profileConfigSha256에 묶여 있으므로 전체 재import와 graph id 변경, 코스의 graph 인정 재확인이 따른다(M2-01k-e의 blue/green 교체 절차로). 저장소 밖 실행도 막도록 adapter를 POST /route(JSON body)로 바꾸는 것을 검토한다. guard 시험(packages/tooling/tests/graphhopper-launch.test.mjs)의 엄격한 profile 문법을 같은 변경에서 확장하고, scripts/probe-routing-engine-logs.mts로 새 profile에서 실제 엔진이 waypoint를 쓰지 않음을 보인다."
+      "status": "completed",
+      "scope": "M2-01k-c2에서 분리. 지금 routing 엔진의 waypoint 로그 보호는 두 가지에만 기대고 있다: 저장소 안 실행 경로의 -Ddw.server.request_log.type=external override(요청 줄에서 query 제거)와 모든 logging appender의 WARN threshold(GraphHopper RouteResource의 INFO 줄에 waypoint가 있음). 다음 graph 재구축에서 serving profile 파일 자체에 server.request_log.appenders: []를 넣고 com.graphhopper.resources.RouteResource logger를 WARN 또는 OFF로 고정한다. profile SHA-256이 graph manifest의 profileConfigSha256에 묶여 있으므로 전체 재import와 graph id 변경, 코스의 graph 인정 재확인이 따른다(M2-01k-e의 blue/green 교체 절차로). 저장소 밖 실행도 막도록 adapter를 POST /route(JSON body)로 바꾸는 것을 검토한다. guard 시험(packages/tooling/tests/graphhopper-launch.test.mjs)의 엄격한 profile 문법을 같은 변경에서 확장하고, scripts/probe-routing-engine-logs.mts로 새 profile에서 실제 엔진이 waypoint를 쓰지 않음을 보인다.",
+      "evidence": "docs/implementation/progress/M2-01af.md"
     },
     {
       "id": "M2-01ag",
@@ -1504,6 +1505,14 @@
       "kind": "task",
       "status": "not_started",
       "scope": "M2-01ai 독립 검토의 비차단 후속. (a) parse child process의 peak RSS(`details.parseProcessRss`, 현재 약 170 MiB, API당 최대 4개)는 기록만 하고 예산이 없다. 기록 전용 기준선 run 3회로 metric과 예산을 performance-budget.json에 더하고, 서버 probe가 판정하게 한다. api.processPeakRssMiB는 이제 parse 메모리를 포함하지 않으므로 그 예산을 새 기준선에 맞게 다시 도출할지 결정한다. (b) apps/api/src/configured.ts의 close hook에서 parser close를 routing permit drain 앞이나 함께 두어, 종료 때 진행 중 parse가 drain 시간만큼 더 돌지 않게 한다(순서가 바뀌어도 routing admission과 공유 상태가 없음을 확인한다). 각 동작을 되돌리는 변이로 비공허성을 보인다. 출처: docs/implementation/progress/M2-01ai.md §7, M2-01ai 2차 검토."
+    },
+    {
+      "id": "M2-01ak",
+      "title": "배포 routing graph를 새 serving profile로 교체",
+      "dependsOn": ["M2-01af"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "M2-01af에서 분리. 저장소의 serving profile(request log off, com.graphhopper.resources·http·navigation OFF, POST /route)은 바뀌었지만 `.geo-build/routing-graph`의 배포 graph A(c57f12f5975347e8)는 옛 profile 사본(e72537c1…)으로 돌며, helper가 자동으로 붙이는 request-log override와 WARN threshold로만 보호된다. runbook \"serving profile 변경의 배포\" 절차대로 새 profile로 graph를 영속 위치에 다시 import하고(`--replace-served-graph` 없이 새 root에), blue/green으로 전환하고, 코스의 graph 인정을 다시 확인하고, 옛 graph로 rollback이 되는지 보인다. `.geo-build`는 다른 노드의 시험도 쓰므로 harness lock을 잡고 한 번에 하고, 전후 manifest·profile SHA-256과 새 graph id를 기록한다. 새 profile 위에서 engine log probe(R1, root INFO R8, navigate·spt·isochrone 포함)와 swap·운영 probe를 다시 실행해 기존 보고서를 갱신한다. 출처: docs/implementation/progress/M2-01af.md §7, §9."
     },
     {
       "id": "M2-01k",

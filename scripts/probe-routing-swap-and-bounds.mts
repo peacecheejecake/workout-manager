@@ -74,6 +74,8 @@ import {
 } from '../apps/api/src/routing-deployment.ts';
 import {
   importRoutingGraph,
+  probeReportPath,
+  relocatedDeploymentNote,
   routingGraphConfig,
   routingGraphDirectory,
   sha256File,
@@ -99,10 +101,6 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
 const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
-const reportPath = join(
-  repositoryRoot,
-  'docs/implementation/research/routing-swap-and-bounds.json',
-);
 
 const BLUE: EnginePorts = { application: 8991, admin: 8992 };
 const GREEN: EnginePorts = { application: 8993, admin: 8994 };
@@ -376,13 +374,16 @@ async function main() {
   const workDir = workIndex >= 0 ? argv[workIndex + 1] : undefined;
   if (!argv.includes('--execute') || workDir === undefined || !isAbsolute(workDir)) {
     console.log(
-      'Opt-in only: node --import tsx scripts/probe-routing-swap-and-bounds.mts --execute --work-dir <absolute dir>. ' +
+      'Opt-in only: node --import tsx scripts/probe-routing-swap-and-bounds.mts --execute --work-dir <absolute dir> ' +
+        '[--report-name <file>.json, required with ROUTING_GRAPH_ROOT]. ' +
         'Runs two real engines on loopback 8991-8996, the production API composition and the fixture OIDC ' +
         'provider on 4400 (hold the harness lock), and writes a report. Never use as CI.',
     );
     return;
   }
   if (process.env.CI) throw new Error('Routing engine runs are disabled in CI');
+  // Before any engine starts: a relocated run must name its own report (M2-01af).
+  probeReportPath(argv, 'routing-swap-and-bounds.json');
   if (resolve(workDir).startsWith(resolve(workRoot)))
     throw new Error('WORK_DIR_INSIDE_GEO_BUILD: keep graph C out of .geo-build');
   if (detectedBin === undefined) throw new Error('MISSING_PREREQUISITE: PostgreSQL binaries');
@@ -1164,6 +1165,9 @@ async function main() {
       memoryGiB: Math.round(totalmem() / 2 ** 30),
       node: process.version,
     },
+    // M2-01af: where the deployment came from, without the machine's paths.
+    // M2-01af: a relocated deployment is scratch; say so, and name the served graph.
+    deployment: (await relocatedDeploymentNote()) ?? { deployment: '.geo-build/routing-graph' },
     graphs: {
       A: {
         graphBuildId: deploymentA.graphBuildId,
@@ -1172,6 +1176,7 @@ async function main() {
         graphImportedAt: deploymentA.manifest.graphImportedAt,
         roadDataAt: deploymentA.manifest.roadDataAt,
         graphContentSha256: deploymentA.manifest.graphContentSha256,
+        profileConfigSha256: deploymentA.manifest.profileConfigSha256,
       },
       C: {
         graphBuildId: deploymentC.graphBuildId,
@@ -1180,6 +1185,7 @@ async function main() {
         graphImportedAt: deploymentC.manifest.graphImportedAt,
         roadDataAt: deploymentC.manifest.roadDataAt,
         graphContentSha256: deploymentC.manifest.graphContentSha256,
+        profileConfigSha256: deploymentC.manifest.profileConfigSha256,
         derivedFrom: {
           extractSha256: graphC.sourceSha256,
           tool: graphC.osmiumVersion,
@@ -1196,6 +1202,7 @@ async function main() {
     checks,
     result: failed.length === 0 ? 'all_checks_passed' : 'checks_failed',
   };
+  const reportPath = probeReportPath(process.argv.slice(2), 'routing-swap-and-bounds.json');
   await mkdir(dirname(reportPath), { recursive: true });
   const temporary = `${reportPath}.tmp`;
   await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`);
