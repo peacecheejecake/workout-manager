@@ -37,7 +37,7 @@ import type {
   CourseDisclosureReceipt,
 } from '@workout/contracts/course-sharing';
 import { courseExportPath, createCourseApi, CourseRequestError } from './course-api';
-import { CourseDisclosure, CourseSharePanel } from './course-disclosure';
+import { CourseDisclosure, CourseSharePanel, zoneDeletionShareNote } from './course-disclosure';
 import { createCourseSharingApi } from './course-sharing-api';
 import {
   CourseDraftProvider,
@@ -1027,8 +1027,7 @@ function Workbench({
                     trimMessage={trimMessage}
                     {...(sharingEnabled
                       ? {
-                          deletionNote:
-                            '보호 구역을 삭제하면 그 구역으로 잘린 링크는 모두 꺼집니다. 같은 곳에 구역을 다시 만들면 공유용 오프셋이 바뀝니다. 두 오프셋의 공유를 모으면 범위가 좁혀질 수 있습니다.',
+                          deletionNote: zoneDeletionShareNote,
                         }
                       : {})}
                   />

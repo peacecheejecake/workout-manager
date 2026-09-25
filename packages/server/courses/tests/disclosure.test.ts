@@ -9,6 +9,9 @@ import {
   roundPosition,
   shareCircle,
   shareCircles,
+  shareCircleSet,
+  shareContinuationCutMeters,
+  shareCutAreaIndexes,
   shareScaleMeters,
   sharedLineTouchesCircle,
   type ShareOffset,
@@ -64,6 +67,24 @@ const outAndBack: CoursePosition[] = [
   [127.0205, 37.5006],
   [127.02, 37.5001],
 ];
+/** The same line with a vertex at least every `meters` (straight interpolation). */
+function densify(line: readonly CoursePosition[], meters: number): CoursePosition[] {
+  const dense: CoursePosition[] = [];
+  for (let index = 1; index < line.length; index += 1) {
+    const from = line[index - 1];
+    const to = line[index];
+    if (!from || !to) continue;
+    const steps = Math.max(1, Math.ceil(greatCircleMeters(from, to) / meters));
+    for (let step = 0; step < steps; step += 1)
+      dense.push([
+        from[0] + ((to[0] - from[0]) * step) / steps,
+        from[1] + ((to[1] - from[1]) * step) / steps,
+      ]);
+  }
+  const last = line.at(-1);
+  if (last) dense.push(last);
+  return dense;
+}
 const elsewhere: CoursePosition[] = [
   [127.1, 37.6],
   [127.11, 37.61],
@@ -181,7 +202,7 @@ describe('rounding is checked again after it happens (R-2, T25)', () => {
 });
 
 describe('share circles (B-1)', () => {
-  it('scales to S = max(r, 200 m), R_eff = 1.5 S, and keeps the protected area inside', () => {
+  it('scales to S = max(r, 200 m), R_eff = 2 S, offset ≤ 1 S, and keeps the protected area inside', () => {
     for (const radiusMeters of [50, 199, 200, 350, 5000]) {
       const zone = { center: [127.02, 37.5] as CoursePosition, radiusMeters };
       const scale = shareScaleMeters(radiusMeters);
@@ -193,10 +214,13 @@ describe('share circles (B-1)', () => {
         { x: 0, y: 0 },
       ]) {
         const circle = shareCircle(zone, offset);
-        expect(circle.radiusMeters).toBeCloseTo(1.5 * scale, 6);
+        expect(circle.radiusMeters).toBeCloseTo(2 * scale, 6);
         const shift = greatCircleMeters(zone.center, circle.center);
-        expect(shift).toBeLessThanOrEqual(0.5 * scale + 0.01);
-        expect(shift).toBeCloseTo(0.5 * scale * Math.hypot(offset.x, offset.y), 0);
+        expect(shift).toBeLessThanOrEqual(scale + 0.01);
+        // Placed on a flat local map, measured on the sphere: within a metre per 5 km.
+        expect(Math.abs(shift - scale * Math.hypot(offset.x, offset.y))).toBeLessThan(
+          0.5 + scale * 2e-4,
+        );
         // The area itself lies wholly inside the share circle.
         expect(shift + radiusMeters).toBeLessThanOrEqual(circle.radiusMeters + 0.01);
       }
@@ -356,7 +380,9 @@ function simulate(
       const starts: [number, number][] = [];
       for (let link = 0; link < size; link += 1) {
         const circle = shareCircle(zone, offsetFor(zoneIndex, link, random));
-        const course = windingCourse(center, random() * 2 * Math.PI, 2.4 * scale, random);
+        // 8 · S: a link loses up to 3 · S inside the share circle and a further 2.5 · S of
+        // path past it (M2-01as); shorter walks would be refused.
+        const course = windingCourse(center, random() * 2 * Math.PI, 8 * scale, random);
         const choices = disclosureChoices('share', course, ends(course, null), [circle]);
         const shared = choices.options[0];
         if (choices.classification.outcome !== 'ends-inside' || !shared) {
@@ -385,7 +411,13 @@ describe('re-identification review r1 (R-2, R-3)', () => {
   const angle = (2 * Math.PI * 38) / 64;
   const southWest: ShareOffset = { x: 0.999999 * Math.cos(angle), y: 0.999999 * Math.sin(angle) };
   const sliver: CoursePosition = [127.06716, 37.52495];
+  // From about 27 km north-east straight to the sliver: long enough that a link still has a
+  // line left after the continuation cut of 2.5 · S = 12.5 km (M2-01as) past the cut end.
   const towardSliver: CoursePosition[] = [
+    ...Array.from(
+      { length: 25 },
+      (_, index) => [127.09536 + 0.0094 * (25 - index), 37.54004 + 0.00503 * (25 - index)] as const,
+    ).map(([longitude, latitude]): CoursePosition => [longitude, latitude]),
     [127.09536, 37.54004],
     [127.08596, 37.53501],
     [127.07656, 37.52998],
@@ -401,7 +433,14 @@ describe('re-identification review r1 (R-2, R-3)', () => {
     expect(leaky.classification.outcome).toBe('no-intersection');
     // With the area as well it is cut, and nothing that leaves is inside either circle.
     const circles = shareCircles(wide, southWest);
-    expect(circles).toEqual([alone, { center: wide.center, radiusMeters: wide.radiusMeters }]);
+    expect(circles).toEqual([
+      alone,
+      {
+        center: wide.center,
+        radiusMeters: wide.radiusMeters,
+        continuationCutMeters: 2.5 * wide.radiusMeters,
+      },
+    ]);
     const cut = disclosureChoices('share', towardSliver, ends(towardSliver), circles);
     expect(cut.classification.outcome).toBe('ends-inside');
     const line = cut.options[0]?.line;
@@ -446,8 +485,10 @@ describe('re-identification review r1 (R-2, R-3)', () => {
     expect(shared.waypoints.at(-1)?.position).toEqual(shared.coordinates.at(-1));
     const owner = disclosureChoices('export', line, waypoints, [home]);
     expect(owner.options[0]?.line.waypoints[0]?.position).toEqual([127.0501, 37.5201]);
-    // And when an end is cut, the link's end is the cut line's end, as before.
-    const cut = disclosureChoices('share', outAndBack, ends(outAndBack), circles).options[0]?.line;
+    // And when an end is cut, the link's end is the cut line's end, as before. (A vertex every
+    // 50 m, so the line outlives the 2.5 · S continuation cut at both ends.)
+    const dense = densify(outAndBack, 50);
+    const cut = disclosureChoices('share', dense, ends(dense), circles).options[0]?.line;
     if (!cut) throw new Error('no line');
     expect(cut.waypoints[0]?.position).toEqual(cut.coordinates[0]);
     expect(cut.waypoints.at(-1)?.position).toEqual(cut.coordinates.at(-1));
@@ -473,13 +514,137 @@ describe('T22: circle fitting over many shared starts cannot find the home', () 
       expect(quantile(errors, 0.5), `median, N=${size}`).toBeGreaterThanOrEqual(0.3);
       expect(quantile(errors, 0.1), `p10, N=${size}`).toBeGreaterThanOrEqual(0.1);
     }
-  });
+  }, 120_000);
 
   it('has the power to catch a zero offset (V19) and a fresh offset per link (V19b)', () => {
     const zero = simulate(() => ({ x: 0, y: 0 }), [3, 20], 200);
-    expect(quantile(zero.normalizedErrors.get(3) ?? [], 0.5)).toBeLessThan(0.1);
+    // M2-01as: the continuation cut scatters the cut ends along 2.5 · S of path, so a zero
+    // offset no longer puts them on one circle about the home (median 0.03 · S before it,
+    // about 0.15 · S now at N = 3) — still far under the bound, and 0.03 · S by N = 20.
+    expect(quantile(zero.normalizedErrors.get(3) ?? [], 0.5)).toBeLessThan(0.3);
+    expect(quantile(zero.normalizedErrors.get(20) ?? [], 0.5)).toBeLessThan(0.1);
     const perLink = simulate((_zone, _link, random) => drawShareOffset(random), [20], 200);
     // The offsets average away as links accumulate: N = 20 collapses below the bound.
     expect(quantile(perLink.normalizedErrors.get(20) ?? [], 0.5)).toBeLessThan(0.3);
+  }, 120_000);
+});
+
+describe('M2-01as: a link loses a further 2.5 · S of path past each cut end', () => {
+  // S = 200 m: the share circle (offset 0) has radius 400 m and the continuation is 500 m.
+  const circles = shareCircles(home, { x: 0, y: 0 });
+  const east: CoursePosition[] = densify(
+    [
+      [127.02, 37.5],
+      [127.0426, 37.5],
+    ],
+    10,
+  );
+
+  it('moves the cut end 500 m further along the line, for a link only', () => {
+    expect(shareContinuationCutMeters(home.radiusMeters)).toBe(500);
+    const share = disclosureChoices('share', east, ends(east), circles).options[0]?.line;
+    if (!share) throw new Error('no link line');
+    const start = share.coordinates[0];
+    if (!start) throw new Error('no start');
+    // First vertex past 400 m, then at least 500 m more of path; never more than one step on.
+    expect(greatCircleMeters(home.center, start)).toBeGreaterThanOrEqual(900);
+    expect(greatCircleMeters(home.center, start)).toBeLessThan(920);
+    expect(share.waypoints[0]?.position).toEqual(start);
+    assertOutside(share, circles);
+    // The owner's GPX is cut against the area itself and continues nothing (D10).
+    const gpx = disclosureChoices('export', east, ends(east), [home]).options[0]?.line;
+    const gpxStart = gpx?.coordinates[0];
+    if (!gpxStart) throw new Error('no GPX line');
+    expect(greatCircleMeters(home.center, gpxStart)).toBeLessThan(215);
+    // And a circle that carries no continuation cuts exactly as before.
+    const plain = circles.map(({ center, radiusMeters }) => ({ center, radiusMeters }));
+    const before = disclosureChoices('share', east, ends(east), plain).options[0]?.line;
+    const beforeStart = before?.coordinates[0];
+    if (!beforeStart) throw new Error('no line');
+    expect(greatCircleMeters(home.center, beforeStart)).toBeLessThan(415);
+  });
+
+  it('cuts both ends of a loop, and refuses a link too short to outlive it', () => {
+    const loop = [...east, ...[...east].reverse().slice(1)].map(
+      (position, index, all): CoursePosition =>
+        // Bring the way back 100 m north, so it is a loop and not the same line twice.
+        index >= all.length / 2 ? [position[0], position[1] + 0.0009] : position,
+    );
+    const shared = disclosureChoices('share', loop, ends(loop), circles).options[0]?.line;
+    const first = shared?.coordinates[0];
+    const last = shared?.coordinates.at(-1);
+    if (!first || !last) throw new Error('no loop line');
+    expect(greatCircleMeters(home.center, first)).toBeGreaterThanOrEqual(900);
+    expect(greatCircleMeters(home.center, last)).toBeGreaterThanOrEqual(890);
+    // 400 m inside the circle, then 500 m more: a 700 m line keeps nothing and is refused.
+    const short = east.slice(0, 71);
+    const refused = disclosureChoices('share', short, ends(short), circles);
+    expect(refused.classification).toEqual({
+      outcome: 'blocked',
+      reason: 'COURSE_TRIM_REMOVES_EVERYTHING',
+    });
+    // The owner's own GPX of that course is still offered.
+    expect(disclosureChoices('export', short, ends(short), [home]).options[0]?.exposure).toBe(
+      'trimmed',
+    );
+  });
+
+  it('continues by the largest continuation when nested areas both hold the cut end', () => {
+    // Review r2 peer finding 3: two areas over the same home, 100 m (S 200: share radius 400 m,
+    // continuation 500 m) and 400 m (S 400: share radius 800 m, continuation 1,000 m). The cut
+    // end is past the larger share circle and then 1,000 m more — never the smaller 500 m.
+    const inner = { center: home.center, radiusMeters: 100 };
+    const outer = { center: home.center, radiusMeters: 400 };
+    const nested = shareCircleSet([
+      { zone: inner, offset: { x: 0, y: 0 } },
+      { zone: outer, offset: { x: 0, y: 0 } },
+    ]);
+    const long = densify(
+      [
+        [127.02, 37.5],
+        [127.07, 37.5],
+      ],
+      10,
+    );
+    for (const circles of [nested, [...nested].reverse()]) {
+      const start = disclosureChoices('share', long, ends(long), circles).options[0]?.line
+        .coordinates[0];
+      if (!start) throw new Error('no line');
+      expect(greatCircleMeters(home.center, start)).toBeGreaterThanOrEqual(1800);
+      expect(greatCircleMeters(home.center, start)).toBeLessThan(1820);
+    }
+  });
+
+  it('drops a via waypoint on the hidden stretch and keeps one on the line that leaves', () => {
+    const hidden = east[60];
+    const shown = east[150];
+    if (!hidden || !shown) throw new Error('fixture');
+    const waypoints: CourseWaypoint[] = [
+      ...ends(east).slice(0, 1),
+      { role: 'via', position: hidden, name: '빵집', sourceSampleId: null, locked: false },
+      { role: 'via', position: shown, name: '다리', sourceSampleId: null, locked: false },
+      ...ends(east).slice(1),
+    ];
+    const choice = disclosureChoices('share', east, waypoints, circles).options[0];
+    expect(choice?.line.waypoints.map((waypoint) => waypoint.name)).toEqual([null, '다리', null]);
+    // The start waypoint at the home (inside the circle) and the hidden via.
+    expect(choice?.removedWaypointCount).toBe(2);
+  });
+
+  it('counts a link against the areas that cut it, with a 2 m margin (lifetime budget)', () => {
+    const far = { center: [127.2, 37.7] as CoursePosition, radiusMeters: 100 };
+    const set = shareCircleSet([
+      { zone: home, offset: { x: 0, y: 0 } },
+      { zone: far, offset: { x: 0, y: 0 } },
+    ]);
+    expect(set.map((circle) => circle.continuationCutMeters)).toEqual([500, 500, 500, 500]);
+    expect(shareCutAreaIndexes(east, set, 2)).toEqual([0]);
+    expect(shareCutAreaIndexes(elsewhere, set, 2)).toEqual([]);
+    // A vertex a metre outside the share circle still counts: rounding may cut it.
+    const metresPerDegree = greatCircleMeters([127.02, 37.5], [127.03, 37.5]) / 0.01;
+    const edge: CoursePosition = [127.02 + 401 / metresPerDegree, 37.5];
+    expect(greatCircleMeters(home.center, edge)).toBeGreaterThan(400);
+    expect(greatCircleMeters(home.center, edge)).toBeLessThan(402);
+    expect(shareCutAreaIndexes([edge, [127.1, 37.5]], set, 2)).toEqual([0]);
   });
 });

@@ -114,7 +114,9 @@ const through: CoursePosition[] = leg([-1500, 0], [1500, 0], 20).concat([at(1500
 function waypointsOf(line: readonly CoursePosition[], names = true): CourseWaypoint[] {
   const start = line[0];
   const finish = line[line.length - 1];
-  const middle = line[Math.floor(line.length / 3)];
+  // Halfway along: on the loop that is 1.1 km out, past the 2.5 · S continuation cut a link
+  // makes at its start (M2-01as), so a named via is still on the line a link shows.
+  const middle = line[Math.floor(line.length / 2)];
   if (!start || !finish || !middle) throw new Error('empty line');
   return [
     {
@@ -310,6 +312,11 @@ async function ownerWithCourse(
   signedIn = athleteId;
   const courseId = await addCourse(athleteId, line, options);
   const preferences = createCoursePreferenceRepository(database, {
+    // A fixed offset for the fixture areas: with δ ≤ 1 · S (M2-01as) about one offset in a
+    // thousand makes the `loop` fixture graze its own share circle and be refused
+    // (LINE_CROSSES_AREA), which would make these scenarios flaky rather than wrong. Offsets
+    // themselves are tested where they are the subject (the domain suite, T22).
+    drawShareOffset: () => ({ x: 0.6, y: -0.5 }),
     shareTouchesNewZone: (snapshot, zone, offset) =>
       shareCircles(zone, offset).some((circle) => sharedLineTouchesCircle(snapshot, circle)),
   });
@@ -646,7 +653,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 23) throw new Error('expected v23');
+    if (artifact.schemaVersion !== 24) throw new Error('expected v24');
     expect(artifact.data.courseShares).toHaveLength(1);
     expect(Object.keys(artifact.data.courseShares[0] ?? {}).sort()).toEqual(
       [
@@ -696,7 +703,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     const after = accountExportSchema.parse(
       (await instance.inject({ method: 'POST', url: '/bff/v1/operations/export', headers })).json(),
     );
-    if (after.schemaVersion !== 23) throw new Error('expected v23');
+    if (after.schemaVersion !== 24) throw new Error('expected v24');
     expect(after.data.courseDeletions).toEqual([
       { course_id: gone, deleted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
     ]);
@@ -1020,6 +1027,8 @@ describe('B. the view-only link', () => {
       ).statusCode,
     ).toBe(200);
     expect(await countRows('course_deletion', erased.athleteId)).toBe(1);
+    // M2-01as: the links above were cut against the area, so it has a budget row.
+    expect(await countRows('course_share_area_budget', erased.athleteId)).toBeGreaterThan(0);
     await admin.query('INSERT INTO garmin_unofficial_connection(athlete_id) VALUES($1)', [
       erased.athleteId,
     ]);
@@ -1036,13 +1045,15 @@ describe('B. the view-only link', () => {
       'course_share_audit',
       'course_disclosure_receipt',
       'course_privacy_zone_share_offset',
+      'course_share_area_budget',
       'course_deletion',
       'garmin_unofficial_connection',
       'course',
       'course_privacy_zone',
     ])
       expect(await countRows(table, erased.athleteId), table).toBe(0);
-    // The chain is this node's link wrapping 049's, wrapping 048's: each outermost link takes
+    // The chain is 054's link (M2-01as) wrapping this node's, wrapping 049's, wrapping 048's:
+    // each outermost link takes
     // the account lock and then the command lock before any row (77206 → 0 → rows).
     const chain: string[] = [];
     for (let name = 'erase_account'; ;) {
@@ -1053,7 +1064,7 @@ describe('B. the view-only link', () => {
       const source = found.rows[0]?.source ?? '';
       chain.push(name);
       const next = /RETURN public\.(erase_account_before_[a-z_]+)\(\$1\)/.exec(source)?.[1];
-      if (chain.length <= 3) {
+      if (chain.length <= 4) {
         const accountLock = source.indexOf('hashtextextended($1,77206)');
         const commandLock = source.indexOf('hashtextextended($1,0)');
         const firstDelete = source.indexOf('DELETE');
@@ -1064,8 +1075,9 @@ describe('B. the view-only link', () => {
       if (!next || chain.length > 60) break;
       name = next;
     }
-    expect(chain.slice(0, 4)).toEqual([
+    expect(chain.slice(0, 5)).toEqual([
       'erase_account',
+      'erase_account_before_course_share_budget',
       'erase_account_before_course_sharing',
       'erase_account_before_course_deletion',
       'erase_account_before_garmin_unofficial',
@@ -1212,12 +1224,14 @@ describe('B. the view-only link', () => {
     });
     expect(sixth.statusCode).toBe(409);
     expect(sixth.json().error.code).toBe('COURSE_SHARE_LIMIT_REACHED');
+    // The other links are of courses nowhere near the area: they are cut against nothing, so
+    // the place's lifetime budget (M2-01as, 10) is not what stops the twenty-first.
     for (let course = 1; course < 4; course += 1) {
-      const next = await addCourse(athleteId, loop, { name: `코스 ${course}` });
+      const next = await addCourse(athleteId, elsewhere, { name: `코스 ${course}` });
       for (let index = 0; index < courseSharingLimits.activeSharesPerCourse; index += 1)
         await makeLink(instance, next);
     }
-    const last = await addCourse(athleteId, loop, { name: '스물한 번째' });
+    const last = await addCourse(athleteId, elsewhere, { name: '스물한 번째' });
     const { confirmation: lastConfirmation } = await confirmDisclosure(instance, headers, last, {
       purpose: 'share',
     });
@@ -1550,6 +1564,7 @@ describe('peer review r1: receipt expiry and the share circles', () => {
           distanceMeters: 100,
         },
         zoneIds: zones.map((zone) => zone.zoneId),
+        cutZoneIds: [],
         zoneSetDigest: privacyZoneSetDigest(zones),
         digestOf: privacyZoneSetDigest,
       }),
@@ -1563,7 +1578,13 @@ describe('peer review r1: receipt expiry and the share circles', () => {
     // ends on that sliver.
     const center: CoursePosition = [127.02, 37.5];
     const sliver: CoursePosition = [127.06716, 37.52495];
+    // From about 27 km north-east: long enough to keep a line after the 2.5 · S = 12.5 km
+    // continuation cut past the cut end (M2-01as).
     const line: CoursePosition[] = [
+      ...Array.from({ length: 25 }, (_, index): CoursePosition => [
+        Number((127.09536 + 0.0094 * (25 - index)).toFixed(5)),
+        Number((37.54004 + 0.00503 * (25 - index)).toFixed(5)),
+      ]),
       [127.09536, 37.54004],
       [127.08596, 37.53501],
       [127.07656, 37.52998],
@@ -1609,3 +1630,237 @@ function activityImport(): ActivityImport {
     },
   };
 }
+
+// ── M2-01as: the lifetime link budget per place (migration 054) ────────────────────────
+
+async function budgetOf(athleteId: string) {
+  const rows = await admin.query<{
+    zone_id: string;
+    cell_latitude: number;
+    cell_longitude: number;
+    reach_meters: number;
+    links_cut: number;
+  }>(
+    `SELECT zone_id::text,cell_latitude,cell_longitude,reach_meters,links_cut
+     FROM course_share_area_budget WHERE athlete_id=$1 ORDER BY zone_id`,
+    [athleteId],
+  );
+  return rows.rows;
+}
+
+async function refusedLink(instance: ReturnType<typeof createApi>, courseId: string) {
+  const { confirmation } = await confirmDisclosure(instance, headers, courseId, {
+    purpose: 'share',
+  });
+  expect(confirmation.statusCode).toBe(200);
+  const receipt = courseDisclosureReceiptSchema.parse(confirmation.json());
+  return instance.inject({
+    method: 'POST',
+    url: `/bff/v1/courses/${courseId}/shares`,
+    headers,
+    payload: { receiptId: receipt.receiptId },
+  });
+}
+
+async function revoke(instance: ReturnType<typeof createApi>, shareId: string) {
+  const revoked = await instance.inject({
+    method: 'POST',
+    url: `/bff/v1/courses/shares/${shareId}/revoke`,
+    headers,
+  });
+  expect(revoked.statusCode).toBe(200);
+}
+
+describe('M2-01as: a place gives out at most 10 links, ever', () => {
+  it('counts revoked, reaped-away and epoch-invalidated links, and refuses the 11th', async () => {
+    expect(courseSharingLimits.shareLinksPerAreaLifetime).toBe(10);
+    const { athleteId, courseId } = await ownerWithCourse(loop);
+    const epochOne = linkApp(1);
+    // 3 made and turned off by the owner.
+    for (let index = 0; index < 3; index += 1)
+      await revoke(epochOne, (await makeLink(epochOne, courseId)).share.shareId);
+    // 3 made and then gone as an expired link goes: the reaper removes the row.
+    const reaped: string[] = [];
+    for (let index = 0; index < 3; index += 1)
+      reaped.push((await makeLink(epochOne, courseId)).share.shareId);
+    await admin.query('DELETE FROM course_share WHERE athlete_id=$1 AND share_id=ANY($2::uuid[])', [
+      athleteId,
+      reaped,
+    ]);
+    // 3 left active under epoch 1 — a restore then raises the epoch and invalidates them.
+    const invalidated: string[] = [];
+    for (let index = 0; index < 3; index += 1)
+      invalidated.push((await makeLink(epochOne, courseId)).share.shareId);
+    const epochTwo = linkApp(2);
+    try {
+      const listed = courseShareListSchema.parse(
+        (await epochTwo.inject({ method: 'GET', url: '/bff/v1/courses/shares', headers })).json(),
+      );
+      expect(
+        listed.shares
+          .filter((item) => invalidated.includes(item.shareId))
+          .map((item) => item.state),
+      ).toEqual(['invalidated', 'invalidated', 'invalidated']);
+      // 1 more under epoch 2: the tenth link is the last one. Turning them all off gives
+      // nothing back.
+      await makeLink(epochTwo, courseId);
+      expect((await budgetOf(athleteId)).map((row) => row.links_cut)).toEqual([10]);
+      await epochTwo.inject({ method: 'POST', url: '/bff/v1/courses/shares/revoke-all', headers });
+      const linksBefore = await countRows('course_share', athleteId);
+      const auditBefore = await countRows('course_share_audit', athleteId);
+      const refused = await refusedLink(epochTwo, courseId);
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().error.code).toBe('COURSE_SHARE_AREA_LIFETIME_REACHED');
+      expect(await countRows('course_share', athleteId)).toBe(linksBefore);
+      expect(await countRows('course_share_audit', athleteId)).toBe(auditBefore);
+      expect((await budgetOf(athleteId)).map((row) => row.links_cut)).toEqual([10]);
+      // A course that never comes near the area was not cut against it and still shares.
+      const far = await addCourse(athleteId, elsewhere);
+      const farLink = await makeLink(epochTwo, far);
+      expect(farLink.share.state).toBe('active');
+      expect((await budgetOf(athleteId)).map((row) => row.links_cut)).toEqual([10]);
+    } finally {
+      // A link of a higher epoch stops every read under epoch 1 (the fail-closed rule), and
+      // the other scenarios of this file read under epoch 1: remove this scenario's.
+      await admin.query('DELETE FROM course_share WHERE athlete_id=$1 AND epoch>1', [athleteId]);
+    }
+  });
+
+  it('keeps the count when the area is deleted and made again over the same place', async () => {
+    const { athleteId, courseId } = await ownerWithCourse(loop);
+    const instance = linkApp(1);
+    await makeLink(instance, courseId);
+    const [first] = await budgetOf(athleteId);
+    if (!first) throw new Error('no budget row');
+    expect(first.links_cut).toBe(1);
+    // What the row keeps of the place: a 0.01° cell and the share reach, 3 · S rounded up to 100 m.
+    expect(first).toMatchObject({
+      cell_latitude: Math.floor(home[1] * 100),
+      cell_longitude: Math.floor(home[0] * 100),
+      reach_meters: 600,
+    });
+    // Nine more links of the place, as the owner's own history (an increase is the
+    // only change the table allows).
+    await admin.query(
+      'UPDATE course_share_area_budget SET links_cut=10 WHERE athlete_id=$1 AND zone_id=$2',
+      [athleteId, first.zone_id],
+    );
+    const removed = await instance.inject({
+      method: 'DELETE',
+      url: `/bff/v1/courses/privacy-zones/${first.zone_id}`,
+      headers,
+    });
+    expect(removed.statusCode).toBe(200);
+    // The area and its offset are gone; its budget row stays as the place's tombstone.
+    expect(await countRows('course_privacy_zone', athleteId)).toBe(0);
+    expect(await countRows('course_privacy_zone_share_offset', athleteId)).toBe(0);
+    expect((await budgetOf(athleteId)).map((row) => row.zone_id)).toEqual([first.zone_id]);
+    // Made again 120 m away and smaller: a new area, a new offset — and no new budget.
+    const preferences = createCoursePreferenceRepository(database, {
+      shareTouchesNewZone: () => false,
+    });
+    await preferences.createPrivacyZone(athleteId, {
+      name: '다시 만든 집',
+      center: at(120, 0),
+      radiusMeters: 150,
+    });
+    const again = await refusedLink(instance, courseId);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe('COURSE_SHARE_AREA_LIFETIME_REACHED');
+    // The refused claim wrote nothing, not even the new area's row.
+    expect(await budgetOf(athleteId)).toHaveLength(1);
+    // An area 30 km away is another place: it starts from nothing.
+    const distant: CoursePosition[] = leg([30_000, 0], [31_500, 0], 5)
+      .concat(leg([31_500, 0], [31_500, 600], 50))
+      .concat(leg([31_500, 600], [30_000, 600], 25))
+      .concat(leg([30_000, 600], [30_000, 0], 5))
+      .concat([at(30_000, 0)]);
+    const distantCourse = await addCourse(athleteId, distant);
+    await preferences.createPrivacyZone(athleteId, {
+      name: '먼 곳',
+      center: at(30_000, 0),
+      radiusMeters: 200,
+    });
+    const created = await makeLink(instance, distantCourse);
+    expect(created.share.state).toBe('active');
+    expect((await budgetOf(athleteId)).map((row) => row.links_cut).sort()).toEqual([1, 10]);
+  });
+
+  it('lets only the claim write a budget, only upward, and only for the session tenant', async () => {
+    const { athleteId, courseId } = await ownerWithCourse(loop);
+    const instance = linkApp(1);
+    await makeLink(instance, courseId);
+    const [row] = await budgetOf(athleteId);
+    if (!row) throw new Error('no budget row');
+    // The runtime role reads (the export) and writes nothing directly.
+    for (const statement of [
+      `INSERT INTO course_share_area_budget(athlete_id,zone_id,cell_latitude,cell_longitude,
+         reach_meters,links_cut) VALUES('${athleteId}','${randomUUID()}',0,0,100,0)`,
+      'UPDATE course_share_area_budget SET links_cut=0',
+      'DELETE FROM course_share_area_budget',
+    ])
+      await expect(database.tenant(athleteId, (tx) => tx.query(statement))).rejects.toMatchObject({
+        code: '42501',
+      });
+    // Not even the owner role may lower a count or move a place; only erasure removes a row.
+    await expect(
+      admin.query('UPDATE course_share_area_budget SET links_cut=0 WHERE athlete_id=$1', [
+        athleteId,
+      ]),
+    ).rejects.toThrow('IMMUTABLE_SHARE_AREA_BUDGET');
+    await expect(
+      admin.query('UPDATE course_share_area_budget SET cell_latitude=0 WHERE athlete_id=$1', [
+        athleteId,
+      ]),
+    ).rejects.toThrow('IMMUTABLE_SHARE_AREA_BUDGET');
+    // The claim takes the session's tenant and no other: another tenant's area is unknown.
+    const stranger = randomUUID();
+    await expect(
+      database.tenant(stranger, (tx) =>
+        tx.query('SELECT public.claim_course_share_budget($1::uuid[])', [[row.zone_id]]),
+      ),
+    ).rejects.toThrow('COURSE_SHARE_AREA_UNKNOWN');
+    expect((await budgetOf(athleteId)).map((each) => each.links_cut)).toEqual([1]);
+    // The bound is the database's own: claiming past it is refused however it is asked.
+    await admin.query(
+      'UPDATE course_share_area_budget SET links_cut=10 WHERE athlete_id=$1 AND zone_id=$2',
+      [athleteId, row.zone_id],
+    );
+    const claimed = await database.tenant(athleteId, (tx) =>
+      tx.query('SELECT public.claim_course_share_budget($1::uuid[]) AS claimed', [[row.zone_id]]),
+    );
+    expect(claimed.rows[0]?.['claimed']).toBe(false);
+  });
+
+  it('exports each place budget in v24: area id, cell, rounded radius and count only', async () => {
+    const { athleteId, courseId } = await ownerWithCourse(loop);
+    const instance = linkApp(1);
+    await makeLink(instance, courseId);
+    await makeLink(instance, courseId);
+    const exported = await instance.inject({
+      method: 'POST',
+      url: '/bff/v1/operations/export',
+      headers,
+    });
+    expect(exported.statusCode).toBe(200);
+    const artifact = accountExportSchema.parse(exported.json());
+    if (artifact.schemaVersion !== 24) throw new Error('expected v24');
+    const [row] = await budgetOf(athleteId);
+    expect(artifact.data.courseShareAreaBudgets).toEqual([
+      {
+        zone_id: row?.zone_id,
+        cell_latitude: Math.floor(home[1] * 100),
+        cell_longitude: Math.floor(home[0] * 100),
+        reach_meters: 600,
+        links_cut: 2,
+      },
+    ]);
+    expect(Object.keys(artifact.data.courseShareAreaBudgets[0] ?? {}).sort()).toEqual([
+      'cell_latitude',
+      'cell_longitude',
+      'links_cut',
+      'reach_meters',
+      'zone_id',
+    ]);
+  });
+});

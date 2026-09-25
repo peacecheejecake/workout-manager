@@ -41,15 +41,58 @@ export const courseSharingLimits = {
   shareTokenLength: 43,
   /** A share circle is never smaller than this, whatever the protected area's radius (B-1). */
   shareMinimumScaleMeters: 200,
-  /** R_eff = 1.5 · S (B-1). */
-  shareRadiusFactor: 1.5,
-  /** The secret offset is drawn from a disc of radius 0.5 · S (B-1). */
-  shareOffsetFactor: 0.5,
+  /**
+   * R_eff = 2 · S (B-1, widened by M2-01as). With the offset below the protected area still lies
+   * wholly inside (1 · S + r ≤ 2 · S). M2-01k-o had 1.5 · S with a 0.5 · S offset; the
+   * re-identification review r1 of M2-01as showed that past the continuation cut the visible
+   * ends lie on a ring whose centre sits between the home and the share-circle centre, and a
+   * dead-reckoning or learned attacker then beats the bar at N ≤ 20 whatever the continuation
+   * (3.5 · S and 5 · S still failed). A larger secret offset is what widens that gap.
+   */
+  shareRadiusFactor: 2,
+  /** The secret offset is drawn from a disc of radius 1 · S (B-1; 0.5 · S before M2-01as). */
+  shareOffsetFactor: 1,
+  /**
+   * M2-01as: past a share circle, a link loses a further 2.5 · S of its own path at every
+   * end that circle cut. The share circle alone leaves the heading of each cut line pointing
+   * back at the home, and a heading or back-projection estimator narrows the home down as
+   * links accumulate; the continuation cut moves the cut end away along the path until the
+   * visible heading has wandered. A course too short to lose it is refused. The continuation
+   * alone does not close the attack (review r1: 3.5 · S and 5 · S still failed); with the wider
+   * offset and circle above and the lifetime bound below the suite passes. Tables: progress
+   * M2-01as.
+   */
+  shareContinuationCutFactor: 2.5,
+  /**
+   * M2-01as: links that may ever be cut against one place — every link counted, revoked,
+   * expired and restored-away ones included, and a protected area deleted and made again
+   * over the same place inherits the count. The attack suite passes up to this N and not
+   * past it. User decision 2026-09-26 (after re-identification review r2): 10. At N = 15 the
+   * learned per-model attacker on loops scored 0.28–0.32 · S across the reviewer's four test
+   * seeds (below the 0.3 · S bar on two); at N = 10 it stays ≥ 0.33 · S on every seed.
+   */
+  shareLinksPerAreaLifetime: 10,
   /** Decimal places of every disclosed coordinate except the owner's exact line (R-2). */
   disclosedCoordinateDigits: 5,
   exactCoordinateDigits: 7,
   /** How long a confirmation receipt can be used. It is also bound to a revision and set. */
   confirmationTtlSeconds: 60 * 60,
+} as const;
+
+/**
+ * What re-identification still achieves at the lifetime bound, for the STRONGEST attacker —
+ * every course model, every estimator (the learned ones included) and every measured seed —
+ * with `links` links from one protected area: the smallest median error and the smallest 10th
+ * percentile of the home estimate, in metres, floored to 5 m. The owner's confirmation screen
+ * states these. The suite's gate measured 88 m / 30 m over its three seeds; the
+ * re-identification review r2 measured as low as 82 m / 25 m with its own combiner, and the
+ * lower of the two is stated. The gate fails if a stated value is ever above what it measures
+ * (the warning must not overstate the protection) or more than 15 m below it.
+ */
+export const courseShareMeasuredResidual = {
+  links: 10,
+  medianMeters: 80,
+  p10Meters: 25,
 } as const;
 
 /** Where the recipient's screen lives on either shell. The token follows as `#<token>`. */

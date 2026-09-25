@@ -13,7 +13,7 @@ import {
   type CourseWaypoint,
 } from '@workout/contracts/courses';
 
-import { greatCircleMeters } from './geo.js';
+import { greatCircleMeters, segmentDistanceToPointMeters } from './geo.js';
 import {
   CourseTrimError,
   insideAnyCircle,
@@ -179,6 +179,116 @@ export function finishDisclosedLine(input: {
   return { coordinates: line, waypoints, distanceMeters: plannedLineLengthMeters(line) };
 }
 
+/**
+ * A circle a disclosed line is cut against, and how much further the cut runs along the
+ * line past it (M2-01as). A protected area cut for the owner's GPX has no continuation; a
+ * link's share circles and the areas beside them carry 2.5 · S of the area.
+ */
+export interface DisclosureCircle extends ProtectedCircle {
+  readonly continuationCutMeters?: number;
+}
+
+/**
+ * The index of the first vertex at least `meters` along the line from its first vertex, or
+ * `coordinates.length` when the line is not that long. 0 when nothing is to be cut.
+ */
+function indexAlongPath(coordinates: readonly CoursePosition[], meters: number): number {
+  if (!(meters > 0)) return 0;
+  let travelled = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    const from = coordinates[index - 1];
+    const to = coordinates[index];
+    if (from === undefined || to === undefined) continue;
+    travelled += greatCircleMeters(from, to);
+    if (travelled >= meters) return index;
+  }
+  return coordinates.length;
+}
+
+/** The longest continuation of any circle that holds one of `removed`. */
+function continuationFor(
+  removed: readonly CoursePosition[],
+  circles: readonly DisclosureCircle[],
+): number {
+  let longest = 0;
+  for (const circle of circles) {
+    const cut = circle.continuationCutMeters ?? 0;
+    if (cut <= longest) continue;
+    if (
+      removed.some((position) => greatCircleMeters(circle.center, position) <= circle.radiusMeters)
+    )
+      longest = cut;
+  }
+  return longest;
+}
+
+/**
+ * The continuation cut (M2-01as). At every end the trim cut, the line loses a further stretch
+ * of its own path: the longest continuation of the circles that held that end's removed
+ * vertices. The share circle alone leaves each cut line pointing back at the home along its
+ * first tens of metres, and many links from one place then narrow the home down by their
+ * headings however well the circle's centre is hidden; past 2.5 · S of path that heading has
+ * wandered off.
+ *
+ * Only whole vertices go, as the trim itself removes them: the new end is the first vertex
+ * at least that far along. A via waypoint whose nearest stretch of the trimmed line is a
+ * removed one goes with it — it lies on the hidden part. A line too short to lose both
+ * stretches is refused as one that would lose everything: it does not leave.
+ */
+function continueCut(
+  source: readonly CoursePosition[],
+  trimmed: TrimmedLine,
+  circles: readonly DisclosureCircle[],
+): TrimmedLine {
+  const leading = source.slice(0, trimmed.removedLeadingVertexCount);
+  const trailing = source.slice(source.length - trimmed.removedTrailingVertexCount);
+  const startMeters = leading.length > 0 ? continuationFor(leading, circles) : 0;
+  const finishMeters = trailing.length > 0 ? continuationFor(trailing, circles) : 0;
+  if (startMeters === 0 && finishMeters === 0) return trimmed;
+  const line = trimmed.coordinates;
+  const first = indexAlongPath(line, startMeters);
+  const last = line.length - 1 - indexAlongPath([...line].reverse(), finishMeters);
+  if (last - first < 1) throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
+  const coordinates = line.slice(first, last + 1);
+  const onKeptStretch = (position: CoursePosition) => {
+    let nearest = Number.POSITIVE_INFINITY;
+    let nearestSegment = -1;
+    for (let index = 1; index < line.length; index += 1) {
+      const from = line[index - 1];
+      const to = line[index];
+      if (from === undefined || to === undefined) continue;
+      const distance = segmentDistanceToPointMeters(from, to, position);
+      if (distance < nearest) {
+        nearest = distance;
+        nearestSegment = index - 1;
+      }
+    }
+    return nearestSegment >= first && nearestSegment < last;
+  };
+  const start = coordinates[0];
+  const finish = coordinates[coordinates.length - 1];
+  if (start === undefined || finish === undefined)
+    throw new CourseTrimError('COURSE_TRIM_REMOVES_EVERYTHING');
+  const vias = trimmed.waypoints.filter(
+    (waypoint) => waypoint.role === 'via' && onKeptStretch(waypoint.position),
+  );
+  return {
+    coordinates,
+    waypoints: courseWaypointListSchema.parse([
+      { role: 'start', position: start, name: null, sourceSampleId: null, locked: false },
+      ...vias,
+      { role: 'finish', position: finish, name: null, sourceSampleId: null, locked: false },
+    ]),
+    removedVertexCount: trimmed.removedVertexCount + first + (line.length - 1 - last),
+    removedLeadingVertexCount: trimmed.removedLeadingVertexCount + first,
+    removedTrailingVertexCount: trimmed.removedTrailingVertexCount + (line.length - 1 - last),
+    removedWaypointCount:
+      trimmed.removedWaypointCount +
+      trimmed.waypoints.filter((waypoint) => waypoint.role === 'via').length -
+      vias.length,
+  };
+}
+
 /** Each line the owner may confirm, for one purpose, exactly as it would leave. */
 export interface DisclosureChoices {
   readonly classification: DisclosureClassification;
@@ -238,7 +348,7 @@ export function disclosureChoices(
   purpose: CourseDisclosurePurpose,
   coordinates: readonly CoursePosition[],
   waypoints: readonly CourseWaypoint[],
-  circles: readonly ProtectedCircle[],
+  circles: readonly DisclosureCircle[],
 ): DisclosureChoices {
   try {
     return choicesFor(purpose, coordinates, waypoints, circles);
@@ -256,7 +366,7 @@ function choicesFor(
   purpose: CourseDisclosurePurpose,
   coordinates: readonly CoursePosition[],
   waypoints: readonly CourseWaypoint[],
-  circles: readonly ProtectedCircle[],
+  circles: readonly DisclosureCircle[],
 ): DisclosureChoices {
   const classification = classifyDisclosure(coordinates, waypoints, circles);
   const finish = (line: {
@@ -300,7 +410,7 @@ function choicesFor(
       };
     }
     case 'ends-inside': {
-      const trimmed = classification.trimmed;
+      const trimmed = continueCut(coordinates, classification.trimmed, circles);
       const line = finish({
         coordinates: trimmed.coordinates,
         waypoints: trimmed.waypoints,
@@ -351,7 +461,7 @@ export function removedVerticesPerCircle(
 
 /**
  * A protected area's secret offset, as a point of the unit disc. It is drawn once, when
- * the area is made, and scaled by 0.5 · S whenever it is used; it is never drawn again for
+ * the area is made, and scaled by 1 · S whenever it is used; it is never drawn again for
  * a link, never returned in any response and never logged.
  */
 export interface ShareOffset {
@@ -379,15 +489,15 @@ export function shareScaleMeters(radiusMeters: number): number {
 }
 
 /**
- * The circle a link is trimmed against for one protected area: radius 1.5 · S, centred on
- * the area's centre moved by the secret offset scaled to 0.5 · S. The protected area lies
- * wholly inside it (0.5 · S + r ≤ 1.5 · S), so a link never shows more than the owner's own
- * trim would.
+ * The circle a link is trimmed against for one protected area: radius 2 · S, centred on
+ * the area's centre moved by the secret offset scaled to 1 · S (M2-01as; 1.5 · S and 0.5 · S
+ * before). The protected area lies wholly inside it (1 · S + r ≤ 2 · S, as r ≤ S), so a link
+ * never shows more than the owner's own trim would.
  */
 export function shareCircle(
   zone: { readonly center: CoursePosition; readonly radiusMeters: number },
   offset: ShareOffset,
-): ProtectedCircle {
+): DisclosureCircle {
   const scale = shareScaleMeters(zone.radiusMeters);
   const shift = courseSharingLimits.shareOffsetFactor * scale;
   const [longitude, latitude] = zone.center;
@@ -400,7 +510,13 @@ export function shareCircle(
   return {
     center: [centerLongitude, centerLatitude],
     radiusMeters: courseSharingLimits.shareRadiusFactor * scale,
+    continuationCutMeters: shareContinuationCutMeters(zone.radiusMeters),
   };
+}
+
+/** How much further along its path a link is cut past an area's circles: 2.5 · S (M2-01as). */
+export function shareContinuationCutMeters(radiusMeters: number): number {
+  return courseSharingLimits.shareContinuationCutFactor * shareScaleMeters(radiusMeters);
 }
 
 /**
@@ -413,8 +529,63 @@ export function shareCircle(
 export function shareCircles(
   zone: { readonly center: CoursePosition; readonly radiusMeters: number },
   offset: ShareOffset,
-): ProtectedCircle[] {
-  return [shareCircle(zone, offset), { center: zone.center, radiusMeters: zone.radiusMeters }];
+): DisclosureCircle[] {
+  return [shareCircle(zone, offset), areaCircle(zone)];
+}
+
+/** The area itself as a link cuts against it: its own circle, with the continuation. */
+function areaCircle(zone: {
+  readonly center: CoursePosition;
+  readonly radiusMeters: number;
+}): DisclosureCircle {
+  return {
+    center: zone.center,
+    radiusMeters: zone.radiusMeters,
+    continuationCutMeters: shareContinuationCutMeters(zone.radiusMeters),
+  };
+}
+
+/**
+ * Every circle a link is cut against for a set of areas, in the order the preview counts
+ * them: the share circles first, one per area in the areas' order, then the areas.
+ */
+export function shareCircleSet(
+  entries: readonly {
+    readonly zone: { readonly center: CoursePosition; readonly radiusMeters: number };
+    readonly offset: ShareOffset;
+  }[],
+): DisclosureCircle[] {
+  return [
+    ...entries.map((entry) => shareCircle(entry.zone, entry.offset)),
+    ...entries.map((entry) => areaCircle(entry.zone)),
+  ];
+}
+
+/**
+ * Which protected areas a link is cut against, for its lifetime budget (M2-01as): by index
+ * into the areas behind `shareCircleSet` (its first `areaCount` circles are the share circles,
+ * the next `areaCount` the areas). An area counts when either of its circles, grown by 2 m,
+ * holds any vertex of the owner's line — the margin covers the metre the rounding re-check may
+ * still cut and the sliver a flat-map share circle misses, so an area that shaped a link is
+ * never left uncounted. A line whose every vertex stays more than 2 m outside both circles
+ * of an area is not counted against it; one that comes within 2 m of a circle is, even if it
+ * never touches it.
+ */
+export function shareCutAreaIndexes(
+  coordinates: readonly CoursePosition[],
+  circles: readonly ProtectedCircle[],
+  areaCount: number,
+): number[] {
+  const margin = 2;
+  const holds = (circle: ProtectedCircle | undefined) =>
+    circle !== undefined &&
+    coordinates.some(
+      (position) => greatCircleMeters(circle.center, position) <= circle.radiusMeters + margin,
+    );
+  const indexes: number[] = [];
+  for (let index = 0; index < areaCount; index += 1)
+    if (holds(circles[index]) || holds(circles[areaCount + index])) indexes.push(index);
+  return indexes;
 }
 
 /** Whether a stored link's line or waypoints touch a circle — the zone-add re-check (B-6). */

@@ -269,6 +269,19 @@ const accountExportV23Schema = accountExportV22Schema.extend({
     courseDeletions: rows,
   }),
 });
+/**
+ * v24 adds each place's lifetime link budget (M2-01as): per protected area a link was ever cut
+ * against, the area id, the coarse 0.01° cell of its centre, its share reach (3 · S) rounded
+ * up to 100 m and how many links were cut against it. It is the owner's own history, and what keeps an
+ * area made again over the same place from starting its count afresh; nothing can rebuild it
+ * once the links are gone. No centre, no name and no time.
+ */
+const accountExportV24Schema = accountExportV23Schema.extend({
+  schemaVersion: z.literal(24),
+  data: accountExportV23Schema.shape.data.extend({
+    courseShareAreaBudgets: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -293,6 +306,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV21Schema,
   accountExportV22Schema,
   accountExportV23Schema,
+  accountExportV24Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

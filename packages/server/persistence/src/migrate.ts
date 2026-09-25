@@ -56,6 +56,8 @@ const migrationFiles = [
   '051_object_purge_plain_owner.sql',
   '052_queue_state_plain_owner.sql',
   '053_course_candidate_evaluation_v2.sql',
+  // M2-01as: the lifetime link budget per place.
+  '054_course_share_area_budget.sql',
 ] as const;
 
 /**
@@ -326,6 +328,9 @@ export async function grantOperations(
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.export_course_deletions() TO "${runtimeRole}"`,
     );
+    // Each place's lifetime link budget (M2-01as, export v24). Read only: only
+    // `claim_course_share_budget` writes it.
+    await pool.query(`GRANT SELECT ON course_share_area_budget TO "${runtimeRole}"`);
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
@@ -1058,6 +1063,12 @@ export async function grantCourses(connectionString: string, runtimeRole: string
       `GRANT EXECUTE ON FUNCTION
        public.read_course_share(text,integer,text,integer,integer,integer),
        public.reap_course_shares(integer) TO "${runtimeRole}"`,
+    );
+    // The lifetime link budget per place (M2-01as, migration 054). No grant on the table: a
+    // link takes its budget through this function, which also holds the bound, so the role
+    // can neither write a row, lower a count, nor claim against another bound.
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.claim_course_share_budget(uuid[]) TO "${runtimeRole}"`,
     );
   } finally {
     await pool.end();

@@ -992,3 +992,44 @@ it('reads v23 with link facts and share offsets, and keeps v22 strict against th
   expect(accountExportSchema.safeParse({ ...current, schemaVersion: 22 }).success).toBe(false);
   expect(accountExportSchema.parse(v22).data).not.toHaveProperty('courseShares');
 });
+
+// M2-01as, export v24: each place's lifetime link budget — area id, coarse cell, rounded
+// radius and count; no centre, no name, no time.
+it('reads v24 with the lifetime link budgets, and keeps v23 strict against them', () => {
+  const v23 = {
+    schemaVersion: 23,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {} as Record<string, unknown>,
+  };
+  const keys = accountExportSchema.options
+    .find((option) => option.shape.schemaVersion.value === 23)
+    ?.shape.data.keyof().options;
+  if (!keys) throw new Error('Expected a v23 schema');
+  for (const key of keys) v23.data[key] = [];
+  const previous = accountExportSchema.parse(v23);
+  const budgets = [
+    {
+      zone_id: '11111111-1111-4111-8111-111111111111',
+      cell_latitude: 3750,
+      cell_longitude: 12702,
+      reach_meters: 900,
+      links_cut: 20,
+    },
+  ];
+  const current = accountExportSchema.parse({
+    ...previous,
+    schemaVersion: 24,
+    data: { ...previous.data, courseShareAreaBudgets: budgets },
+  });
+  if (current.schemaVersion !== 24) throw new Error('Expected v24');
+  expect(current.data.courseShareAreaBudgets).toEqual(budgets);
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: { ...current.data, courseShareAreaBudgets: undefined },
+    }).success,
+  ).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 23 }).success).toBe(false);
+  expect(previous.data).not.toHaveProperty('courseShareAreaBudgets');
+});

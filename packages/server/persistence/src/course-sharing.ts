@@ -72,6 +72,7 @@ export class CourseSharingStateError extends Error {
       | 'COURSE_EXPORT_NOT_CONFIRMED'
       | 'COURSE_SHARE_REQUIRES_PROTECTED_AREA'
       | 'COURSE_SHARE_LIMIT_REACHED'
+      | 'COURSE_SHARE_AREA_LIFETIME_REACHED'
       | 'COURSE_SHARE_NOT_FOUND',
   ) {
     super(code);
@@ -289,6 +290,12 @@ export interface CreateShareInput {
   readonly expiresInDays: number;
   readonly snapshot: ShareSnapshot;
   readonly zoneIds: readonly string[];
+  /**
+   * The protected areas that actually cut this link (M2-01as): each gives up one link of its
+   * lifetime budget, all or nothing, in the same transaction as the link. Empty for a line
+   * that touches no area. A subset of `zoneIds`.
+   */
+  readonly cutZoneIds: readonly string[];
   /** The protected-area set the snapshot was cut against, re-checked inside the write. */
   readonly zoneSetDigest: string;
   readonly digestOf: (zones: readonly CoursePrivacyZone[]) => string;
@@ -503,6 +510,11 @@ export function createCourseSharingRepository(
         .min(1)
         .max(courseLimits.privacyZonesPerTenant)
         .parse(input.zoneIds);
+      const cutZoneIds = z
+        .array(uuid)
+        .max(courseLimits.privacyZonesPerTenant)
+        .refine((ids) => ids.every((id) => zoneIds.includes(id)), 'CUT_ZONES_NOT_NAMED')
+        .parse(input.cutZoneIds);
       return database.tenant(tenantId, async (tx) => {
         await tenantLock(tx);
         await tx.query('SELECT public.reap_course_shares(100)');
@@ -552,6 +564,17 @@ export function createCourseSharingRepository(
           room.for_course >= courseSharingLimits.activeSharesPerCourse
         )
           throw new CourseSharingStateError('COURSE_SHARE_LIMIT_REACHED');
+        // M2-01as: every area that cut this link gives up one link of its lifetime budget —
+        // revoked, expired and restored-away links stay counted, and an area made again over
+        // the same place inherits the count (migration 054). Refused when any has none left.
+        if (cutZoneIds.length > 0) {
+          const claimed = await tx.query(
+            'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+            [cutZoneIds],
+          );
+          if (!z.object({ claimed: z.boolean() }).parse(claimed.rows[0]).claimed)
+            throw new CourseSharingStateError('COURSE_SHARE_AREA_LIFETIME_REACHED');
+        }
         const shareId = randomUUID();
         // R-4: a link ends at a UTC midnight, `expiresInDays` days after the one before it
         // was made (so between days−1 and days after). The recipient sees only that date and

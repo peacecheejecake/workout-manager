@@ -198,6 +198,68 @@ web shell이 그 proxy를 거치지 않고는 닿을 수 없게 하며, `COURSE_
 mobile shell의 서버 주소)를 적는다. API는 header를 오른쪽부터 읽어 신뢰 proxy가 아닌 첫 주소를 클라이언트로 본다. 이 구성이
 없는 배포에서는 켜지 않는다. 링크 공유를 켜는 것은 재식별 검토의 R1 후속 완화 뒤의 운영 결정이다.
 
+### 코스 링크 공유: 장소별 수명 예산과 켜기 전 점검표 (M2-01as)
+
+M2-01as는 R1의 진행 방향·역투영 공격(과 그 뒤 재식별 검토 r1의 dead reckoning·학습 결합 공격)을 세 가지로 완화했다
+([M2-01as 기록](progress/M2-01as.md)): 공유 원을 넓히고(오프셋 ≤ 1·S, 반지름 2·S), 잘린 끝마다 경로를 따라 2.5·S를 더 잘라
+내며(도메인, 짧은 코스는 거절), **한 장소에서 잘린 링크는 평생 10개까지**다(migration 054 `course_share_area_budget`, 사용자
+결정 2026-09-26). 철회·만료·복원 무효 링크도 센다. 새 보호 구역은 첫 링크 때 두 구역의 공유 원 도달 거리(각 3·S)가 만나는
+곳의 구역·묘비가 이미 쓴 개수에서 시작하고(대략 1.5 km 안, 큰 구역일수록 멀리 — 3 km쯤까지), 그 뒤로는 구역마다 따로 센다.
+
+**migration과 grant.** 050과 054은 모두 `erase_account`를 한 겹 더 감싸고(rename) 새 함수를 더한다. rename된 함수에서는 grant가
+떨어지므로 **050 뒤, 그리고 054 뒤에 `grantCourses`와 `grantOperations`를 다시 실행한다**(050 절차에 빠져 있던 단계).
+`grantOperations`는 새 `erase_account`의 EXECUTE와 export v24가 읽는 `course_share_area_budget` SELECT를, `grantCourses`는
+링크 생성이 부르는 `claim_course_share_budget(uuid[])` EXECUTE를 준다. 표 자체에 쓰기 grant는 없다(쓰기는 그 함수만,
+수는 올라가기만 한다). grant 전의 링크 생성은 `42883`/`42501`로 실패한다(flag가 꺼진 배포는 해당 없음).
+054은 policy를 소유 역할에 묶지 않는다: 표는 tenant policy뿐이고(`*_definer` policy 없음), claim·말소·backfill·복원 재적용은
+모두 tenant를 이름 붙여 돈다. 그래서 superuser도 BYPASSRLS도 아닌 소유 역할(051·052의 경우)에서도 그대로 동작하고, 소유를 넘길
+때 `retarget_definer_policies()`(052)가 돌릴 것이 이 표에는 없다(그 함수의 목록에 넣지 않는다). claim 함수의 소유는
+`REASSIGN OWNED`와 함께 넘어간다(`course-share-area-budget-plain-owner.integration.test.ts`가 plain 소유자로 claim·상속·상한·
+재적용·말소를 확인). 복원 재적용 함수는 invoker라 복원 관리자 role(또는 plain 소유자)로 부른다.
+
+**복원: 예산 원장 재적용.** 복원은 백업 시점의 낮은 수를 되돌린다. 백업 뒤 만든 링크는 이미 누군가 봤으므로 그 수가
+사라지면 같은 장소에서 링크를 다시 10개 만들 수 있다. 그래서 코스 삭제 원장과 같은 방식으로:
+
+1. 원본 cluster의 `course_share_area_budget` 표 전체(`athlete_id`, `zone_id`, `cell_latitude`, `cell_longitude`,
+   `reach_meters`, `links_cut` — 중심·이름·시각 없음)를 DB 밖에 독립 보존한다. 말소는 그 tenant의 행을 지우므로 말소 전에
+   그 tenant의 행을 따로 캡처해 합친다. 다른 필드가 있는 항목은 재적용하지 않는다. **캡처는 원본에서 마지막으로 링크가
+   만들어진 뒤여야 한다**(검토 r2 peer 7): 원본의 최신 `course_share_audit` `created` 시각보다 늦게 찍힌 사본만 쓴다. 그보다
+   이른 사본밖에 없으면 사본이 없는 것으로 다룬다(아래 4).
+2. 복원 트랜잭션에서(말소·활동·코스 삭제 원장과 같은 트랜잭션, runtime 접근 전) 항목마다 그 tenant 세션으로: 말소된
+   tenant는 부르지 않고 계수하고(행이 없음을 확인), 나머지는 `SELECT public.replay_course_share_budget(tenant, zone_id,
+cell_latitude, cell_longitude, reach_meters, links_cut)`. 반환 `inserted`(복원 cluster에 없던 행 — 백업 뒤 만든 구역이면
+   그 장소의 묘비로 남는다) / `raised`(복원된 수가 낮았다) / `already_applied`. 합계가 항목 수와 같아야 한다.
+3. 세션 불일치, 말소·미지 tenant, 장소(cell·reach)가 다른 행은 예외로 재적용 전체를 rollback한다. 수를 낮추는 경로는 없다
+   (함수와 trigger 모두).
+4. 원장 사본을 얻을 수 없는 복원(원본 소실)이라면 **링크 공유를 켠 채로 열지 않는다**: 소유자의 구역 수와 무관하게 백업 뒤
+   링크 수를 알 수 없기 때문이다. 이 경우의 대체 절차(예: 모든 행을 상한으로 올림)는 이 노드에서 구현·실행하지 않았다.
+
+**원장 사본의 보존과 접근(검토 r1 item 7).** 원장 사본은 장소의 대략 위치(0.01° 칸, 약 1 km)와 계정 id를 담으므로 계정
+데이터처럼 다룬다:
+
+- 접근: 복원 관리자 role과 백업 운영자만 읽는다. 백업 저장소와 같은 암호화·접근 기록을 적용하고, 앱 runtime·worker·로그
+  수집기는 접근하지 못한다. 사본을 채팅·티켓·일반 파일 공유에 붙이지 않는다.
+- 보존: 짝이 되는 DB 백업보다 오래 두지 않는다. 그 백업이 만료·폐기될 때 함께 지운다(백업 보존 기간이 상한이다). 복원에
+  쓴 사본은 복원이 끝나고 검증되면 지운다.
+- 말소: 계정 말소 뒤 새로 캡처하는 사본에는 그 계정 행이 없다. 말소 전에 만든 사본은 짝이 되는 백업과 같은 기한에 지워지며,
+  그 전에 복원하면 말소 원장 재적용이 먼저 그 계정을 지우고 예산 재적용은 그 항목을 말소로 계수한다.
+
+drill이 이 절차를 실행한다(`post_backup_share_budget_ledger_captured_separately`,
+`latest_share_budget_ledger_replayed_before_runtime_access`, `share_budget_ledger_replay_is_idempotent`,
+`restored_share_budget_counts_links_seen_before_the_restore`, `area_made_again_after_restore_inherits_the_replayed_tombstone`).
+
+**링크 공유(B)를 켜기 전 점검표.** 모두 만족해야 하고, 켜는 것은 여전히 운영 결정이다. 이 노드는 어디에서도 flag를 켜지 않았다.
+
+1. M2-01as 완화 뒤 **독립 재식별 검토가 통과**했다(검토 기록이 progress에 있다).
+2. web shell **앞에** 접속 주소로 `X-Forwarded-For`를 설정(또는 맨 뒤 덧붙이기)하는 front proxy가 있고, web shell은 그 proxy를
+   거쳐서만 닿는다. Next rewrite는 클라이언트 header를 그대로 넘긴다(M2-01k-o §8 실측) — web shell만 신뢰하면 위조가 된다.
+3. `COURSE_SHARE_TRUSTED_PROXIES`에 API가 보는 접속 주소(web·mobile shell 서버)만 적었다. `COURSE_SHARE_EPOCH`,
+   32 bytes 이상 `COURSE_SHARE_RATE_KEY`가 있다(없으면 시작 거부).
+4. 050·054 뒤 `grantCourses`·`grantOperations`를 다시 실행했다.
+5. 복원 절차에 **epoch 올리기**(위 절)와 **예산 원장 캡처·재적용**(이 절)이 들어 있다.
+6. 켤 때 매트릭스 `P7-no-public-share`를 요구 §7 조건 (3)(독립 재식별 검토 기록)으로 다시 판정한다. 지금의 passed는 조건
+   (1) "공유 미출하(flag 기본 꺼짐)"만으로 유지된 것이다.
+
 ## 체크인 저장 이후의 내보내기·복구
 
 M1-04a에서 export artifact `schemaVersion: 2`를 도입했다. 기존 v1 다운로드 파일은 변경하지 않으며

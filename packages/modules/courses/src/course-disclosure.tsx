@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  courseShareMeasuredResidual,
   courseSharingLimits,
   type CourseDisclosureExposure,
   type CourseDisclosureOption,
@@ -42,6 +43,13 @@ function position(value: readonly [number, number]): string {
   return `위도 ${value[1].toFixed(5)}, 경도 ${value[0].toFixed(5)}`;
 }
 
+/**
+ * What deleting a protected area does to links, shown beside the areas while sharing is on
+ * (R-7). M2-01as (review r1 item 7): the place's lifetime link count outlives the area.
+ */
+export const zoneDeletionShareNote =
+  '보호 구역을 삭제하면 그 구역으로 잘린 링크는 모두 꺼집니다. 같은 곳에 구역을 다시 만들면 공유용 오프셋이 바뀝니다. 두 오프셋의 공유를 모으면 범위가 좁혀질 수 있습니다. 삭제한 뒤에도 이 장소에서 만든 링크 수는 대략의 위치(약 1 km 칸)와 함께 계정에 남아, 근처에 다시 만든 구역이 이어서 셉니다. 계정을 삭제하면 함께 지워집니다.';
+
 export function readableSharingError(error: unknown): string {
   if (!(error instanceof CourseRequestError)) return '요청을 완료하지 못했습니다.';
   switch (error.code) {
@@ -56,6 +64,8 @@ export function readableSharingError(error: unknown): string {
       return '링크로 공유하려면 보호 구역을 먼저 추가하세요.';
     case 'COURSE_SHARE_LIMIT_REACHED':
       return `켜져 있는 링크가 너무 많습니다. 코스당 ${courseSharingLimits.activeSharesPerCourse}개, 전체 ${courseSharingLimits.activeSharesPerOwner}개까지 만들 수 있습니다.`;
+    case 'COURSE_SHARE_AREA_LIFETIME_REACHED':
+      return `이 보호 구역 근처에서 만들 수 있는 링크 ${courseSharingLimits.shareLinksPerAreaLifetime}개를 모두 썼습니다. 끈 링크, 만료된 링크, 지운 뒤 다시 만든 보호 구역의 링크도 모두 셉니다. 새 보호 구역은 첫 링크 때 가까운 구역(약 1.5 km 안, 큰 구역일수록 더 멀리)이 이미 쓴 개수에서 시작합니다. 이 코스는 GPX로만 내보낼 수 있습니다.`;
     default:
       return readableExtrasError(error);
   }
@@ -197,6 +207,30 @@ function DisclosureBody({
     </Button>
   ) : null;
 
+  if (
+    purpose === 'share' &&
+    preview.outcome === 'blocked' &&
+    preview.blockedReason === 'COURSE_TRIM_REMOVES_EVERYTHING'
+  )
+    return (
+      <>
+        {/* M2-01as: a link loses a further stretch of path past each cut end. */}
+        <p role="alert">
+          링크는 보호 구역 둘레를 넉넉히 자른 뒤, 잘린 끝마다 코스를 따라{' '}
+          {metres(
+            courseSharingLimits.shareContinuationCutFactor *
+              courseSharingLimits.shareMinimumScaleMeters,
+          )}{' '}
+          이상을 더 잘라 냅니다. 이 코스는 그러고 나면 남는 선이 없어 링크로 공유할 수 없습니다. 더
+          긴 코스는 공유할 수 있고, 이 코스도 GPX로는 내보낼 수 있습니다.
+        </p>
+        <div className={styles.actions}>
+          <Button variant="secondary" onClick={onClose}>
+            닫기
+          </Button>
+        </div>
+      </>
+    );
   if (preview.outcome === 'blocked')
     return (
       <>
@@ -413,6 +447,18 @@ function DisclosureBody({
               같은 보호 구역 근처의 코스로 만든 링크들은 같은 방식으로 잘립니다. 누군가 그 링크를
               여러 개 모아 보면 같은 사람이 만든 것임을 알아챌 수 있고, 모을수록 보호 구역의 위치를
               좁혀 볼 여지도 커집니다.
+            </p>
+            {/* M2-01as: the residual the attack suite measured, in metres. */}
+            <p data-testid="share-residual">
+              그래서 한 보호 구역 근처에서 만들 수 있는 링크는 모두 합쳐{' '}
+              {courseSharingLimits.shareLinksPerAreaLifetime}개입니다(끈 링크, 만료된 링크, 지운 뒤
+              다시 만든 보호 구역의 링크도 셉니다). 새로 만든 보호 구역은 첫 링크 때, 가까운 곳(약
+              1.5 km 안, 큰 구역일수록 더 멀리 — 3 km쯤까지)의 구역이 이미 쓴 개수에서 시작하고, 그
+              뒤로는 구역마다 따로 셉니다. 합성 코스로 한 실험에서, 한 구역의 링크{' '}
+              {courseShareMeasuredResidual.links}개를 모두 모은 사람은 집 위치를 절반의 경우{' '}
+              {courseShareMeasuredResidual.medianMeters}m 안팎까지, 열 번에 한 번은{' '}
+              {courseShareMeasuredResidual.p10Meters}m 안까지 좁혔습니다. 링크는 잘린 끝에서 코스를
+              따라 더 잘라 내므로 짧은 코스는 링크로 공유할 수 없습니다.
             </p>
           </>
         )}

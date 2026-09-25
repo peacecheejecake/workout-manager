@@ -85,7 +85,11 @@ import {
   createSharedCourseReader,
   type CourseSharingRepository,
 } from '../packages/server/persistence/src/course-sharing.ts';
-import { disclosureChoices, shareCircle } from '../packages/server/courses/src/disclosure.ts';
+import {
+  disclosureChoices,
+  shareCircleSet,
+  shareCutAreaIndexes,
+} from '../packages/server/courses/src/disclosure.ts';
 import { privacyZoneSetDigest } from '../packages/server/courses/src/privacy-trim.ts';
 import { courseContentDigest } from '../packages/server/courses/src/digest.ts';
 import { createSharedRoutingAdmission } from '../packages/server/persistence/src/routing-admission.ts';
@@ -544,15 +548,97 @@ async function replayCourseDeletionLedger(
   return outcome;
 }
 
+// M2-01as: replay a lifetime link budget ledger inside the caller's open restore transaction.
+// A restored count only ever rises to the captured one; a row whose area did not survive the
+// restore is inserted as that place's tombstone. An erased tenant's entry is satisfied by its
+// erasure and counted; anything the database cannot verify throws.
+type ShareBudgetReplay = {
+  inserted: string[];
+  raised: string[];
+  already_applied: string[];
+  erasure_satisfied: string[];
+};
+async function replayShareBudgetLedger(restored: Pool, value: unknown): Promise<ShareBudgetReplay> {
+  assert.ok(Array.isArray(value) && value.length > 0);
+  const outcome: ShareBudgetReplay = {
+    inserted: [],
+    raised: [],
+    already_applied: [],
+    erasure_satisfied: [],
+  };
+  for (const entry of value) {
+    assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
+    const row = entry as Record<string, unknown>;
+    assert.deepEqual(Object.keys(row).sort(), [
+      'athlete_id',
+      'cell_latitude',
+      'cell_longitude',
+      'links_cut',
+      'reach_meters',
+      'zone_id',
+    ]);
+    const owner = row['athlete_id'];
+    const zoneId = row['zone_id'];
+    const numbers = ['cell_latitude', 'cell_longitude', 'reach_meters', 'links_cut'].map(
+      (key) => row[key],
+    );
+    assert.ok(
+      typeof owner === 'string' &&
+        typeof zoneId === 'string' &&
+        numbers.every((number) => Number.isInteger(number)),
+    );
+    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
+      owner,
+    ]);
+    if (erased.rowCount !== 0) {
+      assert.equal(
+        (
+          await restored.query('SELECT 1 FROM course_share_area_budget WHERE athlete_id=$1', [
+            owner,
+          ])
+        ).rowCount,
+        0,
+      );
+      outcome.erasure_satisfied.push(zoneId);
+      continue;
+    }
+    const applied = (
+      await restored.query<{ outcome: string }>(
+        'SELECT public.replay_course_share_budget($1,$2,$3,$4,$5,$6) AS outcome',
+        [owner, zoneId, ...numbers],
+      )
+    ).rows[0]?.outcome;
+    assert.ok(applied === 'inserted' || applied === 'raised' || applied === 'already_applied');
+    outcome[applied].push(zoneId);
+  }
+  assert.equal(
+    outcome.inserted.length +
+      outcome.raised.length +
+      outcome.already_applied.length +
+      outcome.erasure_satisfied.length,
+    value.length,
+  );
+  return outcome;
+}
+
+const SHARE_BUDGET_COLUMNS =
+  'athlete_id,zone_id::text AS zone_id,cell_latitude,cell_longitude,reach_meters,links_cut';
+
 const childEnvironment = { PATH: process.env.PATH, LC_ALL: 'C' };
 /**
  * M2-01k-o: a course that leaves the owner's protected area, for the link checks. Imported
  * (no lineage), so it is reclaimed by nothing but its own deletion or the account's erasure.
  */
-async function seedShareableCourse(database: Database, athleteId: string, name: string) {
+async function seedShareableCourse(
+  database: Database,
+  athleteId: string,
+  name: string,
+  origin: readonly [number, number] = [127.02, 37.5],
+) {
   const coordinates: [number, number][] = Array.from({ length: 41 }, (_, index) => [
-    Number((127.02 + index * 0.0005).toFixed(7)),
-    Number((37.5 + index * 0.0005).toFixed(7)),
+    Number((origin[0] + index * 0.0005).toFixed(7)),
+    Number((origin[1] + index * 0.0005).toFixed(7)),
   ]);
   const start = coordinates[0];
   const finish = coordinates[coordinates.length - 1];
@@ -610,12 +696,9 @@ async function seedDrillLink(
   assert.ok(head);
   const withOffsets = await sharing.zonesWithShareOffsets(athleteId);
   const zones = withOffsets.map((entry) => entry.zone);
-  const choices = disclosureChoices(
-    'share',
-    head.coordinates,
-    head.waypoints,
-    withOffsets.map((entry) => shareCircle(entry.zone, entry.offset)),
-  );
+  // The route's own circles: share circles and areas, each with its continuation (M2-01as).
+  const circles = shareCircleSet(withOffsets);
+  const choices = disclosureChoices('share', head.coordinates, head.waypoints, circles);
   const option = choices.options[0];
   assert.ok(
     option && (option.exposure === 'trimmed' || option.exposure === 'no-zone-intersection'),
@@ -653,6 +736,9 @@ async function seedDrillLink(
       distanceMeters: Math.round(option.line.distanceMeters),
     },
     zoneIds: zones.map((zone) => zone.zoneId),
+    cutZoneIds: shareCutAreaIndexes(head.coordinates, circles, zones.length).flatMap((index) =>
+      zones[index] ? [zones[index].zoneId] : [],
+    ),
     zoneSetDigest: privacyZoneSetDigest(zones),
     digestOf: privacyZoneSetDigest,
   });
@@ -718,6 +804,7 @@ async function execute() {
   );
   const activityDeletionLedgerFile = join(directory, 'post-backup-activity-deletion-ledger.json');
   const courseDeletionLedgerFile = join(directory, 'post-backup-course-deletion-ledger.json');
+  const shareBudgetLedgerFile = join(directory, 'post-backup-share-budget-ledger.json');
   const pools: Pool[] = [];
   const databases: Database[] = [];
   let started = false;
@@ -1144,7 +1231,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 23);
+      assert.equal(before.schemaVersion, 24);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -1206,7 +1293,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 23) throw new Error('Expected coaching export v23');
+      if (coachingExport.schemaVersion !== 24) throw new Error('Expected coaching export v24');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1282,6 +1369,7 @@ async function execute() {
         coursePrivacyZoneShareOffsets: _coursePrivacyZoneShareOffsets,
         courseShares: _courseShares,
         courseDeletions: _courseDeletions,
+        courseShareAreaBudgets: _courseShareAreaBudgets,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1433,7 +1521,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 23) throw new Error('Expected candidate export v23');
+      if (candidateExport.schemaVersion !== 24) throw new Error('Expected candidate export v24');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -2642,6 +2730,8 @@ async function execute() {
       'course_share_audit',
       'course_disclosure_receipt',
       'course_privacy_zone_share_offset',
+      // M2-01as: the lifetime link budget of the area its link was cut against.
+      'course_share_area_budget',
     ] as const;
     const countErasedTenantRows = async (owner: Pool) => {
       const counts: Record<string, number> = {};
@@ -2969,6 +3059,15 @@ async function execute() {
       overlappingCourseDeletion.map((row) => row.course_id),
       [erasedRetryCourse.course.courseId],
     );
+    // M2-01as: the same overlap for the lifetime link budget: the erasure removes the erased
+    // tenant's budget rows from the source, so this capture carries them.
+    const overlappingShareBudget = (
+      await source.query(
+        `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget WHERE athlete_id=$1`,
+        [deletedAthlete],
+      )
+    ).rows;
+    assert.equal(overlappingShareBudget.length, 1);
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
     assert.equal(
       (await source.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [deletedAthlete]))
@@ -3171,6 +3270,71 @@ async function execute() {
       0,
     );
     checks.push('post_backup_link_revoked_course_deleted_and_tenant_erased_in_source');
+    // M2-01as: links made after the backup were seen, so their count must survive a restore
+    // that brings back the backup's lower one. One more link against the first area, and a
+    // second area made after the backup, one link cut against it, then the area deleted — so
+    // the restored cluster never had it and only its budget row can remember the place.
+    const budgetOf = async (owner: Pool, zoneId: string) =>
+      (
+        await owner.query<{ links_cut: number }>(
+          'SELECT links_cut FROM course_share_area_budget WHERE athlete_id=$1 AND zone_id=$2',
+          [sharingAthlete, zoneId],
+        )
+      ).rows[0]?.links_cut;
+    const sharingPreferences = createCoursePreferenceRepository(sourceDb);
+    const [firstArea] = await sharingPreferences.listPrivacyZones(sharingAthlete);
+    assert.ok(firstArea);
+    // Three links at backup time (the revoked one and the deleted course's included).
+    assert.equal(await budgetOf(source, firstArea.zoneId), 3);
+    await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      sharingAthlete,
+      await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link made after backup'),
+      shareEpochAtBackup,
+    );
+    assert.equal(await budgetOf(source, firstArea.zoneId), 4);
+    const secondAreaCenter: [number, number] = [127.3, 37.7];
+    const secondArea = (
+      await sharingPreferences.createPrivacyZone(sharingAthlete, {
+        name: 'Drill share area made after backup',
+        center: secondAreaCenter,
+        radiusMeters: 200,
+      })
+    ).find((zone) => zone.name === 'Drill share area made after backup');
+    assert.ok(secondArea);
+    await seedDrillLink(
+      sourceDb,
+      sourceSharing,
+      sharingAthlete,
+      await seedShareableCourse(
+        sourceDb,
+        sharingAthlete,
+        'Drill link of the area made after backup',
+        secondAreaCenter,
+      ),
+      shareEpochAtBackup,
+    );
+    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    await sharingPreferences.removePrivacyZone(sharingAthlete, secondArea.zoneId);
+    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    // The ledger is the whole table, captured outside the database like the others, with the
+    // erased tenant's rows from the capture taken before its erasure. Area id, cell, rounded
+    // radius and count — no centre, no name, no time.
+    const shareBudgetLedger = [
+      ...(
+        await source.query(
+          `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget ORDER BY athlete_id,zone_id`,
+        )
+      ).rows,
+      ...overlappingShareBudget,
+    ];
+    assert.equal(shareBudgetLedger.length, 3);
+    await writeFile(shareBudgetLedgerFile, JSON.stringify(shareBudgetLedger), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    checks.push('post_backup_share_budget_ledger_captured_separately');
     // M2-01ao: the owner deletes both courses after the backup, through the real lifecycle.
     await courseRepo.remove(retainedAthlete, ownerDeletedCourse.course.courseId, 2);
     await courseRepo.remove(retainedAthlete, gapBornCourse.course.courseId, 1);
@@ -3872,11 +4036,61 @@ async function execute() {
           erasure_satisfied: [erasedRetryCourse.course.courseId],
         },
       );
+      // M2-01as: the restored budget rows are the backup's; the ledger raises the first
+      // area's to the links made since, keeps the deleted second area as a tombstone, and
+      // leaves the erased tenant's to its erasure.
+      assert.equal(await budgetOf(restored, firstArea.zoneId), 3);
+      const budgetReplay = await replayShareBudgetLedger(
+        restored,
+        JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+      );
+      assert.equal(budgetReplay.raised.length, 1);
+      assert.equal(budgetReplay.inserted.length, 1);
+      assert.equal(budgetReplay.already_applied.length, 0);
+      assert.equal(budgetReplay.erasure_satisfied.length, 1);
+      assert.deepEqual(budgetReplay.raised, [firstArea.zoneId]);
+      assert.deepEqual(budgetReplay.inserted, [secondArea.zoneId]);
       await restored.query('COMMIT');
     } catch (error) {
       await restored.query('ROLLBACK');
       throw error;
     }
+    assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
+    assert.equal(await budgetOf(restored, secondArea.zoneId), 1);
+    assert.equal(
+      (
+        await restored.query(
+          'SELECT 1 FROM course_privacy_zone WHERE athlete_id=$1 AND zone_id=$2',
+          [sharingAthlete, secondArea.zoneId],
+        )
+      ).rowCount,
+      0,
+    );
+    checks.push('latest_share_budget_ledger_replayed_before_runtime_access');
+    // Replaying it again raises nothing.
+    await restored.query('BEGIN');
+    try {
+      const again = await replayShareBudgetLedger(
+        restored,
+        JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+      );
+      assert.deepEqual(
+        { ...again, already_applied: [...again.already_applied].sort() },
+        {
+          inserted: [],
+          raised: [],
+          already_applied: [firstArea.zoneId, secondArea.zoneId].sort(),
+          erasure_satisfied: again.erasure_satisfied,
+        },
+      );
+      assert.equal(again.erasure_satisfied.length, 1);
+      await restored.query('COMMIT');
+    } catch (error) {
+      await restored.query('ROLLBACK');
+      throw error;
+    }
+    assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
+    checks.push('share_budget_ledger_replay_is_idempotent');
     checks.push('latest_erasure_replayed_before_runtime_access');
     checks.push('latest_activity_deletion_suppression_replayed_before_runtime_access');
     checks.push('overlapping_erasure_and_activity_deletion_ledgers_replay_without_rollback');
@@ -4033,6 +4247,33 @@ async function execute() {
         // …and a link of the raised epoch stops every link if the setting ever went back.
         assert.equal(await served(fresh, shareEpochAtBackup), 'not_found');
         checks.push('new_link_after_restore_served_under_the_raised_epoch_only');
+        // M2-01as: that link is the fifth against the first area — the four seen before the
+        // restore still count — and an area made again over the second place (which the
+        // restored cluster only knows from its replayed tombstone) starts at that count.
+        assert.equal(await budgetOf(restored, firstArea.zoneId), 5);
+        checks.push('restored_share_budget_counts_links_seen_before_the_restore');
+        const recreated = (
+          await createCoursePreferenceRepository(linksDb).createPrivacyZone(sharingAthlete, {
+            name: 'Drill share area made again after restore',
+            center: secondAreaCenter,
+            radiusMeters: 150,
+          })
+        ).find((zone) => zone.name === 'Drill share area made again after restore');
+        assert.ok(recreated);
+        await seedDrillLink(
+          linksDb,
+          restoredSharing,
+          sharingAthlete,
+          await seedShareableCourse(
+            linksDb,
+            sharingAthlete,
+            'Drill link of the area made again after restore',
+            secondAreaCenter,
+          ),
+          shareEpochAfterRestore,
+        );
+        assert.equal(await budgetOf(restored, recreated.zoneId), 2);
+        checks.push('area_made_again_after_restore_inherits_the_replayed_tombstone');
       } finally {
         await restoredReader.close();
       }
@@ -4230,7 +4471,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 23);
+    assert.ok(constraintExport.schemaVersion === 24);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -4265,7 +4506,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
+    if (withdrawnExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -4317,7 +4558,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
+    if (absentExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -5011,7 +5252,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 23) throw new Error('Expected resource export v23');
+    if (retainedExport.schemaVersion !== 24) throw new Error('Expected resource export v24');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -5432,7 +5673,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 23) throw new Error('Expected coaching export v23');
+    if (retainedExport.schemaVersion !== 24) throw new Error('Expected coaching export v24');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -5564,7 +5805,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 23) throw new Error('Expected coaching export v23');
+    if (coachingAfterReplay.schemaVersion !== 24) throw new Error('Expected coaching export v24');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -5740,7 +5981,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 23) throw new Error('Expected evidence export v23');
+    if (scrubbedExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
@@ -5817,6 +6058,7 @@ async function execute() {
       'invalidate_restored_garmin_credentials_and_replay_latest_encrypted_cleanup_ledger',
       'discard_restored_unofficial_garmin_sessions_keeping_pin_and_ledger',
       'raise_course_share_epoch_invalidating_every_pre_restore_link',
+      'replay_latest_share_area_budget_ledger_raising_counts_and_keeping_tombstones',
     ],
     checks,
     checkCount: checks.length,
@@ -5832,6 +6074,7 @@ async function execute() {
       'Course deletions are replayed from an independently retained course-deletion ledger (tenant, course id, deletion time) captured after the backup; a replay against a cluster whose data is not restored, an unknown or erased tenant, or a course id another tenant holds aborts the replay. Courses deleted before migration 049 left no ledger row and can still be brought back by restoring a backup that predates their deletion.',
       'The local private-object archive was exercised with the PostgreSQL snapshot; remote object providers, encrypted remote backup storage, disaster recovery infrastructure, and production recovery objectives were not exercised.',
       'Course links (M2-01k-o) are invalidated by raising the share epoch, a deployment setting outside the database, before runtime access; every restore path (logical archive, PITR, hosting snapshot) must raise it. The drill models the setting; a real deployment configuration change was not exercised.',
+      "Each place's lifetime link budget (M2-01as) is replayed from an independently retained copy of course_share_area_budget captured after the backup (area id, 0.01° cell, share reach rounded up to 100 m, count); a replayed count only raises a restored one and a row whose area did not survive the restore stays as that place's tombstone. Without that copy a restore returns the backup's lower counts, and links seen since the backup could be made again.",
     ],
     sources: [
       'https://www.postgresql.org/docs/15/app-pgdump.html',

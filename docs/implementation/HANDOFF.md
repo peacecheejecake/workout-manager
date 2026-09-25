@@ -17,11 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01ag](progress/M2-01ag.md)를 완료했다(`phase/m2-01`). 태블릿 코스 목록에서 주소로 연 코스를 목록 pane 안에서만 스크롤해 보이게 하고(페이지와
-focus는 움직이지 않음), 접기·순서 버튼 줄을 목록 위에 붙여 두며 스크롤·focus된 행이 그 아래에 가려지지 않게 했다. R-S13-S14는 passed 유지,
-M2-01k-c1이 적어 둔 두 공백을 닫았다.
+[M2-01as](progress/M2-01as.md)를 완료했다(`phase/m2-01`). 공유 링크 재식별 완화: 공유 원 오프셋 ≤1·S·반지름 2·S, 잘린 끝마다 경로를 따라
+2.5·S 추가 절단, 장소별 평생 10링크(migration 054, 구역을 지워도 남는 tombstone). 6개 코스 모형 × 13개 공격 × 3 seed의 gate가
+`pnpm test`에 있다. 독립 재식별 검토가 상한 10에서 통과했다(C1 닫힘, 검토자 공격 최소 82 m/25 m). 링크 flag는 여전히 기본 꺼짐이다.
 
-직전 완료: [M2-01ap](progress/M2-01ap.md)(경로 속성 details).
+직전 완료: [M2-01ag](progress/M2-01ag.md)(태블릿 코스 목록).
 
 ## 운영 메모
 
@@ -54,8 +54,8 @@ M2-01k-c1이 적어 둔 두 공백을 닫았다.
 
 - 코스 공유 링크(M2-01k-o)는 `COURSE_SHARING` 기본 꺼짐이다. 켜려면 `COURSE_SHARE_EPOCH`, 32 byte 이상 `COURSE_SHARE_RATE_KEY`,
   `COURSE_SHARE_TRUSTED_PROXIES`가 모두 필요하고(없으면 API가 시작을 거절), web shell 앞에 `X-Forwarded-For`를 연결 주소로 설정하는
-  front proxy가 있어야 한다(Next rewrite는 클라이언트 값을 그대로 넘긴다). 복원 뒤에는 epoch를 올린다(runbook). 그리고 M2-01as가 끝나
-  독립 재식별 검토가 통과하기 전에는 켜지 않는다. rate key는 base64를 풀어 32 byte 이상이다.
+  front proxy가 있어야 한다(Next rewrite는 클라이언트 값을 그대로 넘긴다). 복원 뒤에는 epoch를 올린다(runbook). 재식별 완화(M2-01as)와 그 독립 검토는
+  통과했다(상한 10). 링크를 켜면 migration 054의 예산 원장도 복원 절차에 들어간다(runbook). rate key는 base64를 풀어 32 byte 이상이다.
 - migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
   쓴다). runbook에 이 단계는 아직 없다(후속).
 - migration 소유 역할은 지금 superuser나 BYPASSRLS로 둔다. 051·052(M2-01at·M2-01au)부터 두 object purge, cleanup queue, reconcile
@@ -73,8 +73,8 @@ M2-01k-c1이 적어 둔 두 공백을 닫았다.
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01as, M2-01av. 이 중
-M2-01as·M2-01av는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01av. 이 중
+M2-01av는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험

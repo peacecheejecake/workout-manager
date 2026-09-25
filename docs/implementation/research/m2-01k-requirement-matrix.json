@@ -466,6 +466,20 @@
         "full verification on phase/m2-01 (see progress doc); one independent review round before the review-process change (r1 APPROVE, window-scroll finding fixed); the M2-01 phase review by Codex covers the final code"
       ],
       "note": "Re-judged by root from the gap node's executed evidence; see docs/implementation/progress/M2-01ag.md."
+    },
+    {
+      "node": "M2-01as",
+      "date": "2026-09-26",
+      "rows": ["S14-privacy-share", "P7-no-public-share"],
+      "decision": "User decided on 2026-09-25 to mitigate the re-identification attack before links can be enabled (\"Mitigate first\") and on 2026-09-26 to set the lifetime cap to 10 links per place (\"Cap 10\"). Gap node M2-01as built the mitigation and its attack-suite gate; the independent re-identification review passed at cap 10. No per-task peer review (user decision 2026-09-26); the M2-01 phase review by Codex covers the code.",
+      "change": "No verdict change; S14-privacy-share and P7-no-public-share stay passed with the mitigation, the passing re-identification review and the enabling conditions recorded; counts unchanged.",
+      "executed": [
+        "packages/server/courses/tests/share-reidentification.test.ts gate in pnpm test: 6 course models (T22, T22 loops, correlated walk, 80 m grid staircase, the reviewer's r2 grid verbatim) x 13 attackers (circle fit, mean, back-projection, mleHead and rule-aware dead reckoning over 60 m, 1 S and 2 S, plus learned affine combiners per model and pooled, trained on disjoint seeds) x N in {3,5,10} x 3 test seeds = 702 cells, every one at or above median 0.3 S and 60 m and p10 0.1 S and 20 m; worst at the cap N=10 is 0.36/0.13 S (88/30 m); power controls (M2-01k-o cut, old geometry plus the extra cut at N=10, delta=0, fresh delta per link) fail",
+        "migration 054 lifetime budget of 10 links per place with a tombstone kept after zone deletion and matched by share reach; integration, upgrade and plain-owner tests, concurrency test, drill 102 checks; export v24",
+        "31 mutants each fail (geometry revert, dead reckoning or pooled combiner dropped, reviewer grid dropped, cap raised in contract or SQL, continuation cut removed or shortened, tombstone reset, mirror-case revert, polar bound, warning numbers)",
+        "independent re-identification review of the implementation: r1 FAIL (rule-aware attacker), r2 PASS WITH CONDITIONS (cap 15 too thin), final PASS at cap 10 on tag m2-01as-final: the reviewer's own attackers over 4 test seeds and 7 models stay at or above 0.334 S (82 m) median and 0.112 S (25 m) p10; C1 closed. pnpm test 3,956; integration 1+773; identity 259"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and the independent re-identification review; see docs/implementation/progress/M2-01as.md."
     }
   ],
   "rounds": [
@@ -1469,7 +1483,7 @@
         "tests/identity/course-disclosure.spec.ts and tests/identity/course-sharing.spec.ts (M2-01k-o, both shells)",
         "apps/api/tests/course-sharing.integration.test.ts (M2-01k-o)"
       ],
-      "reason": "M2-01k-o amendment: passed. Before a GPX export or a link, the owner sees a confirmation screen that explains the privacy trim, and the server gates both on a receipt bound to the revision and the zones; protected coordinates never leave in a link, nor in a GPX unless the owner picks exact ends for their own GPX after a warning; trim-refused courses are blocked. View-only unlisted links exist behind a flag that is off by default. Enabling links needs the follow-up M2-01as (the heading and back-projection re-identification attack, user decision 2026-09-25), a front proxy that sets X-Forwarded-For from the connection, and the restore epoch step; CDN or proxy cache probes and access-log audits beyond the web shells are not_executed until such a proxy exists.",
+      "reason": "M2-01as amendment: passed. The GPX export and view-only link rest on the M2-01k-o confirmation and receipt gate. Links are now also protected against the heading, back-projection and rule-aware dead-reckoning attackers: every share circle is offset by up to 1 S and has radius 2 S, each cut end loses a further 2.5 S of path, and each place allows at most 10 links in its lifetime (tombstone kept after the zone is deleted). The independent re-identification review passed at cap 10 (C1 closed). Links still sit behind a flag that is off by default; enabling them needs a front proxy that sets X-Forwarded-For from the connection, the trusted proxy list, the restore epoch step and the budget ledger procedure. Residual, disclosed on screen: 10 links from one home narrow it to about 80 m median and 25 m in one case in ten; short loops are refused more often and nearby zones share a budget. CDN or proxy cache probes and access-log audits beyond the web shells are not_executed until such a proxy exists.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1479,15 +1493,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-o",
+        "node": "M2-01as",
         "date": "2026-09-26",
-        "previousVerdict": "partial",
-        "previousReason": "Trim works; there is no confirmation step before a GPX export and no sharing feature.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-o amendment: passed. Before a GPX export or a link, the owner sees a confirmation screen that explains the privacy trim, and the server gates both on a receipt bound to the revision and the zones; protected coordinates never leave in a link, nor in a GPX unless the owner picks exact ends for their own GPX after a warning; trim-refused courses are blocked. View-only unlisted links exist behind a flag that is off by default. Enabling links needs the follow-up M2-01as (the heading and back-projection re-identification attack, user decision 2026-09-25), a front proxy that sets X-Forwarded-For from the connection, and the restore epoch step; CDN or proxy cache probes and access-log audits beyond the web shells are not_executed until such a proxy exists.",
         "executed": [
-          "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
-          "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
-          "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
-          "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
+          "packages/server/courses/tests/share-reidentification.test.ts gate in pnpm test: 6 course models (T22, T22 loops, correlated walk, 80 m grid staircase, the reviewer's r2 grid verbatim) x 13 attackers (circle fit, mean, back-projection, mleHead and rule-aware dead reckoning over 60 m, 1 S and 2 S, plus learned affine combiners per model and pooled, trained on disjoint seeds) x N in {3,5,10} x 3 test seeds = 702 cells, every one at or above median 0.3 S and 60 m and p10 0.1 S and 20 m; worst at the cap N=10 is 0.36/0.13 S (88/30 m); power controls (M2-01k-o cut, old geometry plus the extra cut at N=10, delta=0, fresh delta per link) fail",
+          "migration 054 lifetime budget of 10 links per place with a tombstone kept after zone deletion and matched by share reach; integration, upgrade and plain-owner tests, concurrency test, drill 102 checks; export v24",
+          "31 mutants each fail (geometry revert, dead reckoning or pooled combiner dropped, reviewer grid dropped, cap raised in contract or SQL, continuation cut removed or shortened, tombstone reset, mirror-case revert, polar bound, warning numbers)",
+          "independent re-identification review of the implementation: r1 FAIL (rule-aware attacker), r2 PASS WITH CONDITIONS (cap 15 too thin), final PASS at cap 10 on tag m2-01as-final: the reviewer's own attackers over 4 test seeds and 7 models stay at or above 0.334 S (82 m) median and 0.112 S (25 m) p10; C1 closed. pnpm test 3,956; integration 1+773; identity 259"
         ]
       }
     },
@@ -3141,7 +3155,7 @@
         "packages/modules/courses/tests/course-extras.test.tsx:1103 'offers no way to share a course, trimmed or not'",
         "contract: course visibility is the literal 'private'"
       ],
-      "reason": "M2-01k-o amendment: still passed; links not shipped (flag off by default). With the flag off the product offers no share control and the public read answers 404 (the three existing assertions re-ran, plus T9 and V7); with the flag on there is no listing or search route, every failure is the same 404, and recipients get no download (T4, T16). The independent re-identification review passed with a condition (M2-01as) that must close before links are enabled.",
+      "reason": "M2-01as amendment: still passed; links not shipped (flag off by default). The flag-off assertions from M2-01k-o stand. The independent re-identification review now passes (M2-01as, C1 closed), so condition (3) of requirement section 7 has a passing review record; when an operator enables links this row is re-judged under that condition.",
       "round2": {
         "change": "unchanged",
         "verdict": "passed",
@@ -3152,19 +3166,16 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-o",
+        "node": "M2-01as",
         "date": "2026-09-26",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-o requirement amendment: still passed. The plan sentence was amended by user decision (2026-09-25) from \"public sharing stays disabled until a separate requirement, ACL and re-identification review\" to \"no public discovery; sharing only through expiring, revocable, view-only unlisted links, default off until the independent re-identification review passes\". No sharing code exists yet, so the product still offers no share control, which the three existing assertions keep proving. When M2-01k-o lands, this row is re-judged under the requirement §7 conditions.",
+        "previousReason": "M2-01k-o amendment: still passed; links not shipped (flag off by default). With the flag off the product offers no share control and the public read answers 404 (the three existing assertions re-ran, plus T9 and V7); with the flag on there is no listing or search route, every failure is the same 404, and recipients get no download (T4, T16). The independent re-identification review passed with a condition (M2-01as) that must close before links are enabled.",
         "executed": [
-          "apps/api/tests/course-sharing.integration.test.ts (with the link flag on in the test app) and packages/server/persistence/tests/course-sharing-upgrade.integration.test.ts on runner-made PostgreSQL 14 clusters, with T1-T25 of the approved requirement run across integration, unit, domain and E2E tests (progress section 3 table), including the receipt gate and its expiry, protected coordinates absent from GPX and link, trim-refused courses blocked, link revocation on owner revoke, all-off, zone add and delete, course delete, activity reclaim, erasure and restore epoch, the uniform 404, token stored only as a digest, rate limits keyed per client, and the 049->050 upgrade (functions, erase_account chain and lock order, grants, RLS, no policy widening on earlier tables under a non-superuser, non-BYPASSRLS role)",
-          "tests/identity/course-disclosure.spec.ts and course-sharing.spec.ts in both shells under the harness lock (flag on: 10 passed; flag off identity 255 passed, 7 skipped, the link tests skipped as designed) and the T11 web-shell log audit with planted tokens, digests, coordinates and names (0 findings; the shells log no per-request lines, and the audit has no positive control)",
-          "scripts/backup-restore-drill.mts --execute: passed, 97 checks, including revoked, erased-tenant and deleted-course links not served after restore alongside the 049 deletion replay",
-          "pnpm test 3,852; pnpm test:integration 1+714; mutants V1-V19b, X1-X9 and review-round mutants A1, A2, E, N1, N2, R2m, R2d, R3m, R4m, TP and LC each fail (progress section 8.4), and the peer reviewer's own A1, A2, E and a not-restored-tenant mutant in read_course_share each fail; independent peer review r1 REQUEST CHANGES, r2 APPROVE (tree befde6ab); independent re-identification review of the implementation: PASS WITH CONDITIONS for enabling links (condition C1, the heading and back-projection attack, is the follow-up node M2-01as by user decision on 2026-09-25)"
-        ],
-        "previousQuote": "공개 공유는 별도 요구·ACL·재식별 검토 전까지 비활성이다.",
-        "previousSource": "docs/implementation/map-implementation-plan.md:187",
-        "note": "The quote was amended on 2026-09-25 (M2-01k-o requirement amendment); previousQuote and previousSource carry that earlier sentence forward."
+          "packages/server/courses/tests/share-reidentification.test.ts gate in pnpm test: 6 course models (T22, T22 loops, correlated walk, 80 m grid staircase, the reviewer's r2 grid verbatim) x 13 attackers (circle fit, mean, back-projection, mleHead and rule-aware dead reckoning over 60 m, 1 S and 2 S, plus learned affine combiners per model and pooled, trained on disjoint seeds) x N in {3,5,10} x 3 test seeds = 702 cells, every one at or above median 0.3 S and 60 m and p10 0.1 S and 20 m; worst at the cap N=10 is 0.36/0.13 S (88/30 m); power controls (M2-01k-o cut, old geometry plus the extra cut at N=10, delta=0, fresh delta per link) fail",
+          "migration 054 lifetime budget of 10 links per place with a tombstone kept after zone deletion and matched by share reach; integration, upgrade and plain-owner tests, concurrency test, drill 102 checks; export v24",
+          "31 mutants each fail (geometry revert, dead reckoning or pooled combiner dropped, reviewer grid dropped, cap raised in contract or SQL, continuation cut removed or shortened, tombstone reset, mirror-case revert, polar bound, warning numbers)",
+          "independent re-identification review of the implementation: r1 FAIL (rule-aware attacker), r2 PASS WITH CONDITIONS (cap 15 too thin), final PASS at cap 10 on tag m2-01as-final: the reviewer's own attackers over 4 test seeds and 7 models stay at or above 0.334 S (82 m) median and 0.112 S (25 m) p10; C1 closed. pnpm test 3,956; integration 1+773; identity 259"
+        ]
       }
     },
     {

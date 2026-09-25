@@ -6,7 +6,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 
-import { CourseDisclosure, CourseSharePanel } from '../src/course-disclosure';
+import {
+  courseShareMeasuredResidual,
+  courseSharingLimits,
+} from '@workout/contracts/course-sharing';
+
+import {
+  CourseDisclosure,
+  CourseSharePanel,
+  readableSharingError,
+  zoneDeletionShareNote,
+} from '../src/course-disclosure';
+import { CourseRequestError } from '../src/course-api';
 import { createCourseExtrasApi } from '../src/course-extras-api';
 import { createCourseSharingApi } from '../src/course-sharing-api';
 
@@ -187,6 +198,19 @@ describe('the confirmation screen (§5, T2)', () => {
     expect(text).toContain('받은 사람은 파일을 받을 수 없습니다.');
     expect(text).toContain('브라우저 기록에 링크가 남을 수 있습니다.');
     expect(text).not.toContain('3개 이상이면');
+    // M2-01as: the measured residual, in metres, and the lifetime bound behind it.
+    const residual = within(region).getByTestId('share-residual').textContent ?? '';
+    expect(residual).toContain(
+      `링크는 모두 합쳐 ${courseSharingLimits.shareLinksPerAreaLifetime}개입니다`,
+    );
+    expect(residual).toContain(`절반의 경우 ${courseShareMeasuredResidual.medianMeters}m 안팎까지`);
+    expect(residual).toContain(`열 번에 한 번은 ${courseShareMeasuredResidual.p10Meters}m 안까지`);
+    expect(courseShareMeasuredResidual.medianMeters).toBeGreaterThan(0);
+    expect(residual).toContain('짧은 코스는 링크로 공유할 수 없습니다');
+    // Review r1 item 6 / r2 peer 6: a new nearby area starts from the count already used, then
+    // counts on its own; the range grows with the area.
+    expect(residual).toContain('첫 링크 때, 가까운 곳(약 1.5 km 안, 큰 구역일수록 더 멀리');
+    expect(residual).toContain('그 뒤로는 구역마다 따로 셉니다');
     // D6: names are out by default for a link.
     expect(within(region).getByLabelText('코스 이름과 경유점 이름 포함')).not.toBeChecked();
     // D3b / V18b: no way to pick the exact line in the link flow.
@@ -268,6 +292,37 @@ describe('what must be ticked, and what cannot be confirmed at all', () => {
     );
     expect(await screen.findByRole('alert')).toHaveTextContent('보호 구역을 먼저 추가하세요.');
     expect(screen.queryByRole('button', { name: /확인하고/ })).toBeNull();
+  });
+
+  it('M2-01as: a course too short to outlive the continuation cut says so, for a link only', async () => {
+    renderDisclosure('share', (input) =>
+      input.path.includes('disclosure-preview')
+        ? reply(
+            preview('share', {
+              outcome: 'blocked',
+              blockedReason: 'COURSE_TRIM_REMOVES_EVERYTHING',
+              options: [],
+              defaultExposure: null,
+            }),
+          )
+        : null,
+    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('잘린 끝마다 코스를 따라 약 500m 이상을 더 잘라 냅니다');
+    expect(alert).toHaveTextContent('GPX로는 내보낼 수 있습니다');
+    expect(alert).not.toHaveTextContent('코스 전체가 보호 구역 안에 있어');
+    expect(screen.queryByRole('button', { name: /확인하고/ })).toBeNull();
+  });
+
+  it('M2-01as: deleting an area says its place keeps counting (the tombstone)', () => {
+    expect(zoneDeletionShareNote).toContain('삭제한 뒤에도 이 장소에서 만든 링크 수는');
+    expect(zoneDeletionShareNote).toContain('근처에 다시 만든 구역이 이어서 셉니다');
+  });
+
+  it('M2-01as: the lifetime bound has its own message', () => {
+    expect(
+      readableSharingError(new CourseRequestError(409, 'COURSE_SHARE_AREA_LIFETIME_REACHED')),
+    ).toContain(`링크 ${courseSharingLimits.shareLinksPerAreaLifetime}개를 모두 썼습니다`);
   });
 
   it('T17: a refused trim says why and offers no way to confirm', async () => {

@@ -25,8 +25,10 @@ import {
   disclosureChoices,
   exactLine,
   removedVerticesPerCircle,
-  shareCircle,
+  shareCircleSet,
+  shareCutAreaIndexes,
   type DisclosedLine,
+  type DisclosureCircle,
 } from '@workout/server-courses/disclosure';
 import {
   courseGpxFileName,
@@ -34,11 +36,7 @@ import {
   EXACT_COORDINATE_DIGITS,
   writeCourseGpx,
 } from '@workout/server-courses/gpx';
-import {
-  privacyZoneSetDigest,
-  trimCourseForPrivacy,
-  type ProtectedCircle,
-} from '@workout/server-courses/privacy-trim';
+import { privacyZoneSetDigest, trimCourseForPrivacy } from '@workout/server-courses/privacy-trim';
 import type { CoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import {
   CourseSharingStateError,
@@ -143,25 +141,21 @@ async function availableHead(
  *
  * Order matters to the preview: the first `zones.length` circles are the share circles, one
  * per area in the areas' order, so `removedVerticesPerCircle` counts line up with `zones`.
- * The areas follow; they only ever add the slivers a flat-map share circle misses.
+ * The areas follow; they only ever add the slivers a flat-map share circle misses. Every
+ * one of a link's circles carries its area's continuation cut (M2-01as), so a link loses a
+ * further 2.5 · S of path past whichever of them cut an end.
  */
 async function circlesFor(
   services: CourseDisclosureServices,
   athleteId: string,
   purpose: CourseDisclosurePurpose,
-): Promise<{ zones: CoursePrivacyZone[]; circles: ProtectedCircle[] }> {
+): Promise<{ zones: CoursePrivacyZone[]; circles: DisclosureCircle[] }> {
   if (purpose === 'export') {
     const zones = await execute(() => services.preferences.listPrivacyZones(athleteId));
     return { zones, circles: zones };
   }
   const withOffsets = await execute(() => services.sharing.zonesWithShareOffsets(athleteId));
-  return {
-    zones: withOffsets.map((entry) => entry.zone),
-    circles: [
-      ...withOffsets.map((entry) => shareCircle(entry.zone, entry.offset)),
-      ...withOffsets.map(({ zone }) => ({ center: zone.center, radiusMeters: zone.radiusMeters })),
-    ],
-  };
+  return { zones: withOffsets.map((entry) => entry.zone), circles: shareCircleSet(withOffsets) };
 }
 
 /**
@@ -477,6 +471,10 @@ export function registerCourseDisclosureRoutes(
             expiresInDays: body.expiresInDays ?? courseSharingLimits.shareExpiryDefaultDays,
             snapshot: linkSnapshot(head.name, option.line, usable.receipt.includeNames),
             zoneIds: zones.map((zone) => zone.zoneId),
+            // M2-01as: the areas that cut this link each give up one of their lifetime links.
+            cutZoneIds: shareCutAreaIndexes(head.coordinates, circles, zones.length).flatMap(
+              (index) => (zones[index] ? [zones[index].zoneId] : []),
+            ),
             zoneSetDigest: privacyZoneSetDigest(zones),
             digestOf: privacyZoneSetDigest,
           }),

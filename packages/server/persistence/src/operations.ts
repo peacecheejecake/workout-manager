@@ -481,6 +481,14 @@ const collections = [
     'course_id,deleted_at',
     'deleted_at,course_id',
   ],
+  // M2-01as (export v24). Each place's lifetime link budget: the area id, the coarse cell and
+  // share reach it is matched by, and the count. No centre, no name, no time.
+  [
+    'courseShareAreaBudgets',
+    'course_share_area_budget',
+    'zone_id,cell_latitude,cell_longitude,reach_meters,links_cut',
+    'zone_id',
+  ],
   ['sessionCompletions', 'session_completion', 'session_id,revision,record_json', 'session_id'],
   [
     'sessionCompletionRevisions',
@@ -547,7 +555,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 23,
+          schemaVersion: 24,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,
