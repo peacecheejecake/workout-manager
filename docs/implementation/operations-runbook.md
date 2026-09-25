@@ -94,18 +94,36 @@ rename이 없어 `grantOperations`를 다시 돌릴 필요는 없다.
 시스템이 만들지 않는 원장 상태다. 재시도로 고쳐지지 않으므로 사람이 조사한다. 자세한 근거는
 [M2-01y 기록](progress/M2-01y.md).
 
-migration 소유 역할(M2-01at, 051): 두 purge(말소 tenant·활동/코스)는 051부터 superuser도 BYPASSRLS도 아닌 소유
-역할에서 돈다(무장·lease·완료, 거절 조건 그대로). 단 **그 소유 역할이 051을 직접 적용했을 때만**이다. 051의 policy는 적용한
-역할(`current_user`)에 묶이므로, superuser가 051까지 적용한 뒤 `REASSIGN OWNED`로 소유를 넘기거나 `--no-owner` 복원을 다른
-역할로 하면 새 소유자에게는 policy가 없어 다시 `42501`로 실패한다(047·049·050의 `*_definer` policy도 같다). 소유를 바꿀 때는 이
-policy들의 대상 역할을 새 소유자로 바꾼다. 051은 한 트랜잭션에서 purge 표와 `tenant_erasure`·`activity_canonical`·`course`에
-AccessExclusive 잠금을 잡으므로 동시 말소·삭제와 교착하면 migration 전체가 되돌려진다 — runtime·worker를 멈추거나
-`lock_timeout`을 두고 적용한다. 051은 grant를 바꾸지 않으므로 helper를 다시 돌릴 필요가 없다. 051을
-적용하면 그런 소유 역할에서 044·046 backfill이 보지 못한 말소 tenant·삭제 활동·unavailable 코스가 그때 무장된다. 그러나
-**object 정리 queue(`resource_object_cleanup`)·파생 정리·sweep·썸네일·URL 수집 worker는 아직 그런 소유 역할에서 돌지
-않는다**(행을 보지 못하거나 queue에 쓰는 경로가 `42501`로 실패한다 — 추적이나 객체가 있는 활동 삭제, 객체가 있는 계정
-말소 포함). 그 후속이 끝나기 전에는 migration 소유 역할을 superuser나 BYPASSRLS로 둔다. 목록은
-[M2-01at 기록](progress/M2-01at.md) §5.
+migration 소유 역할(M2-01at 051, M2-01au 052): superuser도 BYPASSRLS도 아닌 소유 역할에서 지금 도는 것은 두 purge(말소
+tenant·활동/코스 — 051)와, 052부터 object 정리 queue(`resource_object_cleanup`)에 쓰는 사용자 경로(추적이 있는 활동 삭제,
+업로드 protect·supersede, 자료·갤러리 삭제, 추적·썸네일 참조가 있는 계정 말소), cleanup worker의 lease·authorize·finish·history
+prune, 파생 정리 queue와 그 purge, 두 sweep cursor와 sweep의 reclaim·settle, 복원 replay의 외래 id 거절이다. 이 경로들의
+생존·소유 확인은 행의 tenant(queue에는 tenant 열이 없어 object key가 이름 붙인 tenant)를 그 읽기 동안만 세우고 읽으므로
+queue가 보이게 되어도 거절이 풀리지 않는다. key가 tenant를 이름 붙이지 않는 queue 행은 authorize가
+`INCONSISTENT_LEDGER:OBJECT_KEY_TENANT`로 닫고 지우지 않는다(시스템이 만드는 key는 모두 tenant를 이름 붙인다).
+**아직 그런 소유 역할에서 돌지 않는 것**: 썸네일 render·URL 수집 worker의 lease와 그 뒤의 함수들, 업로드·render·URL
+reap, 업로드·썸네일 history prune, 검색 cache prune, 두 sweep의 window. 여러 tenant의 tenant 표를 tenant 없이 훑어서 이
+소유 역할에서는 아무것도 보지 못한다(닫힌 실패 — 썸네일이 그려지지 않고, 만료 업로드가 회수되지 않고, sweep이 참조를
+검사하지 않는다). 그래서 **migration 소유 역할은 여전히 superuser나 BYPASSRLS로 둔다.** 목록은
+[M2-01au 기록](progress/M2-01au.md) §6.
+
+소유 이전: `*_definer` policy 10개(047·049·050·051·052)는 적용한 역할(`current_user`)에 묶인다. `REASSIGN OWNED`로 소유를
+넘기거나 다른 역할로 `--no-owner` 복원을 하면 새 소유자에게는 policy가 없어 그 경로가 다시 `42501`로 실패하거나 아무것도
+보지 못한다. 그 뒤 **새 소유자로** `SELECT public.retarget_definer_policies();`를 실행한다: 열 개의 policy를 그 역할로 돌리고,
+`DROP OWNED`로 사라진 것은 migration이 만든 그대로 다시 만들며, 10을 돌려준다. 표 소유자가 아니면 거절된다
+(`DEFINER_POLICY_OWNER_MISMATCH`, 다른 역할에는 EXECUTE가 없다). 각 표에 AccessExclusive 잠금을 표 이름 순으로 잡으므로
+runtime·worker를 멈춘 복원·유지보수 창에서 한다. 실제 `pg_dump`/`pg_restore --no-owner` 뒤 이 절차로 복구되는 것을
+M2-01au에서 실행해 확인했다.
+
+잠금: 051은 한 트랜잭션에서 purge 표와 `tenant_erasure`·`activity_canonical`·`course`에 AccessExclusive 잠금을 잡으므로 동시
+말소·삭제와 교착하면 migration 전체가 되돌려진다 — runtime·worker를 멈추거나 `lock_timeout`을 두고 적용한다. 052는 tenant
+표를 잠그지 않고 backfill도 없다: 첫 문장에서 queue·state 표 넷만(sweep state 둘, 파생 queue, object queue 순 — 자료 삭제가
+잡는 순서) 잡는다. 적용하는 동안 그 네 표를 쓰는 요청은 기다리므로 역시 `lock_timeout`을 두거나 worker를 멈추고 적용한다.
+051·052는 grant를 바꾸지 않는다(교체한 함수는 서명이 같아 EXECUTE가 남는다). helper를 다시 돌릴 필요가 없다.
+
+복원 replay의 외래 id 거절: RLS가 적용되는 역할(plain 소유자)이 실행하면 identity 계정이 있는 다른 tenant를 하나씩 PK로
+확인한다. 원장 항목 하나에 계정 수만큼 읽는다(M2-01au 측정, 합성 계정: 1,000개에서 항목당 약 5 ms, 10,000개에서 약 45 ms). superuser·BYPASSRLS는 전과 같이 한 번에 읽는다. 계정이 없는 tenant의 행은
+확인하지 못한다(정상 상태에는 그런 행이 없다 — 말소가 계정과 행을 함께 지운다).
 
 ### 코스 삭제 원장 재적용 (M2-01ao)
 

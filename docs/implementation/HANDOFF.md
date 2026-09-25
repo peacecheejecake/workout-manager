@@ -17,11 +17,14 @@
 
 ## 완료된 최신 작업
 
-[M2-01ar](progress/M2-01ar.md)를 완료했다. 성능 판정 규칙을 조였다: 브라우저 시간 예산도 spec 밖 runner(`scripts/run-browser-performance-budget.mts`)로
-공개 재실행 한 번을 받고, 분포 전체(p50)가 예산을 넘은 시간 실패는 재실행하지 않으며, 실패한 판정 뒤 같은 코드 내용(`contentSha256`)에서
-새 판정 run을 하려면 `--rerun-reason`을 기록해야 한다(결과 파일에서 강제, 이력 삭제·편집도 거부). K-performance는 passed 유지.
+[M2-01au](progress/M2-01au.md)를 완료했다(부분집합, `phase/m2-01`). migration 052로 object·파생 cleanup queue와 두 reconcile state 표에
+소유자 전용 policy를 두고, 생존·게시 창·reclaim·settle 읽기를 행마다 그 행의 tenant(object key가 이름 붙인 tenant)로 하게 했다. 그래서
+superuser도 BYPASSRLS도 아닌 소유 역할에서도 추적·썸네일 객체가 있는 계정 말소, 추적이 있는 활동 삭제, upload protect/supersede,
+cleanup worker lease가 돈다. 복원 replay의 외래 id 거절을 고쳤고, `retarget_definer_policies()`로 소유 이전 뒤 policy를 새 소유자에게
+옮긴다. 051 lease의 INCONSISTENT 단계를 100행 창으로 좁혀 10만 행 lease가 약 0.7 s에서 1.3 ms가 됐다. 썸네일 render·URL 수집 worker,
+reap·prune, sweep window는 아직 그런 소유 역할에서 닫힌 채다(후속 M2-01av) — runbook의 superuser·BYPASSRLS 조건은 그대로다.
 
-직전 완료: [M2-01an](progress/M2-01an.md)(코스 카드 요약 읽기).
+직전 완료: [M2-01ar](progress/M2-01ar.md)(성능 재실행과 재판정 정책).
 
 ## 운영 메모
 
@@ -58,19 +61,23 @@
   독립 재식별 검토가 통과하기 전에는 켜지 않는다. rate key는 base64를 풀어 32 byte 이상이다.
 - migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
   쓴다). runbook에 이 단계는 아직 없다(후속).
-- migration 소유 역할은 지금 superuser나 BYPASSRLS로 둔다. 051(M2-01at)부터 두 object purge는 그렇지 않은 소유 역할에서도 돌지만,
-  **그 역할이 051을 직접 적용했을 때만**이다(policy가 적용 역할에 묶여 소유 이전 뒤엔 다시 실패). 그리고 그런 소유 역할에서는 추적·썸네일
-  객체가 있는 계정 말소와 추적이 있는 활동 삭제가 여전히 `resource_object_cleanup`에서 `42501`로 실패하고, 정리 queue·sweep·썸네일·URL
-  수집 worker는 행을 보지 못한다(후속 M2-01au). 051은 grant를 바꾸지 않는다. 적용할 때는 runtime·worker를 멈추거나 `lock_timeout`을 둔다.
-
+- migration 소유 역할은 지금 superuser나 BYPASSRLS로 둔다. 051·052(M2-01at·M2-01au)부터 두 object purge, cleanup queue, reconcile
+  state는 그렇지 않은 소유 역할에서도 돈다. 단 **그 역할이 migration을 직접 적용했을 때만**이며, 소유를 옮겼다면
+  `select retarget_definer_policies();`를 새 소유자로 실행한다(runbook). 썸네일 render·URL 수집 worker, reap·prune, sweep window는
+  아직 그런 소유 역할에서 아무것도 보지 못한다(후속 M2-01av). 052는 grant를 바꾸지 않는다. object key가 tenant를 이름 붙이지 않으면
+  정리 authorize가 `INCONSISTENT_LEDGER:OBJECT_KEY_TENANT`로 닫는다(superuser 소유에서도 달라지는 유일한 동작).
 - 성능 판정 run은 M2-01ar 뒤의 probe로만 기록한다. 2026-09-25T15:00Z 뒤에 옛 probe로 기록한 판정 run은 `verifyRerunPolicy`가
   거부한다. 브라우저 판정은 harness lock 아래에서 `node --import tsx scripts/run-browser-performance-budget.mts --execute`로 돌린다. 이력
   검사는 `git merge-base HEAD main`을 부르므로 CI checkout은 history와 로컬 `main` ref가 있어야 한다(지금은 없으면 skip으로 보고된다).
 
+- **리뷰 방식 변경(사용자 결정 2026-09-26).** task node마다 받던 독립 peer review를 멈추고, task-graph 접두 단위 phase 리뷰(예: M2-01
+  phase)를 Codex CLI `gpt-6-sol`(high)로 받는다. phase 안 task는 검증을 통과하면 `phase/<접두>` 브랜치(지금 `phase/m2-01`)에 커밋하고,
+  phase 리뷰를 통과한 뒤 main에 fast-forward한다. 요구가 정한 검토(예: M2-01as의 독립 재식별 검토)는 따로 받는다.
+
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01as, M2-01au. 이 중
-M2-01ag·M2-01ap·M2-01as·M2-01au는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ag, M2-01ap, M2-01as, M2-01av. 이 중
+M2-01ag·M2-01ap·M2-01as는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
@@ -88,6 +95,9 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
   2회차는 통과했다(2026-09-26). 반복되면 별도 노드로 다룬다.
 - `apps/api/tests/course-sharing.integration.test.ts` T23(분당 rate limit 창)이 M2-01an 검증의 통합 1회차에서 `expected 200 to be 404`로
   한 번 실패했고, 그 파일만·전체를 다시 돌리면 통과했다(2026-09-26). 시각 창에 기대는 단언이라 반복되면 별도 노드로 다룬다.
+- `tests/identity/course-extras.spec.ts:59`가 M2-01au 검증의 identity 두 회차(1분 load 60–70)에서 실패했다(가져오기 상태 5초 timeout 한 번,
+  제거본 요청의 `COURSE_ZONE_ACKNOWLEDGEMENT_STALE` 한 번). 같은 코드로 단독 6/6, 전체 ×2가 통과했다(2026-09-26). digest 불일치가 부하에서
+  어떻게 생기는지는 밝히지 못했다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate

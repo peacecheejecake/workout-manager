@@ -1607,8 +1607,17 @@
       "title": "남은 queue·worker 경로를 superuser가 아닌 migration 소유 역할에서 돌게 함",
       "dependsOn": ["M2-01at"],
       "kind": "task",
+      "status": "completed",
+      "scope": "M2-01at(051)이 두 object purge만 고쳤다. superuser도 BYPASSRLS도 아닌 migration 소유 역할에서 나머지 queue·상태 경로가 돌게 한다: `resource_object_cleanup`, `resource_derived_cleanup`, 두 reconcile-state 표, 썸네일·URL 수집·sweep·reap·prune worker(목록: docs/implementation/progress/M2-01at.md §5, B 36개·C 30개). owner 전용 policy는 051처럼 행마다 tenant를 세우는 읽기와 함께만 더한다. 먼저 `authorize_resource_object_cleanup`의 13개 생존 확인부터 고쳐 어떤 guard도 fail-open하지 않게 한다. plain 소유자에서 먼저 실패하고 고친 뒤 통과해야 하는 통합 시험: 추적·썸네일 참조가 있는 tenant의 `erase_account`, 추적이 있는 활동 삭제, upload protect/supersede, 각 worker의 lease. invoker 함수도 다시 감사한다(복원 replay `replay_absent_activity_deletion`·`replay_course_deletion`의 외래 id 거절이 plain 소유자에서 다른 tenant 행을 보지 못해 조용히 사라진다). 소유 이전 이야기도 다룬다: `*_definer` policy(047·049·050·051)가 적용 역할에 묶여 `REASSIGN OWNED`·`--no-owner` 복원 뒤 실패하는 것, migration 적용 중 잠금 순서. 051 lease의 INCONSISTENT 단계 비용(10만 행 약 0.75 s, 이전 35 ms)은 값싼 SQL 선별로 줄일지 판단한다. 각 수정을 되돌리는 변이가 실패해야 하고, 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01at.md §5·§8, M2-01at 독립 검토.",
+      "evidence": "docs/implementation/progress/M2-01au.md"
+    },
+    {
+      "id": "M2-01av",
+      "title": "남은 worker 경로의 tenant 출처(superuser가 아닌 migration 소유 역할)",
+      "dependsOn": ["M2-01au"],
+      "kind": "task",
       "status": "not_started",
-      "scope": "M2-01at(051)이 두 object purge만 고쳤다. superuser도 BYPASSRLS도 아닌 migration 소유 역할에서 나머지 queue·상태 경로가 돌게 한다: `resource_object_cleanup`, `resource_derived_cleanup`, 두 reconcile-state 표, 썸네일·URL 수집·sweep·reap·prune worker(목록: docs/implementation/progress/M2-01at.md §5, B 36개·C 30개). owner 전용 policy는 051처럼 행마다 tenant를 세우는 읽기와 함께만 더한다. 먼저 `authorize_resource_object_cleanup`의 13개 생존 확인부터 고쳐 어떤 guard도 fail-open하지 않게 한다. plain 소유자에서 먼저 실패하고 고친 뒤 통과해야 하는 통합 시험: 추적·썸네일 참조가 있는 tenant의 `erase_account`, 추적이 있는 활동 삭제, upload protect/supersede, 각 worker의 lease. invoker 함수도 다시 감사한다(복원 replay `replay_absent_activity_deletion`·`replay_course_deletion`의 외래 id 거절이 plain 소유자에서 다른 tenant 행을 보지 못해 조용히 사라진다). 소유 이전 이야기도 다룬다: `*_definer` policy(047·049·050·051)가 적용 역할에 묶여 `REASSIGN OWNED`·`--no-owner` 복원 뒤 실패하는 것, migration 적용 중 잠금 순서. 051 lease의 INCONSISTENT 단계 비용(10만 행 약 0.75 s, 이전 35 ms)은 값싼 SQL 선별로 줄일지 판단한다. 각 수정을 되돌리는 변이가 실패해야 하고, 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01at.md §5·§8, M2-01at 독립 검토."
+      "scope": "M2-01au(052)가 object·파생 cleanup queue, reconcile state, 복원 replay, 소유 이전을 고쳤다. 남은 경로는 superuser도 BYPASSRLS도 아닌 소유 역할에서 닫힌 채(아무것도 보지 못하고 바꾸지 않음) 남는다: 썸네일 render·URL 수집 worker의 lease와 by-id 함수, 업로드·render·URL reap, 업로드·썸네일 history prune, 검색 cache prune, sweep window 2개, `prepare_course_thumbnail`, `requeue_course_thumbnail_refs`, `enqueue_abandoned_resource_url_object`(목록·탐침: docs/implementation/progress/M2-01au.md 남은 것). 이들은 tenant 표를 여러 tenant에 걸쳐 tenant 없이 훑어 due 일을 찾으므로 세울 tenant가 없다. tenant 출처를 정한다: (1) tenant 표 trigger가 채우는 owner 전용 작업 색인 표에서 lease하고 그 행의 tenant로 읽기, (2) identity 계정 목록 순회(계정 없는 tenant는 못 봄), (3) by-id 함수는 worker가 lease로 받은 tenant를 트랜잭션에 세우고 부르기. plain 소유자에서 각 worker lease가 먼저 실패하고 고친 뒤 통과하는 통합 시험, fail-open 없음, 다른 정의자 함수 가시성 불변 upgrade 시험, 되돌리는 변이 실패를 요구한다. 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01au.md."
     },
     {
       "id": "M2-01k",

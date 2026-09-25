@@ -315,8 +315,8 @@ describe('plain-owner purge migration upgrade of a database a plain owner built'
       `course:${unavailableCourse}`,
       `tenant:${erased}`,
     ]);
-    // Idempotent: a second run applies nothing and arms nothing more.
-    await migrate(urlFor(ownerRole));
+    // Idempotent: a second run to the same version applies nothing and arms nothing more.
+    await migrate(urlFor(ownerRole), versionsBefore + 1);
     expect((await checksums()).size).toBe(versionsBefore + 1);
     const counts = await upgraded.query<{ tenants: number; scopes: number }>(
       `SELECT (SELECT count(*)::int FROM tenant_object_purge) AS tenants,

@@ -54,6 +54,7 @@ const migrationFiles = [
   '049_course_deletion_ledger.sql',
   '050_course_sharing.sql',
   '051_object_purge_plain_owner.sql',
+  '052_queue_state_plain_owner.sql',
 ] as const;
 
 /**

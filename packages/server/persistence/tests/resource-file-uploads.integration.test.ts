@@ -405,13 +405,21 @@ describe('M2-04b private file resource persistence', () => {
     const exhaustingId = randomUUID();
     const followingId = randomUUID();
     const delayedId = randomUUID();
+    // Keys that name their tenant: authorize reads every reference under that tenant, and
+    // refuses a key that names none (M2-01au).
+    const queuedKey = (): string =>
+      `private/v1/tenants/${athlete}/resources/${randomUUID()}/temporary/${randomUUID()}`;
+    const finishRef = queuedKey();
+    const exhaustingRef = queuedKey();
+    const followingRef = queuedKey();
+    const delayedRef = queuedKey();
     await admin.query(
       `INSERT INTO resource_object_cleanup(id,storage_ref,reason,attempts,available_at,created_at)
        VALUES($1,$2,'upload_abandoned',0,$3,$3),
-       ($4,'test/database-time/finish','upload_abandoned',0,$5,$5),
-       ($6,'test/dead-letter/exhausting','upload_abandoned',99,$7,$7),
-       ($8,'test/dead-letter/following','upload_abandoned',0,$9,$9),
-       ($10,'test/database-time/delayed','upload_abandoned',0,clock_timestamp()+interval '1 hour',clock_timestamp())`,
+       ($4,$11,'upload_abandoned',0,$5,$5),
+       ($6,$12,'upload_abandoned',99,$7,$7),
+       ($8,$13,'upload_abandoned',0,$9,$9),
+       ($10,$14,'upload_abandoned',0,clock_timestamp()+interval '1 hour',clock_timestamp())`,
       [
         cleanupId,
         activeRef,
@@ -423,6 +431,10 @@ describe('M2-04b private file resource persistence', () => {
         followingId,
         new Date(3000),
         delayedId,
+        finishRef,
+        exhaustingRef,
+        followingRef,
+        delayedRef,
       ],
     );
 
@@ -470,9 +482,7 @@ describe('M2-04b private file resource persistence', () => {
         'SELECT * FROM public.lease_resource_object_cleanup($1,$2,$3)',
         [workerId, '2999-01-01T00:00:00.000Z', '2999-01-01T00:01:00.000Z'],
       );
-      expect(finishLease.rows).toMatchObject([
-        { id: finishId, storage_ref: 'test/database-time/finish' },
-      ]);
+      expect(finishLease.rows).toMatchObject([{ id: finishId, storage_ref: finishRef }]);
       expect(
         (
           await client.query('SELECT * FROM public.authorize_resource_object_cleanup($1,$2,$3)', [
@@ -495,7 +505,7 @@ describe('M2-04b private file resource persistence', () => {
         [workerId, '2999-01-01T00:00:00.000Z', '2999-01-01T00:01:00.000Z'],
       );
       expect(exhaustingLease.rows).toMatchObject([
-        { id: exhaustingId, storage_ref: 'test/dead-letter/exhausting', attempts: 100 },
+        { id: exhaustingId, storage_ref: exhaustingRef, attempts: 100 },
       ]);
       expect(
         (
@@ -521,7 +531,7 @@ describe('M2-04b private file resource persistence', () => {
         [workerId, '2999-01-01T00:00:00.000Z', '2999-01-01T00:01:00.000Z'],
       );
       expect(followingLease.rows).toMatchObject([
-        { id: followingId, storage_ref: 'test/dead-letter/following', attempts: 1 },
+        { id: followingId, storage_ref: followingRef, attempts: 1 },
       ]);
       expect(
         (

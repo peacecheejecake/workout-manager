@@ -192,12 +192,19 @@ describe('migration 039 upgrade of a populated 038 database', () => {
        ORDER BY proname`,
     );
     expect(definers.rows).toHaveLength(6);
-    // Pinned: pg_catalog alone, or with pg_temp explicitly LAST. `erase_account` is read after a
-    // full migrate, so it is the head of the chain; since 047 (M2-01ah review N1) the head pins
-    // `pg_catalog, pg_temp`, which keeps a temporary object from shadowing a catalog name.
+    // Pinned: pg_catalog alone, or with pg_temp explicitly LAST. This is read after a full
+    // migrate, so a function a later migration replaced carries that migration's pin: since 047
+    // (M2-01ah review N1) `erase_account`, and since the queue-state migration (M2-01au) the
+    // sweep's settle and reclaim, pin `pg_catalog, pg_temp`, which keeps a temporary object from
+    // shadowing a catalog name.
+    const repinned = new Set([
+      'erase_account',
+      'reclaim_unreferenced_course_thumbnail_object',
+      'settle_course_thumbnail_object_ref',
+    ]);
     for (const row of definers.rows)
       expect(row.config, row.proname).toEqual(
-        row.proname === 'erase_account'
+        repinned.has(row.proname)
           ? ['search_path=pg_catalog, pg_temp']
           : ['search_path=pg_catalog'],
       );

@@ -1,0 +1,194 @@
+import { randomUUID } from 'node:crypto';
+
+import { Pool } from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { createDatabase, type Database } from '../src/database.js';
+import { grantOperations, grantResourceObjectCleanupWorker, migrate } from '../src/migrate.js';
+import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
+import {
+  createResourceObjectCleanupRepository,
+  processOneResourceObjectCleanup,
+  type ResourceObjectCleanupRepository,
+} from '../src/resource-object-cleanup.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
+
+/**
+ * M2-01au: the `*_definer` policies (047, 049, 050, 051, and the queue-state migration) name
+ * the role that applied them. When ownership moves — `REASSIGN OWNED`, or a `--no-owner`
+ * restore by another role — the new owner's definer functions have no policy: on an owner
+ * that is neither superuser nor BYPASSRLS, erasure fails with 42501 and the workers see
+ * nothing. `retarget_definer_policies()`, run by the new owner, points every one of them at it
+ * and recreates any a `DROP OWNED` removed. Nobody else can run it.
+ */
+const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
+if (!adminUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
+const admin = new Pool({ connectionString: adminUrl });
+const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
+const database = `retarget_${suffix}`;
+const firstOwner = `retarget_first_${suffix}`;
+const nextOwner = `retarget_next_${suffix}`;
+const runtimeRole = `retarget_rt_${suffix}`;
+const workerRole = `retarget_worker_${suffix}`;
+
+const definerPolicies = [
+  'activity_track_reconcile_state:activity_track_reconcile_state_definer',
+  'course_deletion:course_deletion_definer',
+  'course_share:course_share_definer',
+  'course_share_rate:course_share_rate_definer',
+  'course_thumbnail_reconcile_state:course_thumbnail_reconcile_state_definer',
+  'object_scope_purge:object_scope_purge_definer',
+  'resource_derived_cleanup:resource_derived_cleanup_definer',
+  'resource_object_cleanup:resource_object_cleanup_definer',
+  'routing_admission:routing_admission_definer',
+  'tenant_object_purge:tenant_object_purge_definer',
+];
+
+function urlFor(role: string | null): string {
+  const url = new URL(adminUrl as string);
+  url.pathname = `/${database}`;
+  if (role !== null) {
+    url.username = role;
+    url.password = 'plain';
+  }
+  return url.toString();
+}
+
+let inspect: Pool;
+let runtime: Database;
+let operations: OperationsRepository;
+let worker: ResourceObjectCleanupRepository;
+
+beforeAll(async () => {
+  for (const role of [firstOwner, nextOwner, runtimeRole, workerRole])
+    await admin.query(
+      `CREATE ROLE "${role}" LOGIN PASSWORD 'plain' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+  await admin.query(`CREATE DATABASE ${database} OWNER "${firstOwner}"`);
+  inspect = new Pool({ connectionString: urlFor(null) });
+  const ownerUrl = urlFor(firstOwner);
+  await migrate(ownerUrl);
+  const owner = new Pool({ connectionString: ownerUrl, max: 1 });
+  try {
+    await owner.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}","${workerRole}"`);
+    await owner.query(`GRANT USAGE ON SCHEMA identity_private TO "${runtimeRole}"`);
+  } finally {
+    await owner.end();
+  }
+  await grantOperations(ownerUrl, runtimeRole);
+  await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
+  runtime = createDatabase({ connectionString: urlFor(runtimeRole), max: 2 });
+  operations = createOperationsRepository(runtime);
+  worker = createResourceObjectCleanupRepository({ connectionString: urlFor(workerRole), max: 1 });
+});
+
+afterAll(async () => {
+  await worker?.close();
+  await runtime?.close();
+  await inspect?.end();
+  await dropIsolatedDatabase(admin, database);
+  for (const role of [workerRole, runtimeRole, nextOwner, firstOwner]) {
+    await admin.query(`DROP ROLE IF EXISTS "${role}"`).catch(() => undefined);
+  }
+  await admin.end();
+});
+
+async function policyTargets(): Promise<string[]> {
+  const rows = await inspect.query<{ entry: string }>(
+    `SELECT tablename||':'||policyname||':'||array_to_string(roles,',')||':'||cmd||':'||
+       coalesce(qual,'')||':'||coalesce(with_check,'') AS entry
+     FROM pg_policies WHERE schemaname='public' AND policyname LIKE '%\\_definer' ORDER BY 1`,
+  );
+  return rows.rows.map((row) => row.entry);
+}
+
+async function retargetAs(role: string): Promise<number> {
+  const pool = new Pool({ connectionString: urlFor(role), max: 1 });
+  try {
+    const result = await pool.query<{ touched: number }>(
+      'SELECT public.retarget_definer_policies() AS touched',
+    );
+    return Number(result.rows[0]?.touched);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** One due deletion of a key nothing references, and whether the worker can finish it. */
+async function workerFinishesADeletion(): Promise<boolean> {
+  const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
+  await inspect.query(
+    `INSERT INTO resource_object_cleanup(id,storage_ref,reason,available_at,created_at)
+     VALUES($1,$2,'upload_abandoned',clock_timestamp(),clock_timestamp())`,
+    [randomUUID(), ref],
+  );
+  const deleted: string[] = [];
+  for (let run = 0; run < 20; run += 1) {
+    const outcome = await processOneResourceObjectCleanup(worker, async (key) => {
+      deleted.push(key);
+    });
+    if (outcome === 'empty') break;
+  }
+  await inspect.query('DELETE FROM resource_object_cleanup WHERE storage_ref=$1', [ref]);
+  return deleted.includes(ref);
+}
+
+describe('definer policies follow the owner through retarget_definer_policies()', () => {
+  it('names the applying owner, and the paths work', async () => {
+    expect(await policyTargets()).toEqual(
+      definerPolicies.map((entry) => `${entry}:${firstOwner}:ALL:true:true`),
+    );
+    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    expect(await workerFinishesADeletion()).toBe(true);
+  });
+
+  it('fails closed after REASSIGN OWNED, until the new owner retargets', async () => {
+    await admin.query(`ALTER DATABASE ${database} OWNER TO "${nextOwner}"`);
+    await inspect.query(`REASSIGN OWNED BY "${firstOwner}" TO "${nextOwner}"`);
+    // The functions are the new owner's; the policies still name the old one.
+    expect(await policyTargets()).toEqual(
+      definerPolicies.map((entry) => `${entry}:${firstOwner}:ALL:true:true`),
+    );
+    await expect(operations.eraseAccount(randomUUID())).rejects.toMatchObject({ code: '42501' });
+    expect(await workerFinishesADeletion()).toBe(false);
+
+    // Only the owner of the tables may retarget: the old owner may not even call it, and a
+    // superuser that owns none of them is refused.
+    await expect(retargetAs(firstOwner)).rejects.toMatchObject({ code: '42501' });
+    await expect(inspect.query('SELECT public.retarget_definer_policies()')).rejects.toThrow(
+      'DEFINER_POLICY_OWNER_MISMATCH',
+    );
+
+    expect(await retargetAs(nextOwner)).toBe(definerPolicies.length);
+    expect(await policyTargets()).toEqual(
+      definerPolicies.map((entry) => `${entry}:${nextOwner}:ALL:true:true`),
+    );
+    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    expect(await workerFinishesADeletion()).toBe(true);
+    // Running it again changes nothing.
+    expect(await retargetAs(nextOwner)).toBe(definerPolicies.length);
+    expect(await policyTargets()).toEqual(
+      definerPolicies.map((entry) => `${entry}:${nextOwner}:ALL:true:true`),
+    );
+  });
+
+  it('recreates the policies a DROP OWNED removed', async () => {
+    // Pointing them back at the old owner, then dropping everything it owned, removes the
+    // policies whose only role it was — what retiring the old role does.
+    await inspect.query(`REASSIGN OWNED BY "${nextOwner}" TO "${firstOwner}"`);
+    await admin.query(`ALTER DATABASE ${database} OWNER TO "${firstOwner}"`);
+    expect(await retargetAs(firstOwner)).toBe(definerPolicies.length);
+    await admin.query(`ALTER DATABASE ${database} OWNER TO "${nextOwner}"`);
+    await inspect.query(`REASSIGN OWNED BY "${firstOwner}" TO "${nextOwner}"`);
+    await inspect.query(`DROP OWNED BY "${firstOwner}"`);
+    expect(await policyTargets()).toEqual([]);
+    expect(await workerFinishesADeletion()).toBe(false);
+
+    expect(await retargetAs(nextOwner)).toBe(definerPolicies.length);
+    expect(await policyTargets()).toEqual(
+      definerPolicies.map((entry) => `${entry}:${nextOwner}:ALL:true:true`),
+    );
+    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    expect(await workerFinishesADeletion()).toBe(true);
+  });
+});
