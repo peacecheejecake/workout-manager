@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { manualActivityResultSchema } from '../../packages/contracts/src/activity';
-import { coachingMessageResultSchema } from '../../packages/contracts/src/coaching-threads';
+import {
+  coachingMessageResultSchema,
+  coachingThreadListSchema,
+} from '../../packages/contracts/src/coaching-threads';
 import {
   planDraftSchema,
   planReadSchema,
   planSnapshotSchema,
 } from '../../packages/contracts/src/planning';
+import { forbiddenImpactMatches } from '../../packages/modules/activities/tests/impact-forbidden';
 
 /**
  * S09 impact split (M2-01k-m; 01 §7.2 S09-impact-split, S09-no-causal; 05 V2-F14), against the
@@ -42,21 +46,28 @@ async function login(page: Page, name: 'Alice') {
   };
 }
 
+/**
+ * The screen's text twice: as rendered lines (innerText) and as every text node joined by a
+ * space, so a word and a number in separate block elements (`<dt>부상 위험</dt><dd>12</dd>`,
+ * which innerText puts on two lines) still meet within one line.
+ */
+async function forbiddenOnScreen(page: Page) {
+  const rendered = await page.locator('body').innerText();
+  const nodes = await page.locator('body').evaluate((body) => {
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    const parts: string[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode())
+      if (!node.parentElement?.closest('script, style, noscript, template'))
+        parts.push(node.textContent ?? '');
+    return parts.join(' ');
+  });
+  return [...forbiddenImpactMatches(rendered), ...forbiddenImpactMatches(nodes)];
+}
+
 const shells = [
   ['Next', 'http://127.0.0.1:3100'],
   ['Vite', 'http://127.0.0.1:4200'],
 ] as const;
-
-/**
- * What must not appear anywhere on the screen (01 §7.2): a percentage (risk or otherwise),
- * a number attached to risk/probability, a contribution share, or a causal "because of" number.
- */
-const forbidden = [
-  /\d\s*(?:%|％|퍼센트)/,
-  /(?:위험|확률|가능성)[^.\n]{0,20}\d/,
-  /(?:기여율|기여도|기여 비율|비중|점유율)[^.\n]{0,20}\d/,
-  /때문에[^.\n]{0,40}\d/,
-];
 
 for (const [shell, origin] of shells)
   test(`${shell} shell: the impact tab separates observed, classification and consultation without risk %, causal numbers or contribution shares, and writes no plan`, async ({
@@ -159,7 +170,7 @@ for (const [shell, origin] of shells)
       await page.goto(
         `${origin}/activities?selected=${linkedActivity.activityId}&detailTab=impact`,
       );
-      const observed = page.getByRole('region', { name: '계획 연결과 관측 영향', exact: true });
+      const observed = page.getByRole('region', { name: '관측·계산', exact: true });
       const classified = page.getByRole('region', { name: '분류·추정', exact: true });
       const consult = page.getByRole('region', { name: '상담', exact: true });
       // Three sections, three distinct headings.
@@ -215,9 +226,10 @@ for (const [shell, origin] of shells)
           .getByRole('list', { name: '관련 상담 기록' })
           .getByRole('link', { name: 'Block 검토 상담', exact: true }),
       ).toHaveAttribute('href', `/coach?thread=${thread.id}`);
-      // Nowhere on the screen: a risk %, a causal number or a contribution share.
-      const text = await page.locator('body').innerText();
-      for (const pattern of forbidden) expect(text).not.toMatch(pattern);
+      // Nowhere on the screen: a risk %, a causal number or a contribution share, in any form
+      // (impact-forbidden.ts; dates, ids and heart-rate zones are allow-listed), in the rendered
+      // lines and across elements.
+      expect(await forbiddenOnScreen(page)).toEqual([]);
       // Viewing the tab wrote nothing, and the plan head is the version the test saved.
       expect(writes).toEqual([]);
       expect(
@@ -241,9 +253,51 @@ for (const [shell, origin] of shells)
       await expect(
         consult.getByRole('link', { name: '코치에서 연결 Block 검토 열기' }),
       ).toHaveCount(0);
-      const unlinkedText = await page.locator('body').innerText();
-      for (const pattern of forbidden) expect(unlinkedText).not.toMatch(pattern);
+      expect(await forbiddenOnScreen(page)).toEqual([]);
       expect(writes).toEqual([]);
+
+      // The review link opens the coach screen (S10) with this Block of this plan version
+      // already chosen as the target, and nothing else: no thread, no message, no plan write.
+      await page.goto(
+        `${origin}/activities?selected=${linkedActivity.activityId}&detailTab=impact`,
+      );
+      await consult.getByRole('link', { name: '코치에서 연결 Block 검토 열기' }).click();
+      await expect(page).toHaveURL(
+        `${origin}/coach?${new URLSearchParams({ planVersion: saved.id, scopeKind: 'block', targetId: 'impact-block' })}`,
+      );
+      const form = page.getByRole('region', { name: '새 상담 기록', exact: true });
+      await expect(form.getByRole('combobox', { name: '상담 계획 버전', exact: true })).toHaveValue(
+        saved.id,
+      );
+      await expect(form.getByRole('combobox', { name: '상담 범위 종류', exact: true })).toHaveValue(
+        'block',
+      );
+      const target = form.getByRole('combobox', { name: '상담 대상', exact: true });
+      await expect(target).toHaveValue('impact-block');
+      await expect(target.locator('option:checked')).toHaveText('block');
+      await expect(form.getByRole('region', { name: '저장된 상담 맥락' })).toHaveAttribute(
+        'data-plan-version-id',
+        saved.id,
+      );
+      // Only chosen: the title and first message are empty and nothing was sent.
+      await expect(form.getByRole('textbox', { name: '상담 제목', exact: true })).toHaveValue('');
+      await expect(
+        form.getByRole('textbox', { name: '첫 사용자 메시지', exact: true }),
+      ).toHaveValue('');
+      await expect(
+        form.getByRole('button', { name: '상담 기록 만들기', exact: true }),
+      ).toBeDisabled();
+      await expect(page.getByRole('region', { name: '선택한 상담 기록' })).toHaveCount(0);
+      expect(writes).toEqual([]);
+      const threadsAfter = coachingThreadListSchema.parse(
+        await (await page.request.get('/bff/v1/coaching-threads', { headers })).json(),
+      );
+      expect(threadsAfter.items.map((item) => item.id)).toEqual([thread.id]);
+      expect(
+        planReadSchema.parse(
+          await (await page.request.get('/bff/v1/plans/current', { headers })).json(),
+        ).head?.id,
+      ).toBe(saved.id);
     } finally {
       // Isolated local OIDC/PostgreSQL harness only: Alice is synthetic, never an external user.
       // Remove fixture plan versions and threads so later journeys start clean.

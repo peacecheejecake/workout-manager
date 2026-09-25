@@ -17,12 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01ao](progress/M2-01ao.md)를 완료했다. 백업 뒤 소유자가 지운 코스가 복원으로 되살아나던 공백(재현됨)을 migration 049의
-`course_deletion` 원장으로 막았다. 삭제는 원장 행(tenant·id·시각만)을 남기고 코스 객체 purge를 무장하며(실행 중 그림 lease 뒤로 미룸)
-id를 다시 쓸 수 없게 한다. 복원 뒤 원장을 재적용하면 코스와 그림이 사라진다(drill 88 checks). K-recovery·K-deletion은 passed 유지.
-049 이전에 지운 코스는 원장이 없어 옛 백업에서 되살아날 수 있고, 원장은 아직 계정 export에 없다(M2-01k-o의 export v23과 함께 판단).
+[M2-01am](progress/M2-01am.md)를 완료했다. S09 영향 탭의 금지 형태 단언을 단위 시험과 두 shell E2E가 함께 쓰는 한 목록으로 넓혔다(비율·차지·몫·
+이행률, 영어 share·odds·percentage points, 분수·비, 앞뒤 인과 형태, 요소가 나뉜 이름·값). 관측 절 이름을 제목에서 가져오고, 관련 상담이
+없는 이유를 경우별로 적고, 코치 검토 링크를 E2E에서 실제로 열어 쓰기 0을 단언한다. 세 행은 passed 유지. 영향 탭에 숫자가 든 새 문구를
+넣을 때는 `packages/modules/activities/tests/impact-forbidden.ts`의 목록·허용 표본을 함께 본다.
 
-직전 완료: [M1-06b-tmp](progress/M1-06b-tmp.md)(임시 비공식 Garmin 앱 내 수집).
+직전 완료: [M2-01ao](progress/M2-01ao.md)(백업 뒤 지운 코스의 복원 부활 방지).
 
 ## 운영 메모
 
@@ -48,8 +48,8 @@ id를 다시 쓸 수 없게 한다. 복원 뒤 원장을 재적용하면 코스�
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01am, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak·M2-01am은 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
 `.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 

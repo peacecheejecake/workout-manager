@@ -43,7 +43,9 @@ export function impactClassifications(context: ActivityContext): ImpactClassific
     const reason =
       plan.status === 'unlinked'
         ? '연결한 계획이 없어 분류 출처가 없습니다. 날짜나 종목으로 분류를 추정하지 않습니다.'
-        : '저장된 계획 연결을 확인할 수 없어 분류 출처가 없습니다.';
+        : plan.reason === 'unsupported_calendar'
+          ? '기록 또는 연결 계획에 지원 범위를 벗어난 날짜가 있어 연결 계획의 분류를 읽지 않습니다. 날짜를 바꿔 분류하지 않습니다.'
+          : '저장된 계획 연결을 확인할 수 없어 분류 출처가 없습니다.';
     return [
       { status: 'none', key: 'purpose', label: '목적 분류', reason },
       { status: 'none', key: 'intensity', label: '강도 분류', reason },
@@ -103,12 +105,16 @@ export function consultationItems(context: ActivityContext): string[] {
       '계획 연결이 없어 계획 대비 검토 항목을 만들지 않습니다. 필요하면 이 활동을 계획 세션에 연결하세요.',
     ];
   if (plan.status === 'unavailable')
-    return ['저장된 계획 연결을 확인할 수 없어 검토 항목을 만들지 않습니다.'];
+    return [
+      plan.reason === 'unsupported_calendar'
+        ? '기록 또는 연결 계획에 지원 범위를 벗어난 날짜가 있어 계획과 비교하지 않았고 검토 항목을 만들지 않습니다.'
+        : '저장된 계획 연결을 확인할 수 없어 검토 항목을 만들지 않습니다.',
+    ];
   const items: string[] = [];
   const distance = plan.distanceComparison;
   if (distance.status === 'range_available' && distance.rangePosition !== 'within')
     items.push(
-      `실제 거리가 계획 거리 범위${distance.rangePosition === 'below' ? ' 미만' : ' 초과'}이었습니다. 다음 세션의 거리 목표를 검토할 때 참고하세요.`,
+      `실제 거리가 계획 거리 ${distance.rangePosition === 'below' ? '범위에 못 미쳤습니다' : '범위를 초과했습니다'}. 다음 세션의 거리 목표를 검토할 때 참고하세요.`,
     );
   else if (distance.status === 'available' && distance.delta !== null && distance.delta !== 0)
     items.push(

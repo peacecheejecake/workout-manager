@@ -367,6 +367,20 @@
         "mutants MA, MB1, MB2, MC1, MC2, M1-M9 each fail; the independent review killed its own R1 (absent path not armed), R2 (purge armed after revisions are deleted; in round 2 by a behavioural test alone), R3 (thumbnails not superseded) and R5 (erasure chain skipping the Garmin wrapper), see progress section 8.1"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ao.md."
+    },
+    {
+      "node": "M2-01am",
+      "date": "2026-09-25",
+      "rows": ["S09-no-causal", "S09-impact-split", "V2-F14"],
+      "decision": "Gap node M2-01am closed the non-blocking items of the M2-01k-m review (wider forbidden forms, region naming, related-thread reasons, wording, opening the review link, staleness). Independent review round 1 REQUEST CHANGES (missing share and causal forms), round 2 APPROVE with non-blocking findings, all applied, round 3 APPROVE.",
+      "change": "No verdict change; the three rows stay passed with wider evidence; S09-no-causal's M2-01k-m limit on fullwidth digits, number-before-word and fractions is closed; counts unchanged (passed 81, partial 23, not_executed 6).",
+      "executed": [
+        "tests/identity/activity-impact-split.spec.ts and three related activity specs in both shells under the harness lock (8 passed): the whole impact screen is checked through innerText and through all text nodes joined by spaces against one shared forbidden list (packages/modules/activities/tests/impact-forbidden.ts); the coach review link is opened and the coach screen state, zero writes, the thread count and the plan head are asserted",
+        "packages/modules/activities/tests/activity-impact-panel.test.tsx (9 tests; activities module 349 passed): 36 forbidden sample forms caught (share words including 비율·차지·몫·이행률, English share/likelihood/chance/odds, percentage points, fractions, ratios, causal forms including (으)로 인한 and caused by) and 19 allowed forms of today's screen text pass",
+        "pnpm test:identity x2 (234 passed, 3 skipped each) after round 1 and x1 after round 2; lint, typecheck, build and format",
+        "mutants M1-M5, M9, M11, R1, R7, R8, N2 and N3 fail in both shells; M6-M8, M10 and M12-M14 fail in unit tests; the independent review (three rounds, round 3 APPROVE on tree 52203499) ran R1-R8 and N1-N4 as unit mutants: R1, R7 and R8 survived round 1 and fail after the fix, N2 and N3 survived round 2 and fail after the fix, the others failed when run (progress doc, independent review mutants)"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01am.md."
     }
   ],
   "rounds": [
@@ -706,7 +720,7 @@
       "quote": "영향(impact)은 다음을 분리한다.\n| 관측·계산 | 해당 Block의 거리/시간에 기여한 양, 계획 대비 차이, 보고한 RPE |\n| 분류·추정 | 목적/강도 분류와 그 출처·불확실성 |\n| 상담 | 향후 계획에서 검토할 항목과 관련 제안 |",
       "verdict": "passed",
       "evidence": ["tests/identity/activity-context.spec.ts:35"],
-      "reason": "M2-01k-m amendment: passed. The impact tab has three sections with their own headings and source lines: observed/calculated (block partial sums, plan difference, reported RPE), classification/estimate (the linked planned session's user-written purpose and intensity, each with source, plan version and uncertainty; record-based estimates show \"추정 없음\" because no validated estimator exists) and consultation (read-only review items from fixed rules, a coach review link and related threads). M1 killed in both shells.",
+      "reason": "M2-01am amendment: passed. The three sections keep their headings and source lines; the observed section is now named from its own heading (observed/calculated) through aria-labelledby. M1 and M5 fail in both shells.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -716,14 +730,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-m",
+        "node": "M2-01am",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Only the observation/calculation section exists; classification/estimate and consultation sections are absent.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-m amendment: passed. The impact tab has three sections with their own headings and source lines: observed/calculated (block partial sums, plan difference, reported RPE), classification/estimate (the linked planned session's user-written purpose and intensity, each with source, plan version and uncertainty; record-based estimates show \"추정 없음\" because no validated estimator exists) and consultation (read-only review items from fixed rules, a coach review link and related threads). M1 killed in both shells.",
         "executed": [
-          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
-          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
-          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+          "tests/identity/activity-impact-split.spec.ts and three related activity specs in both shells under the harness lock (8 passed): the whole impact screen is checked through innerText and through all text nodes joined by spaces against one shared forbidden list (packages/modules/activities/tests/impact-forbidden.ts); the coach review link is opened and the coach screen state, zero writes, the thread count and the plan head are asserted",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx (9 tests; activities module 349 passed): 36 forbidden sample forms caught (share words including 비율·차지·몫·이행률, English share/likelihood/chance/odds, percentage points, fractions, ratios, causal forms including (으)로 인한 and caused by) and 19 allowed forms of today's screen text pass",
+          "pnpm test:identity x2 (234 passed, 3 skipped each) after round 1 and x1 after round 2; lint, typecheck, build and format",
+          "mutants M1-M5, M9, M11, R1, R7, R8, N2 and N3 fail in both shells; M6-M8, M10 and M12-M14 fail in unit tests; the independent review (three rounds, round 3 APPROVE on tree 52203499) ran R1-R8 and N1-N4 as unit mutants: R1, R7 and R8 survived round 1 and fail after the fix, N2 and N3 survived round 2 and fail after the fix, the others failed when run (progress doc, independent review mutants)"
         ]
       }
     },
@@ -735,7 +750,7 @@
       "evidence": [
         "tests/identity/activity-context.spec.ts:35 — known/missing partial sums (:152-157, :201)"
       ],
-      "reason": "M2-01k-m amendment: passed. A whole-screen negative assertion on linked and unlinked activities finds no percentage, no number beside risk or probability wording, no contribution share and no causal number; partial sums stay in place of shares because coverage is unknown. M2 killed in both shells. Limit: the patterns are narrow (fullwidth digits, number-before-word and fraction forms are not covered); widening them is M2-01am.",
+      "reason": "M2-01am amendment: passed. The whole-screen negative assertion now uses one shared, wider list in unit tests and in both shells, read through innerText and through all text nodes joined by spaces (so a label and value in separate elements are caught). It covers fullwidth digits, number-before-word, fractions, ratios, Korean and English share words, percentage points and forward and reverse causal forms; identifiers are masked only when no share or causal word is nearby. Limits: the list is phrase-based (e.g. \"12 times more likely\" is not caught); three harmless disclaimer forms are deliberate false positives; the allow-list covers only identifier forms the screen uses today.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -745,14 +760,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-m",
+        "node": "M2-01am",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Partial sums asserted; no negative assertion that a risk %/contribution ratio is absent.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-m amendment: passed. A whole-screen negative assertion on linked and unlinked activities finds no percentage, no number beside risk or probability wording, no contribution share and no causal number; partial sums stay in place of shares because coverage is unknown. M2 killed in both shells. Limit: the patterns are narrow (fullwidth digits, number-before-word and fraction forms are not covered); widening them is M2-01am.",
         "executed": [
-          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
-          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
-          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+          "tests/identity/activity-impact-split.spec.ts and three related activity specs in both shells under the harness lock (8 passed): the whole impact screen is checked through innerText and through all text nodes joined by spaces against one shared forbidden list (packages/modules/activities/tests/impact-forbidden.ts); the coach review link is opened and the coach screen state, zero writes, the thread count and the plan head are asserted",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx (9 tests; activities module 349 passed): 36 forbidden sample forms caught (share words including 비율·차지·몫·이행률, English share/likelihood/chance/odds, percentage points, fractions, ratios, causal forms including (으)로 인한 and caused by) and 19 allowed forms of today's screen text pass",
+          "pnpm test:identity x2 (234 passed, 3 skipped each) after round 1 and x1 after round 2; lint, typecheck, build and format",
+          "mutants M1-M5, M9, M11, R1, R7, R8, N2 and N3 fail in both shells; M6-M8, M10 and M12-M14 fail in unit tests; the independent review (three rounds, round 3 APPROVE on tree 52203499) ran R1-R8 and N1-N4 as unit mutants: R1, R7 and R8 survived round 1 and fail after the fix, N2 and N3 survived round 2 and fail after the fix, the others failed when run (progress doc, independent review mutants)"
         ]
       }
     },
@@ -1505,7 +1521,7 @@
       "quote": "| V2-F14 | Impact semantics | 관측 contribution/추정/상담 분리; 가상 위험확률 금지 S09 |",
       "verdict": "passed",
       "evidence": ["see S09-impact-split, S09-no-causal"],
-      "reason": "M2-01k-m amendment: passed. Observation, estimate and consultation are separated (S09-impact-split), no risk probability or causal number is shown (S09-no-causal), and the consultation section writes nothing: zero non-GET requests and an unchanged plan head; opening the coach review only preselects a target, and any plan change still needs the S11 explicit approval. M3 killed in both shells.",
+      "reason": "M2-01am amendment: passed. Observation, estimate and consultation stay separated, no risk probability or causal number is shown (wider list, S09-no-causal), and the consultation section writes nothing; the E2E now opens the coach review link and asserts the preselected target, zero writes, an unchanged thread count and plan head. Related threads refetch on mount and when the page becomes visible; two windows visible side by side may stay stale until one remounts. M3 and M9 fail in both shells.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1516,14 +1532,15 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01k-m",
+        "node": "M2-01am",
         "date": "2026-09-25",
-        "previousVerdict": "partial",
-        "previousReason": "Estimate and consultation sections are absent; no negative assertion that a risk probability is not shown.",
+        "previousVerdict": "passed",
+        "previousReason": "M2-01k-m amendment: passed. Observation, estimate and consultation are separated (S09-impact-split), no risk probability or causal number is shown (S09-no-causal), and the consultation section writes nothing: zero non-GET requests and an unchanged plan head; opening the coach review only preselects a target, and any plan change still needs the S11 explicit approval. M3 killed in both shells.",
         "executed": [
-          "tests/identity/activity-impact-split.spec.ts in the Next and Vite shells: three regions with their own h3 and source line; classification source, version and uncertainty; whole-screen negative patterns for %, risk, share and causal numbers on linked and unlinked activities; zero non-GET /bff/v1/ requests and an unchanged plan head",
-          "packages/modules/activities/tests/activity-impact-panel.test.tsx and activity-context-panel tests; activity-context.spec.ts partial sums in the node's identity runs",
-          "mutants M1 (classification source removed), M2 (risk-% sentence inserted), M3 (consultation writes the plan) each fail in both shells; the independent review re-ran the unit tests and read the mutant logs"
+          "tests/identity/activity-impact-split.spec.ts and three related activity specs in both shells under the harness lock (8 passed): the whole impact screen is checked through innerText and through all text nodes joined by spaces against one shared forbidden list (packages/modules/activities/tests/impact-forbidden.ts); the coach review link is opened and the coach screen state, zero writes, the thread count and the plan head are asserted",
+          "packages/modules/activities/tests/activity-impact-panel.test.tsx (9 tests; activities module 349 passed): 36 forbidden sample forms caught (share words including 비율·차지·몫·이행률, English share/likelihood/chance/odds, percentage points, fractions, ratios, causal forms including (으)로 인한 and caused by) and 19 allowed forms of today's screen text pass",
+          "pnpm test:identity x2 (234 passed, 3 skipped each) after round 1 and x1 after round 2; lint, typecheck, build and format",
+          "mutants M1-M5, M9, M11, R1, R7, R8, N2 and N3 fail in both shells; M6-M8, M10 and M12-M14 fail in unit tests; the independent review (three rounds, round 3 APPROVE on tree 52203499) ran R1-R8 and N1-N4 as unit mutants: R1, R7 and R8 survived round 1 and fail after the fix, N2 and N3 survived round 2 and fail after the fix, the others failed when run (progress doc, independent review mutants)"
         ]
       }
     },

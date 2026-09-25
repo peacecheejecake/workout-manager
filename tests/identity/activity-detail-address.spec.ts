@@ -107,7 +107,7 @@ const tabs = [
   ['overview', '개요', '활동 로컬 태그'],
   ['intervals', '구간', '원본 관측 워크벤치'],
   ['route', '경로', '저장된 경로'],
-  ['impact', '영향', '계획 연결과 관측 영향'],
+  ['impact', '영향', '관측·계산'],
   // The media panel (M2-01k-l) is the gallery's activity media region.
   ['media', '미디어', '활동 미디어'],
   ['source', '출처', '상세 출처'],

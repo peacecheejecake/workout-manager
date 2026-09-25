@@ -26,11 +26,18 @@ function RelatedThreads({
   scope: ReadonlyArray<string>;
   coachingHref: ((link: CoachingLink) => string) | undefined;
 }) {
-  const plan = context.planContext.status === 'linked' ? context.planContext : null;
+  const planContext = context.planContext;
   // Read only. The coach's own thread list is the source; this screen never creates one.
+  // Threads are created on the coach screen, whose query cache is its own, so nothing there
+  // can invalidate this list. It is read again whenever the tab mounts and whenever the page
+  // becomes visible again (back from the coach screen, another tab or the back/forward
+  // cache), whatever the enclosing client's default freshness is.
   const threads = useQuery({
     queryKey: [...scope, 'impact-related-threads'],
-    enabled: plan !== null,
+    enabled: planContext.status === 'linked',
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
     queryFn: async ({ signal }) => {
       const response = await transport.request({
         path: `/bff/v1/coaching-threads?${new URLSearchParams({ limit: String(threadPage), offset: '0' })}`,
@@ -44,7 +51,17 @@ function RelatedThreads({
       return coachingThreadListSchema.parse(response.body);
     },
   });
-  if (!plan) return <p>연결한 계획이 없어 관련 상담을 찾지 않습니다.</p>;
+  if (planContext.status === 'unlinked')
+    return <p>연결한 계획이 없어 관련 상담을 찾지 않습니다.</p>;
+  if (planContext.status === 'unavailable')
+    return (
+      <p>
+        {planContext.reason === 'unsupported_calendar'
+          ? '기록 또는 연결 계획에 지원 범위를 벗어난 날짜가 있어 관련 상담을 찾지 않습니다.'
+          : '저장된 계획 연결을 확인할 수 없어 관련 상담을 찾지 않습니다.'}
+      </p>
+    );
+  const plan = planContext;
   if (threads.isPending) return <p role="status">관련 상담 기록을 확인하고 있습니다.</p>;
   if (threads.isError) return <p role="alert">관련 상담 기록을 확인하지 못했습니다.</p>;
   const planVersionId = plan.planVersion.id.toLowerCase();

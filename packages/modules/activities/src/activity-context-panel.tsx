@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ActivityContext } from '@workout/contracts/activity-context';
 import { sessionDistanceBounds, sessionDurationBounds } from '@workout/contracts/planning';
 import type { DashboardMetric } from '@workout/contracts/dashboard';
@@ -28,9 +29,10 @@ export function ActivityContextPanel({
   planDayHref?: (date: string) => string;
 }) {
   const plan = context.planContext;
+  const headingId = useId();
   return (
-    <section aria-label="계획 연결과 관측 영향">
-      <h3>관측·계산</h3>
+    <section aria-labelledby={headingId}>
+      <h3 id={headingId}>관측·계산</h3>
       <p>
         출처: 이 활동의 기록 값(출처 {sourceLabels[context.activity.source.kind]} · 원본 수정{' '}
         {context.activity.source.revision})과 연결 계획 버전에서 계산한 관측값입니다. 추정이

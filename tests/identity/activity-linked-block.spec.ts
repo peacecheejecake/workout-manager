@@ -214,7 +214,7 @@ test('linked Block filtering uses immutable explicit links independently from ac
       currentPlanVersionId: head.id,
     });
     await page.goto(`/activities?selected=${outside.activityId}&detailTab=impact`);
-    const contextPanel = page.getByRole('region', { name: '계획 연결과 관측 영향', exact: true });
+    const contextPanel = page.getByRole('region', { name: '관측·계산', exact: true });
     const blockLink = contextPanel.getByRole('link', {
       name: '이 Block에 명시적으로 연결된 활동 보기',
       exact: true,

@@ -161,7 +161,7 @@ test('activity context preserves linked historical plan and separates block obse
       blockActual: { count: 2 },
     });
     await page.goto(`/activities?selected=${zero.activityId}&detailTab=impact`);
-    const panel = page.getByRole('region', { name: '계획 연결과 관측 영향', exact: true });
+    const panel = page.getByRole('region', { name: '관측·계산', exact: true });
     await expect(panel).toContainText(
       '과거 계획 버전에 연결되어 있습니다. 현재 계획으로 대체하지 않습니다.',
     );
