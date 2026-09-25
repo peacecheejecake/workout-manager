@@ -76,6 +76,7 @@ import {
   importRoutingGraph,
   probeReportPath,
   relocatedDeploymentNote,
+  routingExtract,
   routingGraphConfig,
   routingGraphDirectory,
   sha256File,
@@ -99,7 +100,8 @@ import {
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
+// Graph A's extract: follows ROUTING_GRAPH_ROOT / ROUTING_EXTRACT_SOURCE (M2-01ak).
+const extractPath = routingExtract.path;
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 
 const BLUE: EnginePorts = { application: 8991, admin: 8992 };
@@ -116,7 +118,10 @@ const NOTHING = 8997;
 
 /** Graph C's extract: central Seoul, clipped from graph A's extract. */
 const CLIP_BBOX = '126.90,37.49,127.06,37.62';
-const CLIP_REGION = 'Seoul clip bbox 126.90,37.49,127.06,37.62 of the BBBike Seoul extract';
+const CLIP_REGION =
+  routingExtract.sourceId === 'osm-extract-seoul'
+    ? 'Seoul clip bbox 126.90,37.49,127.06,37.62 of the BBBike Seoul extract'
+    : `Seoul clip bbox 126.90,37.49,127.06,37.62 of ${routingExtract.region}`;
 
 type Position = [number, number];
 /** Pre-stated, from M2-01g's KRC-01 case; inside both graphs. */
@@ -139,10 +144,44 @@ const LONG: Position[] = [
   [127.05, 37.49],
 ];
 /** Both ends snap within 5 m; the western one lies on a component cut off at the extract edge. */
-const NO_ROUTE: Position[] = [
+const SEOUL_NO_ROUTE: Position[] = [
   [126.59, 37.3547],
   [126.65, 37.39],
 ];
+/**
+ * M2-01ak: on the national graph the Seoul pair is connected (the edge cut is gone: 11,973 m,
+ * route_computed). A no_route there needs two components with both ends on the network. The
+ * pair below was chosen by exploration on the national graph, not stated blind:
+ *
+ * - An exploration run (2026-09-25T07:21Z, graph from the 2026-09-24 extract) found Baengnyeong,
+ *   Jangbong and Yeonpyeong connected to their partners by mapped ferries, so they are not used.
+ * - The swap probe's first national run tried Pungdo, Deokjeokdo, Sapsido, Oeyeondo and
+ *   Eocheongdo: every one was `snap_too_far` (an end more than 120 m from a walkable edge),
+ *   which is not a no_route either. They were dropped.
+ * - Yokjido village to Tongyeong's ferry terminal (13 km apart) answered `no_route` in 8 ms:
+ *   both ends snap, and no mapped way or ferry joins the island's walkable network to the
+ *   mainland's in that graph.
+ *
+ * So the check proves that the engine emits no_route for a pair where both ends snap, on this
+ * graph. It does not prove that Yokjido has no ferry: OSM may map one later, and the pair then
+ * routes and the check fails, which is what should happen. The list form stays so a replacement
+ * can be stated in advance; the report records every pair tried and its outcome. Rounded
+ * public-place coordinates, no personal data.
+ */
+const NATIONAL_NO_ROUTE_CANDIDATES: readonly (readonly [string, Position[]])[] = [
+  [
+    'yokjido-tongyeong',
+    [
+      [128.265, 34.63],
+      [128.42, 34.83],
+    ],
+  ],
+];
+/** Graph A's no_route candidates: the Seoul edge pair, or the national list. */
+const noRouteCandidates: readonly (readonly [string, Position[]])[] =
+  routingExtract.sourceId === 'osm-extract-seoul'
+    ? [['seoul-extract-edge', SEOUL_NO_ROUTE]]
+    : NATIONAL_NO_ROUTE_CANDIDATES;
 /** Yellow Sea, M2-01g's CTL-OFFSHORE. */
 const OFFSHORE: Position[] = [
   [125.5, 36.5],
@@ -245,6 +284,15 @@ async function ensureGraphC(workDir: string, deploymentOf: (dir: string) => Prom
   if (osmium.status !== 0) throw new Error('MISSING_PREREQUISITE: osmium');
   const osmiumVersion = osmium.stdout.split('\n')[0]?.trim() ?? 'unknown';
   const sourceSha256 = await sha256File(extractPath);
+  // The source's own snapshot time goes on the clip, so the engine reports the real data date.
+  const snapshot = spawnSync(
+    'osmium',
+    ['fileinfo', '--get', 'header.option.osmosis_replication_timestamp', extractPath],
+    { encoding: 'utf8' },
+  );
+  const snapshotAt = snapshot.stdout.trim();
+  if (snapshot.status !== 0 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(snapshotAt))
+    throw new Error('EXTRACT_SNAPSHOT_TIME_UNREADABLE');
   // Always re-clip into a temporary file: the clip is deterministic, and comparing hashes
   // is how a reused graph C is known to come from these exact bytes.
   await mkdir(workDir, { recursive: true });
@@ -258,9 +306,8 @@ async function ensureGraphC(workDir: string, deploymentOf: (dir: string) => Prom
       '--strategy',
       'complete_ways',
       '--set-bounds',
-      // The source's own snapshot time, so the engine reports the real data date.
       '--output-header',
-      'osmosis_replication_timestamp=2026-09-18T23:00:00Z',
+      `osmosis_replication_timestamp=${snapshotAt}`,
       '--overwrite',
       '-o',
       temporary,
@@ -981,7 +1028,22 @@ async function main() {
 
     // ---- Distinct outcomes from the real engine, production configuration.
     admissionResets['outcomes'] = await clearAdmissionHistory(database.admin);
-    const noRoute = await computeOver(limitsApi, owner, NO_ROUTE, 'outcome-no-route');
+    // The first pre-stated candidate the engine answers `no_route` (one, on the Seoul extract).
+    const noRouteTried: { id: string; outcome: string | null }[] = [];
+    let NO_ROUTE: Position[] = noRouteCandidates[0]?.[1] ?? SEOUL_NO_ROUTE;
+    let noRoute = await computeOver(limitsApi, owner, NO_ROUTE, 'outcome-no-route');
+    for (const [index, [id, pair]] of noRouteCandidates.entries()) {
+      const answer =
+        index === 0 ? noRoute : await computeOver(limitsApi, owner, pair, `outcome-no-route-${id}`);
+      noRouteTried.push({ id, outcome: answer.result?.outcome ?? `status ${answer.status}` });
+      if (answer.result?.outcome === 'no_route') {
+        NO_ROUTE = pair;
+        noRoute = answer;
+        break;
+      }
+      if (index === noRouteCandidates.length - 1) noRoute = answer;
+    }
+    observations['noRouteCandidates'] = noRouteTried;
     const offshore = await computeOver(limitsApi, owner, OFFSHORE, 'outcome-offshore');
     const farSnap = await computeOver(limitsApi, owner, FAR_SNAP, 'outcome-snap');
     observations['outcomes'] = {

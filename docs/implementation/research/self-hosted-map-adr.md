@@ -17,7 +17,7 @@
 | 항목        | 결정                                                                | 근거 절 |
 | ----------- | ------------------------------------------------------------------- | ------- |
 | 렌더러      | MapLibre GL JS **6.9.1** (기존 고정 버전 그대로)                    | 2       |
-| 대상 지역   | Seoul BBBike city extract                                           | 3       |
+| 대상 지역   | 배경: Seoul BBBike city extract. 보행 graph: 한국 전체(M2-01ak)     | 3       |
 | 타일 빌더   | `osmium tags-filter/export` → `tippecanoe`                          | 4       |
 | 빌드 산출물 | MBTiles(SQLite) 1개                                                 | 4       |
 | 배포 형태   | gzip 그대로의 정적 XYZ 피라미드 + style/glyph/sprite, 버전 디렉터리 | 4·5     |
@@ -75,8 +75,34 @@ BSD-3-Clause)이 자체 생성 타일·style·glyph·sprite를 모두 렌더했�
 | 좌표 bbox | 126.734, 37.413 – 127.269, 37.715                                   |
 | tile zoom | z9–z15                                                              |
 
-**실제 측정을 지탱하는 가장 작은 지역**이라는 이유로 전국 extract 대신 도시 extract를
-선택했다. 한국 전체나 다른 지역의 비용은 이 수치에서 선형으로 추정하지 않는다.
+위 표는 M2-01d의 결정이고 **배경 타일은 지금도 이 Seoul extract로 만든다.** 보행 routing graph의 입력은
+M2-01ak(2026-09-25)에서 아래 전국 extract로 바뀌었다.
+
+| 항목 (routing graph, M2-01ak) | 값                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| 지역                          | South Korea (Geofabrik extract 2026-09-01)                                                 |
+| allowlist id                  | `osm-extract-south-korea`                                                                  |
+| URL                           | `https://download.geofabrik.de/asia/south-korea-260901.osm.pbf` (월간 파일)                |
+| 크기                          | 286,403,403 bytes                                                                          |
+| SHA-256 (pin)                 | `848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b`                         |
+| 대조                          | Geofabrik이 같은 이름으로 게시한 MD5 `3f6596139dedbbe2f6b2b9a4ff486c63`와 일치             |
+| 서버 표기                     | `Last-Modified: Wed, 02 Sep 2026 05:13:33 GMT`, `ETag "11122b4b-65a7918cd6a87"`            |
+| 데이터 시점                   | `osmosis_replication_timestamp=2026-09-01T20:20:50Z`                                       |
+| 좌표 bbox (PBF 헤더)          | 124.3188, 32.36076 – 132.3386, 38.64966                                                    |
+| 라이선스                      | ODbL 1.0 (OpenStreetMap contributors). Geofabrik은 user·changeset 메타데이터를 뺀 OSM 원본 |
+
+`south-korea-latest.osm.pbf`는 날짜 붙은 최신 파일로 가는 302다. 취득은 redirect를 따라가지 않으므로 pin은 날짜
+붙은 파일 자체를 가리킨다. Geofabrik은 일간 파일을 약 1주(260918–260924), 월간 파일을 약 석 달(260701–260901),
+연초(`YY0101`) 파일을 2015년부터 보관한다(2026-09-25 관측). 그래서 **월간 파일을 고정했다**(검토 1차: 처음 고정한 일간
+`260924`는 일주일 뒤 다시 받을 수 없다). 월간 파일도 보관 기간이 지나면 다시 받기는 404로 닫힌 쪽으로 실패한다.
+그래서 PBF는 graph와 함께 보관한다(runbook). 새 snapshot으로 옮기는 것은 pin 변경과 새 graph import다.
+
+**(M2-01d 당시) 실제 측정을 지탱하는 가장 작은 지역**이라는 이유로 전국 extract 대신 도시 extract를
+선택했다. 한국 전체나 다른 지역의 비용은 이 수치에서 선형으로 추정하지 않는다. **M2-01ak에서 이 근거는 routing
+graph에 대해 뒤집혔다:** 사용자 결정(2026-09-25)은 routing 엔진·데이터로 "OSM 한국 extract"를 채택했는데,
+M0-06b evidence pack이 Seoul extract로는 부산·수원·강원·경북·제주 표본이 모두 `outside_coverage`임을 보였다.
+그래서 graph는 전국 extract로 다시 만들었고, 전국 비용은 추정하지 않고 실제로 쟀다(§9의 M2-01ak 행). 배경 타일의
+지역 확대는 이 결정에 들지 않는다(§11의 보류 그대로).
 
 취득은 allowlist id로만 가능하다. 스크립트는 URL을 인자로 받지 않으므로 사용자가 임의
 주소를 넣을 수 없고, `{range}`(숫자-숫자)만 치환 가능하다. **redirect는 따라가지 않는다**
@@ -304,6 +330,19 @@ serving prefix + style revision)`의 앞 12자. 현재 게시된 빌드는 `ec81
 | 월 비용          | **미산정**                              | 호스팅 결정 후 별도 승인                |
 
 Seoul 수치를 전국으로 선형 확대하지 않는다. 확대 시 다시 측정한다.
+
+**M2-01ak 실측(routing graph만, 전국 extract `260901`, 같은 기기, load average 6–8):**
+
+| 항목                     | 측정값 (South Korea, 이 기기)                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| extract                  | 286,403,403 bytes(다운로드 33.1 s)                                                  |
+| graph import(build 전체) | 43.4 s(엔진 기동·import·종료·해시 포함), 엔진 heap 상한 4,096 MiB                   |
+| import 중 엔진 최대 RSS  | 2,539,072 KiB ≈ 2.42 GiB(1초 표본 41개), 빌드 프로세스 트리 최대 2.60 GB(`time -l`) |
+| graph 디스크             | 297 MiB(`du`) — Seoul graph 41 MiB                                                  |
+| 서빙 엔진 RSS(기동 직후) | 616–620 MiB(운영 probe, helper 기본 heap 2,048 MiB)                                 |
+
+위 값은 한 번의 측정이며 운영 호스트 용량 산정이 아니다. 성능 예산의 엔진 RSS 기준선은
+`performance-budget.json`에서 다시 쟀다([M2-01ak](../progress/M2-01ak.md)).
 
 ## 10. 브라우저 측 증거
 

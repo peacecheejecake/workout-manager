@@ -619,6 +619,43 @@ profile 해시는 graph manifest의 `profileConfigSha256`과 graph id에 묶여 
 필수다. 두 probe의 기본 보고서는 배포된 graph의 기록이라 옮긴(scratch) deployment 결과로 덮지 않는다. 옮긴
 deployment의 보고서에는 "scratch, 영속하지 않음, 배포 graph는 여전히 …"라는 `deployment` 항목이 들어간다.
 
+### 전국 extract로의 교체 — M2-01ak
+
+extract도 `ROUTING_EXTRACT_SOURCE=<allowlist id>`로 고른다(경로나 URL이 아니다). 없으면 Seoul extract
+(`.geo-build/source/region.osm.pbf`)다. `osm-extract-south-korea`는 **옮긴 root 안** `extract/south-korea.osm.pbf`에
+두고(공유 `.geo-build`에 쓰지 않는다), 기본 root에서는 `ROUTING_EXTRACT_NEEDS_A_RELOCATED_ROOT`로 거절한다. build는
+import 전에 allowlist의 SHA-256 pin과 대조한다(다르면 `SOURCE_HASH_MISMATCH`). 같은 두 변수를 주면 build·엔진 로그·
+rollout·swap·운영·coverage·성능 probe가 모두 그 deployment와 extract를 쓴다.
+
+```sh
+ROOT=<절대 경로, .geo-build 밖, 영속 위치>   # M2-01ak: <main checkout>/.geo-build-routing/kr-260901
+# 1. extract: allowlist fetcher로만 받는다(redirect 불허, pin 대조).
+node -e "import('./scripts/geo/sources.mjs').then((m) => m.fetchAllowedSource({ id: 'osm-extract-south-korea', destination: '$ROOT/extract/south-korea.osm.pbf' }))"
+# 2. import (--replace-served-graph 없음). 하네스 잠금 안에서.
+ROUTING_GRAPH_ROOT=$ROOT ROUTING_EXTRACT_SOURCE=osm-extract-south-korea \
+  node --import tsx scripts/build-routing-graph.mts --execute
+# 3. blue/green 전환·rollback·전진·blue 퇴역 실측(하네스 잠금 안에서)
+ROUTING_GRAPH_ROOT=$ROOT ROUTING_EXTRACT_SOURCE=osm-extract-south-korea \
+  node --import tsx scripts/probe-routing-profile-rollout.mts --execute --report-name <다른 파일>.json
+```
+
+- **성능 예산의 엔진 메모리 지표는 전국 graph에 묶여 있다.** 엔진 단계를 포함한 판정 run
+  (`scripts/probe-performance-budget.mts --execute`)은 `ROUTING_GRAPH_ROOT=<전국 root>`와
+  `ROUTING_EXTRACT_SOURCE=osm-extract-south-korea`를 주고 돌린다. 기본 `.geo-build`(Seoul graph)에서는 판정하지 않고
+  `ENGINE_GRAPH_NOT_BASELINED`로 멈춘다.
+- 전국 import는 엔진 heap 4096 MiB로 돈다(`routingExtractFrom`의 `importHeapMegabytes`). 서빙은 helper 기본값
+  그대로다. 측정값은 [M2-01ak](progress/M2-01ak.md)에 있다.
+- 기존 코스: 옛 graph에서 계산한 revision은 **그대로 받아들인다.** 재계산하지 않고, 재라우팅 대상으로 표시하지도
+  않는다. revision은 자기를 계산한 graph 신원을 지니고 있고, 사용자가 다시 계산을 눌러 새 graph의 제안을 저장할 때만
+  양측 확인 `{previous: <옛 id>, next: <새 id>}`로 바뀐다(M2-01h 설계 그대로).
+- **PBF를 graph와 함께 보관한다.** allowlist는 Geofabrik 월간 파일(`south-korea-260901`)을 고정한다. Geofabrik은 월간
+  파일을 약 석 달만 두므로 그 뒤에는 같은 URL에서 다시 받을 수 없다(404, 닫힌 쪽 실패). root의
+  `extract/south-korea.osm.pbf`를 지우지 말고, 옮길 때도 함께 옮긴다(pin으로 대조된다). 새 snapshot으로 옮기려면 pin을
+  바꾸고 새 graph를 import한다.
+- 옛 deployment(`.geo-build/routing-graph`, Seoul `c57f12f5975347e8`)는 rollback 대상으로 남긴다. 새 root를 지우거나
+  옛 root를 덮어쓰지 않는다. 옛 graph로 되돌리려면 옛 엔진을 다시 띄우고(helper 명령줄, 옛 `config-serving.yml`) 전환
+  파일에 옛 네 경로를 적어 `SIGHUP`한다(blue가 아직 떠 있으면 `{"action":"rollback"}`).
+
 identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다
 (기본은 fixture 엔진).
 

@@ -11,8 +11,15 @@
 > `scripts/geo/sources.mjs:25-26`, graph manifest의 `extractRegion: "Seoul (BBBike city extract)"`, ADR
 > `self-hosted-map-adr.md:20,68`. PBF 헤더 bbox는 `126.58,37.35 – 127.31,37.72`다. 서울, 인천 서부 해안,
 > 경기 일부만 들어 있다. 그래서 부산·수원·강원·경북·제주 표본은 이 graph로 계산할 수 없고, 결과도 그렇게
-> 나왔다(§3.3). 결정 문구와 데이터 범위 중 어느 쪽을 고칠지는 root와 사용자가 정한다. 이 문서는 둘 다 바꾸지
+> 나왔다(§3.3). ~~결정 문구와 데이터 범위 중 어느 쪽을 고칠지는 root와 사용자가 정한다.~~ 이 문서는 둘 다 바꾸지
 > 않았다.
+>
+> **갱신(M2-01ak, 2026-09-25): 결정됨.** 사용자가 데이터 범위를 고치기로 했다. 한국 전체 OSM extract(Geofabrik
+> 월간 `south-korea-260901.osm.pbf`, SHA-256 pin, bbox `124.32,32.36 – 132.34,38.65`)로 graph를 새로 import해 배포를
+> 교체했다([M2-01ak](../progress/M2-01ak.md)). 아래 §1–§4의 수치와 표는 **Seoul graph `c57f12f5975347e8`의 기록**으로
+> 그대로 둔다. 같은 38쌍을 새 graph에서 다시 돌린 결과(등급 없음)는
+> [m0-06b-routing-korea-coverage-m2-01ak.json](m0-06b-routing-korea-coverage-m2-01ak.json)이다. 독립 coverage
+> 검토는 새 graph로 받는다.
 
 ## 1. 결정 기록
 
@@ -41,8 +48,9 @@
 4. 포기한 것은 OSRM의 2–3 ms 지연과 작은 RSS다. Valhalla는 빌드조차 하지 않았다(`:240-245`). "Valhalla보다
    낫다"는 주장은 없다.
 
-**Seoul extract를 고른 이유**(ADR `:78-79`): "실제 측정을 지탱하는 가장 작은 지역". 전국 extract는 allowlist에
-없다. 전국 비용은 Seoul 수치로 선형 추정하지 않는다(`:306`).
+**Seoul extract를 고른 이유**(ADR `:78-79`): "실제 측정을 지탱하는 가장 작은 지역". ~~전국 extract는 allowlist에
+없다.~~ (M2-01ak 갱신: 전국 extract `osm-extract-south-korea`를 allowlist에 SHA-256 pin과 함께 더했고 routing graph를
+그것으로 교체했다. ADR §3 갱신 참고.) 전국 비용은 Seoul 수치로 선형 추정하지 않는다(`:306`). M2-01ak가 실제로 쟀다.
 
 ## 2. 데이터 provenance 사슬
 
@@ -350,5 +358,5 @@ GraphHopper 10.0 소스와, 배포에 쓴 jar(sha256 `e5a1268f…`)의 바이트
 
 - coverage가 충분하다거나 부족하다고 판정하지 않았다. 표본의 기대 결과도 적지 않았다.
 - 결정 문구("한국 extract")와 실제 데이터(Seoul extract)의 차이를 해소하지 않았다. 전국 extract를 allowlist에
-  넣거나 graph를 다시 만들지 않았다. `.geo-build`에는 쓰지 않았다.
+  넣거나 graph를 다시 만들지 않았다. `.geo-build`에는 쓰지 않았다. (그 차이는 뒤에 M2-01ak가 해소했다.)
 - task-graph 상태와 요구 매트릭스를 바꾸지 않았다. 실기기·OS IME 증거를 만들지 않았다.

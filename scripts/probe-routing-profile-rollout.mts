@@ -2,8 +2,8 @@
  * M2-01af: roll the rebuilt graph out, from the served graph on the old serving profile to a
  * full re-import on the new one, through M2-01k-e's blue/green procedure.
  *
- *   ROUTING_GRAPH_ROOT=<absolute dir outside .geo-build> \
- *     node --import tsx scripts/probe-routing-profile-rollout.mts --execute
+ *   ROUTING_GRAPH_ROOT=<absolute dir outside .geo-build> [ROUTING_EXTRACT_SOURCE=<allowlist id>] \
+ *     node --import tsx scripts/probe-routing-profile-rollout.mts --execute [--report-name <file>.json]
  *
  * `ROUTING_GRAPH_ROOT` names the green deployment `build-routing-graph.mts` imported there
  * (graph and profile copy). Blue is the served deployment under `.geo-build/routing-graph`,
@@ -24,8 +24,17 @@
  *    acknowledgement that names the old graph as next is refused.
  * 4. Neither engine wrote any of the waypoints this run sent.
  *
- * WHAT THIS IS NOT. Green is a re-import of the same extract, not newer map data. Timings
- * are single-caller values on this machine only.
+ * 5. (M2-01ak) After the rollback it moves forward again and retires blue: the old engine is
+ *    stopped and the API keeps answering from green, and a course saved on the old graph is
+ *    still read back unchanged.
+ *
+ * Green may be a re-import of the same extract (M2-01af) or, from M2-01ak on, an import of a
+ * different allowlisted extract (`ROUTING_EXTRACT_SOURCE`, the national one); the first check
+ * then requires that green's extract hash is that allowlist entry's pin. The report goes to
+ * `routing-profile-rollout.json` unless `--report-name` names another file.
+ *
+ * WHAT THIS IS NOT. Timings are single-caller values on this machine only. Nothing here
+ * grades coverage.
  */
 import { randomUUID } from 'node:crypto';
 import { readFile, mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -51,7 +60,10 @@ import {
   type RoutingDeploymentSwitch,
 } from '../apps/api/src/routing-deployment.ts';
 import {
+  probeReportPath,
   relocatedDeploymentNote,
+  routingExtract,
+  routingExtractFrom,
   routingGraphConfig,
   routingGraphDirectory,
   routingGraphRootFrom,
@@ -64,6 +76,7 @@ import {
 } from './build-routing-graph.mjs';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
 import { REQUEST_LOG_OVERRIDE, profileDisablesRequestLog } from './geo/graphhopper-launch.mjs';
+import { allowedSource } from './geo/sources.mjs';
 import {
   PUBLIC_ORIGIN,
   Session,
@@ -75,13 +88,15 @@ import {
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 const servingProfile = join(repositoryRoot, 'scripts/geo/graphhopper-foot-serving.yml');
 /** Blue: the served deployment, always the default layout under `.geo-build`. */
 const blueRoot = routingGraphRootFrom(undefined);
 const blueGraph = join(blueRoot, 'foot');
 const blueConfig = join(blueRoot, 'config-serving.yml');
+/** Each engine gets its own deployment's extract (read only when a graph must be imported). */
+const blueExtract = routingExtractFrom(undefined, blueRoot);
+const greenExtract = routingExtract;
 
 const BLUE: EnginePorts = { application: 8991, admin: 8992 };
 const GREEN: EnginePorts = { application: 8993, admin: 8994 };
@@ -125,10 +140,15 @@ async function computeOver(api: Api, session: Session, points: Position[], reque
 
 async function main() {
   const argv = process.argv.slice(2);
-  if (!argv.includes('--execute') || argv.length !== 1 || !process.env.ROUTING_GRAPH_ROOT) {
+  const named = argv.indexOf('--report-name');
+  if (
+    !argv.includes('--execute') ||
+    argv.length !== (named === -1 ? 1 : 3) ||
+    !process.env.ROUTING_GRAPH_ROOT
+  ) {
     console.log(
       'Opt-in only: ROUTING_GRAPH_ROOT=<green deployment, outside .geo-build> node --import tsx ' +
-        'scripts/probe-routing-profile-rollout.mts --execute. Runs two real engines on loopback ' +
+        'scripts/probe-routing-profile-rollout.mts --execute [--report-name <file>.json]. Runs two real engines on loopback ' +
         '8991-8994, the production API composition and the fixture OIDC provider on 4400 (hold the ' +
         'harness lock), and writes a report. Never use as CI.',
     );
@@ -136,10 +156,19 @@ async function main() {
   }
   if (process.env.CI) throw new Error('Routing engine runs are disabled in CI');
   if (detectedBin === undefined) throw new Error('MISSING_PREREQUISITE: PostgreSQL binaries');
+  const reportPath = probeReportPath(argv, 'routing-profile-rollout.json');
   // `routingGraphDirectory`/`routingGraphConfig` follow ROUTING_GRAPH_ROOT: that is green.
   const greenGraph = routingGraphDirectory;
   const greenConfig = routingGraphConfig;
-  for (const required of [extractPath, jarPath, blueGraph, blueConfig, greenGraph, greenConfig])
+  for (const required of [
+    blueExtract.path,
+    greenExtract.path,
+    jarPath,
+    blueGraph,
+    blueConfig,
+    greenGraph,
+    greenConfig,
+  ])
     await stat(required);
 
   const envFor = (graphDirectory: string, configPath: string, port: number) => ({
@@ -162,16 +191,25 @@ async function main() {
   const repositoryProfileSha256 = await sha256File(servingProfile);
   const blueProfileText = await readFile(blueConfig, 'utf8');
   const greenProfileText = await readFile(greenConfig, 'utf8');
+  // Same extract (M2-01af), or a different allowlisted one whose pin is green's extract hash
+  // (M2-01ak): a graph from an extract nobody pinned is not a rollout candidate.
+  const greenPin = allowedSource(greenExtract.sourceId).sha256 ?? null;
+  const sameExtract = green.manifest.extractSha256 === blue.manifest.extractSha256;
+  const pinnedNewExtract =
+    !sameExtract &&
+    greenExtract.sourceId !== blueExtract.sourceId &&
+    greenPin === green.manifest.extractSha256 &&
+    green.manifest.extractRegion === greenExtract.region;
   check(
     'green-is-a-full-reimport-on-the-new-profile',
     graphOld !== graphNew &&
       green.manifest.profileConfigSha256 === repositoryProfileSha256 &&
       blue.manifest.profileConfigSha256 !== green.manifest.profileConfigSha256 &&
-      green.manifest.extractSha256 === blue.manifest.extractSha256 &&
+      (sameExtract || pinnedNewExtract) &&
       green.manifest.graphImportedAt !== blue.manifest.graphImportedAt &&
       profileDisablesRequestLog(greenProfileText) &&
       !profileDisablesRequestLog(blueProfileText),
-    `old ${graphOld} profile ${blue.manifest.profileConfigSha256.slice(0, 12)} / new ${graphNew} profile ${green.manifest.profileConfigSha256.slice(0, 12)} (repository ${repositoryProfileSha256.slice(0, 12)}); same extract ${green.manifest.extractSha256.slice(0, 12)}; imported ${blue.manifest.graphImportedAt} / ${green.manifest.graphImportedAt}`,
+    `old ${graphOld} profile ${blue.manifest.profileConfigSha256.slice(0, 12)} / new ${graphNew} profile ${green.manifest.profileConfigSha256.slice(0, 12)} (repository ${repositoryProfileSha256.slice(0, 12)}); ${sameExtract ? `same extract ${green.manifest.extractSha256.slice(0, 12)}` : `extract ${blue.manifest.extractSha256.slice(0, 12)} (${blue.manifest.extractRegion}) -> ${green.manifest.extractSha256.slice(0, 12)} (${green.manifest.extractRegion}, allowlist ${greenExtract.sourceId} pin ${greenPin === green.manifest.extractSha256 ? 'matches' : 'DOES NOT MATCH'})`}; imported ${blue.manifest.graphImportedAt} / ${green.manifest.graphImportedAt}`,
   );
 
   const directory = await mkdtemp(join(tmpdir(), 'workout-routing-rollout-'));
@@ -199,14 +237,14 @@ async function main() {
     engines.blue = startEngine({
       jarPath,
       configPath: blueConfig,
-      extractPath,
+      extractPath: blueExtract.path,
       graphPath: blueGraph,
       ports: BLUE,
     });
     engines.green = startEngine({
       jarPath,
       configPath: greenConfig,
-      extractPath,
+      extractPath: greenExtract.path,
       graphPath: greenGraph,
       ports: GREEN,
     });
@@ -257,24 +295,30 @@ async function main() {
     ]
       .map(([lon, lat]) => `<rtept lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}" />`)
       .join('')}</rte></gpx>`;
-    const imported = courseImportResultSchema.parse(
-      (
-        await serving.inject({
-          method: 'POST',
-          url: '/bff/v1/courses/imports',
-          headers: alice.headers(true),
-          payload: {
-            name: null,
-            originalFilename: 'm2-01af.gpx',
-            selection: null,
-            fileBase64: Buffer.from(gpx).toString('base64'),
-          },
-        })
-      ).json(),
-    );
-    if (imported.outcome !== 'imported' || imported.course.status !== 'available')
-      throw new Error('IMPORT_FAILED');
-    const courseId = imported.course.course.courseId;
+    const importCourse = async (filename: string) => {
+      const imported = courseImportResultSchema.parse(
+        (
+          await serving.inject({
+            method: 'POST',
+            url: '/bff/v1/courses/imports',
+            headers: alice.headers(true),
+            payload: {
+              name: null,
+              originalFilename: filename,
+              selection: null,
+              fileBase64: Buffer.from(gpx).toString('base64'),
+            },
+          })
+        ).json(),
+      );
+      if (imported.outcome !== 'imported' || imported.course.status !== 'available')
+        throw new Error('IMPORT_FAILED');
+      return imported.course.course.courseId;
+    };
+    const courseId = await importCourse('m2-01af.gpx');
+    // M2-01ak: a second course saved on the old graph and never rerouted. It stands for the
+    // courses users hold when the graph is replaced; it must read back unchanged afterwards.
+    const untouchedCourseId = await importCourse('m2-01ak-untouched.gpx');
     const waypoints = (points: Position[]): CourseWaypoint[] =>
       points.map((position, index) => ({
         role: index === 0 ? 'start' : index === points.length - 1 ? 'finish' : 'via',
@@ -283,12 +327,13 @@ async function main() {
         sourceSampleId: null,
         locked: false,
       }));
-    let draftRevision = 0;
-    const propose = async () => {
-      draftRevision += 1;
+    const draftRevisions = new Map<string, number>();
+    const propose = async (course = courseId) => {
+      const draftRevision = (draftRevisions.get(course) ?? 0) + 1;
+      draftRevisions.set(course, draftRevision);
       const response = await serving.inject({
         method: 'POST',
-        url: `/bff/v1/courses/${courseId}/route-proposals`,
+        url: `/bff/v1/courses/${course}/route-proposals`,
         headers: alice.headers(true),
         payload: {
           requestId: `rollout-${randomUUID()}`,
@@ -302,13 +347,14 @@ async function main() {
       proposal: Awaited<ReturnType<typeof propose>>,
       previous: string | null,
       next: string,
+      course = courseId,
     ) => {
       if (proposal.result.outcome !== 'route_computed') throw new Error('NO_PROPOSAL');
       const head = courseReadResultSchema.parse(
         (
           await serving.inject({
             method: 'GET',
-            url: `/bff/v1/courses/${courseId}`,
+            url: `/bff/v1/courses/${course}`,
             headers: alice.headers(false),
           })
         ).json(),
@@ -316,7 +362,7 @@ async function main() {
       if (head.status !== 'available') throw new Error('COURSE_UNAVAILABLE');
       const response = await serving.inject({
         method: 'PATCH',
-        url: `/bff/v1/courses/${courseId}`,
+        url: `/bff/v1/courses/${course}`,
         headers: alice.headers(true),
         payload: {
           expectedRevision: head.course.headRevision,
@@ -330,7 +376,7 @@ async function main() {
       });
       return { status: response.statusCode, body: JSON.stringify(response.json()) };
     };
-    const revisions = async () =>
+    const revisions = async (course = courseId) =>
       (
         await database.admin.query<{
           course_revision: number;
@@ -340,16 +386,26 @@ async function main() {
           `SELECT course_revision, content_digest,
                   COALESCE(generation #>> '{computation,graph,graphBuildId}', generation->>'sourceGraphBuildId') AS graph
              FROM course_revision WHERE course_id=$1 ORDER BY course_revision`,
-          [courseId],
+          [course],
         )
       ).rows;
     const onOld = await propose();
     const savedOnOld = await save(onOld, null, graphOld);
     const storedOnOld = await revisions();
+    const untouchedOnOld = await save(
+      await propose(untouchedCourseId),
+      null,
+      graphOld,
+      untouchedCourseId,
+    );
+    const untouchedStored = await revisions(untouchedCourseId);
     check(
       'course-saved-on-the-old-graph',
-      savedOnOld.status === 200 && storedOnOld.at(-1)?.graph === graphOld,
-      storedOnOld.map((row) => `${row.course_revision}:${row.graph}`).join(' '),
+      savedOnOld.status === 200 &&
+        storedOnOld.at(-1)?.graph === graphOld &&
+        untouchedOnOld.status === 200 &&
+        untouchedStored.at(-1)?.graph === graphOld,
+      `${storedOnOld.map((row) => `${row.course_revision}:${row.graph}`).join(' ')}; untouched course ${untouchedStored.map((row) => `${row.course_revision}:${row.graph}`).join(' ')}`,
     );
 
     // ---- The old profile copy cannot serve the new graph: the profile is part of its identity.
@@ -456,6 +512,43 @@ async function main() {
       describe(rolledBack),
     );
 
+    // ---- M2-01ak: forward again and retire blue (runbook steps 4-5). With the old engine
+    // stopped the API keeps answering from green, and a course saved on the old graph and never
+    // rerouted reads back exactly as stored: existing revisions are accepted as they are.
+    observations['admissionBeforeRetire'] = await clearAdmissionHistory(database.admin);
+    const forward = await deployments.switchTo(envFor(greenGraph, greenConfig, GREEN.application));
+    const retired = engines.blue;
+    await stopEngine(retired);
+    const blueStopped = retired.process.exitCode !== null || retired.process.signalCode !== null;
+    const afterRetire = await computeOver(serving, alice, KRC01, 'rollout-after-retire');
+    check(
+      'blue-retired-green-keeps-serving',
+      forward.from === graphOld &&
+        forward.to === graphNew &&
+        blueStopped &&
+        deployments.activeGraphBuildId === graphNew &&
+        afterRetire.status === 200 &&
+        afterRetire.outcome === 'route_computed' &&
+        afterRetire.graph === graphNew,
+      `switch ${label(forward.from)} -> ${label(forward.to)}; blue stopped ${blueStopped}; active ${label(deployments.activeGraphBuildId)}; route after retire ${afterRetire.status}:${afterRetire.outcome}:${label(afterRetire.graph)}`,
+    );
+    const untouchedRead = await serving.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${untouchedCourseId}`,
+      headers: alice.headers(false),
+    });
+    const untouchedHead = courseReadResultSchema.parse(untouchedRead.json());
+    const untouchedAfter = await revisions(untouchedCourseId);
+    check(
+      'course-on-the-old-graph-accepted-unchanged',
+      untouchedRead.statusCode === 200 &&
+        untouchedHead.status === 'available' &&
+        untouchedHead.course.headRevision === untouchedStored.at(-1)?.course_revision &&
+        JSON.stringify(untouchedAfter) === JSON.stringify(untouchedStored) &&
+        untouchedAfter.at(-1)?.graph === graphOld,
+      `untouched course read ${untouchedRead.statusCode} ${untouchedHead.status}; head revision ${untouchedHead.status === 'available' ? untouchedHead.course.headRevision : '-'}; stored ${untouchedAfter.map((row) => `${row.course_revision}:${label(row.graph)}:${row.content_digest.slice(0, 8)}`).join(' ')} (before the switch ${untouchedStored.map((row) => `${row.course_revision}:${label(row.graph)}:${row.content_digest.slice(0, 8)}`).join(' ')})`,
+    );
+
     // ---- Neither engine wrote a waypoint this run sent.
     await sleep(1500);
     const probes = coordinateProbes(sent, 'waypoint');
@@ -489,7 +582,7 @@ async function main() {
     schemaVersion: 1,
     node: 'M2-01af',
     measuredAt: new Date().toISOString(),
-    what: 'Blue/green rollout from the served graph on the pre-M2-01af serving profile to a full re-import on the new one, through the production API composition, fixture OIDC and an isolated PostgreSQL. Not a coverage review.',
+    what: 'Blue/green rollout from the served graph on the pre-M2-01af serving profile to a full import on the new one (the same extract, or from M2-01ak a different allowlisted one), through the production API composition, fixture OIDC and an isolated PostgreSQL: switch, rollback, switch forward and retire blue. Not a coverage review.',
     machine: {
       label: 'this machine (desktop), single caller',
       platform: process.platform,
@@ -513,17 +606,18 @@ async function main() {
         profileConfigSha256: green.manifest.profileConfigSha256,
         graphImportedAt: green.manifest.graphImportedAt,
         graphContentSha256: green.manifest.graphContentSha256,
-        note: 'Full re-import of the same allowlisted extract with the M2-01af serving profile; not newer map data.',
+        extractRegion: green.manifest.extractRegion,
+        extractSha256: green.manifest.extractSha256,
+        extractSource: greenExtract.sourceId,
+        note: sameExtract
+          ? 'Full re-import of the same allowlisted extract with the M2-01af serving profile; not newer map data.'
+          : 'Full import of a different allowlisted, pinned extract with the M2-01af serving profile.',
       },
     },
     observations,
     checks,
     result: failed.length === 0 ? 'all_checks_passed' : 'checks_failed',
   };
-  const reportPath = join(
-    repositoryRoot,
-    'docs/implementation/research/routing-profile-rollout.json',
-  );
   await mkdir(dirname(reportPath), { recursive: true });
   const temporary = `${reportPath}.tmp`;
   await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`);

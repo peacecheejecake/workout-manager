@@ -1,0 +1,5251 @@
+{
+  "schemaVersion": 1,
+  "node": "M0-06b",
+  "executedAt": "2026-09-25T09:37:00.757Z",
+  "purpose": "Ungraded evidence set for an independent reviewer of Korean pedestrian routing coverage. Nothing in this file is a pass or a fail.",
+  "coverageReview": "not_reviewed",
+  "method": {
+    "engine": "Pinned GraphHopper jar started on loopback through startEngine / graphhopperJavaArguments (runbook launch), on a byte-identical temporary copy of the deployed graph verified against the same manifest. The deployed graph directory was only read.",
+    "requestPath": "Production WalkingRouteService + GraphHopperRoutingAdapter (default limits: snap 120 m, deadline 8 s, 1,000,000 visited nodes). Admission window widened to 1000/60 s so one sequential run is not refused; concurrency 1.",
+    "supplementaryRequest": "One direct loopback /route request per pair with details road_class, road_environment, road_access, surface, used for snap distances of failed pairs and per-class metres. road_access is GraphHopper 10.0 car-oriented (motorcar, motor_vehicle, vehicle, access), not foot access.",
+    "tagCheck": "Ways tagged foot/access (and route=ferry), foot/access/barrier nodes and military areas exported from the same extract with osmium. A route segment counts as running along a way when its midpoint is within 1.5 m of a way segment and the directions differ by at most 20 degrees. A route vertex within 1 m of a tagged node counts as passing it. A military area counts when a route segment midpoint lies inside it. These are geometric matches against OSM tags, not ground truth.",
+    "coordinates": "Synthetic, rounded points at public landmarks chosen by hand; approximate on purpose. No personal GPS data."
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 8,
+    "totalMemoryBytes": 34359738368,
+    "node": "v24.12.0"
+  },
+  "graph": {
+    "manifest": {
+      "schemaVersion": 1,
+      "engine": "graphhopper",
+      "engineVersion": "10.0",
+      "engineArtifactSha256": "e5a1268f2cd6b1e4ef849b9237e98b651bf3c31adf4a3766c6d9f5feb241bb41",
+      "profileId": "foot-v1",
+      "profileConfigSha256": "54b9ba78b4abe3f204c8cab1dee0be9e4d6b378a67b345c0614ce0714e1712d7",
+      "profileName": "foot",
+      "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+      "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+      "extractByteLength": 286403403,
+      "graphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085",
+      "graphImportedAt": "2026-09-25T09:36:36.000Z",
+      "roadDataAt": "2026-09-01T20:20:50.000Z",
+      "builtAt": "2026-09-25T09:36:41.544Z"
+    },
+    "graphBuildId": "188b65effcc6ef5c",
+    "deployedGraphDirectory": "<ROUTING_GRAPH_ROOT>/foot",
+    "deployment": {
+      "deployment": "relocated (ROUTING_GRAPH_ROOT)",
+      "rootLocation": "outside temporary directories",
+      "extractSource": "osm-extract-south-korea",
+      "note": "Deployment built outside .geo-build in a persistent directory. Whether it is the one being served is stated by the node that ran this probe (the report's file name and progress record), not by this file. The default layout .geo-build/routing-graph holds c57f12f5975347e8.",
+      "servedGraphBuildId": "c57f12f5975347e8"
+    },
+    "extractSource": "osm-extract-south-korea",
+    "deployedGraphContentBeforeRun": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085",
+    "deployedGraphContentAfterRun": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085",
+    "deployedDirectoryListingUnchanged": true,
+    "extractSha256Recomputed": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+    "extractHeaderBbox": [124.3188, 32.36076, 132.3386, 38.64966]
+  },
+  "extractTagStatistics": {
+    "highway way with access=agricultural": {
+      "count": 295,
+      "kilometers": 88.68
+    },
+    "highway way with access=agricultural with foot=yes": {
+      "count": 3,
+      "kilometers": 5.66
+    },
+    "highway way with access=customers": {
+      "count": 254,
+      "kilometers": 32.22
+    },
+    "highway way with access=customers with foot=designated": {
+      "count": 4,
+      "kilometers": 0.93
+    },
+    "highway way with access=customers with foot=yes": {
+      "count": 20,
+      "kilometers": 2.04
+    },
+    "highway way with access=delivery": {
+      "count": 4,
+      "kilometers": 1.66
+    },
+    "highway way with access=destination": {
+      "count": 222,
+      "kilometers": 36.1
+    },
+    "highway way with access=destination with foot=designated": {
+      "count": 4,
+      "kilometers": 4.56
+    },
+    "highway way with access=destination with foot=yes": {
+      "count": 23,
+      "kilometers": 12.91
+    },
+    "highway way with access=discouraged": {
+      "count": 1,
+      "kilometers": 0.02
+    },
+    "highway way with access=emergency": {
+      "count": 7,
+      "kilometers": 1.03
+    },
+    "highway way with access=forestry": {
+      "count": 21,
+      "kilometers": 24.06
+    },
+    "highway way with access=forestry with foot=yes": {
+      "count": 4,
+      "kilometers": 7.47
+    },
+    "highway way with access=military": {
+      "count": 44,
+      "kilometers": 8.61
+    },
+    "highway way with access=no": {
+      "count": 3883,
+      "kilometers": 2647.22
+    },
+    "highway way with access=no with foot=designated": {
+      "count": 47,
+      "kilometers": 37.22
+    },
+    "highway way with access=no with foot=destination": {
+      "count": 3,
+      "kilometers": 0.46
+    },
+    "highway way with access=no with foot=permissive": {
+      "count": 4,
+      "kilometers": 2.02
+    },
+    "highway way with access=no with foot=yes": {
+      "count": 780,
+      "kilometers": 204.42
+    },
+    "highway way with access=permit": {
+      "count": 639,
+      "kilometers": 170.25
+    },
+    "highway way with access=permit with foot=designated": {
+      "count": 2,
+      "kilometers": 0.34
+    },
+    "highway way with access=permit with foot=official": {
+      "count": 3,
+      "kilometers": 4.71
+    },
+    "highway way with access=permit with foot=yes": {
+      "count": 31,
+      "kilometers": 6.07
+    },
+    "highway way with access=private": {
+      "count": 4232,
+      "kilometers": 935.28
+    },
+    "highway way with access=private with foot=customers": {
+      "count": 1,
+      "kilometers": 0.08
+    },
+    "highway way with access=private with foot=designated": {
+      "count": 5,
+      "kilometers": 1.8
+    },
+    "highway way with access=private with foot=destination": {
+      "count": 1,
+      "kilometers": 0.06
+    },
+    "highway way with access=private with foot=official": {
+      "count": 3,
+      "kilometers": 0.94
+    },
+    "highway way with access=private with foot=permissive": {
+      "count": 1,
+      "kilometers": 0.06
+    },
+    "highway way with access=private with foot=yes": {
+      "count": 24,
+      "kilometers": 5.22
+    },
+    "highway way with foot=customers": {
+      "count": 3,
+      "kilometers": 0.01
+    },
+    "highway way with foot=destination": {
+      "count": 25,
+      "kilometers": 3.47
+    },
+    "highway way with foot=no": {
+      "count": 6394,
+      "kilometers": 2186.22
+    },
+    "highway way with foot=permit": {
+      "count": 26,
+      "kilometers": 9.41
+    },
+    "highway way with foot=private": {
+      "count": 22,
+      "kilometers": 2.33
+    },
+    "highway way with indoor=no": {
+      "count": 16,
+      "kilometers": 0.43
+    },
+    "highway way with indoor=room": {
+      "count": 13,
+      "kilometers": 0.15
+    },
+    "highway way with indoor=yes": {
+      "count": 776,
+      "kilometers": 20.57
+    },
+    "highway way with sac_scale=1": {
+      "count": 27,
+      "kilometers": 9.2
+    },
+    "highway way with sac_scale=2": {
+      "count": 3,
+      "kilometers": 0.24
+    },
+    "highway way with sac_scale=alpine_hike": {
+      "count": 1,
+      "kilometers": 0.02
+    },
+    "highway way with sac_scale=alpine_hiking": {
+      "count": 54,
+      "kilometers": 90.13
+    },
+    "highway way with sac_scale=demanding_alpine_hiking": {
+      "count": 16,
+      "kilometers": 20.43
+    },
+    "highway way with sac_scale=demanding_mountain_hike": {
+      "count": 1,
+      "kilometers": 0.01
+    },
+    "highway way with sac_scale=demanding_mountain_hiking": {
+      "count": 204,
+      "kilometers": 95.27
+    },
+    "highway way with sac_scale=difficult_alpine_hiking": {
+      "count": 1,
+      "kilometers": 4.13
+    },
+    "highway way with sac_scale=hiking": {
+      "count": 3614,
+      "kilometers": 2679.38
+    },
+    "highway way with sac_scale=mountain_hiking": {
+      "count": 2053,
+      "kilometers": 3073.09
+    },
+    "highway way with sac_scale=strolling": {
+      "count": 12,
+      "kilometers": 4.46
+    },
+    "highway=corridor": {
+      "count": 728,
+      "kilometers": 19.55
+    },
+    "highway=motorway": {
+      "count": 20371,
+      "kilometers": 10655.22
+    },
+    "highway=motorway with foot=no": {
+      "count": 701,
+      "kilometers": 357.26
+    },
+    "highway=motorway_link": {
+      "count": 11585,
+      "kilometers": 2998.42
+    },
+    "highway=motorway_link with foot=no": {
+      "count": 271,
+      "kilometers": 62.26
+    },
+    "highway=motorway_link with sidewalk=right": {
+      "count": 1,
+      "kilometers": 0.08
+    },
+    "highway=steps": {
+      "count": 13566,
+      "kilometers": 333.66
+    },
+    "highway=trunk": {
+      "count": 24902,
+      "kilometers": 10946.17
+    },
+    "highway=trunk with foot=no": {
+      "count": 1700,
+      "kilometers": 891.24
+    },
+    "highway=trunk with foot=yes": {
+      "count": 69,
+      "kilometers": 45.59
+    },
+    "highway=trunk with sidewalk=left": {
+      "count": 1,
+      "kilometers": 0.84
+    },
+    "highway=trunk with sidewalk=right": {
+      "count": 1,
+      "kilometers": 7.35
+    },
+    "highway=trunk_link": {
+      "count": 16824,
+      "kilometers": 3330.49
+    },
+    "highway=trunk_link with foot=designated": {
+      "count": 1,
+      "kilometers": 0.06
+    },
+    "highway=trunk_link with foot=no": {
+      "count": 463,
+      "kilometers": 102.52
+    },
+    "highway=trunk_link with foot=use_sidepath": {
+      "count": 2,
+      "kilometers": 0.19
+    },
+    "highway=trunk_link with foot=yes": {
+      "count": 14,
+      "kilometers": 1.98
+    },
+    "highway=trunk_link with sidewalk=both": {
+      "count": 2,
+      "kilometers": 0.15
+    },
+    "highway=trunk_link with sidewalk=right": {
+      "count": 14,
+      "kilometers": 3.41
+    },
+    "highway=trunk_link with sidewalk=separate": {
+      "count": 2,
+      "kilometers": 0.56
+    },
+    "military area (landuse=military)": {
+      "count": 2415,
+      "kilometers": 0
+    },
+    "military area (military=aircraft)": {
+      "count": 6,
+      "kilometers": 0
+    },
+    "military area (military=airfield)": {
+      "count": 1,
+      "kilometers": 0
+    },
+    "military area (military=barracks)": {
+      "count": 71,
+      "kilometers": 0
+    },
+    "military area (military=building)": {
+      "count": 1,
+      "kilometers": 0
+    },
+    "military area (military=bunker)": {
+      "count": 1141,
+      "kilometers": 0
+    },
+    "military area (military=checkpoint)": {
+      "count": 42,
+      "kilometers": 0
+    },
+    "military area (military=observation_post)": {
+      "count": 1,
+      "kilometers": 0
+    },
+    "military area (military=office)": {
+      "count": 199,
+      "kilometers": 0
+    },
+    "military area (military=range)": {
+      "count": 6,
+      "kilometers": 0
+    },
+    "military area (military=yes)": {
+      "count": 5,
+      "kilometers": 0
+    },
+    "non-highway way with indoor=area": {
+      "count": 10,
+      "kilometers": 1.62
+    },
+    "non-highway way with indoor=column": {
+      "count": 1,
+      "kilometers": 0.01
+    },
+    "non-highway way with indoor=corridor": {
+      "count": 26,
+      "kilometers": 3.85
+    },
+    "non-highway way with indoor=level": {
+      "count": 107,
+      "kilometers": 17.94
+    },
+    "non-highway way with indoor=levelhttps://osminedit.pavie.info/#": {
+      "count": 1,
+      "kilometers": 0.14
+    },
+    "non-highway way with indoor=no": {
+      "count": 41,
+      "kilometers": 8.29
+    },
+    "non-highway way with indoor=room": {
+      "count": 870,
+      "kilometers": 27
+    },
+    "non-highway way with indoor=shop": {
+      "count": 1,
+      "kilometers": 0.06
+    },
+    "non-highway way with indoor=steps": {
+      "count": 6,
+      "kilometers": 0.09
+    },
+    "non-highway way with indoor=toilets": {
+      "count": 12,
+      "kilometers": 0.24
+    },
+    "non-highway way with indoor=wall": {
+      "count": 127,
+      "kilometers": 1.38
+    },
+    "non-highway way with indoor=yes": {
+      "count": 63,
+      "kilometers": 17.11
+    },
+    "route=ferry": {
+      "count": 357,
+      "kilometers": 17950.54
+    },
+    "restricted or access-tagged nodes indexed": 5328
+  },
+  "results": [
+    {
+      "pairId": "URB-SEL-01",
+      "stratum": "dense-urban-seoul",
+      "from": {
+        "label": "강남역",
+        "position": [127.0276, 37.4979]
+      },
+      "to": {
+        "label": "역삼역",
+        "position": [127.0364, 37.5006]
+      },
+      "straightLineMeters": 832.3,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 851.8,
+      "durationSeconds": 613,
+      "snapDistancesMeters": [1.54, 6.77],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 851.8,
+        "snapDistancesMeters": [1.54, 6.77],
+        "metersByDetail": {
+          "road_class": {
+            "primary": 113.5,
+            "footway": 738.2
+          },
+          "road_environment": {
+            "road": 851.7
+          },
+          "road_access": {
+            "yes": 851.7
+          },
+          "surface": {
+            "asphalt": 113.5,
+            "missing": 738.2
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 85,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 8,
+      "geometrySha256": "558ee98cd8a8690ce9129e488ae212aacd8f5054c2bd9847e4c8c74b0014dd9c",
+      "geometry": [
+        [127.027606, 37.497887],
+        [127.02872, 37.498225],
+        [127.028746, 37.498165],
+        [127.031333, 37.498929],
+        [127.035757, 37.500218],
+        [127.036395, 37.50043],
+        [127.036339, 37.500517],
+        [127.036427, 37.500543]
+      ],
+      "reviewerFocus": "테헤란로 보도·횡단보도를 따르는지",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "URB-SEL-02",
+      "stratum": "dense-urban-seoul",
+      "from": {
+        "label": "명동성당",
+        "position": [126.987, 37.5633]
+      },
+      "to": {
+        "label": "남대문시장",
+        "position": [126.9776, 37.5592]
+      },
+      "straightLineMeters": 945.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1429.9,
+      "durationSeconds": 1041,
+      "snapDistancesMeters": [5.1, 30.11],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1429.9,
+        "snapDistancesMeters": [5.1, 30.11],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 350.4,
+            "steps": 23.6,
+            "residential": 1041.9,
+            "primary": 13.9
+          },
+          "road_environment": {
+            "road": 1429.9
+          },
+          "road_access": {
+            "yes": 1429.9
+          },
+          "surface": {
+            "paving_stones": 611.2,
+            "missing": 685.4,
+            "asphalt": 133.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 19,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 34,
+      "geometrySha256": "8bc148862993531a200ddb74a3679b71929575cfec44dfeb831db986f430ef33",
+      "geometry": [
+        [126.98705, 37.563323],
+        [126.986957, 37.56345],
+        [126.987139, 37.563532],
+        [126.986924, 37.563774],
+        [126.986833, 37.563904],
+        [126.986795, 37.563959],
+        [126.986787, 37.563971],
+        [126.986742, 37.564036],
+        [126.986711, 37.56408],
+        [126.986559, 37.5643],
+        [126.986488, 37.564259],
+        [126.98634, 37.564191],
+        [126.985764, 37.563974],
+        [126.985114, 37.56385],
+        [126.984472, 37.56377],
+        [126.984562, 37.563357],
+        [126.984126, 37.563292],
+        [126.98427, 37.562644],
+        [126.983861, 37.562588],
+        [126.984092, 37.561396],
+        [126.981844, 37.561132],
+        [126.981661, 37.561053],
+        [126.981585, 37.561163],
+        [126.9813, 37.561162],
+        [126.980496, 37.561225],
+        [126.980294, 37.561234],
+        [126.980229, 37.561204],
+        [126.980053, 37.560699],
+        [126.978736, 37.560449],
+        [126.978562, 37.560483],
+        [126.978079, 37.560402],
+        [126.977838, 37.560349],
+        [126.977332, 37.560214],
+        [126.977259, 37.559216]
+      ],
+      "reviewerFocus": "명동 보행 골목과 대로 횡단 지점",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "URB-SEL-03",
+      "stratum": "dense-urban-seoul",
+      "from": {
+        "label": "홍대입구역",
+        "position": [126.9245, 37.5572]
+      },
+      "to": {
+        "label": "합정역",
+        "position": [126.9139, 37.5496]
+      },
+      "straightLineMeters": 1259.9,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1469,
+      "durationSeconds": 1058,
+      "snapDistancesMeters": [5.01, 3.35],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1469,
+        "snapDistancesMeters": [5.01, 3.35],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 965.5,
+            "residential": 464.3,
+            "primary": 39.1
+          },
+          "road_environment": {
+            "road": 1468.8
+          },
+          "road_access": {
+            "yes": 1433.5,
+            "no": 35.3
+          },
+          "surface": {
+            "paving_stones": 729.3,
+            "asphalt": 132.7,
+            "missing": 606.7
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w613354095",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 35.3
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 35.3,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 13,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 36,
+      "geometrySha256": "dfc4f8e6a0a6367ea3b580047be91508aa6cc8b5ecc99f792d040c88a0270601",
+      "geometry": [
+        [126.92454, 37.557168],
+        [126.92424, 37.556931],
+        [126.922907, 37.555969],
+        [126.921812, 37.555145],
+        [126.921206, 37.554726],
+        [126.92044, 37.554138],
+        [126.920003, 37.553818],
+        [126.919798, 37.55368],
+        [126.918476, 37.552708],
+        [126.918198, 37.552937],
+        [126.918129, 37.552901],
+        [126.91809, 37.552894],
+        [126.918053, 37.552897],
+        [126.918014, 37.552912],
+        [126.917806, 37.553149],
+        [126.917661, 37.553034],
+        [126.917602, 37.553003],
+        [126.917547, 37.552985],
+        [126.917486, 37.552977],
+        [126.917346, 37.552993],
+        [126.917178, 37.553028],
+        [126.916876, 37.552361],
+        [126.916847, 37.552327],
+        [126.916807, 37.552303],
+        [126.916707, 37.552273],
+        [126.916651, 37.552276],
+        [126.916074, 37.552419],
+        [126.914657, 37.550513],
+        [126.914303, 37.550172],
+        [126.913917, 37.549894],
+        [126.913744, 37.549839],
+        [126.913451, 37.549572],
+        [126.913557, 37.549559],
+        [126.913725, 37.549566],
+        [126.913845, 37.5496],
+        [126.913874, 37.549622]
+      ],
+      "reviewerFocus": "양화로 보도와 골목 경로",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "URB-SEL-04",
+      "stratum": "dense-urban-seoul",
+      "from": {
+        "label": "서울역",
+        "position": [126.9707, 37.5547]
+      },
+      "to": {
+        "label": "강남역",
+        "position": [127.0276, 37.4979]
+      },
+      "straightLineMeters": 8066.5,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 9905.2,
+      "durationSeconds": 7190,
+      "snapDistancesMeters": [39.81, 1.54],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 9905.2,
+        "snapDistancesMeters": [39.81, 1.54],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 4628.1,
+            "steps": 122.2,
+            "pedestrian": 9.9,
+            "tertiary": 416.5,
+            "secondary": 224.2,
+            "residential": 1945.6,
+            "service": 835.2,
+            "path": 1015.3,
+            "cycleway": 489.3,
+            "primary": 218.5
+          },
+          "road_environment": {
+            "bridge": 1032,
+            "road": 8873,
+            "ford": 0
+          },
+          "road_access": {
+            "yes": 9118,
+            "private": 712.7,
+            "no": 74.4
+          },
+          "surface": {
+            "missing": 6452.2,
+            "asphalt": 2190,
+            "paving_stones": 1262.8
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w1079088405",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 35.8
+          },
+          {
+            "wayId": "w1211633398",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 10
+          },
+          {
+            "wayId": "w891221830",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 31.5
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 77.3,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 40,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 368,
+      "geometrySha256": "4e7ec6b58fcb0703fbccde21894748b048fe12ba2b0642410a117e23c9c4b1a5",
+      "geometry": [
+        [126.970693, 37.555058],
+        [126.971257, 37.555064],
+        [126.971575, 37.554806],
+        [126.971639, 37.554792],
+        [126.971851, 37.554798],
+        [126.971963, 37.554801],
+        [126.972509, 37.554806],
+        [126.972681, 37.554274],
+        [126.972728, 37.554228],
+        [126.972913, 37.554132],
+        [126.973259, 37.554001],
+        [126.97367, 37.55383],
+        [126.973938, 37.553701],
+        [126.974186, 37.553654],
+        [126.974318, 37.553607],
+        [126.974416, 37.553587],
+        [126.975248, 37.553472],
+        [126.97647, 37.55336],
+        [126.976466, 37.553259],
+        [126.976926, 37.553247],
+        [126.977373, 37.553557],
+        [126.977736, 37.553737],
+        [126.978027, 37.553395],
+        [126.978395, 37.553552],
+        [126.978588, 37.553671],
+        [126.978708, 37.553703],
+        [126.978727, 37.553808],
+        [126.978755, 37.553812],
+        [126.978838, 37.553773],
+        [126.978838, 37.553473],
+        [126.978863, 37.5534],
+        [126.978876, 37.55331],
+        [126.978899, 37.553255],
+        [126.979058, 37.553067],
+        [126.979794, 37.55245],
+        [126.980168, 37.552217],
+        [126.980388, 37.552121],
+        [126.980643, 37.552095],
+        [126.980824, 37.552123],
+        [126.981079, 37.55214],
+        [126.981078, 37.552205],
+        [126.981199, 37.552216],
+        [126.981168, 37.552308],
+        [126.981638, 37.552372],
+        [126.982111, 37.552392],
+        [126.982197, 37.552288],
+        [126.982232, 37.552295],
+        [126.982349, 37.552284],
+        [126.982469, 37.552256],
+        [126.98257, 37.55222],
+        [126.982757, 37.552111],
+        [126.983271, 37.551771],
+        [126.983507, 37.551632],
+        [126.983628, 37.55158],
+        [126.983946, 37.551485],
+        [126.984081, 37.551436],
+        [126.984164, 37.551392],
+        [126.984297, 37.551241],
+        [126.984392, 37.551097],
+        [126.984532, 37.550951],
+        [126.98463, 37.55088],
+        [126.985065, 37.550618],
+        [126.985094, 37.550542],
+        [126.985069, 37.550446],
+        [126.984906, 37.550019],
+        [126.984885, 37.549941],
+        [126.984911, 37.549851],
+        [126.984959, 37.549788],
+        [126.985079, 37.549709],
+        [126.985242, 37.549635],
+        [126.9855, 37.549493],
+        [126.986018, 37.549137],
+        [126.986461, 37.548854],
+        [126.986724, 37.548399],
+        [126.986772, 37.548329],
+        [126.986856, 37.54825],
+        [126.986897, 37.548232],
+        [126.986948, 37.548224],
+        [126.987025, 37.548219],
+        [126.987102, 37.548226],
+        [126.987288, 37.54827],
+        [126.987386, 37.548305],
+        [126.987533, 37.548259],
+        [126.987805, 37.548264],
+        [126.987979, 37.5483],
+        [126.988169, 37.548391],
+        [126.988215, 37.54846],
+        [126.988304, 37.548481],
+        [126.988395, 37.548517],
+        [126.988486, 37.548536],
+        [126.988629, 37.548602],
+        [126.988933, 37.548665],
+        [126.989042, 37.548698],
+        [126.989133, 37.548702],
+        [126.989487, 37.548617],
+        [126.989616, 37.548564],
+        [126.989758, 37.548549],
+        [126.989787, 37.548534],
+        [126.989793, 37.548496],
+        [126.989868, 37.548419],
+        [126.989903, 37.548351],
+        [126.989951, 37.54832],
+        [126.990076, 37.54827],
+        [126.990137, 37.548282],
+        [126.990187, 37.548273],
+        [126.990204, 37.548257],
+        [126.990235, 37.548179],
+        [126.990298, 37.548125],
+        [126.990419, 37.548108],
+        [126.990524, 37.548057],
+        [126.990556, 37.547985],
+        [126.990672, 37.547839],
+        [126.990707, 37.54782],
+        [126.990769, 37.547805],
+        [126.990812, 37.547743],
+        [126.990884, 37.547682],
+        [126.990988, 37.547527],
+        [126.991045, 37.547473],
+        [126.991092, 37.547459],
+        [126.99114, 37.547455],
+        [126.991159, 37.547434],
+        [126.991134, 37.547416],
+        [126.991135, 37.547376],
+        [126.991202, 37.547308],
+        [126.991268, 37.547186],
+        [126.991321, 37.547154],
+        [126.99143, 37.547115],
+        [126.991492, 37.5471],
+        [126.991594, 37.547091],
+        [126.991764, 37.547048],
+        [126.991802, 37.547001],
+        [126.991937, 37.546902],
+        [126.992009, 37.546809],
+        [126.992032, 37.546799],
+        [126.992102, 37.546744],
+        [126.992154, 37.546732],
+        [126.992231, 37.546545],
+        [126.992233, 37.546456],
+        [126.99227, 37.546346],
+        [126.992241, 37.546298],
+        [126.992223, 37.546213],
+        [126.992245, 37.546166],
+        [126.992377, 37.545987],
+        [126.992432, 37.545889],
+        [126.992424, 37.545799],
+        [126.992469, 37.545641],
+        [126.992514, 37.545557],
+        [126.992552, 37.545397],
+        [126.992615, 37.545328],
+        [126.992654, 37.545252],
+        [126.992699, 37.54522],
+        [126.992737, 37.545144],
+        [126.992806, 37.545086],
+        [126.992914, 37.545033],
+        [126.992999, 37.544959],
+        [126.993085, 37.544852],
+        [126.993134, 37.544769],
+        [126.993119, 37.544703],
+        [126.993038, 37.544674],
+        [126.993038, 37.544599],
+        [126.992969, 37.544577],
+        [126.992922, 37.544524],
+        [126.992735, 37.544488],
+        [126.992741, 37.544432],
+        [126.992833, 37.544333],
+        [126.992859, 37.544238],
+        [126.992851, 37.544151],
+        [126.99291, 37.544114],
+        [126.992977, 37.544093],
+        [126.99305, 37.544087],
+        [126.993083, 37.544036],
+        [126.993126, 37.543983],
+        [126.99312, 37.54393],
+        [126.993087, 37.543808],
+        [126.993102, 37.543741],
+        [126.993146, 37.543695],
+        [126.993165, 37.543704],
+        [126.993282, 37.543707],
+        [126.993511, 37.543661],
+        [126.993972, 37.54351],
+        [126.99406, 37.543464],
+        [126.99413, 37.543399],
+        [126.99417, 37.543317],
+        [126.994294, 37.543276],
+        [126.994362, 37.543198],
+        [126.994391, 37.543095],
+        [126.994436, 37.543014],
+        [126.994519, 37.542994],
+        [126.994755, 37.542784],
+        [126.995027, 37.54259],
+        [126.995209, 37.542359],
+        [126.995287, 37.542366],
+        [126.995425, 37.542351],
+        [126.995543, 37.542312],
+        [126.995644, 37.542249],
+        [126.99597, 37.542091],
+        [126.996042, 37.542046],
+        [126.996094, 37.541991],
+        [126.996554, 37.541773],
+        [126.996744, 37.541634],
+        [126.99686, 37.541521],
+        [126.996967, 37.541373],
+        [126.997056, 37.541328],
+        [126.997352, 37.541275],
+        [126.997354, 37.541237],
+        [126.997317, 37.541138],
+        [126.997294, 37.541013],
+        [126.997492, 37.540964],
+        [126.997774, 37.540921],
+        [126.997994, 37.540928],
+        [126.998176, 37.540956],
+        [126.998333, 37.540998],
+        [126.998499, 37.541053],
+        [126.998595, 37.540978],
+        [126.999028, 37.540931],
+        [126.999106, 37.540884],
+        [126.999106, 37.540778],
+        [126.999178, 37.540693],
+        [126.999227, 37.540457],
+        [126.999355, 37.540357],
+        [126.99952, 37.540269],
+        [126.999663, 37.540139],
+        [126.999908, 37.539846],
+        [127.000108, 37.53971],
+        [127.000431, 37.539566],
+        [127.000557, 37.539553],
+        [127.000647, 37.539514],
+        [127.0007, 37.539455],
+        [127.00071, 37.539384],
+        [127.000687, 37.5393],
+        [127.000614, 37.539193],
+        [127.000587, 37.53914],
+        [127.000559, 37.539087],
+        [127.000538, 37.539046],
+        [127.000514, 37.539001],
+        [127.000498, 37.538969],
+        [127.000443, 37.538864],
+        [127.000404, 37.538788],
+        [127.000389, 37.538761],
+        [127.000831, 37.538668],
+        [127.001144, 37.538756],
+        [127.001186, 37.538857],
+        [127.001212, 37.538919],
+        [127.001225, 37.53895],
+        [127.001254, 37.539018],
+        [127.001266, 37.539047],
+        [127.001293, 37.539111],
+        [127.001386, 37.539081],
+        [127.001389, 37.539038],
+        [127.001394, 37.538958],
+        [127.001517, 37.538952],
+        [127.001591, 37.538949],
+        [127.00157, 37.538662],
+        [127.001469, 37.538334],
+        [127.001425, 37.538217],
+        [127.001641, 37.538166],
+        [127.001602, 37.538057],
+        [127.001934, 37.537965],
+        [127.002406, 37.537311],
+        [127.003659, 37.537654],
+        [127.003819, 37.537574],
+        [127.004016, 37.537555],
+        [127.004531, 37.537349],
+        [127.004595, 37.537332],
+        [127.004977, 37.536679],
+        [127.005143, 37.536433],
+        [127.005263, 37.536296],
+        [127.005493, 37.535996],
+        [127.005499, 37.535896],
+        [127.005601, 37.535764],
+        [127.006002, 37.535204],
+        [127.00615, 37.534962],
+        [127.006379, 37.534638],
+        [127.007157, 37.533601],
+        [127.007219, 37.533472],
+        [127.007636, 37.533639],
+        [127.007729, 37.533619],
+        [127.007908, 37.533361],
+        [127.007881, 37.533324],
+        [127.00797, 37.533213],
+        [127.008195, 37.533172],
+        [127.008525, 37.532766],
+        [127.008629, 37.532725],
+        [127.00906, 37.532239],
+        [127.009284, 37.531955],
+        [127.009627, 37.531444],
+        [127.009825, 37.531197],
+        [127.009858, 37.531116],
+        [127.009846, 37.531011],
+        [127.009795, 37.530986],
+        [127.010281, 37.53034],
+        [127.01143, 37.529173],
+        [127.011521, 37.529212],
+        [127.011729, 37.528926],
+        [127.012098, 37.528537],
+        [127.012048, 37.528515],
+        [127.012376, 37.528153],
+        [127.013993, 37.526442],
+        [127.015173, 37.525175],
+        [127.015209, 37.525194],
+        [127.015435, 37.524964],
+        [127.015618, 37.524822],
+        [127.01554, 37.524755],
+        [127.016699, 37.523489],
+        [127.01679, 37.523483],
+        [127.016911, 37.52349],
+        [127.016912, 37.523452],
+        [127.01696, 37.523382],
+        [127.017191, 37.523109],
+        [127.017277, 37.523056],
+        [127.017396, 37.523015],
+        [127.01911, 37.522782],
+        [127.019311, 37.522795],
+        [127.019457, 37.522827],
+        [127.019621, 37.522882],
+        [127.0198, 37.522637],
+        [127.019693, 37.522582],
+        [127.01998, 37.522194],
+        [127.019419, 37.521165],
+        [127.019152, 37.520647],
+        [127.019151, 37.520455],
+        [127.019223, 37.520188],
+        [127.018714, 37.520109],
+        [127.018702, 37.520056],
+        [127.018953, 37.518999],
+        [127.01956, 37.516955],
+        [127.019629, 37.516641],
+        [127.019648, 37.516616],
+        [127.019713, 37.516568],
+        [127.01981, 37.516525],
+        [127.019766, 37.51641],
+        [127.019845, 37.516094],
+        [127.01987, 37.51605],
+        [127.019967, 37.516004],
+        [127.019898, 37.515914],
+        [127.01988, 37.515851],
+        [127.01989, 37.515736],
+        [127.020226, 37.51468],
+        [127.020506, 37.513698],
+        [127.020674, 37.513141],
+        [127.020757, 37.512896],
+        [127.02151, 37.51133],
+        [127.021569, 37.511303],
+        [127.021709, 37.511344],
+        [127.021788, 37.511186],
+        [127.022189, 37.511306],
+        [127.022403, 37.510846],
+        [127.023127, 37.509357],
+        [127.024209, 37.507054],
+        [127.024493, 37.506477],
+        [127.024524, 37.506375],
+        [127.024836, 37.505749],
+        [127.025298, 37.504767],
+        [127.024864, 37.50465],
+        [127.024942, 37.504488],
+        [127.024895, 37.504473],
+        [127.024877, 37.504458],
+        [127.024858, 37.504422],
+        [127.024854, 37.504399],
+        [127.02488, 37.50434],
+        [127.025065, 37.503965],
+        [127.025649, 37.50264],
+        [127.026284, 37.501331],
+        [127.027109, 37.499586],
+        [127.026993, 37.499549],
+        [127.027641, 37.498169],
+        [127.02773, 37.497923],
+        [127.027606, 37.497887]
+      ],
+      "reviewerFocus": "한강 횡단 교량의 보도 존재, 긴 도심 경로의 연결성",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "URB-BSN-01",
+      "stratum": "dense-urban-busan",
+      "from": {
+        "label": "부산 서면역",
+        "position": [129.0592, 35.1578]
+      },
+      "to": {
+        "label": "부산 전포카페거리",
+        "position": [129.0648, 35.1555]
+      },
+      "straightLineMeters": 569.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 770.4,
+      "durationSeconds": 555,
+      "snapDistancesMeters": [6.67, 1.91],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 770.4,
+        "snapDistancesMeters": [6.67, 1.91],
+        "metersByDetail": {
+          "road_class": {
+            "primary": 154.7,
+            "residential": 468.2,
+            "service": 147.5
+          },
+          "road_environment": {
+            "road": 770.4
+          },
+          "road_access": {
+            "yes": 770.4
+          },
+          "surface": {
+            "asphalt": 163.7,
+            "missing": 606.7
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 8,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 17,
+      "geometrySha256": "c43e74bccace5999cdcba13bf7aeb7149c66f35826315714fae57808223bed50",
+      "geometry": [
+        [129.05913, 35.157818],
+        [129.059101, 35.15774],
+        [129.059088, 35.157619],
+        [129.059076, 35.157137],
+        [129.059085, 35.157002],
+        [129.05908, 35.156431],
+        [129.059874, 35.156427],
+        [129.059951, 35.156502],
+        [129.06008, 35.156407],
+        [129.060214, 35.156254],
+        [129.060308, 35.156125],
+        [129.06043, 35.155906],
+        [129.06059, 35.155703],
+        [129.060661, 35.155561],
+        [129.060721, 35.155356],
+        [129.064821, 35.155389],
+        [129.064821, 35.1555]
+      ],
+      "reviewerFocus": "배포 extract 밖 도시의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "URB-BSN-02",
+      "stratum": "dense-urban-busan",
+      "from": {
+        "label": "해운대해수욕장",
+        "position": [129.1604, 35.1587]
+      },
+      "to": {
+        "label": "해운대역",
+        "position": [129.1589, 35.1633]
+      },
+      "straightLineMeters": 529.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 584.3,
+      "durationSeconds": 421,
+      "snapDistancesMeters": [29.99, 1.42],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 584.3,
+        "snapDistancesMeters": [29.99, 1.42],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 410.1,
+            "service": 16.8,
+            "secondary": 14.8,
+            "tertiary": 16.6,
+            "living_street": 125.8
+          },
+          "road_environment": {
+            "road": 584.3
+          },
+          "road_access": {
+            "yes": 584.3
+          },
+          "surface": {
+            "missing": 498.8,
+            "asphalt": 31.4,
+            "paving_stones": 54
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 47,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 16,
+      "geometrySha256": "1e538c67329750a7561c9d8f05281481b084a9891fd0b9395e5feabcb7166529",
+      "geometry": [
+        [129.160317, 35.158961],
+        [129.16054, 35.159008],
+        [129.160421, 35.159399],
+        [129.160372, 35.159545],
+        [129.16053, 35.159578],
+        [129.16052, 35.159727],
+        [129.160823, 35.160272],
+        [129.161074, 35.160764],
+        [129.160495, 35.161444],
+        [129.16017, 35.161851],
+        [129.16013, 35.161888],
+        [129.159849, 35.162223],
+        [129.159432, 35.162689],
+        [129.159166, 35.163009],
+        [129.159072, 35.163109],
+        [129.158913, 35.163307]
+      ],
+      "reviewerFocus": "배포 extract 밖 도시의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "SUB-01",
+      "stratum": "suburban",
+      "from": {
+        "label": "성남 서현역",
+        "position": [127.1233, 37.385]
+      },
+      "to": {
+        "label": "성남 수내역",
+        "position": [127.1143, 37.3786]
+      },
+      "straightLineMeters": 1067.1,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1243.8,
+      "durationSeconds": 911,
+      "snapDistancesMeters": [49.08, 12.58],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1243.8,
+        "snapDistancesMeters": [49.08, 12.58],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 575.5,
+            "steps": 31.3,
+            "cycleway": 254.4,
+            "residential": 75.9,
+            "pedestrian": 306.5
+          },
+          "road_environment": {
+            "bridge": 151.4,
+            "road": 1092.3
+          },
+          "road_access": {
+            "yes": 1243.7
+          },
+          "surface": {
+            "missing": 1167.8,
+            "asphalt": 75.9
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 14,
+      "geometrySha256": "a17cd25d97540a1ffeea38524cbf914f2290651747d1ec8c96a7871d0ffb8820",
+      "geometry": [
+        [127.123666, 37.384668],
+        [127.12371, 37.384629],
+        [127.123308, 37.384342],
+        [127.123757, 37.383953],
+        [127.123494, 37.383764],
+        [127.123532, 37.383729],
+        [127.121746, 37.382481],
+        [127.121646, 37.382487],
+        [127.121361, 37.382263],
+        [127.12058, 37.382959],
+        [127.118282, 37.381306],
+        [127.1176, 37.380825],
+        [127.116957, 37.380372],
+        [127.114394, 37.378515]
+      ],
+      "reviewerFocus": "분당 신도시 보도·중앙공원 경로",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "SUB-02",
+      "stratum": "suburban",
+      "from": {
+        "label": "고양 정발산역",
+        "position": [126.7733, 37.6597]
+      },
+      "to": {
+        "label": "일산호수공원",
+        "position": [126.766, 37.654]
+      },
+      "straightLineMeters": 902.6,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": ["snap_distance_notable"],
+      "distanceMeters": 1156.2,
+      "durationSeconds": 832,
+      "snapDistancesMeters": [6.84, 73.38],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1156.2,
+        "snapDistancesMeters": [6.84, 73.38],
+        "metersByDetail": {
+          "road_class": {
+            "primary": 51.5,
+            "secondary": 30,
+            "footway": 1074.6
+          },
+          "road_environment": {
+            "road": 1096.8,
+            "bridge": 59.3
+          },
+          "road_access": {
+            "yes": 1156.2
+          },
+          "surface": {
+            "asphalt": 81.5,
+            "missing": 1074.6
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 39,
+      "geometrySha256": "7def0882e9ba8499a94b860e98edfd86bc0e21a23ca28067f37f2845bdfb2122",
+      "geometry": [
+        [126.773371, 37.659725],
+        [126.773132, 37.660148],
+        [126.772822, 37.660036],
+        [126.772862, 37.659943],
+        [126.77104, 37.659271],
+        [126.771081, 37.659193],
+        [126.770365, 37.658928],
+        [126.768743, 37.658299],
+        [126.768809, 37.658137],
+        [126.768857, 37.658057],
+        [126.768745, 37.658066],
+        [126.768656, 37.658014],
+        [126.768574, 37.657914],
+        [126.768299, 37.65782],
+        [126.768195, 37.657799],
+        [126.768151, 37.657763],
+        [126.768094, 37.657689],
+        [126.768034, 37.657658],
+        [126.767891, 37.657637],
+        [126.767766, 37.657584],
+        [126.767697, 37.657542],
+        [126.767583, 37.657517],
+        [126.767476, 37.657505],
+        [126.767371, 37.657468],
+        [126.767282, 37.657417],
+        [126.767263, 37.657117],
+        [126.767198, 37.657065],
+        [126.767116, 37.656927],
+        [126.7671, 37.656837],
+        [126.766475, 37.656605],
+        [126.766024, 37.656451],
+        [126.76612, 37.656262],
+        [126.76622, 37.656174],
+        [126.766417, 37.655843],
+        [126.766673, 37.655376],
+        [126.766733, 37.655199],
+        [126.766781, 37.654915],
+        [126.766805, 37.654632],
+        [126.766833, 37.654024]
+      ],
+      "reviewerFocus": "일산 신도시 보도·공원 진입로",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "SUB-03",
+      "stratum": "suburban",
+      "from": {
+        "label": "안양 범계역",
+        "position": [126.9728, 37.39]
+      },
+      "to": {
+        "label": "안양 평촌역",
+        "position": [126.9637, 37.3942]
+      },
+      "straightLineMeters": 929.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1320.6,
+      "durationSeconds": 951,
+      "snapDistancesMeters": [28.35, 2.87],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1320.6,
+        "snapDistancesMeters": [28.35, 2.87],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 294.4,
+            "tertiary": 150.2,
+            "pedestrian": 277.4,
+            "footway": 598.4
+          },
+          "road_environment": {
+            "road": 1320.4
+          },
+          "road_access": {
+            "yes": 1320.4
+          },
+          "surface": {
+            "missing": 915.8,
+            "paving_stones": 404.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 8,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 9,
+      "geometrySha256": "11453c17bef3355e28b6ce412de09aed73284ff672bcb98356e5716082d215d8",
+      "geometry": [
+        [126.972869, 37.389751],
+        [126.969615, 37.38918],
+        [126.969463, 37.390525],
+        [126.967365, 37.389815],
+        [126.966665, 37.391061],
+        [126.966439, 37.390987],
+        [126.965029, 37.39346],
+        [126.964485, 37.39448],
+        [126.963688, 37.394224]
+      ],
+      "reviewerFocus": "평촌 신도시 보도",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "SUB-04",
+      "stratum": "suburban",
+      "from": {
+        "label": "수원 화성행궁",
+        "position": [127.0138, 37.2818]
+      },
+      "to": {
+        "label": "수원 팔달문",
+        "position": [127.0172, 37.2772]
+      },
+      "straightLineMeters": 593.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 687,
+      "durationSeconds": 495,
+      "snapDistancesMeters": [57.8, 0.89],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 687,
+        "snapDistancesMeters": [57.8, 0.89],
+        "metersByDetail": {
+          "road_class": {
+            "path": 39.8,
+            "footway": 338.1,
+            "residential": 309.1
+          },
+          "road_environment": {
+            "road": 687
+          },
+          "road_access": {
+            "yes": 687
+          },
+          "surface": {
+            "missing": 110,
+            "paving_stones": 567.5,
+            "asphalt": 9.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 33,
+      "geometrySha256": "3c23e2c64a4e1868ca38ce828779798a3e9916dbdcbe3b8f832c7af9af879240",
+      "geometry": [
+        [127.014447, 37.281872],
+        [127.014758, 37.281812],
+        [127.014792, 37.281809],
+        [127.014788, 37.281771],
+        [127.014757, 37.281712],
+        [127.014716, 37.281585],
+        [127.014703, 37.281471],
+        [127.014701, 37.281321],
+        [127.014715, 37.281258],
+        [127.014715, 37.281216],
+        [127.014764, 37.28112],
+        [127.01479, 37.280575],
+        [127.014779, 37.280467],
+        [127.014786, 37.280307],
+        [127.014803, 37.280205],
+        [127.014907, 37.2802],
+        [127.015443, 37.279891],
+        [127.015563, 37.279803],
+        [127.016155, 37.279616],
+        [127.016681, 37.279518],
+        [127.016759, 37.279459],
+        [127.016782, 37.279119],
+        [127.016819, 37.278274],
+        [127.016842, 37.277979],
+        [127.01702, 37.27788],
+        [127.017174, 37.27777],
+        [127.017265, 37.277637],
+        [127.017277, 37.277528],
+        [127.017229, 37.277383],
+        [127.017121, 37.277265],
+        [127.017087, 37.277245],
+        [127.01715, 37.277209],
+        [127.0172, 37.277208]
+      ],
+      "reviewerFocus": "배포 extract 밖 교외 도시의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "MTN-01",
+      "stratum": "mountain-trail",
+      "from": {
+        "label": "북한산 북한산성 탐방지원센터",
+        "position": [126.948, 37.659]
+      },
+      "to": {
+        "label": "북한산 백운대",
+        "position": [126.9778, 37.6587]
+      },
+      "straightLineMeters": 2623.5,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "snap_too_far",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": null,
+      "durationSeconds": null,
+      "snapDistancesMeters": null,
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 4456.9,
+        "snapDistancesMeters": [1.82, 121.13],
+        "metersByDetail": {
+          "road_class": {
+            "tertiary": 740.2,
+            "residential": 435.8,
+            "path": 3280.9
+          },
+          "road_environment": {
+            "road": 4456.9
+          },
+          "road_access": {
+            "yes": 4456.9
+          },
+          "surface": {
+            "asphalt": 740.2,
+            "missing": 2110.4,
+            "dirt": 1606.3
+          }
+        }
+      },
+      "tagCheck": null,
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": null,
+      "geometrySha256": null,
+      "geometry": null,
+      "reviewerFocus": "sac_scale 등급 탐방로가 제외되는지, 우회 경로의 실재",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "MTN-02",
+      "stratum": "mountain-trail",
+      "from": {
+        "label": "관악산 공원 입구",
+        "position": [126.9483, 37.471]
+      },
+      "to": {
+        "label": "관악산 연주대",
+        "position": [126.9637, 37.4449]
+      },
+      "straightLineMeters": 3204.8,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 5133,
+      "durationSeconds": 3696,
+      "snapDistancesMeters": [35.99, 7.98],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 5133,
+        "snapDistancesMeters": [35.99, 7.98],
+        "metersByDetail": {
+          "road_class": {
+            "path": 2858.4,
+            "primary": 202.6,
+            "service": 821.6,
+            "footway": 766.7,
+            "pedestrian": 148.1,
+            "living_street": 335.8
+          },
+          "road_environment": {
+            "road": 5103.8,
+            "tunnel": 29.5
+          },
+          "road_access": {
+            "yes": 5133.3
+          },
+          "surface": {
+            "missing": 3007.2,
+            "unpaved": 938.2,
+            "asphalt": 886.3,
+            "paving_stones": 301.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 8,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 237,
+      "geometrySha256": "c025e20c470f25acd29d20f16a07b742213a4d9dcd842b87c142defea2480bae",
+      "geometry": [
+        [126.948705, 37.471038],
+        [126.948666, 37.471397],
+        [126.948682, 37.471495],
+        [126.948672, 37.471564],
+        [126.948872, 37.471563],
+        [126.949001, 37.471482],
+        [126.949098, 37.471354],
+        [126.94921, 37.471112],
+        [126.949478, 37.47092],
+        [126.949881, 37.470673],
+        [126.949977, 37.47055],
+        [126.949999, 37.470294],
+        [126.950144, 37.4702],
+        [126.950401, 37.47032],
+        [126.950675, 37.470554],
+        [126.95097, 37.47086],
+        [126.95098, 37.471099],
+        [126.950901, 37.471304],
+        [126.950966, 37.471414],
+        [126.951301, 37.471516],
+        [126.951556, 37.471483],
+        [126.951888, 37.471334],
+        [126.951931, 37.471095],
+        [126.951904, 37.47084],
+        [126.951751, 37.470595],
+        [126.951456, 37.470614],
+        [126.951295, 37.470593],
+        [126.950978, 37.470499],
+        [126.950839, 37.470352],
+        [126.95074, 37.47022],
+        [126.950807, 37.469995],
+        [126.950868, 37.469944],
+        [126.950841, 37.469865],
+        [126.950852, 37.469769],
+        [126.950871, 37.469748],
+        [126.950911, 37.469556],
+        [126.950874, 37.469433],
+        [126.950758, 37.469254],
+        [126.950525, 37.469014],
+        [126.95039, 37.468925],
+        [126.95024, 37.468858],
+        [126.949913, 37.46866],
+        [126.949509, 37.468516],
+        [126.949337, 37.468469],
+        [126.949267, 37.46844],
+        [126.949241, 37.468346],
+        [126.949316, 37.468239],
+        [126.949546, 37.46815],
+        [126.9499, 37.468227],
+        [126.950228, 37.468342],
+        [126.950523, 37.468435],
+        [126.950829, 37.468576],
+        [126.951102, 37.468746],
+        [126.951284, 37.468891],
+        [126.951424, 37.469099],
+        [126.951531, 37.46964],
+        [126.951687, 37.469772],
+        [126.951746, 37.46973],
+        [126.95181, 37.46973],
+        [126.952054, 37.469785],
+        [126.951918, 37.469362],
+        [126.951782, 37.469058],
+        [126.951493, 37.468701],
+        [126.951232, 37.468439],
+        [126.950962, 37.468222],
+        [126.951072, 37.468119],
+        [126.951171, 37.46794],
+        [126.951832, 37.466694],
+        [126.951849, 37.466629],
+        [126.951917, 37.466457],
+        [126.951939, 37.466387],
+        [126.951944, 37.466327],
+        [126.951936, 37.466258],
+        [126.951907, 37.466166],
+        [126.951851, 37.466066],
+        [126.951852, 37.465988],
+        [126.951728, 37.465984],
+        [126.951757, 37.465913],
+        [126.951667, 37.465895],
+        [126.951611, 37.465874],
+        [126.951564, 37.465838],
+        [126.951305, 37.46583],
+        [126.951322, 37.465804],
+        [126.951331, 37.465733],
+        [126.951215, 37.464583],
+        [126.951214, 37.464487],
+        [126.951225, 37.464418],
+        [126.951254, 37.464382],
+        [126.951385, 37.464289],
+        [126.951543, 37.464221],
+        [126.951603, 37.464185],
+        [126.951655, 37.464147],
+        [126.951704, 37.464095],
+        [126.951746, 37.464032],
+        [126.951795, 37.463936],
+        [126.951871, 37.46374],
+        [126.951902, 37.46363],
+        [126.95188, 37.463573],
+        [126.951894, 37.463464],
+        [126.951931, 37.463416],
+        [126.951994, 37.46337],
+        [126.95203, 37.463285],
+        [126.952094, 37.463211],
+        [126.952071, 37.463141],
+        [126.952118, 37.463007],
+        [126.952386, 37.46256],
+        [126.952549, 37.462448],
+        [126.95241, 37.462391],
+        [126.952426, 37.462286],
+        [126.952425, 37.462113],
+        [126.952402, 37.461944],
+        [126.952351, 37.461744],
+        [126.952153, 37.461197],
+        [126.952103, 37.461099],
+        [126.952035, 37.461012],
+        [126.95174, 37.460748],
+        [126.95181, 37.460629],
+        [126.951927, 37.460541],
+        [126.952397, 37.460414],
+        [126.952286, 37.460164],
+        [126.952248, 37.460058],
+        [126.952596, 37.45997],
+        [126.952889, 37.459839],
+        [126.953048, 37.459668],
+        [126.953185, 37.459463],
+        [126.953162, 37.459369],
+        [126.953034, 37.459268],
+        [126.952066, 37.458528],
+        [126.951939, 37.458415],
+        [126.951797, 37.458103],
+        [126.951519, 37.457542],
+        [126.951394, 37.457309],
+        [126.951375, 37.457045],
+        [126.951423, 37.456937],
+        [126.951503, 37.45684],
+        [126.951562, 37.456736],
+        [126.951705, 37.456454],
+        [126.951749, 37.45626],
+        [126.95183, 37.455693],
+        [126.951803, 37.455578],
+        [126.951845, 37.45546],
+        [126.951854, 37.455305],
+        [126.951973, 37.454344],
+        [126.952042, 37.453971],
+        [126.952087, 37.453567],
+        [126.952237, 37.453429],
+        [126.952344, 37.453354],
+        [126.952452, 37.453307],
+        [126.952571, 37.453273],
+        [126.952705, 37.453252],
+        [126.95283, 37.453246],
+        [126.95295, 37.453263],
+        [126.953086, 37.453293],
+        [126.953245, 37.453353],
+        [126.953379, 37.453384],
+        [126.953572, 37.45368],
+        [126.95374, 37.45329],
+        [126.953846, 37.453158],
+        [126.95407, 37.453017],
+        [126.954251, 37.452953],
+        [126.954335, 37.452824],
+        [126.954384, 37.452706],
+        [126.95454, 37.452499],
+        [126.954489, 37.452364],
+        [126.954517, 37.452304],
+        [126.954619, 37.452196],
+        [126.954803, 37.452107],
+        [126.95491, 37.451961],
+        [126.955177, 37.451881],
+        [126.955363, 37.451752],
+        [126.955605, 37.451738],
+        [126.955707, 37.451618],
+        [126.9558, 37.451],
+        [126.955904, 37.450879],
+        [126.956444, 37.450697],
+        [126.95664, 37.450494],
+        [126.956794, 37.450434],
+        [126.956873, 37.450481],
+        [126.956931, 37.450475],
+        [126.956979, 37.450461],
+        [126.957036, 37.450468],
+        [126.957001, 37.450326],
+        [126.957019, 37.450236],
+        [126.956974, 37.450127],
+        [126.957007, 37.45001],
+        [126.956936, 37.449969],
+        [126.957003, 37.449914],
+        [126.957037, 37.44982],
+        [126.957011, 37.449757],
+        [126.957058, 37.449724],
+        [126.95706, 37.449688],
+        [126.95714, 37.449645],
+        [126.957187, 37.449578],
+        [126.957188, 37.449506],
+        [126.957234, 37.449431],
+        [126.957268, 37.449289],
+        [126.957205, 37.449243],
+        [126.957305, 37.449116],
+        [126.957306, 37.448931],
+        [126.957286, 37.448854],
+        [126.957348, 37.44876],
+        [126.957521, 37.448623],
+        [126.957694, 37.448558],
+        [126.957844, 37.448516],
+        [126.958465, 37.447965],
+        [126.958893, 37.447819],
+        [126.959473, 37.447447],
+        [126.959647, 37.44741],
+        [126.95977, 37.447361],
+        [126.959877, 37.447257],
+        [126.960194, 37.446862],
+        [126.96025, 37.446744],
+        [126.960385, 37.446666],
+        [126.960473, 37.446584],
+        [126.960761, 37.446501],
+        [126.961068, 37.446352],
+        [126.961202, 37.446317],
+        [126.961337, 37.446336],
+        [126.961496, 37.446247],
+        [126.961619, 37.446251],
+        [126.961767, 37.446216],
+        [126.961855, 37.446171],
+        [126.961944, 37.446076],
+        [126.962013, 37.446023],
+        [126.962088, 37.445837],
+        [126.962176, 37.44574],
+        [126.962411, 37.445645],
+        [126.962502, 37.445542],
+        [126.962558, 37.445507],
+        [126.962611, 37.445538],
+        [126.962755, 37.445558],
+        [126.962833, 37.445596],
+        [126.962959, 37.445592],
+        [126.963068, 37.445529],
+        [126.963099, 37.445422],
+        [126.963548, 37.445082],
+        [126.963755, 37.444957]
+      ],
+      "reviewerFocus": "등산로 연결과 암릉 구간 처리",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "MTN-03",
+      "stratum": "mountain-trail",
+      "from": {
+        "label": "남한산성 남문",
+        "position": [127.1788, 37.4705]
+      },
+      "to": {
+        "label": "남한산성 행궁",
+        "position": [127.1811, 37.4786]
+      },
+      "straightLineMeters": 923.3,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1376.8,
+      "durationSeconds": 991,
+      "snapDistancesMeters": [44.94, 10.48],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1376.8,
+        "snapDistancesMeters": [44.94, 10.48],
+        "metersByDetail": {
+          "road_class": {
+            "path": 743.5,
+            "service": 250,
+            "secondary": 346.6,
+            "residential": 37.1
+          },
+          "road_environment": {
+            "road": 1361.5,
+            "tunnel": 10.3,
+            "bridge": 5.2
+          },
+          "road_access": {
+            "yes": 1377.1
+          },
+          "surface": {
+            "missing": 1377.1
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 75,
+      "geometrySha256": "c33883368b9bb72e5b48da097010bc01852fadf0fbd177aac6c8875dfa5d0f26",
+      "geometry": [
+        [127.17842, 37.470769],
+        [127.178515, 37.470854],
+        [127.178586, 37.470947],
+        [127.178668, 37.470939],
+        [127.178767, 37.470972],
+        [127.178789, 37.471046],
+        [127.17885, 37.47109],
+        [127.178866, 37.471241],
+        [127.178915, 37.471316],
+        [127.178909, 37.471344],
+        [127.178857, 37.471381],
+        [127.178817, 37.471446],
+        [127.178826, 37.47153],
+        [127.1789, 37.471648],
+        [127.179295, 37.471799],
+        [127.179636, 37.471969],
+        [127.17988, 37.472251],
+        [127.180106, 37.472227],
+        [127.180266, 37.472274],
+        [127.180289, 37.472332],
+        [127.180319, 37.472501],
+        [127.180363, 37.472585],
+        [127.180634, 37.472827],
+        [127.180773, 37.473015],
+        [127.180977, 37.473142],
+        [127.180968, 37.473205],
+        [127.180978, 37.473334],
+        [127.18111, 37.4733],
+        [127.181292, 37.473332],
+        [127.181345, 37.473349],
+        [127.18151, 37.47333],
+        [127.181864, 37.47323],
+        [127.181964, 37.473213],
+        [127.182035, 37.473211],
+        [127.182116, 37.473224],
+        [127.182176, 37.473248],
+        [127.182213, 37.47329],
+        [127.182249, 37.473349],
+        [127.182254, 37.473501],
+        [127.182212, 37.474117],
+        [127.182243, 37.47431],
+        [127.1823, 37.47449],
+        [127.182326, 37.474659],
+        [127.1824, 37.474769],
+        [127.18258, 37.47494],
+        [127.182657, 37.475045],
+        [127.182799, 37.475265],
+        [127.182941, 37.475648],
+        [127.182997, 37.475719],
+        [127.183043, 37.475767],
+        [127.183354, 37.475978],
+        [127.183777, 37.476288],
+        [127.183833, 37.476359],
+        [127.183888, 37.47645],
+        [127.18396, 37.47698],
+        [127.183995, 37.477462],
+        [127.183575, 37.477455],
+        [127.183579, 37.477628],
+        [127.183446, 37.477752],
+        [127.183558, 37.477811],
+        [127.18337, 37.47798],
+        [127.183282, 37.478076],
+        [127.183021, 37.478079],
+        [127.182863, 37.47814],
+        [127.182751, 37.478204],
+        [127.182485, 37.478192],
+        [127.182394, 37.478224],
+        [127.182246, 37.478215],
+        [127.182125, 37.478226],
+        [127.181844, 37.478343],
+        [127.181643, 37.478469],
+        [127.18146, 37.478515],
+        [127.181361, 37.478571],
+        [127.181273, 37.478652],
+        [127.181139, 37.478689]
+      ],
+      "reviewerFocus": "성곽 탐방로와 성문 통과",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RUR-01",
+      "stratum": "rural",
+      "from": {
+        "label": "설악산 소공원",
+        "position": [128.487, 38.1719]
+      },
+      "to": {
+        "label": "설악산 비선대",
+        "position": [128.473, 38.1615]
+      },
+      "straightLineMeters": 1683.8,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "snap_too_far",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": null,
+      "durationSeconds": null,
+      "snapDistancesMeters": null,
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 3975.5,
+        "snapDistancesMeters": [8.51, 363.26],
+        "metersByDetail": {
+          "road_class": {
+            "path": 3337.1,
+            "footway": 627.5,
+            "pedestrian": 3.6,
+            "steps": 7.2
+          },
+          "road_environment": {
+            "road": 3701.4,
+            "bridge": 274
+          },
+          "road_access": {
+            "yes": 3975.3
+          },
+          "surface": {
+            "ground": 392.4,
+            "concrete": 161.3,
+            "missing": 496.7,
+            "cobblestone": 55.6,
+            "asphalt": 1263.7,
+            "compacted": 551.5,
+            "other": 875.5,
+            "wood": 88.5,
+            "paved": 90.1
+          }
+        }
+      },
+      "tagCheck": null,
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": null,
+      "geometrySha256": null,
+      "geometry": null,
+      "reviewerFocus": "배포 extract 밖 국립공원의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RUR-02",
+      "stratum": "rural",
+      "from": {
+        "label": "안동 하회마을",
+        "position": [128.5185, 36.539]
+      },
+      "to": {
+        "label": "안동 부용대",
+        "position": [128.5132, 36.5418]
+      },
+      "straightLineMeters": 566.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": ["snap_distance_notable"],
+      "distanceMeters": 1620.3,
+      "durationSeconds": 1306,
+      "snapDistancesMeters": [9.41, 98.69],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1620.3,
+        "snapDistancesMeters": [9.41, 98.69],
+        "metersByDetail": {
+          "road_class": {
+            "service": 388.8,
+            "other": 129.3,
+            "unclassified": 516.6,
+            "path": 585.6
+          },
+          "road_environment": {
+            "road": 1490.9,
+            "ferry": 129.3
+          },
+          "road_access": {
+            "yes": 1620.2
+          },
+          "surface": {
+            "missing": 1247,
+            "ground": 373.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w77108380",
+            "accessClass": null,
+            "tags": {
+              "route": "ferry"
+            },
+            "metersAlongRoute": 129.3
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 129.3,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 76,
+      "geometrySha256": "d8bea4f6d8a9d25b81ed53631f350591284edbcbe49cfe0ca844ca320cc5192d",
+      "geometry": [
+        [128.518474, 36.538918],
+        [128.51815, 36.538985],
+        [128.518135, 36.539371],
+        [128.518174, 36.539524],
+        [128.518248, 36.539596],
+        [128.518352, 36.53963],
+        [128.518417, 36.539909],
+        [128.518323, 36.53993],
+        [128.518311, 36.540142],
+        [128.51823, 36.540461],
+        [128.518166, 36.540545],
+        [128.518134, 36.540859],
+        [128.518432, 36.541021],
+        [128.518527, 36.541103],
+        [128.518071, 36.541326],
+        [128.517948, 36.54167],
+        [128.517003, 36.542551],
+        [128.517171, 36.542539],
+        [128.517419, 36.542628],
+        [128.517811, 36.542719],
+        [128.518011, 36.542795],
+        [128.517969, 36.542975],
+        [128.517995, 36.543048],
+        [128.518037, 36.543105],
+        [128.518238, 36.543203],
+        [128.518642, 36.543504],
+        [128.518654, 36.543525],
+        [128.518683, 36.543676],
+        [128.518685, 36.543774],
+        [128.518673, 36.543809],
+        [128.518649, 36.543832],
+        [128.518591, 36.543865],
+        [128.518483, 36.543903],
+        [128.518435, 36.543905],
+        [128.518355, 36.543895],
+        [128.518368, 36.544195],
+        [128.518365, 36.544501],
+        [128.518302, 36.544836],
+        [128.517677, 36.544779],
+        [128.517455, 36.544794],
+        [128.517309, 36.544764],
+        [128.517307, 36.544644],
+        [128.517335, 36.544494],
+        [128.517383, 36.544356],
+        [128.517356, 36.544197],
+        [128.517387, 36.543957],
+        [128.517385, 36.543883],
+        [128.517155, 36.543686],
+        [128.517069, 36.543579],
+        [128.517004, 36.543346],
+        [128.516846, 36.543234],
+        [128.516793, 36.543118],
+        [128.516603, 36.542879],
+        [128.516399, 36.542877],
+        [128.516245, 36.542909],
+        [128.516071, 36.542861],
+        [128.515854, 36.542846],
+        [128.515751, 36.542783],
+        [128.515663, 36.542861],
+        [128.515521, 36.5429],
+        [128.515398, 36.542874],
+        [128.515212, 36.542792],
+        [128.515092, 36.542776],
+        [128.514928, 36.542777],
+        [128.514703, 36.542859],
+        [128.514601, 36.542858],
+        [128.514225, 36.542811],
+        [128.514033, 36.542823],
+        [128.513926, 36.542851],
+        [128.513827, 36.54286],
+        [128.513772, 36.542917],
+        [128.513361, 36.542855],
+        [128.512919, 36.542769],
+        [128.51278, 36.54272],
+        [128.51263, 36.54259],
+        [128.512436, 36.542441]
+      ],
+      "reviewerFocus": "배포 extract 밖 농촌 마을의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RIV-01",
+      "stratum": "riverside",
+      "from": {
+        "label": "반포한강공원",
+        "position": [126.996, 37.5105]
+      },
+      "to": {
+        "label": "잠원한강공원",
+        "position": [127.013, 37.5195]
+      },
+      "straightLineMeters": 1802.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2185.7,
+      "durationSeconds": 1574,
+      "snapDistancesMeters": [7.38, 19.49],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2185.7,
+        "snapDistancesMeters": [7.38, 19.49],
+        "metersByDetail": {
+          "road_class": {
+            "cycleway": 278.1,
+            "footway": 1350.7,
+            "pedestrian": 15.7,
+            "residential": 359.4,
+            "service": 49.7,
+            "secondary": 132.2
+          },
+          "road_environment": {
+            "road": 2131.1,
+            "tunnel": 54.6
+          },
+          "road_access": {
+            "yes": 2185.7
+          },
+          "surface": {
+            "asphalt": 1298.6,
+            "missing": 761,
+            "paving_stones": 126
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 80,
+      "geometrySha256": "3675abdf7ffc6f807b4883516c4d692e687f1631bc0f428ed82a53b6c386a8e8",
+      "geometry": [
+        [126.996033, 37.510439],
+        [126.995935, 37.510405],
+        [126.995804, 37.510348],
+        [126.995646, 37.510713],
+        [126.995751, 37.510796],
+        [126.995942, 37.510802],
+        [126.996093, 37.510846],
+        [126.996189, 37.510894],
+        [126.996255, 37.510948],
+        [126.996327, 37.511037],
+        [126.996455, 37.511237],
+        [126.996519, 37.511296],
+        [126.996622, 37.511338],
+        [126.996734, 37.511356],
+        [126.996857, 37.511341],
+        [126.997038, 37.511497],
+        [126.9971, 37.511613],
+        [126.997124, 37.511753],
+        [126.997123, 37.511881],
+        [126.997153, 37.512026],
+        [126.997194, 37.512103],
+        [126.997241, 37.512162],
+        [126.99733, 37.512148],
+        [126.99759, 37.512132],
+        [126.998325, 37.512274],
+        [126.998643, 37.512368],
+        [126.998779, 37.512436],
+        [126.998866, 37.512516],
+        [126.999004, 37.512664],
+        [126.999149, 37.512761],
+        [126.999378, 37.512871],
+        [126.999519, 37.512911],
+        [126.999653, 37.512937],
+        [126.999777, 37.512945],
+        [126.999921, 37.51294],
+        [127.000218, 37.512904],
+        [127.000576, 37.512916],
+        [127.000936, 37.512984],
+        [127.001128, 37.513045],
+        [127.001285, 37.513114],
+        [127.001484, 37.513219],
+        [127.001696, 37.513375],
+        [127.002029, 37.513672],
+        [127.002251, 37.513806],
+        [127.002673, 37.513998],
+        [127.002883, 37.514062],
+        [127.003169, 37.51417],
+        [127.003515, 37.514322],
+        [127.003767, 37.514483],
+        [127.004041, 37.514684],
+        [127.004259, 37.514872],
+        [127.004592, 37.51526],
+        [127.004765, 37.51556],
+        [127.004909, 37.515924],
+        [127.004981, 37.51626],
+        [127.005172, 37.516356],
+        [127.005309, 37.516393],
+        [127.005468, 37.516397],
+        [127.005933, 37.516641],
+        [127.006064, 37.516736],
+        [127.006134, 37.516841],
+        [127.006262, 37.516998],
+        [127.006542, 37.517249],
+        [127.006569, 37.517225],
+        [127.006813, 37.517366],
+        [127.007064, 37.517466],
+        [127.007416, 37.517559],
+        [127.007522, 37.517565],
+        [127.007551, 37.517583],
+        [127.007625, 37.517604],
+        [127.007775, 37.51756],
+        [127.007863, 37.517493],
+        [127.008136, 37.517077],
+        [127.008156, 37.517049],
+        [127.008713, 37.516578],
+        [127.008784, 37.516532],
+        [127.011535, 37.518916],
+        [127.011954, 37.518617],
+        [127.012657, 37.519096],
+        [127.013126, 37.519356]
+      ],
+      "reviewerFocus": "한강 남안 산책로 연속성과 진입 나들목",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RIV-02",
+      "stratum": "riverside",
+      "from": {
+        "label": "안양천 오목교",
+        "position": [126.875, 37.5245]
+      },
+      "to": {
+        "label": "안양천 신정교",
+        "position": [126.865, 37.517]
+      },
+      "straightLineMeters": 1213.8,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1594.5,
+      "durationSeconds": 1148,
+      "snapDistancesMeters": [8.13, 0.85],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1594.5,
+        "snapDistancesMeters": [8.13, 0.85],
+        "metersByDetail": {
+          "road_class": {
+            "secondary": 109.7,
+            "residential": 11,
+            "cycleway": 212.7,
+            "footway": 1179.1,
+            "service": 11.4,
+            "tertiary": 70.4
+          },
+          "road_environment": {
+            "road": 1594.2
+          },
+          "road_access": {
+            "yes": 1594.2
+          },
+          "surface": {
+            "missing": 1594.2
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 37,
+      "geometrySha256": "e81e09f6f4a71a936a777a5fc36aee71d497189f81da9a899f24daa277000deb",
+      "geometry": [
+        [126.875016, 37.524572],
+        [126.874871, 37.524593],
+        [126.874114, 37.524586],
+        [126.874099, 37.524532],
+        [126.871862, 37.524855],
+        [126.871614, 37.524765],
+        [126.871523, 37.524412],
+        [126.871468, 37.524419],
+        [126.871453, 37.524353],
+        [126.87137, 37.524366],
+        [126.871106, 37.523303],
+        [126.871003, 37.52322],
+        [126.870038, 37.523372],
+        [126.870009, 37.523324],
+        [126.869989, 37.523235],
+        [126.869333, 37.523339],
+        [126.868853, 37.521383],
+        [126.868643, 37.521404],
+        [126.868502, 37.520785],
+        [126.868513, 37.520696],
+        [126.868325, 37.519844],
+        [126.868312, 37.519813],
+        [126.86825, 37.519753],
+        [126.868141, 37.51939],
+        [126.867928, 37.519056],
+        [126.867642, 37.518804],
+        [126.867532, 37.518738],
+        [126.867288, 37.518609],
+        [126.867131, 37.518595],
+        [126.86713, 37.518569],
+        [126.867081, 37.51852],
+        [126.866826, 37.518429],
+        [126.866724, 37.518403],
+        [126.866772, 37.518308],
+        [126.86654, 37.518227],
+        [126.866861, 37.517647],
+        [126.864996, 37.517007]
+      ],
+      "reviewerFocus": "하천변 산책로와 제방 진입로",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RIV-03",
+      "stratum": "riverside",
+      "from": {
+        "label": "성남 정자역",
+        "position": [127.1113, 37.367]
+      },
+      "to": {
+        "label": "성남 미금역",
+        "position": [127.1087, 37.35]
+      },
+      "straightLineMeters": 1904.2,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2362.4,
+      "durationSeconds": 1701,
+      "snapDistancesMeters": [10.01, 3.45],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2362.4,
+        "snapDistancesMeters": [10.01, 3.45],
+        "metersByDetail": {
+          "road_class": {
+            "service": 233.3,
+            "footway": 689.9,
+            "cycleway": 1433.8,
+            "primary": 5.4
+          },
+          "road_environment": {
+            "road": 2256.3,
+            "bridge": 106.1
+          },
+          "road_access": {
+            "yes": 2362.5
+          },
+          "surface": {
+            "missing": 1416.5,
+            "asphalt": 176.7,
+            "paving_stones": 769.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 37,
+      "geometrySha256": "c3fc71bee7cc41414a81219d10d357946ea2638bf1ddc2f45544601134fc260a",
+      "geometry": [
+        [127.111301, 37.36691],
+        [127.111517, 37.366913],
+        [127.111733, 37.367028],
+        [127.111736, 37.367297],
+        [127.109911, 37.367295],
+        [127.109929, 37.366753],
+        [127.109916, 37.366119],
+        [127.109742, 37.366117],
+        [127.109761, 37.364776],
+        [127.109724, 37.363632],
+        [127.109684, 37.363598],
+        [127.109678, 37.3633],
+        [127.109615, 37.363305],
+        [127.108414, 37.363305],
+        [127.108368, 37.363289],
+        [127.108336, 37.363242],
+        [127.107865, 37.363245],
+        [127.107884, 37.360085],
+        [127.107846, 37.360044],
+        [127.107853, 37.359761],
+        [127.107894, 37.359732],
+        [127.107915, 37.359695],
+        [127.107981, 37.358554],
+        [127.107962, 37.358198],
+        [127.108535, 37.355063],
+        [127.108641, 37.35365],
+        [127.108606, 37.353589],
+        [127.108606, 37.353313],
+        [127.108694, 37.353231],
+        [127.108716, 37.351502],
+        [127.108643, 37.351445],
+        [127.108627, 37.351285],
+        [127.10871, 37.351285],
+        [127.108747, 37.350175],
+        [127.108646, 37.350176],
+        [127.10864, 37.350032],
+        [127.108701, 37.350031]
+      ],
+      "reviewerFocus": "탄천 산책로 연결",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "RIV-04",
+      "stratum": "riverside",
+      "from": {
+        "label": "부산 동래역",
+        "position": [129.0784, 35.2055]
+      },
+      "to": {
+        "label": "부산 온천장역",
+        "position": [129.086, 35.2203]
+      },
+      "straightLineMeters": 1784.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2026.3,
+      "durationSeconds": 1459,
+      "snapDistancesMeters": [23.17, 9.93],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2026.3,
+        "snapDistancesMeters": [23.17, 9.93],
+        "metersByDetail": {
+          "road_class": {
+            "primary": 973.6,
+            "residential": 966.7,
+            "secondary": 52.6,
+            "footway": 33.3
+          },
+          "road_environment": {
+            "road": 1935.3,
+            "bridge": 90.8
+          },
+          "road_access": {
+            "yes": 2026.1
+          },
+          "surface": {
+            "asphalt": 973.6,
+            "missing": 1052.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 32,
+      "geometrySha256": "68bb4e2bedf345252a9b4d81c87cfff9f4fc409a7d14381692c10c299c00c01e",
+      "geometry": [
+        [129.078145, 35.205502],
+        [129.07815, 35.205973],
+        [129.078126, 35.20668],
+        [129.07807, 35.207023],
+        [129.078061, 35.209239],
+        [129.07807, 35.209614],
+        [129.078138, 35.210124],
+        [129.078224, 35.210524],
+        [129.078386, 35.210997],
+        [129.07853, 35.211318],
+        [129.078739, 35.211685],
+        [129.078826, 35.211821],
+        [129.078892, 35.211758],
+        [129.079414, 35.211409],
+        [129.079777, 35.212018],
+        [129.080543, 35.213207],
+        [129.081294, 35.21427],
+        [129.081819, 35.214895],
+        [129.082229, 35.215194],
+        [129.08258, 35.215435],
+        [129.083113, 35.215782],
+        [129.08347, 35.216039],
+        [129.084232, 35.216759],
+        [129.085141, 35.217865],
+        [129.084607, 35.218047],
+        [129.084755, 35.218228],
+        [129.084661, 35.218256],
+        [129.08499, 35.218713],
+        [129.085405, 35.21921],
+        [129.085739, 35.219676],
+        [129.086001, 35.220081],
+        [129.0861, 35.220264]
+      ],
+      "reviewerFocus": "배포 extract 밖 하천 산책로(온천천)의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "UNI-01",
+      "stratum": "university-campus",
+      "from": {
+        "label": "서울대 정문",
+        "position": [126.9519, 37.4664]
+      },
+      "to": {
+        "label": "서울대 중앙도서관",
+        "position": [126.9526, 37.4596]
+      },
+      "straightLineMeters": 758.6,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 953.5,
+      "durationSeconds": 687,
+      "snapDistancesMeters": [2.99, 0.14],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 953.5,
+        "snapDistancesMeters": [2.99, 0.14],
+        "metersByDetail": {
+          "road_class": {
+            "service": 120.8,
+            "footway": 766.7,
+            "pedestrian": 66.3
+          },
+          "road_environment": {
+            "road": 924.2,
+            "tunnel": 29.5
+          },
+          "road_access": {
+            "yes": 953.7
+          },
+          "surface": {
+            "asphalt": 58.9,
+            "missing": 593.3,
+            "paving_stones": 301.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 54,
+      "geometrySha256": "95cc5862c3d16e53bbf30f3ece7e390c43e3aafb8b6d4b52b3dfc365252cdfc9",
+      "geometry": [
+        [126.951933, 37.466406],
+        [126.951944, 37.466327],
+        [126.951936, 37.466258],
+        [126.951907, 37.466166],
+        [126.951851, 37.466066],
+        [126.951852, 37.465988],
+        [126.951728, 37.465984],
+        [126.951757, 37.465913],
+        [126.951667, 37.465895],
+        [126.951611, 37.465874],
+        [126.951564, 37.465838],
+        [126.951305, 37.46583],
+        [126.951322, 37.465804],
+        [126.951331, 37.465733],
+        [126.951215, 37.464583],
+        [126.951214, 37.464487],
+        [126.951225, 37.464418],
+        [126.951254, 37.464382],
+        [126.951385, 37.464289],
+        [126.951543, 37.464221],
+        [126.951603, 37.464185],
+        [126.951655, 37.464147],
+        [126.951704, 37.464095],
+        [126.951746, 37.464032],
+        [126.951795, 37.463936],
+        [126.951871, 37.46374],
+        [126.951902, 37.46363],
+        [126.95188, 37.463573],
+        [126.951894, 37.463464],
+        [126.951931, 37.463416],
+        [126.951994, 37.46337],
+        [126.95203, 37.463285],
+        [126.952094, 37.463211],
+        [126.952071, 37.463141],
+        [126.952118, 37.463007],
+        [126.952386, 37.46256],
+        [126.952549, 37.462448],
+        [126.95241, 37.462391],
+        [126.952426, 37.462286],
+        [126.952425, 37.462113],
+        [126.952402, 37.461944],
+        [126.952351, 37.461744],
+        [126.952153, 37.461197],
+        [126.952103, 37.461099],
+        [126.952035, 37.461012],
+        [126.95174, 37.460748],
+        [126.95181, 37.460629],
+        [126.951927, 37.460541],
+        [126.952397, 37.460414],
+        [126.952286, 37.460164],
+        [126.952248, 37.460058],
+        [126.952596, 37.45997],
+        [126.952889, 37.459839],
+        [126.952599, 37.459601]
+      ],
+      "reviewerFocus": "캠퍼스 내부 도로의 access 태그와 실제 개방 여부",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "UNI-02",
+      "stratum": "university-campus",
+      "from": {
+        "label": "연세대 정문",
+        "position": [126.9369, 37.5596]
+      },
+      "to": {
+        "label": "연세대 언더우드관",
+        "position": [126.9391, 37.5664]
+      },
+      "straightLineMeters": 780.6,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 816.3,
+      "durationSeconds": 588,
+      "snapDistancesMeters": [2.38, 2.64],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 816.3,
+        "snapDistancesMeters": [2.38, 2.64],
+        "metersByDetail": {
+          "road_class": {
+            "tertiary": 50.5,
+            "footway": 186.2,
+            "path": 4.9,
+            "pedestrian": 557.6,
+            "service": 17.2
+          },
+          "road_environment": {
+            "road": 816.3
+          },
+          "road_access": {
+            "yes": 258.7,
+            "private": 557.6
+          },
+          "surface": {
+            "missing": 760.3,
+            "asphalt": 10,
+            "paved": 46
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w123432894",
+            "accessClass": "access=private with foot=yes",
+            "tags": {
+              "highway": "pedestrian",
+              "foot": "yes",
+              "access": "private"
+            },
+            "metersAlongRoute": 557.6
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 557.6,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 13,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 21,
+      "geometrySha256": "d1d5474a5829d79eec2dd289d59fc17832b7561f6fcdf6b5d7b6c6ef640b5bc9",
+      "geometry": [
+        [126.936873, 37.559599],
+        [126.936864, 37.559824],
+        [126.936885, 37.559962],
+        [126.936879, 37.560052],
+        [126.936741, 37.560221],
+        [126.936751, 37.560264],
+        [126.937351, 37.562154],
+        [126.938103, 37.564421],
+        [126.938319, 37.565122],
+        [126.938338, 37.565181],
+        [126.938405, 37.565166],
+        [126.938472, 37.565164],
+        [126.938518, 37.565173],
+        [126.938571, 37.565198],
+        [126.938741, 37.56534],
+        [126.9387, 37.565353],
+        [126.938892, 37.565936],
+        [126.938992, 37.566173],
+        [126.939032, 37.566288],
+        [126.939087, 37.566275],
+        [126.939129, 37.566394]
+      ],
+      "reviewerFocus": "캠퍼스 내부 보행로",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "APT-01",
+      "stratum": "apartment-complex",
+      "from": {
+        "label": "압구정 현대아파트 단지 내부",
+        "position": [127.0265, 37.532]
+      },
+      "to": {
+        "label": "압구정역",
+        "position": [127.0285, 37.527]
+      },
+      "straightLineMeters": 583.3,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1070.2,
+      "durationSeconds": 771,
+      "snapDistancesMeters": [1.17, 2.64],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1070.2,
+        "snapDistancesMeters": [1.17, 2.64],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 18.4,
+            "service": 5.3,
+            "footway": 465,
+            "tertiary": 33.7,
+            "primary": 547.7
+          },
+          "road_environment": {
+            "road": 522.4,
+            "bridge": 547.7
+          },
+          "road_access": {
+            "yes": 1057.7,
+            "no": 12.3
+          },
+          "surface": {
+            "missing": 471.7,
+            "asphalt": 598.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w1079022678",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 22.2
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 22.2,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 24,
+      "geometrySha256": "d0e2d656da0638125b93a68c267ac8bbdf1d2fce2de16b8a9b6c9c01308105eb",
+      "geometry": [
+        [127.026504, 37.53199],
+        [127.026705, 37.532036],
+        [127.026727, 37.531992],
+        [127.026968, 37.532051],
+        [127.027059, 37.532004],
+        [127.02716, 37.531658],
+        [127.027342, 37.530869],
+        [127.027524, 37.530336],
+        [127.027903, 37.528944],
+        [127.028119, 37.528201],
+        [127.028019, 37.528146],
+        [127.02786, 37.528084],
+        [127.02788, 37.52802],
+        [127.02704, 37.528728],
+        [127.026565, 37.529146],
+        [127.026223, 37.529389],
+        [127.026505, 37.529103],
+        [127.027813, 37.528013],
+        [127.027946, 37.52789],
+        [127.028147, 37.527656],
+        [127.028233, 37.527533],
+        [127.028331, 37.527363],
+        [127.028392, 37.527233],
+        [127.028471, 37.526994]
+      ],
+      "reviewerFocus": "단지 내부 도로(private 여부)와 출입구 통과",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "APT-02",
+      "stratum": "apartment-complex",
+      "from": {
+        "label": "잠실 아파트 단지 내부",
+        "position": [127.08, 37.514]
+      },
+      "to": {
+        "label": "잠실새내역",
+        "position": [127.0864, 37.5116]
+      },
+      "straightLineMeters": 624.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 763.5,
+      "durationSeconds": 550,
+      "snapDistancesMeters": [30.92, 3.11],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 763.5,
+        "snapDistancesMeters": [30.92, 3.11],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 505.7,
+            "footway": 138.8,
+            "cycleway": 71.1,
+            "primary": 48.1
+          },
+          "road_environment": {
+            "road": 763.7
+          },
+          "road_access": {
+            "yes": 763.7
+          },
+          "surface": {
+            "missing": 663.1,
+            "paved": 52.5,
+            "asphalt": 48.1
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 22,
+      "geometrySha256": "0540a2c0b11a8fc5940257726ec2f58e98e49eb27dae6396b585cbad133337f6",
+      "geometry": [
+        [127.080234, 37.513793],
+        [127.080455, 37.513951],
+        [127.080586, 37.51423],
+        [127.082979, 37.513528],
+        [127.082989, 37.513354],
+        [127.08326, 37.513321],
+        [127.083487, 37.513234],
+        [127.083796, 37.513133],
+        [127.084033, 37.513096],
+        [127.084173, 37.513084],
+        [127.084273, 37.513092],
+        [127.084331, 37.512928],
+        [127.084409, 37.51283],
+        [127.084424, 37.512723],
+        [127.084405, 37.512485],
+        [127.084309, 37.512395],
+        [127.085235, 37.512402],
+        [127.085363, 37.511898],
+        [127.085653, 37.511918],
+        [127.085831, 37.511828],
+        [127.085854, 37.511588],
+        [127.086399, 37.511572]
+      ],
+      "reviewerFocus": "단지 내부 도로(private 여부)와 출입구 통과",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "ACC-MIL-01",
+      "stratum": "access-restricted-military",
+      "from": {
+        "label": "삼각지역",
+        "position": [126.9731, 37.5349]
+      },
+      "to": {
+        "label": "이촌역",
+        "position": [126.9752, 37.5218]
+      },
+      "straightLineMeters": 1468.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2300.6,
+      "durationSeconds": 1656,
+      "snapDistancesMeters": [1.37, 11.65],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2300.6,
+        "snapDistancesMeters": [1.37, 11.65],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 1114.5,
+            "service": 493.4,
+            "primary": 44.2,
+            "footway": 611.2,
+            "tertiary": 36.9
+          },
+          "road_environment": {
+            "road": 2300.3
+          },
+          "road_access": {
+            "yes": 2300.3
+          },
+          "surface": {
+            "missing": 2240.7,
+            "paving_stones": 51.2,
+            "asphalt": 8.4
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [
+          {
+            "areaId": "a12129267",
+            "tags": {
+              "landuse": "military"
+            },
+            "routeMetersInside": 15.8
+          }
+        ],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 15.8
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 44,
+      "geometrySha256": "17f222faf6bf0e9f0c2baf489b9e4069199139f0f89df5303a335fd7e9f62dd3",
+      "geometry": [
+        [126.973109, 37.53491],
+        [126.972799, 37.535094],
+        [126.972003, 37.534269],
+        [126.972245, 37.534124],
+        [126.971359, 37.533276],
+        [126.970914, 37.532799],
+        [126.97052, 37.532419],
+        [126.970536, 37.53241],
+        [126.969728, 37.531537],
+        [126.969667, 37.531494],
+        [126.96884, 37.530607],
+        [126.96901, 37.530497],
+        [126.968843, 37.530319],
+        [126.969772, 37.529016],
+        [126.96798, 37.527195],
+        [126.969515, 37.5264],
+        [126.969844, 37.526462],
+        [126.970022, 37.526446],
+        [126.970471, 37.526117],
+        [126.970607, 37.525935],
+        [126.970508, 37.525774],
+        [126.970314, 37.525687],
+        [126.97021, 37.525479],
+        [126.970096, 37.525327],
+        [126.970232, 37.52518],
+        [126.969745, 37.52466],
+        [126.970028, 37.523574],
+        [126.970386, 37.523434],
+        [126.97057, 37.523372],
+        [126.970956, 37.523326],
+        [126.971137, 37.52334],
+        [126.971247, 37.52337],
+        [126.971381, 37.523321],
+        [126.9713, 37.523225],
+        [126.971515, 37.523185],
+        [126.971505, 37.523089],
+        [126.971803, 37.523088],
+        [126.971978, 37.523052],
+        [126.972036, 37.522986],
+        [126.971835, 37.522785],
+        [126.97177, 37.52273],
+        [126.972446, 37.522552],
+        [126.973404, 37.522264],
+        [126.97515, 37.521703]
+      ],
+      "reviewerFocus": "두 점 사이 직선이 옛 용산기지 부지를 지난다. 경로가 부지 안을 지나는지",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "ACC-MIL-02",
+      "stratum": "access-restricted-military",
+      "from": {
+        "label": "서울공항 서측",
+        "position": [127.1, 37.445]
+      },
+      "to": {
+        "label": "서울공항 동측",
+        "position": [127.132, 37.442]
+      },
+      "straightLineMeters": 2844.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 6447.2,
+      "durationSeconds": 4642,
+      "snapDistancesMeters": [33.12, 0.21],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 6447.2,
+        "snapDistancesMeters": [33.12, 0.21],
+        "metersByDetail": {
+          "road_class": {
+            "unclassified": 588.1,
+            "residential": 1010.7,
+            "primary": 1289.3,
+            "service": 1289,
+            "cycleway": 300.2,
+            "footway": 1886.6,
+            "secondary": 83.4
+          },
+          "road_environment": {
+            "road": 6338,
+            "bridge": 109.2
+          },
+          "road_access": {
+            "yes": 6447.3
+          },
+          "surface": {
+            "missing": 6447.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 8,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 163,
+      "geometrySha256": "4e3ff59f0e4b62d3df9a499bb6621de64252dc0e60cb7b25eaedc43f069ce99c",
+      "geometry": [
+        [127.100261, 37.444786],
+        [127.100366, 37.44477],
+        [127.100457, 37.444745],
+        [127.100626, 37.444656],
+        [127.100718, 37.44459],
+        [127.100795, 37.444559],
+        [127.100877, 37.444554],
+        [127.100947, 37.44442],
+        [127.101298, 37.4442],
+        [127.101213, 37.443912],
+        [127.10109, 37.443398],
+        [127.101098, 37.443351],
+        [127.101573, 37.443129],
+        [127.101676, 37.443074],
+        [127.101821, 37.443103],
+        [127.102362, 37.442945],
+        [127.102628, 37.442921],
+        [127.102831, 37.44291],
+        [127.103459, 37.44293],
+        [127.103444, 37.442622],
+        [127.103503, 37.441778],
+        [127.103525, 37.441312],
+        [127.103533, 37.440785],
+        [127.103514, 37.439664],
+        [127.103597, 37.439094],
+        [127.103737, 37.438362],
+        [127.103757, 37.438194],
+        [127.103788, 37.437715],
+        [127.103806, 37.437037],
+        [127.103736, 37.436429],
+        [127.103673, 37.435998],
+        [127.102806, 37.435282],
+        [127.102778, 37.434709],
+        [127.102778, 37.434502],
+        [127.102801, 37.43438],
+        [127.102836, 37.434276],
+        [127.102896, 37.43417],
+        [127.103007, 37.434009],
+        [127.103141, 37.433877],
+        [127.103365, 37.433841],
+        [127.103297, 37.433391],
+        [127.103149, 37.432747],
+        [127.103035, 37.432325],
+        [127.102326, 37.43059],
+        [127.101994, 37.429856],
+        [127.101891, 37.429365],
+        [127.103326, 37.429561],
+        [127.103368, 37.429072],
+        [127.103631, 37.429068],
+        [127.10396, 37.429085],
+        [127.103889, 37.428967],
+        [127.103916, 37.428869],
+        [127.103974, 37.428715],
+        [127.104298, 37.428728],
+        [127.104223, 37.428577],
+        [127.104132, 37.428226],
+        [127.104135, 37.427979],
+        [127.104127, 37.427845],
+        [127.104151, 37.427632],
+        [127.104138, 37.427311],
+        [127.104151, 37.427126],
+        [127.104356, 37.427163],
+        [127.104681, 37.427186],
+        [127.104871, 37.427216],
+        [127.105048, 37.427232],
+        [127.10513, 37.426978],
+        [127.105154, 37.426944],
+        [127.105275, 37.426978],
+        [127.105494, 37.427018],
+        [127.105791, 37.427086],
+        [127.106508, 37.427273],
+        [127.107721, 37.427647],
+        [127.109326, 37.428116],
+        [127.109609, 37.428173],
+        [127.109857, 37.428248],
+        [127.110212, 37.428325],
+        [127.110471, 37.428346],
+        [127.110725, 37.428327],
+        [127.110874, 37.428289],
+        [127.111371, 37.427975],
+        [127.112094, 37.427786],
+        [127.112301, 37.427696],
+        [127.112322, 37.427691],
+        [127.112466, 37.427735],
+        [127.112567, 37.427779],
+        [127.113481, 37.428115],
+        [127.115296, 37.428762],
+        [127.115615, 37.428822],
+        [127.116088, 37.428882],
+        [127.116327, 37.428901],
+        [127.116585, 37.428838],
+        [127.116695, 37.428843],
+        [127.116745, 37.428855],
+        [127.116767, 37.428874],
+        [127.116786, 37.428955],
+        [127.116856, 37.428949],
+        [127.116891, 37.428934],
+        [127.116924, 37.42889],
+        [127.116932, 37.428843],
+        [127.116949, 37.428859],
+        [127.116985, 37.42886],
+        [127.117636, 37.428744],
+        [127.118017, 37.429843],
+        [127.118109, 37.430206],
+        [127.118156, 37.430487],
+        [127.118175, 37.430501],
+        [127.118384, 37.430583],
+        [127.11849, 37.430639],
+        [127.118656, 37.430393],
+        [127.118739, 37.430216],
+        [127.118808, 37.43034],
+        [127.118834, 37.430723],
+        [127.118834, 37.432231],
+        [127.118851, 37.433107],
+        [127.11893, 37.433727],
+        [127.118986, 37.434075],
+        [127.119135, 37.434639],
+        [127.119278, 37.4351],
+        [127.119462, 37.435561],
+        [127.119756, 37.436205],
+        [127.120237, 37.437297],
+        [127.120318, 37.437559],
+        [127.120371, 37.437834],
+        [127.120405, 37.438209],
+        [127.120405, 37.438723],
+        [127.120377, 37.439627],
+        [127.120355, 37.43991],
+        [127.120468, 37.439915],
+        [127.120582, 37.439906],
+        [127.120625, 37.439911],
+        [127.1207, 37.440042],
+        [127.120757, 37.440065],
+        [127.120841, 37.440052],
+        [127.121091, 37.439986],
+        [127.121411, 37.439886],
+        [127.122905, 37.439451],
+        [127.1232, 37.439423],
+        [127.123363, 37.439418],
+        [127.124386, 37.439429],
+        [127.124381, 37.439608],
+        [127.124475, 37.439581],
+        [127.125744, 37.439594],
+        [127.125875, 37.439631],
+        [127.12594, 37.439632],
+        [127.126019, 37.439599],
+        [127.126981, 37.439622],
+        [127.127314, 37.439695],
+        [127.127428, 37.43974],
+        [127.127431, 37.439684],
+        [127.127693, 37.43975],
+        [127.127851, 37.439773],
+        [127.128327, 37.439916],
+        [127.128285, 37.440011],
+        [127.12859, 37.440095],
+        [127.128486, 37.440342],
+        [127.129038, 37.440504],
+        [127.130038, 37.440816],
+        [127.130009, 37.440881],
+        [127.130507, 37.441019],
+        [127.13097, 37.441157],
+        [127.130821, 37.441497],
+        [127.132065, 37.44186],
+        [127.131998, 37.441999]
+      ],
+      "reviewerFocus": "두 점 사이 직선이 군 비행장을 지난다. 경로가 비행장 안을 지나는지",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "ACC-PRV-01",
+      "stratum": "access-restricted-private",
+      "from": {
+        "label": "청와대로",
+        "position": [126.975, 37.583]
+      },
+      "to": {
+        "label": "삼청공원",
+        "position": [126.983, 37.59]
+      },
+      "straightLineMeters": 1050.1,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1896.4,
+      "durationSeconds": 1366,
+      "snapDistancesMeters": [3.11, 3.32],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1896.4,
+        "snapDistancesMeters": [3.11, 3.32],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 573.6,
+            "steps": 1.8,
+            "tertiary": 1321
+          },
+          "road_environment": {
+            "road": 1886.3,
+            "tunnel": 10
+          },
+          "road_access": {
+            "yes": 1896.4,
+            "no": 0
+          },
+          "surface": {
+            "missing": 920.4,
+            "asphalt": 976
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [
+          {
+            "nodeId": "n3792105220",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "foot": "yes",
+              "access": "no",
+              "barrier": "gate"
+            }
+          }
+        ],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 1,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 69,
+      "geometrySha256": "f767a19c93add742c83cd6dab391d86a9a6acfee877476c402efa67ea80272a9",
+      "geometry": [
+        [126.974967, 37.58299],
+        [126.975051, 37.582798],
+        [126.975081, 37.58271],
+        [126.974999, 37.582577],
+        [126.975079, 37.582336],
+        [126.974807, 37.582243],
+        [126.97475, 37.582191],
+        [126.974768, 37.582137],
+        [126.974781, 37.582124],
+        [126.974864, 37.582102],
+        [126.974949, 37.582097],
+        [126.97502, 37.582102],
+        [126.975035, 37.582024],
+        [126.975132, 37.581799],
+        [126.975393, 37.581719],
+        [126.975488, 37.581708],
+        [126.975576, 37.581724],
+        [126.975677, 37.581792],
+        [126.97579, 37.581843],
+        [126.975779, 37.582111],
+        [126.975533, 37.583495],
+        [126.975507, 37.583583],
+        [126.975457, 37.583664],
+        [126.975417, 37.583762],
+        [126.976303, 37.583789],
+        [126.976514, 37.583786],
+        [126.976991, 37.583751],
+        [126.9783, 37.583588],
+        [126.978781, 37.58352],
+        [126.979283, 37.58347],
+        [126.979464, 37.583442],
+        [126.979439, 37.583586],
+        [126.979451, 37.583665],
+        [126.979546, 37.58386],
+        [126.979753, 37.583897],
+        [126.980367, 37.583886],
+        [126.980801, 37.583859],
+        [126.981476, 37.583853],
+        [126.981909, 37.583815],
+        [126.982061, 37.58436],
+        [126.982128, 37.584548],
+        [126.982126, 37.584836],
+        [126.982022, 37.585063],
+        [126.982019, 37.58516],
+        [126.981992, 37.585396],
+        [126.981969, 37.58551],
+        [126.981811, 37.58577],
+        [126.981709, 37.58602],
+        [126.981687, 37.586354],
+        [126.981723, 37.587314],
+        [126.981678, 37.587716],
+        [126.981682, 37.588129],
+        [126.981742, 37.58822],
+        [126.98184, 37.588333],
+        [126.982517, 37.588895],
+        [126.982575, 37.588993],
+        [126.982614, 37.589107],
+        [126.982622, 37.58921],
+        [126.98261, 37.58942],
+        [126.982452, 37.589779],
+        [126.982439, 37.590173],
+        [126.982498, 37.59023],
+        [126.982579, 37.59027],
+        [126.982721, 37.59029],
+        [126.98282, 37.59029],
+        [126.982874, 37.590272],
+        [126.982932, 37.590233],
+        [126.982977, 37.590103],
+        [126.983028, 37.59002]
+      ],
+      "reviewerFocus": "개방 상태가 바뀌어 온 구역. 경로가 경내를 지나는지와 현재 개방 여부",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "ACC-FOOTNO-01",
+      "stratum": "access-restricted-foot-no",
+      "from": {
+        "label": "뚝섬한강공원",
+        "position": [127.069, 37.529]
+      },
+      "to": {
+        "label": "청담동 한강변",
+        "position": [127.056, 37.522]
+      },
+      "straightLineMeters": 1385.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2599.2,
+      "durationSeconds": 1884,
+      "snapDistancesMeters": [21.43, 13.69],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2599.2,
+        "snapDistancesMeters": [21.43, 13.69],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 1644.3,
+            "cycleway": 435.8,
+            "steps": 26.4,
+            "primary": 416.8,
+            "secondary": 75.8
+          },
+          "road_environment": {
+            "road": 1735.2,
+            "bridge": 863.9
+          },
+          "road_access": {
+            "yes": 2586.1,
+            "no": 13
+          },
+          "surface": {
+            "missing": 621,
+            "paving_stones": 172.8,
+            "asphalt": 1805.4
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w1219057254",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "footway",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 13
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 13,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 54,
+      "geometrySha256": "bcd97229dce4782cda87ef7dd3f9b3c8715b777ae79646c043ea825956da46c9",
+      "geometry": [
+        [127.068769, 37.52894],
+        [127.068506, 37.529572],
+        [127.068652, 37.529885],
+        [127.068474, 37.529921],
+        [127.06713, 37.53029],
+        [127.066819, 37.530424],
+        [127.066751, 37.530431],
+        [127.066507, 37.530498],
+        [127.06613, 37.530639],
+        [127.065955, 37.530846],
+        [127.065782, 37.530998],
+        [127.065631, 37.531097],
+        [127.065465, 37.531184],
+        [127.065323, 37.531232],
+        [127.065149, 37.531266],
+        [127.064977, 37.531289],
+        [127.064773, 37.531297],
+        [127.064493, 37.53128],
+        [127.064241, 37.531247],
+        [127.063878, 37.531421],
+        [127.06354, 37.531454],
+        [127.063381, 37.531519],
+        [127.06296, 37.531854],
+        [127.062056, 37.532198],
+        [127.060676, 37.532614],
+        [127.059943, 37.532807],
+        [127.059261, 37.532974],
+        [127.058784, 37.533081],
+        [127.058764, 37.533047],
+        [127.058685, 37.533077],
+        [127.058737, 37.533171],
+        [127.058767, 37.533156],
+        [127.058558, 37.532775],
+        [127.058478, 37.532804],
+        [127.058329, 37.532425],
+        [127.058111, 37.531973],
+        [127.05614, 37.52847],
+        [127.055952, 37.528156],
+        [127.055518, 37.527555],
+        [127.055598, 37.527525],
+        [127.055258, 37.526924],
+        [127.054586, 37.525788],
+        [127.054358, 37.525527],
+        [127.054042, 37.525233],
+        [127.053937, 37.52518],
+        [127.053517, 37.525013],
+        [127.054106, 37.525079],
+        [127.054127, 37.524963],
+        [127.054386, 37.525006],
+        [127.054444, 37.524737],
+        [127.054592, 37.524351],
+        [127.054678, 37.524153],
+        [127.054884, 37.523741],
+        [127.055857, 37.521952]
+      ],
+      "reviewerFocus": "한강 횡단 교량 중 보행 불가 교량을 쓰는지",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "STR-01",
+      "stratum": "stairs",
+      "from": {
+        "label": "이화마을",
+        "position": [127.007, 37.578]
+      },
+      "to": {
+        "label": "낙산공원",
+        "position": [127.0075, 37.5807]
+      },
+      "straightLineMeters": 303.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 311.7,
+      "durationSeconds": 224,
+      "snapDistancesMeters": [11.32, 4.12],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 311.7,
+        "snapDistancesMeters": [11.32, 4.12],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 108.8,
+            "footway": 203
+          },
+          "road_environment": {
+            "road": 311.7
+          },
+          "road_access": {
+            "yes": 311.7
+          },
+          "surface": {
+            "missing": 311.7
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 5,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 16,
+      "geometrySha256": "eb97ecc95ce8175dc6ab6527fc81a80cc5d87bf83f716d3a45ae70a0f28025fa",
+      "geometry": [
+        [127.007126, 37.57798],
+        [127.007169, 37.578151],
+        [127.007212, 37.578801],
+        [127.007212, 37.578954],
+        [127.007193, 37.579207],
+        [127.007178, 37.579285],
+        [127.007184, 37.579393],
+        [127.007218, 37.579443],
+        [127.00724, 37.579524],
+        [127.00728, 37.57977],
+        [127.007318, 37.579838],
+        [127.00749, 37.580004],
+        [127.007535, 37.580089],
+        [127.007574, 37.580233],
+        [127.007547, 37.580441],
+        [127.007455, 37.58069]
+      ],
+      "reviewerFocus": "계단(highway=steps) 사용과 무계단 대안",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "STR-02",
+      "stratum": "stairs",
+      "from": {
+        "label": "해방촌 108계단 아래",
+        "position": [126.985, 37.5445]
+      },
+      "to": {
+        "label": "해방촌 108계단 위",
+        "position": [126.987, 37.547]
+      },
+      "straightLineMeters": 329.2,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1093,
+      "durationSeconds": 787,
+      "snapDistancesMeters": [7.35, 4.47],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1093,
+        "snapDistancesMeters": [7.35, 4.47],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 584.4,
+            "primary": 508.7
+          },
+          "road_environment": {
+            "road": 820.1,
+            "tunnel": 273
+          },
+          "road_access": {
+            "yes": 1093.1
+          },
+          "surface": {
+            "missing": 1093.1
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 42,
+      "geometrySha256": "ca96e225adaa51817b37461f04881040847f8fb2858cd48ab318774587ba5a42",
+      "geometry": [
+        [126.984944, 37.544549],
+        [126.985152, 37.544699],
+        [126.985344, 37.544461],
+        [126.98541, 37.544469],
+        [126.985627, 37.544324],
+        [126.985807, 37.544191],
+        [126.986346, 37.544398],
+        [126.986706, 37.544567],
+        [126.986712, 37.544628],
+        [126.986938, 37.544819],
+        [126.986975, 37.544816],
+        [126.987269, 37.544842],
+        [126.987459, 37.544901],
+        [126.987778, 37.545042],
+        [126.987907, 37.545321],
+        [126.987979, 37.545386],
+        [126.988057, 37.545409],
+        [126.988145, 37.545412],
+        [126.988187, 37.545398],
+        [126.988224, 37.545353],
+        [126.988292, 37.545177],
+        [126.988461, 37.545036],
+        [126.988602, 37.544799],
+        [126.988775, 37.54438],
+        [126.98903, 37.543854],
+        [126.989068, 37.543812],
+        [126.988985, 37.543705],
+        [126.988843, 37.543891],
+        [126.988723, 37.544109],
+        [126.988498, 37.544641],
+        [126.988421, 37.544687],
+        [126.98851, 37.54433],
+        [126.988471, 37.544355],
+        [126.988428, 37.544366],
+        [126.98838, 37.544368],
+        [126.988336, 37.544359],
+        [126.988307, 37.544338],
+        [126.988287, 37.544296],
+        [126.988259, 37.544396],
+        [126.988125, 37.544714],
+        [126.987356, 37.546412],
+        [126.987047, 37.547015]
+      ],
+      "reviewerFocus": "계단(highway=steps) 사용과 경사로·엘리베이터 대안",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "UND-01",
+      "stratum": "underpass",
+      "from": {
+        "label": "시청역",
+        "position": [126.977, 37.5657]
+      },
+      "to": {
+        "label": "을지로입구역",
+        "position": [126.9826, 37.566]
+      },
+      "straightLineMeters": 494.7,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 676.9,
+      "durationSeconds": 487,
+      "snapDistancesMeters": [0.88, 2.04],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 676.9,
+        "snapDistancesMeters": [0.88, 2.04],
+        "metersByDetail": {
+          "road_class": {
+            "cycleway": 93.5,
+            "residential": 13.2,
+            "primary": 234.1,
+            "service": 31,
+            "pedestrian": 227.6,
+            "footway": 66.7,
+            "secondary": 10.9
+          },
+          "road_environment": {
+            "road": 676.9
+          },
+          "road_access": {
+            "yes": 652.4,
+            "private": 24.6
+          },
+          "surface": {
+            "missing": 429,
+            "asphalt": 59.9,
+            "paving_stones": 188.1
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 30,
+      "geometrySha256": "7138753a5ef05bc7eace456f7250113d132c5d89eedff53afa1f10a71360162b",
+      "geometry": [
+        [126.97701, 37.5657],
+        [126.977025, 37.565288],
+        [126.977016, 37.565026],
+        [126.976952, 37.564867],
+        [126.977084, 37.564924],
+        [126.977213, 37.564928],
+        [126.978211, 37.564918],
+        [126.978321, 37.564948],
+        [126.978409, 37.564988],
+        [126.978477, 37.565044],
+        [126.978533, 37.56512],
+        [126.978793, 37.56504],
+        [126.978825, 37.565029],
+        [126.97892, 37.565212],
+        [126.978909, 37.565237],
+        [126.978939, 37.565297],
+        [126.979191, 37.56569],
+        [126.979252, 37.56576],
+        [126.979305, 37.565796],
+        [126.979403, 37.565825],
+        [126.979511, 37.565838],
+        [126.979622, 37.56584],
+        [126.979623, 37.565861],
+        [126.980379, 37.565842],
+        [126.980391, 37.565855],
+        [126.981469, 37.565841],
+        [126.981462, 37.565898],
+        [126.982018, 37.56589],
+        [126.982563, 37.565905],
+        [126.982577, 37.566002]
+      ],
+      "reviewerFocus": "지하상가·지하보도 사용 여부(실내 통로는 프로필이 쓰지 않을 수 있음)",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "UND-02",
+      "stratum": "underpass",
+      "from": {
+        "label": "강남대로 서측(강남역)",
+        "position": [127.0268, 37.4983]
+      },
+      "to": {
+        "label": "강남대로 동측(강남역)",
+        "position": [127.0287, 37.4975]
+      },
+      "straightLineMeters": 189.8,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 377.8,
+      "durationSeconds": 283,
+      "snapDistancesMeters": [15.38, 22.84],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 377.8,
+        "snapDistancesMeters": [15.38, 22.84],
+        "metersByDetail": {
+          "road_class": {
+            "service": 21.1,
+            "footway": 175.9,
+            "steps": 22.6,
+            "primary": 100.3,
+            "residential": 57.9
+          },
+          "road_environment": {
+            "road": 254.7,
+            "tunnel": 123.2
+          },
+          "road_access": {
+            "yes": 377.8
+          },
+          "surface": {
+            "missing": 277.4,
+            "asphalt": 100.3
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 23,
+      "geometrySha256": "f24c966e8f172506c7d7b3ebaed5b7f4693dfbabbd2623abc1f0e61d892d8d70",
+      "geometry": [
+        [127.026637, 37.498251],
+        [127.026722, 37.498074],
+        [127.026804, 37.497915],
+        [127.026857, 37.497959],
+        [127.026865, 37.497974],
+        [127.026881, 37.497965],
+        [127.026896, 37.497995],
+        [127.026926, 37.498052],
+        [127.027083, 37.497985],
+        [127.027281, 37.498042],
+        [127.027436, 37.497705],
+        [127.027826, 37.497818],
+        [127.027919, 37.497615],
+        [127.027962, 37.497628],
+        [127.028028, 37.49778],
+        [127.028084, 37.497871],
+        [127.028177, 37.497974],
+        [127.028307, 37.4981],
+        [127.02872, 37.498225],
+        [127.028792, 37.498057],
+        [127.028873, 37.497877],
+        [127.028828, 37.49781],
+        [127.028942, 37.497573]
+      ],
+      "reviewerFocus": "대로 횡단이 횡단보도인지 지하도인지",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "BRG-01",
+      "stratum": "pedestrian-bridge",
+      "from": {
+        "label": "반포한강공원",
+        "position": [126.996, 37.5105]
+      },
+      "to": {
+        "label": "잠수교 북단",
+        "position": [126.995, 37.5195]
+      },
+      "straightLineMeters": 1004.6,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 3059.4,
+      "durationSeconds": 2203,
+      "snapDistancesMeters": [7.38, 4.45],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 3059.4,
+        "snapDistancesMeters": [7.38, 4.45],
+        "metersByDetail": {
+          "road_class": {
+            "cycleway": 322.3,
+            "footway": 34.1,
+            "service": 16.4,
+            "tertiary": 267.9,
+            "primary": 1884.9,
+            "residential": 69,
+            "living_street": 3.1,
+            "pedestrian": 461.8
+          },
+          "road_environment": {
+            "road": 1335.5,
+            "tunnel": 239.8,
+            "bridge": 1484.2
+          },
+          "road_access": {
+            "yes": 3059.6
+          },
+          "surface": {
+            "asphalt": 2323.3,
+            "missing": 736.2
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 60,
+      "geometrySha256": "ed85ab20e6f1c5fdea19ff5f71b7692830f98027dd28a38142a884fe2b3dcf97",
+      "geometry": [
+        [126.996033, 37.510439],
+        [126.996191, 37.510476],
+        [126.996351, 37.510497],
+        [126.996495, 37.510503],
+        [126.997114, 37.510441],
+        [126.997311, 37.510441],
+        [126.997505, 37.510464],
+        [126.997602, 37.510495],
+        [126.99793, 37.510651],
+        [126.99804, 37.510519],
+        [126.99811, 37.510557],
+        [126.998167, 37.51057],
+        [126.998204, 37.510554],
+        [126.998251, 37.510525],
+        [126.998306, 37.510508],
+        [126.998366, 37.510505],
+        [126.998423, 37.510517],
+        [126.999331, 37.508658],
+        [126.999512, 37.508697],
+        [126.999433, 37.508881],
+        [126.99921, 37.509323],
+        [126.998903, 37.509839],
+        [126.998865, 37.50992],
+        [126.998742, 37.510126],
+        [126.99753, 37.512562],
+        [126.996154, 37.515376],
+        [126.994602, 37.518624],
+        [126.994238, 37.519407],
+        [126.994199, 37.519523],
+        [126.994107, 37.519939],
+        [126.993598, 37.522771],
+        [126.993411, 37.523373],
+        [126.993309, 37.523596],
+        [126.993232, 37.523689],
+        [126.99299, 37.524146],
+        [126.992762, 37.524443],
+        [126.993092, 37.52414],
+        [126.993124, 37.524082],
+        [126.993214, 37.524099],
+        [126.993283, 37.524035],
+        [126.993447, 37.523742],
+        [126.993601, 37.523669],
+        [126.993611, 37.523642],
+        [126.993577, 37.523602],
+        [126.993609, 37.523492],
+        [126.993681, 37.52336],
+        [126.993696, 37.523231],
+        [126.993851, 37.522836],
+        [126.99393, 37.522387],
+        [126.993981, 37.521994],
+        [126.993945, 37.521824],
+        [126.993976, 37.521494],
+        [126.993923, 37.521491],
+        [126.99385, 37.521485],
+        [126.994031, 37.52045],
+        [126.994212, 37.519689],
+        [126.994243, 37.519601],
+        [126.994365, 37.519622],
+        [126.995413, 37.51961],
+        [126.995022, 37.519464]
+      ],
+      "reviewerFocus": "잠수교 보행로 사용 여부와 침수 통제",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "BRG-02",
+      "stratum": "pedestrian-bridge",
+      "from": {
+        "label": "서울역 서부",
+        "position": [126.969, 37.556]
+      },
+      "to": {
+        "label": "회현역",
+        "position": [126.9785, 37.5585]
+      },
+      "straightLineMeters": 882.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 952,
+      "durationSeconds": 685,
+      "snapDistancesMeters": [0.53, 13.41],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 952,
+        "snapDistancesMeters": [0.53, 13.41],
+        "metersByDetail": {
+          "road_class": {
+            "pedestrian": 669.2,
+            "footway": 8.4,
+            "primary": 274.3
+          },
+          "road_environment": {
+            "bridge": 641.4,
+            "road": 310.5
+          },
+          "road_access": {
+            "no": 669.2,
+            "yes": 282.7
+          },
+          "surface": {
+            "missing": 409.4,
+            "concrete": 517.6,
+            "asphalt": 25
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 7,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 22,
+      "geometrySha256": "5cffa2f9397204aaa329d0186658d4abe0998911a2cc9ba2e4bb80b6101eaef1",
+      "geometry": [
+        [126.969006, 37.556],
+        [126.969009, 37.556193],
+        [126.969038, 37.556294],
+        [126.969112, 37.556397],
+        [126.969219, 37.55649],
+        [126.969275, 37.556522],
+        [126.969882, 37.556714],
+        [126.970207, 37.556703],
+        [126.971169, 37.556695],
+        [126.972052, 37.556667],
+        [126.973363, 37.556508],
+        [126.973909, 37.55654],
+        [126.974061, 37.556572],
+        [126.974831, 37.556848],
+        [126.975859, 37.557238],
+        [126.975903, 37.557171],
+        [126.976808, 37.557512],
+        [126.977303, 37.557706],
+        [126.97768, 37.557908],
+        [126.977812, 37.558014],
+        [126.978003, 37.558184],
+        [126.978385, 37.558579]
+      ],
+      "reviewerFocus": "서울로7017 고가 보행로 사용 여부",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "BRG-03",
+      "stratum": "pedestrian-bridge",
+      "from": {
+        "label": "선유도공원",
+        "position": [126.899, 37.543]
+      },
+      "to": {
+        "label": "양화한강공원",
+        "position": [126.903, 37.539]
+      },
+      "straightLineMeters": 567.6,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 1377.6,
+      "durationSeconds": 1019,
+      "snapDistancesMeters": [47.15, 6.89],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 1377.6,
+        "snapDistancesMeters": [47.15, 6.89],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 1320.7,
+            "steps": 56.8
+          },
+          "road_environment": {
+            "road": 1067,
+            "bridge": 310.5
+          },
+          "road_access": {
+            "yes": 1130.5,
+            "no": 246.9
+          },
+          "surface": {
+            "missing": 1377.5
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 0,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 5,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 45,
+      "geometrySha256": "92d4132ad87a77063a8023c1b46c11b1dbd8ff965bc52bf172f856011d13b8a1",
+      "geometry": [
+        [126.899064, 37.543421],
+        [126.898887, 37.543438],
+        [126.89865, 37.543503],
+        [126.898196, 37.543785],
+        [126.897986, 37.543989],
+        [126.897871, 37.544123],
+        [126.897891, 37.544259],
+        [126.897993, 37.544365],
+        [126.897751, 37.544501],
+        [126.897354, 37.544024],
+        [126.895691, 37.542237],
+        [126.895912, 37.542112],
+        [126.89595, 37.542164],
+        [126.89648, 37.542641],
+        [126.897474, 37.542004],
+        [126.897806, 37.541489],
+        [126.898089, 37.541239],
+        [126.898414, 37.54109],
+        [126.898865, 37.541055],
+        [126.899335, 37.540784],
+        [126.899421, 37.54088],
+        [126.899681, 37.540704],
+        [126.90004, 37.540621],
+        [126.900244, 37.540439],
+        [126.900421, 37.540265],
+        [126.900765, 37.54005],
+        [126.901245, 37.539788],
+        [126.901275, 37.539729],
+        [126.901375, 37.539672],
+        [126.901518, 37.539687],
+        [126.90162, 37.539749],
+        [126.901686, 37.539777],
+        [126.901741, 37.539757],
+        [126.901766, 37.53969],
+        [126.901736, 37.539543],
+        [126.901766, 37.539469],
+        [126.901827, 37.539399],
+        [126.901943, 37.539362],
+        [126.902067, 37.53937],
+        [126.902321, 37.539421],
+        [126.902439, 37.539381],
+        [126.902707, 37.539213],
+        [126.902764, 37.539101],
+        [126.902908, 37.539018],
+        [126.902927, 37.538978]
+      ],
+      "reviewerFocus": "선유교 보행교 사용 여부",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "FRY-01",
+      "stratum": "ferry",
+      "from": {
+        "label": "인천 월미도 선착장",
+        "position": [126.5975, 37.477]
+      },
+      "to": {
+        "label": "영종도 구읍뱃터",
+        "position": [126.5822, 37.4936]
+      },
+      "straightLineMeters": 2286.8,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 2815.7,
+      "durationSeconds": 1712,
+      "snapDistancesMeters": [54.19, 31.77],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 2815.7,
+        "snapDistancesMeters": [54.19, 31.77],
+        "metersByDetail": {
+          "road_class": {
+            "pedestrian": 144.9,
+            "service": 40.5,
+            "other": 2630.4
+          },
+          "road_environment": {
+            "road": 185.4,
+            "ferry": 2630.4
+          },
+          "road_access": {
+            "yes": 2815.8
+          },
+          "surface": {
+            "missing": 2815.8
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w79500425",
+            "accessClass": null,
+            "tags": {
+              "route": "ferry"
+            },
+            "metersAlongRoute": 2630.4
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 2630.4,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 5,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 11,
+      "geometrySha256": "a0385f2e4e18eacebc55c6341b7ad82aa9fd2062eeb89387a12fbab3fdc0d13f",
+      "geometry": [
+        [126.59804, 37.476768],
+        [126.597994, 37.4767],
+        [126.59789, 37.476134],
+        [126.597735, 37.475492],
+        [126.597304, 37.475618],
+        [126.596718, 37.475812],
+        [126.596231, 37.476998],
+        [126.595979, 37.479191],
+        [126.58374, 37.494364],
+        [126.582282, 37.494187],
+        [126.581906, 37.493765]
+      ],
+      "reviewerFocus": "도선(route=ferry) 사용 여부, 운항 시간·요금 정보 부재",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "FRY-03",
+      "stratum": "ferry",
+      "from": {
+        "label": "여의도한강공원 선착장",
+        "position": [126.935, 37.5286]
+      },
+      "to": {
+        "label": "압구정 한강 선착장",
+        "position": [127.0207, 37.5362]
+      },
+      "straightLineMeters": 7604,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": 10777.5,
+      "durationSeconds": 8229,
+      "snapDistancesMeters": [0.66, 1.37],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 10777.5,
+        "snapDistancesMeters": [0.66, 1.37],
+        "metersByDetail": {
+          "road_class": {
+            "footway": 184.7,
+            "pedestrian": 656.5,
+            "path": 638,
+            "service": 1255.3,
+            "cycleway": 7608.7,
+            "other": 426.6
+          },
+          "road_environment": {
+            "road": 9294.5,
+            "bridge": 1048.7,
+            "ferry": 426.6
+          },
+          "road_access": {
+            "yes": 10008.5,
+            "no": 761.4
+          },
+          "surface": {
+            "missing": 1541,
+            "ground": 240.9,
+            "asphalt": 8962.7,
+            "paving_stones": 25.2
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w1527378115",
+            "accessClass": null,
+            "tags": {
+              "route": "ferry"
+            },
+            "metersAlongRoute": 426.6
+          },
+          {
+            "wayId": "w1527717246",
+            "accessClass": null,
+            "tags": {
+              "route": "ferry"
+            },
+            "metersAlongRoute": 28.4
+          },
+          {
+            "wayId": "w37395728",
+            "accessClass": "foot=no",
+            "tags": {
+              "highway": "trunk",
+              "foot": "no",
+              "bridge": "yes"
+            },
+            "metersAlongRoute": 28.6
+          },
+          {
+            "wayId": "w816395061",
+            "accessClass": "access=no with foot=yes",
+            "tags": {
+              "highway": "path",
+              "foot": "yes",
+              "access": "no"
+            },
+            "metersAlongRoute": 334.8
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 28.6,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 334.8,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 455,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 36,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 266,
+      "geometrySha256": "e93b9336e5d3174ff059107af5a727ff0309d98efdf05b5ddd35077fd611c711",
+      "geometry": [
+        [126.934993, 37.528602],
+        [126.934921, 37.528455],
+        [126.934699, 37.528302],
+        [126.935178, 37.527893],
+        [126.935147, 37.527869],
+        [126.935217, 37.527803],
+        [126.935251, 37.527829],
+        [126.93565, 37.527489],
+        [126.935769, 37.527399],
+        [126.935649, 37.527299],
+        [126.936326, 37.526754],
+        [126.936511, 37.526552],
+        [126.936665, 37.526363],
+        [126.937014, 37.526012],
+        [126.937117, 37.525949],
+        [126.937388, 37.525835],
+        [126.93752, 37.525753],
+        [126.937615, 37.525829],
+        [126.939348, 37.524363],
+        [126.939991, 37.523843],
+        [126.939741, 37.523702],
+        [126.939759, 37.523686],
+        [126.939714, 37.523654],
+        [126.939839, 37.523565],
+        [126.939971, 37.523489],
+        [126.940115, 37.52342],
+        [126.940322, 37.523052],
+        [126.940557, 37.522833],
+        [126.940717, 37.522664],
+        [126.940475, 37.522541],
+        [126.940595, 37.522409],
+        [126.940678, 37.522294],
+        [126.940805, 37.522037],
+        [126.940823, 37.521911],
+        [126.940876, 37.521785],
+        [126.941084, 37.521188],
+        [126.941104, 37.521057],
+        [126.941104, 37.520974],
+        [126.941082, 37.520809],
+        [126.941051, 37.520694],
+        [126.940949, 37.520506],
+        [126.940985, 37.520464],
+        [126.941122, 37.520209],
+        [126.941182, 37.520072],
+        [126.941269, 37.519671],
+        [126.941349, 37.51963],
+        [126.941437, 37.518649],
+        [126.941472, 37.518404],
+        [126.941548, 37.518189],
+        [126.941661, 37.517971],
+        [126.941828, 37.517733],
+        [126.941927, 37.517657],
+        [126.942074, 37.51759],
+        [126.942197, 37.517572],
+        [126.942331, 37.517579],
+        [126.942608, 37.517635],
+        [126.942721, 37.517669],
+        [126.942987, 37.517707],
+        [126.943867, 37.517907],
+        [126.944699, 37.518018],
+        [126.945302, 37.518066],
+        [126.945803, 37.518052],
+        [126.946439, 37.51798],
+        [126.946694, 37.517937],
+        [126.947004, 37.517857],
+        [126.947698, 37.517626],
+        [126.94819, 37.517351],
+        [126.948569, 37.517215],
+        [126.948834, 37.517049],
+        [126.94961, 37.516607],
+        [126.949787, 37.516487],
+        [126.950525, 37.516114],
+        [126.95181, 37.515722],
+        [126.952331, 37.515637],
+        [126.952933, 37.515505],
+        [126.953059, 37.515448],
+        [126.953201, 37.515339],
+        [126.953451, 37.51496],
+        [126.953514, 37.514878],
+        [126.953603, 37.514813],
+        [126.953723, 37.514769],
+        [126.954957, 37.514422],
+        [126.955567, 37.514063],
+        [126.955878, 37.513916],
+        [126.955955, 37.513917],
+        [126.955985, 37.513935],
+        [126.9561, 37.514101],
+        [126.956312, 37.514473],
+        [126.957313, 37.515891],
+        [126.957911, 37.516697],
+        [126.958294, 37.517184],
+        [126.958366, 37.517287],
+        [126.958398, 37.5173],
+        [126.958437, 37.517352],
+        [126.95886, 37.517973],
+        [126.958971, 37.51805],
+        [126.959354, 37.518806],
+        [126.959679, 37.51938],
+        [126.96063, 37.520844],
+        [126.960763, 37.521112],
+        [126.960878, 37.521318],
+        [126.960728, 37.521381],
+        [126.960693, 37.521293],
+        [126.960954, 37.521145],
+        [126.961374, 37.520936],
+        [126.9617, 37.52072],
+        [126.962285, 37.520442],
+        [126.965229, 37.519252],
+        [126.966314, 37.518767],
+        [126.967665, 37.518254],
+        [126.968834, 37.517741],
+        [126.969595, 37.517447],
+        [126.970023, 37.517273],
+        [126.970503, 37.517069],
+        [126.970797, 37.516935],
+        [126.970915, 37.51691],
+        [126.972324, 37.516392],
+        [126.972736, 37.516271],
+        [126.973194, 37.516121],
+        [126.974298, 37.515818],
+        [126.97495, 37.515699],
+        [126.975489, 37.515619],
+        [126.976128, 37.515549],
+        [126.976996, 37.515442],
+        [126.978641, 37.515267],
+        [126.98005, 37.515188],
+        [126.980711, 37.515166],
+        [126.981479, 37.515169],
+        [126.982084, 37.51518],
+        [126.982561, 37.515209],
+        [126.983028, 37.515248],
+        [126.983564, 37.51528],
+        [126.984336, 37.515337],
+        [126.985601, 37.515407],
+        [126.985763, 37.515406],
+        [126.986105, 37.515375],
+        [126.98629, 37.515369],
+        [126.986481, 37.515375],
+        [126.986734, 37.515397],
+        [126.986951, 37.515436],
+        [126.987127, 37.515488],
+        [126.987232, 37.515543],
+        [126.98732, 37.515608],
+        [126.987685, 37.515955],
+        [126.987737, 37.515987],
+        [126.987848, 37.516032],
+        [126.987978, 37.516057],
+        [126.989128, 37.516192],
+        [126.989243, 37.516212],
+        [126.989703, 37.516361],
+        [126.990056, 37.516421],
+        [126.990118, 37.516435],
+        [126.990208, 37.51647],
+        [126.991249, 37.517042],
+        [126.991808, 37.517477],
+        [126.991901, 37.517526],
+        [126.992088, 37.517661],
+        [126.992205, 37.517763],
+        [126.992388, 37.517897],
+        [126.992619, 37.518162],
+        [126.992682, 37.51822],
+        [126.992868, 37.518338],
+        [126.993116, 37.518512],
+        [126.993297, 37.518606],
+        [126.994372, 37.518974],
+        [126.995274, 37.519301],
+        [126.995632, 37.519459],
+        [126.995927, 37.519638],
+        [126.99686, 37.520019],
+        [126.99752, 37.520332],
+        [126.997583, 37.520487],
+        [126.998311, 37.520764],
+        [126.999001, 37.521066],
+        [126.999366, 37.521211],
+        [126.999625, 37.521334],
+        [127.000184, 37.521571],
+        [127.000317, 37.521633],
+        [127.000518, 37.521748],
+        [127.000604, 37.521826],
+        [127.000722, 37.521911],
+        [127.00084, 37.521978],
+        [127.000995, 37.522041],
+        [127.001206, 37.522176],
+        [127.001369, 37.522367],
+        [127.001453, 37.52243],
+        [127.001567, 37.522532],
+        [127.001675, 37.522599],
+        [127.001905, 37.522821],
+        [127.00203, 37.522989],
+        [127.00223, 37.523292],
+        [127.002311, 37.523447],
+        [127.002329, 37.523487],
+        [127.002446, 37.52388],
+        [127.002484, 37.523964],
+        [127.002919, 37.524723],
+        [127.003187, 37.525122],
+        [127.003835, 37.525771],
+        [127.004004, 37.525927],
+        [127.004105, 37.525995],
+        [127.004447, 37.526133],
+        [127.004954, 37.526429],
+        [127.005097, 37.526526],
+        [127.005759, 37.527028],
+        [127.005857, 37.527116],
+        [127.00602, 37.52729],
+        [127.006189, 37.527447],
+        [127.006513, 37.527723],
+        [127.006848, 37.527992],
+        [127.007004, 37.528096],
+        [127.00749, 37.528449],
+        [127.007707, 37.52857],
+        [127.008188, 37.528777],
+        [127.009105, 37.529192],
+        [127.009888, 37.5295],
+        [127.010065, 37.529578],
+        [127.010235, 37.529665],
+        [127.010333, 37.529722],
+        [127.010593, 37.529912],
+        [127.010707, 37.529977],
+        [127.010838, 37.530038],
+        [127.011251, 37.530332],
+        [127.011365, 37.530427],
+        [127.011604, 37.530648],
+        [127.011981, 37.531032],
+        [127.012323, 37.531428],
+        [127.012508, 37.531658],
+        [127.012749, 37.532022],
+        [127.013239, 37.532876],
+        [127.013456, 37.533176],
+        [127.013573, 37.533434],
+        [127.013627, 37.533532],
+        [127.014158, 37.534333],
+        [127.014365, 37.534679],
+        [127.014429, 37.534833],
+        [127.014503, 37.534975],
+        [127.0149, 37.535592],
+        [127.015074, 37.535887],
+        [127.015496, 37.536562],
+        [127.016313, 37.537801],
+        [127.016631, 37.538234],
+        [127.016838, 37.538546],
+        [127.016945, 37.538726],
+        [127.017039, 37.538842],
+        [127.01728, 37.539073],
+        [127.017867, 37.538761],
+        [127.018032, 37.538803],
+        [127.018334, 37.538599],
+        [127.018464, 37.538492],
+        [127.018572, 37.538388],
+        [127.018716, 37.53823],
+        [127.01883, 37.538081],
+        [127.018931, 37.537916],
+        [127.019058, 37.537654],
+        [127.019175, 37.537322],
+        [127.019345, 37.53673],
+        [127.019427, 37.536518],
+        [127.019507, 37.536383],
+        [127.019618, 37.536262],
+        [127.019754, 37.536161],
+        [127.019891, 37.536112],
+        [127.020024, 37.536084],
+        [127.020159, 37.536076],
+        [127.020289, 37.536085],
+        [127.0204, 37.536105],
+        [127.020542, 37.536151],
+        [127.020693, 37.536211]
+      ],
+      "reviewerFocus": "정기 운항 선박(한강버스, route=ferry)을 보행 경로에 넣는지와 강변 보행로 대안",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "FRY-02",
+      "stratum": "ferry",
+      "from": {
+        "label": "제주 성산포항",
+        "position": [126.9316, 33.4735]
+      },
+      "to": {
+        "label": "우도 천진항",
+        "position": [126.953, 33.494]
+      },
+      "straightLineMeters": 3022.4,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "route_computed",
+      "rejectedBeforeEngine": null,
+      "warnings": ["snap_distance_notable"],
+      "distanceMeters": 3305.8,
+      "durationSeconds": 2057,
+      "snapDistancesMeters": [107.32, 8.45],
+      "engineDetailView": {
+        "httpStatus": 200,
+        "engineMessage": null,
+        "distanceMeters": 3305.8,
+        "snapDistancesMeters": [107.32, 8.45],
+        "metersByDetail": {
+          "road_class": {
+            "residential": 111.3,
+            "service": 237.5,
+            "other": 2690.2,
+            "tertiary": 121.3,
+            "unclassified": 145.6
+          },
+          "road_environment": {
+            "road": 615.8,
+            "ferry": 2690.2
+          },
+          "road_access": {
+            "yes": 3306
+          },
+          "surface": {
+            "missing": 3306
+          }
+        }
+      },
+      "tagCheck": {
+        "waysAlongRoute": [
+          {
+            "wayId": "w242807673",
+            "accessClass": null,
+            "tags": {
+              "route": "ferry"
+            },
+            "metersAlongRoute": 2690.2
+          }
+        ],
+        "nodesOnRoute": [],
+        "militaryAreasEntered": [],
+        "summary": {
+          "footNoMeters": 0,
+          "accessPrivateOrNoWithoutFootOverrideMeters": 0,
+          "accessRestrictedWithFootOverrideMeters": 0,
+          "otherAccessValueMeters": 0,
+          "ferryMeters": 2690.2,
+          "restrictedNodesPassed": 0,
+          "militaryAreaMeters": 0
+        }
+      },
+      "latencyMs": 6,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": 28,
+      "geometrySha256": "d55e109a338486fcb544f24a54b1ee094438da91a6c58a9e5177fe359050bdc1",
+      "geometry": [
+        [126.932218, 33.472684],
+        [126.933418, 33.472693],
+        [126.933423, 33.473513],
+        [126.933628, 33.474546],
+        [126.934918, 33.476477],
+        [126.934955, 33.479126],
+        [126.940105, 33.484585],
+        [126.946585, 33.489256],
+        [126.948523, 33.491187],
+        [126.949258, 33.491831],
+        [126.949741, 33.492028],
+        [126.94997, 33.491745],
+        [126.951199, 33.492478],
+        [126.951246, 33.492518],
+        [126.951371, 33.492586],
+        [126.951419, 33.492771],
+        [126.951415, 33.492806],
+        [126.951424, 33.492852],
+        [126.951462, 33.492957],
+        [126.951471, 33.493277],
+        [126.951506, 33.49336],
+        [126.951634, 33.493502],
+        [126.951847, 33.493492],
+        [126.952185, 33.493781],
+        [126.952254, 33.493807],
+        [126.95236, 33.493818],
+        [126.952629, 33.493817],
+        [126.953029, 33.493928]
+      ],
+      "reviewerFocus": "배포 extract 밖 도선 구간의 응답 형태",
+      "coverageReview": "not_reviewed"
+    },
+    {
+      "pairId": "NEG-OFFSHORE",
+      "stratum": "negative-control",
+      "from": {
+        "label": "서해 해상",
+        "position": [125.5, 36.5]
+      },
+      "to": {
+        "label": "서해 해상",
+        "position": [125.52, 36.52]
+      },
+      "straightLineMeters": 2853.2,
+      "bothEndsInsideExtractHeaderBbox": true,
+      "outcome": "outside_coverage",
+      "rejectedBeforeEngine": null,
+      "warnings": [],
+      "distanceMeters": null,
+      "durationSeconds": null,
+      "snapDistancesMeters": null,
+      "engineDetailView": {
+        "httpStatus": 400,
+        "engineMessage": "Cannot find point 0: 36.5,125.5",
+        "distanceMeters": null,
+        "snapDistancesMeters": null,
+        "metersByDetail": null
+      },
+      "tagCheck": null,
+      "latencyMs": 9,
+      "graphBuildId": "188b65effcc6ef5c",
+      "geometryPoints": null,
+      "geometrySha256": null,
+      "geometry": null,
+      "reviewerFocus": "보행망이 없는 좌표. 경로가 나오면 결함",
+      "coverageReview": "not_reviewed"
+    }
+  ],
+  "problems": []
+}

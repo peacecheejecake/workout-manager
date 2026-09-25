@@ -2,11 +2,22 @@
  * M0-06b: coverage evidence set for an INDEPENDENT reviewer of Korean pedestrian routing.
  *
  *   node --import tsx scripts/probe-routing-korea-coverage.mts --execute
+ *   ROUTING_GRAPH_ROOT=<dir> ROUTING_EXTRACT_SOURCE=<allowlist id> \
+ *     node --import tsx scripts/probe-routing-korea-coverage.mts --execute --report-name <file>.json
  *
  * Opt-in only, refuses to run in CI. It never calls an external routing service.
  *
+ * HOLD THE SHARED HARNESS LOCK while it runs (M0-06b review). It starts an engine on loopback
+ * 8997/8998, which other nodes' probes also use, and reads the shared `.geo-build`. The lock is
+ * a convention of the machine it runs on, not something this file can take: the probe refuses
+ * to start when either port is already bound, and the run must be wrapped in the lock.
+ *
+ * With `ROUTING_GRAPH_ROOT` it runs on the relocated deployment instead of the served one, with
+ * the extract `ROUTING_EXTRACT_SOURCE` selects (M2-01ak: the national graph), and must write its
+ * own report (`--report-name`), so the M0-06b record stays what it was.
+ *
  * What it does:
- * 1. Verifies the deployed graph under `.geo-build/routing-graph/foot` against its
+ * 1. Verifies the deployed graph (`.geo-build/routing-graph/foot`, or the relocated one) against its
  *    manifest (graph files, engine jar, serving profile), then copies the graph files into
  *    a temporary directory and verifies the copy against the same manifest. The engine runs
  *    on the copy. GraphHopper creates a transient lock file in the graph directory it loads,
@@ -33,6 +44,7 @@ import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { cpus, homedir, tmpdir, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { createConnection } from 'node:net';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
@@ -49,8 +61,13 @@ import {
   loadVerifiedRoutingGraph,
 } from '../packages/server/integrations/src/routing/index.js';
 import {
+  probeReportPath,
+  relocatedDeploymentNote,
+  routingExtract,
   routingGraphConfig,
   routingGraphDirectory,
+  routingGraphRelocated,
+  routingGraphRoot,
   startEngine,
   stopEngine,
   waitForEngine,
@@ -58,12 +75,14 @@ import {
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
+// Follows ROUTING_GRAPH_ROOT / ROUTING_EXTRACT_SOURCE (M2-01ak); the served layout by default.
+const extractPath = routingExtract.path;
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
-const reportPath = join(
-  repositoryRoot,
-  'docs/implementation/research/m0-06b-routing-korea-coverage.json',
-);
+const CANONICAL_REPORT = 'm0-06b-routing-korea-coverage.json';
+/** How the report names the graph directory: never a host path. */
+const graphDirectoryLabel = routingGraphRelocated
+  ? '<ROUTING_GRAPH_ROOT>/foot'
+  : '.geo-build/routing-graph/foot';
 
 /** Ports away from the runbook's blue (8991) and green (8993) pair. */
 const enginePorts = { application: 8997, admin: 8998 } as const;
@@ -388,9 +407,38 @@ function item<T>(list: readonly T[], index: number): T {
   return value;
 }
 
-function parseArguments(argv: readonly string[]): { execute: true } | null {
-  if (argv.length !== 1 || argv[0] !== '--execute') return null;
-  return { execute: true };
+function parseArguments(argv: readonly string[]): { reportPath: string } | null {
+  const reportName = argv.indexOf('--report-name');
+  const expected = reportName === -1 ? 1 : 3;
+  if (argv.length !== expected || !argv.includes('--execute')) return null;
+  if (reportName !== -1 && reportName + 1 >= argv.length) return null;
+  // A relocated run must name its own report (M2-01af F3), checked before anything starts.
+  return { reportPath: probeReportPath(argv, CANONICAL_REPORT) };
+}
+
+/**
+ * The engine ports must be free: another process on them would answer for this one. A TCP
+ * connect, not an HTTP request, so a bound port that does not speak HTTP counts as busy too
+ * (review round 1).
+ */
+async function refuseBusyPorts(ports: readonly number[]): Promise<void> {
+  for (const port of ports) {
+    const busy = await new Promise<boolean>((done) => {
+      const socket = createConnection({ host: '127.0.0.1', port });
+      socket.setTimeout(2000);
+      socket.once('connect', () => {
+        socket.destroy();
+        done(true);
+      });
+      // Refused: nothing listens. A timeout means something holds the port without answering.
+      socket.once('timeout', () => {
+        socket.destroy();
+        done(true);
+      });
+      socket.once('error', (error: NodeJS.ErrnoException) => done(error.code !== 'ECONNREFUSED'));
+    });
+    if (busy) throw new Error(`PORT_BUSY: ${port} (hold the harness lock; see the file header)`);
+  }
 }
 
 /** Removes host-specific path prefixes from any text that goes into the report. */
@@ -989,9 +1037,11 @@ async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (!options) {
     console.log(
-      'Opt-in only: node --import tsx scripts/probe-routing-korea-coverage.mts --execute. ' +
-        'Runs the self-hosted GraphHopper engine on loopback on a verified copy of the deployed graph ' +
-        'and records an ungraded Korean coverage evidence set. Never use as CI.',
+      'Opt-in only: node --import tsx scripts/probe-routing-korea-coverage.mts --execute ' +
+        '[--report-name <file>.json] (required with ROUTING_GRAPH_ROOT). ' +
+        'Runs the self-hosted GraphHopper engine on loopback 8997/8998 on a verified copy of the deployed graph ' +
+        'and records an ungraded Korean coverage evidence set. Hold the shared harness lock while it runs. ' +
+        'Never use as CI.',
     );
     return;
   }
@@ -1004,8 +1054,27 @@ async function main() {
     }
   }
 
+  await refuseBusyPorts([enginePorts.application, enginePorts.admin]);
+
   const scratch = await mkdtemp(join(tmpdir(), 'm0-06b-coverage-'));
-  const redact = makeRedactor([scratch, workRoot, repositoryRoot, tmpdir(), homedir()]);
+  // The scratch directory (graph copy, osmium exports) goes on every path out, a failed run
+  // included (M0-06b review).
+  try {
+    await collect(scratch, options.reportPath);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+async function collect(scratch: string, reportPath: string) {
+  const redact = makeRedactor([
+    scratch,
+    routingGraphRoot,
+    workRoot,
+    repositoryRoot,
+    tmpdir(),
+    homedir(),
+  ]);
   const endpoint = createRoutingEngineEndpoint(`http://127.0.0.1:${enginePorts.application}/`);
 
   // 1. The deployed graph, verified in place (read only), and its listing before the run.
@@ -1161,8 +1230,6 @@ async function main() {
   if (!results.some((entry) => entry.outcome === 'route_computed'))
     problems.push('no pair produced a route, so the probe measured nothing');
 
-  await rm(scratch, { recursive: true, force: true });
-
   const report = {
     schemaVersion: 1,
     node: 'M0-06b',
@@ -1172,7 +1239,7 @@ async function main() {
     coverageReview: 'not_reviewed',
     method: {
       engine:
-        'Pinned GraphHopper jar started on loopback through startEngine / graphhopperJavaArguments (runbook launch), on a byte-identical temporary copy of the deployed graph verified against the same manifest. The deployed directory under .geo-build was only read.',
+        'Pinned GraphHopper jar started on loopback through startEngine / graphhopperJavaArguments (runbook launch), on a byte-identical temporary copy of the deployed graph verified against the same manifest. The deployed graph directory was only read.',
       requestPath:
         'Production WalkingRouteService + GraphHopperRoutingAdapter (default limits: snap 120 m, deadline 8 s, 1,000,000 visited nodes). Admission window widened to 1000/60 s so one sequential run is not refused; concurrency 1.',
       supplementaryRequest:
@@ -1191,7 +1258,9 @@ async function main() {
     graph: {
       manifest: deployed.manifest,
       graphBuildId: deployed.graphBuildId,
-      deployedGraphDirectory: '.geo-build/routing-graph/foot',
+      deployedGraphDirectory: graphDirectoryLabel,
+      deployment: (await relocatedDeploymentNote()) ?? { deployment: '.geo-build/routing-graph' },
+      extractSource: routingExtract.sourceId,
       deployedGraphContentBeforeRun: deployed.manifest.graphContentSha256,
       deployedGraphContentAfterRun: deployedGraphContentAfter,
       deployedDirectoryListingUnchanged:

@@ -42,6 +42,11 @@
  * re-run passes by itself (scripts/performance-budget.ts, `combineAttempts`). The 1-minute load
  * average lags a short burst of contention, so the admissible-load rule cannot catch one.
  *
+ * Engine graph (M2-01ak): the engine memory budgets are bound to the graph they were baselined
+ * on, the national graph. A judged run that includes the engine phase must point at that
+ * deployment (ROUTING_GRAPH_ROOT=<its root> ROUTING_EXTRACT_SOURCE=osm-extract-south-korea); on
+ * the default .geo-build (Seoul) graph it stops with ENGINE_GRAPH_NOT_BASELINED instead of judging.
+ *
  * Opt-in, refuses CI, and is NOT part of `pnpm test`: a budget judged on a shared, loaded
  * machine belongs in a separate step whose failure a person reads, not in a suite whose
  * failure blocks unrelated work. The `api` and `engine` phases bind the fixture identity
@@ -113,8 +118,10 @@ import {
   parseProcessRssCheck,
   repoRelative,
   retryDecision,
+  runContext,
   VERIFICATION_LOG_DIRECTORY,
   writeResultWithHistory,
+  type RecordedRun,
   type RetryDecision,
   type SourceTreeState,
 } from './performance-budget.ts';
@@ -527,8 +534,14 @@ async function parsePhase(fitBytes: Uint8Array, samples: number) {
 // ---------------------------------------------------------------- api + engine phases
 async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
   const { createConfiguredApi } = await import('../apps/api/src/configured.ts');
-  const { routingGraphConfig, routingGraphDirectory, startEngine, stopEngine, waitForEngine } =
-    await import('./build-routing-graph.mts');
+  const {
+    routingExtract,
+    routingGraphConfig,
+    routingGraphDirectory,
+    startEngine,
+    stopEngine,
+    waitForEngine,
+  } = await import('./build-routing-graph.mts');
   const { fixtureOidc, startFixtureOidc } = await import('./fixtures/oidc-provider.ts');
   const { PUBLIC_ORIGIN, Session, detectedBin, startDatabase } =
     await import('./probe-routing-operational.mts');
@@ -544,7 +557,8 @@ async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
   const engine = startEngine({
     jarPath,
     configPath: routingGraphConfig,
-    extractPath: join(workRoot, 'source', 'region.osm.pbf'),
+    // Follows ROUTING_GRAPH_ROOT / ROUTING_EXTRACT_SOURCE (M2-01ak: the national graph).
+    extractPath: routingExtract.path,
     graphPath: routingGraphDirectory,
   });
   let api: Awaited<ReturnType<typeof createConfiguredApi>> | null = null;
@@ -552,6 +566,17 @@ async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
     await waitForEngine(engine, ENGINE_PORT);
     const enginePid = engine.process.pid;
     if (enginePid === undefined) throw new Error('ENGINE_PID_UNKNOWN');
+    // Which graph the engine metrics were measured on (M2-01ak re-baselined them on the
+    // national graph): read from the manifest the API verifies below.
+    const manifest = JSON.parse(
+      await readFile(join(routingGraphDirectory, 'routing-graph-manifest.json'), 'utf8'),
+    ) as { extractRegion?: unknown; graphContentSha256?: unknown; extractSha256?: unknown };
+    details['routingGraph'] = {
+      extractSource: routingExtract.sourceId,
+      extractRegion: manifest.extractRegion,
+      extractSha256: manifest.extractSha256,
+      graphContentSha256: manifest.graphContentSha256,
+    };
     api = await createConfiguredApi({
       NODE_ENV: 'development',
       DATABASE_URL: database.runtimeUrl,
@@ -814,7 +839,10 @@ async function main() {
         '[--phases=api,engine,worker,parse] [--samples=N] [--record-only] [--budget=PATH] ' +
         '[--out=PATH] [--evaluate=RESULT.json] [--log=PATH] [--no-retry]. The api/engine ' +
         'phases bind the fixture OIDC provider on 4400 (hold the harness lock) and the ' +
-        `routing engine on loopback 8991. Logs go to ${VERIFICATION_LOG_DIRECTORY}/, never test-results/.`,
+        `routing engine on loopback 8991. Logs go to ${VERIFICATION_LOG_DIRECTORY}/, never test-results/. ` +
+        'The engine memory budgets are bound to the national graph (M2-01ak): a judged run with the engine ' +
+        'phase needs ROUTING_GRAPH_ROOT=<the national deployment root> and ROUTING_EXTRACT_SOURCE=' +
+        'osm-extract-south-korea; on the default .geo-build (Seoul) graph it stops with ENGINE_GRAPH_NOT_BASELINED.',
     );
     return;
   }
@@ -840,12 +868,14 @@ async function main() {
     const recorded = JSON.parse(await readFile(options.evaluatePath, 'utf8')) as {
       phases: ServerPhase[];
       samples: Record<string, BudgetSample[]>;
+      details?: RecordedRun['details'];
     };
     const budget = parseBudgetFile(JSON.parse(await readFile(options.budgetPath, 'utf8')));
     const evaluation = evaluateBudget(
       budget,
       recorded.samples,
       recorded.phases.map((phase) => phaseMap[phase]),
+      runContext(recorded),
     );
     console.log(describeEvaluation(evaluation));
     console.log(
@@ -881,6 +911,7 @@ async function main() {
       budget,
       observations,
       options.phases.map((phase) => phaseMap[phase]),
+      runContext({ details }),
     );
     console.log(describeEvaluation(evaluation));
   }

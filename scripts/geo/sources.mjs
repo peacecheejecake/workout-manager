@@ -33,6 +33,33 @@ export const allowedSources = Object.freeze([
     maxBytes: 300 * 1024 * 1024,
   },
   {
+    // M2-01ak (user decision 2026-09-25): the routing graph covers all of South Korea, not
+    // the Seoul city extract. A dated Geofabrik snapshot, not `south-korea-latest`: `latest`
+    // is a 302 to the newest dated file, and the download never follows a redirect, so the
+    // pin names the dated file itself. The bytes never change under a dated name, so the
+    // SHA-256 is pinned. The MONTHLY snapshot is pinned, not a daily one (review round 1):
+    // on 2026-09-25 Geofabrik listed daily files for about a week (260918-260924), monthly
+    // files for about three months (260701-260901) and the yearly YY0101 files back to 2015.
+    // A daily pin could no longer be fetched a week later. When the monthly file is gone too,
+    // a re-fetch fails closed (HTTP 404): archive the PBF with the graph (runbook), and moving
+    // to a newer snapshot is a deliberate pin change and a new graph, never a silent refresh.
+    id: 'osm-extract-south-korea',
+    url: 'https://download.geofabrik.de/asia/south-korea-260901.osm.pbf',
+    purpose:
+      'National OpenStreetMap extract for South Korea, the routing graph input from M2-01ak on.',
+    license: 'ODbL-1.0',
+    licenseUrl: 'https://www.openstreetmap.org/copyright',
+    attribution: '© OpenStreetMap contributors',
+    redistribution:
+      'ODbL share-alike applies to the database and to produced works derived from it. Tiles, style, routing graph and any exported geometry must carry the attribution and a link to the license. Geofabrik redistributes OSM data unchanged under the ODbL and strips user names, user ids and changeset ids.',
+    // Pinned on 2026-09-25 from the first download (286,403,403 bytes, Last-Modified
+    // 2026-09-02T05:13:33Z). Geofabrik's own `south-korea-260901.osm.pbf.md5`
+    // (3f6596139dedbbe2f6b2b9a4ff486c63) matched the same bytes, a second, independent check
+    // of what the pin describes.
+    sha256: '848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b',
+    maxBytes: 400 * 1024 * 1024,
+  },
+  {
     id: 'glyphs-noto-sans-regular',
     url: 'https://raw.githubusercontent.com/protomaps/basemaps-assets/83bc11ea49e5c024df51979d5953ee841fd06584/fonts/Noto%20Sans%20Regular/{range}.pbf',
     purpose: 'Pre-generated SDF glyph ranges for the Latin part of basemap labels.',

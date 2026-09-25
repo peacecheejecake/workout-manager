@@ -21,9 +21,10 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -41,7 +42,6 @@ import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 const servingConfigSource = join(repositoryRoot, 'scripts/geo/graphhopper-foot-serving.yml');
 
@@ -56,13 +56,59 @@ const servingConfigSource = join(repositoryRoot, 'scripts/geo/graphhopper-foot-s
  * `.geo-build` cache is not written. The build, the operational probe and the swap probe
  * all read these constants, so one variable points all three at the same deployment.
  */
-export function routingGraphRootFrom(value: string | undefined): string {
-  if (value === undefined || value === '') return join(workRoot, 'routing-graph');
+export function routingGraphRootFrom(
+  value: string | undefined,
+  geoBuild: string = workRoot,
+): string {
+  if (value === undefined || value === '') return join(geoBuild, 'routing-graph');
   if (!isAbsolute(value)) throw new Error('ROUTING_GRAPH_ROOT_NOT_ABSOLUTE');
   const root = resolve(value);
-  if (root === resolve(workRoot) || root.startsWith(`${resolve(workRoot)}${sep}`))
-    throw new Error('ROUTING_GRAPH_ROOT_INSIDE_GEO_BUILD: leave it unset for .geo-build');
+  // Judged by where the path leads, not by how it is spelled (M2-01ak review round 1): the
+  // nearest existing ancestor is resolved through symbolic links (a worktree's `.geo-build`
+  // is itself a link, and any other link can alias it), and the comparison ignores case,
+  // because APFS and the default macOS volume are case-insensitive (`.GEO-BUILD` is
+  // `.geo-build`). The approach of `realOutputPath` in scripts/performance-budget.ts.
+  const target = comparablePath(root);
+  const spellings = new Set([comparablePath(resolve(geoBuild)), resolve(geoBuild).toLowerCase()]);
+  for (const spelling of spellings)
+    if (target === spelling || target.startsWith(`${spelling}${sep}`))
+      throw new Error('ROUTING_GRAPH_ROOT_INSIDE_GEO_BUILD: leave it unset for .geo-build');
   return root;
+}
+
+/**
+ * `path` with its nearest existing ancestor resolved through symbolic links and the
+ * not-yet-existing rest appended, lower-cased for a case-insensitive comparison. A dangling
+ * link (its target not created yet) is followed to where it will lead (M2-01ak review round 2):
+ * `elsewhere/dangling -> .geo-build/newdir` must be judged as `.geo-build/newdir`, or a later
+ * `mkdir` through it would create the graph inside `.geo-build`. As `realOutputPath` in
+ * scripts/performance-budget.ts, bounded so a cycle of dangling links cannot spin.
+ */
+function comparablePath(path: string): string {
+  const missing: string[] = [];
+  let existing = path;
+  for (let hops = 0; hops < 256; hops += 1) {
+    try {
+      return join(realpathSync(existing), ...missing.reverse()).toLowerCase();
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+      const parent = dirname(existing);
+      if (parent === existing) return path.toLowerCase();
+      let link: string | null = null;
+      try {
+        if (lstatSync(existing).isSymbolicLink()) link = readlinkSync(existing);
+      } catch {
+        link = null;
+      }
+      if (link !== null) existing = resolve(parent, link);
+      else {
+        missing.push(basename(existing));
+        existing = parent;
+      }
+    }
+  }
+  // Refused rather than guessed: a root that cannot be resolved is not shown to be outside.
+  throw new Error(`ROUTING_GRAPH_ROOT_UNRESOLVABLE: ${path}`);
 }
 export const routingGraphRoot = routingGraphRootFrom(process.env.ROUTING_GRAPH_ROOT);
 export const routingGraphDirectory = join(routingGraphRoot, 'foot');
@@ -70,6 +116,58 @@ export const routingGraphConfig = join(routingGraphRoot, 'config-serving.yml');
 
 /** True when `ROUTING_GRAPH_ROOT` moved the deployment out of `.geo-build`. */
 export const routingGraphRelocated = routingGraphRoot !== routingGraphRootFrom(undefined);
+
+/**
+ * The OSM extract a deployment is imported from (M2-01ak).
+ *
+ * `ROUTING_EXTRACT_SOURCE` names an operations-allowlist id, never a path or a URL. Unset, it
+ * is the Seoul city extract under `.geo-build/source`, the input of every graph built before
+ * M2-01ak, so the served layout and its probes behave as before. `osm-extract-south-korea` is
+ * the national extract; it lives in the relocated root (`<ROUTING_GRAPH_ROOT>/extract/`),
+ * because `.geo-build` is a shared cache this build does not write, and it is refused for the
+ * default root. The build checks the file against the allowlist pin before it imports.
+ *
+ * `importHeapMegabytes` is the engine heap for a full import of that extract. The Seoul
+ * import ran in the launch helper's default (2048 MiB). The national import was measured in
+ * M2-01ak (docs/implementation/progress/M2-01ak.md) and gets its own ceiling. Serving keeps
+ * the helper's default: the heap needed to serve a graph is not the heap needed to build it.
+ */
+export interface RoutingExtract {
+  readonly sourceId: string;
+  readonly path: string;
+  readonly region: string;
+  readonly importHeapMegabytes: number;
+}
+
+const DEFAULT_EXTRACT_SOURCE = 'osm-extract-seoul';
+
+export function routingExtractFrom(sourceId: string | undefined, root: string): RoutingExtract {
+  const id = sourceId === undefined || sourceId === '' ? DEFAULT_EXTRACT_SOURCE : sourceId;
+  if (id === DEFAULT_EXTRACT_SOURCE)
+    return {
+      sourceId: id,
+      path: join(workRoot, 'source', 'region.osm.pbf'),
+      region: 'Seoul (BBBike city extract)',
+      importHeapMegabytes: 2048,
+    };
+  if (id === 'osm-extract-south-korea') {
+    if (root === routingGraphRootFrom(undefined))
+      throw new Error(
+        'ROUTING_EXTRACT_NEEDS_A_RELOCATED_ROOT: the national extract is kept in ROUTING_GRAPH_ROOT, not in the shared .geo-build',
+      );
+    return {
+      sourceId: id,
+      path: join(root, 'extract', 'south-korea.osm.pbf'),
+      region: 'South Korea (Geofabrik extract 2026-09-01)',
+      importHeapMegabytes: 4096,
+    };
+  }
+  throw new Error(`ROUTING_EXTRACT_SOURCE_UNKNOWN: ${id}`);
+}
+export const routingExtract = routingExtractFrom(
+  process.env.ROUTING_EXTRACT_SOURCE,
+  routingGraphRoot,
+);
 
 /**
  * Where a probe writes its report (M2-01af review F3). The canonical report of each probe
@@ -90,8 +188,13 @@ export function probeReportPath(argv: readonly string[], canonicalName: string):
 }
 
 /**
- * What a report must say about a relocated deployment: it is scratch, not persisted, and the
- * served graph is still the one under `.geo-build`. Null for the served deployment.
+ * What a report must say about a relocated deployment. Null for the served layout.
+ *
+ * M2-01af's relocated runs were scratch builds in a temporary directory, and their reports said
+ * so. M2-01ak's national graph is relocated too, but into a persistent root that becomes the
+ * deployment. A probe cannot know which of the two a root is meant to be, so the note states
+ * only facts it can check: whether the root lies in a temporary directory, which extract it was
+ * selected with, and which graph the default layout under `.geo-build` holds.
  */
 export async function relocatedDeploymentNote(): Promise<Record<string, string> | null> {
   if (!routingGraphRelocated) return null;
@@ -100,14 +203,32 @@ export async function relocatedDeploymentNote(): Promise<Record<string, string> 
     (text) => graphBuildIdFromManifest(routingGraphManifestSchema.parse(JSON.parse(text))),
     () => 'unknown (no served manifest on this machine)',
   );
+  const temporary = inTemporaryDirectory(routingGraphRoot);
   return {
     deployment: 'relocated (ROUTING_GRAPH_ROOT)',
-    note: `Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still ${served} (.geo-build/routing-graph).`,
+    rootLocation: temporary ? 'temporary directory' : 'outside temporary directories',
+    extractSource: routingExtract.sourceId,
+    note: temporary
+      ? `Scratch deployment built outside .geo-build for this run. Its graphs are not persisted and their build ids will not exist elsewhere. The deployed graph is still ${served} (.geo-build/routing-graph).`
+      : `Deployment built outside .geo-build in a persistent directory. Whether it is the one being served is stated by the node that ran this probe (the report's file name and progress record), not by this file. The default layout .geo-build/routing-graph holds ${served}.`,
     servedGraphBuildId: served,
   };
 }
 
-const EXTRACT_REGION = 'Seoul (BBBike city extract)';
+function inTemporaryDirectory(path: string): boolean {
+  const real = (value: string) => {
+    try {
+      return realpathSync(value);
+    } catch {
+      return resolve(value);
+    }
+  };
+  const target = real(path);
+  return [tmpdir(), '/tmp', '/private/tmp', '/var/folders', '/private/var/folders']
+    .map(real)
+    .some((directory) => target === directory || target.startsWith(`${directory}${sep}`));
+}
+
 const ENGINE_PORT = 8991;
 
 export async function sha256File(path: string): Promise<string> {
@@ -225,6 +346,8 @@ export async function importRoutingGraph(options: {
   readonly extract?: { readonly path: string; readonly region: string };
   /** Listener ports for the import engine, so an import can run beside a serving engine. */
   readonly ports?: EnginePorts;
+  /** Engine heap for the import; defaults to the selected extract's (`routingExtract`). */
+  readonly heapMegabytes?: number;
 }): Promise<RoutingGraphManifest> {
   await rm(options.graphDirectory, { recursive: true, force: true });
   await mkdir(options.graphDirectory, { recursive: true });
@@ -232,8 +355,9 @@ export async function importRoutingGraph(options: {
   const engine = startEngine({
     jarPath,
     configPath: routingGraphConfig,
-    extractPath: options.extract?.path ?? extractPath,
+    extractPath: options.extract?.path ?? routingExtract.path,
     graphPath: options.graphDirectory,
+    heapMegabytes: options.heapMegabytes ?? routingExtract.importHeapMegabytes,
     ...(options.ports ? { ports: options.ports } : {}),
   });
   const port = options.ports?.application ?? ENGINE_PORT;
@@ -284,7 +408,7 @@ export async function importRoutingGraph(options: {
     profileConfigSha256: options.profileConfigSha256,
     profileName: 'foot',
     extractSha256: options.extractSha256,
-    extractRegion: options.extract?.region ?? EXTRACT_REGION,
+    extractRegion: options.extract?.region ?? routingExtract.region,
     extractByteLength: options.extractByteLength,
     graphContentSha256,
     graphImportedAt: properties.graphImportedAt,
@@ -332,13 +456,14 @@ async function main() {
     console.log(
       'Opt-in only: node --import tsx scripts/build-routing-graph.mts --execute ' +
         '[--reuse | --replace-served-graph]. ' +
-        'Imports the pedestrian graph from the allowlisted extract already under .geo-build and writes ' +
-        'the graph manifest. Never use as CI.',
+        'Imports the pedestrian graph from the allowlisted extract already on disk (ROUTING_EXTRACT_SOURCE, ' +
+        'default the Seoul extract under .geo-build) and writes the graph manifest. Never use as CI.',
     );
     return;
   }
   if (process.env.CI) throw new Error('Routing graph builds are disabled in CI');
 
+  const extractPath = routingExtract.path;
   for (const required of [extractPath, jarPath, servingConfigSource]) {
     try {
       await stat(required);
@@ -348,9 +473,12 @@ async function main() {
   }
   // A cached jar is checked against the allowlist pin before it is allowed to build.
   const jarIdentity = await verifyAllowedSourceFile('graphhopper-web-jar', jarPath);
-  const extractSha256 = await sha256File(extractPath);
+  // So is the extract (M2-01ak): a pinned source is refused when its bytes differ. The Seoul
+  // entry has no pin; its hash is recorded in the manifest, as before.
+  const extractIdentity = await verifyAllowedSourceFile(routingExtract.sourceId, extractPath);
+  const extractSha256 = extractIdentity.sha256;
   const profileConfigSha256 = await sha256File(servingConfigSource);
-  const extractByteLength = (await stat(extractPath)).size;
+  const extractByteLength = extractIdentity.bytes;
 
   await mkdir(dirname(routingGraphConfig), { recursive: true });
 
@@ -410,6 +538,7 @@ async function main() {
         'procedure, or pass --replace-served-graph when replacing it in place is intended.',
     );
   await copyFile(servingConfigSource, routingGraphConfig);
+  const importStarted = performance.now();
   const manifest = await importRoutingGraph({
     graphDirectory: routingGraphDirectory,
     engineArtifactSha256: jarIdentity.sha256,
@@ -420,6 +549,11 @@ async function main() {
   console.log(
     JSON.stringify({
       graphDirectory: routingGraphDirectory,
+      extractSource: routingExtract.sourceId,
+      extractRegion: manifest.extractRegion,
+      importHeapMegabytes: routingExtract.importHeapMegabytes,
+      // Engine start, import, /info and stop, then hashing: the wall time of the whole build.
+      importMilliseconds: Math.round(performance.now() - importStarted),
       graphBuildId: graphBuildIdFromManifest(manifest),
       graphContentSha256: manifest.graphContentSha256,
       profileConfigSha256: manifest.profileConfigSha256,

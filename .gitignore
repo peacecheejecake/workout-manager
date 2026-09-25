@@ -29,3 +29,5 @@ apps/web/next-env.d.ts
 
 # Self-hosted map build workspace (M2-01d): extracts, tiles, graphs. Never committed.
 .geo-build/
+# M2-01ak: relocated routing deployments beside it (ROUTING_GRAPH_ROOT), e.g. the national graph.
+.geo-build-*/

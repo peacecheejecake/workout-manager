@@ -20,7 +20,9 @@
  *
  * Nothing under `.geo-build` is written: the graph is copied to a temporary directory,
  * which is removed afterwards. The deployed `config-serving.yml` copy is not used, so the
- * probe judges the profile a rebuild would deploy.
+ * probe judges the profile a rebuild would deploy. The graph is the served one under
+ * `.geo-build/routing-graph`, or, with `ROUTING_GRAPH_ROOT` (and `ROUTING_EXTRACT_SOURCE`), the
+ * relocated deployment `build-routing-graph.mts` imported there (M2-01ak).
  *
  * Usage: node --import tsx scripts/probe-routing-engine-logs.mts --execute
  *        [--config <path>] [--port <application port>] [--console-threshold <LEVEL>]
@@ -60,13 +62,15 @@ import {
   createRoutingEngineEndpoint,
   graphhopperRouteBody,
 } from '../packages/server/integrations/src/routing/index.ts';
+import { routingExtract, routingGraphDirectory } from './build-routing-graph.mts';
 import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
-const deployedGraph = join(workRoot, 'routing-graph', 'foot');
+// Follows ROUTING_GRAPH_ROOT / ROUTING_EXTRACT_SOURCE (M2-01ak); the served layout by default.
+const extractPath = routingExtract.path;
+const deployedGraph = routingGraphDirectory;
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -96,7 +100,9 @@ const REQUEST_LINE = /"(?:GET|POST|HEAD|PUT|DELETE|OPTIONS) ([^" ]*) HTTP\/[\d.]
 /** Planted waypoints: distinctive decimals that appear nowhere else in the engine's output. */
 const start: readonly [number, number] = [126.9765432, 37.5712345];
 const inside: readonly [number, number][] = [[...start], [126.9812345, 37.5654321]];
-const outside: readonly [number, number] = [127.9876543, 36.1234567];
+// Open sea south-west of Jeju, outside both the Seoul and the national extract (M2-01ak: the
+// earlier point, 127.98765,36.12346, is inland North Gyeongsang and inside the national graph).
+const outside: readonly [number, number] = [124.9876543, 31.1234567];
 
 const wait = (milliseconds: number) => new Promise((done) => setTimeout(done, milliseconds));
 

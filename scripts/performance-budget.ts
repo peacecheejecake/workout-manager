@@ -65,6 +65,14 @@ export interface DesktopMetricBudget {
     /** The statistic of each baseline run, in `runs` order; `statisticValue` is the worst. */
     readonly perRunStatistic?: readonly number[];
     readonly loadAverage1m: { readonly min: number; readonly max: number };
+    /**
+     * M2-01ak: the routing graph (`graphContentSha256`) the baseline runs measured. Engine
+     * memory grows with the graph the engine loads: the national graph's RSS is about twice
+     * the Seoul graph's, so a budget widened for one graph would let the other double
+     * unnoticed. Required on every engine-phase MiB metric; `evaluateBudget` refuses to judge
+     * such a metric on samples from another graph, or from a run that does not say which.
+     */
+    readonly routingGraphContentSha256?: string;
   };
   readonly headroom: { readonly factor: number; readonly reason: string };
 }
@@ -103,6 +111,16 @@ export interface MetricEvaluation {
   readonly samples: number;
   readonly loadAverage1m: { readonly min: number; readonly max: number } | null;
 }
+
+/** What a run measured on, beyond its samples (M2-01ak). */
+export interface MeasurementContext {
+  /** `details.routingGraph.graphContentSha256` of the run; null or absent when not recorded. */
+  readonly routingGraphContentSha256?: string | null | undefined;
+}
+
+/** An engine-phase memory metric is bound to the graph its baseline was measured on. */
+export const isGraphBoundMetric = (metric: Pick<DesktopMetricBudget, 'phase' | 'unit'>) =>
+  metric.phase === 'engine' && metric.unit === 'MiB';
 
 export interface BudgetEvaluation {
   /** True only when every evaluated desktop metric passed. */
@@ -193,6 +211,13 @@ export function parseBudgetFile(value: unknown): PerformanceBudgetFile {
       throw new Error(`BUDGET_BASELINE_INVALID:${id}`);
     if (!positive(headroom['factor']) || typeof headroom['reason'] !== 'string')
       throw new Error(`BUDGET_HEADROOM_INVALID:${id}`);
+    const graph = baseline['routingGraphContentSha256'];
+    const graphBound = metric['phase'] === 'engine' && metric['unit'] === 'MiB';
+    if (
+      (graphBound && (typeof graph !== 'string' || !/^[0-9a-f]{64}$/.test(graph))) ||
+      (!graphBound && graph !== undefined)
+    )
+      throw new Error(`BUDGET_BASELINE_GRAPH_INVALID:${id}`);
     // Below 20 samples the nearest-rank p95 is the maximum, so a single outlier would decide
     // the budget by itself.
     if (metric['statistic'] === 'p95' && (metric['minimumSamples'] as number) < MIN_P95_SAMPLES)
@@ -224,6 +249,15 @@ export interface RecordedRun {
   readonly executedAt: string;
   readonly mode: string;
   readonly samples: Readonly<Record<string, readonly BudgetSample[]>>;
+  readonly details?: { readonly routingGraph?: { readonly graphContentSha256?: unknown } };
+}
+
+/** The measurement context a recorded run carries (M2-01ak). */
+export function runContext(run: {
+  readonly details?: RecordedRun['details'] | undefined;
+}): MeasurementContext {
+  const graph = run.details?.routingGraph?.graphContentSha256;
+  return { routingGraphContentSha256: typeof graph === 'string' ? graph : null };
 }
 
 /** Every run a result file records: the latest one and its `previousRuns`. */
@@ -271,6 +305,11 @@ export function verifyBaselinesAgainstRuns(
       const samples = run.samples[id] ?? [];
       if (samples.length < metric.minimumSamples)
         throw new Error(`BASELINE_RUN_TOO_FEW_SAMPLES:${id}:${executedAt}`);
+      if (
+        metric.baseline.routingGraphContentSha256 !== undefined &&
+        runContext(run).routingGraphContentSha256 !== metric.baseline.routingGraphContentSha256
+      )
+        throw new Error(`BASELINE_RUN_GRAPH_MISMATCH:${id}:${executedAt}`);
       perRun.push(
         statisticOf(
           samples.map((sample) => sample.value),
@@ -349,6 +388,7 @@ export function evaluateBudget(
   budget: PerformanceBudgetFile,
   observations: Readonly<Record<string, readonly BudgetSample[]>>,
   phases: readonly BudgetPhase[],
+  context: MeasurementContext = {},
 ): BudgetEvaluation {
   for (const id of Object.keys(observations)) {
     if (id in budget.realDevice.metrics) throw new Error(`REAL_DEVICE_METRIC_NOT_MEASURABLE:${id}`);
@@ -358,6 +398,17 @@ export function evaluateBudget(
   for (const [id, metric] of Object.entries(budget.desktop.metrics)) {
     if (!phases.includes(metric.phase)) continue;
     const samples = observations[id] ?? [];
+    // M2-01ak: a graph-bound metric is not judged on another graph's samples. Refused, not
+    // failed: the number says nothing about a regression either way.
+    const baselineGraph = metric.baseline.routingGraphContentSha256;
+    if (
+      baselineGraph !== undefined &&
+      samples.length > 0 &&
+      context.routingGraphContentSha256 !== baselineGraph
+    )
+      throw new Error(
+        `ENGINE_GRAPH_NOT_BASELINED:${id}: measured on ${context.routingGraphContentSha256 ?? 'an unrecorded graph'}, baselined on ${baselineGraph}`,
+      );
     const loads = samples.map((sample) => sample.loadAverage1m);
     const base = {
       id,

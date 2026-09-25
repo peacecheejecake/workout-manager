@@ -16,6 +16,7 @@ import {
   recordedRuns,
   repoRelative,
   retryDecision,
+  runContext,
   VERIFICATION_LOG_DIRECTORY,
   verifyBaselinesAgainstRuns,
   WIPED_OUTPUT_DIRECTORIES,
@@ -539,9 +540,12 @@ describe('the checked-in budget', () => {
       const result = JSON.parse(readFileSync(research(file), 'utf8')) as {
         mode: string;
         samples: Record<string, BudgetSample[]>;
+        details?: { routingGraph?: { graphContentSha256?: unknown } };
       };
       expect(result.mode, file).toBe('judged');
-      expect(evaluateBudget(budget, result.samples, phases).passed, file).toBe(true);
+      expect(evaluateBudget(budget, result.samples, phases, runContext(result)).passed, file).toBe(
+        true,
+      );
     }
   });
 
@@ -687,11 +691,19 @@ describe('the checked-in budget', () => {
     const run3 = result.previousRuns.find((run) => run.executedAt.startsWith('2026-09-24T15:30'));
     expect(run3?.mode).toBe('judged');
     // The parse-process metric came with M2-01aj; run 3 could not measure it, and without it
-    // the run would be `missing` a metric rather than inconclusive. Judge it by the rest.
-    const { [PARSE_PROCESS_RSS]: _added, ...before } = budget.desktop.metrics;
+    // the run would be `missing` a metric rather than inconclusive. Judge it by the rest. The
+    // engine memory metrics are bound to the national graph since M2-01ak and run 3 measured
+    // the Seoul graph: they are not comparable, so they are left out too (evaluateBudget
+    // refuses them rather than judging them).
+    const {
+      [PARSE_PROCESS_RSS]: _added,
+      'engine.idleRssMiB': _idle,
+      'engine.loadPeakRssMiB': _peak,
+      ...before
+    } = budget.desktop.metrics;
     const judged = evaluateBudget(
       { ...budget, desktop: { ...budget.desktop, metrics: before } },
-      run3?.samples ?? {},
+      Object.fromEntries(Object.entries(run3?.samples ?? {}).filter(([id]) => id in before)),
       ['api', 'engine', 'worker', 'parse'],
     );
     expect(judged.passed).toBe(false);
@@ -1042,5 +1054,84 @@ describe('output that survives the test runners (M2-01al c)', () => {
     expect(readFileSync(join(repository, '.prettierignore'), 'utf8').split('\n')).toContain(
       `${VERIFICATION_LOG_DIRECTORY}/`,
     );
+  });
+});
+
+describe('engine memory budgets are bound to the graph they were baselined on (M2-01ak)', () => {
+  const national = 'c'.repeat(64);
+  const seoul = 'a'.repeat(64);
+  const engineBudget = (graph: string | undefined) => ({
+    schemaVersion: 1,
+    desktop: {
+      label: 'unit fixture',
+      metrics: {
+        'engine.rss': {
+          phase: 'engine',
+          unit: 'MiB',
+          statistic: 'max',
+          budget: 150,
+          minimumSamples: 5,
+          description: 'fixture',
+          baseline: {
+            statisticValue: 100,
+            samples: 5,
+            runs: ['r1'],
+            loadAverage1m: { min: 20, max: 20 },
+            ...(graph === undefined ? {} : { routingGraphContentSha256: graph }),
+          },
+          headroom: { factor: 1.5, reason: 'fixture' },
+        },
+      },
+    },
+    realDevice: { status: 'not_executed', reason: 'fixture', metrics: {} },
+  });
+  const within = samples([90, 90, 90, 90, 90]);
+
+  it('refuses an engine memory metric whose baseline does not name its graph', () => {
+    expect(() => parseBudgetFile(engineBudget(undefined))).toThrow(
+      'BUDGET_BASELINE_GRAPH_INVALID:engine.rss',
+    );
+    expect(() => parseBudgetFile(engineBudget('not-a-hash'))).toThrow(
+      'BUDGET_BASELINE_GRAPH_INVALID',
+    );
+  });
+
+  it('judges samples from the baselined graph and refuses another graph or an unrecorded one', () => {
+    const budget = parseBudgetFile(engineBudget(national));
+    const judge = (graph: string | null | undefined) =>
+      evaluateBudget(budget, { 'engine.rss': within }, ['engine'], {
+        routingGraphContentSha256: graph,
+      });
+    expect(judge(national).passed).toBe(true);
+    // A Seoul-graph run under the national budget would pass a doubled Seoul RSS: refused.
+    expect(() => judge(seoul)).toThrow('ENGINE_GRAPH_NOT_BASELINED:engine.rss');
+    expect(() => judge(null)).toThrow('ENGINE_GRAPH_NOT_BASELINED');
+    expect(() => evaluateBudget(budget, { 'engine.rss': within }, ['engine'])).toThrow(
+      'ENGINE_GRAPH_NOT_BASELINED',
+    );
+  });
+
+  it('refuses a baseline run measured on another graph', () => {
+    const budget = parseBudgetFile(engineBudget(national));
+    const run = (graph: string) => ({
+      executedAt: 'r1',
+      mode: 'record-only (baseline, not judged)',
+      samples: { 'engine.rss': samples([100, 90, 90, 90, 90], 20) },
+      details: { routingGraph: { graphContentSha256: graph } },
+    });
+    expect(() => verifyBaselinesAgainstRuns(budget, [run(national)])).not.toThrow();
+    expect(() => verifyBaselinesAgainstRuns(budget, [run(seoul)])).toThrow(
+      'BASELINE_RUN_GRAPH_MISMATCH:engine.rss:r1',
+    );
+  });
+
+  it('binds the checked-in engine memory budgets to the national graph', () => {
+    const checkedIn = parseBudgetFile(
+      JSON.parse(readFileSync(research('performance-budget.json'), 'utf8')),
+    );
+    for (const id of ['engine.idleRssMiB', 'engine.loadPeakRssMiB'])
+      expect(checkedIn.desktop.metrics[id]?.baseline.routingGraphContentSha256, id).toBe(
+        '138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085',
+      );
   });
 });

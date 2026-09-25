@@ -17,12 +17,12 @@
 
 ## 완료된 최신 작업
 
-[M2-01am](progress/M2-01am.md)를 완료했다. S09 영향 탭의 금지 형태 단언을 단위 시험과 두 shell E2E가 함께 쓰는 한 목록으로 넓혔다(비율·차지·몫·
-이행률, 영어 share·odds·percentage points, 분수·비, 앞뒤 인과 형태, 요소가 나뉜 이름·값). 관측 절 이름을 제목에서 가져오고, 관련 상담이
-없는 이유를 경우별로 적고, 코치 검토 링크를 E2E에서 실제로 열어 쓰기 0을 단언한다. 세 행은 passed 유지. 영향 탭에 숫자가 든 새 문구를
-넣을 때는 `packages/modules/activities/tests/impact-forbidden.ts`의 목록·허용 표본을 함께 본다.
+[M2-01ak](progress/M2-01ak.md)를 완료했다(사용자 결정 2026-09-25). 보행 routing graph를 Geofabrik 월간 한국 전체 extract
+(`south-korea-260901.osm.pbf`, SHA-256 pin)와 저장소 serving profile로 새 root `.geo-build-routing/kr-260901/`에 만들었다(graph
+`188b65effcc6ef5c`). production composition 안에서 부하 중 전환과 부하 중 rollback이 실패 0이었고, 재전환 뒤 blue를 퇴역해도 green 단독으로 경로를 냈으며, 엔진 로그·swap·운영 probe가
+새 graph에서 통과했다. 38쌍 coverage는 35/2/1(등급 없음). 엔진 메모리 예산은 새 graph에 묶어 다시 잡았다(idle 1100, 부하 2000 MiB).
 
-직전 완료: [M2-01ao](progress/M2-01ao.md)(백업 뒤 지운 코스의 복원 부활 방지).
+직전 완료: [M2-01am](progress/M2-01am.md)(S09 영향 탭 단언 보강).
 
 ## 운영 메모
 
@@ -30,8 +30,15 @@
 - routing을 켠 API를 여러 인스턴스로 운영할 수 있다(M2-01ah). 모든 인스턴스는 같은 PostgreSQL과 같은 한도 설정을 쓰고, 047 적용
   뒤 `grantCourses`를 다시 실행한다. graph 교체는 인스턴스마다 전환하며 그동안 graph가 섞인다(runbook). 배포는 web을 API보다 먼저
   또는 함께 한다(옛 web bundle은 `timeout_may_be_no_route`를 해석하지 못한다).
-- `.geo-build`의 배포 routing graph A는 아직 옛 profile 사본으로 돈다. 저장소 helper가 request-log override와 WARN threshold를
-  자동으로 붙이므로 보호되지만, 새 profile로의 교체는 M2-01ak로 한다.
+- 전국 routing graph는 `.geo-build-routing/kr-260901/`(git 밖)에 있다. 서빙하려면 그 root의 `config-serving.yml`로 엔진을 helper로
+  띄우고 API의 `ROUTING_GRAPH_DIRECTORY`(`<root>/foot`)·`ROUTING_PROFILE_CONFIG`(`<root>/config-serving.yml`)·`ROUTING_ENGINE_URL`·
+  `ROUTING_ENGINE_ARTIFACT`를(또는 blue/green 전환 파일과 SIGHUP으로) 그쪽으로 옮긴다(runbook "graph 교체·rollback — blue/green",
+  `apps/api/src/routing-deployment.ts`). `ROUTING_GRAPH_ROOT`·`ROUTING_EXTRACT_SOURCE=osm-extract-south-korea`는 build·probe script가
+  root와 extract를 고르는 값이다. 기본 `.geo-build`는 여전히 Seoul graph(옛 profile 사본, helper override로 보호)이며 rollback 대상이다.
+  엔진 단계가 든 판정 성능 probe는 위 두 script 값 없이 기본 layout에서 돌리면 `ENGINE_GRAPH_NOT_BASELINED`로 멈춘다. PBF는 graph와
+  함께 보관한다(월간 파일은 약 석 달 뒤 내려간다).
+- 배경 타일은 아직 Seoul extract다(ADR §1·§11, 지역 확대 보류). 그래서 서울 밖 경로에는 배경 지도가 없을 것으로 본다(확인한 사실은
+  아니다).
 - 후속(M2-01k-l 검토 비차단): 연결·해제 PATCH가 실패하면 keyboard focus가 body로 떨어진다. 활동 상세 재조회 중 미디어 panel을
   유지하는 gate에 시험이 없다.
 - track parser child는 컨테이너 메모리 한도 안에서 돈다. OS OOM-killer가 child를 죽이면 `TRACK_PARSE_WORKER_FAILED`로 보이고,
@@ -48,10 +55,9 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01ak, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
-M2-01k-n과 M2-01k-o·M2-01ag·M2-01ak는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01ak는 공유
-`.geo-build`를 바꾸므로 harness lock을 잡고 다른 엔진 시험과 겹치지 않게 한다. `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01k-n, M2-01ag, M2-01an, M2-01ap, M2-01ar, M2-01k-o. 이 중
+M2-01k-n과 M2-01k-o·M2-01ag는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). `M2-01k-o`(공유)는 요구가 승인되어 구현할 수 있다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
 
@@ -78,8 +84,9 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 - 사용자 결정(2026-09-25): 코스 공유(M2-01k-o) [요구](research/m2-01k-o-sharing-requirement.md)를 승인했다. 범위는 확인 뒤 소유자
   GPX(A)와 보기 전용 unlisted 링크(B, 기본 꺼짐)이며, 링크는 보호 구역이 하나 이상 있어야 한다. B는 독립 재식별 검토의 차단 항목
   (공유용 확장 원과 비밀 오프셋 등)과 T22–T25가 통과해야 켤 수 있다. 계획 문장(map-implementation-plan.md:104, :187)을 개정했다.
-- 사용자 결정(2026-09-25): routing 지도 데이터를 서울 extract에서 한국 전체 extract로 바꾼다(M2-01ak). M0-06b 증거 묶음은
-  [m0-06b-routing-evidence.md](research/m0-06b-routing-evidence.md)이며 독립 coverage 검토는 새 graph로 받는다.
+- 사용자 결정(2026-09-25): routing 지도 데이터를 서울 extract에서 한국 전체 extract로 바꿨다(M2-01ak 완료, graph
+  `188b65effcc6ef5c`). M0-06b 증거 묶음은 [m0-06b-routing-evidence.md](research/m0-06b-routing-evidence.md)이며 독립 coverage 검토는
+  새 graph로 받는다(P8-coverage not_executed).
   운영 OIDC는 Google을 평가했고([평가](research/ext-oidc-google-evaluation.md): Google 단독은 prompt=login·새 auth_time·OP
   로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
   독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.

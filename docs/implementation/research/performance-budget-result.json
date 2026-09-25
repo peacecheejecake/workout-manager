@@ -1,22 +1,30 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k-f",
-  "executedAt": "2026-09-25T03:50:57.567Z",
-  "finishedAt": "2026-09-25T03:52:01.601Z",
+  "executedAt": "2026-09-25T11:25:24.038Z",
+  "finishedAt": "2026-09-25T11:26:28.376Z",
   "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
   "mode": "judged",
   "budgetFile": "docs/implementation/research/performance-budget.json",
   "sourceTree": {
-    "head": "06754aa69c2ef12968b3bd09188a61558187636c",
+    "head": "8429efad94fece4fadddd5528ec076d9b5ccfd84",
     "dirtyPaths": [
+      "packages/tooling/eslint/index.mjs",
+      "packages/tooling/tests/build-routing-graph.test.mjs",
       "packages/tooling/tests/performance-budget.test.ts",
+      "scripts/build-routing-graph.mts",
+      "scripts/geo/sources.mjs",
       "scripts/performance-budget.ts",
       "scripts/probe-performance-budget.mts",
-      "tests/performance/long-track-render.spec.ts"
+      "scripts/probe-routing-engine-logs.mts",
+      "scripts/probe-routing-korea-coverage.mts",
+      "scripts/probe-routing-operational.mts",
+      "scripts/probe-routing-profile-rollout.mts",
+      "scripts/probe-routing-swap-and-bounds.mts"
     ],
-    "diffSha256": "2f1b47bd379799c8558d9bbe79f5859feb547cc3947ea37b676c3c141ee6d1b5",
-    "allowDirtyReason": "M2-01al uncommitted node files (evaluator, probe, unit test, browser spec comment)",
-    "allowedProductPaths": []
+    "diffSha256": "0ef5d678f813fde5f4a58513cdbdb4640c928e5f56408c75cbae14731a889f0c",
+    "allowDirtyReason": "M2-01ak uncommitted probe/build changes",
+    "allowedProductPaths": ["packages/tooling/eslint/index.mjs"]
   },
   "phases": ["api", "engine", "worker", "parse"],
   "samplesPerMetric": 20,
@@ -32,8 +40,8 @@
     "cpus": 8,
     "memoryGiB": 32,
     "node": "v24.12.0",
-    "loadAverageAtStart": [4.46, 6.74, 11.64],
-    "loadAverageAtEnd": [4.54, 6.3, 11.11]
+    "loadAverageAtStart": [26.62, 27.64, 27.26],
+    "loadAverageAtEnd": [35.14, 30.02, 28.19]
   },
   "passed": true,
   "attempt": {
@@ -58,7 +66,7 @@
     {
       "id": "engine-load-every-route-computed",
       "passed": true,
-      "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26400 m"
+      "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26398 m"
     },
     {
       "id": "worker-parse-process-rss-read-every-parse",
@@ -68,7 +76,7 @@
     {
       "id": "worker-heap-ceiling-is-a-real-threshold",
       "passed": true,
-      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:TRACK_PARSE_MEMORY_EXCEEDED 48:ok"
+      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok"
     },
     {
       "id": "worker-concurrency-bound-at-limit",
@@ -112,11 +120,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
-        "observed": 566
+        "observed": 551
       },
       {
         "id": "api.finalizeMs",
@@ -125,8 +133,8 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
         "observed": 11
@@ -138,11 +146,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
-        "observed": 9
+        "observed": 4
       },
       {
         "id": "api.readNormalizedMs",
@@ -151,11 +159,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
-        "observed": 10
+        "observed": 8
       },
       {
         "id": "api.readMapPathBytes",
@@ -164,8 +172,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
         "observed": 970464
@@ -177,8 +185,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
         "observed": 5365290
@@ -190,37 +198,37 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.45,
-          "max": 4.66
+          "min": 27.38,
+          "max": 30.25
         },
         "verdict": "passed",
-        "observed": 517
+        "observed": 514
       },
       {
         "id": "engine.idleRssMiB",
         "statistic": "max",
-        "budget": 470,
+        "budget": 1100,
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.25,
-          "max": 4.66
+          "min": 30.25,
+          "max": 32.87
         },
         "verdict": "passed",
-        "observed": 289
+        "observed": 694
       },
       {
         "id": "engine.loadPeakRssMiB",
         "statistic": "max",
-        "budget": 800,
+        "budget": 2000,
         "unit": "MiB",
         "samples": 9,
         "loadAverage1m": {
-          "min": 4.25,
-          "max": 4.25
+          "min": 32.87,
+          "max": 32.87
         },
         "verdict": "passed",
-        "observed": 513
+        "observed": 1225
       },
       {
         "id": "engine.routeUnderLoadMs",
@@ -229,11 +237,11 @@
         "unit": "ms",
         "samples": 36,
         "loadAverage1m": {
-          "min": 4.25,
-          "max": 4.25
+          "min": 32.87,
+          "max": 32.87
         },
         "verdict": "passed",
-        "observed": 73
+        "observed": 109
       },
       {
         "id": "worker.parseMs",
@@ -242,11 +250,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.91,
-          "max": 4.08
+          "min": 32.57,
+          "max": 32.8
         },
         "verdict": "passed",
-        "observed": 465
+        "observed": 457
       },
       {
         "id": "worker.concurrentAtBoundMs",
@@ -255,11 +263,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.57,
-          "max": 4.85
+          "min": 32.17,
+          "max": 35.41
         },
         "verdict": "passed",
-        "observed": 523
+        "observed": 700
       },
       {
         "id": "worker.minimumHeapCeilingMiB",
@@ -268,11 +276,11 @@
         "unit": "MiB",
         "samples": 2,
         "loadAverage1m": {
-          "min": 4.62,
-          "max": 4.62
+          "min": 32.17,
+          "max": 33.05
         },
         "verdict": "passed",
-        "observed": 48
+        "observed": 32
       },
       {
         "id": "worker.parseProcessPeakRssMiB",
@@ -281,11 +289,11 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 3.99,
-          "max": 4.15
+          "min": 32.57,
+          "max": 33.41
         },
         "verdict": "passed",
-        "observed": 197
+        "observed": 198
       },
       {
         "id": "parse.parseNormalizeMs",
@@ -294,11 +302,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.54,
-          "max": 4.85
+          "min": 35.14,
+          "max": 35.41
         },
         "verdict": "passed",
-        "observed": 155
+        "observed": 148
       },
       {
         "id": "parse.mapPathMs",
@@ -307,11 +315,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.54,
-          "max": 4.85
+          "min": 35.14,
+          "max": 35.41
         },
         "verdict": "passed",
-        "observed": 21
+        "observed": 20
       },
       {
         "id": "parse.normalizedBytes",
@@ -320,8 +328,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.54,
-          "max": 4.85
+          "min": 35.14,
+          "max": 35.41
         },
         "verdict": "passed",
         "observed": 5365364
@@ -333,8 +341,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 4.54,
-          "max": 4.85
+          "min": 35.14,
+          "max": 35.41
         },
         "verdict": "passed",
         "observed": 970538
@@ -362,1450 +370,1450 @@
   "samples": {
     "api.uploadParseMs": [
       {
-        "value": 590,
-        "loadAverage1m": 4.58
+        "value": 585,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 552,
-        "loadAverage1m": 4.58
+        "value": 542,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 541,
-        "loadAverage1m": 4.58
+        "value": 528,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 560,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 566,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 543,
-        "loadAverage1m": 4.58
+        "value": 551,
+        "loadAverage1m": 27.38
       },
       {
         "value": 538,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
-        "value": 566,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 550,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 535,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 529,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 547,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 538,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 535,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 545,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 535,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 539,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 522,
-        "loadAverage1m": 4.66
+        "value": 534,
+        "loadAverage1m": 27.38
       },
       {
         "value": 518,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 27.38
       },
       {
-        "value": 524,
-        "loadAverage1m": 4.66
+        "value": 512,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 518,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 511,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 514,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 517,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 520,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 509,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 504,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 508,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 518,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 515,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 508,
+        "loadAverage1m": 30.25
+      },
+      {
+        "value": 505,
+        "loadAverage1m": 30.25
       }
     ],
     "api.finalizeMs": [
       {
         "value": 11,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 4.58
+        "value": 8,
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 10,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 5,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 16,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 5,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
       },
       {
         "value": 6,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 5,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 5,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 30.25
       },
       {
         "value": 6,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 30.25
       }
     ],
     "api.readMapPathMs": [
       {
         "value": 5,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 9,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 9,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 4,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 3,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 4,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 3,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 27.38
       },
       {
         "value": 4,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 3,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 27.38
       },
       {
         "value": 4,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 27.38
       },
       {
         "value": 3,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 4,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 30.25
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 30.25
       }
     ],
     "api.readMapPathBytes": [
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 30.25
       },
       {
         "value": 970464,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 30.25
       }
     ],
     "api.readNormalizedMs": [
       {
-        "value": 17,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
         "value": 8,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.58
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 8,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 10,
-        "loadAverage1m": 4.45
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 9,
+        "loadAverage1m": 27.38
       },
       {
         "value": 6,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 27.38
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
       },
       {
         "value": 6,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.66
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 6,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 29.67
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 30.25
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 30.25
       }
     ],
     "api.readNormalizedBytes": [
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 27.38
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.45
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 29.67
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 30.25
       },
       {
         "value": 5365290,
-        "loadAverage1m": 4.66
+        "loadAverage1m": 30.25
       }
     ],
     "api.processPeakRssMiB": [
       {
-        "value": 363,
-        "loadAverage1m": 4.58
-      },
-      {
         "value": 389,
-        "loadAverage1m": 4.58
+        "loadAverage1m": 27.38
       },
       {
-        "value": 437,
-        "loadAverage1m": 4.58
+        "value": 431,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 450,
-        "loadAverage1m": 4.58
+        "value": 469,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 456,
-        "loadAverage1m": 4.58
+        "value": 469,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 459,
-        "loadAverage1m": 4.58
+        "value": 482,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 489,
-        "loadAverage1m": 4.45
+        "value": 513,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 492,
-        "loadAverage1m": 4.45
+        "value": 513,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 492,
-        "loadAverage1m": 4.45
+        "value": 513,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 492,
-        "loadAverage1m": 4.45
+        "value": 513,
+        "loadAverage1m": 27.38
       },
       {
-        "value": 497,
-        "loadAverage1m": 4.45
+        "value": 513,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 498,
-        "loadAverage1m": 4.45
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 498,
-        "loadAverage1m": 4.45
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 498,
-        "loadAverage1m": 4.45
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 506,
-        "loadAverage1m": 4.45
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 506,
-        "loadAverage1m": 4.66
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 506,
-        "loadAverage1m": 4.66
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 517,
-        "loadAverage1m": 4.66
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 517,
-        "loadAverage1m": 4.66
+        "value": 514,
+        "loadAverage1m": 29.67
       },
       {
-        "value": 517,
-        "loadAverage1m": 4.66
+        "value": 514,
+        "loadAverage1m": 30.25
+      },
+      {
+        "value": 514,
+        "loadAverage1m": 30.25
       }
     ],
     "engine.idleRssMiB": [
       {
-        "value": 288,
-        "loadAverage1m": 4.66
+        "value": 693,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.66
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.66
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.66
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.66
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 30.25
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.36
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 31.11
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 32.87
       }
     ],
     "engine.routeUnderLoadMs": [
       {
-        "value": 69,
-        "loadAverage1m": 4.25
+        "value": 106,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 76,
-        "loadAverage1m": 4.25
+        "value": 112,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 65,
-        "loadAverage1m": 4.25
+        "value": 59,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 73,
-        "loadAverage1m": 4.25
+        "value": 109,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 39,
-        "loadAverage1m": 4.25
+        "value": 77,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 32,
-        "loadAverage1m": 4.25
+        "value": 80,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 42,
-        "loadAverage1m": 4.25
+        "value": 86,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 36,
-        "loadAverage1m": 4.25
+        "value": 82,
+        "loadAverage1m": 32.87
       },
       {
         "value": 52,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 53,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 46,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 49,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 31,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 26,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 29,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 33,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 29,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 34,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 31,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 34,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 29,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 30,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 39,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 34,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 36,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 30,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 29,
-        "loadAverage1m": 4.25
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 4.25
+        "loadAverage1m": 32.87
       },
       {
         "value": 38,
-        "loadAverage1m": 4.25
+        "loadAverage1m": 32.87
       },
       {
-        "value": 31,
-        "loadAverage1m": 4.25
+        "value": 43,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 32,
-        "loadAverage1m": 4.25
+        "value": 59,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 54,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 42,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 41,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 51,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 41,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 43,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 37,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 49,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 50,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 43,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 36,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 39,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 38,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 43,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 53,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 50,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 43,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 48,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 46,
+        "loadAverage1m": 32.87
+      },
+      {
+        "value": 44,
+        "loadAverage1m": 32.87
       }
     ],
     "engine.loadPeakRssMiB": [
       {
-        "value": 289,
-        "loadAverage1m": 4.25
+        "value": 694,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 347,
-        "loadAverage1m": 4.25
+        "value": 859,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 350,
-        "loadAverage1m": 4.25
+        "value": 902,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 372,
-        "loadAverage1m": 4.25
+        "value": 1000,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 373,
-        "loadAverage1m": 4.25
+        "value": 1090,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 399,
-        "loadAverage1m": 4.25
+        "value": 1119,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 470,
-        "loadAverage1m": 4.25
+        "value": 1162,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 512,
-        "loadAverage1m": 4.25
+        "value": 1200,
+        "loadAverage1m": 32.87
       },
       {
-        "value": 513,
-        "loadAverage1m": 4.25
+        "value": 1225,
+        "loadAverage1m": 32.87
       }
     ],
     "worker.parseMs": [
       {
-        "value": 465,
-        "loadAverage1m": 3.91
+        "value": 459,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 445,
-        "loadAverage1m": 3.91
+        "value": 447,
+        "loadAverage1m": 32.8
+      },
+      {
+        "value": 457,
+        "loadAverage1m": 32.8
+      },
+      {
+        "value": 453,
+        "loadAverage1m": 32.8
+      },
+      {
+        "value": 442,
+        "loadAverage1m": 32.8
       },
       {
         "value": 437,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 444,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 440,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 437,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 439,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 446,
-        "loadAverage1m": 3.91
-      },
-      {
-        "value": 433,
-        "loadAverage1m": 4.08
-      },
-      {
-        "value": 440,
-        "loadAverage1m": 4.08
+        "loadAverage1m": 32.8
       },
       {
         "value": 438,
-        "loadAverage1m": 4.08
+        "loadAverage1m": 32.8
       },
       {
-        "value": 450,
-        "loadAverage1m": 4.08
+        "value": 448,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 451,
-        "loadAverage1m": 4.08
+        "value": 436,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 455,
-        "loadAverage1m": 4.08
+        "value": 437,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 465,
-        "loadAverage1m": 4.08
+        "value": 436,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 458,
-        "loadAverage1m": 4.08
+        "value": 438,
+        "loadAverage1m": 32.8
       },
       {
-        "value": 445,
-        "loadAverage1m": 4.08
+        "value": 435,
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 446,
+        "loadAverage1m": 32.57
       },
       {
         "value": 441,
-        "loadAverage1m": 4.08
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 437,
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 434,
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 447,
+        "loadAverage1m": 32.57
       },
       {
         "value": 441,
-        "loadAverage1m": 4.08
+        "loadAverage1m": 32.57
       },
       {
-        "value": 451,
-        "loadAverage1m": 3.99
+        "value": 436,
+        "loadAverage1m": 32.57
       }
     ],
     "worker.parseProcessPeakRssMiB": [
       {
-        "value": 177,
-        "loadAverage1m": 3.99
+        "value": 180,
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 188,
+        "loadAverage1m": 32.57
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 32.57
       },
       {
         "value": 187,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 187,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 183,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 183,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 192,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 184,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 179,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 187,
-        "loadAverage1m": 3.99
-      },
-      {
-        "value": 183,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 181,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 184,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 184,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 184,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 197,
-        "loadAverage1m": 4.15
-      },
-      {
-        "value": 184,
-        "loadAverage1m": 4.15
+        "loadAverage1m": 33.41
       },
       {
         "value": 186,
-        "loadAverage1m": 4.15
+        "loadAverage1m": 33.41
       },
       {
-        "value": 189,
-        "loadAverage1m": 4.15
+        "value": 198,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 186,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 183,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 191,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 183,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 185,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 187,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 192,
+        "loadAverage1m": 33.41
+      },
+      {
+        "value": 190,
+        "loadAverage1m": 33.05
+      },
+      {
+        "value": 181,
+        "loadAverage1m": 33.05
+      },
+      {
+        "value": 179,
+        "loadAverage1m": 33.05
+      },
+      {
+        "value": 183,
+        "loadAverage1m": 33.05
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 33.05
+      },
+      {
+        "value": 178,
+        "loadAverage1m": 33.05
       }
     ],
     "worker.minimumHeapCeilingMiB": [
       {
         "value": 32,
-        "loadAverage1m": 4.62
+        "loadAverage1m": 33.05
       },
       {
-        "value": 48,
-        "loadAverage1m": 4.62
+        "value": 32,
+        "loadAverage1m": 32.17
       }
     ],
     "worker.concurrentAtBoundMs": [
       {
+        "value": 521,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 515,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 525,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 521,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 700,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 695,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 669,
+        "loadAverage1m": 32.17
+      },
+      {
+        "value": 725,
+        "loadAverage1m": 35.36
+      },
+      {
+        "value": 661,
+        "loadAverage1m": 35.36
+      },
+      {
+        "value": 551,
+        "loadAverage1m": 35.36
+      },
+      {
+        "value": 560,
+        "loadAverage1m": 35.36
+      },
+      {
+        "value": 536,
+        "loadAverage1m": 35.36
+      },
+      {
         "value": 520,
-        "loadAverage1m": 4.62
-      },
-      {
-        "value": 517,
-        "loadAverage1m": 4.62
-      },
-      {
-        "value": 516,
-        "loadAverage1m": 4.62
-      },
-      {
-        "value": 512,
-        "loadAverage1m": 4.62
-      },
-      {
-        "value": 512,
-        "loadAverage1m": 4.62
-      },
-      {
-        "value": 518,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 522,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 510,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 542,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 518,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 523,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 509,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 517,
-        "loadAverage1m": 4.57
+        "loadAverage1m": 35.36
       },
       {
         "value": 513,
-        "loadAverage1m": 4.57
+        "loadAverage1m": 35.36
       },
       {
-        "value": 513,
-        "loadAverage1m": 4.57
-      },
-      {
-        "value": 517,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 518,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 512,
-        "loadAverage1m": 4.85
+        "value": 515,
+        "loadAverage1m": 35.36
       },
       {
         "value": 519,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.36
       },
       {
-        "value": 507,
-        "loadAverage1m": 4.85
+        "value": 516,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 510,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 522,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 515,
+        "loadAverage1m": 35.41
       }
     ],
     "parse.parseNormalizeMs": [
       {
         "value": 148,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 146,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 164,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 153,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 143,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 137,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 137,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 138,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 143,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 139,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 155,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 140,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 135,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 135,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 132,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 134,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 134,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 134,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 145,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 143,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 138,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 137,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 141,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 138,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 139,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 139,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 138,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 139,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 135,
+        "loadAverage1m": 35.41
       },
       {
         "value": 133,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 135,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 150,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 138,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 132,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 136,
+        "loadAverage1m": 35.14
+      },
+      {
+        "value": 133,
+        "loadAverage1m": 35.14
       }
     ],
     "parse.mapPathMs": [
       {
-        "value": 20,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 20,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 21,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 18,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 18,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.85
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.85
+        "value": 19,
+        "loadAverage1m": 35.41
       },
       {
         "value": 15,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
-        "value": 20,
-        "loadAverage1m": 4.85
+        "value": 16,
+        "loadAverage1m": 35.41
       },
       {
         "value": 15,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 20,
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 35.41
       },
       {
         "value": 19,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 18,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 4.54
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 21,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 14,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 35.14
+      },
+      {
+        "value": 19,
+        "loadAverage1m": 35.14
       }
     ],
     "parse.normalizedBytes": [
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.14
       },
       {
         "value": 5365364,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.14
       }
     ],
     "parse.mapPathBytes": [
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.85
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.41
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.14
       },
       {
         "value": 970538,
-        "loadAverage1m": 4.54
+        "loadAverage1m": 35.14
       }
     ]
   },
   "summary": {
     "api.uploadParseMs": {
       "n": 20,
-      "min": 518,
-      "p50": 539,
-      "p95": 566,
-      "max": 590
+      "min": 504,
+      "p50": 517,
+      "p95": 551,
+      "max": 585
     },
     "api.finalizeMs": {
       "n": 20,
       "min": 5,
-      "p50": 6,
+      "p50": 5,
       "p95": 11,
-      "max": 16
+      "max": 14
     },
     "api.readMapPathMs": {
       "n": 20,
       "min": 3,
-      "p50": 4,
-      "p95": 9,
-      "max": 9
+      "p50": 3,
+      "p95": 4,
+      "max": 5
     },
     "api.readMapPathBytes": {
       "n": 20,
@@ -1816,10 +1824,10 @@
     },
     "api.readNormalizedMs": {
       "n": 20,
-      "min": 6,
-      "p50": 7,
-      "p95": 10,
-      "max": 17
+      "min": 5,
+      "p50": 5,
+      "p95": 8,
+      "max": 9
     },
     "api.readNormalizedBytes": {
       "n": 20,
@@ -1830,72 +1838,72 @@
     },
     "api.processPeakRssMiB": {
       "n": 20,
-      "min": 363,
-      "p50": 492,
-      "p95": 517,
-      "max": 517
+      "min": 389,
+      "p50": 513,
+      "p95": 514,
+      "max": 514
     },
     "engine.idleRssMiB": {
       "n": 20,
-      "min": 288,
-      "p50": 289,
-      "p95": 289,
-      "max": 289
+      "min": 693,
+      "p50": 694,
+      "p95": 694,
+      "max": 694
     },
     "engine.routeUnderLoadMs": {
       "n": 36,
-      "min": 26,
-      "p50": 34,
-      "p95": 73,
-      "max": 76
+      "min": 36,
+      "p50": 45,
+      "p95": 109,
+      "max": 112
     },
     "engine.loadPeakRssMiB": {
       "n": 9,
-      "min": 289,
-      "p50": 373,
-      "p95": 513,
-      "max": 513
+      "min": 694,
+      "p50": 1090,
+      "p95": 1225,
+      "max": 1225
     },
     "worker.parseMs": {
       "n": 20,
-      "min": 433,
-      "p50": 444,
-      "p95": 465,
-      "max": 465
+      "min": 434,
+      "p50": 438,
+      "p95": 457,
+      "max": 459
     },
     "worker.parseProcessPeakRssMiB": {
       "n": 20,
-      "min": 177,
+      "min": 178,
       "p50": 184,
       "p95": 192,
-      "max": 197
+      "max": 198
     },
     "worker.minimumHeapCeilingMiB": {
       "n": 2,
       "min": 32,
       "p50": 32,
-      "p95": 48,
-      "max": 48
+      "p95": 32,
+      "max": 32
     },
     "worker.concurrentAtBoundMs": {
       "n": 20,
-      "min": 507,
-      "p50": 517,
-      "p95": 523,
-      "max": 542
+      "min": 510,
+      "p50": 521,
+      "p95": 700,
+      "max": 725
     },
     "parse.parseNormalizeMs": {
       "n": 20,
       "min": 132,
       "p50": 138,
-      "p95": 155,
-      "max": 164
+      "p95": 148,
+      "max": 150
     },
     "parse.mapPathMs": {
       "n": 20,
       "min": 14,
       "p50": 15,
-      "p95": 21,
+      "p95": 20,
       "max": 21
     },
     "parse.normalizedBytes": {
@@ -1914,11 +1922,17 @@
     }
   },
   "details": {
+    "routingGraph": {
+      "extractSource": "osm-extract-south-korea",
+      "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+      "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+      "graphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+    },
     "engineWarmUp": {
-      "ms": 136,
+      "ms": 132,
       "status": 200,
       "outcome": "route_computed",
-      "distance": 26400
+      "distance": 26398
     },
     "engineLoad": {
       "inFlightPerRound": 4,
@@ -1927,9 +1941,9 @@
       "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
     },
     "parseProcessRss": {
-      "peakChildMiB": 197,
+      "peakChildMiB": 198,
       "parsesWithoutReading": 0,
-      "atBoundPeakSumMiB": 347,
+      "atBoundPeakSumMiB": 351,
       "intervalMs": 20,
       "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
     },
@@ -1959,10 +1973,6 @@
         },
         {
           "ceilingMb": 32,
-          "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
-        },
-        {
-          "ceilingMb": 48,
           "outcome": "ok"
         }
       ]
@@ -24050,6 +24060,3075 @@
             }
           ]
         ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-25T03:50:57.567Z",
+      "finishedAt": "2026-09-25T03:52:01.601Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "judged",
+      "budgetFile": "docs/implementation/research/performance-budget.json",
+      "sourceTree": {
+        "head": "06754aa69c2ef12968b3bd09188a61558187636c",
+        "dirtyPaths": [
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/performance-budget.ts",
+          "scripts/probe-performance-budget.mts",
+          "tests/performance/long-track-render.spec.ts"
+        ],
+        "diffSha256": "2f1b47bd379799c8558d9bbe79f5859feb547cc3947ea37b676c3c141ee6d1b5",
+        "allowDirtyReason": "M2-01al uncommitted node files (evaluator, probe, unit test, browser spec comment)",
+        "allowedProductPaths": []
+      },
+      "phases": ["api", "engine", "worker", "parse"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [4.46, 6.74, 11.64],
+        "loadAverageAtEnd": [4.54, 6.3, 11.11]
+      },
+      "passed": true,
+      "attempt": {
+        "number": 1,
+        "of": 2,
+        "retry": {
+          "retry": false,
+          "reason": "passed"
+        }
+      },
+      "checks": [
+        {
+          "id": "api-map-path-carries-the-whole-track",
+          "passed": true,
+          "detail": "20000 vertices for 20000 samples"
+        },
+        {
+          "id": "api-every-request-succeeded",
+          "passed": true,
+          "detail": "120 requests, non-200: none"
+        },
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26400 m"
+        },
+        {
+          "id": "worker-parse-process-rss-read-every-parse",
+          "passed": true,
+          "detail": "20 of 20 parses had their RSS read (0 without a reading)"
+        },
+        {
+          "id": "worker-heap-ceiling-is-a-real-threshold",
+          "passed": true,
+          "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:TRACK_PARSE_MEMORY_EXCEEDED 48:ok"
+        },
+        {
+          "id": "worker-concurrency-bound-at-limit",
+          "passed": true,
+          "detail": "bound 2: 2 parsed, 1 TRACK_PARSER_BUSY, active after 0"
+        },
+        {
+          "id": "worker-no-parse-process-left",
+          "passed": true,
+          "detail": "0 parse processes alive after the phase"
+        },
+        {
+          "id": "budget-heap-below-product-ceiling",
+          "passed": true,
+          "detail": "96 MiB <= 256 MiB (docs/implementation/research/performance-budget.json)"
+        },
+        {
+          "id": "budget-parse-time-below-parser-deadline",
+          "passed": true,
+          "detail": "980 ms < 5000 ms"
+        },
+        {
+          "id": "budget-route-time-below-routing-deadline",
+          "passed": true,
+          "detail": "200 ms < 8000 ms"
+        },
+        {
+          "id": "budget-normalized-below-output-limit",
+          "passed": true,
+          "detail": "6000000 B < 8388608 B"
+        }
+      ],
+      "evaluation": {
+        "passed": true,
+        "inconclusive": false,
+        "metrics": [
+          {
+            "id": "api.uploadParseMs",
+            "statistic": "p95",
+            "budget": 1300,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 566
+          },
+          {
+            "id": "api.finalizeMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 11
+          },
+          {
+            "id": "api.readMapPathMs",
+            "statistic": "p95",
+            "budget": 30,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 9
+          },
+          {
+            "id": "api.readNormalizedMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 10
+          },
+          {
+            "id": "api.readMapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 970464
+          },
+          {
+            "id": "api.readNormalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 5365290
+          },
+          {
+            "id": "api.processPeakRssMiB",
+            "statistic": "max",
+            "budget": 800,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.45,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 517
+          },
+          {
+            "id": "engine.idleRssMiB",
+            "statistic": "max",
+            "budget": 470,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.25,
+              "max": 4.66
+            },
+            "verdict": "passed",
+            "observed": 289
+          },
+          {
+            "id": "engine.loadPeakRssMiB",
+            "statistic": "max",
+            "budget": 800,
+            "unit": "MiB",
+            "samples": 9,
+            "loadAverage1m": {
+              "min": 4.25,
+              "max": 4.25
+            },
+            "verdict": "passed",
+            "observed": 513
+          },
+          {
+            "id": "engine.routeUnderLoadMs",
+            "statistic": "p95",
+            "budget": 200,
+            "unit": "ms",
+            "samples": 36,
+            "loadAverage1m": {
+              "min": 4.25,
+              "max": 4.25
+            },
+            "verdict": "passed",
+            "observed": 73
+          },
+          {
+            "id": "worker.parseMs",
+            "statistic": "p95",
+            "budget": 980,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.91,
+              "max": 4.08
+            },
+            "verdict": "passed",
+            "observed": 465
+          },
+          {
+            "id": "worker.concurrentAtBoundMs",
+            "statistic": "p95",
+            "budget": 2600,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.57,
+              "max": 4.85
+            },
+            "verdict": "passed",
+            "observed": 523
+          },
+          {
+            "id": "worker.minimumHeapCeilingMiB",
+            "statistic": "max",
+            "budget": 96,
+            "unit": "MiB",
+            "samples": 2,
+            "loadAverage1m": {
+              "min": 4.62,
+              "max": 4.62
+            },
+            "verdict": "passed",
+            "observed": 48
+          },
+          {
+            "id": "worker.parseProcessPeakRssMiB",
+            "statistic": "max",
+            "budget": 300,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 3.99,
+              "max": 4.15
+            },
+            "verdict": "passed",
+            "observed": 197
+          },
+          {
+            "id": "parse.parseNormalizeMs",
+            "statistic": "p95",
+            "budget": 710,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.54,
+              "max": 4.85
+            },
+            "verdict": "passed",
+            "observed": 155
+          },
+          {
+            "id": "parse.mapPathMs",
+            "statistic": "p95",
+            "budget": 130,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.54,
+              "max": 4.85
+            },
+            "verdict": "passed",
+            "observed": 21
+          },
+          {
+            "id": "parse.normalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.54,
+              "max": 4.85
+            },
+            "verdict": "passed",
+            "observed": 5365364
+          },
+          {
+            "id": "parse.mapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 4.54,
+              "max": 4.85
+            },
+            "verdict": "passed",
+            "observed": 970538
+          }
+        ],
+        "realDevice": [
+          {
+            "id": "device.ios.navigationToDrawnMs",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.jsHeapAfterDrawnMiB",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.panFrameP95Ms",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.android.navigationToDrawnMs",
+            "verdict": "not_executed"
+          }
+        ]
+      },
+      "samples": {
+        "api.uploadParseMs": [
+          {
+            "value": 590,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 552,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 541,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 560,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 566,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 543,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 538,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 566,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 550,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 535,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 529,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 547,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 538,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 535,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 545,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 535,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 539,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 524,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.finalizeMs": [
+          {
+            "value": 11,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 10,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 16,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.readMapPathMs": [
+          {
+            "value": 5,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 9,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 9,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 4,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.readMapPathBytes": [
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.readNormalizedMs": [
+          {
+            "value": 17,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 8,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 8,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 10,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.readNormalizedBytes": [
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "api.processPeakRssMiB": [
+          {
+            "value": 363,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 389,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 450,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 456,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 459,
+            "loadAverage1m": 4.58
+          },
+          {
+            "value": 489,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 492,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 492,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 492,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 497,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 498,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 498,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 498,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 4.45
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.66
+          }
+        ],
+        "engine.idleRssMiB": [
+          {
+            "value": 288,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.66
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.36
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 69,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 76,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 73,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 52,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 53,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 26,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 33,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 30,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 30,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 29,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 4.25
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 289,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 347,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 350,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 372,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 373,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 399,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 470,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 4.25
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 4.25
+          }
+        ],
+        "worker.parseMs": [
+          {
+            "value": 465,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 445,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 444,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 440,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 439,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 446,
+            "loadAverage1m": 3.91
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 440,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 438,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 450,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 451,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 455,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 465,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 458,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 445,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 441,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 441,
+            "loadAverage1m": 4.08
+          },
+          {
+            "value": 451,
+            "loadAverage1m": 3.99
+          }
+        ],
+        "worker.parseProcessPeakRssMiB": [
+          {
+            "value": 177,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 187,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 187,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 192,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 179,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 187,
+            "loadAverage1m": 3.99
+          },
+          {
+            "value": 183,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 181,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 197,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 186,
+            "loadAverage1m": 4.15
+          },
+          {
+            "value": 189,
+            "loadAverage1m": 4.15
+          }
+        ],
+        "worker.minimumHeapCeilingMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 4.62
+          }
+        ],
+        "worker.concurrentAtBoundMs": [
+          {
+            "value": 520,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 516,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 4.62
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 542,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 523,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 4.57
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 519,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 4.85
+          }
+        ],
+        "parse.parseNormalizeMs": [
+          {
+            "value": 148,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 146,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 164,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 153,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 143,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 137,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 137,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 143,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 139,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 155,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 140,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 135,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 135,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 132,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 145,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 133,
+            "loadAverage1m": 4.54
+          }
+        ],
+        "parse.mapPathMs": [
+          {
+            "value": 20,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 20,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 21,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 20,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 19,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 21,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 4.54
+          }
+        ],
+        "parse.normalizedBytes": [
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 4.54
+          }
+        ],
+        "parse.mapPathBytes": [
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.85
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 4.54
+          }
+        ]
+      },
+      "summary": {
+        "api.uploadParseMs": {
+          "n": 20,
+          "min": 518,
+          "p50": 539,
+          "p95": 566,
+          "max": 590
+        },
+        "api.finalizeMs": {
+          "n": 20,
+          "min": 5,
+          "p50": 6,
+          "p95": 11,
+          "max": 16
+        },
+        "api.readMapPathMs": {
+          "n": 20,
+          "min": 3,
+          "p50": 4,
+          "p95": 9,
+          "max": 9
+        },
+        "api.readMapPathBytes": {
+          "n": 20,
+          "min": 970464,
+          "p50": 970464,
+          "p95": 970464,
+          "max": 970464
+        },
+        "api.readNormalizedMs": {
+          "n": 20,
+          "min": 6,
+          "p50": 7,
+          "p95": 10,
+          "max": 17
+        },
+        "api.readNormalizedBytes": {
+          "n": 20,
+          "min": 5365290,
+          "p50": 5365290,
+          "p95": 5365290,
+          "max": 5365290
+        },
+        "api.processPeakRssMiB": {
+          "n": 20,
+          "min": 363,
+          "p50": 492,
+          "p95": 517,
+          "max": 517
+        },
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 288,
+          "p50": 289,
+          "p95": 289,
+          "max": 289
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 26,
+          "p50": 34,
+          "p95": 73,
+          "max": 76
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 289,
+          "p50": 373,
+          "p95": 513,
+          "max": 513
+        },
+        "worker.parseMs": {
+          "n": 20,
+          "min": 433,
+          "p50": 444,
+          "p95": 465,
+          "max": 465
+        },
+        "worker.parseProcessPeakRssMiB": {
+          "n": 20,
+          "min": 177,
+          "p50": 184,
+          "p95": 192,
+          "max": 197
+        },
+        "worker.minimumHeapCeilingMiB": {
+          "n": 2,
+          "min": 32,
+          "p50": 32,
+          "p95": 48,
+          "max": 48
+        },
+        "worker.concurrentAtBoundMs": {
+          "n": 20,
+          "min": 507,
+          "p50": 517,
+          "p95": 523,
+          "max": 542
+        },
+        "parse.parseNormalizeMs": {
+          "n": 20,
+          "min": 132,
+          "p50": 138,
+          "p95": 155,
+          "max": 164
+        },
+        "parse.mapPathMs": {
+          "n": 20,
+          "min": 14,
+          "p50": 15,
+          "p95": 21,
+          "max": 21
+        },
+        "parse.normalizedBytes": {
+          "n": 20,
+          "min": 5365364,
+          "p50": 5365364,
+          "p95": 5365364,
+          "max": 5365364
+        },
+        "parse.mapPathBytes": {
+          "n": 20,
+          "min": 970538,
+          "p50": 970538,
+          "p95": 970538,
+          "max": 970538
+        }
+      },
+      "details": {
+        "engineWarmUp": {
+          "ms": 136,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 26400
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        },
+        "parseProcessRss": {
+          "peakChildMiB": 197,
+          "parsesWithoutReading": 0,
+          "atBoundPeakSumMiB": 347,
+          "intervalMs": 20,
+          "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
+        },
+        "heapCeilingLadder": [
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
+              "outcome": "ok"
+            }
+          ],
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 48,
+              "outcome": "ok"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-25T11:12:23.431Z",
+      "finishedAt": "2026-09-25T11:12:40.440Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "8429efad94fece4fadddd5528ec076d9b5ccfd84",
+        "dirtyPaths": [
+          "packages/tooling/eslint/index.mjs",
+          "packages/tooling/tests/build-routing-graph.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/sources.mjs",
+          "scripts/performance-budget.ts",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-engine-logs.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/probe-routing-operational.mts",
+          "scripts/probe-routing-profile-rollout.mts",
+          "scripts/probe-routing-swap-and-bounds.mts"
+        ],
+        "diffSha256": "1a5246f8fb0d1aa929f834f08fa1f1ccfc1b0b54b295ae60305f9ca739bd8a8d",
+        "allowDirtyReason": "M2-01ak uncommitted probe/build changes",
+        "allowedProductPaths": ["packages/tooling/eslint/index.mjs"]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [17.87, 22.03, 26.37],
+        "loadAverageAtEnd": [19.85, 22.24, 26.37]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26398 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 695,
+            "loadAverage1m": 17.87
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.87
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.87
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 695,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 17.96
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 81,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 83,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 89,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 86,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 61,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 56,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 58,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 63,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 59,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 61,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 86,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 88,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 81,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 89,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 45,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 45,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 19.85
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 696,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 868,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 924,
+            "loadAverage1m": 18.44
+          },
+          {
+            "value": 1079,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 1120,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 1174,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 1240,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 1271,
+            "loadAverage1m": 19.85
+          },
+          {
+            "value": 1286,
+            "loadAverage1m": 19.85
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 695,
+          "p50": 696,
+          "p95": 696,
+          "max": 696
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 39,
+          "p50": 48,
+          "p95": 89,
+          "max": 89
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 696,
+          "p50": 1120,
+          "p95": 1286,
+          "max": 1286
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+        },
+        "engineWarmUp": {
+          "ms": 190,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 26398
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-25T11:12:40.832Z",
+      "finishedAt": "2026-09-25T11:12:57.777Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "8429efad94fece4fadddd5528ec076d9b5ccfd84",
+        "dirtyPaths": [
+          "packages/tooling/eslint/index.mjs",
+          "packages/tooling/tests/build-routing-graph.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/sources.mjs",
+          "scripts/performance-budget.ts",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-engine-logs.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/probe-routing-operational.mts",
+          "scripts/probe-routing-profile-rollout.mts",
+          "scripts/probe-routing-swap-and-bounds.mts"
+        ],
+        "diffSha256": "1a5246f8fb0d1aa929f834f08fa1f1ccfc1b0b54b295ae60305f9ca739bd8a8d",
+        "allowDirtyReason": "M2-01ak uncommitted probe/build changes",
+        "allowedProductPaths": ["packages/tooling/eslint/index.mjs"]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [19.85, 22.24, 26.37],
+        "loadAverageAtEnd": [22.98, 22.82, 26.48]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26398 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 21.3
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.24
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 22.46
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 86,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 93,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 96,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 89,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 61,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 59,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 63,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 72,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 58,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 70,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 55,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 58,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 70,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 57,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 45,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 54,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 45,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 22.46
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 706,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 879,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1061,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1095,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1148,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1187,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1240,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1262,
+            "loadAverage1m": 22.46
+          },
+          {
+            "value": 1274,
+            "loadAverage1m": 22.46
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 706,
+          "p50": 706,
+          "p95": 706,
+          "max": 706
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 36,
+          "p50": 51,
+          "p95": 93,
+          "max": 96
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 706,
+          "p50": 1148,
+          "p95": 1274,
+          "max": 1274
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+        },
+        "engineWarmUp": {
+          "ms": 185,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 26398
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-25T11:12:58.173Z",
+      "finishedAt": "2026-09-25T11:13:15.238Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "8429efad94fece4fadddd5528ec076d9b5ccfd84",
+        "dirtyPaths": [
+          "packages/tooling/eslint/index.mjs",
+          "packages/tooling/tests/build-routing-graph.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/sources.mjs",
+          "scripts/performance-budget.ts",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-engine-logs.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/probe-routing-operational.mts",
+          "scripts/probe-routing-profile-rollout.mts",
+          "scripts/probe-routing-swap-and-bounds.mts"
+        ],
+        "diffSha256": "1a5246f8fb0d1aa929f834f08fa1f1ccfc1b0b54b295ae60305f9ca739bd8a8d",
+        "allowDirtyReason": "M2-01ak uncommitted probe/build changes",
+        "allowedProductPaths": ["packages/tooling/eslint/index.mjs"]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [22.98, 22.82, 26.48],
+        "loadAverageAtEnd": [23.92, 23.02, 26.49]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 26398 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 696,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 22.98
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 84,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 93,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 81,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 90,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 66,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 63,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 68,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 52,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 63,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 64,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 72,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 66,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 69,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 37,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 53,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 23.92
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 699,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 883,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 1081,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 1111,
+            "loadAverage1m": 23.3
+          },
+          {
+            "value": 1180,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 1226,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 1248,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 1292,
+            "loadAverage1m": 23.92
+          },
+          {
+            "value": 1302,
+            "loadAverage1m": 23.92
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 696,
+          "p50": 699,
+          "p95": 699,
+          "max": 699
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 31,
+          "p50": 49,
+          "p95": 90,
+          "max": 93
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 699,
+          "p50": 1180,
+          "p95": 1302,
+          "max": 1302
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+        },
+        "engineWarmUp": {
+          "ms": 157,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 26398
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
       }
     }
   ]

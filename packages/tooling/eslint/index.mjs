@@ -19,6 +19,7 @@ export function createConfig(root) {
         '**/test-results/**',
         // Opt-in self-hosted map build workspace (tiles, graphs, bundled harness output).
         '**/.geo-build/**',
+        '**/.geo-build-*/**',
         '**/.venv/**',
         'docs/.pre/**',
         '.agents/**',

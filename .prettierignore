@@ -33,3 +33,4 @@ docs/implementation/task-graph.md
 apps/web/next-env.d.ts
 
 .geo-build/
+.geo-build-*/

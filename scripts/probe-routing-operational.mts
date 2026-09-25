@@ -60,6 +60,7 @@ import {
   importRoutingGraph,
   probeReportPath,
   relocatedDeploymentNote,
+  routingExtract,
   routingGraphConfig,
   routingGraphDirectory,
   routingGraphRoot,
@@ -74,7 +75,8 @@ import { verifyAllowedSourceFile } from './geo/sources.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
-const extractPath = join(workRoot, 'source', 'region.osm.pbf');
+// Follows ROUTING_GRAPH_ROOT / ROUTING_EXTRACT_SOURCE (M2-01ak): graph B re-imports A's extract.
+const extractPath = routingExtract.path;
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 /**
  * Graph B: a second import of the same extract, kept beside graph A and never over it. It

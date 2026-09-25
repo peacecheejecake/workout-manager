@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "node": "M2-01ak",
+  "measuredAt": "2026-09-25T09:36:42Z",
+  "what": "scripts/probe-routing-engine-logs.mts on the national graph 188b65effcc6ef5c (Geofabrik 2026-09-01; ROUTING_GRAPH_ROOT relocated deployment, a scratch copy of its graph directory), serving profile 54b9ba78b4ab. R1: helper default. R8: console threshold and root level lowered to INFO, request-log override omitted; /spt, /isochrone and /navigate included. Stdout of each run, unchanged.",
+  "graphBuildId": "188b65effcc6ef5c",
+  "runs": {
+    "R1": {
+      "config": "scripts/geo/graphhopper-foot-serving.yml",
+      "consoleThreshold": "as in profile",
+      "rootLevel": "as in profile",
+      "otherResourcesAnswered": true,
+      "requestLogOverride": "profile",
+      "overrideInArguments": false,
+      "requests": "all",
+      "port": 8995,
+      "answers": [
+        {
+          "name": "route_computed",
+          "kind": "adapter",
+          "status": 200,
+          "paths": 1
+        },
+        {
+          "name": "outside_coverage",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "node_budget",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "unknown_profile",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "route_computed",
+          "kind": "query",
+          "status": 200,
+          "paths": 1
+        },
+        {
+          "name": "malformed_point",
+          "kind": "query",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "spt",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "isochrone",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "navigate",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "info",
+          "kind": "info",
+          "status": 200,
+          "paths": null
+        }
+      ],
+      "adapterRouteComputed": true,
+      "queryRouteComputed": true,
+      "logLines": 1,
+      "logLinesAfterStartup": 0,
+      "requestLines": 0,
+      "requestLinesWithQuery": 0,
+      "requestLineShapes": 0,
+      "pointParameters": 0,
+      "routeResourceLines": 0,
+      "plantedCoordinateHits": 0,
+      "findings": [],
+      "findingLoggers": [],
+      "verdict": "PASS"
+    },
+    "R8": {
+      "config": "scripts/geo/graphhopper-foot-serving.yml",
+      "consoleThreshold": "INFO",
+      "rootLevel": "INFO",
+      "otherResourcesAnswered": true,
+      "requestLogOverride": "omit",
+      "overrideInArguments": false,
+      "requests": "all",
+      "port": 8995,
+      "answers": [
+        {
+          "name": "route_computed",
+          "kind": "adapter",
+          "status": 200,
+          "paths": 1
+        },
+        {
+          "name": "outside_coverage",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "node_budget",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "unknown_profile",
+          "kind": "adapter",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "route_computed",
+          "kind": "query",
+          "status": 200,
+          "paths": 1
+        },
+        {
+          "name": "malformed_point",
+          "kind": "query",
+          "status": 400,
+          "paths": null
+        },
+        {
+          "name": "spt",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "isochrone",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "navigate",
+          "kind": "query",
+          "status": 200,
+          "paths": null
+        },
+        {
+          "name": "info",
+          "kind": "info",
+          "status": 200,
+          "paths": null
+        }
+      ],
+      "adapterRouteComputed": true,
+      "queryRouteComputed": true,
+      "logLines": 39,
+      "logLinesAfterStartup": 0,
+      "requestLines": 0,
+      "requestLinesWithQuery": 0,
+      "requestLineShapes": 0,
+      "pointParameters": 0,
+      "routeResourceLines": 2,
+      "plantedCoordinateHits": 0,
+      "findings": [],
+      "findingLoggers": [],
+      "verdict": "PASS"
+    }
+  }
+}

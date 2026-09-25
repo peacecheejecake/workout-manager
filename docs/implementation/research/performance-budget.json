@@ -12,7 +12,8 @@
     "budget": "budget = baseline statisticValue x headroom factor, rounded up to two significant figures (never more than 10 % above the product). parseBudgetFile refuses a budget that does not follow from its baseline and factor.",
     "statistic": "Nearest-rank percentile over at least 20 samples per p95 metric (minimumSamples), so the p95 is the 19th of 20 and one outlier on the loaded machine does not decide it. Baseline runs with fewer samples stay in the record but do not set a p95 baseline. max metrics (memory, sizes, the heap ladder) take the worst sample.",
     "flakeAvoidance": "Budgets are judged only in separate opt-in steps (the probe; playwright.performance.config.ts), never in pnpm test or pnpm test:identity. Headroom is set on the loaded baseline, so an idle machine meets it with more margin. Admissible load (rule added in M2-01k-f round 4, after judged run 3 failed at a load average up to 124; no earlier version defined one): a time budget exceeded while any of its samples was taken above that metric's baseline.loadAverage1m.max is `inconclusive`, not failed, and the run is repeated at an admissible load. Load never turns a failure into a pass and never excuses memory or size metrics. evaluateBudget enforces this.",
-    "noArtificialLoad": "No load generator was run. The engine load is product requests at the admission limits, bounded in count and duration."
+    "noArtificialLoad": "No load generator was run. The engine load is product requests at the admission limits, bounded in count and duration.",
+    "graphBinding": "M2-01ak: the two engine memory budgets were re-baselined on the national South Korea routing graph (188b65effcc6ef5c) and widened with it (idle 470 -> 1100 MiB, load peak 800 -> 2000 MiB), because engine RSS grows with the graph it loads. Applied to the Seoul graph those numbers would let a doubled Seoul RSS pass, so each engine MiB metric names the graph it was baselined on (baseline.routingGraphContentSha256) and evaluateBudget refuses (ENGINE_GRAPH_NOT_BASELINED) to judge it on samples from another graph or from a run that does not record its graph (details.routingGraph). engine.routeUnderLoadMs keeps its M2-01k-f (Seoul) baseline; it is a time budget and not graph-bound."
   },
   "desktop": {
     "label": "Desktop: darwin arm64, 8 CPUs, 32 GiB, Node 24.12.0, headless Chromium (Playwright). Shared machine under load from other agents. Not a device result.",
@@ -187,22 +188,23 @@
         "phase": "engine",
         "unit": "MiB",
         "statistic": "max",
-        "budget": 470,
+        "budget": 1100,
         "minimumSamples": 5,
-        "description": "GraphHopper JVM RSS after one warm-up route, before load (-Xms512m -Xmx2048m).",
+        "description": "GraphHopper JVM RSS after one warm-up route, before load (-Xms512m -Xmx2048m). Since M2-01ak on the national South Korea graph (188b65effcc6ef5c, Geofabrik 2026-09-01, 297 MiB on disk); the M2-01k-f baseline (310, budget 470) was the Seoul graph (41 MiB). Bound to that graph: runs on any other graph are refused, not judged.",
         "baseline": {
-          "statisticValue": 310,
-          "samples": 47,
+          "statisticValue": 706,
+          "samples": 60,
           "runs": [
-            "2026-09-24T03:06:45.593Z",
-            "2026-09-24T03:10:30.015Z",
-            "2026-09-24T05:25:24.995Z"
+            "2026-09-25T11:12:23.431Z",
+            "2026-09-25T11:12:40.832Z",
+            "2026-09-25T11:12:58.173Z"
           ],
-          "perRunStatistic": [310, 286, 301],
+          "perRunStatistic": [696, 706, 699],
           "loadAverage1m": {
-            "min": 17.93,
-            "max": 30.06
-          }
+            "min": 17.87,
+            "max": 23.3
+          },
+          "routingGraphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
         },
         "headroom": {
           "factor": 1.5,
@@ -213,22 +215,23 @@
         "phase": "engine",
         "unit": "MiB",
         "statistic": "max",
-        "budget": 800,
+        "budget": 2000,
         "minimumSamples": 5,
-        "description": "Peak GraphHopper JVM RSS per load round: two tenants at their concurrency limit (4 heavy 12-waypoint routes in flight), sampled every 250 ms.",
+        "description": "Peak GraphHopper JVM RSS per load round: two tenants at their concurrency limit (4 heavy 12-waypoint routes in flight), sampled every 250 ms. Since M2-01ak on the national South Korea graph (188b65effcc6ef5c); the M2-01k-f baseline (527, budget 800) was the Seoul graph. Bound to that graph: runs on any other graph are refused, not judged.",
         "baseline": {
-          "statisticValue": 527,
-          "samples": 25,
+          "statisticValue": 1302,
+          "samples": 27,
           "runs": [
-            "2026-09-24T03:06:45.593Z",
-            "2026-09-24T03:10:30.015Z",
-            "2026-09-24T05:25:24.995Z"
+            "2026-09-25T11:12:23.431Z",
+            "2026-09-25T11:12:40.832Z",
+            "2026-09-25T11:12:58.173Z"
           ],
-          "perRunStatistic": [500, 518, 527],
+          "perRunStatistic": [1286, 1274, 1302],
           "loadAverage1m": {
-            "min": 19.77,
-            "max": 30.06
-          }
+            "min": 18.44,
+            "max": 23.92
+          },
+          "routingGraphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
         },
         "headroom": {
           "factor": 1.5,

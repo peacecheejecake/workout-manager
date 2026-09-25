@@ -381,6 +381,21 @@
         "mutants M1-M5, M9, M11, R1, R7, R8, N2 and N3 fail in both shells; M6-M8, M10 and M12-M14 fail in unit tests; the independent review (three rounds, round 3 APPROVE on tree 52203499) ran R1-R8 and N1-N4 as unit mutants: R1, R7 and R8 survived round 1 and fail after the fix, N2 and N3 survived round 2 and fail after the fix, the others failed when run (progress doc, independent review mutants)"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01am.md."
+    },
+    {
+      "node": "M2-01ak",
+      "date": "2026-09-25",
+      "rows": ["P7-no-coordinates-in-logs", "K-graph-rollback", "P6-outcomes-distinct"],
+      "decision": "User decided on 2026-09-25 to build the routing graph from an all-Korea extract. Gap node M2-01ak built graph 188b65effcc6ef5c from the pinned Geofabrik monthly South Korea extract with the new serving profile and re-ran the rollout, engine-log, swap, operational and coverage probes on it. Independent review round 1 REQUEST CHANGES (engine baselines not recorded), round 2 APPROVE with two non-blocking points, applied, round 3 APPROVE.",
+      "change": "No verdict change; P7-no-coordinates-in-logs, K-graph-rollback and P6-outcomes-distinct stay passed with updated evidence and limits; P8-coverage stays not_executed (the 38-pair re-run is ungraded evidence; the independent coverage review of M0-06b is still owed on the new graph); counts unchanged (passed 81, partial 23, not_executed 6).",
+      "executed": [
+        "new routing graph 188b65effcc6ef5c imported under the harness lock from the pinned Geofabrik monthly extract south-korea-260901.osm.pbf (SHA-256 848daadc) with the repository serving profile (54b9ba78) into a new root, without --replace-served-graph; the old default layout's config and manifest hashes were unchanged before and after every run",
+        "scripts/probe-routing-profile-rollout.mts on the production composition (createConfiguredApi switchTo/rollback): 10/10 PASS: switch under load from the Seoul graph, rollback under load, re-switch, green serving alone after blue is retired, an untouched course read with the same digest",
+        "scripts/probe-routing-engine-logs.mts on the new graph: R1 and R8 (root INFO, navigate, spt, isochrone) PASS, 0 planted coordinates; swap-and-bounds 24/24 PASS; operational 26/26 PASS",
+        "scripts/probe-routing-korea-coverage.mts, same 38 pairs, ungraded: 35 routed, 2 snap_too_far, 1 outside_coverage (Seoul graph: 29/1/8)",
+        "engine memory budgets re-baselined on the new graph and bound to it (record-only x3, judged run passed); pnpm test 3,803, integration 1+669, identity x2 249 each (before the round-2 dangling-link test; the tooling tests, 314, were re-run after it); mutants MX1, MX2, MX4-MX7, MG1-MG3 each fail"
+      ],
+      "note": "Re-judged by root from the gap node's executed evidence and its independent review; see docs/implementation/progress/M2-01ak.md."
     }
   ],
   "rounds": [
@@ -2104,7 +2119,7 @@
       "evidence": [
         "scripts/probe-routing-operational.mts ×3 (26 checks), guard-revert of the adapter import_date check makes 2 checks fail"
       ],
-      "reason": "M2-01ah amendment: still passed with the single-instance precondition. Blue/green replacement and rollback are atomic within one API process (M2-01k-e evidence). M2-01ah lifts the single-instance condition for limits only: with several routing instances each switches separately and graphs are mixed during the roll-out (recorded and acknowledged safely), so atomic graph replacement across a fleet is not claimed.",
+      "reason": "M2-01ak amendment: still passed with the single-instance precondition. Between two graphs with different extracts and profiles (Seoul c57f12f5975347e8 and national 188b65effcc6ef5c), a switch under load and a rollback under load had 0 failures in the production composition, and after a re-switch the retired blue left green serving alone, and an untouched course kept its digest. The switch was measured inside createConfiguredApi, not on an operating host through the SIGHUP file path. M2-01ah's fleet note still applies: with several routing instances each switches separately and graphs are mixed during the roll-out.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2113,15 +2128,16 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01ah",
+        "node": "M2-01ak",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-e amendment: passed, with the precondition that the routing API runs as a single instance (runbook). Blue/green engines plus one API identity switch replace the graph with graph C built from a different extract, and roll back, under load with 0 failures and no old-graph answers after the switch; in-flight computations keep their graph; the three refusals change nothing; rollback to a stopped engine is refused. Atomicity is per process: with several instances a roll-out mixes graphs (recorded and acknowledged safely, but not at once) — the multi-instance limiter is M2-01ah.",
+        "previousReason": "M2-01ah amendment: still passed with the single-instance precondition. Blue/green replacement and rollback are atomic within one API process (M2-01k-e evidence). M2-01ah lifts the single-instance condition for limits only: with several routing instances each switches separately and graphs are mixed during the roll-out (recorded and acknowledged safely), so atomic graph replacement across a fleet is not claimed.",
         "executed": [
-          "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
-          "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
-          "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
-          "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
+          "new routing graph 188b65effcc6ef5c imported under the harness lock from the pinned Geofabrik monthly extract south-korea-260901.osm.pbf (SHA-256 848daadc) with the repository serving profile (54b9ba78) into a new root, without --replace-served-graph; the old default layout's config and manifest hashes were unchanged before and after every run",
+          "scripts/probe-routing-profile-rollout.mts on the production composition (createConfiguredApi switchTo/rollback): 10/10 PASS: switch under load from the Seoul graph, rollback under load, re-switch, green serving alone after blue is retired, an untouched course read with the same digest",
+          "scripts/probe-routing-engine-logs.mts on the new graph: R1 and R8 (root INFO, navigate, spt, isochrone) PASS, 0 planted coordinates; swap-and-bounds 24/24 PASS; operational 26/26 PASS",
+          "scripts/probe-routing-korea-coverage.mts, same 38 pairs, ungraded: 35 routed, 2 snap_too_far, 1 outside_coverage (Seoul graph: 29/1/8)",
+          "engine memory budgets re-baselined on the new graph and bound to it (record-only x3, judged run passed); pnpm test 3,803, integration 1+669, identity x2 249 each (before the round-2 dangling-link test; the tooling tests, 314, were re-run after it); mutants MX1, MX2, MX4-MX7, MG1-MG3 each fail"
         ]
       }
     },
@@ -2619,7 +2635,7 @@
         "packages/server/integrations/tests/routing-adapter.test.ts (failure bodies hand-written)",
         "probe: overload 429, engine_unavailable, graph_mismatch against the real configuration"
       ],
-      "reason": "M2-01ah amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine (M2-01k-e). The multi-leg ambiguity is now signalled: an engine-answered timeout over more than one leg carries the warning timeout_may_be_no_route (additive contract value; unit tests, real-engine probe, M4 killed). The warning only fires when the engine answers before the API deadline, so the probe check is load-sensitive.",
+      "reason": "M2-01ak amendment: passed. On the national graph no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine; the old no_route pair became routable, so no_route now comes from a pair chosen by exploration where both ends snap (욕지도–통영), which shows the engine emits no_route for such a pair rather than that a known-disconnected pair gives no_route. The multi-leg timeout warning timeout_may_be_no_route and its load sensitivity are unchanged (M2-01ah).",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2630,15 +2646,16 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01ah",
+        "node": "M2-01ak",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-e amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine; overloaded, engine_unavailable and graph_mismatch via the operational probe; failures store nothing. Limit: a multi-leg NoRoute that runs longer than one leg budget is reported as timeout (errs only toward timeout); a warning code is M2-01ah.",
+        "previousReason": "M2-01ah amendment: passed. no_route, outside_coverage, snap_too_far and timeout are each observed from the real engine (M2-01k-e). The multi-leg ambiguity is now signalled: an engine-answered timeout over more than one leg carries the warning timeout_may_be_no_route (additive contract value; unit tests, real-engine probe, M4 killed). The warning only fires when the engine answers before the API deadline, so the probe check is load-sensitive.",
         "executed": [
-          "migration 047 routing_admission with packages/server/persistence/tests/routing-admission.integration.test.ts and routing-admission-upgrade.integration.test.ts, apps/api/tests/routing-admission.integration.test.ts (two real createConfiguredApi instances sharing one PostgreSQL) and routing-admission.test.ts (pnpm test:integration, throwaway cluster)",
-          "scripts/probe-routing-swap-and-bounds.mts 24/24 and probe-routing-operational.mts 26/26 against the real engine under the harness lock, with permits drained before the multi-instance checks and the engine-cap refusal reason read from the API log (engine_capacity, in flight 1, cap 1); an earlier run at load 26-40 failed only the load-dependent multi-leg warning check and is recorded",
-          "backup-restore drill passed (76 checks, erased tenant permit seeded before backup)",
-          "mutants M1-M9, MY, MZ, MC each fail (independent review re-killed M3); MX survives by design once window >= lease is enforced"
+          "new routing graph 188b65effcc6ef5c imported under the harness lock from the pinned Geofabrik monthly extract south-korea-260901.osm.pbf (SHA-256 848daadc) with the repository serving profile (54b9ba78) into a new root, without --replace-served-graph; the old default layout's config and manifest hashes were unchanged before and after every run",
+          "scripts/probe-routing-profile-rollout.mts on the production composition (createConfiguredApi switchTo/rollback): 10/10 PASS: switch under load from the Seoul graph, rollback under load, re-switch, green serving alone after blue is retired, an untouched course read with the same digest",
+          "scripts/probe-routing-engine-logs.mts on the new graph: R1 and R8 (root INFO, navigate, spt, isochrone) PASS, 0 planted coordinates; swap-and-bounds 24/24 PASS; operational 26/26 PASS",
+          "scripts/probe-routing-korea-coverage.mts, same 38 pairs, ungraded: 35 routed, 2 snap_too_far, 1 outside_coverage (Seoul graph: 29/1/8)",
+          "engine memory budgets re-baselined on the new graph and bound to it (record-only x3, judged run passed); pnpm test 3,803, integration 1+669, identity x2 249 each (before the round-2 dangling-link test; the tooling tests, 314, were re-run after it); mutants MX1, MX2, MX4-MX7, MG1-MG3 each fail"
         ]
       }
     },
@@ -2935,7 +2952,7 @@
         "packages/server/courses/src/log-audit.ts",
         "docs/implementation/progress/M2-01af.md"
       ],
-      "reason": "M2-01af amendment: passed with a reduced limit. The API and thumbnail-worker log audit from M2-01k-c2 is unchanged. The engine side now holds by the serving profile itself and the request shape: the profile disables the request log and pins com.graphhopper.resources, http and navigation to OFF, and the adapter sends POST /route with a JSON body so waypoints never reach a request line. On the real engine with that profile, no launch override and root and console at INFO, route, spt, isochrone and navigate requests log 0 planted coordinates; removing any pin leaks (MP1, MP2, MP4, MP5). Limits: DEBUG is not claimed safe; the guard sees only in-repo profiles; other GraphHopper INFO emitters were identified by name as import/startup code and not content-checked; the deployed graph in .geo-build still runs the old profile copy, protected by the helper override and WARN threshold, until M2-01ak replaces it.",
+      "reason": "M2-01ak amendment: passed with a further reduced limit. The API and thumbnail-worker log audit is unchanged, and the engine side holds by the serving profile and the POST /route request shape. The national graph (188b65effcc6ef5c) was imported with the repository profile itself, and on it route, spt, isochrone and navigate requests at root INFO log 0 planted coordinates (R1, R8); both engines logged 0 during the switch. Limits: DEBUG is not claimed safe; the guard sees only in-repo profiles; other GraphHopper INFO emitters were identified by name, not content-checked; the old Seoul graph in the default .geo-build layout remains as the rollback target and still runs the old profile copy, so rolling back to it relies again on the helper override and WARN threshold.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2943,15 +2960,16 @@
       },
       "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
       "amendment": {
-        "node": "M2-01af",
+        "node": "M2-01ak",
         "date": "2026-09-25",
         "previousVerdict": "passed",
-        "previousReason": "M2-01k-c2 amendment: passed with limits. The API and thumbnail worker log streams are audited (no coordinate, waypoint, object key, token or body; trace id and version on every line), each forbidden kind killed by a mutant. Independent review found the routing engine's default Dropwizard access log wrote exact waypoints (GET /route?...&point=lat,lon); every in-repo engine launch now passes -Ddw.server.request_log.type=external through one helper, proven on the real engine. Limits: protection depends on two things until the serving profile is rebuilt (M2-01af): the launch override on in-repo launch paths (request lines keep the path only) AND the WARN threshold on every logging appender (the only thing that stops GraphHopper's RouteResource INFO line, which carries the waypoints). Launches outside the repo are not controlled.",
+        "previousReason": "M2-01af amendment: passed with a reduced limit. The API and thumbnail-worker log audit from M2-01k-c2 is unchanged. The engine side now holds by the serving profile itself and the request shape: the profile disables the request log and pins com.graphhopper.resources, http and navigation to OFF, and the adapter sends POST /route with a JSON body so waypoints never reach a request line. On the real engine with that profile, no launch override and root and console at INFO, route, spt, isochrone and navigate requests log 0 planted coordinates; removing any pin leaks (MP1, MP2, MP4, MP5). Limits: DEBUG is not claimed safe; the guard sees only in-repo profiles; other GraphHopper INFO emitters were identified by name as import/startup code and not content-checked; the deployed graph in .geo-build still runs the old profile copy, protected by the helper override and WARN threshold, until M2-01ak replaces it.",
         "executed": [
-          "scripts/probe-routing-engine-logs.mts on the real GraphHopper 10.0 engine under the harness lock: new serving profile through the helper (R1) and with root and console at INFO and no launch override (R8), sending POST /route, out-of-bounds, /spt, /isochrone and /navigate with planted synthetic points: 0 planted coordinates; the old GET request control leaks",
-          "packages/tooling/tests/graphhopper-launch.test.mjs (strict profile grammar shared by the launch helper and the guard; request_log appenders [] and the resources, http and navigation packages at OFF or WARN+), build-routing-graph.test.mjs, routing adapter/endpoint/service/manifest and apps/api routing-deployment tests",
-          "mutants MP1 (profile request_log removed), MP2 (resources INFO), MP4 (class pins only), MP5 (navigation pin removed) fail the engine probe at root INFO and the guard; MP3, MF2, MF4, MA1 (adapter back to GET) fail their tests",
-          "rollout probe 8/8, swap 24/24 and operational 26/26 on a scratch deployment of the round-2 profile (cdc22d00…, before the navigation pin; the final profile differs by that one logger line) (routing-profile-rollout.json, routing-swap-and-bounds-m2-01af.json, routing-operational-m2-01af.json; not persisted, the deployed graph is still c57f12f5975347e8); two rounds of independent review re-ran the engine checks"
+          "new routing graph 188b65effcc6ef5c imported under the harness lock from the pinned Geofabrik monthly extract south-korea-260901.osm.pbf (SHA-256 848daadc) with the repository serving profile (54b9ba78) into a new root, without --replace-served-graph; the old default layout's config and manifest hashes were unchanged before and after every run",
+          "scripts/probe-routing-profile-rollout.mts on the production composition (createConfiguredApi switchTo/rollback): 10/10 PASS: switch under load from the Seoul graph, rollback under load, re-switch, green serving alone after blue is retired, an untouched course read with the same digest",
+          "scripts/probe-routing-engine-logs.mts on the new graph: R1 and R8 (root INFO, navigate, spt, isochrone) PASS, 0 planted coordinates; swap-and-bounds 24/24 PASS; operational 26/26 PASS",
+          "scripts/probe-routing-korea-coverage.mts, same 38 pairs, ungraded: 35 routed, 2 snap_too_far, 1 outside_coverage (Seoul graph: 29/1/8)",
+          "engine memory budgets re-baselined on the new graph and bound to it (record-only x3, judged run passed); pnpm test 3,803, integration 1+669, identity x2 249 each (before the round-2 dangling-link test; the tooling tests, 314, were re-run after it); mutants MX1, MX2, MX4-MX7, MG1-MG3 each fail"
         ]
       }
     },
