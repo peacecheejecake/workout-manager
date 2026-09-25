@@ -58,6 +58,8 @@ const migrationFiles = [
   '053_course_candidate_evaluation_v2.sql',
   // M2-01as: the lifetime link budget per place.
   '054_course_share_area_budget.sql',
+  // M2-01av: the worker paths' tenant source.
+  '055_worker_tenant_source.sql',
 ] as const;
 
 /**

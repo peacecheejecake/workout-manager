@@ -14,8 +14,8 @@ import {
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
- * M2-01au: the `*_definer` policies (047, 049, 050, 051, and the queue-state migration) name
- * the role that applied them. When ownership moves — `REASSIGN OWNED`, or a `--no-owner`
+ * M2-01au: the `*_definer` policies (047, 049, 050, 051, the queue-state migration and — M2-01av —
+ * the tenant-work index) name the role that applied them. When ownership moves — `REASSIGN OWNED`, or a `--no-owner`
  * restore by another role — the new owner's definer functions have no policy: on an owner
  * that is neither superuser nor BYPASSRLS, erasure fails with 42501 and the workers see
  * nothing. `retarget_definer_policies()`, run by the new owner, points every one of them at it
@@ -42,6 +42,7 @@ const definerPolicies = [
   'resource_object_cleanup:resource_object_cleanup_definer',
   'routing_admission:routing_admission_definer',
   'tenant_object_purge:tenant_object_purge_definer',
+  'tenant_work_index:tenant_work_index_definer',
 ];
 
 function urlFor(role: string | null): string {
@@ -133,6 +134,32 @@ async function workerFinishesADeletion(): Promise<boolean> {
   return deleted.includes(ref);
 }
 
+/**
+ * An expired search-cache entry of a fresh tenant, and whether the worker's prune — which finds
+ * it through the tenant-work index (M2-01av) — removes it. Writing the entry itself goes through
+ * the index's trigger, so it is refused while the index's policy names another owner.
+ */
+async function workerPrunesAnExpiredCacheEntry(): Promise<boolean> {
+  const tenant = randomUUID();
+  await inspect.query(
+    `INSERT INTO resource_retrieval_cache(athlete_id,cache_key,corpus_version,
+       authorization_digest,passage_ids,created_at,expires_at)
+     VALUES($1,$2,1,$3,'[]'::jsonb,now()-interval '1 hour',now()-interval '1 minute')`,
+    [tenant, 'd'.repeat(64), 'b'.repeat(64)],
+  );
+  const pool = new Pool({ connectionString: urlFor(workerRole), max: 1 });
+  try {
+    await pool.query('SELECT public.prune_resource_retrieval_cache(1000)');
+  } finally {
+    await pool.end();
+  }
+  const left = await inspect.query('SELECT 1 FROM resource_retrieval_cache WHERE athlete_id=$1', [
+    tenant,
+  ]);
+  await inspect.query('DELETE FROM resource_retrieval_cache WHERE athlete_id=$1', [tenant]);
+  return left.rowCount === 0;
+}
+
 describe('definer policies follow the owner through retarget_definer_policies()', () => {
   it('names the applying owner, and the paths work', async () => {
     expect(await policyTargets()).toEqual(
@@ -140,6 +167,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     );
     await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
     expect(await workerFinishesADeletion()).toBe(true);
+    expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
 
   it('fails closed after REASSIGN OWNED, until the new owner retargets', async () => {
@@ -151,6 +179,8 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     );
     await expect(operations.eraseAccount(randomUUID())).rejects.toMatchObject({ code: '42501' });
     expect(await workerFinishesADeletion()).toBe(false);
+    // A write to a table the index follows is refused too: its trigger cannot write the index.
+    await expect(workerPrunesAnExpiredCacheEntry()).rejects.toMatchObject({ code: '42501' });
 
     // Only the owner of the tables may retarget: the old owner may not even call it, and a
     // superuser that owns none of them is refused.
@@ -165,6 +195,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     );
     await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
     expect(await workerFinishesADeletion()).toBe(true);
+    expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
     expect(await retargetAs(nextOwner)).toBe(definerPolicies.length);
     expect(await policyTargets()).toEqual(
@@ -190,5 +221,6 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     );
     await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
     expect(await workerFinishesADeletion()).toBe(true);
+    expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
 });

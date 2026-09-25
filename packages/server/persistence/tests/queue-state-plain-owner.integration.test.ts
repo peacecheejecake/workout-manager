@@ -1008,32 +1008,5 @@ describe('queue and state paths on a migration owner that is neither superuser n
   });
 });
 
-describe('paths M2-01au leaves for a follow-up stay closed on such an owner', () => {
-  it('leases no render and sweeps no reference it cannot see, and changes nothing', async () => {
-    const tenant = randomUUID();
-    const imported = await activities.importActivity(tenant, importInput());
-    const stored = await storeTrack(tenant, imported.activityId, imported.revision);
-    await courses.create(
-      tenant,
-      courseContent(imported.activityId, stored.reservation.trackId),
-      `course-${randomUUID()}`,
-    );
-    const before = await inspect.query(
-      'SELECT job_id,state,attempt_count FROM course_thumbnail WHERE athlete_id=$1',
-      [tenant],
-    );
-    expect(before.rowCount).toBe(1);
-    // The render queue, the reapers, the prunes and the sweep windows read tenant tables
-    // across tenants with no tenant named: on this owner they see nothing — closed, never
-    // open — until the follow-up gives them per-tenant reads.
-    expect(await renderer.lease(60)).toBeNull();
-    expect(await worker.reapCourseThumbnailRenders(100)).toBe(0);
-    expect(await worker.reconcileWindow('', 1000)).toEqual([]);
-    expect(await worker.thumbnailReconcileWindow('', 1000)).toEqual([]);
-    const after = await inspect.query(
-      'SELECT job_id,state,attempt_count FROM course_thumbnail WHERE athlete_id=$1',
-      [tenant],
-    );
-    expect(after.rows).toEqual(before.rows);
-  });
-});
+// The paths M2-01au left closed — the render queue, the reapers, the prunes and the sweep
+// windows — run on such an owner since M2-01av: worker-tenant-source-plain-owner.integration.test.ts.

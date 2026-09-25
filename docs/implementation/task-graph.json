@@ -1619,8 +1619,17 @@
       "title": "남은 worker 경로의 tenant 출처(superuser가 아닌 migration 소유 역할)",
       "dependsOn": ["M2-01au"],
       "kind": "task",
+      "status": "completed",
+      "scope": "M2-01au(052)가 object·파생 cleanup queue, reconcile state, 복원 replay, 소유 이전을 고쳤다. 남은 경로는 superuser도 BYPASSRLS도 아닌 소유 역할에서 닫힌 채(아무것도 보지 못하고 바꾸지 않음) 남는다: 썸네일 render·URL 수집 worker의 lease와 by-id 함수, 업로드·render·URL reap, 업로드·썸네일 history prune, 검색 cache prune, sweep window 2개, `prepare_course_thumbnail`, `requeue_course_thumbnail_refs`, `enqueue_abandoned_resource_url_object`(목록·탐침: docs/implementation/progress/M2-01au.md 남은 것). 이들은 tenant 표를 여러 tenant에 걸쳐 tenant 없이 훑어 due 일을 찾으므로 세울 tenant가 없다. tenant 출처를 정한다: (1) tenant 표 trigger가 채우는 owner 전용 작업 색인 표에서 lease하고 그 행의 tenant로 읽기, (2) identity 계정 목록 순회(계정 없는 tenant는 못 봄), (3) by-id 함수는 worker가 lease로 받은 tenant를 트랜잭션에 세우고 부르기. plain 소유자에서 각 worker lease가 먼저 실패하고 고친 뒤 통과하는 통합 시험, fail-open 없음, 다른 정의자 함수 가시성 불변 upgrade 시험, 되돌리는 변이 실패를 요구한다. 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01au.md.",
+      "evidence": "docs/implementation/progress/M2-01av.md"
+    },
+    {
+      "id": "M2-01aw",
+      "title": "parse-host 메모리 상한 시험의 결과 흔들림",
+      "dependsOn": [],
+      "kind": "task",
       "status": "not_started",
-      "scope": "M2-01au(052)가 object·파생 cleanup queue, reconcile state, 복원 replay, 소유 이전을 고쳤다. 남은 경로는 superuser도 BYPASSRLS도 아닌 소유 역할에서 닫힌 채(아무것도 보지 못하고 바꾸지 않음) 남는다: 썸네일 render·URL 수집 worker의 lease와 by-id 함수, 업로드·render·URL reap, 업로드·썸네일 history prune, 검색 cache prune, sweep window 2개, `prepare_course_thumbnail`, `requeue_course_thumbnail_refs`, `enqueue_abandoned_resource_url_object`(목록·탐침: docs/implementation/progress/M2-01au.md 남은 것). 이들은 tenant 표를 여러 tenant에 걸쳐 tenant 없이 훑어 due 일을 찾으므로 세울 tenant가 없다. tenant 출처를 정한다: (1) tenant 표 trigger가 채우는 owner 전용 작업 색인 표에서 lease하고 그 행의 tenant로 읽기, (2) identity 계정 목록 순회(계정 없는 tenant는 못 봄), (3) by-id 함수는 worker가 lease로 받은 tenant를 트랜잭션에 세우고 부르기. plain 소유자에서 각 worker lease가 먼저 실패하고 고친 뒤 통과하는 통합 시험, fail-open 없음, 다른 정의자 함수 가시성 불변 upgrade 시험, 되돌리는 변이 실패를 요구한다. 모든 경로가 통과한 뒤에만 runbook의 superuser·BYPASSRLS 조건을 내린다. 출처: docs/implementation/progress/M2-01au.md."
+      "scope": "packages/server/track-storage/tests/parse-host.test.ts \"keeps the ceiling when the host process carries a heap option of its own\"가 가끔 `TRACK_PARSE_MEMORY_EXCEEDED` 대신 `TRACK_OUTPUT_TOO_LARGE`로 끝난다(M2-01k-n 재검증 load 약 50, M2-01ar 병합 검증 load 88, phase/m2-01 검증 load 19 — 낮은 부하에서도 났다; 단독·재실행은 통과). 부하 문제가 아니라 자식 파서가 heap 상한에 닿기 전에 출력 크기 상한에 먼저 닿는 경로가 있다는 뜻일 수 있다. 원인을 찾아 시험 fixture가 한 상한만 결정적으로 넘게 하거나, 두 상한의 우선순위를 코드에서 정하고 시험으로 고정한다. 제품 동작(어느 오류 코드를 먼저 보이는가)이 바뀌면 그 이유를 적는다. 반복 실행(예: 50회)으로 흔들림이 사라졌음을 보이고, 되돌리는 변이가 실패해야 한다. 출처: HANDOFF 알려진 흔들리는 시험, phase/m2-01 검증 로그."
     },
     {
       "id": "M2-01k",

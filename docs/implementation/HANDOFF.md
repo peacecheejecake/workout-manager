@@ -17,11 +17,13 @@
 
 ## 완료된 최신 작업
 
-[M2-01as](progress/M2-01as.md)를 완료했다(`phase/m2-01`). 공유 링크 재식별 완화: 공유 원 오프셋 ≤1·S·반지름 2·S, 잘린 끝마다 경로를 따라
-2.5·S 추가 절단, 장소별 평생 10링크(migration 054, 구역을 지워도 남는 tombstone). 6개 코스 모형 × 13개 공격 × 3 seed의 gate가
-`pnpm test`에 있다. 독립 재식별 검토가 상한 10에서 통과했다(C1 닫힘, 검토자 공격 최소 82 m/25 m). 링크 flag는 여전히 기본 꺼짐이다.
+[M2-01av](progress/M2-01av.md)를 완료했다(`phase/m2-01`). migration 055가 owner 전용 `tenant_work_index`를 두고 8개 원천 표의 trigger가
+같은 트랜잭션에서 채운다. 썸네일 render·URL 수집 worker, reap·prune, 검색 cache prune, sweep window 등 30개 worker 함수는 본문을
+`<이름>_in_tenant`로 그대로 두고, 같은 이름의 wrapper가 색인에서 due tenant를 골라 그 tenant로 본문을 부른다. 그래서 migration 소유
+역할이 superuser나 BYPASSRLS가 아니어도 모든 queue·worker 경로가 돈다(runbook 조건을 내렸다). M2-01 phase의 실행 가능한 노드는 이것으로
+끝났다.
 
-직전 완료: [M2-01ag](progress/M2-01ag.md)(태블릿 코스 목록).
+직전 완료: [M2-01as](progress/M2-01as.md)(공유 링크 재식별 완화).
 
 ## 운영 메모
 
@@ -58,11 +60,11 @@
   통과했다(상한 10). 링크를 켜면 migration 054의 예산 원장도 복원 절차에 들어간다(runbook). rate key는 base64를 풀어 32 byte 이상이다.
 - migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
   쓴다). runbook에 이 단계는 아직 없다(후속).
-- migration 소유 역할은 지금 superuser나 BYPASSRLS로 둔다. 051·052(M2-01at·M2-01au)부터 두 object purge, cleanup queue, reconcile
-  state는 그렇지 않은 소유 역할에서도 돈다. 단 **그 역할이 migration을 직접 적용했을 때만**이며, 소유를 옮겼다면
-  `select retarget_definer_policies();`를 새 소유자로 실행한다(runbook). 썸네일 render·URL 수집 worker, reap·prune, sweep window는
-  아직 그런 소유 역할에서 아무것도 보지 못한다(후속 M2-01av). 052는 grant를 바꾸지 않는다. object key가 tenant를 이름 붙이지 않으면
-  정리 authorize가 `INCONSISTENT_LEDGER:OBJECT_KEY_TENANT`로 닫는다(superuser 소유에서도 달라지는 유일한 동작).
+- migration 소유 역할은 051·052·055(M2-01at·M2-01au·M2-01av)부터 superuser나 BYPASSRLS가 아니어도 된다. 단 그 역할이 migration을
+  직접 적용했을 때만이며, 소유를 옮겼다면 **가장 먼저** `select retarget_definer_policies();`를 새 소유자로 실행한다(그 전에는 055의 8개 원천
+  표 쓰기도 `42501`로 실패). 복원 replay의 외래 id 확인은 identity 계정이 있는 tenant만 본다. object key의 tenant와 다른 tenant의 행은
+  object 정리에서 보이지 않는다. 최악의 prune 비용은 호출당 약 0.35 s(그 뒤 한 시간 미룸). 055의 trigger는 썸네일 갱신에 약 +250 µs를 더한다.
+  object key가 tenant를 이름 붙이지 않으면 정리 authorize가 `INCONSISTENT_LEDGER:OBJECT_KEY_TENANT`로 닫는다.
 - 성능 판정 run은 M2-01ar 뒤의 probe로만 기록한다. 2026-09-25T15:00Z 뒤에 옛 probe로 기록한 판정 run은 `verifyRerunPolicy`가
   거부한다. 브라우저 판정은 harness lock 아래에서 `node --import tsx scripts/run-browser-performance-budget.mts --execute`로 돌린다. 이력
   검사는 `git merge-base HEAD main`을 부르므로 CI checkout은 history와 로컬 `main` ref가 있어야 한다(지금은 없으면 skip으로 보고된다).
@@ -73,9 +75,9 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01av. 이 중
-M2-01av는 이 세션의 병렬 agent가 작업 중이며(task-graph 상태는 커밋할 때 completed로 바뀐다), 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝나 진행할 수 있다(목록 `li`에 카드가 들어갔다). M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph에서 not_started인 ready 노드: M2-01aw(parse-host 시험 흔들림). M2-01 phase의 다른 실행 가능한 노드는 `phase/m2-01`에 모두
+커밋됐고 M2-01 phase 리뷰(Codex)를 기다린다. 재개 시 각
+worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
 
@@ -95,6 +97,8 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01ag는 M2-01k-a가 끝�
 - `tests/identity/course-extras.spec.ts:59`가 M2-01au 검증의 identity 두 회차(1분 load 60–70)에서 실패했다(가져오기 상태 5초 timeout 한 번,
   제거본 요청의 `COURSE_ZONE_ACKNOWLEDGEMENT_STALE` 한 번). 같은 코드로 단독 6/6, 전체 ×2가 통과했다(2026-09-26). digest 불일치가 부하에서
   어떻게 생기는지는 밝히지 못했다.
+- `packages/server/track-storage/tests/parse-host.test.ts` 메모리 상한 시험은 낮은 부하(19)에서도 `TRACK_OUTPUT_TOO_LARGE`로 한 번 실패했다
+  (phase/m2-01 검증, 2026-09-26). 부하 문제가 아닐 수 있어 M2-01aw로 다룬다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate

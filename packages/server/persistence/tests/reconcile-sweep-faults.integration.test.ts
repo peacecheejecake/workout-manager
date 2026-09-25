@@ -662,7 +662,9 @@ describe('the fault-carrying window', () => {
          'clear_course_thumbnail_sweep_fault')`,
     );
     expect(definers.rows).toHaveLength(6);
+    // Since M2-01av each public name is the wrapper that names the row's tenant; its search
+    // path ends in pg_temp as 049–052's do. The body it calls keeps 040's.
     for (const row of definers.rows)
-      expect(row.config, row.proname).toEqual(['search_path=pg_catalog']);
+      expect(row.config, row.proname).toEqual(['search_path=pg_catalog, pg_temp']);
   });
 });
