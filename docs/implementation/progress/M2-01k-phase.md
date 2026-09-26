@@ -1,6 +1,6 @@
 # M2-01k phase 통합 기록 · 2026-09-27
 
-기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2차의 지적을 수정했고 변경 HEAD의 재검토와 main 병합은 아직 수행하지 않았다.
+기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2·3차의 지적을 수정했고 변경 HEAD의 재검토와 main 병합은 아직 수행하지 않았다.
 
 ## 이번 범위
 
@@ -35,4 +35,10 @@ Codex CLI `gpt-6-sol` high/read-only가 `main` `9ac6aa1f5af54a09497d7e50504840fb
 
 같은 Codex CLI 설정의 전체 diff 재검토는 `main` `9ac6aa1` 대 HEAD `f7644ee`에서 앞선 두 지적을 **각각 FIXED**로 확인했지만 새 두 지적으로 **CHANGES_REQUESTED**를 냈다. 새 P1은 전체 보기 뒤 차트 재확대의 요청 번호가 재사용되는 문제, 새 P2는 지도 wheel 직후 코드의 fit이 사용자 이동으로 오분류되는 문제였다.
 
-두 새 지적을 `9967344`에서 수정했다. viewport 요청 번호는 화면 수명 동안 단조 증가하고, MapLibre fit에는 명시적 출처가 따라간다. [확대 기록](M2-01k-zoom.md)의 같은 adapter 재확대와 wheel 직후 전체 보기 Next/Vite 시험은 각각 **2/2 통과**했고, 원래 결함을 되살린 변형은 각각 **2/2 실패**했다. 원복 후 `activity-range-link.spec.ts` 전체 **12/12를 두 번 통과**했고 관련 단위 시험 **109/109**, 생성물·포맷·lint·34개 패키지와 루트 타입 검사·두 shell 빌드가 통과했다. root의 변경 후 `pnpm check`도 Vitest **4,099/4,099 passed**(339 files)였다. 서버·DB 경계는 이 수정에서 변경되지 않았다. 변경 HEAD의 phase 전체 독립 재검토는 아직 필요하다.
+두 새 지적을 `9967344`에서 수정했다. viewport 요청 번호는 화면 수명 동안 단조 증가하고, MapLibre fit에는 명시적 출처가 따라간다. [확대 기록](M2-01k-zoom.md)의 같은 adapter 재확대와 wheel 직후 전체 보기 Next/Vite 시험은 각각 **2/2 통과**했고, 원래 결함을 되살린 변형은 각각 **2/2 실패**했다. 원복 후 `activity-range-link.spec.ts` 전체 **12/12를 두 번 통과**했고 관련 단위 시험 **109/109**, 생성물·포맷·lint·34개 패키지와 루트 타입 검사·두 shell 빌드가 통과했다. root의 변경 후 `pnpm check`도 Vitest **4,099/4,099 passed**(339 files)였다. 서버·DB 경계는 이 수정에서 변경되지 않았다.
+
+## 독립 검토 3차와 수정
+
+같은 Codex CLI 설정의 전체 diff 재검토는 `main` `9ac6aa1` 대 HEAD `1ff03ba`에서 앞선 네 지적을 **모두 FIXED**로 확인했지만 새 P2 지적으로 **CHANGES_REQUESTED**를 냈다. 차트 확대 후 사용자가 지도를 움직여도 오래된 차트 fit 요청이 남아, adapter 재생성 시 사용자 범위를 덮는 문제였다.
+
+`da2e201`에서 사용자 지도 조작이 이전 차트 요청을 무효화하고 실제 viewport를 저장하도록 고쳤다. 새 adapter와 remount된 첫 adapter는 저장된 범위를 복원하며, 같은 adapter에는 중복 fit하지 않는다. [확대 기록](M2-01k-zoom.md)의 실제 adapter 시험과 Next/Vite 브라우저 시험은 **12/12를 두 번 통과**했고, 오래된 요청 제거와 복원 fit을 되돌린 변형은 각각 실패했다. 관련 단위 시험 **111/111**, 생성물·대상 format/lint·전체 타입 검사·두 shell 빌드가 통과했다. root의 전체 `pnpm check`도 생성물·format·lint·typecheck 및 Vitest **4,101/4,101 passed**(339 files)였다. 첫 실행은 샌드박스가 기존 로컬 fixture 서버 접속을 막아 중단했고, 로컬 접속을 허용한 재실행이 통과했다. 제품 UI에서 실행 중 배경 지도를 바꾸는 동작이 없어 adapter 재생성은 component 시험으로 검증했다. 변경 HEAD의 phase 전체 독립 재검토는 아직 필요하다.
