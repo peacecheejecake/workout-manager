@@ -88,6 +88,28 @@ enum ProbeFiles {
   }
 }
 
+/// Serializes every state/outbox transition, including the HealthKit await between reads and writes.
+actor ProbeStateGate {
+  private var held = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  func withExclusive<T>(_ operation: () async throws -> T) async rethrows -> T {
+    if held {
+      await withCheckedContinuation { waiters.append($0) }
+    } else {
+      held = true
+    }
+    defer {
+      if waiters.isEmpty {
+        held = false
+      } else {
+        waiters.removeFirst().resume()
+      }
+    }
+    return try await operation()
+  }
+}
+
 func digest(_ data: Data?) -> String {
   guard let data else { return "none" }
   return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(16)
@@ -115,6 +137,7 @@ final class HealthProbe {
   let workout = HKObjectType.workoutType()
   var sampleTypes: [HKSampleType] { [heartRate, workout] }
   private var observers: [HKObserverQuery] = []
+  private let stateGate = ProbeStateGate()
   private let ownSource = HKQuery.predicateForObjects(from: HKSource.default())
 
   func loadState() -> ProbeState {
@@ -140,7 +163,13 @@ final class HealthProbe {
     Set(state.taggedSampleUUIDs?[type.identifier] ?? [])
   }
 
-  private func rememberTaggedSample(_ type: HKSampleType, uuid: UUID) throws {
+  private func rememberTaggedSample(_ type: HKSampleType, uuid: UUID) async throws {
+    try await stateGate.withExclusive {
+      try rememberTaggedSampleExclusive(type, uuid: uuid)
+    }
+  }
+
+  private func rememberTaggedSampleExclusive(_ type: HKSampleType, uuid: UUID) throws {
     var state = loadState()
     var tracked = state.taggedSampleUUIDs ?? [:]
     var known = Set(tracked[type.identifier] ?? [])
@@ -148,11 +177,7 @@ final class HealthProbe {
     tracked[type.identifier] = known.sorted { $0.uuidString < $1.uuidString }
     state.taggedSampleUUIDs = tracked
     try ProbeFiles.save(state, "state.json")
-    if !observers.isEmpty {
-      for observer in observers { store.stop(observer) }
-      observers.removeAll()
-      registerObservers()
-    }
+    refreshObservers()
   }
 
   private var probeOnly: NSPredicate {
@@ -251,7 +276,7 @@ final class HealthProbe {
         quantity: HKQuantity(unit: .count().unitDivided(by: .minute()), doubleValue: 61),
         start: start, end: start, metadata: metadata)
       try await store.save(sample)
-      try rememberTaggedSample(heartRate, uuid: sample.uuid)
+      try await rememberTaggedSample(heartRate, uuid: sample.uuid)
       result["heartRateUUID"] = sample.uuid.uuidString
       let configuration = HKWorkoutConfiguration()
       configuration.activityType = .walking
@@ -267,7 +292,7 @@ final class HealthProbe {
         result["cleanup"] = await deleteSynthetic(runId: run)
         return result
       }
-      try rememberTaggedSample(workout, uuid: saved.uuid)
+      try await rememberTaggedSample(workout, uuid: saved.uuid)
       result["workoutUUID"] = saved.uuid.uuidString
       result["saved"] = true
     } catch {
@@ -323,53 +348,84 @@ final class HealthProbe {
 
   /// Anchored own-source query → outbox, committing new anchors only together with the outbox.
   func collect(crashBeforePersist: Bool) async -> [String: Any] {
+    await stateGate.withExclusive {
+      await collectExclusive(crashBeforePersist: crashBeforePersist)
+    }
+  }
+
+  private func collectExclusive(crashBeforePersist: Bool) async -> [String: Any] {
     var state = loadState()
     var perType: [String: Any] = [:]
     var anchors = state.anchors
+    var membershipChanged = false
     for type in sampleTypes {
       var known = knownUUIDs(type, state: state)
+      let originalKnown = known
       let stored = state.anchors[type.identifier].flatMap {
         try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: $0)
       }
       do {
-        let (added, deleted, anchor) = try await anchored(type, stored, knownUUIDs: known)
-        let newAnchor = anchor.flatMap {
-          try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true)
-        }
-        var entries: [OutboxEntry] = []
-        let probeAdded = added.filter { ($0.metadata?[probeTagKey] as? String) == probeTag }
-        known.formUnion(probeAdded.map(\.uuid))
-        // Deleted objects retain only HealthKit sync metadata, so correlate by previously tagged UUID.
-        let probeDeleted = deleted.filter { known.contains($0.uuid) }
-        for sample in probeAdded {
-          entries.append(
-            OutboxEntry(
+        var pageAnchor = stored
+        var pageCount = 0
+        var probeAddedUUIDs: [String] = []
+        var probeDeletedUUIDs: [String] = []
+        var rejectedUntaggedAdded = 0
+        var rejectedUntaggedDeleted = 0
+        while true {
+          let (added, deleted, nextAnchor) = try await anchored(
+            type, pageAnchor, knownUUIDs: known)
+          let changeCount = added.count + deleted.count
+          guard let nextAnchor = nextAnchor ?? (changeCount == 0 ? pageAnchor : nil) else {
+            throw ProbeCollectionError.missingAnchor
+          }
+          let probeAdded = added.filter { ($0.metadata?[probeTagKey] as? String) == probeTag }
+          known.formUnion(probeAdded.map(\.uuid))
+          // Deleted objects retain no custom tag: correlate only with persisted or newly tagged UUIDs.
+          let probeDeleted = deleted.filter { known.contains($0.uuid) }
+          for sample in probeAdded {
+            let entry = OutboxEntry(
               key: "\(type.identifier)|\(sample.uuid.uuidString)|upsert", type: type.identifier,
-              uuid: sample.uuid.uuidString, op: "upsert", attempts: 0))
-        }
-        for object in probeDeleted {
-          entries.append(
-            OutboxEntry(
+              uuid: sample.uuid.uuidString, op: "upsert", attempts: 0)
+            if !state.outbox.contains(where: { $0.key == entry.key }) { state.outbox.append(entry) }
+            probeAddedUUIDs.append(sample.uuid.uuidString)
+          }
+          for object in probeDeleted {
+            let entry = OutboxEntry(
               key: "\(type.identifier)|\(object.uuid.uuidString)|tombstone", type: type.identifier,
-              uuid: object.uuid.uuidString, op: "tombstone", attempts: 0))
+              uuid: object.uuid.uuidString, op: "tombstone", attempts: 0)
+            if !state.outbox.contains(where: { $0.key == entry.key }) { state.outbox.append(entry) }
+            probeDeletedUUIDs.append(object.uuid.uuidString)
+          }
+          known.subtract(probeDeleted.map(\.uuid))
+          rejectedUntaggedAdded += added.count - probeAdded.count
+          rejectedUntaggedDeleted += deleted.count - probeDeleted.count
+          pageCount += 1
+          if changeCount >= 100 && nextAnchor.isEqual(pageAnchor) {
+            throw ProbeCollectionError.stalledAnchor
+          }
+          pageAnchor = nextAnchor
+          if changeCount < 100 { break }
         }
-        for entry in entries where !state.outbox.contains(where: { $0.key == entry.key }) {
-          state.outbox.append(entry)
-        }
-        known.subtract(probeDeleted.map(\.uuid))
         var tracked = state.taggedSampleUUIDs ?? [:]
         tracked[type.identifier] = known.sorted { $0.uuidString < $1.uuidString }
         state.taggedSampleUUIDs = tracked
-        if let newAnchor { anchors[type.identifier] = newAnchor }
+        membershipChanged = membershipChanged || known != originalKnown
+        guard let pageAnchor else { throw ProbeCollectionError.missingAnchor }
+        let newAnchor = try NSKeyedArchiver.archivedData(
+          withRootObject: pageAnchor, requiringSecureCoding: true)
+        anchors[type.identifier] = newAnchor
         perType[type.identifier] = [
           "fromAnchor": digest(state.anchors[type.identifier]), "toAnchor": digest(newAnchor),
-          "added": probeAdded.map { $0.uuid.uuidString },
-          "rejectedUntaggedAdded": added.count - probeAdded.count,
-          "deleted": probeDeleted.map { $0.uuid.uuidString },
-          "rejectedUntaggedDeleted": deleted.count - probeDeleted.count,
+          "pages": pageCount,
+          "added": probeAddedUUIDs,
+          "rejectedUntaggedAdded": rejectedUntaggedAdded,
+          "deleted": probeDeletedUUIDs,
+          "rejectedUntaggedDeleted": rejectedUntaggedDeleted,
         ]
       } catch {
         perType[type.identifier] = describe(error)
+        // A partial page must never advance an anchor or acknowledge observer delivery.
+        return ["perType": perType, "persisted": false]
       }
     }
     if crashBeforePersist {
@@ -383,10 +439,15 @@ final class HealthProbe {
     } catch {
       return ["perType": perType, "persisted": false].merging(describe(error)) { $1 }
     }
+    if membershipChanged { refreshObservers() }
     return [
       "perType": perType, "persisted": true, "outbox": state.outbox.map { $0.key },
       "migrationHistoryIncomplete": state.migrationHistoryIncomplete ?? true,
     ]
+  }
+
+  private enum ProbeCollectionError: Error {
+    case missingAnchor, stalledAnchor
   }
 
   private func anchored(_ type: HKSampleType, _ anchor: HKQueryAnchor?, knownUUIDs: Set<UUID>)
@@ -410,7 +471,13 @@ final class HealthProbe {
   }
 
   /// Deliver outbox entries to the local stand-in sink, then acknowledge (remove) them.
-  func send(crashBeforeAck: Bool) -> [String: Any] {
+  func send(crashBeforeAck: Bool) async -> [String: Any] {
+    await stateGate.withExclusive {
+      sendExclusive(crashBeforeAck: crashBeforeAck)
+    }
+  }
+
+  private func sendExclusive(crashBeforeAck: Bool) -> [String: Any] {
     var state = loadState()
     var sink = ProbeFiles.load(LocalSink.self, "sink.json", fallback: LocalSink())
     let sending = state.outbox.map { entry -> OutboxEntry in
@@ -446,6 +513,12 @@ final class HealthProbe {
   }
 
   func setBackgroundDelivery(_ enabled: Bool) async -> [String: Any] {
+    await stateGate.withExclusive {
+      await setBackgroundDeliveryExclusive(enabled)
+    }
+  }
+
+  private func setBackgroundDeliveryExclusive(_ enabled: Bool) async -> [String: Any] {
     var result: [String: Any] = [:]
     var succeeded = true
     var rollbackSucceeded = true
@@ -532,7 +605,11 @@ final class HealthProbe {
           Task {
             let collected = await self.collect(crashBeforePersist: false)
             ProbeLog.shared.record("observerCollect", collected)
-            completion()
+            if collected["persisted"] as? Bool == true {
+              completion()
+            } else {
+              ProbeLog.shared.record("observerRetryPending", ["type": type.identifier])
+            }
           }
         }
       }
@@ -540,6 +617,13 @@ final class HealthProbe {
       observers.append(query)
     }
     ProbeLog.shared.record("observersRegistered", ["types": sampleTypes.map { $0.identifier }])
+  }
+
+  private func refreshObservers() {
+    guard !observers.isEmpty else { return }
+    for observer in observers { store.stop(observer) }
+    observers.removeAll()
+    registerObservers()
   }
 }
 
@@ -569,7 +653,7 @@ final class ProbeRunner {
       case "add": result = await probe.addSynthetic()
       case "collect":
         result = await probe.collect(crashBeforePersist: crash == "collectBeforePersist")
-      case "send": result = probe.send(crashBeforeAck: crash == "sendBeforeAck")
+      case "send": result = await probe.send(crashBeforeAck: crash == "sendBeforeAck")
       case "delete": result = await probe.deleteSynthetic()
       case "cleanup": result = await probe.cleanup()
       case "enableBackground": result = await probe.setBackgroundDelivery(true)

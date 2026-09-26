@@ -42,3 +42,26 @@ it('keeps cleanup explicit and distinguishes API success from hidden read author
   assert.match(swift, /state\.taggedSampleUUIDs = tracked/);
   assert.match(swift, /try ProbeFiles\.save\(state, "state\.json"\)/);
 });
+
+it('serializes durable state transitions and refreshes observer UUID scope', () => {
+  assert.match(swift, /actor ProbeStateGate/);
+  assert.match(swift, /private let stateGate = ProbeStateGate\(\)/);
+  for (const method of ['rememberTaggedSample', 'collect', 'send', 'setBackgroundDelivery']) {
+    assert.match(swift, new RegExp(`func ${method}\\([^]*?await stateGate\\.withExclusive \\{`));
+  }
+  assert.match(swift, /membershipChanged = membershipChanged \|\| known != originalKnown/);
+  assert.match(swift, /if membershipChanged \{ refreshObservers\(\) \}/);
+  assert.match(swift, /private func refreshObservers\(\)/);
+  assert.match(swift, /store\.stop\(observer\)/);
+});
+
+it('drains anchored pages before durable commit and acknowledges only successful collection', () => {
+  assert.match(swift, /while true \{[^]*?try await anchored\(/);
+  assert.match(swift, /if changeCount < 100 \{ break \}/);
+  assert.match(swift, /throw ProbeCollectionError\.stalledAnchor/);
+  assert.match(swift, /return \["perType": perType, "persisted": false\]/);
+  assert.match(swift, /state\.anchors = anchors[^]*?try ProbeFiles\.save\(state, "state\.json"\)/);
+  assert.match(swift, /if collected\["persisted"\] as\? Bool == true \{\s*completion\(\)/);
+  assert.equal((swift.match(/completion\(\)/g) ?? []).length, 1);
+  assert.match(swift, /observerRetryPending/);
+});

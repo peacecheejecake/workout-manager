@@ -45,3 +45,15 @@
 | 열린 키보드 상태에서 프레임 변경·회전         | **FIXED** — `keyboardDidChangeFrameNotification`에도 포커스 reveal을 실행하고, `willChangeFrame`의 지연 재확인은 가장 최근 키보드 프레임을 사용한다. 집중 시험은 해당 이벤트와 가로 viewport 계산을 확인한다.                                                                                    |
 
 수정 후 `swift-format lint --strict`, Swift 구문 검사, ESLint·Prettier·diff check, 집중 Vitest 4파일·11시험 통과. 임시 Capacitor `prepare`는 `AppDelegate.swift` SHA-256 `8fe882c2944a30e8f7fec4d31e8174565b5623ce5b4c69cf949d826d177fecbc`, `SceneDelegate.swift` SHA-256 `f8cdfe72daedbc856c9a402657b6c2f3d4438dcc8e17f463cf41d6293c9dc1ae`를 복사했다. Xcode 27.0 unsigned iOS 빌드 **BUILD SUCCEEDED**, error 0. 실기기 목록은 물리 기기 1개, tunnel `unavailable`, 개발 서비스 비가용으로 재확인했다. 수정 앱의 서명·설치, 가로 IME·Back 사람 조작, HealthKit 추가·수집·삭제·정리·background wake-up은 모두 **not_executed**다.
+
+## 2차 독립 phase 검토 지적 수정 · 2026-09-27
+
+2차 읽기 전용 검토는 main `17982f2` → phase `23943d5`에서 **CHANGES_REQUESTED**였다. 이전 Back·키보드 지적은 검토자가 FIXED로 판정했다. 아래는 새 수정의 구현자 점검이며, 독립 재검토 승인이나 실기기 HealthKit 통과 판정이 아니다.
+
+| 지적                                                       | 현재 판정·근거                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 수집 뒤 observer의 UUID 범위 미갱신                        | **FIXED** — 수집 전후의 표식 UUID 집합이 달라지면 상태 파일을 먼저 저장하고 기존 observer를 중지한 뒤 새 UUID predicate로 등록한다. 직접 `collect`와 background callback 모두 같은 경로를 쓴다.                                                                               |
+| `collect`/`remember`/`send`/delivery 설정 간 상태 덮어쓰기 | **FIXED** — `ProbeStateGate`가 HealthKit await를 포함한 네 영속 상태 전환 전체를 직렬화한다. 추가 표본의 UUID 보관도 이 gate를 통과한다.                                                                                                                                      |
+| 100건 뒤 중단 또는 실패 후 completion                      | **FIXED** — anchored query를 변화가 100건 미만인 페이지까지 반복하고 anchor 진행이 멈추면 실패시킨다. 어느 유형에서라도 실패하면 anchor·outbox 파일을 저장하지 않는다. observer는 파일 저장까지 성공한 경우에만 `completion()`을 호출하며, 실패는 retry 대기 사실로 기록한다. |
+
+검사: Swift 구문·`swift-format lint --strict`, Node 24 ESLint, Prettier, diff check, 집중 Vitest 3파일·7시험 통과. 임시 Capacitor `prepare`가 수정 `AppDelegate.swift` SHA-256 `85fd476b863d7dbdbd9ba2805b3f84c4bcec647c6936f85e0d825e695d68e8f6`을 복사했고 Xcode 27.0의 **unsigned iOS device 빌드가 `BUILD SUCCEEDED`, error 0**이었다. 연결 목록의 physical iPhone은 `unavailable`, tunnel `unavailable`이므로 서명·설치 및 HealthKit 추가·수집·삭제·정리·background wake-up은 **not_executed**다. 소스 구조 시험과 빌드는 실기기 수집·재시도 동작의 증거가 아니다.
