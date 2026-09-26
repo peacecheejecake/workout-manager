@@ -115,3 +115,5 @@ Aside 업데이트는 `fetch failed`였으므로 native UI 증거는 `devicectl`
 Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e773ee28d` → phase `9f2adaa6006fed87a4254be323182a8dc323815e` 전체 diff를 검토해 **CHANGES_REQUESTED**를 냈다. P2: 프로세스 목록에 실행 파일 필드가 빠진 항목이 있어도 `terminate`가 대상 0개 성공으로 기록했다. 이전의 광범위한 `App.app` 종료 범위는 FIXED였지만, 신원 필드 누락 시 실패 조건은 NOT FIXED였다. 검토자는 실제 영수증을 열거나 실기기 실행을 재현하지 않았고 문서의 background wake·dirty Back 한계 표기는 적절하다고 확인했다.
 
 수정: 실행 파일이 문자열이 아닌 프로세스가 하나라도 있으면 `PROBE_PROCESS_IDENTITY_UNAVAILABLE`로 닫는다. 누락 항목만 있는 목록과 정상 probe 항목에 누락 항목이 섞인 목록을 회귀 시험에 추가했다. 집중 Vitest 6/6, ESLint, Prettier, 구문·diff 검사가 통과했다. 수정 명령을 iPhone에서 다시 실행해 정확히 probe 프로세스 1개만 종료했고 이후 앱을 다시 실행했다. 이는 구현자 수정이며 다음 독립 재검토의 FIXED 판정을 기다린다.
+
+2차 읽기 전용 검토는 같은 main `a96bfdc` → phase `22f00f3` 전체 diff에서 **CHANGES_REQUESTED**였다. 1차의 누락·비문자열 필드 P2는 FIXED로 판정했지만, `executable: ""`가 대상 0개 성공으로 기록되는 새 P2가 남았다. 구현자는 빈 문자열과 공백만 있는 문자열도 신원 확인 실패로 닫고, 단독·정상 probe와 혼합된 두 경우를 회귀 시험에 추가했다. 새 변경의 독립 재검토는 별도로 받는다.

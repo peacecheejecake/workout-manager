@@ -155,6 +155,17 @@ describe('device process termination scope', () => {
         installed(),
       ),
     ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+    for (const executable of ['', '   ']) {
+      expect(() =>
+        probeProcessIds(lookup([{ executable, processIdentifier: 202 }]), installed()),
+      ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+      expect(() =>
+        probeProcessIds(
+          lookup([{ executable: `${probeUrl}App`, processIdentifier: 101 }, { executable }]),
+          installed(),
+        ),
+      ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+    }
     expect(() =>
       probeProcessIds(
         lookup([{ executable: `${probeUrl}App`, processIdentifier: 0 }]),
