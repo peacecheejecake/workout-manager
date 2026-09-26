@@ -35,8 +35,12 @@ import type { ActivityTrackRevision } from '@workout/contracts/activity-tracks';
 import type { MapPath, RecordedTrack } from '@workout/contracts/tracks';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
-import type { MapAdapterFactory, MapAdapterFailure } from '@workout/geo-kit/map-adapter';
-import type { MapSelection } from '@workout/geo-kit/map-path';
+import type {
+  MapAdapterFactory,
+  MapAdapterFailure,
+  MapViewportEvent,
+} from '@workout/geo-kit/map-adapter';
+import { computeBounds, type MapBounds, type MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import type { MapRenderIdleInfo, RenderedPathPiece } from '@workout/geo-kit/render-evidence';
 import { Button } from '@workout/ui-foundation/button';
@@ -45,10 +49,11 @@ import { StatusNotice } from '@workout/ui-foundation/status-notice';
 import { CourseFromSegment } from './course-from-segment';
 import { createDetailSelectionStore } from './detail-selection';
 import { useSharedDetailSelectionStore } from './detail-selection-provider';
-import { lapTimeRange, recordInRange, type TimeRange } from './detail-projection';
+import { lapTimeRange, recordInRange, recordTime, type TimeRange } from './detail-projection';
 import { LapTable } from './detail-lap-table';
 import { Scrollable } from './detail-scrollable';
 import { MapLeaf } from './map-leaf';
+import { timeDomainInViewport, viewportForTimeDomain } from './linked-viewport';
 import {
   buildHighlightPath,
   buildRecordInstantIndex,
@@ -376,6 +381,11 @@ function StoredTrackView({
   // On a tablet the summary pane belongs to both views, so the graph tab stands for it too.
   const selectedTab: PaneId = layout === 'tablet' && pane === 'detail' ? 'chart' : pane;
   const [fitRequest, setFitRequest] = useState(0);
+  const [zoomDomain, setZoomDomain] = useState<TimeRange | null>(null);
+  const [viewportRequest, setViewportRequest] = useState<{
+    revision: number;
+    bounds: MapBounds;
+  } | null>(null);
   const [page, setPage] = useState(0);
   const [failure, setFailure] = useState<MapAdapterFailure | null>(null);
   const [mapStatus, setMapStatus] = useState<MapViewStatus>('preparing');
@@ -399,6 +409,28 @@ function StoredTrackView({
 
   const geometry = useMemo(() => buildStoredTrackGeometry(mapPath, pathId), [mapPath]);
   const index = useMemo(() => indexStoredTrack(recorded), [recorded]);
+  const onChartZoom = useCallback(
+    (next: TimeRange | null) => {
+      const bounds = next
+        ? viewportForTimeDomain(geometry, index, next)
+        : computeBounds([geometry.path]);
+      setZoomDomain(next);
+      if (!bounds) return;
+      setViewportRequest((previous) => ({ revision: (previous?.revision ?? 0) + 1, bounds }));
+    },
+    [geometry, index],
+  );
+  const onMapViewportChange = useCallback(
+    (event: MapViewportEvent) => {
+      if (event.source !== 'user') return;
+      const next = timeDomainInViewport(geometry, index, event.bounds);
+      if (next)
+        setZoomDomain((previous) =>
+          previous?.start === next.start && previous.end === next.end ? previous : next,
+        );
+    },
+    [geometry, index],
+  );
   const summary = useMemo(() => summarizeTrack(recorded), [recorded]);
   const breaks = useMemo(() => countBreaks(recorded), [recorded]);
   const recordInstants = useMemo(
@@ -582,7 +614,10 @@ function StoredTrackView({
         <Button
           variant="secondary"
           disabled={total === 0}
-          onClick={() => setFitRequest((value) => value + 1)}
+          onClick={() => {
+            setZoomDomain(null);
+            setFitRequest((value) => value + 1);
+          }}
         >
           전체 보기
         </Button>
@@ -709,6 +744,8 @@ function StoredTrackView({
               onSelect={onMapSelect}
               basemap={stableBasemap}
               fitRequest={fitRequest}
+              viewportRequest={viewportRequest}
+              onViewportChange={onMapViewportChange}
               onStatusChange={setMapStatus}
               onFailure={onFailure}
               onRenderIdle={onRenderIdle}
@@ -773,6 +810,8 @@ function StoredTrackView({
                 records={details.records}
                 selected={recordIndex}
                 range={range}
+                zoomDomain={zoomDomain}
+                onZoom={onChartZoom}
                 onSelect={onChartSelect}
                 onSelectRange={onChartRange}
                 onRangeDragStart={beginRangeDrag}
@@ -979,6 +1018,8 @@ function TrackChartPane({
   records,
   selected,
   range,
+  zoomDomain,
+  onZoom,
   onSelect,
   onSelectRange,
   onRangeDragStart,
@@ -987,6 +1028,8 @@ function TrackChartPane({
   readonly records: ActivityDetails['records'];
   readonly selected: number | null;
   readonly range: TimeRange | null;
+  readonly zoomDomain: TimeRange | null;
+  readonly onZoom: (domain: TimeRange | null) => void;
   readonly onSelect: (index: number, time: number) => void;
   readonly onSelectRange: (range: TimeRange) => void;
   readonly onRangeDragStart: () => void;
@@ -1001,8 +1044,32 @@ function TrackChartPane({
   );
   const start = shown * recordsPerChartPage;
   const listed = records.slice(start, start + recordsPerChartPage);
+  const times = listed.map(recordTime).filter((time): time is number => time !== null);
+  const pageDomain =
+    times.length > 1 ? { start: Math.min(...times), end: Math.max(...times) } : null;
+  const activeDomain = zoomDomain ?? pageDomain;
+  const canZoom = activeDomain !== null && activeDomain.end - activeDomain.start > 2;
   return (
     <>
+      <div className={styles.actions}>
+        <Button
+          variant="secondary"
+          disabled={!canZoom}
+          onClick={() => {
+            if (!activeDomain) return;
+            const quarter = (activeDomain.end - activeDomain.start) / 4;
+            onZoom({ start: activeDomain.start + quarter, end: activeDomain.end - quarter });
+          }}
+        >
+          차트 확대
+        </Button>
+        <Button variant="secondary" disabled={zoomDomain === null} onClick={() => onZoom(null)}>
+          차트 전체
+        </Button>
+      </div>
+      <p className={styles.note} data-testid="chart-zoom-domain">
+        {zoomDomain ? `${zoomDomain.start}–${zoomDomain.end}` : '전체'}
+      </p>
       <p className={styles.note}>
         차트 원본 순번 범위:{' '}
         {listed.length ? `${listed[0]?.index}–${listed.at(-1)?.index}` : '없음'} · 전체{' '}
@@ -1034,6 +1101,7 @@ function TrackChartPane({
               metric="distanceMeters"
               selected={selected}
               range={range}
+              domain={zoomDomain}
               onSelect={onSelect}
               onSelectRange={onSelectRange}
               onRangeDragStart={onRangeDragStart}
@@ -1044,6 +1112,7 @@ function TrackChartPane({
               metric="heartRateBpm"
               selected={selected}
               range={range}
+              domain={zoomDomain}
               onSelect={onSelect}
               onSelectRange={onSelectRange}
               onRangeDragStart={onRangeDragStart}

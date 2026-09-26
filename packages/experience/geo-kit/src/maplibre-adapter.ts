@@ -168,7 +168,7 @@ async function initialise(
   origin: string,
   signal: AbortSignal,
 ): Promise<MapAdapterHandle> {
-  const { container, basemap, onReady, onFailure, onPick, onIdle } = options;
+  const { container, basemap, onReady, onFailure, onPick, onIdle, onViewportChange } = options;
   if (signal.aborted) throw new Error('ADAPTER_ABORTED');
   // Install the transport before the renderer exists, so no asset can be fetched any
   // other way.
@@ -218,6 +218,7 @@ async function initialise(
   const fail = (reason: Parameters<typeof onFailure>[0], detail?: string) => {
     if (!destroyed) onFailure(reason, detail?.slice(0, 300));
   };
+  let removeGestureListeners = () => undefined;
 
   try {
     await new Promise<void>((resolveLoad, rejectLoad) => {
@@ -239,6 +240,41 @@ async function initialise(
     map.getCanvas().addEventListener('webglcontextlost', () => fail('CONTEXT_LOST'));
     map.on('click', (event: { lngLat: { lng: number; lat: number } }) => {
       onPick([event.lngLat.lng, event.lngLat.lat]);
+    });
+    let userMoving = false;
+    let lastGestureAt = Number.NEGATIVE_INFINITY;
+    const noteGesture = () => {
+      lastGestureAt = Date.now();
+    };
+    // MapLibre's final move event does not consistently retain the browser input event.
+    // Capture it at the surface before the SDK handles wheel, drag or touch.
+    container.addEventListener('wheel', noteGesture, { passive: true });
+    container.addEventListener('pointerdown', noteGesture, { passive: true });
+    container.addEventListener('touchstart', noteGesture, { passive: true });
+    container.addEventListener('keydown', noteGesture);
+    removeGestureListeners = () => {
+      container.removeEventListener('wheel', noteGesture);
+      container.removeEventListener('pointerdown', noteGesture);
+      container.removeEventListener('touchstart', noteGesture);
+      container.removeEventListener('keydown', noteGesture);
+    };
+    map.on('movestart', (event) => {
+      userMoving = event.originalEvent !== undefined || Date.now() - lastGestureAt < 800;
+    });
+    map.on('moveend', () => {
+      if (destroyed || !onViewportChange) return;
+      const viewport = map.getBounds();
+      onViewportChange({
+        bounds: {
+          west: viewport.getWest(),
+          south: viewport.getSouth(),
+          east: viewport.getEast(),
+          north: viewport.getNorth(),
+          crossesAntimeridian: viewport.getEast() < viewport.getWest(),
+        },
+        source: userMoving ? 'user' : 'programmatic',
+      });
+      userMoving = false;
     });
 
     map.addSource(pathSourceId, { type: 'geojson', data: emptyCollection });
@@ -419,6 +455,7 @@ async function initialise(
       destroy() {
         if (destroyed) return;
         destroyed = true;
+        removeGestureListeners();
         map.remove();
       },
     };
@@ -427,6 +464,7 @@ async function initialise(
     return handle;
   } catch (error) {
     destroyed = true;
+    removeGestureListeners();
     map.remove();
     throw error instanceof Error ? error : new Error('ADAPTER_INITIALISATION_FAILED');
   }

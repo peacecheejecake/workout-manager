@@ -47,6 +47,8 @@ export interface DetailChartProps {
   metric: 'distanceMeters' | 'heartRateBpm';
   selected: number | null;
   range: TimeRange | null;
+  /** Visible time domain. Independent of a selected range. */
+  domain?: TimeRange | null;
   onSelect(index: number, time: number): void;
   /**
    * A time range chosen on the chart: by dragging across it, or by Shift+click on a point
@@ -68,6 +70,7 @@ export function DetailChart({
   metric,
   selected,
   range,
+  domain,
   onSelect,
   onSelectRange,
   onRangeDragStart,
@@ -96,7 +99,10 @@ export function DetailChart({
     },
     [],
   );
-  const segments = chartSegments(records, metric);
+  const segments = chartSegments(
+    domain ? records.filter((record) => recordInRange(record, domain)) : records,
+    metric,
+  );
   const points = segments.flat();
   const label = metric === 'distanceMeters' ? '원본 거리 (m)' : '원본 심박 (bpm)';
   if (!points.length) return <p>{label}: 표시할 시각·측정값이 없습니다.</p>;

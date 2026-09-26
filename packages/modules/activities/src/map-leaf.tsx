@@ -13,8 +13,12 @@
  */
 import { Component, lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import type { BasemapDescriptor } from '@workout/geo-kit/basemap';
-import type { MapAdapterFactory, MapAdapterFailure } from '@workout/geo-kit/map-adapter';
-import type { MapPath, MapSelection } from '@workout/geo-kit/map-path';
+import type {
+  MapAdapterFactory,
+  MapAdapterFailure,
+  MapViewportEvent,
+} from '@workout/geo-kit/map-adapter';
+import type { MapBounds, MapPath, MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 
@@ -48,6 +52,8 @@ export interface MapLeafProps {
   readonly onSelect: (selection: MapSelection | null) => void;
   readonly basemap: BasemapDescriptor | null;
   readonly fitRequest: number;
+  readonly viewportRequest?: { readonly revision: number; readonly bounds: MapBounds } | null;
+  readonly onViewportChange?: (event: MapViewportEvent) => void;
   readonly onStatusChange: (status: MapViewStatus) => void;
   /** Classified renderer failure, so an owner can separate WebGL from the background map. */
   readonly onFailure?: (failure: MapAdapterFailure, detail?: string) => void;
@@ -75,6 +81,8 @@ export function MapLeaf({ mapView, ...props }: MapLeafProps) {
           onSelect={props.onSelect}
           basemap={props.basemap}
           fitRequest={props.fitRequest}
+          {...(props.viewportRequest ? { viewportRequest: props.viewportRequest } : {})}
+          {...(props.onViewportChange ? { onViewportChange: props.onViewportChange } : {})}
           onStatusChange={props.onStatusChange}
           {...(props.onRenderIdle ? { onRenderIdle: props.onRenderIdle } : {})}
           {...(props.onFailure ? { onFailure: props.onFailure } : {})}

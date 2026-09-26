@@ -9,6 +9,12 @@ import type { GeoPosition, MapBounds, MapPathFeatureCollection } from './map-pat
 import type { BasemapDescriptor } from './basemap';
 import type { MapRenderIdleInfo } from './render-evidence';
 
+/** Renderer-neutral viewport report; only a direct map gesture has source `user`. */
+export interface MapViewportEvent {
+  readonly bounds: MapBounds;
+  readonly source: 'user' | 'programmatic';
+}
+
 export type MapAdapterFailure =
   'RENDERER_UNAVAILABLE' | 'CONTEXT_LOST' | 'STYLE_LOAD_FAILED' | 'BASEMAP_REJECTED';
 
@@ -65,6 +71,8 @@ export interface MapAdapterOptions {
    * observation ever reports nothing drawn.
    */
   readonly onIdle?: (info: MapRenderIdleInfo) => void;
+  /** Pan or zoom completed. Callers can ignore programmatic fits to avoid feedback loops. */
+  readonly onViewportChange?: (event: MapViewportEvent) => void;
   /**
    * Abort initialisation. Without this a renderer whose style never loads could not be
    * cleaned up, because no handle had been returned yet.

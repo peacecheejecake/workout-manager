@@ -208,6 +208,60 @@ const shells = [
 ] as const;
 
 for (const shell of shells) {
+  test(`${shell.name}: chart and map zoom share a viewport without changing the chosen range`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const headers = await login(page);
+    const activityId = await storeTrack(page, headers);
+    await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
+    const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+    const graph = panel.getByRole('group', { name: '저장된 경로 관측 그래프', exact: true });
+    const map = mapRegion(panel, '저장된 활동 경로');
+    await expectLineDrawn(map);
+    await expect(graph.getByRole('img', { name: '원본 심박 (bpm) 차트' })).toBeVisible();
+    await panel.getByRole('button', { name: '시작 지점', exact: true }).click();
+    await expect(panel.getByText(/선택 표본 0:0/)).toBeVisible();
+    const writes: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/bff/'))
+        writes.push(request.url());
+    });
+
+    const fullBounds = await map.getAttribute('data-viewport-bounds');
+    await graph.getByRole('button', { name: '차트 확대' }).click();
+    await expect(graph.getByTestId('chart-zoom-domain')).not.toHaveText('전체');
+    await expect(map).toHaveAttribute('data-viewport-source', 'programmatic');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(fullBounds);
+    await expect(map).toHaveAttribute('data-viewport-request', '1');
+    const zoomedBounds = await map.getAttribute('data-viewport-bounds');
+    await expect(panel.getByText(/선택 표본 0:0/)).toBeVisible();
+    expect(
+      await graph
+        .getByRole('img', { name: '원본 심박 (bpm) 차트' })
+        .locator('circle[data-selected]')
+        .count(),
+    ).toBeLessThan(12);
+    await dragAcross(page, graph, 3, 5);
+    const chosenRange = await panel.getByTestId('route-range').textContent();
+    await expect(panel.getByTestId('route-range')).toContainText('선택 구간 UTC');
+    const zoomedDomain = await graph.getByTestId('chart-zoom-domain').textContent();
+
+    const canvas = map.locator('canvas');
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -700);
+    await page.keyboard.up('Control');
+    await expect(map).toHaveAttribute('data-viewport-source', 'user');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(zoomedBounds);
+    await expect(graph.getByTestId('chart-zoom-domain')).not.toHaveText(zoomedDomain ?? '');
+    await expect(map).toHaveAttribute('data-viewport-request', '1');
+    await expect(panel.getByTestId('route-range')).toHaveText(chosenRange ?? '');
+    expect(writes).toEqual([]);
+  });
+
   test(`${shell.name}: a chart drag highlights the same range on the map and in the lap table`, async ({
     page,
   }) => {

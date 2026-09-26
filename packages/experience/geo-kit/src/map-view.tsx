@@ -13,7 +13,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { withOdblNotice, type BasemapDescriptor } from './basemap';
 import { MapAdapterError } from './map-adapter';
-import type { MapAdapterFactory, MapAdapterFailure, MapAdapterHandle } from './map-adapter';
+import type {
+  MapAdapterFactory,
+  MapAdapterFailure,
+  MapAdapterHandle,
+  MapViewportEvent,
+} from './map-adapter';
 import {
   computeBounds,
   findNearestVertex,
@@ -21,7 +26,13 @@ import {
   toFeatureCollection,
   validateMapPath,
 } from './map-path';
-import type { GeoPosition, MapPath, MapPathFeatureCollection, MapSelection } from './map-path';
+import type {
+  GeoPosition,
+  MapBounds,
+  MapPath,
+  MapPathFeatureCollection,
+  MapSelection,
+} from './map-path';
 import { collectionKey, judgeRender } from './render-evidence';
 import type { MapRenderIdleInfo } from './render-evidence';
 import styles from './map-view.module.css';
@@ -95,6 +106,10 @@ export interface MapViewProps {
    * counts, so callers normally increment it.
    */
   readonly fitRequest?: number;
+  /** An explicit fit to a subset, independent of the ordinary show-all request. */
+  readonly viewportRequest?: { readonly revision: number; readonly bounds: MapBounds } | null;
+  /** A completed user or programmatic viewport change. */
+  readonly onViewportChange?: (event: MapViewportEvent) => void;
   /**
    * Maximum number of vertices rendered in the non-map coordinate list. A recorded track
    * can carry tens of thousands of samples and one control each would be a document of
@@ -200,6 +215,8 @@ export function MapView({
   onSelect,
   basemap,
   fitRequest = 0,
+  viewportRequest = null,
+  onViewportChange,
   fallbackLimit = 200,
   onRenderIdle,
   renderDeadlineMs = defaultRenderDeadlineMs,
@@ -211,6 +228,7 @@ export function MapView({
 }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const [adapter, setAdapter] = useState<MapAdapterHandle | null>(null);
+  const [viewport, setViewport] = useState<MapViewportEvent | null>(null);
   const factory = createAdapter ?? defaultAdapterFactory;
   const [renderer, setRenderer] = useState<RendererReport | null>(null);
   const [evidence, setEvidence] = useState<EvidenceReport | null>(null);
@@ -267,10 +285,17 @@ export function MapView({
             : (evidenceNow?.verdict ?? 'drawing');
 
   // Latest callbacks without re-creating the renderer on every parent render.
-  const latest = useRef({ onSelect, paths, onRenderIdle, onFailure, onPickPosition });
+  const latest = useRef({
+    onSelect,
+    paths,
+    onRenderIdle,
+    onFailure,
+    onPickPosition,
+    onViewportChange,
+  });
   useEffect(() => {
-    latest.current = { onSelect, paths, onRenderIdle, onFailure, onPickPosition };
-  }, [onSelect, paths, onRenderIdle, onFailure, onPickPosition]);
+    latest.current = { onSelect, paths, onRenderIdle, onFailure, onPickPosition, onViewportChange };
+  }, [onSelect, paths, onRenderIdle, onFailure, onPickPosition, onViewportChange]);
 
   // The collection last handed to the renderer, and the last one an idle confirmed. Read
   // only inside callbacks and timers, never during render.
@@ -311,6 +336,11 @@ export function MapView({
         if (!active) return;
         latest.current.onPickPosition?.(position);
         latest.current.onSelect(findNearestVertex(latest.current.paths, position));
+      },
+      onViewportChange: (event) => {
+        if (!active) return;
+        setViewport(event);
+        latest.current.onViewportChange?.(event);
       },
       onIdle: (info) => {
         if (!active) return;
@@ -443,6 +473,18 @@ export function MapView({
     adapter.fitBounds(bounds);
   }, [adapter, bounds, fitRequest]);
 
+  const fittedViewport = useRef<{ adapter: MapAdapterHandle; revision: number } | null>(null);
+  useEffect(() => {
+    if (!adapter || !viewportRequest) return;
+    if (
+      fittedViewport.current?.adapter === adapter &&
+      fittedViewport.current.revision === viewportRequest.revision
+    )
+      return;
+    fittedViewport.current = { adapter, revision: viewportRequest.revision };
+    adapter.fitBounds(viewportRequest.bounds);
+  }, [adapter, viewportRequest]);
+
   const message = statusMessage(
     status,
     rendererNow?.failure ?? null,
@@ -455,6 +497,9 @@ export function MapView({
       className={styles.root}
       aria-label={label}
       data-map-status={status}
+      data-viewport-bounds={viewport ? JSON.stringify(viewport.bounds) : undefined}
+      data-viewport-source={viewport?.source}
+      data-viewport-request={viewportRequest?.revision}
       data-rendered-lines={evidenceNow?.lines ?? undefined}
       data-rendered-points={evidenceNow?.points ?? undefined}
       data-rendered-line-roles={evidenceNow?.roles ?? undefined}

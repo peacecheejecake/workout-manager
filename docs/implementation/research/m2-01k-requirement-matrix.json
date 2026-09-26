@@ -544,7 +544,22 @@
         "three temporary product mutants: render map with zero GPS vertices, announce not-drawn as preparing, announce WebGL unavailable as preparing; each failed its Next and Vite browser assertion (6/6 failures total); restored code, rebuilt both shells, six focused tests passed",
         "map-states.spec.ts full file: 6 passed and 2 honestly skipped because this machine has no valid self-hosted basemap deployment; JSON pointer plus attribution preflight prevents Vite's 200 HTML fallback from masquerading as a deployment"
       ],
-      "note": "Fixture OIDC and local PostgreSQL/browser evidence, not an operational provider or real device. R-S09 remains partial; the M2-01k phase is not complete."
+      "note": "Fixture OIDC and local PostgreSQL/browser evidence, not an operational provider or real device. R-S09 remained partial at this amendment; the M2-01k phase was not complete."
+    },
+    {
+      "node": "M2-01k R-S09 zoom closure",
+      "date": "2026-09-27",
+      "rows": ["R-S09"],
+      "decision": "The existing responsive mount/selection evidence and the new two-shell chart-to-map and user-map-to-chart zoom assertions cover the desktop linked split-pane cell.",
+      "change": "R-S09 partial -> passed; counts passed 88 -> 89, partial 17 -> 16. Historical round verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "tests/identity/activity-range-link.spec.ts full file on restored tree: 6/6 passed in Next/Vite, including two new zoom cases with changed real map bounds and changed real chart domain, selection/range retained, no API writes and no map fit feedback",
+        "chart-to-map fit disabled: both new browser cases failed on unchanged renderer viewport bounds; restored and rebuilt",
+        "map-to-chart domain update disabled: both new browser cases failed on unchanged displayed chart domain; restored and rebuilt",
+        "packages/modules/activities/tests/linked-viewport.test.tsx: three pure geometry/time cases including antimeridian and one visible sample; related geo-kit/activity unit suites 111/111 passed",
+        "root Chrome Next desktop manual check after Aside update failed: chart zoom changed displayed domain and visibly cropped/zoomed map line; Chrome did not inspect Ctrl+wheel, which Playwright did in both shells"
+      ],
+      "note": "Fixture Chromium and isolated PostgreSQL, not native touch/IME or production OIDC. M2-01k parent remains in_progress pending other rows and phase review."
     }
   ],
   "rounds": [
@@ -666,8 +681,8 @@
     }
   ],
   "counts": {
-    "passed": 88,
-    "partial": 17,
+    "passed": 89,
+    "partial": 16,
     "failed": 1,
     "missing": 0,
     "not_executed": 4
@@ -1589,9 +1604,13 @@
       "id": "R-S09",
       "source": "docs/.pre/07_responsive_layout.md:67",
       "quote": "| Activity workbench S09 | chart/route/lap/sets 탭; 필요할 때 mount | chart+table 또는 지도 보기; 3개 동시 강제 없음 | linked split-pane, 선택·zoom 공유 |",
-      "verdict": "partial",
-      "evidence": ["tests/identity/activity-track-map.spec.ts:272"],
-      "reason": "M2-01k-d amendment: still partial. Mobile mount-on-demand and the tablet two-pane view are proven (D3, D9 and a tablet mutant killed, the last at unit level). The desktop cell requires shared selection and zoom between chart and map: the chart has no zoom feature, and range sharing has no mutant in this node. Remaining: chart zoom <-> map zoom sharing.",
+      "verdict": "passed",
+      "evidence": [
+        "tests/identity/activity-track-map.spec.ts:272",
+        "tests/identity/activity-range-link.spec.ts:211",
+        "packages/modules/activities/tests/linked-viewport.test.tsx"
+      ],
+      "reason": "M2-01k R-S09 zoom closure (2026-09-27): passed. M2-01k-d proves mobile mount-on-demand and tablet two-pane view, including lifecycle and selection retention mutants; M2-01k-n proves linked desktop chart/map/lap range selection. The new explicit geo-kit viewport contract and S09 chart zoom domain share zoom in both directions: chart zoom changes actual map bounds and direct map Ctrl+wheel changes the rendered chart domain in Next and Vite. The focused two-shell browser tests keep selection/range stable, report zero API writes and leave the map fit request unchanged after a user map gesture, so there is no feedback loop. Separate chart-to-map and map-to-chart mutants fail at the actual viewport/domain assertion in both shells. This is Chromium with a fixture provider; native touch/IME is separate.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1610,6 +1629,16 @@
           "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
           "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
           "pnpm test and two identity runs on the merged tree"
+        ]
+      },
+      "closure": {
+        "node": "M2-01k R-S09 zoom closure",
+        "date": "2026-09-27",
+        "previousVerdict": "partial",
+        "executed": [
+          "activity-range-link.spec.ts 6/6 Next/Vite on restored tree; chart-to-map and map-to-chart mutants each 2/2 failed at renderer bounds/displayed chart domain",
+          "linked-viewport.test.tsx 3/3 and related geo-kit/activity unit suites 111/111",
+          "two-shell builds and root Chrome Next chart-to-map manual inspection; see docs/implementation/progress/M2-01k-zoom.md"
         ]
       }
     },
