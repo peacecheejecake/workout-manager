@@ -243,15 +243,30 @@ async function initialise(
     });
     let userMoving = false;
     let lastGestureAt = Number.NEGATIVE_INFINITY;
-    const fitOrigin = {};
-    let fitInProgress = false;
-    const fromThisFit = (event: unknown) =>
+    let gestureSequence = 0;
+    let programmaticGestureCutoff = 0;
+    const programmaticOrigin = {};
+    let programmaticMoveInProgress = false;
+    const fromProgrammaticMove = (event: unknown) =>
       typeof event === 'object' &&
       event !== null &&
-      'workoutGeoKitFitOrigin' in event &&
-      event.workoutGeoKitFitOrigin === fitOrigin;
+      'workoutGeoKitProgrammaticOrigin' in event &&
+      event.workoutGeoKitProgrammaticOrigin === programmaticOrigin;
+    const runProgrammaticMove = (move: () => void) => {
+      userMoving = false;
+      // A late movement report from a wheel that preceded this command must not
+      // regain user provenance merely because its timestamp is still recent.
+      programmaticGestureCutoff = gestureSequence;
+      programmaticMoveInProgress = true;
+      try {
+        move();
+      } finally {
+        programmaticMoveInProgress = false;
+      }
+    };
     const noteGesture = () => {
       lastGestureAt = Date.now();
+      gestureSequence += 1;
     };
     // MapLibre's final move event does not consistently retain the browser input event.
     // Capture it at the surface before the SDK handles wheel, drag or touch.
@@ -267,8 +282,9 @@ async function initialise(
     };
     map.on('movestart', (event) => {
       userMoving =
-        !fitInProgress &&
-        !fromThisFit(event) &&
+        !programmaticMoveInProgress &&
+        !fromProgrammaticMove(event) &&
+        gestureSequence > programmaticGestureCutoff &&
         (event.originalEvent !== undefined || Date.now() - lastGestureAt < 800);
     });
     map.on('moveend', (event) => {
@@ -282,7 +298,10 @@ async function initialise(
           north: viewport.getNorth(),
           crossesAntimeridian: viewport.getEast() < viewport.getWest(),
         },
-        source: !fitInProgress && !fromThisFit(event) && userMoving ? 'user' : 'programmatic',
+        source:
+          !programmaticMoveInProgress && !fromProgrammaticMove(event) && userMoving
+            ? 'user'
+            : 'programmatic',
       });
       userMoving = false;
     });
@@ -453,23 +472,23 @@ async function initialise(
       fitBounds(bounds: MapBounds) {
         // MapLibre's movement events can arrive within the prior wheel's 800 ms window.
         // Tag this fit itself, including its synchronous interruption of that movement.
-        userMoving = false;
-        fitInProgress = true;
-        try {
+        runProgrammaticMove(() =>
           map.fitBounds(
             [
               [bounds.west, bounds.south],
               [bounds.east, bounds.north],
             ],
             { padding: 24, animate: false },
-            { workoutGeoKitFitOrigin: fitOrigin },
-          );
-        } finally {
-          fitInProgress = false;
-        }
+            { workoutGeoKitProgrammaticOrigin: programmaticOrigin },
+          ),
+        );
       },
       resize() {
-        map.resize();
+        // MapLibre resize emits movement events too. Their origin is the layout, even
+        // when a wheel gesture happened moments before the ResizeObserver callback.
+        runProgrammaticMove(() =>
+          map.resize({ workoutGeoKitProgrammaticOrigin: programmaticOrigin }),
+        );
       },
       destroy() {
         if (destroyed) return;

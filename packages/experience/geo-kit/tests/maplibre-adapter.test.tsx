@@ -75,7 +75,11 @@ vi.mock('maplibre-gl', () => {
       for (const handler of renderer.handlers.get('movestart') ?? []) handler(eventData);
       for (const handler of renderer.handlers.get('moveend') ?? []) handler(eventData);
     }
-    resize() {}
+    resize(eventData?: unknown) {
+      const event = eventData ?? {};
+      for (const handler of renderer.handlers.get('movestart') ?? []) handler(event);
+      for (const handler of renderer.handlers.get('moveend') ?? []) handler(event);
+    }
     remove() {}
   }
   return { Map: StandInMap, GeoJSONSource, addProtocol: vi.fn(), setWorkerUrl: vi.fn() };
@@ -121,7 +125,23 @@ const uncomputedDraft = toFeatureCollection([
 ]);
 
 describe('MapLibre adapter render observation', () => {
-  it('reports a fit as programmatic even immediately after a wheel gesture', async () => {
+  it('does not label resize as a new user move after a wheel since the last fit', async () => {
+    const events: MapViewportEvent[] = [];
+    const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));
+    handle.fitBounds({
+      west: 126.9,
+      east: 127.1,
+      south: 37.5,
+      north: 37.6,
+      crossesAntimeridian: false,
+    });
+    container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    handle.resize();
+    expect(events.at(-1)?.source).toBe('programmatic');
+    handle.destroy();
+  });
+
+  it('reports full fit and responsive resize as programmatic even immediately after a wheel', async () => {
     const events: MapViewportEvent[] = [];
     const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));
     container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
@@ -132,6 +152,12 @@ describe('MapLibre adapter render observation', () => {
       north: 37.6,
       crossesAntimeridian: false,
     });
+    expect(events.at(-1)?.source).toBe('programmatic');
+    handle.resize();
+    expect(events).toHaveLength(2);
+    expect(events.at(-1)?.source).toBe('programmatic');
+    for (const handler of renderer.handlers.get('movestart') ?? []) handler({});
+    for (const handler of renderer.handlers.get('moveend') ?? []) handler({});
     expect(events.at(-1)?.source).toBe('programmatic');
     // An actual SDK move following a later gesture still has user provenance.
     container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));

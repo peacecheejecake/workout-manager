@@ -152,3 +152,36 @@ adapter 재생성을 유도하지 않았다. 그 수명 순서는 위 component/
 증거는 Playwright Chromium이다. 운영 공급자·실기기 및 과거
 `not_executed` 판정은 변경하지 않았다. 수정된 HEAD는 전체 단계 독립
 검토를 다시 받아야 한다.
+
+## 네 번째 단계 독립 검토 지적 수정 · 2026-09-27
+
+네 번째 독립 검토 기준은 `main` `9ac6aa1` 대 phase `11a6278`이었다.
+검토자는 이전 다섯 지적을 모두 **FIXED**로 확인했다. 새 P2는 MapLibre
+`resize()`가 wheel 직후 출처 표시 없는 `movestart`/`moveend`를 내고, 지도
+adapter가 이를 사용자 이동으로 오분류하여 전체 보기 뒤 차트 확대를 되살릴
+수 있다는 문제였다.
+
+- **새 P2 FIXED:** adapter의 `resize(eventData)`에도 `fitBounds`와 같은
+  adapter 고유 프로그램 출처 토큰과 동기 이동 guard를 전달한다. 코드가
+  fit/resize를 실행할 때 직전 제스처 번호를 차단 경계로 저장하여, 이전 wheel의
+  늦은 이동 보고도 새 사용자 입력으로 다시 분류하지 않는다. 이후 새 wheel
+  입력은 번호가 증가하므로 사용자 이동으로 분류한다.
+- MapLibre의 실제 `resize()`처럼 mock도 이동 시작·완료 이벤트를 낸다.
+  wheel → resize의 출처 단위 시험과 wheel → 전체 fit → resize → 늦은
+  이동 보고 → 새 wheel의 순서 단위 시험을 추가했다. resize 출처 전달을
+  제거한 변이는 `user` 오분류로 실패했고, 제스처 차단 경계를 제거한 변이도
+  늦은 이동 보고를 `user`로 분류해 실패했다. 각 변이는 원복했다.
+- 실제 Playwright Chromium의 Next/Vite 두 shell에서 합성 FIT을 격리
+  PostgreSQL/API에 저장하고, Ctrl+wheel → 빠른 전체 보기 → 1440px에서
+  1279px로 전환했다. 같은 지도 adapter를 유지한 채 차트 범위 `전체`, 지도
+  출처 `programmatic`, 변경된 실제 viewport를 확인했다. 차단 경계가 없던
+  중간 구현은 두 shell 모두 차트 재확대로 실패했다. 최종 트리에서
+  `activity-range-link.spec.ts` **14/14 통과**했다.
+
+관련 단위 시험 **45/45**, `pnpm check:generated`, 전체 `pnpm format:check`·
+`pnpm lint`·`pnpm typecheck`(34 package와 root), Next/Vite 생산 빌드가
+통과했다. 첫 브라우저 실행의 격리 PostgreSQL은 sandbox 공유 메모리 제한으로
+시작되지 않았으며, 승인된 로컬 실행에서 14/14를 완료했다. Aside
+`aside --update`는 `fetch failed`였으므로 직접 UI 근거는 Playwright
+Chromium이다. 실제 기기·운영 공급자 및 과거 `not_executed` 판정은
+변경하지 않았다. 수정된 HEAD는 전체 단계 독립 검토를 다시 받아야 한다.
