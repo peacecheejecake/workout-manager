@@ -135,6 +135,15 @@
       "evidence": "docs/implementation/progress/M2-01ay.md"
     },
     {
+      "id": "M2-01az",
+      "title": "P8 보행 coverage 새 기준 등록·재실행·독립 채점",
+      "dependsOn": ["M2-01ay"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "사용자 결정(2026-09-27): 기존 M2-01ay/P8 failed 판정과 원래 사전등록은 보존한다. 후속 기준은 RUR-02 최소 거리 1,500m, BRG-01 보행 가능한 어느 한강 다리, NEG-ISL-01 지도상 보행 허용 페리 경로의 조건부 대안만 변경한다. 새 기준 파일의 hash와 동일 82쌍 표본 identity를 새 실행 전에 고정하고 실제 전국 graph/adapter로 다시 실행한 뒤 별도 독립 채점에서 층별 기준·실격·총점을 검산한다. 과거 결과를 새 기준으로 소급 재채점하지 않는다. 후속 기준은 이전 결과를 본 뒤 정해졌으므로 맹검 사전등록이라고 부르지 않는다. 새 실행·독립 채점 전 새 판정은 not_executed다.",
+      "evidence": "docs/implementation/research/m0-06b-coverage-review-grading-m2-01az.md"
+    },
+    {
       "id": "M0-06b-odbl",
       "title": "ODbL §4.2/§4.6 이행(라이선스 고지·파생 데이터베이스 변경 방법 공개 페이지)",
       "dependsOn": ["M2-01ay"],
