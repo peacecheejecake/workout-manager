@@ -62,7 +62,7 @@
       "dependsOn": ["M0-06a"],
       "kind": "external",
       "status": "not_started",
-      "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정"
+      "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정 · 사용자 결정(2026-09-26): 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지는 로컬 FIT 가져오기(M0-07a)만 쓰고, 승인되면 M0-07b·M1-06b를 공식 경로로 구현한다. 공식이 아닌 API 경로는 만들지 않는다."
     },
     {
       "id": "EXT-G-tmp",
@@ -116,6 +116,14 @@
       "status": "completed",
       "scope": "M0-06b-cov 독립 검토가 전국 graph의 보행 coverage를 부적합(68/82, 기준 70)으로 판정했다. 결함: 군사 구역을 지나는 경로(ACC-MIL-01 용산 15.8 m, NEG-MIL-02 임진각→판문점 27.9 km 중 18 km), 걷기 경로에 ferry가 반복해 들어감(FRY-*), 시간 제한 way를 지나며 경고가 없음(TIM-01), 엔진이 돌려준 짧은 계단 경로를 adapter가 engine_contract_violation으로 거절(STR-04), foot=no 다리 일치 의심(FRY-03, 평행 way 오탐 가능), 보행 다리 사용 증거 없음(BRG-01), 층 기준 미달(rural, military-avoidance, access-restricted, bridge-pedestrian, ferry, access-time, negative-military). serving profile(custom model: 군사 landuse·ferry·시간 조건 접근)과 adapter를 고치고, 변경은 새 graph import·rollout 절차(M2-01ak runbook)를 따른다. 고친 뒤 같은 blind 표본과 **같은 사전 등록(sha256 98ef1cee…)**으로 다시 돌리고 같은 검토자(Codex gpt-6-sol)가 같은 기준으로 다시 채점해야 한다(기준 이동 금지). 각 수정은 되돌리는 변이가 실패해야 한다. 오탐으로 보이는 disqualifier(ACC-PRV-01 access=no·foot=yes gate, FRY-03)는 검토자에게 근거와 함께 이의를 기록할 수 있으나 기준을 바꾸지 않는다. 출처: docs/implementation/research/m0-06b-coverage-review.md.",
       "evidence": "docs/implementation/progress/M2-01ay.md"
+    },
+    {
+      "id": "M0-06b-odbl",
+      "title": "ODbL §4.2/§4.6 이행(라이선스 고지·파생 데이터베이스 변경 방법 공개 페이지)",
+      "dependsOn": ["M2-01ay"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자 결정(2026-09-26): ODbL을 먼저 이행하고 실제 호스팅은 보류한다. self-hosted-map-adr.md §6 '공개 배포 전 이행 절차'를 구현한다. (1) §4.2: 모든 OSM 파생 배포물(vector tile 배포 디렉터리의 ATTRIBUTION.txt, style/tiles.json attribution, routing graph 산출물)과 화면 표기에 ODbL 1.0 라이선스 URI(https://opendatacommons.org/licenses/odbl/1-0/)를 OSM copyright 링크와 함께 싣는다. 지도가 실패해도 남는 평문 attribution 경로와 경로 결과를 보여주는 화면(경로 응답의 OSM 귀속)도 포함한다. (2) §4.6 방식 (b): 빌드 manifest의 alterationMethod와 routing graph identity(엔진 버전·프로필 해시·추출물 URL/SHA-256·파생 단계 예: 군사 경계 barrier)를 기계적으로 모아, 배포 아티팩트 안 ATTRIBUTION.txt와 서비스의 공개(로그인 불필요) 페이지 양쪽에 게시한다. 값은 빌드 산출물에서 생성하고 손으로 적지 않는다. (3) 스크립트 본문 공개 위치처럼 정책 결정이 필요한 것은 결정하지 말고 열린 질문으로 남긴다. 법적 검토가 아니라고 명시한다. 실제 호스팅·외부 공개는 하지 않는다. 시험: 산출물에 URI가 빠지면 실패하는 시험, 공개 페이지가 인증 없이 열리고 현재 graph/tiles identity와 일치하는 시험, 변이 기록. UI 검증은 Aside → Chrome → Playwright."
     },
     {
       "id": "M0-06c",
