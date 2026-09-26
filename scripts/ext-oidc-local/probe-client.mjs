@@ -1,0 +1,45 @@
+// Client authentication (client_secret_basic) and RP-initiated logout registration checks.
+// Prints only fixed error codes / statuses, never the client id or secret.
+import { loadEnv } from './env.mjs';
+
+const env = loadEnv();
+const d = await (await fetch(new URL('.well-known/openid-configuration', env.OIDC_ISSUER))).json();
+const enc = (v) => encodeURIComponent(v).replace(/%20/g, '+');
+async function token(label, id, secret) {
+  const r = await fetch(d.token_endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${Buffer.from(`${enc(id)}:${enc(secret)}`).toString('base64')}`,
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'not-a-real-code',
+      redirect_uri: `${env.PUBLIC_ORIGIN}/bff/v1/auth/callback`,
+      code_verifier: 'a'.repeat(43),
+    }),
+  });
+  const j = await r.json().catch(() => ({}));
+  console.log(`[token ${label}] HTTP ${r.status} error=${j.error} desc=${j.error_description}`);
+}
+await token('client_secret_basic, configured secret', env.OIDC_CLIENT_ID, env.OIDC_CLIENT_SECRET);
+await token('client_secret_basic, wrong secret', env.OIDC_CLIENT_ID, `${env.OIDC_CLIENT_SECRET}x`);
+
+async function endSession(label, postLogout) {
+  const u = new URL(d.end_session_endpoint);
+  u.searchParams.set('client_id', env.OIDC_CLIENT_ID);
+  u.searchParams.set('post_logout_redirect_uri', postLogout);
+  const r = await fetch(u, { redirect: 'manual' });
+  const loc = r.headers.get('location');
+  let where = '(none)';
+  if (loc) {
+    const l = new URL(loc, u);
+    where = l.href.startsWith(postLogout)
+      ? `POST-LOGOUT REDIRECT (${l.origin}${l.pathname})`
+      : `${l.origin}${l.pathname} keys=${[...l.searchParams.keys()].join(',')}`;
+  }
+  const body = r.status === 302 ? '' : (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
+  console.log(`[end_session ${label}] HTTP ${r.status} -> ${where} ${body}`);
+}
+await endSession('registered /account (as the app sends it)', `${env.PUBLIC_ORIGIN}/account`);
+await endSession('unregistered URI', `${env.PUBLIC_ORIGIN}/elsewhere`);
