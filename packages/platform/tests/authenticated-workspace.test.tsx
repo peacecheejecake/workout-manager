@@ -293,6 +293,60 @@ describe('session-bound authenticated transport', () => {
     await expect(request).rejects.toThrow('SESSION_EXPIRED');
     expect(expired).toHaveBeenCalledOnce();
   });
+  it('rejects a real response that reaches the transport after its workspace is inactive', async () => {
+    const delayed = pendingResponse();
+    const response = json({ owner: 'Alice private result' });
+    const parse = vi.spyOn(response, 'json');
+    let active = true;
+    fetchMock.mockReturnValueOnce(delayed.promise);
+    const request = createSessionTransport(
+      session,
+      vi.fn(),
+      () => true,
+      () => active,
+    ).request({
+      path: '/bff/v1/courses',
+      method: 'GET',
+      body: null,
+      idempotencyKey: null,
+    });
+    active = false;
+    delayed.resolve(response);
+    await expect(request).rejects.toThrow('SESSION_UNAVAILABLE');
+    expect(parse).not.toHaveBeenCalled();
+  });
+  it('rejects an old response whose body finishes parsing after workspace invalidation', async () => {
+    const response = json({ owner: 'Alice private result' });
+    let finishBody: (value: { owner: string }) => void = () => undefined;
+    let markParsing: () => void = () => undefined;
+    const parsing = new Promise<void>((resolve) => {
+      markParsing = resolve;
+    });
+    const body = new Promise<{ owner: string }>((resolve) => {
+      finishBody = resolve;
+    });
+    vi.spyOn(response, 'json').mockImplementation(() => {
+      markParsing();
+      return body;
+    });
+    let active = true;
+    fetchMock.mockResolvedValueOnce(response);
+    const request = createSessionTransport(
+      session,
+      vi.fn(),
+      () => true,
+      () => active,
+    ).request({
+      path: '/bff/v1/courses',
+      method: 'GET',
+      body: null,
+      idempotencyKey: null,
+    });
+    await parsing;
+    active = false;
+    finishBody({ owner: 'Alice private result' });
+    await expect(request).rejects.toThrow('SESSION_UNAVAILABLE');
+  });
   it('keeps ordinary stale-plan conflict available to the editor', async () => {
     fetchMock.mockResolvedValue(json({ error: { code: 'REVISION_CONFLICT' } }, 409));
     const expired = vi.fn();

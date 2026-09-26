@@ -586,6 +586,19 @@
         "platform authenticated-workspace/workspace unit suites: 92/92 passed; generated, lint, typecheck (34 packages and root) passed"
       ],
       "note": "Aside update failed (fetch failed); this subagent's Chrome control was unavailable (root-only elicitation), so Playwright Chromium provided the browser evidence. No native or production IdP claim."
+    },
+    {
+      "node": "M2-01k delivered old-account response",
+      "date": "2026-09-27",
+      "rows": ["P5-logout-clear", "P8-ui-component"],
+      "decision": "The browser now holds a real HTTP 200 Response inside fetch and returns that object to the old session transport only after the cross-tab account switch invalidates its workspace. Its private body is never read. Unit cases separately cover a response after deactivation and body parsing that completes after deactivation.",
+      "change": "Both rows remain partial pending consolidated track-specific late-discard and full UI-checklist evidence; counts unchanged. The prior statement that browser delivery was unproven is superseded by this amendment. Historical verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "tests/identity/course-account-switch.spec.ts: Next/Vite 2/2 late-response cases passed with real API 200, returnedToTransport true after invalidation, Response.json not invoked, and no old draft; full file 4/4 passed after restored builds",
+        "temporary removal of the transport's post-fetch pre-body active guard: rebuilt Next/Vite, both late-response cases failed at bodyRead true; restored and rebuilt both shells, full file 4/4 passed",
+        "authenticated-workspace.test.tsx: two new transport cases passed in the 90/90 file; temporary removal of the post-body active guard caused the delayed-body case to resolve Alice's 200 DTO and fail, then restored 90/90 passed"
+      ],
+      "note": "Fixture OIDC and Chromium, not native or production IdP. Aside update failed (fetch failed); subagent Chrome CUA remained unavailable through root-only elicitation, so Playwright performed the browser check."
     }
   ],
   "rounds": [
@@ -2588,7 +2601,7 @@
       "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "M2-01k silent-switch addendum: still partial. A direct Alice-to-Bob replacement clears a live unsaved course draft and private browser value in Next/Vite; a clear-suppression mutant fails. A second test holds an Alice API request after the real server produces HTTP 200, switches to Bob, and makes the original tab visible without focus/visibility refresh. The new storage-event boundary removes Alice's draft, and disabling that boundary fails both shells at her remaining waypoint. The held answer is released after the switch but may be cancelled before browser delivery; a delivered old response's re-entry is therefore not directly proven. Earlier M2-01k-d tests prove held track cancellation and removal of an already-delivered track; their four protective layers require a combined mutant to leak the list, while the track-discard assertion has no killing mutant.",
+      "reason": "M2-01k delivered-response addendum: still partial pending consolidated track-specific late-discard evidence. A direct Alice-to-Bob replacement clears the live unsaved course draft and private browser value in Next/Vite; cache-clear and storage-boundary mutants fail. A real old-account HTTP 200 Response now reaches the browser session transport after invalidation, but its body is not read and Alice's draft does not re-enter; removing the pre-body guard fails both shells. Unit cases prove the post-fetch and post-body guards, including a mutant that returns Alice's parsed 200 DTO when the latter is removed. Earlier M2-01k-d tests prove held track cancellation and removal of an already-delivered track; their four protective layers require a combined mutant to leak the list, while the track-discard assertion has no killing mutant.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -3433,7 +3446,7 @@
       "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
       "verdict": "partial",
       "evidence": ["pnpm test (3,207)"],
-      "reason": "See V2-A35 and P5-logout-clear. M2-01k-c1 covers the stale route response. The account-switch tests now assert clearing a live course draft and private browser value in Next/Vite, including a silent visible tab with a held old API answer; cache-clear and storage-boundary mutants fail. A delivered old-account response is still not shown to be rejected after the switch, so this umbrella row remains partial.",
+      "reason": "See V2-A35 and P5-logout-clear. M2-01k-c1 covers the stale route response. The account-switch tests assert clearing a live course draft and private browser value in Next/Vite, including a silent visible tab; cache-clear and storage-boundary mutants fail. A real old-account HTTP 200 Response is delivered to the browser transport after invalidation without reading its body; the pre-body guard mutant fails in both shells and the post-body guard mutant fails a focused unit case. This umbrella row remains partial pending a consolidated current-tree run of its full component checklist and track-specific late-discard evidence.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",

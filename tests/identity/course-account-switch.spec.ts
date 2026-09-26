@@ -66,27 +66,49 @@ for (const shell of shells) {
       for (const type of ['focus', 'visibilitychange'])
         window.addEventListener(type, (event) => event.stopImmediatePropagation(), true);
     });
-    let releaseAnswer: () => void = () => undefined;
-    let markRequested: () => void = () => undefined;
-    const requested = new Promise<void>((resolve) => {
-      markRequested = resolve;
-    });
-    const held = new Promise<void>((resolve) => {
-      releaseAnswer = resolve;
-    });
-    const serverStatuses: number[] = [];
-    await page.route('**/bff/v1/courses/place-search', async (route) => {
-      const response = await route.fetch();
-      serverStatuses.push(response.status());
-      markRequested();
-      await held;
-      await route.fulfill({ response }).catch(() => {});
+    // Hold the real 200 Response *inside the browser*, after native fetch has resolved but
+    // before the session transport receives it. A route hold can instead be aborted before
+    // delivery and cannot prove the transport's post-invalidation discard.
+    await page.evaluate(() => {
+      const original = window.fetch.bind(window);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const probe = {
+        status: null as number | null,
+        returnedToTransport: false,
+        bodyRead: false,
+        release,
+      };
+      (window as typeof window & { __oldAccountReply?: typeof probe }).__oldAccountReply = probe;
+      window.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+        if (url.pathname !== '/bff/v1/courses/place-search') return response;
+        probe.status = response.status;
+        const originalJson = response.json.bind(response);
+        response.json = async () => {
+          probe.bodyRead = true;
+          return originalJson();
+        };
+        await gate;
+        probe.returnedToTransport = true;
+        return response;
+      };
     });
     const search = page.getByRole('region', { name: '장소 검색' });
     await search.getByRole('textbox', { name: '장소 이름' }).fill('서울');
     await search.getByRole('button', { name: '검색', exact: true }).click();
-    await requested;
-    expect(serverStatuses).toEqual([200]);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as typeof window & { __oldAccountReply?: { status: number | null } })
+              .__oldAccountReply?.status,
+        ),
+      )
+      .toBe(200);
 
     const other = await context.newPage();
     await other.goto(`${shell.origin}/bff/v1/auth/login`);
@@ -102,13 +124,38 @@ for (const shell of shells) {
     await other.evaluate(() => localStorage.setItem('workout:private:bob-pending', 'Bob'));
     await page.bringToFront();
     await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
-    releaseAnswer();
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('workout:private:account-scope')))
       .toBe(bob.athleteId);
     await expect(
       editor.getByRole('list', { name: '경유점 목록' }).getByRole('listitem'),
     ).toHaveCount(0);
+    await page.evaluate(() =>
+      (
+        window as typeof window & {
+          __oldAccountReply?: { release: () => void };
+        }
+      ).__oldAccountReply?.release(),
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __oldAccountReply?: { returnedToTransport: boolean };
+              }
+            ).__oldAccountReply?.returnedToTransport,
+        ),
+      )
+      .toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          (window as typeof window & { __oldAccountReply?: { bodyRead: boolean } })
+            .__oldAccountReply?.bodyRead,
+      ),
+    ).toBe(false);
     await expect(page.getByText('Alice만의 늦은 초안')).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('workout:private:fixture-draft'))).toBe(
       null,
