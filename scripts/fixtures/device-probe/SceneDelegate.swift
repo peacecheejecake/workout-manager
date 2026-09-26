@@ -48,6 +48,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
   private var urlObservation: NSKeyValueObservation?
+  private var backAvailabilityObservation: NSKeyValueObservation?
+  private var keyboardObservers: [NSObjectProtocol] = []
+  private var originalScrollInset: UIEdgeInsets?
+  private var originalIndicatorInset: UIEdgeInsets?
+  private var backButton: UIButton?
   private static let allowedKinds: Set<String> = [
     "page", "focus", "blur", "composition", "input", "scroll", "viewport", "visibility",
     "pagehide", "pageshow", "popstate", "click", "memoState",
@@ -87,8 +92,33 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
 
   override func capacitorDidLoad() {
     guard let webView else { return }
-    // Probe choice (not a product decision): allow the WKWebView edge-swipe history gesture.
-    webView.allowsBackForwardNavigationGestures = true
+    // The native probe owns Back so it can check unsaved input before navigation.
+    webView.allowsBackForwardNavigationGestures = false
+    let backSwipe = UIScreenEdgePanGestureRecognizer(
+      target: self, action: #selector(handleBackSwipe(_:)))
+    backSwipe.edges = .left
+    webView.addGestureRecognizer(backSwipe)
+    let button = UIButton(type: .system)
+    button.setTitle("뒤로", for: .normal)
+    button.accessibilityLabel = "뒤로 가기"
+    button.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.9)
+    button.layer.cornerRadius = 12
+    button.addTarget(self, action: #selector(handleBackButton), for: .touchUpInside)
+    view.addSubview(button)
+    button.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      button.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+      button.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8),
+      button.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
+      button.heightAnchor.constraint(equalToConstant: 44),
+    ])
+    backButton = button
+    backAvailabilityObservation = webView.observe(\.canGoBack, options: [.initial, .new]) {
+      [weak self] webView, _ in
+      self?.backButton?.isEnabled = webView.canGoBack
+    }
+    originalScrollInset = webView.scrollView.contentInset
+    originalIndicatorInset = webView.scrollView.scrollIndicatorInsets
     webView.configuration.userContentController.add(self, name: "wmDeviceProbe")
     webView.configuration.userContentController.addUserScript(
       WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -102,10 +132,15 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
         ])
     }
     for (name, event) in [
+      (UIResponder.keyboardWillChangeFrameNotification, "willChangeFrame"),
       (UIResponder.keyboardDidShowNotification, "didShow"),
+      (UIResponder.keyboardWillHideNotification, "willHide"),
       (UIResponder.keyboardDidHideNotification, "didHide"),
     ] {
-      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+      let observer = NotificationCenter.default.addObserver(
+        forName: name, object: nil, queue: .main
+      ) {
+        [weak self] note in
         let frame =
           (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
           ?? .zero
@@ -114,9 +149,108 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
           [
             "event": event, "frame": [frame.origin.x, frame.origin.y, frame.width, frame.height],
           ])
+        self?.updateKeyboardAvoidance(frame: frame, event: event)
       }
+      keyboardObservers.append(observer)
     }
   }
+
+  deinit {
+    for observer in keyboardObservers { NotificationCenter.default.removeObserver(observer) }
+  }
+
+  private func updateKeyboardAvoidance(frame: CGRect, event: String) {
+    guard let webView else { return }
+    let keyboardRect = webView.convert(frame, from: nil)
+    let overlap = webView.bounds.intersection(keyboardRect)
+    let coveredHeight =
+      event == "willHide" || event == "didHide" || overlap.isNull
+      ? 0 : max(0, overlap.height)
+    var inset = originalScrollInset ?? .zero
+    inset.bottom = max(inset.bottom, coveredHeight)
+    webView.scrollView.contentInset = inset
+    var indicatorInset = originalIndicatorInset ?? .zero
+    indicatorInset.bottom = max(indicatorInset.bottom, coveredHeight)
+    webView.scrollView.scrollIndicatorInsets = indicatorInset
+    ProbeLog.shared.record("keyboardAvoidance", ["event": event, "coveredHeight": coveredHeight])
+    guard coveredHeight > 0, event == "didShow" else { return }
+    let visibleBottom = max(0, min(webView.bounds.height, keyboardRect.minY))
+    revealFocusedInput(visibleBottom: visibleBottom)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.revealFocusedInput(visibleBottom: visibleBottom)
+    }
+  }
+
+  private func revealFocusedInput(visibleBottom: CGFloat) {
+    guard let webView else { return }
+    let bottom = Int(visibleBottom.rounded(.down))
+    guard bottom > 0 else { return }
+    let script = """
+      (() => {
+        const field = document.activeElement;
+        if (!field || !field.matches('input, textarea, [contenteditable="true"]')) return false;
+        const viewport = window.visualViewport;
+        const top = Math.max(0, viewport?.offsetTop ?? 0);
+        const bottom = Math.min(\(bottom), top + (viewport?.height ?? innerHeight));
+        const rect = field.getBoundingClientRect();
+        const padding = 12;
+        if (rect.bottom > bottom - padding) {
+          window.scrollBy(0, rect.bottom - bottom + padding);
+          return true;
+        }
+        if (rect.top < top + padding) {
+          window.scrollBy(0, rect.top - top - padding);
+          return true;
+        }
+        return false;
+      })();
+      """
+    webView.evaluateJavaScript(script) { result, _ in
+      ProbeLog.shared.record("keyboardFocusReveal", ["scrolled": result as? Bool ?? false])
+    }
+  }
+
+  @objc private func handleBackSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    guard gesture.state == .ended,
+      gesture.translation(in: view).x > 60,
+      gesture.velocity(in: view).x > 0
+    else { return }
+    requestBack()
+  }
+
+  @objc private func handleBackButton() { requestBack() }
+
+  private func requestBack() {
+    guard let webView, webView.canGoBack, presentedViewController == nil else { return }
+    webView.evaluateJavaScript(Self.unsavedInputScript) { [weak self, weak webView] result, error in
+      guard let self, let webView, error == nil else { return }
+      guard let hasUnsavedInput = result as? Bool else { return }
+      ProbeLog.shared.record("back", ["unsavedInput": hasUnsavedInput])
+      if !hasUnsavedInput {
+        webView.goBack()
+        return
+      }
+      let alert = UIAlertController(
+        title: "저장되지 않은 변경사항", message: "변경사항을 버리고 뒤로 이동할까요?", preferredStyle: .alert)
+      alert.addAction(
+        UIAlertAction(title: "계속 편집", style: .cancel) { _ in
+          ProbeLog.shared.record("backDecision", ["move": false])
+        })
+      alert.addAction(
+        UIAlertAction(title: "뒤로 이동", style: .destructive) { [weak webView] _ in
+          ProbeLog.shared.record("backDecision", ["move": true])
+          webView?.goBack()
+        })
+      self.present(alert, animated: true)
+    }
+  }
+
+  // Probe-only check. Product draft/save semantics belong to the M3-01 native host.
+  private static let unsavedInputScript = """
+    (() => [...document.querySelectorAll('input, textarea')].some((field) =>
+      field.type !== 'hidden' && (field.type === 'checkbox' || field.type === 'radio'
+        ? field.checked !== field.defaultChecked : field.value !== field.defaultValue)))();
+    """
 
   override func viewSafeAreaInsetsDidChange() {
     super.viewSafeAreaInsetsDidChange()
