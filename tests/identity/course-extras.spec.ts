@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import {
+  courseElevationResultSchema,
+  placeSearchResultSchema,
+} from '../../packages/contracts/src/geo-data';
 import { confirmedGpx } from './course-disclosure-support';
+import { shells } from './course-editor-support';
 
 /**
  * M2-01j against the real stack: the real OIDC session, the real API, real PostgreSQL and
@@ -54,6 +60,89 @@ async function importGpx(page: Page, fileName: string, contents: string, courseN
   });
   await panel.getByRole('button', { name: '가져오기' }).click();
   return panel;
+}
+
+for (const shell of shells) {
+  test(`${shell.name}: outside-region place and elevation answers retain their ODbL notice`, async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto(`${shell.origin}/courses`);
+    const name = `지역 밖 고지 ${randomUUID().slice(0, 8)}`;
+
+    // The real shell, session, API and course are used. These two bounded read answers
+    // select the rare outside_region state independently of a machine's deployed datasets.
+    const common = {
+      datasetVersion: 1,
+      region: '시험 지역',
+      sourceExtractSha256: 'a'.repeat(64),
+      licence: 'ODbL-1.0',
+      licenceUrl: 'https://opendatacommons.org/licenses/odbl/1-0/',
+      attribution: '© OpenStreetMap contributors',
+      updateCadence: '월 1회',
+      builtAt: '2026-09-26T00:00:00.000Z',
+      featureCount: 1,
+      bbox: [0, 0, 1, 1],
+    };
+    const placeAnswer = placeSearchResultSchema.parse({
+      outcome: 'outside_region',
+      dataset: { ...common, kind: 'places', datasetId: '0123456789ab' },
+    });
+    const elevationAnswer = courseElevationResultSchema.parse({
+      outcome: 'outside_region',
+      dataset: { ...common, kind: 'elevation', datasetId: 'beef0123cafe' },
+    });
+    let placeReads = 0;
+    let elevationReads = 0;
+    await page.route('**/bff/v1/courses/place-search', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      placeReads += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(placeAnswer),
+      });
+    });
+    await page.route('**/bff/v1/courses/*/elevation', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      elevationReads += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(elevationAnswer),
+      });
+    });
+
+    const imported = await importGpx(page, 'outside-region.gpx', gpxDocument(name, points));
+    await expect(imported.getByRole('status')).toContainText(`코스를 가져왔습니다: ${name}`);
+
+    const workbench = page.getByRole('region', { name: '내 코스' });
+    await workbench.getByRole('button', { name, exact: true }).click();
+    const elevation = workbench.getByRole('region', { name: '고도 출처' });
+    await expect(elevation).toContainText('시험 지역 밖이라 고도 데이터가 없습니다.');
+    await expect(elevation).toContainText('데이터 beef0123cafe');
+    const search = workbench.getByRole('region', { name: '장소 검색' });
+    await search.getByLabel('장소 이름').fill('범위 밖 장소');
+    await search.getByRole('button', { name: '검색' }).click();
+    await expect(search).toContainText('시험 지역 밖은 검색할 수 없습니다.');
+    await expect(search).toContainText('데이터 0123456789ab');
+    for (const panel of [search, elevation]) {
+      await expect(panel.getByRole('link', { name: 'OpenStreetMap 출처·저작권' })).toHaveAttribute(
+        'href',
+        'https://www.openstreetmap.org/copyright',
+      );
+      await expect(panel.getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+        'href',
+        'https://opendatacommons.org/licenses/odbl/1-0/',
+      );
+      await expect(panel.getByRole('link', { name: '데이터 변경 방법' })).toHaveAttribute(
+        'href',
+        '/map-data-licence',
+      );
+    }
+    expect(placeReads).toBe(1);
+    expect(elevationReads).toBeGreaterThan(0);
+  });
 }
 
 test('imports a GPX route through the screen, round-trips it and trims a protected area', async ({

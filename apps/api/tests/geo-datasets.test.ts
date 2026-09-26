@@ -182,4 +182,14 @@ describe('public licence of the loaded geo datasets', () => {
     });
     expect(await readGeoDatasetsLicence(datasets, directory)).toEqual({ kind: 'unavailable' });
   });
+
+  it('refuses a stale method when the loaded elevation lookup distance changes without a new dataset id', async () => {
+    await writeDocument('places.json', placesDocument);
+    await writeDocument('elevation.json', { ...elevationDocument, maxSourceDistanceMeters: 151 });
+    await writeDocument('odbl-disclosure.json', disclosure);
+    await writeFile(join(directory, 'ATTRIBUTION.txt'), renderGeoDatasetsAttribution(disclosure));
+    expect(await readGeoDatasetsLicence(await loadGeoDatasets(directory), directory)).toEqual({
+      kind: 'unavailable',
+    });
+  });
 });

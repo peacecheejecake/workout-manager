@@ -118,6 +118,7 @@ export interface ElevationLineSample {
 
 export interface ElevationIndex {
   readonly identity: ElevationDatasetDocument['identity'];
+  readonly maxSourceDistanceMeters: ElevationDatasetDocument['maxSourceDistanceMeters'];
   profile(revision: Pick<CourseRevision, 'geometry'>): CourseElevationResult;
   profileOfSample(sample: ElevationLineSample): CourseElevationResult;
 }
@@ -252,6 +253,7 @@ export function createElevationIndex(document: ElevationDatasetDocument): Elevat
 
   return {
     identity: document.identity,
+    maxSourceDistanceMeters: radius,
     profile(revision) {
       const coordinates = revision.geometry.coordinates;
       return profileOfSample({

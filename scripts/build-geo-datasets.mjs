@@ -331,6 +331,7 @@ export function assertGeoDatasetArtifacts({ places, elevation, disclosure, attri
     JSON.stringify(method.placeFilters) === JSON.stringify(placeFilters) &&
     JSON.stringify(method.elevationFilters) === JSON.stringify(elevationFilters) &&
     method.maxElevationSourceDistanceMeters === MAX_ELEVATION_SOURCE_DISTANCE_METERS &&
+    elevation.maxSourceDistanceMeters === method.maxElevationSourceDistanceMeters &&
     scriptEntries.length === 1 &&
     scriptEntries[0][0] === 'scripts/build-geo-datasets.mjs' &&
     sha256(scriptEntries[0][1]) &&

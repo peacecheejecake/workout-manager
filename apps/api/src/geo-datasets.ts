@@ -123,6 +123,8 @@ export async function readGeoDatasetsLicence(
     disclosure.datasets.elevationDatasetId !== elevationDatasetId ||
     disclosure.source.sha256 !== datasets.places?.identity.sourceExtractSha256 ||
     disclosure.source.sha256 !== datasets.elevation?.identity.sourceExtractSha256 ||
+    disclosure.alterationMethod.maxElevationSourceDistanceMeters !==
+      datasets.elevation?.maxSourceDistanceMeters ||
     datasets.places?.identity.licenceUrl !== disclosure.licence.url ||
     datasets.elevation?.identity.licenceUrl !== disclosure.licence.url ||
     !carriesOdblNotice(datasets.places?.identity.attribution ?? '') ||

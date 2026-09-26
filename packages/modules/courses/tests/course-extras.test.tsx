@@ -774,6 +774,28 @@ describe('place search and elevation', () => {
     expect(await screen.findByText(/장소 데이터가 배포되어 있지 않습니다/)).toBeInTheDocument();
   });
 
+  it('keeps the ODbL notice when a place search is outside the dataset region', async () => {
+    setup({ placeSearch: { outcome: 'outside_region', dataset } });
+    await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
+    await userEvent.type(await screen.findByLabelText('장소 이름'), '부산');
+    await userEvent.click(screen.getByRole('button', { name: '검색' }));
+    const search = screen.getByRole('region', { name: '장소 검색' });
+    expect(await within(search).findByText('Seoul 밖은 검색할 수 없습니다.')).toBeInTheDocument();
+    expect(search).toHaveTextContent('데이터 0123456789ab');
+    expect(within(search).getByRole('link', { name: 'OpenStreetMap 출처·저작권' })).toHaveAttribute(
+      'href',
+      osmCopyrightUrl,
+    );
+    expect(within(search).getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
+    expect(within(search).getByRole('link', { name: '데이터 변경 방법' })).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
+  });
+
   it('hands a searched place to the screen and names the dataset it came from', async () => {
     setup({
       placeSearch: {
@@ -927,6 +949,31 @@ describe('place search and elevation', () => {
     setup();
     await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
     expect(await screen.findByText(/고도 데이터가 배포되어 있지 않습니다/)).toBeInTheDocument();
+  });
+
+  it('keeps the ODbL notice when a course is outside the elevation dataset region', async () => {
+    setup({
+      elevation: {
+        outcome: 'outside_region',
+        dataset: { ...dataset, kind: 'elevation', datasetId: 'beef0123cafe' },
+      },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
+    const panel = await screen.findByRole('region', { name: '고도 출처' });
+    await within(panel).findByText('Seoul 밖이라 고도 데이터가 없습니다.');
+    expect(panel).toHaveTextContent('데이터 beef0123cafe');
+    expect(within(panel).getByRole('link', { name: 'OpenStreetMap 출처·저작권' })).toHaveAttribute(
+      'href',
+      osmCopyrightUrl,
+    );
+    expect(within(panel).getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
+    expect(within(panel).getByRole('link', { name: '데이터 변경 방법' })).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
   });
 });
 

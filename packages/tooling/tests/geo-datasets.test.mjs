@@ -63,6 +63,7 @@ function datasetArtifacts() {
   const places = { identity: { ...identity, kind: 'places', datasetId: placeId }, places: [] };
   const elevation = {
     identity: { ...identity, kind: 'elevation', datasetId: elevationId },
+    maxSourceDistanceMeters: 150,
     points: [],
   };
   const disclosure = createGeoDatasetDisclosure({
@@ -123,5 +124,12 @@ describe('place and elevation distribution ODbL disclosure', () => {
     const stale = datasetArtifacts();
     stale.attribution += 'stale';
     expect(() => assertGeoDatasetArtifacts(stale)).toThrow('GEO_DATA_ODBL_ATTRIBUTION_STALE');
+  });
+
+  it('rejects a dataset whose lookup distance differs from its recorded alteration method', () => {
+    const artifacts = datasetArtifacts();
+    artifacts.elevation.maxSourceDistanceMeters =
+      artifacts.disclosure.alterationMethod.maxElevationSourceDistanceMeters + 1;
+    expect(() => assertGeoDatasetArtifacts(artifacts)).toThrow('GEO_DATA_ODBL_DISCLOSURE_INVALID');
   });
 });

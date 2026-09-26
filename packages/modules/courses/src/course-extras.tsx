@@ -365,13 +365,13 @@ export function CoursePlaceSearch({ api, onPick }: CoursePlaceSearchProps) {
         setMessage('이 서버에는 장소 데이터가 배포되어 있지 않습니다. 검색하지 않았습니다.');
         return;
       }
+      setAttribution(
+        `${result.dataset.attribution} · 데이터 ${result.dataset.datasetId} · 갱신 주기 ${result.dataset.updateCadence}`,
+      );
       if (result.outcome === 'outside_region') {
         setMessage(`${result.dataset.region} 밖은 검색할 수 없습니다.`);
         return;
       }
-      setAttribution(
-        `${result.dataset.attribution} · 데이터 ${result.dataset.datasetId} · 갱신 주기 ${result.dataset.updateCadence}`,
-      );
       setPlaces([...result.places]);
       if (result.places.length === 0) setMessage('찾은 장소가 없습니다.');
       else if (result.matchCount > result.places.length)
@@ -447,7 +447,16 @@ export function CourseElevationPanel({ api, courseId, scope }: CourseElevationPa
         <p>이 서버에는 고도 데이터가 배포되어 있지 않습니다. 고도를 추정하지 않습니다.</p>
       ) : null}
       {profile.data?.outcome === 'outside_region' ? (
-        <p>{profile.data.dataset.region} 밖이라 고도 데이터가 없습니다.</p>
+        <>
+          <p>{profile.data.dataset.region} 밖이라 고도 데이터가 없습니다.</p>
+          <p className={styles.note}>
+            {profile.data.dataset.attribution} · 데이터 {profile.data.dataset.datasetId} · 갱신 주기{' '}
+            {profile.data.dataset.updateCadence}. 고도 데이터는{' '}
+            <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+            <a href={odblLicenceUrl}>ODbL 1.0</a> ·{' '}
+            <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
+          </p>
+        </>
       ) : null}
       {profile.data?.outcome === 'profile' ? (
         <>
