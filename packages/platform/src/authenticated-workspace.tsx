@@ -17,6 +17,7 @@ import {
   type AuthenticatedTransport,
 } from '@workout/contracts/core';
 import {
+  PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY,
   bindPrivateBrowserStorageAccount,
   clearPrivateBrowserStorage,
 } from './private-browser-storage';
@@ -395,6 +396,26 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
     const timer = setTimeout(expired, Math.max(0, Date.parse(session.expiresAt) - Date.now()));
     return () => clearTimeout(timer);
   }, [session, expired]);
+  useEffect(() => {
+    const athleteId = session?.athleteId;
+    if (!athleteId) return;
+    const onAccountSwitch = (event: StorageEvent) => {
+      if (
+        event.key !== PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY ||
+        !event.newValue ||
+        event.newValue === athleteId
+      )
+        return;
+      // The new account already cleared and rebound private storage in its own tab.
+      // Unmount this session immediately, including its drafts and in-flight queries,
+      // without erasing the new account's storage from the old tab.
+      setSession(null);
+      setState('loading');
+      setGeneration((value) => value + 1);
+    };
+    window.addEventListener('storage', onAccountSwitch);
+    return () => window.removeEventListener('storage', onAccountSwitch);
+  }, [session?.athleteId]);
   if (state === 'loading') return <p role="status">로그인 상태를 확인하고 있습니다.</p>;
   if (state === 'offline' && !session)
     return (

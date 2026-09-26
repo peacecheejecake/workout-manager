@@ -1,6 +1,6 @@
 /** Browser-only private state shared by opt-in domain queues. Never place tokens here. */
 export const PRIVATE_BROWSER_STORAGE_PREFIX = 'workout:private:';
-const accountKey = `${PRIVATE_BROWSER_STORAGE_PREFIX}account-scope`;
+export const PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY = `${PRIVATE_BROWSER_STORAGE_PREFIX}account-scope`;
 
 type BrowserStorage = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -39,9 +39,9 @@ export function bindPrivateBrowserStorageAccount(
   const target = browserStorage(storage);
   if (!target || athleteId.length === 0 || athleteId.length > 200) return false;
   try {
-    const previous = target.getItem(accountKey);
+    const previous = target.getItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY);
     if (previous !== athleteId && !clearPrivateBrowserStorage(target)) return false;
-    target.setItem(accountKey, athleteId);
+    target.setItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY, athleteId);
     return true;
   } catch {
     return false;

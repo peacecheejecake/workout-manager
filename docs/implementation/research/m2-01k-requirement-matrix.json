@@ -572,6 +572,20 @@
         "temporary bindPrivateBrowserStorageAccount clear-suppression mutant: rebuilt both shells, both new browser tests failed at the surviving Alice private value; restored source, rebuilt, 2/2 passed"
       ],
       "note": "A response arriving after an account switch was not delivered and asserted here; P5-logout-clear and the umbrella P8-ui-component retain partial verdicts. Fixture OIDC is not a production provider."
+    },
+    {
+      "node": "M2-01k silent cross-tab account replacement",
+      "date": "2026-09-27",
+      "rows": ["P5-logout-clear", "P8-ui-component"],
+      "decision": "An Alice request was held after the real API produced HTTP 200 while Bob replaced the account in another tab. The original tab became visible with focus/visibility refresh listeners suppressed. A same-origin storage account-scope signal now unmounts Alice's workspace, draft and queries before the held answer is released.",
+      "change": "Both rows remain partial; counts unchanged. The held API answer may be cancelled before browser delivery, so this does not prove a delivered old response cannot re-enter. Historical verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "tests/identity/course-account-switch.spec.ts: on the original tree, silent-switch case failed in both Next and Vite with Alice's draft still present; the Vite callback origin required mounting Bob on Vite to emit the same-origin signal",
+        "after the storage-event boundary fix, Next/Vite production builds and all four course-account-switch browser cases passed on isolated PostgreSQL; Bob's own private storage value survived the old tab's invalidation",
+        "temporary storage-listener suppression mutant: both new cases failed on Alice's remaining waypoint after rebuilding Next/Vite; restored code, rebuilt, all four cases passed",
+        "platform authenticated-workspace/workspace unit suites: 92/92 passed; generated, lint, typecheck (34 packages and root) passed"
+      ],
+      "note": "Aside update failed (fetch failed); this subagent's Chrome control was unavailable (root-only elicitation), so Playwright Chromium provided the browser evidence. No native or production IdP claim."
     }
   ],
   "rounds": [
@@ -2574,7 +2588,7 @@
       "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "M2-01k account-switch addendum: still partial. A direct Alice-to-Bob replacement now clears a live unsaved course draft and a private browser-storage sentinel in Next/Vite; a clear-suppression mutant fails both shells at the old private value. Earlier M2-01k-d tests prove held track cancellation and removal of an already-delivered track. A response arriving after the change could not be produced through that detection path (visibilitychange -> 401/409 -> expired() cancels), and a visible tab that never re-checks was not tested, so late re-entry is not shown as such. Four independent layers each prevent the earlier track leak: only removing all four fails, and that failure is the leaked activity list, not the track assertion; the track-discard assertion has no killing mutant.",
+      "reason": "M2-01k silent-switch addendum: still partial. A direct Alice-to-Bob replacement clears a live unsaved course draft and private browser value in Next/Vite; a clear-suppression mutant fails. A second test holds an Alice API request after the real server produces HTTP 200, switches to Bob, and makes the original tab visible without focus/visibility refresh. The new storage-event boundary removes Alice's draft, and disabling that boundary fails both shells at her remaining waypoint. The held answer is released after the switch but may be cancelled before browser delivery; a delivered old response's re-entry is therefore not directly proven. Earlier M2-01k-d tests prove held track cancellation and removal of an already-delivered track; their four protective layers require a combined mutant to leak the list, while the track-discard assertion has no killing mutant.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -3419,7 +3433,7 @@
       "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
       "verdict": "partial",
       "evidence": ["pnpm test (3,207)"],
-      "reason": "See V2-A35 and P5-logout-clear. M2-01k-c1 covers the stale route response. The account-switch addendum directly asserts clearing a live course draft and private browser value in Next/Vite and kills a cache-clear mutant. The broader P5 late old-account network re-entry condition is still unproven, so this umbrella row remains partial.",
+      "reason": "See V2-A35 and P5-logout-clear. M2-01k-c1 covers the stale route response. The account-switch tests now assert clearing a live course draft and private browser value in Next/Vite, including a silent visible tab with a held old API answer; cache-clear and storage-boundary mutants fail. A delivered old-account response is still not shown to be rejected after the switch, so this umbrella row remains partial.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
