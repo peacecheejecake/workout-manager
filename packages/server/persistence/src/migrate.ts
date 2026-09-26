@@ -62,6 +62,7 @@ const migrationFiles = [
   '055_worker_tenant_source.sql',
   // M0-06b: historical shared route snapshots receive a response-only OSM notice.
   '056_course_share_legacy_route_notice.sql',
+  '057_oidc_backchannel.sql',
 ] as const;
 
 /**
@@ -660,8 +661,10 @@ export async function grantIdentityFunctions(
       'auth_create_attempt(text, text, text, text, timestamptz)',
       'auth_consume_attempt(text, text, timestamptz)',
       'auth_create_session(text, text, text, text, timestamptz, timestamptz, text)',
+      'auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text)',
       'auth_find_session(text, timestamptz)',
       'auth_revoke_session(text)',
+      'auth_revoke_provider_sessions(text, text, timestamptz, text, text)',
     ]) {
       await pool.query(`GRANT EXECUTE ON FUNCTION public.${signature} TO "${runtimeRole}"`);
     }

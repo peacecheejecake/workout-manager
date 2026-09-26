@@ -594,7 +594,8 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
 it('honors FORCE RLS tombstones when the authentication definer is not a superuser', async () => {
   const identities = createIdentityRepository({ connectionString: runtimeUrl });
   const role = `auth_owner_${randomUUID().replaceAll('-', '')}`;
-  const signature = 'public.auth_create_session(text,text,text,text,timestamptz,timestamptz,text)';
+  const signature =
+    'public.auth_create_session(text,text,text,text,timestamptz,timestamptz,text,text)';
   const result = await admin.query(
     'SELECT pg_get_userbyid(proowner) AS owner FROM pg_proc WHERE oid=$1::regprocedure',
     [signature],

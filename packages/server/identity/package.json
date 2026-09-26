@@ -7,13 +7,15 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "jose": "6.2.12",
     "openid-client": "6.8.8",
-    "zod": "4.6.5",
-    "@workout/contracts": "workspace:*"
+    "zod": "4.6.5"
   },
   "exports": {
     "./service": "./src/service.ts",
     "./oidc": "./src/oidc.ts",
+    "./backchannel": "./src/backchannel.ts",
     "./garmin-service": "./src/garmin-service.ts",
     "./garmin-provider": "./src/garmin-provider.ts",
     "./garmin-crypto": "./src/garmin-crypto.ts",

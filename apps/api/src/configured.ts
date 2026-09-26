@@ -60,6 +60,7 @@ import { createDatabase } from '@workout/server-persistence/database';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createIdentityService } from '@workout/server-identity/service';
+import { createBackchannelLogoutService } from '@workout/server-identity/backchannel';
 import { createOidcProvider, type OidcEvent } from '@workout/server-identity/oidc';
 import { configuredGarmin } from '@workout/server-identity/garmin-config';
 import {
@@ -233,6 +234,7 @@ export async function createConfiguredApi(
       publicOrigin: env.PUBLIC_ORIGIN,
       allowInsecureLocalhost,
     });
+    const backchannelLogout = createBackchannelLogoutService({ provider, store });
     const activities = createActivityRepository(database);
     const garminUnofficialStore = createGarminUnofficialStore(database);
     // Fixed event names and codes only; never provider text, a session or a password.
@@ -257,6 +259,7 @@ export async function createConfiguredApi(
       ...(options.logStream === undefined ? {} : { logStream: options.logStream }),
       auth: identity,
       identity,
+      backchannelLogout,
       garmin:
         garminConfiguration === null
           ? createUnconfiguredGarminService(createGarminStore(database))

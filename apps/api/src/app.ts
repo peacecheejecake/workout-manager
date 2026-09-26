@@ -12,6 +12,10 @@ import {
   type ProductRepositories,
 } from './product-routes.js';
 import { IdentityError, type IdentityService } from '@workout/server-identity/service';
+import {
+  BackchannelLogoutError,
+  type BackchannelLogoutService,
+} from '@workout/server-identity/backchannel';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { hostname } from 'node:os';
 import type { Writable } from 'node:stream';
@@ -43,6 +47,7 @@ import {
 export interface ApiOptions extends ProductRepositories {
   auth: AuthenticationPort;
   identity?: IdentityService;
+  backchannelLogout?: BackchannelLogoutService;
   garmin?: GarminService;
   /**
    * The TEMPORARY, UNOFFICIAL owner-only Garmin collector (M1-06b-tmp). Absent unless the
@@ -148,6 +153,16 @@ function classifyError(error: unknown): { statusCode: number; code: string } {
   if (error instanceof TenantErasedError) return { statusCode: 401, code: 'UNAUTHENTICATED' };
   if (error instanceof IdentityError)
     return { statusCode: error.code === 'LOGIN_REJECTED' ? 401 : 503, code: error.code };
+  if (error instanceof BackchannelLogoutError)
+    return {
+      statusCode:
+        error.code === 'LOGOUT_TOKEN_REPLAY'
+          ? 409
+          : error.code === 'IDENTITY_UNAVAILABLE'
+            ? 503
+            : 400,
+      code: error.code,
+    };
   if (error instanceof BoundaryError || error instanceof ProductRequestError) return error;
   if (error instanceof PersistenceConflict) return { statusCode: 409, code: 'CONSENT_CONFLICT' };
   if (error instanceof Error && 'code' in error) {
@@ -251,6 +266,36 @@ export function createApi(options: ApiOptions): FastifyInstance {
   );
   // M0-06b-odbl: the public ODbL §4.6 disclosure, also outside the authenticated plugin.
   registerMapDataLicenceRead(app, options.mapDataDisclosure, options.geoDatasetsLicence);
+  if (options.backchannelLogout !== undefined) {
+    const backchannel = options.backchannelLogout;
+    app.register(async (routes) => {
+      routes.addContentTypeParser(
+        'application/x-www-form-urlencoded',
+        { parseAs: 'string' },
+        (_request, body, done) => done(null, body),
+      );
+      routes.post(
+        '/bff/v1/auth/backchannel-logout',
+        { bodyLimit: 8_192 },
+        async (request, reply) => {
+          parseInput(emptyQuerySchema, request.query);
+          if (
+            request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase() !==
+              'application/x-www-form-urlencoded' ||
+            typeof request.body !== 'string' ||
+            request.body.length > 8_192
+          )
+            throw new BoundaryError(400, 'INVALID_LOGOUT_TOKEN');
+          const fields = new URLSearchParams(request.body);
+          const tokens = fields.getAll('logout_token');
+          if ([...fields.keys()].length !== 1 || tokens.length !== 1 || !tokens[0])
+            throw new BoundaryError(400, 'INVALID_LOGOUT_TOKEN');
+          await backchannel.logout(tokens[0]);
+          return reply.code(204).send();
+        },
+      );
+    });
+  }
   if (options.identity !== undefined) {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {

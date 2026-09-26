@@ -1,4 +1,6 @@
 import * as client from 'openid-client';
+import { createHash } from 'node:crypto';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { ProviderUnavailableError, type OidcProvider } from './service.js';
 
@@ -139,7 +141,17 @@ export async function createOidcProvider(
         hooks.onEvent?.({ event: 'oidc_provider_logout_disabled', reason: 'insecure_endpoint' });
       }
     }
-    return { config, metadata, endSession };
+    const permittedAlgorithms = ['RS256', 'PS256', 'ES256', 'ES384', 'ES512'].filter((algorithm) =>
+      metadata.id_token_signing_alg_values_supported?.includes(algorithm),
+    );
+    if (permittedAlgorithms.length === 0) throw new DiscoveryFailure('other');
+    const jwksUri = metadata.jwks_uri;
+    if (typeof jwksUri !== 'string') throw new DiscoveryFailure('other');
+    const jwks = createRemoteJWKSet(new URL(jwksUri), {
+      timeoutDuration: 5_000,
+      cooldownDuration: 30_000,
+    });
+    return { config, metadata, endSession, permittedAlgorithms, jwks };
   }
 
   let current: ReturnType<typeof discover> | undefined;
@@ -206,7 +218,67 @@ export async function createOidcProvider(
         claims.sub.length > 255
       )
         throw new Error('Invalid OIDC identity');
-      return { issuer: claims.iss, subject: claims.sub };
+      if (
+        claims.sid !== undefined &&
+        (typeof claims.sid !== 'string' || claims.sid.length === 0 || claims.sid.length > 255)
+      )
+        throw new Error('Invalid OIDC session');
+      return {
+        issuer: claims.iss,
+        subject: claims.sub,
+        ...(typeof claims.sid === 'string' ? { providerSessionId: claims.sid } : {}),
+      };
+    },
+    async verifyLogoutToken(token) {
+      if (token.length === 0 || token.length > 8_192) throw new Error('Invalid logout token');
+      const { metadata, permittedAlgorithms, jwks } = await discovered();
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer: metadata.issuer,
+        audience: options.clientId,
+        algorithms: permittedAlgorithms,
+        clockTolerance: 60,
+        requiredClaims: ['iat', 'jti'],
+      });
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const eventKey = 'http://schemas.openid.net/event/backchannel-logout';
+      const event: unknown =
+        typeof payload.events === 'object' && payload.events !== null
+          ? Reflect.get(payload.events, eventKey)
+          : undefined;
+      if (
+        typeof payload.iat !== 'number' ||
+        !Number.isInteger(payload.iat) ||
+        payload.iat > nowSeconds + 60 ||
+        payload.iat < nowSeconds - 300 ||
+        typeof payload.jti !== 'string' ||
+        payload.jti.length === 0 ||
+        payload.jti.length > 256 ||
+        payload.nonce !== undefined ||
+        typeof payload.events !== 'object' ||
+        payload.events === null ||
+        Array.isArray(payload.events) ||
+        Object.keys(payload.events).length !== 1 ||
+        !Object.hasOwn(payload.events, eventKey) ||
+        typeof event !== 'object' ||
+        event === null ||
+        Array.isArray(event) ||
+        Object.keys(event).length !== 0 ||
+        (payload.sub === undefined && payload.sid === undefined) ||
+        (payload.sub !== undefined &&
+          (typeof payload.sub !== 'string' ||
+            payload.sub.length === 0 ||
+            payload.sub.length > 255)) ||
+        (payload.sid !== undefined &&
+          (typeof payload.sid !== 'string' || payload.sid.length === 0 || payload.sid.length > 255))
+      )
+        throw new Error('Invalid logout token');
+      return {
+        issuer: metadata.issuer,
+        jtiHash: createHash('sha256').update(payload.jti).digest('hex'),
+        issuedAt: new Date(payload.iat * 1000),
+        ...(typeof payload.sub === 'string' ? { subject: payload.sub } : {}),
+        ...(typeof payload.sid === 'string' ? { providerSessionId: payload.sid } : {}),
+      };
     },
     async logoutUrl() {
       // Cached metadata only: sign-out never waits on (or starts) a discovery. Without a

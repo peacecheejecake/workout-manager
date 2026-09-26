@@ -18,6 +18,7 @@ export interface IdentityStore {
     csrfToken: string;
     issuer: string;
     subject: string;
+    providerSessionId?: string;
     expiresAt: Date;
     now: Date;
     previousTokenHash?: string;
@@ -44,7 +45,15 @@ export interface OidcProvider {
   exchange(
     url: URL,
     checks: { state: string; nonce: string; verifier: string; reauthenticate: boolean },
-  ): Promise<{ issuer: string; subject: string }>;
+  ): Promise<{ issuer: string; subject: string; providerSessionId?: string }>;
+  /** Validate a signed OIDC Back-Channel Logout Token before any local write. */
+  verifyLogoutToken?(token: string): Promise<{
+    issuer: string;
+    jtiHash: string;
+    issuedAt: Date;
+    subject?: string;
+    providerSessionId?: string;
+  }>;
   /** Start provider discovery ahead of the first sign-in; failure is not fatal. */
   prepare?(): Promise<void>;
   /** The provider's RP-initiated logout URL, or null (none advertised, disabled, unreachable). */
@@ -181,7 +190,7 @@ export function createIdentityService(options: IdentityOptions) {
       const error = url.searchParams.get('error');
       if (error !== null)
         throw new IdentityError(error === 'access_denied' ? 'LOGIN_CANCELLED' : 'LOGIN_REJECTED');
-      let identity: { issuer: string; subject: string };
+      let identity: { issuer: string; subject: string; providerSessionId?: string };
       try {
         identity = await options.provider.exchange(url, {
           state,

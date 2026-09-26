@@ -98,6 +98,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 55, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M0-06b: response-only legacy share route notice.
       { version: 56, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // EXT-BACKCHANNEL: provider session identity and replay-safe logout.
+      { version: 57, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

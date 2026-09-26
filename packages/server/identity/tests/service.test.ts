@@ -51,6 +51,7 @@ function fixture() {
         ({ issuer: 'https://provider.example', subject: 'subject' }) as {
           issuer: string;
           subject: string;
+          providerSessionId?: string;
         },
     ),
     logoutUrl: vi.fn(async (): Promise<string | null> => null),
@@ -84,6 +85,17 @@ function fixture() {
 }
 
 describe('opaque session lifecycle and browser-bound one-use login', () => {
+  it('persists a verified provider session identifier with the opaque app session', async () => {
+    const data = fixture();
+    data.provider.exchange.mockResolvedValueOnce({
+      issuer: 'https://provider.example',
+      subject: 'subject',
+      providerSessionId: 'op-session-123',
+    });
+    const login = await data.login();
+    await data.service.completeLogin(login.callback, login.cookie);
+    expect([...data.sessions.values()][0]?.providerSessionId).toBe('op-session-123');
+  });
   it('stores only token hashes, verifies browser binding, issues HttpOnly Secure cookies and supports revocation', async () => {
     const fixtureValue = fixture();
     const login = await fixtureValue.login();

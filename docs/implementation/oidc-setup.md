@@ -17,6 +17,9 @@ PKCE S256, `openid` scope를 사용한다. redirect URI는 정확히
 (URL 정규화 후 일치, 라이브러리의 호스트별 예외 없이 앱이 다시 검사한다).
 공급자가 RP-initiated logout(`end_session_endpoint`)을 제공하면 post-logout redirect URI
 `https://<public-host>/account`도 등록한다([M2-01w](progress/M2-01w.md)).
+Back-Channel Logout을 켤 때는 HTTPS callback
+`https://<public-host>/bff/v1/auth/backchannel-logout`을 공급자에 등록한다.
+이 주소는 브라우저 인증 없이 공급자 POST를 받으며, 원본 `logout_token`은 로그에 남기지 않는다.
 로그인·가입·계정 복구 화면은 공급자가 소유한다. 이메일 일치만으로 계정을 합치지 않는다.
 
 API 실행 환경:
@@ -94,7 +97,8 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 ```
 
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
-검증된 role 이름에 인증용 함수 5개의 EXECUTE만 허용한다. `grantOperations`는 삭제 차단 원장 조회,
+검증된 role 이름에 인증용 함수와 back-channel 재생 방지·세션 철회 함수의 EXECUTE만 허용한다.
+Migration 057 적용 뒤 이 grant 함수를 다시 실행한다. `grantOperations`는 삭제 차단 원장 조회,
 민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. `grantGarmin`은 현재 tenant의
 연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. `grantCheckIns`는 자기보고 원장·정정·
 명령 receipt의 제한된 DML을 허용한다. `grantSessionCompletions`는 사용자 세션 완료 확인·철회
@@ -157,9 +161,12 @@ SSO의 **실제** `auth_time`을 보내는 비준수 공급자라면, 직전 인
 어긋나면 **모든** 재인증 로그인(로그아웃 뒤·계정 전환)이 실패한다 — 서버 시계 동기화(NTP)가 전제다. 재인증 요청이었는지는 서버에 저장한 로그인 시도의 nonce 표시로 판단한다(migration 없음).
 공급자가 `max_age`/`auth_time`을 지원하지 않으면 로그아웃 뒤·계정 전환 로그인이 **실패**한다 — 그 경우에만
 끄고, 끄면 공급자가 `prompt=login`을 무시할 때 직전 사용자로 조용히 다시 로그인되는 것을 막지 못한다.
-운영 값은 EXT-OIDC의 공급자 확인에서 확정한다. **세션 수명 8시간은 유지한다**: back-channel logout이 없어
-공급자에서 비활성화된 계정은 남은 앱 세션(최대 8시간)을 유지한다. back-channel logout은 subject 기준 세션
-철회 함수와 재생 방지 저장소가 필요해 migration 대상이다([M2-01w](progress/M2-01w.md)).
+운영 값은 EXT-OIDC의 공급자 확인에서 확정한다. **세션 수명 8시간은 유지한다**. Back-Channel Logout
+수신 경로는 migration 057에 구현되어 있지만, 실제 HTTPS callback 등록과 공급자 전파 확인은
+EXT-HOSTING 외부 조건이다. 그 증거가 있기 전 공급자에서 비활성화된 계정의 앱 세션은 최대 8시간 남을 수 있다.
+수신된 Logout Token은 서명·issuer·audience·발행 시각·`events`·`nonce` 부재·`sub`/`sid`를 검사한다.
+서명 검증 뒤 한 DB 거래에서 issuer별 `jti` 재사용을 거부하고 일치하는 세션만 철회한다.
+세부 검증은 [EXT-BACKCHANNEL](progress/EXT-BACKCHANNEL.md)을 따른다.
 **실패 화면**: 로그인 시작·callback이 실패하면 JSON 대신 `/account?login_error=cancelled|failed|unavailable`로
 보내고 화면은 자기 문구만 보여 준다. 공급자의 `error_description`·`error_uri`는 어디에도 쓰지 않는다.
 실패한 callback은 쿠키를 설정·삭제하지 않는다.

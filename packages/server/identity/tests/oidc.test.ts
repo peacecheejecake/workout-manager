@@ -37,6 +37,7 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
   let down = fixtureOptions.down ?? false;
   let discoveries = 0;
   let authTime: 'absent' | 'stale' | 'fresh' = 'absent';
+  let providerSessionId: string | undefined;
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const otherKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = {
@@ -105,6 +106,7 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
         iat: now,
         exp: invalid === 'expired' ? now - 600 : now + 300,
         nonce: invalid === 'nonce' ? 'incorrect' : nonce,
+        ...(providerSessionId === undefined ? {} : { sid: providerSessionId }),
         ...(authTime === 'absent' ? {} : { auth_time: authTime === 'fresh' ? now : now - 3600 }),
       };
       const encoded = `${Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test-key' })).toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
@@ -169,6 +171,9 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
     setAuthTime(value: typeof authTime) {
       authTime = value;
     },
+    setProviderSessionId(value: string) {
+      providerSessionId = value;
+    },
     provider,
     checks,
     authorize,
@@ -182,6 +187,15 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
 }
 
 describe('standard OIDC adapter using a real local signed provider protocol', () => {
+  it('carries the verified ID Token sid into the local session contract', async () => {
+    const fixture = await providerFixture();
+    fixture.setProviderSessionId('op-session-123');
+    await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).resolves.toEqual({
+      issuer: fixture.issuer,
+      subject: 'athlete-subject',
+      providerSessionId: 'op-session-123',
+    });
+  });
   it('discovers metadata, sends S256 PKCE and verifies signed claims without leaking provider tokens', async () => {
     const fixture = await providerFixture();
     expect(fixture.authorize.searchParams.get('scope')).toBe('openid');

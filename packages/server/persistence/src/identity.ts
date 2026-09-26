@@ -18,6 +18,7 @@ const sessionInputSchema = z.strictObject({
   csrfToken: z.string().min(32).max(256),
   issuer: z.url().max(2048),
   subject: z.string().min(1).max(255),
+  providerSessionId: z.string().min(1).max(255).optional(),
   expiresAt: z.date(),
   now: z.date(),
   previousTokenHash: hashSchema.optional(),
@@ -42,6 +43,13 @@ export interface IdentityRepository {
     now: Date,
   ): Promise<{ athleteId: string; sessionId: string; csrfToken: string; expiresAt: Date } | null>;
   revokeSession(tokenHash: string): Promise<void>;
+  revokeProviderSessions(input: {
+    issuer: string;
+    jtiHash: string;
+    issuedAt: Date;
+    subject?: string;
+    providerSessionId?: string;
+  }): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -102,7 +110,7 @@ export function createIdentityRepository(options: {
     async createSession(input) {
       const value = sessionInputSchema.parse(input);
       const result = await query(
-        'SELECT * FROM public.auth_create_session($1, $2, $3, $4, $5, $6, $7)',
+        'SELECT * FROM public.auth_create_session($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           value.tokenHash,
           value.csrfToken,
@@ -111,6 +119,7 @@ export function createIdentityRepository(options: {
           value.expiresAt,
           value.now,
           value.previousTokenHash ?? null,
+          value.providerSessionId ?? null,
         ],
       );
       const identity = identitySchema.parse(result.rows[0]);
@@ -135,6 +144,29 @@ export function createIdentityRepository(options: {
     async revokeSession(tokenHash) {
       hashSchema.parse(tokenHash);
       await query('SELECT public.auth_revoke_session($1)', [tokenHash]);
+    },
+    async revokeProviderSessions(input) {
+      const value = z
+        .strictObject({
+          issuer: z.url().max(2048),
+          jtiHash: hashSchema,
+          issuedAt: z.date(),
+          subject: z.string().min(1).max(255).optional(),
+          providerSessionId: z.string().min(1).max(255).optional(),
+        })
+        .refine((claims) => claims.subject !== undefined || claims.providerSessionId !== undefined)
+        .parse(input);
+      const result = await query(
+        'SELECT public.auth_revoke_provider_sessions($1, $2, $3, $4, $5) AS accepted',
+        [
+          value.issuer,
+          value.jtiHash,
+          value.issuedAt,
+          value.subject ?? null,
+          value.providerSessionId ?? null,
+        ],
+      );
+      return z.object({ accepted: z.boolean() }).parse(result.rows[0]).accepted;
     },
     close: () => pool.end(),
   };

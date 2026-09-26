@@ -104,8 +104,9 @@
       "title": "OIDC back-channel logout 앱 구현",
       "dependsOn": ["EXT-OIDC"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "사용자 결정(2026-09-26): Zitadel back-channel logout 광고 확인에 따라 별도 후속 구현. 표준 Logout Token의 issuer·audience·서명·시각·events·nonce 부재와 subject/session 식별을 검증하고, jti 재생 방지 원장(migration)과 원자적인 해당 앱 세션 철회·tenant 격리·중복/지연/잘못된 토큰 거부를 구현한다. 공급자 호출은 DB 트랜잭션 밖에 둔다. 실제 Zitadel 공급자의 back-channel 전파 시험도 수용 기준이다. HTTPS callback과 계정 정지/로그아웃 전파의 배포 증거는 EXT-HOSTING 외부 조건이 충족될 때까지 not_executed로 남기며, 그 전까지 공급자 쪽 계정 정지가 앱에 닿는 상한 8시간은 유지한다."
+      "status": "in_progress",
+      "scope": "사용자 결정(2026-09-26): Zitadel back-channel logout 광고 확인에 따라 별도 후속 구현. 표준 Logout Token의 issuer·audience·서명·시각·events·nonce 부재와 subject/session 식별을 검증하고, jti 재생 방지 원장(migration)과 원자적인 해당 앱 세션 철회·tenant 격리·중복/지연/잘못된 토큰 거부를 구현한다. 공급자 호출은 DB 트랜잭션 밖에 둔다. 실제 Zitadel 공급자의 back-channel 전파 시험도 수용 기준이다. HTTPS callback과 계정 정지/로그아웃 전파의 배포 증거는 EXT-HOSTING 외부 조건이 충족될 때까지 not_executed로 남기며, 그 전까지 공급자 쪽 계정 정지가 앱에 닿는 상한 8시간은 유지한다.",
+      "evidence": "docs/implementation/progress/EXT-BACKCHANNEL.md"
     },
     {
       "id": "M0-06b",

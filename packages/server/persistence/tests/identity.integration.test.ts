@@ -141,3 +141,76 @@ describe('M1-01 identity private persistence', () => {
     }
   });
 });
+
+describe('EXT-BACKCHANNEL atomic provider logout', () => {
+  const logout = (
+    overrides: Partial<Parameters<IdentityRepository['revokeProviderSessions']>[0]> = {},
+  ) => ({
+    issuer: 'https://id.example',
+    jtiHash: hash(),
+    issuedAt: new Date(),
+    subject: 'logout-subject',
+    ...overrides,
+  });
+
+  it('revokes only the exact issuer and subject, preserving another tenant and issuer', async () => {
+    const first = { ...session(), subject: 'logout-subject', providerSessionId: 'sid-a' };
+    const second = { ...session(), subject: 'another-subject', providerSessionId: 'sid-b' };
+    const otherIssuer = {
+      ...session(),
+      issuer: 'https://other.example',
+      subject: 'logout-subject',
+    };
+    await Promise.all([first, second, otherIssuer].map((value) => repository.createSession(value)));
+    expect(await repository.revokeProviderSessions(logout())).toBe(true);
+    expect(await repository.findSession(first.tokenHash, new Date())).toBeNull();
+    expect(await repository.findSession(second.tokenHash, new Date())).not.toBeNull();
+    expect(await repository.findSession(otherIssuer.tokenHash, new Date())).not.toBeNull();
+  });
+
+  it('sid-only revokes one provider session, while subject plus sid requires both identifiers', async () => {
+    const a = { ...session(), subject: 'sid-subject', providerSessionId: 'sid-only-a' };
+    const b = { ...session(), subject: 'sid-subject', providerSessionId: 'sid-only-b' };
+    await Promise.all([a, b].map((value) => repository.createSession(value)));
+    expect(
+      await repository.revokeProviderSessions({
+        issuer: 'https://id.example',
+        jtiHash: hash(),
+        issuedAt: new Date(),
+        providerSessionId: 'sid-only-a',
+      }),
+    ).toBe(true);
+    expect(await repository.findSession(a.tokenHash, new Date())).toBeNull();
+    expect(await repository.findSession(b.tokenHash, new Date())).not.toBeNull();
+    expect(
+      await repository.revokeProviderSessions(
+        logout({ subject: 'wrong-subject', providerSessionId: 'sid-only-b' }),
+      ),
+    ).toBe(true);
+    expect(await repository.findSession(b.tokenHash, new Date())).not.toBeNull();
+  });
+
+  it('accepts one concurrent jti once and rolls back invalid claims without a ledger entry', async () => {
+    const input = { ...session(), subject: 'replay-subject' };
+    await repository.createSession(input);
+    const claims = logout({ subject: input.subject });
+    const accepted = await Promise.all([
+      repository.revokeProviderSessions(claims),
+      repository.revokeProviderSessions(claims),
+    ]);
+    expect(accepted.sort()).toEqual([false, true]);
+    expect(await repository.findSession(input.tokenHash, new Date())).toBeNull();
+    const delayed = logout({ subject: input.subject, issuedAt: new Date(Date.now() - 360_000) });
+    await expect(repository.revokeProviderSessions(delayed)).rejects.toThrow();
+    const ledger = await admin.query(
+      'SELECT 1 FROM identity_private.logout_token_replay WHERE issuer=$1 AND jti_hash=$2',
+      [delayed.issuer, delayed.jtiHash],
+    );
+    expect(ledger.rowCount).toBe(0);
+    await expect(
+      runtime.query('SELECT * FROM identity_private.logout_token_replay'),
+    ).rejects.toMatchObject({
+      code: '42501',
+    });
+  });
+});

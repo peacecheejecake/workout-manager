@@ -9,6 +9,7 @@ import {
   type IdentityStore,
 } from '@workout/server-identity/service';
 import { createApi } from '../src/app.js';
+import { BackchannelLogoutError } from '@workout/server-identity/backchannel';
 import { createConfiguredApi } from '../src/configured.js';
 
 const instances: ReturnType<typeof createApi>[] = [];
@@ -16,7 +17,7 @@ afterEach(async () => {
   await Promise.all(instances.splice(0).map((app) => app.close()));
 });
 
-function fixture() {
+function fixture(backchannelLogout?: { logout(token: string): Promise<void> }) {
   let attempt: Parameters<IdentityStore['createAttempt']>[0] | undefined;
   let session: Parameters<IdentityStore['createSession']>[0] | undefined;
   const store: IdentityStore = {
@@ -78,6 +79,7 @@ function fixture() {
   const app = createApi({
     auth: identity,
     identity,
+    ...(backchannelLogout === undefined ? {} : { backchannelLogout }),
     allowedOrigins: ['https://workout.example'],
     consent: {
       getConsent,
@@ -407,6 +409,50 @@ describe('M1-01 browser authentication boundary', () => {
         ALLOW_INSECURE_LOCALHOST: 'true',
       }),
     ).rejects.toThrow('Insecure production configuration');
+  });
+});
+
+describe('EXT-BACKCHANNEL callback boundary', () => {
+  it('accepts only one bounded form token without browser authentication and never logs the token', async () => {
+    const logout = vi.fn(async (_token: string) => undefined);
+    const data = fixture({ logout });
+    const token = 'private.logout.token';
+    const response = await data.app.inject({
+      method: 'POST',
+      url: '/bff/v1/auth/backchannel-logout',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: `logout_token=${token}`,
+    });
+    expect(response.statusCode).toBe(204);
+    expect(logout).toHaveBeenCalledWith(token);
+    expect(data.logs.join('')).not.toContain(token);
+    for (const payload of ['logout_token=a&logout_token=b', 'logout_token=a&extra=b', '']) {
+      const invalid = await data.app.inject({
+        method: 'POST',
+        url: '/bff/v1/auth/backchannel-logout',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        payload,
+      });
+      expect(invalid.statusCode).toBe(400);
+    }
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns stable replay and unavailable codes without token details', async () => {
+    const data = fixture({
+      async logout() {
+        throw new BackchannelLogoutError('LOGOUT_TOKEN_REPLAY');
+      },
+    });
+    const response = await data.app.inject({
+      method: 'POST',
+      url: '/bff/v1/auth/backchannel-logout',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'logout_token=private-secret',
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'LOGOUT_TOKEN_REPLAY' } });
+    expect(data.logs.join('')).not.toContain('private-secret');
   });
 });
 
