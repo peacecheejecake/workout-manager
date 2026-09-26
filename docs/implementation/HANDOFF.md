@@ -91,6 +91,29 @@ task-graph 193개 노드 중 177개 완료(2026-09-26). not_started인 ready 노
 (`92e0fa5f319a41df`)이고 기본 `.geo-build`는 아직 Seoul이다(서빙 교체는 runbook "전국 extract로의 교체" 절). 재개 시 `.claude/worktrees/`의
 agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다. 지우기 전에 각 worktree의 미커밋 상태를 확인한다.
 
+## 사용자 결정 기록(2026-09-26, 외부 gate)
+
+아래 결정은 **문서에만 반영**했다. 표시가 없는 항목은 구현하지 않았다(사용자 지시: "지금의 답변은 바로 구현하지 말고 문서에만 적용").
+
+- **EXT-OIDC:** Zitadel Cloud를 사용자가 등록했다(instance `personal-workout-lgn7dx.eu1.zitadel.cloud`, Web app, auth method CODE와 client
+  secret, Development Mode). 호스팅 보류로 `PUBLIC_ORIGIN=http://localhost:3100`, `ALLOW_INSECURE_LOCALHOST=true`. redirect는
+  `/bff/v1/auth/callback`, post-logout은 `/account`. 시험 사용자 둘(하나 MFA). 값은 저장소 밖 `.env`(Git 제외)에만 있다. discovery
+  200, S256·`client_secret_basic`·`end_session_endpoint` 광고 확인.
+- **EXT-OIDC 분할(결정만, 미구현):** localhost 실제 IdP 검증이 통과하면 EXT-OIDC를 완료로 하고, HTTPS 도메인·TLS ingress·secret manager
+  항목은 새 노드 EXT-HOSTING(호스팅 gate)으로 분리한다. 그러면 M2-01k가 진행될 수 있고 HTTPS 행은 not_executed로 남는다. 노드는 아직
+  만들지 않았다.
+- **EXT-G:** 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지 로컬 FIT 가져오기만 쓰고, 승인되면 M0-07b·M1-06b를 공식
+  경로로 구현한다(task-graph EXT-G scope에 기록됨).
+- **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `TC7DXULXVQ`.
+  Xcode가 활성 developer dir이고 license를 수락했다.
+- **HealthKit 시험 자료(결정만, 미구현):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용한다. 기존 건강 자료는 읽거나 내보내지
+  않는다. 아직 어떤 표본도 쓰지 않는다.
+- **호스팅·ODbL:** ODbL 이행을 먼저 하고(M0-06b-odbl 노드), 실제 호스팅은 보류한다.
+- **ODbL §4.6 스크립트 공개(결정만, 미구현):** 빌드 스크립트 본문을 서비스의 로그인 불필요 데이터 출처 페이지에서 내려받게 한다(별도 공개
+  저장소 없음, manifest의 SHA-256과 같은 바이트).
+- **GPX export 표기(결정만, 미구현):** 법적 판단 없이 보수적으로 GPX 메타데이터에 OSM 출처와 ODbL 1.0 URI를 넣는다.
+- **P8-coverage:** 기준을 바꾸지 않고 failed로 둔다(외부 gate 대기 결정).
+
 ## 알려진 흔들리는 시험
 
 - `tests/identity/session-attendance.spec.ts:123`("계획 초안 편집" 버튼이 보이지 않음)이 높은 부하(1분 load 32–40)에서 한 번 실패했고
