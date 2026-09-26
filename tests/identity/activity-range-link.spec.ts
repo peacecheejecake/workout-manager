@@ -227,7 +227,85 @@ const shells = [
   { name: 'Vite', origin: 'http://127.0.0.1:4200' },
 ] as const;
 
+function numericBounds(raw: string | null): number[] {
+  assert.ok(raw);
+  const parsed: unknown = JSON.parse(raw);
+  assert.ok(typeof parsed === 'object' && parsed !== null);
+  const object: Record<string, unknown> = parsed as Record<string, unknown>;
+  return (['west', 'south', 'east', 'north'] as const).map((key) => {
+    const value = object[key];
+    assert.ok(typeof value === 'number');
+    return value;
+  });
+}
+
+async function viewportDifference(map: Locator, expected: string | null): Promise<number> {
+  const actual = numericBounds(await map.getAttribute('data-viewport-bounds'));
+  const reference = numericBounds(expected);
+  return Math.max(...actual.map((value, index) => Math.abs(value - (reference[index] ?? value))));
+}
+
 for (const shell of shells) {
+  test(`${shell.name}: chart zoom can fit again on the same map after full view`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const headers = await login(page);
+    const activityId = await storeTrack(page, headers);
+    await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
+    const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+    const graph = panel.getByRole('group', { name: '저장된 경로 관측 그래프', exact: true });
+    const map = mapRegion(panel, '저장된 활동 경로');
+    await expectLineDrawn(map);
+    const fullBounds = await map.getAttribute('data-viewport-bounds');
+    const mapGeneration = await map.getAttribute('data-paths-generation');
+
+    await graph.getByRole('button', { name: '차트 확대' }).click();
+    await expect(map).toHaveAttribute('data-viewport-request', '1');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(fullBounds);
+    const partialBounds = await map.getAttribute('data-viewport-bounds');
+    await graph.getByRole('button', { name: '차트 전체' }).click();
+    await expect(graph.getByTestId('chart-zoom-domain')).toHaveText('전체');
+    await expect(map).not.toHaveAttribute('data-viewport-request');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(partialBounds);
+    await expect.poll(() => viewportDifference(map, fullBounds)).toBeLessThan(1e-7);
+    const restoredBounds = await map.getAttribute('data-viewport-bounds');
+
+    await graph.getByRole('button', { name: '차트 확대' }).click();
+    await expect(map).toHaveAttribute('data-viewport-request', '2');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(restoredBounds);
+    await expect.poll(() => viewportDifference(map, partialBounds)).toBeLessThan(1e-7);
+    await expect(map).toHaveAttribute('data-paths-generation', mapGeneration ?? '');
+  });
+
+  test(`${shell.name}: quick full view after a wheel stays programmatic`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const headers = await login(page);
+    const activityId = await storeTrack(page, headers);
+    await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
+    const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+    const graph = panel.getByRole('group', { name: '저장된 경로 관측 그래프', exact: true });
+    const map = mapRegion(panel, '저장된 활동 경로');
+    await expectLineDrawn(map);
+    const fullBounds = await map.getAttribute('data-viewport-bounds');
+    const canvas = map.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -700);
+    await page.keyboard.up('Control');
+    // Dispatch the button immediately while the trusted wheel gesture is still recent;
+    // Playwright's auto-scroll for a normal click can outlast MapLibre's gesture window.
+    await panel
+      .getByRole('button', { name: '전체 보기' })
+      .evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(graph.getByTestId('chart-zoom-domain')).toHaveText('전체');
+    await expect(map).toHaveAttribute('data-viewport-source', 'programmatic');
+    await expect.poll(() => viewportDifference(map, fullBounds)).toBeLessThan(1e-7);
+  });
+
   test(`${shell.name}: map zoom reaches observations beyond the first 500-chart page`, async ({
     page,
   }) => {

@@ -90,3 +90,30 @@ root typecheck·두 shell 생산 빌드가 통과했다. Aside는 `aside --updat
 Chromium이다. 합성 FIT·fixture OIDC·로컬 PostgreSQL 조건이며 실제 기기와
 운영 공급자 증거를 추가하지 않았다. `R-S09` passed 외의 매트릭스 판정과
 과거 `not_executed`는 바꾸지 않았다.
+
+## 두 번째 단계 독립 검토 지적 수정 · 2026-09-27
+
+두 번째 독립 검토 기준은 `main` `9ac6aa1` 대 phase `f7644ee`였다. 검토자는
+앞선 두 지적을 각각 **FIXED**로 확인했고, 새 지적 두 건을 제시했다.
+
+- **새 P1 FIXED:** 부분 viewport 요청 번호를 nullable 요청의 직전 값에서
+  계산하지 않고 S09 화면 수명 동안 단조 증가하는 ref에서 발급한다. 같은
+  지도 adapter에서 차트 확대 → 차트 전체 → 차트 재확대를 검증했다. Next/Vite
+  실제 브라우저 **2/2 통과**. 번호를 다시 `1`로 만드는 변이는 두 shell에서
+  재확대 요청 `2` 단언에 **2/2 실패**했고 adapter probe 단위 시험에서도
+  네 번째 fit 부재로 실패했다. 이전 선택·구간 상태는 손대지 않았다.
+- **새 P2 FIXED:** MapLibre `fitBounds`가 생성한 movement event에는 adapter
+  고유의 명시적 출처 토큰을 전달한다. fit 호출 중 이전 wheel 이동이 중단되는
+  경우도 코드 fit으로 분류한다. wheel 시각은 직접 입력을 구분할 때만 사용한다.
+  실제 wheel 직후 Playwright 자동 스크롤 지연 없이 전체 보기 버튼을 즉시
+  누르는 Next/Vite 시험 **2/2 통과**. 토큰·fit 상태 판정을 제거하고 제스처
+  시각만 쓰는 변이는 두 shell에서 차트 확대 재발생 또는 `user` 오분류로
+  **2/2 실패**했고 adapter 단위 시험에서도 실패했다. 시험의 wheel은 실제
+  브라우저 입력이며, 버튼은 800ms 창을 보장하기 위해 DOM click을 썼다.
+
+원복한 최종 빌드에서 `activity-range-link.spec.ts` 전체 Next/Vite **12/12를
+두 번 연속 통과**, 관련 단위 시험 **109/109 통과**했다. 생성물 검사, 대상
+파일 lint/format, 34 package와 root typecheck, Next/Vite 생산 빌드가
+통과했다. Aside `aside --update`는 다시 `fetch failed`였고 직접 UI 근거는
+Playwright Chromium이다. 실제 기기·운영 공급자와 역사적 `not_executed`
+상태는 변경하지 않았다. 변경 HEAD는 다시 전체 단계 독립 검토를 받아야 한다.

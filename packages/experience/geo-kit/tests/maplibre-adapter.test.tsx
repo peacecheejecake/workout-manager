@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { judgeRender } from '@workout/geo-kit/render-evidence';
 import type { MapRenderIdleInfo } from '@workout/geo-kit/render-evidence';
 import { toFeatureCollection } from '@workout/geo-kit/map-path';
+import type { MapViewportEvent } from '@workout/geo-kit/map-adapter';
 
 const renderer = vi.hoisted(() => ({
   /** Features the stand-in says are drawn, per layer id. */
@@ -70,7 +71,10 @@ vi.mock('maplibre-gl', () => {
         getNorth: () => 37.6,
       };
     }
-    fitBounds() {}
+    fitBounds(_bounds: unknown, _options: unknown, eventData?: unknown) {
+      for (const handler of renderer.handlers.get('movestart') ?? []) handler(eventData);
+      for (const handler of renderer.handlers.get('moveend') ?? []) handler(eventData);
+    }
     resize() {}
     remove() {}
   }
@@ -81,6 +85,7 @@ async function adapterWith(
   drawn: Record<string, number>,
   roles: Record<string, string> = {},
   features: Record<string, { properties: Record<string, unknown> }[]> = {},
+  onViewportChange?: (event: MapViewportEvent) => void,
 ) {
   renderer.drawn = new Map(Object.entries(drawn));
   renderer.roles = new Map(Object.entries(roles));
@@ -89,15 +94,17 @@ async function adapterWith(
   renderer.layers = [];
   const { createMapLibreAdapter } = await import('../src/maplibre-adapter');
   const observations: MapRenderIdleInfo[] = [];
+  const container = document.createElement('div');
   const handle = await createMapLibreAdapter({
-    container: document.createElement('div'),
+    container,
     basemap: null,
     onReady: () => undefined,
     onFailure: () => undefined,
     onPick: () => undefined,
     onIdle: (info) => observations.push(info),
+    ...(onViewportChange ? { onViewportChange } : {}),
   });
-  return { handle, observations };
+  return { handle, observations, container };
 }
 
 /** A new-course draft whose only line is uncomputed: the dashed layer draws it. */
@@ -114,6 +121,26 @@ const uncomputedDraft = toFeatureCollection([
 ]);
 
 describe('MapLibre adapter render observation', () => {
+  it('reports a fit as programmatic even immediately after a wheel gesture', async () => {
+    const events: MapViewportEvent[] = [];
+    const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));
+    container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    handle.fitBounds({
+      west: 126.9,
+      east: 127.1,
+      south: 37.5,
+      north: 37.6,
+      crossesAntimeridian: false,
+    });
+    expect(events.at(-1)?.source).toBe('programmatic');
+    // An actual SDK move following a later gesture still has user provenance.
+    container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    for (const handler of renderer.handlers.get('movestart') ?? []) handler({});
+    for (const handler of renderer.handlers.get('moveend') ?? []) handler({});
+    expect(events.at(-1)?.source).toBe('user');
+    handle.destroy();
+  });
+
   it('counts the dashed uncomputed line as a drawn line', async () => {
     const { handle, observations } = await adapterWith({ 'geo-kit-path-uncomputed': 1 });
     handle.setPaths(uncomputedDraft);

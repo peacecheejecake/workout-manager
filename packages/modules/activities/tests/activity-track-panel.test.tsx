@@ -537,10 +537,20 @@ describe('stored activity track selection', () => {
     expect(probe.fitBounds[2]).toEqual(fullBounds);
     expect(map).not.toHaveAttribute('data-viewport-request');
 
+    await userEvent.click(within(graph).getByRole('button', { name: '차트 확대' }));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(4));
+    expect(probe.fitBounds[3]).toEqual(probe.fitBounds[1]);
+    expect(map).toHaveAttribute('data-viewport-request', '2');
+    expect(probe.created).toHaveLength(1);
+    await userEvent.click(within(graph).getByRole('button', { name: '차트 전체' }));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(5));
+    expect(probe.fitBounds[4]).toEqual(fullBounds);
+    expect(map).not.toHaveAttribute('data-viewport-request');
+
     rerenderBasemap({ styleUrl: '/map/basemap/changed/style.json', attribution: '© OSM' });
     await waitFor(() => expect(probe.created).toHaveLength(2));
-    await waitFor(() => expect(probe.fitBounds).toHaveLength(4));
-    expect(probe.fitBounds[3]).toEqual(fullBounds);
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(6));
+    expect(probe.fitBounds[5]).toEqual(fullBounds);
   });
 });
 

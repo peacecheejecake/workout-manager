@@ -1700,7 +1700,7 @@
       "verdict": "passed",
       "evidence": [
         "tests/identity/activity-track-map.spec.ts:272",
-        "tests/identity/activity-range-link.spec.ts:231",
+        "tests/identity/activity-range-link.spec.ts:249",
         "packages/modules/activities/tests/linked-viewport.test.tsx",
         "packages/modules/activities/tests/activity-track-panel.test.tsx:516"
       ],
@@ -1748,6 +1748,21 @@
           "generated check, focused format/lint, 34-package and root typecheck, Next/Vite production builds passed"
         ],
         "limitations": "Local Chromium with fixture OIDC and synthetic FIT; native touch/IME and production provider remain separate. Phase review refresh is required for the changed head."
+      },
+      "phaseReviewRound2": {
+        "base": "9ac6aa1",
+        "reviewedHead": "f7644ee",
+        "previousFindings": "P1 FIXED and P2 FIXED confirmed by the second independent reviewer.",
+        "newFindings": [
+          "P1 FIXED: chart zoom, full view, then chart zoom on the same adapter uses a monotonic viewport request revision; Next/Vite browser 2/2 passed and the reset-to-1 mutant failed 2/2",
+          "P2 FIXED: MapLibre programmatic fit carries an explicit event origin independent of the preceding wheel timestamp; rapid trusted wheel then immediate full-view button in Next/Vite browser 2/2 passed and the timestamp-only classification mutant failed 2/2"
+        ],
+        "restoredChecks": [
+          "activity-range-link.spec.ts Next/Vite full file 12/12 passed twice with fixture OIDC and isolated PostgreSQL",
+          "activity-track-panel.test.tsx, maplibre-adapter.test.tsx and geo-kit.test.tsx 109/109 passed",
+          "generated check, focused format/lint, 34-package and root typecheck, Next/Vite production builds passed"
+        ],
+        "limitations": "Local Chromium; the rapid button uses DOM click immediately after a trusted wheel to avoid Playwright auto-scroll delay. Native touch/IME and production provider evidence remain separate. Full phase review refresh is required."
       }
     },
     {

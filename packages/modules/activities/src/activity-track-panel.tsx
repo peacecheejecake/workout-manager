@@ -23,6 +23,7 @@ import {
   useCallback,
   useId,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ComponentType,
@@ -386,6 +387,7 @@ function StoredTrackView({
     revision: number;
     bounds: MapBounds;
   } | null>(null);
+  const viewportRevision = useRef(0);
   const [page, setPage] = useState(0);
   const [failure, setFailure] = useState<MapAdapterFailure | null>(null);
   const [mapStatus, setMapStatus] = useState<MapViewStatus>('preparing');
@@ -419,7 +421,8 @@ function StoredTrackView({
       }
       const bounds = viewportForTimeDomain(geometry, index, next);
       if (!bounds) return;
-      setViewportRequest((previous) => ({ revision: (previous?.revision ?? 0) + 1, bounds }));
+      viewportRevision.current += 1;
+      setViewportRequest({ revision: viewportRevision.current, bounds });
     },
     [geometry, index],
   );

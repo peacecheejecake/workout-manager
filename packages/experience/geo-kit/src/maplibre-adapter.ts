@@ -243,6 +243,13 @@ async function initialise(
     });
     let userMoving = false;
     let lastGestureAt = Number.NEGATIVE_INFINITY;
+    const fitOrigin = {};
+    let fitInProgress = false;
+    const fromThisFit = (event: unknown) =>
+      typeof event === 'object' &&
+      event !== null &&
+      'workoutGeoKitFitOrigin' in event &&
+      event.workoutGeoKitFitOrigin === fitOrigin;
     const noteGesture = () => {
       lastGestureAt = Date.now();
     };
@@ -259,9 +266,12 @@ async function initialise(
       container.removeEventListener('keydown', noteGesture);
     };
     map.on('movestart', (event) => {
-      userMoving = event.originalEvent !== undefined || Date.now() - lastGestureAt < 800;
+      userMoving =
+        !fitInProgress &&
+        !fromThisFit(event) &&
+        (event.originalEvent !== undefined || Date.now() - lastGestureAt < 800);
     });
-    map.on('moveend', () => {
+    map.on('moveend', (event) => {
       if (destroyed || !onViewportChange) return;
       const viewport = map.getBounds();
       onViewportChange({
@@ -272,7 +282,7 @@ async function initialise(
           north: viewport.getNorth(),
           crossesAntimeridian: viewport.getEast() < viewport.getWest(),
         },
-        source: userMoving ? 'user' : 'programmatic',
+        source: !fitInProgress && !fromThisFit(event) && userMoving ? 'user' : 'programmatic',
       });
       userMoving = false;
     });
@@ -441,13 +451,22 @@ async function initialise(
         } as never);
       },
       fitBounds(bounds: MapBounds) {
-        map.fitBounds(
-          [
-            [bounds.west, bounds.south],
-            [bounds.east, bounds.north],
-          ],
-          { padding: 24, animate: false },
-        );
+        // MapLibre's movement events can arrive within the prior wheel's 800 ms window.
+        // Tag this fit itself, including its synchronous interruption of that movement.
+        userMoving = false;
+        fitInProgress = true;
+        try {
+          map.fitBounds(
+            [
+              [bounds.west, bounds.south],
+              [bounds.east, bounds.north],
+            ],
+            { padding: 24, animate: false },
+            { workoutGeoKitFitOrigin: fitOrigin },
+          );
+        } finally {
+          fitInProgress = false;
+        }
       },
       resize() {
         map.resize();
