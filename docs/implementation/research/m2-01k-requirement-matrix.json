@@ -504,6 +504,18 @@
         "the same reviewer (Codex gpt-6-sol, high, read-only, empty directory with four files) re-graded under the same pre-registration 98ef1cee: 73.5 of 82 against 70 with no disqualifiers, but three strata below their bars (rural 0.5/1.5, bridge-pedestrian 3.5/4, negative-sea-island 4/4.5); verdict inadequate; the reviewer attributes the misses to sample design and an OSM data gap and states criteria changes would not be the pre-registered verdict (docs/implementation/research/m0-06b-coverage-regrade-m2-01ay-grading.txt)"
       ],
       "note": "Supporting evidence for passed rows P6-outcomes-distinct, P7-no-coordinates-in-logs, K-graph-rollback, K-performance and S14-foot-routing was re-run on the new graph (docs/implementation/progress/M2-01ay.md); their verdicts are unchanged."
+    },
+    {
+      "node": "EXT-OIDC",
+      "date": "2026-09-26",
+      "rows": ["K-oidc"],
+      "decision": "The user registered a Zitadel Cloud application and ran the real-browser checklist on localhost; the user split EXT-OIDC so HTTPS and deployed-environment items move to EXT-HOSTING.",
+      "change": "K-oidc not_executed -> partial; counts partial +1, not_executed -1.",
+      "executed": [
+        "docs/implementation/progress/EXT-OIDC.md: a human logged in against the real provider Zitadel Cloud on localhost (PUBLIC_ORIGIN http://localhost:3100, Development Mode): login, same-browser account switch with MFA, re-login asking for credentials, app logout with provider logout confirmation, provider outage keeping existing sessions while login reports unavailable, and recovery; server evidence (session rows, API log events) backs each step and the logs carry no client secret, tokens or cookie values",
+        "provider facts machine-checked against the real endpoints: discovery issuer, S256, client_secret_basic (a wrong secret gets invalid_client), exact redirect and post-logout registration (negative controls rejected), end_session_endpoint"
+      ],
+      "note": "passed needs the EXT-HOSTING deployed run and a repeatable automated real-IdP login with a mutant (see docs/implementation/progress/EXT-OIDC.md)."
     }
   ],
   "rounds": [
@@ -626,10 +638,10 @@
   ],
   "counts": {
     "passed": 86,
-    "partial": 18,
+    "partial": 19,
     "failed": 1,
     "missing": 0,
-    "not_executed": 5
+    "not_executed": 4
   },
   "total": 110,
   "rows": [
@@ -2118,11 +2130,12 @@
       "id": "K-oidc",
       "source": "docs/implementation/map-implementation-plan.md:94",
       "quote": "S09/S13/S14 요구 대조, 실제 OIDC/DB/객체/E2E, 복구·삭제·성능·graph 교체 rollback — \"실제 OIDC\"",
-      "verdict": "not_executed",
+      "verdict": "partial",
       "evidence": [
-        "scripts/identity-e2e.mts:244-252 and scripts/probe-routing-operational.mts use the local fixture OIDC provider"
+        "scripts/identity-e2e.mts:244-252 and scripts/probe-routing-operational.mts use the local fixture OIDC provider",
+        "docs/implementation/progress/EXT-OIDC.md"
       ],
-      "reason": "Still not executed. Since round 1: M2-01u ran a local OpenID Certified OP (panva oidc-provider) and M2-01w added deferred discovery and RP-initiated logout; the three oidc-certified.spec real-OP tests were skipped in both round-2 identity runs (they need IDENTITY_E2E_OIDC=certified). A local certified OP is not the production identity provider this row requires; that is the EXT-OIDC external gate.",
+      "reason": "EXT-OIDC amendment: partial. A human logged in against the real identity provider (Zitadel Cloud) on localhost with server evidence for each step. Not passed: it is a human run with no repeatable test or mutant showing a silent re-login would be refused without the reauthentication check; the HTTPS/deployed-environment half moved to EXT-HOSTING and was not run; checklist step 4, the UI half of the expiry step and the real 8-hour expiry were not run; Zitadel's Back button sends no access_denied, so the cancelled path was not reached against Zitadel.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
@@ -2130,7 +2143,17 @@
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "EXT-OIDC",
+        "date": "2026-09-26",
+        "previousVerdict": "not_executed",
+        "previousReason": "Still not executed. Since round 1: M2-01u ran a local OpenID Certified OP (panva oidc-provider) and M2-01w added deferred discovery and RP-initiated logout; the three oidc-certified.spec real-OP tests were skipped in both round-2 identity runs (they need IDENTITY_E2E_OIDC=certified). A local certified OP is not the production identity provider this row requires; that is the EXT-OIDC external gate.",
+        "executed": [
+          "docs/implementation/progress/EXT-OIDC.md: a human logged in against the real provider Zitadel Cloud on localhost (PUBLIC_ORIGIN http://localhost:3100, Development Mode): login, same-browser account switch with MFA, re-login asking for credentials, app logout with provider logout confirmation, provider outage keeping existing sessions while login reports unavailable, and recovery; server evidence (session rows, API log events) backs each step and the logs carry no client secret, tokens or cookie values",
+          "provider facts machine-checked against the real endpoints: discovery issuer, S256, client_secret_basic (a wrong secret gets invalid_client), exact redirect and post-logout registration (negative controls rejected), end_session_endpoint"
+        ]
+      }
     },
     {
       "id": "K-db",

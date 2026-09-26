@@ -17,11 +17,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
+import pg from 'pg';
+import * as migrations from '../../packages/server/persistence/src/migrate.ts';
 import { loadEnv } from './env.mjs';
 
 const WORKTREE = '/Users/minjiwon/workout-manager/.claude/worktrees/agent-ad7c53a040be4faf0';
-const SCRATCH = '/private/tmp/claude-501/-Users-minjiwon-workout-manager/91dc98ad-1a94-4465-a873-811aee767c3c/scratchpad';
+const SCRATCH =
+  '/private/tmp/claude-501/-Users-minjiwon-workout-manager/91dc98ad-1a94-4465-a873-811aee767c3c/scratchpad';
 const LOCK = join(SCRATCH, 'harness.lock');
 const PRIORITY = join(SCRATCH, 'harness.root-priority');
 const STATE = join(SCRATCH, 'ext-oidc', 'state');
@@ -43,7 +45,6 @@ const OWNER = 'workout_owner'; // migration owner: NOSUPERUSER NOBYPASSRLS
 const RUNTIME = 'workout_runtime'; // app role: NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE
 const url = (user: string, db = DB) =>
   `postgresql://${user}@localhost/${db}?host=${encodeURIComponent(SOCK)}`;
-const pg = createRequire(join(WORKTREE, 'package.json'))('pg') as typeof import('pg');
 /** An issuer nothing answers on (connection refused): a provider outage as the API sees it. */
 const OUTAGE_ISSUER = 'https://localhost:9/';
 
@@ -116,7 +117,9 @@ function releaseLock() {
 
 // ---------- database ----------
 function pgRunning() {
-  return spawnSync(join(PG_BIN, 'pg_ctl'), ['-D', PGDATA, 'status'], { stdio: 'ignore' }).status === 0;
+  return (
+    spawnSync(join(PG_BIN, 'pg_ctl'), ['-D', PGDATA, 'status'], { stdio: 'ignore' }).status === 0
+  );
 }
 async function ensureDatabase() {
   mkdirSync(SOCK, { recursive: true, mode: 0o700 });
@@ -124,26 +127,48 @@ async function ensureDatabase() {
   mkdirSync(RESOURCES, { recursive: true });
   const fresh = !existsSync(join(PGDATA, 'PG_VERSION'));
   if (fresh)
-    run(join(PG_BIN, 'initdb'), ['-D', PGDATA, '-U', BOOT, '-A', 'trust', '--no-locale', '--encoding=UTF8']);
+    run(join(PG_BIN, 'initdb'), [
+      '-D',
+      PGDATA,
+      '-U',
+      BOOT,
+      '-A',
+      'trust',
+      '--no-locale',
+      '--encoding=UTF8',
+    ]);
   if (!pgRunning())
-    run(join(PG_BIN, 'pg_ctl'), ['-D', PGDATA, '-l', join(LOGS, 'postgres.log'), '-o', `-k ${SOCK} -h ''`, '-w', 'start']);
+    run(join(PG_BIN, 'pg_ctl'), [
+      '-D',
+      PGDATA,
+      '-l',
+      join(LOGS, 'postgres.log'),
+      '-o',
+      `-k ${SOCK} -h ''`,
+      '-w',
+      'start',
+    ]);
   const boot = new pg.Pool({ connectionString: url(BOOT, 'postgres'), max: 1 });
   try {
     const roles = await boot.query<{ rolname: string }>('SELECT rolname FROM pg_roles');
     const have = new Set(roles.rows.map((r) => r.rolname));
     if (!have.has(OWNER))
-      await boot.query(`CREATE ROLE ${OWNER} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`);
+      await boot.query(
+        `CREATE ROLE ${OWNER} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+      );
     if (!have.has(RUNTIME))
-      await boot.query(`CREATE ROLE ${RUNTIME} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`);
+      await boot.query(
+        `CREATE ROLE ${RUNTIME} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+      );
     const dbs = await boot.query('SELECT 1 FROM pg_database WHERE datname=$1', [DB]);
     if (dbs.rowCount === 0) await boot.query(`CREATE DATABASE ${DB} OWNER ${OWNER}`);
   } finally {
     await boot.end();
   }
   // Migrations and grants as the (plain) migration owner, as a deployment runs them.
-  const m = await import(join(WORKTREE, 'packages/server/persistence/src/migrate.ts'));
+  const m = migrations as unknown as Record<string, (url: string, role?: string) => Promise<void>>;
   const owner = url(OWNER);
-  await m.migrate(owner);
+  await migrations.migrate(owner);
   const o = new pg.Pool({ connectionString: owner, max: 1 });
   try {
     await o.query(`GRANT USAGE ON SCHEMA public TO ${RUNTIME}`);
@@ -215,20 +240,25 @@ function startApi(outage: boolean) {
 }
 function startWeb() {
   const out = openSync(join(LOGS, 'web.log'), 'a');
-  return spawn(join(WORKTREE, 'apps/web/node_modules/.bin/next'), ['start', '--hostname', '127.0.0.1', '--port', '3100'], {
-    cwd: join(WORKTREE, 'apps/web'),
-    env: {
-      PATH: `${NODE_BIN}:/usr/bin:/bin`,
-      HOME: process.env.HOME,
-      NODE_ENV: 'production',
-      API_ORIGIN: 'http://127.0.0.1:4300',
+  return spawn(
+    join(WORKTREE, 'apps/web/node_modules/.bin/next'),
+    ['start', '--hostname', '127.0.0.1', '--port', '3100'],
+    {
+      cwd: join(WORKTREE, 'apps/web'),
+      env: {
+        PATH: `${NODE_BIN}:/usr/bin:/bin`,
+        HOME: process.env.HOME,
+        NODE_ENV: 'production',
+        API_ORIGIN: 'http://127.0.0.1:4300',
+      },
+      stdio: ['ignore', out, out],
     },
-    stdio: ['ignore', out, out],
-  });
+  );
 }
 function stopChild(child: ChildProcess | undefined) {
   return new Promise<void>((resolve) => {
-    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return resolve();
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null)
+      return resolve();
     const t = setTimeout(() => child.kill('SIGKILL'), 10_000);
     child.once('exit', () => (clearTimeout(t), resolve()));
     child.kill('SIGTERM');
@@ -262,7 +292,8 @@ async function supervise() {
     const fresh = await ensureDatabase();
     console.log(`db ready (${fresh ? 'new cluster' : 'existing cluster'})`);
     api = startApi(false);
-    if (!(await waitHttp('http://127.0.0.1:4300/health', 60_000))) throw new Error('API not healthy');
+    if (!(await waitHttp('http://127.0.0.1:4300/health', 60_000)))
+      throw new Error('API not healthy');
     web = startWeb();
     if (!(await waitHttp('http://127.0.0.1:3100/', 90_000))) throw new Error('web not up');
     const restart = async (outage: boolean) => {
@@ -295,13 +326,19 @@ async function up() {
   if (supervisorPid() !== null) return console.log('already running; `status` for details');
   mkdirSync(LOGS, { recursive: true });
   const out = openSync(join(LOGS, 'supervisor.log'), 'a');
-  const child = spawn(process.execPath, [...process.execArgv, new URL(import.meta.url).pathname, 'supervise'], {
-    cwd: WORKTREE,
-    detached: true,
-    stdio: ['ignore', out, out],
-  });
+  const child = spawn(
+    process.execPath,
+    [...process.execArgv, new URL(import.meta.url).pathname, 'supervise'],
+    {
+      cwd: WORKTREE,
+      detached: true,
+      stdio: ['ignore', out, out],
+    },
+  );
   child.unref();
-  console.log(`supervisor pid ${child.pid}; waiting for the harness lock and startup (log: ${join(LOGS, 'supervisor.log')})`);
+  console.log(
+    `supervisor pid ${child.pid}; waiting for the harness lock and startup (log: ${join(LOGS, 'supervisor.log')})`,
+  );
   for (;;) {
     await sleep(1000);
     if (existsSync(READY)) break;
@@ -342,7 +379,8 @@ async function sessions() {
       'SELECT athlete_id::text, issuer, subject FROM identity_private.account ORDER BY athlete_id',
     );
     console.log('accounts (subject shown as sha256 prefix):');
-    for (const r of acc.rows) console.log(`  ${r.athlete_id}  issuer=${r.issuer}  subject#${short(r.subject)}`);
+    for (const r of acc.rows)
+      console.log(`  ${r.athlete_id}  issuer=${r.issuer}  subject#${short(r.subject)}`);
     const s = await c.query(
       `SELECT session_id::text, athlete_id::text, expires_at, expires_at > clock_timestamp() AS live,
               round(extract(epoch FROM expires_at - clock_timestamp()))::int AS seconds_left
@@ -350,13 +388,18 @@ async function sessions() {
     );
     console.log(`sessions: ${s.rowCount}`);
     for (const r of s.rows)
-      console.log(`  session=${r.session_id} athlete=${r.athlete_id} expires=${r.expires_at.toISOString()} live=${r.live} seconds_left=${r.seconds_left}`);
+      console.log(
+        `  session=${r.session_id} athlete=${r.athlete_id} expires=${r.expires_at.toISOString()} live=${r.live} seconds_left=${r.seconds_left}`,
+      );
     const a = await c.query(
       `SELECT count(*)::int AS n, count(*) FILTER (WHERE expires_at > clock_timestamp())::int AS live
          FROM identity_private.login_attempt`,
     );
     console.log(`login attempts: ${a.rows[0].n} (${a.rows[0].live} unexpired)`);
-    console.log('db clock:', (await c.query('SELECT clock_timestamp() AS t')).rows[0].t.toISOString());
+    console.log(
+      'db clock:',
+      (await c.query('SELECT clock_timestamp() AS t')).rows[0].t.toISOString(),
+    );
   });
 }
 async function expireSessions() {
@@ -375,9 +418,14 @@ function logCheck() {
   const counts = new Map<string, number>();
   for (const line of text.split('\n')) {
     const m = /"event":"([a-z_]+)"(?:,"(?:code|reason)":"([a-z_]+)")?/.exec(line);
-    if (m) counts.set(`${m[1]}${m[2] ? `:${m[2]}` : ''}`, (counts.get(`${m[1]}${m[2] ? `:${m[2]}` : ''}`) ?? 0) + 1);
+    if (m)
+      counts.set(
+        `${m[1]}${m[2] ? `:${m[2]}` : ''}`,
+        (counts.get(`${m[1]}${m[2] ? `:${m[2]}` : ''}`) ?? 0) + 1,
+      );
     const s = /"statusCode":(\d+)/.exec(line);
-    if (s && m?.[1] === 'request_completed') counts.set(`status:${s[1]}`, (counts.get(`status:${s[1]}`) ?? 0) + 1);
+    if (s && m?.[1] === 'request_completed')
+      counts.set(`status:${s[1]}`, (counts.get(`status:${s[1]}`) ?? 0) + 1);
   }
   console.log('api.log lines:', text.split('\n').filter(Boolean).length);
   for (const [k, v] of [...counts].sort()) console.log(`  ${k} x${v}`);
@@ -389,7 +437,8 @@ function logCheck() {
     ['cookie values', /workout_(session|login|signed_out)=/.test(text)],
     ['authorization header', /authorization/i.test(text)],
   ];
-  for (const [name, found] of probes) console.log(`  leak check ${name}: ${found ? 'FOUND' : 'absent'}`);
+  for (const [name, found] of probes)
+    console.log(`  leak check ${name}: ${found ? 'FOUND' : 'absent'}`);
 }
 
 const command = process.argv[2];
@@ -415,7 +464,11 @@ switch (command) {
       process.kill(pid, command === 'outage-on' ? 'SIGUSR2' : 'SIGUSR1');
       for (let i = 0; i < 120; i++) {
         await sleep(500);
-        if (readFileSync(MODEFILE, 'utf8') === want && (await waitHttp('http://127.0.0.1:4300/health', 1000))) break;
+        if (
+          readFileSync(MODEFILE, 'utf8') === want &&
+          (await waitHttp('http://127.0.0.1:4300/health', 1000))
+        )
+          break;
       }
       console.log(`api mode: ${readFileSync(MODEFILE, 'utf8')}`);
     }
@@ -436,6 +489,8 @@ switch (command) {
     console.log('state removed');
     break;
   default:
-    console.log('usage: up | down | status | outage-on | outage-off | sessions | expire-sessions | log-check | purge');
+    console.log(
+      'usage: up | down | status | outage-on | outage-off | sessions | expire-sessions | log-check | purge',
+    );
     process.exitCode = 2;
 }

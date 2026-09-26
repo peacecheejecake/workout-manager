@@ -34,7 +34,10 @@ if (res.status >= 300 && res.status < 400) {
 const html = await res.text();
 const texts = new Set();
 for (const m of html.matchAll(/<(button|a)\b[^>]*>([\s\S]*?)<\/\1>/g)) {
-  const t = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = m[2]
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (t) texts.add(`${m[1]}: ${t.slice(0, 60)}`);
 }
 console.log([...texts].join('\n'));

@@ -15,16 +15,30 @@ async function probe(label, cookie) {
   console.log(`\n[${label}] HTTP ${res.status}`);
   const loc = new URL(res.headers.get('location'));
   const p = loc.searchParams;
-  console.log('  location = authorization_endpoint:', `${loc.origin}${loc.pathname}` === discovery.authorization_endpoint);
+  console.log(
+    '  location = authorization_endpoint:',
+    `${loc.origin}${loc.pathname}` === discovery.authorization_endpoint,
+  );
   console.log('  params:', [...p.keys()].sort().join(','));
   console.log('  client_id matches env:', p.get('client_id') === env.OIDC_CLIENT_ID);
   console.log('  redirect_uri:', p.get('redirect_uri'));
   console.log('  response_type:', p.get('response_type'), ' scope:', p.get('scope'));
-  console.log('  code_challenge_method:', p.get('code_challenge_method'), ' code_challenge len:', p.get('code_challenge')?.length, ' base64url:', /^[A-Za-z0-9_-]{43}$/.test(p.get('code_challenge') ?? ''));
+  console.log(
+    '  code_challenge_method:',
+    p.get('code_challenge_method'),
+    ' code_challenge len:',
+    p.get('code_challenge')?.length,
+    ' base64url:',
+    /^[A-Za-z0-9_-]{43}$/.test(p.get('code_challenge') ?? ''),
+  );
   console.log('  state len:', p.get('state')?.length, ' nonce len:', p.get('nonce')?.length);
   console.log('  prompt:', p.get('prompt'), ' max_age:', p.get('max_age'));
   const setCookie = res.headers.getSetCookie();
-  for (const c of setCookie) console.log('  set-cookie:', c.replace(/=([^;]*)/, (_m, v) => (v ? '=<value>' : '=')));
+  for (const c of setCookie)
+    console.log(
+      '  set-cookie:',
+      c.replace(/=([^;]*)/, (_m, v) => (v ? '=<value>' : '=')),
+    );
   // Ask the provider what it does with exactly this request (no credentials, no redirects followed).
   const op = await fetch(loc, { redirect: 'manual' });
   const opLoc = op.headers.get('location');

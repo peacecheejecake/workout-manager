@@ -17,7 +17,9 @@ async function ask(label, mutate) {
   console.log(`[${label}] HTTP ${op.status} -> ${where} ${body}`);
 }
 await ask('as sent by the app', () => {});
-await ask('redirect_uri not registered', (p) => p.set('redirect_uri', 'http://localhost:3100/bff/v1/auth/other'));
+await ask('redirect_uri not registered', (p) =>
+  p.set('redirect_uri', 'http://localhost:3100/bff/v1/auth/other'),
+);
 await ask('unknown client_id', (p) => p.set('client_id', '000000000000000000'));
 await ask('code_challenge_method=plain', (p) => p.set('code_challenge_method', 'plain'));
 await ask('post-logout check skipped here', () => {});
