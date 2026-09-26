@@ -62,6 +62,9 @@ struct ProbeState: Codable {
   // Optional so v1/v2 JSON still decodes before the explicit migration below.
   var taggedSampleUUIDs: [String: [UUID]]? = [:]
   var migrationHistoryIncomplete: Bool? = false
+  // Optional for existing v3 files. A pending range is retried on launch and foreground.
+  var collectionPending: Bool? = false
+  var backgroundCleanupPending: Bool? = false
 }
 
 struct OutboxEntry: Codable, Equatable {
@@ -311,6 +314,11 @@ final class HealthProbe {
     // Establish the tagged UUID set and anchor before requesting deletion.
     let before = await collect(crashBeforePersist: false)
     result["beforeDeleteCollected"] = before["persisted"] as? Bool == true
+    guard before["persisted"] as? Bool == true else {
+      result["deleteCallsSucceeded"] = false
+      result["deletionBlocked"] = "preDeleteCollectionFailed"
+      return result
+    }
     for type in sampleTypes {
       do {
         deleted[type.identifier] = try await withCheckedThrowingContinuation { continuation in
@@ -355,6 +363,14 @@ final class HealthProbe {
 
   private func collectExclusive(crashBeforePersist: Bool) async -> [String: Any] {
     var state = loadState()
+    if state.collectionPending != true {
+      state.collectionPending = true
+      do {
+        try ProbeFiles.save(state, "state.json")
+      } catch {
+        return ["persisted": false, "retryQueued": false].merging(describe(error)) { $1 }
+      }
+    }
     var perType: [String: Any] = [:]
     var anchors = state.anchors
     var membershipChanged = false
@@ -425,7 +441,7 @@ final class HealthProbe {
       } catch {
         perType[type.identifier] = describe(error)
         // A partial page must never advance an anchor or acknowledge observer delivery.
-        return ["perType": perType, "persisted": false]
+        return ["perType": perType, "persisted": false, "retryQueued": true]
       }
     }
     if crashBeforePersist {
@@ -434,10 +450,13 @@ final class HealthProbe {
       kill(getpid(), SIGKILL)
     }
     state.anchors = anchors
+    state.collectionPending = false
     do {
       try ProbeFiles.save(state, "state.json")
     } catch {
-      return ["perType": perType, "persisted": false].merging(describe(error)) { $1 }
+      return ["perType": perType, "persisted": false, "retryQueued": true].merging(
+        describe(error)
+      ) { $1 }
     }
     if membershipChanged { refreshObservers() }
     return [
@@ -520,6 +539,14 @@ final class HealthProbe {
 
   private func setBackgroundDeliveryExclusive(_ enabled: Bool) async -> [String: Any] {
     var result: [String: Any] = [:]
+    var state = loadState()
+    // Write ahead of OS changes so a crash or failed final save leaves cleanup work discoverable.
+    state.backgroundCleanupPending = true
+    do {
+      try ProbeFiles.save(state, "state.json")
+    } catch {
+      return ["persisted": false, "cleanupRequired": true].merging(describe(error)) { $1 }
+    }
     var succeeded = true
     var rollbackSucceeded = true
     for type in sampleTypes {
@@ -549,9 +576,9 @@ final class HealthProbe {
       }
       result["rollback"] = rollback
     }
-    var state = loadState()
     // A failed disable or rollback can leave OS delivery active; retry cleanup on next launch.
     state.backgroundDeliveryEnabled = enabled ? succeeded || !rollbackSucceeded : !succeeded
+    state.backgroundCleanupPending = enabled ? !succeeded && !rollbackSucceeded : !succeeded
     do {
       try ProbeFiles.save(state, "state.json")
     } catch {
@@ -564,7 +591,7 @@ final class HealthProbe {
     }
     result["persisted"] = true
     result["enabled"] = enabled && succeeded
-    result["cleanupRequired"] = state.backgroundDeliveryEnabled && !(enabled && succeeded)
+    result["cleanupRequired"] = state.backgroundCleanupPending == true
     if state.backgroundDeliveryEnabled { registerObservers() }
     if !state.backgroundDeliveryEnabled {
       for observer in observers { store.stop(observer) }
@@ -588,6 +615,20 @@ final class HealthProbe {
     ]
   }
 
+  /// Startup/foreground recovery also runs if background delivery stopped notifying this app.
+  func recoverOnActivation(_ source: String) async {
+    let state = loadState()
+    if state.backgroundCleanupPending == true {
+      let delivery = await setBackgroundDelivery(false)
+      ProbeLog.shared.record("backgroundCleanupRetry", ["source": source, "result": delivery])
+    }
+    let current = loadState()
+    if current.collectionPending == true || current.backgroundDeliveryEnabled {
+      let collected = await collect(crashBeforePersist: false)
+      ProbeLog.shared.record("collectionRecovery", ["source": source, "result": collected])
+    }
+  }
+
   /// Observer queries must be registered on every launch, including background wake-ups.
   func registerObservers() {
     let state = loadState()
@@ -603,9 +644,15 @@ final class HealthProbe {
           if let error { fields.merge(describe(error)) { $1 } }
           ProbeLog.shared.record("observerCallback", fields)
           Task {
-            let collected = await self.collect(crashBeforePersist: false)
+            var collected: [String: Any] = [:]
+            for _ in 0..<2 {
+              collected = await self.collect(crashBeforePersist: false)
+              if collected["persisted"] as? Bool == true { break }
+            }
             ProbeLog.shared.record("observerCollect", collected)
-            if collected["persisted"] as? Bool == true {
+            if collected["persisted"] as? Bool == true
+              || collected["retryQueued"] as? Bool == true
+            {
               completion()
             } else {
               ProbeLog.shared.record("observerRetryPending", ["type": type.identifier])
@@ -663,6 +710,8 @@ final class ProbeRunner {
         result = [
           "outbox": state.outbox.map { $0.key }, "anchors": state.anchors.mapValues { digest($0) },
           "backgroundDeliveryEnabled": state.backgroundDeliveryEnabled,
+          "collectionPending": state.collectionPending ?? false,
+          "backgroundCleanupPending": state.backgroundCleanupPending ?? false,
           "trackedTaggedSampleCounts": state.taggedSampleUUIDs?.mapValues { $0.count } ?? [:],
           "migrationHistoryIncomplete": state.migrationHistoryIncomplete ?? true,
         ]
@@ -689,6 +738,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         "optionKeys": (launchOptions ?? [:]).keys.map { $0.rawValue }.sorted(),
       ])
     HealthProbe.shared.registerObservers()
+    Task { await HealthProbe.shared.recoverOnActivation("launch") }
     return true
   }
 

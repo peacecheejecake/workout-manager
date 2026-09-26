@@ -33,6 +33,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   }
   func sceneWillEnterForeground(_ scene: UIScene) {
     ProbeLog.shared.record("scene", ["event": "willEnterForeground"])
+    Task { await HealthProbe.shared.recoverOnActivation("foreground") }
   }
   func sceneDidDisconnect(_ scene: UIScene) {
     ProbeLog.shared.record("scene", ["event": "didDisconnect"])
