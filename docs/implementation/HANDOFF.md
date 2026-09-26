@@ -1,4 +1,4 @@
-# 다음 세션 handoff · 2026-09-25
+# 다음 세션 handoff · 2026-09-26
 
 최신 상태는 [task-graph.json](task-graph.json), 요구·수용 기준은
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
@@ -6,25 +6,40 @@
 
 ## 사용자 결정과 작업 방식
 
-- 브랜치는 `main`이다. 사용자는 본인 관리 원격 저장소로 task별 peer review, commit,
-  `git push origin main`과 다음 ready 작업 계속 진행을 승인했다. 일반적인 push 실패는 기록하고
-  다음 ready 작업을 진행한다.
-- AGENTS·skill 규칙은 명시적 규칙 변경 요청 없이 수정하지 않는다. 사용자 변경과 untracked 파일을
-  보존한다.
-- 구현 분해는 Codex native orchestration, 커밋 전 독립 검토는 같은 tab의 Herdr split pane을 사용한다.
-  UI 검증은 Aside → Chrome → Playwright 순서를 지킨다.
-- JavaScript workspace는 Node 24.12.0과 pnpm 10.34.5로 검증했다.
+- 규칙은 [AGENTS.md](../../AGENTS.md)가 기본이다. Claude agent는 [CLAUDE.md](../../CLAUDE.md)의 override(Claude native orchestration)를
+  따른다. Codex는 AGENTS.md대로 Codex native orchestration을 쓴다.
+- **독립 검토는 phase 단위**다(AGENTS.md "Independent phase review before main", 사용자 결정 2026-09-26). task는 검증 뒤
+  `phase/<접두>` 브랜치에 커밋하고, phase의 실행 가능한 노드가 끝나면 Codex CLI `gpt-6-sol`(reasoning high, read-only sandbox)로
+  main 대비 phase 전체 diff를 검토받는다. APPROVE 뒤에만 main에 fast-forward한다. 구현한 agent의 자기 검토는 리뷰가 아니다.
+- push는 **사용자가** 한다(자동 분류기가 agent의 push를 막는다; 우회하지 않는다).
+- AGENTS·CLAUDE·skill 규칙은 명시적 규칙 변경 요청 없이 수정하지 않는다. UI 검증은 Aside → Chrome → Playwright 순서.
+- 실제 외부·실환경 증거 없이 `not_executed`를 통과로 바꾸지 않는다. Simulator로 실기기를 대신하지 않는다. `.env` 값·개인
+  건강 자료를 커밋·출력하지 않는다.
+- JavaScript workspace는 Node 24.12.0(`~/.local/share/fnm/node-versions/v24.12.0/installation/bin`)과 pnpm 10.34.5. 새 worktree는
+  `uv sync`(Garmin worker 시험)와 `.geo-build` symlink가 필요하다.
 
-## 완료된 최신 작업
+## 완료된 최신 작업 (2026-09-26, 아직 phase 리뷰 전)
 
-[M2-01ay](progress/M2-01ay.md)(`phase/m0-06`): 보행 coverage 결함 수정. 새 graph `92e0fa5f319a41df`(같은 pin extract `848daadc…`, 새 root
-`.geo-build-routing/kr-260901-m2-01ay-r1`, `--replace-served-graph` 없음; Codex phase review r1 수정으로 첫 최종 graph `c1fa89fbaf155076`을 대체, engine load-peak 예산 2000 → 2100 MiB): 군사 구역 경계에 `foot=no` barrier를 넣은 파생 extract
-(`scripts/geo/MilitaryPerimeterBarriers.java`, build host에 osmium 필요), ferry·시간 조건 way 경고(`route_includes_ferry`,
-`route_includes_time_conditional_access`), 계단 경로 거절(STR-04) 수정, probe의 엔진 `osm_way_id` 기반 way 대조. 같은 검토자가 같은 사전 등록
-(`98ef1cee…`)으로 다시 채점: **73.5/82, disqualifier 없음, 그러나 세 층(rural, bridge-pedestrian, negative-sea-island) 기준 미달 → 여전히 부적합.**
-P8-coverage는 **failed 유지**. 검토자는 남은 미달을 표본 설계와 OSM 자료 공백(잠수교)으로 분류했다. 기준을 바꿀지는 사람의 결정이다.
+`phase/m0-06`(main 대비 미리뷰):
 
-직전 완료: [M0-06b-cov](progress/M0-06b-coverage.md)(독립 coverage 검토, 68/82 부적합).
+- [M0-06b-odbl](progress/M0-06b-odbl.md) 완료: 타일 배포·routing graph가 빌드 값에서 만든 ODbL disclosure와 그 렌더링인
+  `ATTRIBUTION.txt`(OSM copyright·ODbL 1.0 URI)를 쓰고, 누락·불일치면 빌드를 거부한다. 인증 없는 `/map-data-licence` 페이지와
+  `GET /bff/v1/map-data/licence`. **지금 서빙 중인 타일(`ec81f3367889-mub8vb9q`)과 전국 graph(`92e0fa5f319a41df`)는 고지가 없어
+  새 검사에 실패한다** — 사용자 결정: 호스팅(EXT-HOSTING) 때 재빌드. 전국 extract의 acquisition 기록도 그때 다시 받아 만든다.
+- [M0-06c](progress/M0-06c.md) 진행(in_progress): 유료 team `XVT9A9T7RP`로 서명한 probe 앱(`org.workoutmanager.feasibility.deviceprobe`)을
+  실제 iPhone(iPhone16,2, iOS 27.0)에서 실행. 사람 조작 체크리스트 1–9 완료(HealthKit 쓰기 권한, 자기 source 빈 조회, IME, 스크롤,
+  가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **가로 화면에서 키보드가 입력란을 가린다**(결함 후보).
+  WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 전체 검증 묶음은 아직 안 돌렸다.
+- task-graph: M0-06b-odbl(완료), M0-06b-odbl-places(not_started), EXT-G scope에 사용자 결정 기록.
+
+`phase/ext-oidc`(main 대비 미리뷰):
+
+- [EXT-OIDC](progress/EXT-OIDC.md) 완료(사용자 결정: 분할). Zitadel Cloud(`personal-workout-lgn7dx.eu1.zitadel.cloud`)에 사람이
+  localhost에서 실제 로그인 체크리스트를 수행하고 서버 증거로 확인. K-oidc not_executed → **partial**. HTTPS·TLS·secret manager·
+  배포 환경 확인은 새 노드 **EXT-HOSTING**. 로컬 스택: `scripts/ext-oidc-local/`(`stack.sh up|down|sessions|log-check|outage-on|off|
+expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel logout은 Zitadel이 지원하지만 앱은 미구현(후속 여부 결정 필요).
+
+직전 main 반영: M0-06 phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE), 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override).
 
 ## 운영 메모
 
@@ -70,26 +85,23 @@ P8-coverage는 **failed 유지**. 검토자는 남은 미달을 표본 설계와
   거부한다. 브라우저 판정은 harness lock 아래에서 `node --import tsx scripts/run-browser-performance-budget.mts --execute`로 돌린다. 이력
   검사는 `git merge-base HEAD main`을 부르므로 CI checkout은 history와 로컬 `main` ref가 있어야 한다(지금은 없으면 skip으로 보고된다).
 
-- **리뷰 방식 변경(사용자 결정 2026-09-26).** task node마다 받던 독립 peer review를 멈추고, task-graph 접두 단위 phase 리뷰(예: M2-01
-  phase)를 Codex CLI `gpt-6-sol`(high)로 받는다. phase 안 task는 검증을 통과하면 `phase/<접두>` 브랜치(예: `phase/m2-01`, `phase/m0-06`)에 커밋하고,
-  phase 리뷰를 통과한 뒤 main에 fast-forward한다. 요구가 정한 검토(예: M2-01as의 독립 재식별 검토)는 따로 받는다.
+## 다음 작업 순서
 
-## 다음 ready 작업
+1. **phase 리뷰**: `phase/m0-06`과 `phase/ext-oidc`를 각각 main 대비 Codex `gpt-6-sol` high로 검토받고 APPROVE 뒤 main에 fast-forward.
+   두 브랜치 모두 `task-graph.json`을 고쳤으므로 먼저 들어간 쪽 뒤에 다른 쪽을 rebase한다(충돌은 노드 추가·상태 변경뿐).
+2. **ready 노드**(두 phase가 main에 들어간 뒤): M0-06b-odbl-places. EXT-OIDC 완료로 M2-01k의 외부 의존이 풀렸으므로 M2-01k(요구 대조·
+   E2E·복구 등; HTTPS 행은 EXT-HOSTING까지 not_executed)를 재평가한다.
+3. **사용자 결정 대기**:
+   - M0-06c: 가로 키보드 가림을 어디서 고칠지(native host keyboard 처리 / mobile-web focus 유지, 노드), 제품 back 동작, 합성 HealthKit
+     표본 쓰기·삭제와 background delivery 실행 허가("기록만" 결정 해제 여부), 제품 native host 통합을 M0-06c와 M3-01 중 어디서 할지.
+   - EXT-OIDC: back-channel logout 후속 노드 여부.
+   - P8-coverage 기준(failed 유지 결정).
+4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06b의 실기기 성능·ODbL 외 항목.
 
-task-graph 193개 노드 중 177개 완료(2026-09-26). not_started인 ready 노드는 없다. 남은 16개는 모두 외부 gate나 사람의 결정에 막혀 있다.
-
-- EXT-OIDC(Zitadel instance·등록·secret) → M2-01k(in_progress) → M2-01 → M2-02 → M2-06 → M2-07 → G2.
-- EXT-G(공식 Garmin 경로) → M0-07b, M1-06b.
-- M0-06b(in_progress): 실기기 항목(OS IME·물리 touch·실기기 성능)·실제 호스팅·ODbL 이행. 보행 coverage(P8-coverage)는 M2-01ay 수정 뒤에도
-  같은 사전 등록으로 **부적합(73.5/82)**이라 failed다. 남은 미달(rural, bridge-pedestrian, negative-sea-island)은 검토자가 표본 설계와 OSM
-  자료 공백(잠수교)으로 분류했다. 기준을 바꿔 새로 사전 등록할지, OSM 자료를 고칠지, 표본을 늘릴지는 **사람의 결정**이다(기존 기준 이동 금지).
-- M0-06c(in_progress, 실기기 보류) → M3-01..03 → G3.
-
-브랜치: `main` = `phase/m0-06` = `phase/m2-01`의 후속(M2-01 phase와 M0-06 phase 모두 Codex phase 리뷰 APPROVE 뒤 fast-forward). M0-06 phase
-리뷰는 r1 REQUEST CHANGES(시간 조건 way 선택, `road_environment` 확인, runbook 문구) → 수정 `eee9fae` → r2 APPROVE. `main`은
-`origin/main`보다 앞서 있으며 push는 사용자가 한다. 전국 보행 graph의 최종 root는 `.geo-build-routing/kr-260901-m2-01ay-r1`
-(`92e0fa5f319a41df`)이고 기본 `.geo-build`는 아직 Seoul이다(서빙 교체는 runbook "전국 extract로의 교체" 절). 재개 시 `.claude/worktrees/`의
-agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다. 지우기 전에 각 worktree의 미커밋 상태를 확인한다.
+현재 브랜치(2026-09-26): `main`은 origin보다 약 20 커밋 앞(사용자 push 필요). `phase/m2-01`은 이미 main에 포함(삭제 가능).
+전국 보행 graph 최종 root `.geo-build-routing/kr-260901-m2-01ay-r1`(`92e0fa5f319a41df`), 기본 `.geo-build`는 Seoul. 오래된 root
+`kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 지워도 되는지 사용자 확인 전이다. `.claude/worktrees/`의 agent worktree 29개에는
+이전 task의 미커밋 사본이 남아 있다(커밋 여부 대조 전이라 지우지 않았다).
 
 ## 사용자 결정 기록(2026-09-26, 외부 gate)
 
@@ -104,7 +116,7 @@ agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다
   만들지 않았다.
 - **EXT-G:** 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지 로컬 FIT 가져오기만 쓰고, 승인되면 M0-07b·M1-06b를 공식
   경로로 구현한다(task-graph EXT-G scope에 기록됨).
-- **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `TC7DXULXVQ`.
+- **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
   Xcode가 활성 developer dir이고 license를 수락했다.
 - **HealthKit 시험 자료(결정만, 미구현):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용한다. 기존 건강 자료는 읽거나 내보내지
   않는다. 아직 어떤 표본도 쓰지 않는다.
@@ -130,14 +142,16 @@ agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다
 - `tests/identity/course-extras.spec.ts:59`가 M2-01au 검증의 identity 두 회차(1분 load 60–70)에서 실패했다(가져오기 상태 5초 timeout 한 번,
   제거본 요청의 `COURSE_ZONE_ACKNOWLEDGEMENT_STALE` 한 번). 같은 코드로 단독 6/6, 전체 ×2가 통과했다(2026-09-26). digest 불일치가 부하에서
   어떻게 생기는지는 밝히지 못했다.
+- `tests/identity/garmin-unofficial.spec.ts:134`(Next shell, "인증 코드 입력 대기" 상태 5초 timeout)가 M0-06b-odbl 검증 2회차와
+  EXT-OIDC 검증 1회차에서 실패했다(각각 다른 회차는 통과, 2026-09-26). **두 번 반복**됐으므로 별도 노드로 조사한다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate
 
 - M0-06b: 한국 보행 경로 coverage·접근 제한 독립 검토, 자체 운영 engine/data 선택·검증,
   OS 한글 IME/물리 touch/성능·배포 조건.
-- M0-06c: 실제 WKWebView HTML 입력·한국어 IME·foreground/background 수명주기,
-  실제 iPhone/서명/HealthKit 검증. 현재 실기기 작업은 보류 상태다.
+- M0-06c: 실기기 체크리스트 1–9는 끝났다(위). 남은 것은 합성 표본·outbox/anchor/ack·재설치·중단·재전송·background delivery,
+  제품 native host 통합, 실제 인증 기반 계정 전환.
 - EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
   별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
@@ -154,5 +168,5 @@ agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다
   로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
   독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.
 
-다음 세션은 working tree와 위 계획을 확인하고 M2-01a/d부터 진행한다. 실제 외부·실환경
-증거가 필요한 gate를 문서 검토나 합성 fixture로 완료 처리하지 않는다.
+다음 세션은 working tree와 위 "다음 작업 순서"를 확인하고 phase 리뷰부터 진행한다. 실제 외부·실환경 증거가 필요한 gate를
+문서 검토나 합성 fixture로 완료 처리하지 않는다.
