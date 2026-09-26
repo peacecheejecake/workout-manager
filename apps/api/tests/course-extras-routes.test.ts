@@ -236,6 +236,8 @@ function setup(
   options: {
     authenticated?: boolean;
     datasets?: boolean;
+    placeDataset?: boolean;
+    elevationDataset?: boolean;
     zones?: (typeof zone)[];
     headGeometry?: [number, number][];
     parseCeilingMb?: number;
@@ -349,8 +351,9 @@ function setup(
         execArgv: ['--import', 'tsx'],
         maxOldGenerationSizeMb: options.parseCeilingMb ?? 256,
       }),
-      places: options.datasets === false ? null : placeIndex,
-      elevation: options.datasets === false ? null : elevationIndex,
+      places: options.datasets === false || options.placeDataset === false ? null : placeIndex,
+      elevation:
+        options.datasets === false || options.elevationDataset === false ? null : elevationIndex,
     },
     ...logs.options(),
   });
@@ -861,6 +864,93 @@ describe('privacy trim through the course ledger', () => {
 });
 
 describe('self-hosted place search and elevation', () => {
+  it('keeps both data providers available when the routing provider is absent', async () => {
+    const { app } = setup();
+    const route = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses/route-previews',
+      headers: baseHeaders,
+      payload: {},
+    });
+    expect(route.statusCode).toBe(404);
+
+    const place = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/courses/place-search',
+      headers: baseHeaders,
+      payload: { query: '남산', near: null },
+    });
+    expect(place.statusCode).toBe(200);
+    expect(place.json()).toMatchObject({
+      outcome: 'results',
+      places: [{ name: '남산' }],
+    });
+
+    const elevation = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/courses/${courseId}/elevation`,
+      headers: baseHeaders,
+    });
+    expect(elevation.statusCode).toBe(200);
+    expect(elevation.json()).toMatchObject({ outcome: 'profile', knownCount: 1 });
+  });
+
+  it('keeps an absent data provider distinct from an absent routing provider', async () => {
+    const { app } = setup({ datasets: false });
+    const [route, place, elevation] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/route-previews',
+        headers: baseHeaders,
+        payload: {},
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/place-search',
+        headers: baseHeaders,
+        payload: { query: '남산', near: null },
+      }),
+      app.inject({
+        method: 'GET',
+        url: `/bff/v1/courses/${courseId}/elevation`,
+        headers: baseHeaders,
+      }),
+    ]);
+    expect(route.statusCode).toBe(404);
+    expect(place.statusCode).toBe(200);
+    expect(place.json()).toEqual({ outcome: 'no_dataset' });
+    expect(elevation.statusCode).toBe(200);
+    expect(elevation.json()).toEqual({ outcome: 'no_dataset' });
+  });
+
+  it('keeps place and elevation data independently optional', async () => {
+    const placeOnly = setup({ elevationDataset: false });
+    const elevationOnly = setup({ placeDataset: false });
+    const search = (app: ReturnType<typeof createApi>) =>
+      app.inject({
+        method: 'POST',
+        url: '/bff/v1/courses/place-search',
+        headers: baseHeaders,
+        payload: { query: '남산', near: null },
+      });
+    const profile = (app: ReturnType<typeof createApi>) =>
+      app.inject({
+        method: 'GET',
+        url: `/bff/v1/courses/${courseId}/elevation`,
+        headers: baseHeaders,
+      });
+    const [placeAvailable, elevationMissing, placeMissing, elevationAvailable] = await Promise.all([
+      search(placeOnly.app),
+      profile(placeOnly.app),
+      search(elevationOnly.app),
+      profile(elevationOnly.app),
+    ]);
+    expect(placeAvailable.json()).toMatchObject({ outcome: 'results', places: [{ name: '남산' }] });
+    expect(elevationMissing.json()).toEqual({ outcome: 'no_dataset' });
+    expect(placeMissing.json()).toEqual({ outcome: 'no_dataset' });
+    expect(elevationAvailable.json()).toMatchObject({ outcome: 'profile', knownCount: 1 });
+  });
+
   it('searches our own data over POST, so no position enters a request line', async () => {
     const { app } = setup();
     const response = await app.inject({
