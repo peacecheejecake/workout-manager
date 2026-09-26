@@ -22,23 +22,47 @@ it('native Back checks changed form fields before allowing history navigation', 
   assert.match(source, /UIScreenEdgePanGestureRecognizer/);
   assert.match(source, /button\.accessibilityLabel = "뒤로 가기"/);
   assert.match(source, /UIAlertController\(/);
-  const script = embeddedScript('private static let unsavedInputScript');
-  assert.ok(script);
-  const field = { type: 'text', value: '', defaultValue: '' };
-  const context = { document: { querySelectorAll: () => [field] } };
-  assert.equal(vm.runInNewContext(script, context), false);
+  const nativeCheck = embeddedScript('private static let unsavedInputScript');
+  const injected = embeddedScript('static let script =');
+  assert.ok(nativeCheck && injected);
+  const listeners = new Map();
+  const field = {
+    id: 'workspace-note',
+    tagName: 'TEXTAREA',
+    type: 'textarea',
+    value: '',
+    defaultValue: '',
+  };
+  const context = {
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    document: {
+      addEventListener: (name, callback) => listeners.set(name, callback),
+      querySelector: () => field,
+      querySelectorAll: () => [field],
+    },
+    location: { pathname: '/' },
+    visualViewport: null,
+    webkit: { messageHandlers: { wmDeviceProbe: { postMessage: () => {} } } },
+  };
+  vm.runInNewContext(injected, context);
+  listeners.get('focusin')({ target: field });
+  assert.equal(vm.runInNewContext(nativeCheck, context), false);
   field.value = 'unsaved';
-  assert.equal(vm.runInNewContext(script, context), true);
+  field.defaultValue = 'unsaved'; // React controlled textarea can synchronize this too.
+  assert.equal(vm.runInNewContext(nativeCheck, context), true);
   field.value = '';
-  assert.equal(vm.runInNewContext(script, context), false);
-  field.type = 'checkbox';
-  field.checked = true;
-  field.defaultChecked = false;
-  assert.equal(vm.runInNewContext(script, context), true);
+  field.defaultValue = '';
+  assert.equal(vm.runInNewContext(nativeCheck, context), false);
+  field.value = 'changed';
+  listeners.get('input')({ target: field, inputType: 'insertText', isComposing: false });
+  assert.equal(vm.runInNewContext(nativeCheck, context), true);
 });
 
 it('native keyboard reveal moves a focused field inside the visible landscape area', () => {
   assert.match(source, /keyboardWillChangeFrameNotification/);
+  assert.match(source, /keyboardDidChangeFrameNotification/);
+  assert.match(source, /event == "didShow" \|\| event == "didChangeFrame"/);
+  assert.match(source, /latestKeyboardFrame/);
   assert.match(source, /scrollView\.contentInset = inset/);
   assert.match(source, /keyboardLayoutGuide\.topAnchor/);
   const script = embeddedScript('private func revealFocusedInput');

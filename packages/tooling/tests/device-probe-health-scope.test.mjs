@@ -17,11 +17,13 @@ const driver = readFileSync(
 it('scopes every HealthKit change observation and deletion to this probe’s tagged source', () => {
   assert.match(swift, /HKQuery\.predicateForObjects\(from: HKSource\.default\(\)\)/);
   assert.match(swift, /withMetadataKey: probeTagKey, allowedValues: \[probeTag\]/);
-  assert.match(swift, /HKAnchoredObjectQuery\(\s*type: type, predicate: probeOnly/);
-  assert.match(swift, /HKObserverQuery\(sampleType: type, predicate: probeOnly\)/);
+  assert.match(swift, /HKAnchoredObjectQuery\(\s*type: type, predicate: predicate/);
+  assert.match(swift, /HKObserverQuery\(sampleType: type, predicate: predicate\)/);
+  assert.match(swift, /HKQuery\.predicateForObjects\(with: knownUUIDs\)/);
+  assert.match(swift, /probeDeleted = deleted\.filter \{ known\.contains\(\$0\.uuid\) \}/);
+  assert.doesNotMatch(swift, /deleted\.filter \{ \(\$0\.metadata\?/);
   assert.match(swift, /deleteObjects\(of: type, predicate: predicate\)/);
   assert.match(swift, /let predicate = taggedPredicate\(runId: runId\)/);
-  assert.match(swift, /probeDeleted = deleted\.filter \{ \(\$0\.metadata\?\[probeTagKey\]/);
   assert.doesNotMatch(swift, /HKObserverQuery\(sampleType: type, predicate: nil\)/);
 });
 
@@ -32,7 +34,11 @@ it('keeps cleanup explicit and distinguishes API success from hidden read author
   assert.match(swift, /"deleteCallsSucceeded"/);
   assert.match(swift, /"taggedQueryEmpty"/);
   assert.match(swift, /"cleanupCallsSucceeded"/);
-  assert.match(swift, /state\.schemaVersion = 2/);
+  assert.match(swift, /state\.schemaVersion == 1 \|\| state\.schemaVersion == 2/);
+  assert.match(swift, /state\.schemaVersion = 3/);
   assert.match(swift, /state\.anchors = \[:\]/);
   assert.match(swift, /state\.outbox = \[\]/);
+  assert.match(swift, /state\.migrationHistoryIncomplete = true/);
+  assert.match(swift, /state\.taggedSampleUUIDs = tracked/);
+  assert.match(swift, /try ProbeFiles\.save\(state, "state\.json"\)/);
 });

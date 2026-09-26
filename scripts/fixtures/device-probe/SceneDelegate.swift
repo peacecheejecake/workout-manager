@@ -50,6 +50,7 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
   private var urlObservation: NSKeyValueObservation?
   private var backAvailabilityObservation: NSKeyValueObservation?
   private var keyboardObservers: [NSObjectProtocol] = []
+  private var latestKeyboardFrame: CGRect?
   private var originalScrollInset: UIEdgeInsets?
   private var originalIndicatorInset: UIEdgeInsets?
   private var backButton: UIButton?
@@ -133,6 +134,7 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
     }
     for (name, event) in [
       (UIResponder.keyboardWillChangeFrameNotification, "willChangeFrame"),
+      (UIResponder.keyboardDidChangeFrameNotification, "didChangeFrame"),
       (UIResponder.keyboardDidShowNotification, "didShow"),
       (UIResponder.keyboardWillHideNotification, "willHide"),
       (UIResponder.keyboardDidHideNotification, "didHide"),
@@ -166,6 +168,7 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
     let coveredHeight =
       event == "willHide" || event == "didHide" || overlap.isNull
       ? 0 : max(0, overlap.height)
+    latestKeyboardFrame = coveredHeight > 0 ? frame : nil
     var inset = originalScrollInset ?? .zero
     inset.bottom = max(inset.bottom, coveredHeight)
     webView.scrollView.contentInset = inset
@@ -173,11 +176,17 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
     indicatorInset.bottom = max(indicatorInset.bottom, coveredHeight)
     webView.scrollView.scrollIndicatorInsets = indicatorInset
     ProbeLog.shared.record("keyboardAvoidance", ["event": event, "coveredHeight": coveredHeight])
-    guard coveredHeight > 0, event == "didShow" else { return }
+    guard coveredHeight > 0,
+      event == "didShow" || event == "didChangeFrame" || event == "willChangeFrame"
+    else { return }
     let visibleBottom = max(0, min(webView.bounds.height, keyboardRect.minY))
-    revealFocusedInput(visibleBottom: visibleBottom)
+    if event != "willChangeFrame" { revealFocusedInput(visibleBottom: visibleBottom) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-      self?.revealFocusedInput(visibleBottom: visibleBottom)
+      guard let self, let webView = self.webView, let currentFrame = self.latestKeyboardFrame else {
+        return
+      }
+      let currentRect = webView.convert(currentFrame, from: nil)
+      self.revealFocusedInput(visibleBottom: max(0, min(webView.bounds.height, currentRect.minY)))
     }
   }
 
@@ -247,9 +256,7 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
 
   // Probe-only check. Product draft/save semantics belong to the M3-01 native host.
   private static let unsavedInputScript = """
-    (() => [...document.querySelectorAll('input, textarea')].some((field) =>
-      field.type !== 'hidden' && (field.type === 'checkbox' || field.type === 'radio'
-        ? field.checked !== field.defaultChecked : field.value !== field.defaultValue)))();
+    (() => globalThis.__wmProbeHasUnsavedInput?.())();
     """
 
   override func viewSafeAreaInsetsDidChange() {
@@ -312,6 +319,23 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
         return value;
       };
       const memo = () => document.querySelector('#workspace-note');
+      const inputBaselines = new WeakMap();
+      const changedWithoutBaseline = new WeakSet();
+      const isField = (element) => element?.tagName === 'INPUT' || element?.tagName === 'TEXTAREA';
+      const rememberInput = (element) => {
+        if (isField(element) && !inputBaselines.has(element))
+          inputBaselines.set(element, { value: element.value, checked: element.checked });
+      };
+      Object.defineProperty(globalThis, '__wmProbeHasUnsavedInput', {
+        value: () => [...document.querySelectorAll('input, textarea')].some((field) => {
+          if (field.type === 'hidden' || field.disabled || field.readOnly) return false;
+          if (changedWithoutBaseline.has(field)) return true;
+          const baseline = inputBaselines.get(field);
+          if (!baseline) return false;
+          return field.type === 'checkbox' || field.type === 'radio'
+            ? field.checked !== baseline.checked : field.value !== baseline.value;
+        }),
+      });
       const operationOf = (element) => {
         if (element?.id === 'workspace-note') return 'memo-input';
         if (element?.tagName === 'INPUT' || element?.tagName === 'TEXTAREA') return 'other-input';
@@ -335,11 +359,16 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
       };
       addEventListener('load', () => setTimeout(page, 800));
       addEventListener('orientationchange', () => setTimeout(page, 800));
-      addEventListener('focusin', (event) => post('focus', { operation: operationOf(event.target) }));
+      addEventListener('focusin', (event) => {
+        rememberInput(event.target);
+        post('focus', { operation: operationOf(event.target) });
+      });
+      addEventListener('pointerdown', (event) => rememberInput(event.target), true);
       addEventListener('focusout', (event) => post('blur', { operation: operationOf(event.target) }));
       for (const phase of ['compositionstart', 'compositionupdate', 'compositionend'])
         addEventListener(phase, (event) => post('composition', { phase, dataLength: (event.data ?? '').length }), true);
       addEventListener('input', (event) => {
+        if (isField(event.target) && !inputBaselines.has(event.target)) changedWithoutBaseline.add(event.target);
         const value = event.target.value ?? '';
         post('input', { inputType: inputTypeOf(event.inputType), isComposing: Boolean(event.isComposing), length: value.length, matchesExpected: value === expected, operation: operationOf(event.target) });
       }, true);
