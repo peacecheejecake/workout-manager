@@ -3,6 +3,7 @@ import { courseCardSchema } from '@workout/contracts/course-cards';
 import {
   courseLimits,
   courseReadResultSchema,
+  courseGenerationSchema,
   courseThumbnailLimits,
   courseThumbnailVertexIndices,
   sampleCourseThumbnailVertices,
@@ -103,6 +104,47 @@ const imported: CourseGeneration = {
   importedWaypointCount: 0,
   ignoredFileWaypointCount: 0,
 };
+const targetLoop = (surface: unknown, evaluationVersion = 2): CourseGeneration =>
+  courseGenerationSchema.parse({
+    ...routed,
+    kind: 'target-distance-loop',
+    targetDistanceMeters: 1900,
+    searchSeed: 'feedfacefeedface',
+    candidateSeed: 'aaaaaaaabbbbbbbb',
+    attemptIndex: 0,
+    generatorVersion: 'target-distance-loop-v1',
+    evaluation: {
+      evaluationVersion,
+      targetDistanceMeters: 1900,
+      engineDistanceMeters: 1912.4,
+      plannedLineMeters: 1830.5,
+      distanceErrorMeters: 12.4,
+      distanceErrorRatio: 12.4 / 1900,
+      loop: { closed: true, gapMeters: 0 },
+      connectivity: 'engine-attested-edges',
+      repetition: { repeatedMeters: 0, repeatedRatio: 0, outAndBack: false },
+      knowledge:
+        evaluationVersion === 1
+          ? {
+              stairs: 'unknown',
+              surface: 'unknown',
+              accessRestrictions: 'unknown',
+              nightAccess: 'unknown',
+              gradient: 'unknown',
+            }
+          : {
+              stairs: { status: 'not_reported' },
+              surface,
+              accessRestrictions: { status: 'not_reported' },
+              nightAccess: 'unknown',
+              gradient: 'unknown',
+            },
+      gradientSource: 'none',
+      maxSnapDistanceMeters: 4,
+      waypointCount: 2,
+      vertexCount: 2,
+    },
+  });
 const trimmedFrom = (
   sourceGenerationKind: Extract<
     CourseGeneration,
@@ -272,6 +314,52 @@ describe('course card elevation and surface', () => {
     expect(
       courseCardSchema.safeParse({ ...card, surface: { confirmation: 'confirmed' } }).success,
     ).toBe(false);
+  });
+
+  it('reports positive v2 graph surface lengths and keeps missing lengths separate in both card producers', () => {
+    const generation = targetLoop({
+      status: 'reported',
+      known: [{ value: 'concrete', meters: 517.6, sections: 2 }],
+      unknownMeters: 1312.9,
+    });
+    const whole = read(generation);
+    const expected = {
+      confirmation: 'graph-reported',
+      graphBuildId: '0123456789abcdef',
+      known: [{ value: 'concrete', meters: 517.6, sections: 2 }],
+      unknownMeters: 1312.9,
+    };
+    const card = courseCard(whole, null, true);
+    const batched = courseCardFromSource(sourceOf(whole, null), null, true);
+    assert(card.status === 'available' && batched.status === 'available');
+    expect(card.surface).toEqual(expected);
+    expect(batched.surface).toEqual(expected);
+    // An old strict client receives the same unknown shape as before unless it opts in.
+    const legacy = courseCardFromSource(sourceOf(whole, null), null);
+    assert(legacy.status === 'available');
+    expect(legacy.surface).toEqual({ confirmation: 'unknown' });
+  });
+
+  it('does not infer surface from old, absent, empty, or other generation data', () => {
+    const generations = [
+      recorded,
+      routed,
+      imported,
+      trimmedFrom('target-distance-loop'),
+      targetLoop({ status: 'not_reported' }),
+      targetLoop({ status: 'reported', known: [], unknownMeters: 1830.5 }),
+      targetLoop({
+        status: 'reported',
+        known: [{ value: 'concrete', meters: 0, sections: 1 }],
+        unknownMeters: 1830.5,
+      }),
+      targetLoop(null, 1),
+    ];
+    for (const generation of generations) {
+      const card = courseCard(read(generation), null, true);
+      assert(card.status === 'available');
+      expect(card.surface, generation.kind).toEqual({ confirmation: 'unknown' });
+    }
   });
 });
 

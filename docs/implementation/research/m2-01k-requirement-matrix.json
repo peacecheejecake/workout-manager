@@ -599,6 +599,19 @@
         "authenticated-workspace.test.tsx: two new transport cases passed in the 90/90 file; temporary removal of the post-body active guard caused the delayed-body case to resolve Alice's 200 DTO and fail, then restored 90/90 passed"
       ],
       "note": "Fixture OIDC and Chromium, not native or production IdP. Aside update failed (fetch failed); subagent Chrome CUA remained unavailable through root-only elicitation, so Playwright performed the browser check."
+    },
+    {
+      "node": "M2-01k S13 graph surface card",
+      "date": "2026-09-27",
+      "rows": ["S13-card-surface"],
+      "decision": "The S13 card opts into provider-reported surface facts only from a saved target-distance-loop evaluation v2 with positive known metres. The default card response retains the old unknown shape for strict clients; other course generations, v1, unreported, and zero-known cases remain unknown.",
+      "change": "S13-card-surface partial -> passed; counts passed 89 -> 90, partial 16 -> 15. Historical verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "Real GraphHopper 10.0 Seoul graph, tests/identity/course-list-cards.spec.ts: stored v2 candidate card in Next and Vite 2/2 passed with exact known and unknown metres from stored generation, graph build ID, attribution, and legacy default response unknown; full card file 4 passed, 2 elevation-dataset cases skipped because this worktree has no deployed dataset",
+        "Forced courseCardSurface unknown mutant: the same positive card case failed in Next and Vite at graph-reported vs unknown; restored, full card file passed",
+        "course-cards.test.ts and course-list-card.test.tsx 23/23 passed; contracts, API, Next and Vite builds, 34-package/root typecheck, focused ESLint and diff check passed"
+      ],
+      "note": "GraphHopper/OSM tags are provider reports, not a field inspection or safety/walkability proof. The positive browser case needs the local Seoul graph and is skipped in fixture-only CI. Aside update failed with fetch failed; subagent Chrome CUA is root-only, so Playwright Chromium supplied the browser evidence."
     }
   ],
   "rounds": [
@@ -720,8 +733,8 @@
     }
   ],
   "counts": {
-    "passed": 89,
-    "partial": 16,
+    "passed": 90,
+    "partial": 15,
     "failed": 1,
     "missing": 0,
     "not_executed": 4
@@ -1151,11 +1164,11 @@
       "id": "S13-card-surface",
       "source": "docs/.pre/01_product_screen_spec.md:161",
       "quote": "노면 정보의 확인 상태",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "tests/identity/course-acceptance.spec.ts:413 and course-extras.spec.ts:193 assert \"확인되지 않음\""
       ],
-      "reason": "M2-01k-a amendment: still partial. The card now shows the surface confirmation status, honestly \"확인되지 않음\", but there is no surface data source: the contract fixes the value to unknown, so no confirmed state can occur, and A4 proves only that the string is rendered.",
+      "reason": "2026-09-27 S13 graph-surface amendment: a saved target-distance-loop evaluation v2 with positive GraphHopper surface metres renders graph-reported tags, exact known and untagged lengths, graph identity and OSM attribution on the S13 card in both shells. The real-graph browser check fails when this derivation is forced to unknown. Legacy/default card clients and all generations without such evidence remain unknown. These are provider reports, never on-site confirmation or safety evidence; fixture-only CI skips the positive graph case.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1174,6 +1187,13 @@
           "packages/contracts, packages/server/courses and apps/api card tests; packages/modules/courses course-list-card and course-list-card-workbench tests (failed preferences read, cards refresh when the open course's thumbnail becomes ready)",
           "mutants A1-A8 (each card item removed or swapped, elevation shown as present without data) fail in E2E, and B1-B3 (preferences error wiring, route failed flag, thumbnail refresh) in unit tests; the independent review re-killed A7, its own GPX-to-recorded and reverse-order mutants, and B1-B3"
         ]
+      },
+      "surfaceGraphAmendment": {
+        "node": "M2-01k S13 graph surface card",
+        "date": "2026-09-27",
+        "previousVerdict": "partial",
+        "previousReason": "The card had only unknown and no positive surface source; M2-01k-a's A4 proved the unknown text only.",
+        "evidence": "Real GraphHopper 10.0 Next/Vite card browser assertions plus a forced-unknown mutant failing in both; full card file 4 passed, 2 unrelated elevation cases skipped. See docs/implementation/progress/M2-01k-card-surface.md."
       }
     },
     {

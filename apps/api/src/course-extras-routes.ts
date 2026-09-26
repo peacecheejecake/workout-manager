@@ -378,7 +378,10 @@ export function registerCourseExtrasRoutes(
      * elevation dataset's box. A course deleted between the two is simply not carded.
      */
     extras.get('/courses/cards', async (request) => {
-      input(emptyQuery, request.query);
+      const query = input(
+        z.strictObject({ surface: z.literal('graph-v1').optional() }),
+        request.query,
+      );
       const athleteId = principal(request).athleteId;
       const elevation = services.elevation ?? null;
       const sources = await execute(() =>
@@ -387,7 +390,9 @@ export function registerCourseExtrasRoutes(
           region: elevation === null ? null : elevation.identity.bbox,
         }),
       );
-      const cards = sources.map((source) => courseCardFromSource(source, elevation));
+      const cards = sources.map((source) =>
+        courseCardFromSource(source, elevation, query.surface === 'graph-v1'),
+      );
       return courseCardListSchema.parse({ cards, total: cards.length });
     });
 

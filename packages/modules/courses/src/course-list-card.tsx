@@ -25,7 +25,8 @@ import styles from './course-list-card.module.css';
  * - the card read still loading or failed says so for every fact it would have carried;
  * - an estimated distance is never called actual, and a line read from a file is neither;
  * - an elevation dataset that is not deployed is "없음", never an empty profile;
- * - surface has no source in this build, so it is "확인되지 않음" — not "확인됨", not blank;
+ * - surface tags appear only when the saved v2 candidate carried graph findings, with
+ *   untagged length separately; neither a tag nor its absence is a field inspection;
  * - a preference read that failed is "확인하지 못함", not "사용 기록 없음".
  *
  * It renders no list items and no alerts of its own: it sits inside the list row the
@@ -83,11 +84,17 @@ export function courseCardElevationText(elevation: CourseCardElevation): string 
   }
 }
 
-/** The contract admits exactly one value today: there is no surface source in this build. */
+/** The graph's reported tags are distinct from a checked condition on the ground. */
 export function courseCardSurfaceText(surface: CourseCardSurface): string {
   switch (surface.confirmation) {
     case 'unknown':
       return '확인되지 않음 · 통행 가능 여부·안전을 뜻하지 않음';
+    case 'graph-reported': {
+      const known = surface.known
+        .map((entry) => `${entry.value} ${metres(entry.meters)}`)
+        .join(', ');
+      return `지도 데이터 노면 기록 (${surface.graphBuildId}) · ${known} · 기록 없는 구간 ${metres(surface.unknownMeters)} · 현장 상태·통행 가능 여부·안전 확인 아님`;
+    }
   }
 }
 
@@ -179,6 +186,14 @@ export function CourseListCardFacts({
             data-confirmation={available ? available.surface.confirmation : 'none'}
           >
             {available ? courseCardSurfaceText(available.surface) : missing}
+            {available?.surface.confirmation === 'graph-reported' ? (
+              <span data-testid="course-card-surface-licence">
+                {' '}
+                · <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+                <a href={odblLicenceUrl}>ODbL 1.0</a> ·{' '}
+                <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
+              </span>
+            ) : null}
           </dd>
         </div>
         <div className={styles.fact}>

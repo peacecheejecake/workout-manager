@@ -3,6 +3,7 @@ import {
   type CourseCard,
   type CourseCardDistanceBasis,
   type CourseCardElevation,
+  type CourseCardSurface,
 } from '@workout/contracts/course-cards';
 import {
   courseThumbnailVertexIndices,
@@ -59,6 +60,22 @@ export function courseDistanceBasis(generation: CourseGeneration): CourseCardDis
   }
 }
 
+/** Only a saved v2 candidate has path-detail provenance; absence is never a negative fact. */
+export function courseCardSurface(generation: CourseGeneration): CourseCardSurface {
+  if (generation.kind !== 'target-distance-loop') return { confirmation: 'unknown' };
+  if (generation.evaluation.evaluationVersion !== 2) return { confirmation: 'unknown' };
+  const fact = generation.evaluation.knowledge.surface;
+  if (fact.status !== 'reported') return { confirmation: 'unknown' };
+  const known = fact.known.filter((entry) => entry.meters > 0);
+  if (known.length === 0) return { confirmation: 'unknown' };
+  return {
+    confirmation: 'graph-reported',
+    graphBuildId: generation.computation.graph.graphBuildId,
+    known,
+    unknownMeters: fact.unknownMeters,
+  };
+}
+
 export function courseCardElevation(
   revision: Extract<CourseReadResult, { status: 'available' }>['revision'],
   elevation: ElevationIndex | null,
@@ -89,7 +106,11 @@ function cardElevationOf(profile: CourseElevationResult): CourseCardElevation {
  * `courseCardFromSource`; this stays as the definition that one is held to (the contract
  * test in the persistence integration suite compares the two on the same stored courses).
  */
-export function courseCard(read: CourseReadResult, elevation: ElevationIndex | null): CourseCard {
+export function courseCard(
+  read: CourseReadResult,
+  elevation: ElevationIndex | null,
+  graphSurface = false,
+): CourseCard {
   if (read.status === 'unavailable')
     return courseCardSchema.parse({ status: 'unavailable', course: read.course });
   const { revision } = read;
@@ -106,7 +127,7 @@ export function courseCard(read: CourseReadResult, elevation: ElevationIndex | n
       drawnVertices: sampleCourseThumbnailVertices(revision.geometry.coordinates),
     },
     elevation: courseCardElevation(revision, elevation),
-    surface: { confirmation: 'unknown' },
+    surface: graphSurface ? courseCardSurface(revision.generation) : { confirmation: 'unknown' },
   });
 }
 
@@ -160,6 +181,7 @@ export function courseCardVertexIndices(
 export function courseCardFromSource(
   source: CourseCardSource,
   elevation: ElevationIndex | null,
+  graphSurface = false,
 ): CourseCard {
   if (source.status === 'unavailable')
     return courseCardSchema.parse({ status: 'unavailable', course: source.course });
@@ -193,6 +215,6 @@ export function courseCardFromSource(
       drawnVertices: courseThumbnailVertexIndices(line.vertexCount).map(vertexAt),
     },
     elevation: cardElevation,
-    surface: { confirmation: 'unknown' },
+    surface: graphSurface ? courseCardSurface(source.generation) : { confirmation: 'unknown' },
   });
 }

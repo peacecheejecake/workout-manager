@@ -9,6 +9,7 @@ import {
 } from '../../packages/contracts/src/activity';
 import {
   courseReadResultSchema,
+  courseRouteCandidateResultSchema,
   courseRoutePreviewResultSchema,
   courseThumbnailPath,
   type CourseReadResult,
@@ -246,6 +247,85 @@ async function expectSurfaceUnknown(row: Locator) {
 
 for (const shell of shells) {
   test.describe(`${shell.name} shell (${shell.origin})`, () => {
+    test('a saved v2 candidate shows only graph-reported surface on its S13 card', async ({
+      page,
+    }) => {
+      test.skip(
+        process.env['IDENTITY_E2E_ROUTING'] !== 'graphhopper',
+        'Positive graph surface needs the self-hosted GraphHopper graph; fixture details are not_reported.',
+      );
+      test.setTimeout(180_000);
+      const headers = await login(page);
+      const name = `카드 노면 ${shell.name} ${randomUUID().slice(0, 8)}`;
+      const courseId = await importCourse(page, headers, name, [
+        [126.978, 37.566],
+        [126.982, 37.569],
+      ]);
+      await page.goto(`${shell.origin}/courses`);
+      const workbench = page.getByRole('region', { name: '내 코스' });
+      await workbench.getByRole('button', { name, exact: true }).click();
+      const candidates = workbench.getByRole('region', { name: '목표 거리 후보' });
+      await candidates.getByLabel('목표 거리(m)').fill('1200');
+      const answered = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === `/bff/v1/courses/${courseId}/route-candidates`,
+      );
+      await candidates.getByRole('button', { name: '목표 거리 후보 생성' }).click();
+      const response = await answered;
+      expect(response.status()).toBe(200);
+      const result = courseRouteCandidateResultSchema.parse(await response.json());
+      expect(result.outcome).toBe('candidates_generated');
+      assert.ok(result.outcome === 'candidates_generated');
+      const candidate = result.set.candidates.find(
+        (item) =>
+          item.evaluation.evaluationVersion === 2 &&
+          item.evaluation.knowledge.surface.status === 'reported' &&
+          item.evaluation.knowledge.surface.known.some((entry) => entry.meters > 0),
+      );
+      assert.ok(candidate, 'Real graph must report positive surface metres for this sample');
+      await candidates
+        .getByRole('button', { name: `${candidate.ordinal + 1}번 후보 보기` })
+        .click();
+      const review = candidates.getByTestId('candidate-review');
+      await review.getByLabel('위 후보 내용을 검토했습니다.').check();
+      await review.getByRole('button', { name: '고른 후보 저장' }).click();
+      await expect(workbench.getByTestId('course-revision')).toHaveText('2');
+      const stored = await readCourse(page, headers, courseId);
+      assert.ok(stored.revision.generation.kind === 'target-distance-loop');
+      const evaluation = stored.revision.generation.evaluation;
+      assert.ok(
+        evaluation.evaluationVersion === 2 && evaluation.knowledge.surface.status === 'reported',
+      );
+      const fact = evaluation.knowledge.surface;
+      const known = fact.known.filter((entry) => entry.meters > 0);
+      assert.ok(known.length > 0);
+
+      // Old clients still receive the strict original surface shape by default.
+      const legacy = await page.request.get('/bff/v1/courses/cards', { headers });
+      expect(legacy.status()).toBe(200);
+      const legacyCards = (await legacy.json()) as {
+        cards: { course: { courseId: string }; surface: unknown }[];
+      };
+      expect(
+        legacyCards.cards.find((entry) => entry.course.courseId === courseId)?.surface,
+      ).toEqual({ confirmation: 'unknown' });
+
+      await page.goto(`${shell.origin}/courses`);
+      const surface = card(page, name).getByTestId('course-card-surface');
+      await expect(surface).toHaveAttribute('data-confirmation', 'graph-reported');
+      await expect(surface).toContainText(
+        stored.revision.generation.computation.graph.graphBuildId,
+      );
+      for (const entry of known)
+        await expect(surface).toContainText(`${entry.value} ${metres(entry.meters)}`);
+      await expect(surface).toContainText(`기록 없는 구간 ${metres(fact.unknownMeters)}`);
+      await expect(surface).toContainText('현장 상태·통행 가능 여부·안전 확인 아님');
+      await expect(card(page, name).getByTestId('course-card-surface-licence')).toContainText(
+        'ODbL 1.0',
+      );
+    });
+
     test('each S13 card shows its thumbnail, actual/estimated distance, elevation source, surface and last use', async ({
       page,
     }) => {

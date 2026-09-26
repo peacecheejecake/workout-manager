@@ -2,6 +2,7 @@ import {
   availableCourseHeadSchema,
   courseLimits,
   coursePositionSchema,
+  courseRouteSurfaceValueSchema,
   courseThumbnailLimits,
   courseThumbnailStateSchema,
   unavailableCourseHeadSchema,
@@ -33,11 +34,9 @@ import { z } from 'zod';
  *   device-reported or GPS-recomputed distance and never an achieved one.
  * - **Elevation source.** Which dataset answered, and how much of this course it covers;
  *   or that no dataset is deployed, which is `not_deployed` and never an empty profile.
- * - **Surface.** The card has no surface source. Since M2-01ap the engine's surface detail
- *   reaches a proposal's review and a version-2 candidate evaluation, but a stored revision
- *   in general does not carry it, and a card does not read it. The value is the literal
- *   `unknown`, so claiming anything else is a contract change, not a value a server can
- *   write (the same rule as `courseCandidateKnowledgeSchema`, version 1).
+ * - **Surface.** A stored target-distance-loop with version-2 evaluated path details may
+ *   report graph-tagged lengths. Other generations and missing/old details remain unknown.
+ *   This is provider data, not a field inspection or a statement of safe passage.
  * - **Thumbnail.** The stored-picture state of the head revision, plus the evenly spaced
  *   sample the stored picture is drawn from, so the card can draw the same picture while
  *   the stored one is pending, impossible or still loading. The sample is at most the
@@ -110,10 +109,25 @@ export const courseCardElevationSchema = z.discriminatedUnion('status', [
 ]);
 export type CourseCardElevation = z.infer<typeof courseCardElevationSchema>;
 
-/** The card has no surface source; see the file comment. */
-export const courseCardSurfaceSchema = z.strictObject({
-  confirmation: z.literal('unknown'),
-});
+/** Graph facts are opt-in on GET /courses/cards?surface=graph-v1 for old strict clients. */
+export const courseCardSurfaceSchema = z.discriminatedUnion('confirmation', [
+  z.strictObject({ confirmation: z.literal('unknown') }),
+  z.strictObject({
+    confirmation: z.literal('graph-reported'),
+    graphBuildId: z.string().regex(/^[0-9a-f]{16}$/),
+    known: z
+      .array(
+        z.strictObject({
+          value: courseRouteSurfaceValueSchema,
+          meters: z.number().finite().positive().max(1_000_000_000),
+          sections: z.number().int().min(1).max(courseLimits.vertices),
+        }),
+      )
+      .min(1)
+      .max(courseRouteSurfaceValueSchema.options.length),
+    unknownMeters: z.number().finite().nonnegative().max(1_000_000_000),
+  }),
+]);
 export type CourseCardSurface = z.infer<typeof courseCardSurfaceSchema>;
 
 export const courseCardThumbnailSchema = z.strictObject({

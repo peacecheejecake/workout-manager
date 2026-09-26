@@ -110,6 +110,27 @@ describe('course list card', () => {
     );
   });
 
+  it('shows graph reported surface with provenance and unknown length, never field confirmation', () => {
+    show({
+      status: 'ready',
+      card: card({
+        surface: {
+          confirmation: 'graph-reported',
+          graphBuildId: '0123456789abcdef',
+          known: [{ value: 'concrete', meters: 517.6, sections: 2 }],
+          unknownMeters: 1312.9,
+        },
+      }),
+    });
+    const surface = screen.getByTestId('course-card-surface');
+    expect(surface).toHaveAttribute('data-confirmation', 'graph-reported');
+    expect(surface).toHaveTextContent('지도 데이터 노면 기록 (0123456789abcdef)');
+    expect(surface).toHaveTextContent('concrete 518m');
+    expect(surface).toHaveTextContent('기록 없는 구간 1.31km');
+    expect(surface).toHaveTextContent('현장 상태·통행 가능 여부·안전 확인 아님');
+    expect(screen.getByTestId('course-card-surface-licence')).toHaveTextContent('ODbL 1.0');
+  });
+
   it('calls an engine line an estimate and never actual', () => {
     const text = courseCardDistanceText({
       plannedLineMeters: 1830.5,

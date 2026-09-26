@@ -182,7 +182,14 @@ export function createCourseExtrasApi(transport: AuthenticatedTransport) {
     },
     /** The S13 list cards (M2-01k-a). Facts the server derived; the screen adds none. */
     cards(signal?: AbortSignal) {
-      return request('/bff/v1/courses/cards', 'GET', courseCardListSchema, null, null, signal);
+      return request(
+        '/bff/v1/courses/cards?surface=graph-v1',
+        'GET',
+        courseCardListSchema,
+        null,
+        null,
+        signal,
+      );
     },
     /**
      * Elevation along a line that is not saved yet (M2-01k-b): a route preview or a stored
