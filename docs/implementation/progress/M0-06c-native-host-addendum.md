@@ -117,3 +117,5 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 수정: 실행 파일이 문자열이 아닌 프로세스가 하나라도 있으면 `PROBE_PROCESS_IDENTITY_UNAVAILABLE`로 닫는다. 누락 항목만 있는 목록과 정상 probe 항목에 누락 항목이 섞인 목록을 회귀 시험에 추가했다. 집중 Vitest 6/6, ESLint, Prettier, 구문·diff 검사가 통과했다. 수정 명령을 iPhone에서 다시 실행해 정확히 probe 프로세스 1개만 종료했고 이후 앱을 다시 실행했다. 이는 구현자 수정이며 다음 독립 재검토의 FIXED 판정을 기다린다.
 
 2차 읽기 전용 검토는 같은 main `a96bfdc` → phase `22f00f3` 전체 diff에서 **CHANGES_REQUESTED**였다. 1차의 누락·비문자열 필드 P2는 FIXED로 판정했지만, `executable: ""`가 대상 0개 성공으로 기록되는 새 P2가 남았다. 구현자는 빈 문자열과 공백만 있는 문자열도 신원 확인 실패로 닫고, 단독·정상 probe와 혼합된 두 경우를 회귀 시험에 추가했다. 새 변경의 독립 재검토는 별도로 받는다.
+
+3차 Codex CLI `gpt-6-sol` high/read-only 검토는 main `a96bfdc1ea240fe616a762bbc22e265e773ee28d` → phase `03fc839be5c815be3fd2d787b9b39040b9b480f5` 전체 diff에 **APPROVE**했다. 앞선 누락·비문자열 필드와 빈 문자열·공백 값 지적을 모두 **FIXED**, 광범위한 `App.app` 종료 범위와 이전 Swift·Back·키보드 지적도 FIXED 유지로 판정했다. 검토자가 직접 확인한 것은 구문·diff 검사이며, 기기 실행 receipt는 개인정보 보호를 위해 열지 않았다. 그 검토 중 다른 작업의 승인된 Garmin·출시 범위 문서가 main `d75fc94`까지 반영됐다. 이 phase에는 HANDOFF 충돌을 두 변경 모두 보존해 해결하고 새 main을 통합했다. 새 main 기준 diff는 다시 독립 검토한다.
