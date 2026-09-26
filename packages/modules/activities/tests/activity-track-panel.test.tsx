@@ -552,6 +552,45 @@ describe('stored activity track selection', () => {
     await waitFor(() => expect(probe.fitBounds).toHaveLength(6));
     expect(probe.fitBounds[5]).toEqual(fullBounds);
   });
+
+  it('restores the user map viewport after rebuilding the adapter without refitting the gesture', async () => {
+    setViewport(1440);
+    const probe = adapterProbe();
+    const { rerenderBasemap } = renderPanel({ handler: available(), probe });
+    const map = await screen.findByRole('region', { name: '저장된 활동 경로' });
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(1));
+    const graph = within(routePanel()).getByRole('group', {
+      name: '저장된 경로 관측 그래프',
+    });
+    await userEvent.click(within(graph).getByRole('button', { name: '차트 확대' }));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(2));
+    const chartBounds = probe.fitBounds[1];
+    const chartDomain = within(graph).getByTestId('chart-zoom-domain').textContent;
+    const userBounds = {
+      west: 127.0225,
+      east: 127.0245,
+      south: 37.5025,
+      north: 37.5045,
+      crossesAntimeridian: false,
+    };
+    act(() => probe.options()?.onViewportChange?.({ source: 'user', bounds: userBounds }));
+    await waitFor(() =>
+      expect(within(graph).getByTestId('chart-zoom-domain')).not.toHaveTextContent(
+        chartDomain ?? '',
+      ),
+    );
+    const userDomain = within(graph).getByTestId('chart-zoom-domain').textContent;
+    expect(map).not.toHaveAttribute('data-viewport-request');
+    expect(probe.fitBounds).toHaveLength(2);
+
+    rerenderBasemap({ styleUrl: '/map/basemap/changed/style.json', attribution: '© OSM' });
+    await waitFor(() => expect(probe.created).toHaveLength(2));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(4));
+    expect(probe.fitBounds[2]).not.toEqual(userBounds);
+    expect(probe.fitBounds[3]).toEqual(userBounds);
+    expect(probe.fitBounds[3]).not.toEqual(chartBounds);
+    expect(within(graph).getByTestId('chart-zoom-domain')).toHaveTextContent(userDomain ?? '');
+  });
 });
 
 describe('stored activity track responsive layout', () => {

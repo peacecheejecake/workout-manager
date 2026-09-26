@@ -53,6 +53,7 @@ export interface MapLeafProps {
   readonly basemap: BasemapDescriptor | null;
   readonly fitRequest: number;
   readonly viewportRequest?: { readonly revision: number; readonly bounds: MapBounds } | null;
+  readonly restoreViewport?: MapBounds | null;
   readonly onViewportChange?: (event: MapViewportEvent) => void;
   readonly onStatusChange: (status: MapViewStatus) => void;
   /** Classified renderer failure, so an owner can separate WebGL from the background map. */
@@ -82,6 +83,7 @@ export function MapLeaf({ mapView, ...props }: MapLeafProps) {
           basemap={props.basemap}
           fitRequest={props.fitRequest}
           {...(props.viewportRequest ? { viewportRequest: props.viewportRequest } : {})}
+          {...(props.restoreViewport ? { restoreViewport: props.restoreViewport } : {})}
           {...(props.onViewportChange ? { onViewportChange: props.onViewportChange } : {})}
           onStatusChange={props.onStatusChange}
           {...(props.onRenderIdle ? { onRenderIdle: props.onRenderIdle } : {})}

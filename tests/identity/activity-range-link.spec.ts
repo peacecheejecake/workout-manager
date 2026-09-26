@@ -400,7 +400,7 @@ for (const shell of shells) {
     await expect(map).toHaveAttribute('data-viewport-source', 'user');
     await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(zoomedBounds);
     await expect(graph.getByTestId('chart-zoom-domain')).not.toHaveText(zoomedDomain ?? '');
-    await expect(map).toHaveAttribute('data-viewport-request', '1');
+    await expect(map).not.toHaveAttribute('data-viewport-request');
     await expect(panel.getByTestId('route-range')).toHaveText(chosenRange ?? '');
     expect(writes).toEqual([]);
   });

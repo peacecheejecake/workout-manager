@@ -1274,6 +1274,32 @@ describe('MapView status honesty', () => {
 describe('MapView viewport', () => {
   const basemap = { styleUrl: '/map/basemap/abc/style.json', attribution: '© OpenStreetMap' };
 
+  it('restores a user viewport on the first adapter of a remounted view without fitting ordinary prop updates', async () => {
+    const adapter = fakeAdapter();
+    const saved = {
+      west: 127.01,
+      east: 127.02,
+      south: 37.5,
+      north: 37.51,
+      crossesAntimeridian: false,
+    };
+    const common = {
+      label: '기록 지도',
+      paths: [path()],
+      selection: null,
+      onSelect: vi.fn(),
+      basemap,
+      createAdapter: adapter.factory,
+    };
+    const view = render(<MapView {...common} restoreViewport={saved} />);
+    await waitFor(() => expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(2));
+    expect(adapter.handle.fitBounds).toHaveBeenLastCalledWith(saved);
+
+    const laterGesture = { ...saved, west: 127.015, east: 127.025 };
+    view.rerender(<MapView {...common} restoreViewport={laterGesture} />);
+    expect(adapter.handle.fitBounds).toHaveBeenCalledTimes(2);
+  });
+
   it('only resizes on a container resize, never refits', async () => {
     const callbacks: (() => void)[] = [];
     const original = globalThis.ResizeObserver;

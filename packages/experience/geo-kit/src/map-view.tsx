@@ -108,6 +108,8 @@ export interface MapViewProps {
   readonly fitRequest?: number;
   /** An explicit fit to a subset, independent of the ordinary show-all request. */
   readonly viewportRequest?: { readonly revision: number; readonly bounds: MapBounds } | null;
+  /** Latest user viewport. Apply it only when a replacement adapter is created. */
+  readonly restoreViewport?: MapBounds | null;
   /** A completed user or programmatic viewport change. */
   readonly onViewportChange?: (event: MapViewportEvent) => void;
   /**
@@ -216,6 +218,7 @@ export function MapView({
   basemap,
   fitRequest = 0,
   viewportRequest = null,
+  restoreViewport = null,
   onViewportChange,
   fallbackLimit = 200,
   onRenderIdle,
@@ -485,6 +488,14 @@ export function MapView({
     fittedViewport.current = { adapter, revision: viewportRequest.revision };
     adapter.fitBounds(viewportRequest.bounds);
   }, [adapter, viewportRequest]);
+
+  const previouslySeenAdapter = useRef<MapAdapterHandle | null>(null);
+  useEffect(() => {
+    if (!adapter) return;
+    const changed = previouslySeenAdapter.current !== adapter;
+    previouslySeenAdapter.current = adapter;
+    if (changed && restoreViewport) adapter.fitBounds(restoreViewport);
+  }, [adapter, restoreViewport]);
 
   const message = statusMessage(
     status,

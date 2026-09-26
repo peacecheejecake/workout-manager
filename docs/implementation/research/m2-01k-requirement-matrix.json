@@ -1763,6 +1763,19 @@
           "generated check, focused format/lint, 34-package and root typecheck, Next/Vite production builds passed"
         ],
         "limitations": "Local Chromium; the rapid button uses DOM click immediately after a trusted wheel to avoid Playwright auto-scroll delay. Native touch/IME and production provider evidence remain separate. Full phase review refresh is required."
+      },
+      "phaseReviewRound3": {
+        "base": "9ac6aa1",
+        "reviewedHead": "1ff03ba",
+        "previousFindings": "All four findings from review rounds 1 and 2 were explicitly FIXED in the third independent review.",
+        "newFinding": "P2 FIXED: a user map gesture invalidates the stale chart fit request, retains the actual user bounds without immediately refitting the current adapter, and restores those bounds after a replacement or first remounted adapter is created.",
+        "executed": [
+          "activity-track-panel.test.tsx chart fit -> user map viewport -> adapter recreation: no same-adapter refit, full then latest user bounds on replacement, chart domain retained; geo-kit.test.tsx first remounted adapter restores user bounds",
+          "activity-range-link.spec.ts Next/Vite chart fit -> trusted wheel clears stale viewport request, preserves chart selection/range and issues zero API writes; full file 12/12 passed twice",
+          "stale-request clearing removed: activity unit failed and Next/Vite browser 2/2 failed; user-bounds restore fit removed: activity adapter-recreation unit failed",
+          "restored activity/geo-kit unit suites 111/111, generated/format/focused lint, 34-package and root typecheck, Next/Vite production builds passed"
+        ],
+        "limitations": "Real browser cannot trigger a live basemap prop replacement through the product UI; the actual adapter lifecycle is covered by component/geo-kit tests. Local Chromium with fixture OIDC; native and production provider evidence remain separate. Full phase review refresh is required."
       }
     },
     {

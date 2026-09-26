@@ -117,3 +117,38 @@ Chromium이다. 합성 FIT·fixture OIDC·로컬 PostgreSQL 조건이며 실제 
 통과했다. Aside `aside --update`는 다시 `fetch failed`였고 직접 UI 근거는
 Playwright Chromium이다. 실제 기기·운영 공급자와 역사적 `not_executed`
 상태는 변경하지 않았다. 변경 HEAD는 다시 전체 단계 독립 검토를 받아야 한다.
+
+## 세 번째 단계 독립 검토 지적 수정 · 2026-09-27
+
+세 번째 독립 검토 기준은 `main` `9ac6aa1` 대 phase `1ff03ba`였다. 검토자는
+이전 네 지적을 모두 **FIXED**로 확인했다. 새 P2는 차트 확대 요청이 사용자
+지도 조작 뒤에도 남아, adapter 재생성 시 이전 차트 범위를 다시 fit하는
+문제였다.
+
+- **새 P2 FIXED:** 지도에서 직접 이동이 완료되면 S09는 오래된 차트 fit
+  요청을 지우고 실제 사용자 viewport bounds를 저장한다. 현재 adapter에는
+  다시 fit하지 않는다. geo-kit 공개 `MapView`의 `restoreViewport` 계약은
+  adapter identity가 바뀔 때만 이 범위를 full fit 뒤에 적용한다. 화면이
+  다시 마운트되어 첫 adapter가 만들어지는 경우에도 저장된 범위를 복원한다.
+  새 차트 확대·전체 보기는 사용자 복원 범위를 지워 명령 순서를 보존한다.
+- 실제 `MapView`를 쓰는 adapter probe 시험에서 **차트 확대 → 사용자 지도
+  viewport → 배경 지도 변경으로 adapter 재생성**을 확인했다. 사용자 이벤트
+  직후 추가 fit은 0회이고, 새 adapter는 full fit 다음 사용자 범위를 fit하며
+  차트의 사용자 시간 범위도 유지했다. 별도 geo-kit 시험은 remount 첫
+  adapter에서의 복원과 같은 adapter의 prop 변경 시 fit 0회를 확인했다.
+- Next/Vite 실제 브라우저의 차트 확대 → Ctrl+wheel 시험은 오래된 부분 fit
+  요청 제거와 변경된 실제 지도 bounds·차트 시간 범위, 선택·구간 유지, API
+  쓰기 0회를 단언한다. 전체 파일은 **12/12를 두 번 연속 통과**했다. 삭제
+  로직을 제거한 변이는 활동 단위 시험과 두 shell 브라우저 **2/2에서 실패**.
+  복원 fit을 제거한 변이는 adapter 재생성 단위 시험에서 실패했다.
+
+변이 원복 후 활동/geo-kit 관련 단위 시험 **111/111**, 생성물 검사,
+대상 파일 format/lint, 34 package와 root typecheck, Next/Vite 생산 빌드가
+통과했다.
+
+제품 UI에는 실행 중 배경 지도 prop을 바꾸는 조작이 없어 실제 브라우저로
+adapter 재생성을 유도하지 않았다. 그 수명 순서는 위 component/geo-kit
+시험으로 검증했다. Aside `aside --update`는 `fetch failed`였고 직접 UI
+증거는 Playwright Chromium이다. 운영 공급자·실기기 및 과거
+`not_executed` 판정은 변경하지 않았다. 수정된 HEAD는 전체 단계 독립
+검토를 다시 받아야 한다.

@@ -387,6 +387,7 @@ function StoredTrackView({
     revision: number;
     bounds: MapBounds;
   } | null>(null);
+  const [restoreViewport, setRestoreViewport] = useState<MapBounds | null>(null);
   const viewportRevision = useRef(0);
   const [page, setPage] = useState(0);
   const [failure, setFailure] = useState<MapAdapterFailure | null>(null);
@@ -414,6 +415,7 @@ function StoredTrackView({
   const onChartZoom = useCallback(
     (next: TimeRange | null) => {
       setZoomDomain(next);
+      setRestoreViewport(null);
       if (next === null) {
         setViewportRequest(null);
         setFitRequest((value) => value + 1);
@@ -429,6 +431,10 @@ function StoredTrackView({
   const onMapViewportChange = useCallback(
     (event: MapViewportEvent) => {
       if (event.source !== 'user') return;
+      // A gesture supersedes the chart's earlier fit. Keep its actual bounds for a
+      // replacement adapter, without fitting the adapter that the user just moved.
+      setViewportRequest(null);
+      setRestoreViewport(event.bounds);
       const next = timeDomainInViewport(geometry, index, event.bounds);
       if (next)
         setZoomDomain((previous) =>
@@ -623,6 +629,7 @@ function StoredTrackView({
           onClick={() => {
             setZoomDomain(null);
             setViewportRequest(null);
+            setRestoreViewport(null);
             setFitRequest((value) => value + 1);
           }}
         >
@@ -752,6 +759,7 @@ function StoredTrackView({
               basemap={stableBasemap}
               fitRequest={fitRequest}
               viewportRequest={viewportRequest}
+              restoreViewport={restoreViewport}
               onViewportChange={onMapViewportChange}
               onStatusChange={setMapStatus}
               onFailure={onFailure}
