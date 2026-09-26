@@ -17,13 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01av](progress/M2-01av.md)를 완료했다(`phase/m2-01`). migration 055가 owner 전용 `tenant_work_index`를 두고 8개 원천 표의 trigger가
-같은 트랜잭션에서 채운다. 썸네일 render·URL 수집 worker, reap·prune, 검색 cache prune, sweep window 등 30개 worker 함수는 본문을
-`<이름>_in_tenant`로 그대로 두고, 같은 이름의 wrapper가 색인에서 due tenant를 골라 그 tenant로 본문을 부른다. 그래서 migration 소유
-역할이 superuser나 BYPASSRLS가 아니어도 모든 queue·worker 경로가 돈다(runbook 조건을 내렸다). M2-01 phase의 실행 가능한 노드는 이것으로
-끝났다.
+[M2-01aw](progress/M2-01aw.md)를 완료했다(`phase/m2-01`). parse-host 메모리 상한 시험의 흔들림은 60,000점 fixture가 32 MiB 상한보다 1 MiB도
+안 되게 위에 있어 GC 시점에 따라 출력 상한(`TRACK_OUTPUT_TOO_LARGE`)에 먼저 닿았기 때문이었다(60회 중 2회 재현). 세 시험이 함께 쓰는
+150,000점 fixture로 바꿔 약 25 MiB 여유를 두고, 여유를 직접 단언하는 시험을 더했다(100회 0 실패). 제품 코드는 바꾸지 않았다.
 
-직전 완료: [M2-01as](progress/M2-01as.md)(공유 링크 재식별 완화).
+직전 완료: [M2-01av](progress/M2-01av.md)(남은 worker의 tenant 출처).
 
 ## 운영 메모
 
@@ -75,8 +73,8 @@
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01aw(parse-host 시험 흔들림). M2-01 phase의 다른 실행 가능한 노드는 `phase/m2-01`에 모두
-커밋됐고 M2-01 phase 리뷰(Codex)를 기다린다. 재개 시 각
+task-graph에서 not_started인 ready 노드는 없다. 남은 노드는 모두 외부 gate(EXT-OIDC, EXT-G, M0-06b, 실기기 보류 M0-06c)에 막혀 있다.
+M2-01 phase의 실행 가능한 노드는 `phase/m2-01`에 모두 커밋됐고 M2-01 phase 리뷰(Codex)를 기다린다. 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험
@@ -85,8 +83,6 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들
   그 spec만 다시 돌리면 통과했다(M2-01aq 검증, 2026-09-25). 반복되면 별도 노드로 다룬다.
 - `tests/identity/course-extras.spec.ts:95`(GPX 가져오기 상태 "코스를 가져왔습니다"가 5초 안에 보이지 않음)이 M2-01aq 병합 검증의 identity 2회차에서
   한 번 실패했다(1회차 통과, 제품 코드 변경 없음). 반복되면 별도 노드로 다룬다.
-- `packages/server/track-storage/tests/parse-host.test.ts`의 메모리 상한 시험이 1분 load 약 50에서 `TRACK_PARSE_MEMORY_EXCEEDED`
-  대신 `TRACK_OUTPUT_TOO_LARGE`로 한 번 실패했고, 그 파일만 두 번 다시 돌리면 15/15 통과했다(M2-01k-n 재검증, 2026-09-25).
 - `tests/identity/oidc.spec.ts:55`(두 번째 탭 계정 전환, 30초 timeout)와 `tests/identity/activity-track-map.spec.ts:446`(Vite "저장된
   경로" 영역이 5초 안에 안 보임)이 M2-01am 병합 검증의 identity 두 회차에서 각각 한 번 실패했고, 같은 코드를 포함한 M2-01ak 병합 검증
   두 회차는 모두 통과했다(2026-09-25). 반복되면 별도 노드로 다룬다.
@@ -97,8 +93,6 @@ worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들
 - `tests/identity/course-extras.spec.ts:59`가 M2-01au 검증의 identity 두 회차(1분 load 60–70)에서 실패했다(가져오기 상태 5초 timeout 한 번,
   제거본 요청의 `COURSE_ZONE_ACKNOWLEDGEMENT_STALE` 한 번). 같은 코드로 단독 6/6, 전체 ×2가 통과했다(2026-09-26). digest 불일치가 부하에서
   어떻게 생기는지는 밝히지 못했다.
-- `packages/server/track-storage/tests/parse-host.test.ts` 메모리 상한 시험은 낮은 부하(19)에서도 `TRACK_OUTPUT_TOO_LARGE`로 한 번 실패했다
-  (phase/m2-01 검증, 2026-09-26). 부하 문제가 아닐 수 있어 M2-01aw로 다룬다.
 - main의 `garmin-unofficial-worker.test.ts`는 Python `.venv`가 필요하다. 새 worktree에서는 `uv sync`를 먼저 한다.
 
 ## 남은 외부·실환경 gate

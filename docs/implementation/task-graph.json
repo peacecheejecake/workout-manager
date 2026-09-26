@@ -1628,8 +1628,9 @@
       "title": "parse-host 메모리 상한 시험의 결과 흔들림",
       "dependsOn": [],
       "kind": "task",
-      "status": "not_started",
-      "scope": "packages/server/track-storage/tests/parse-host.test.ts \"keeps the ceiling when the host process carries a heap option of its own\"가 가끔 `TRACK_PARSE_MEMORY_EXCEEDED` 대신 `TRACK_OUTPUT_TOO_LARGE`로 끝난다(M2-01k-n 재검증 load 약 50, M2-01ar 병합 검증 load 88, phase/m2-01 검증 load 19 — 낮은 부하에서도 났다; 단독·재실행은 통과). 부하 문제가 아니라 자식 파서가 heap 상한에 닿기 전에 출력 크기 상한에 먼저 닿는 경로가 있다는 뜻일 수 있다. 원인을 찾아 시험 fixture가 한 상한만 결정적으로 넘게 하거나, 두 상한의 우선순위를 코드에서 정하고 시험으로 고정한다. 제품 동작(어느 오류 코드를 먼저 보이는가)이 바뀌면 그 이유를 적는다. 반복 실행(예: 50회)으로 흔들림이 사라졌음을 보이고, 되돌리는 변이가 실패해야 한다. 출처: HANDOFF 알려진 흔들리는 시험, phase/m2-01 검증 로그."
+      "status": "completed",
+      "scope": "packages/server/track-storage/tests/parse-host.test.ts \"keeps the ceiling when the host process carries a heap option of its own\"가 가끔 `TRACK_PARSE_MEMORY_EXCEEDED` 대신 `TRACK_OUTPUT_TOO_LARGE`로 끝난다(M2-01k-n 재검증 load 약 50, M2-01ar 병합 검증 load 88, phase/m2-01 검증 load 19 — 낮은 부하에서도 났다; 단독·재실행은 통과). 부하 문제가 아니라 자식 파서가 heap 상한에 닿기 전에 출력 크기 상한에 먼저 닿는 경로가 있다는 뜻일 수 있다. 원인을 찾아 시험 fixture가 한 상한만 결정적으로 넘게 하거나, 두 상한의 우선순위를 코드에서 정하고 시험으로 고정한다. 제품 동작(어느 오류 코드를 먼저 보이는가)이 바뀌면 그 이유를 적는다. 반복 실행(예: 50회)으로 흔들림이 사라졌음을 보이고, 되돌리는 변이가 실패해야 한다. 출처: HANDOFF 알려진 흔들리는 시험, phase/m2-01 검증 로그.",
+      "evidence": "docs/implementation/progress/M2-01aw.md"
     },
     {
       "id": "M2-01k",

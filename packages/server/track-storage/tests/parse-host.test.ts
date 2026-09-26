@@ -7,6 +7,11 @@ import { trackLimits } from '@workout/contracts/tracks';
 import { createBoundedTrackParser, TrackParseRuntimeConflictError } from '../src/parse-host.js';
 import { trackCorrespondenceDigest } from '../src/derive.js';
 import type { StoredTrackSelection } from '../src/artifacts.js';
+import {
+  CEILING_MARGIN_PROBE_MEGABYTES,
+  CEILING_TEST_HEAP_MEGABYTES,
+  ceilingFixtureBytes,
+} from './ceiling-fixture.js';
 
 // The parent test process runs under vitest, not under `tsx`, so the parse process's loader is
 // passed explicitly. A server started with `node --import tsx` inherits it instead.
@@ -57,7 +62,9 @@ describe('the server parse process has a real memory ceiling', () => {
     'aborts the same bytes at a tight heap ceiling and keeps the parent process alive',
     { timeout: 180_000 },
     async () => {
-      const bytes = gpxBytes(60_000);
+      // The shared ceiling fixture: far enough past the tight ceiling that V8 runs out of heap
+      // well before the output bound is reached (M2-01aw, `ceiling-fixture.ts`).
+      const bytes = ceilingFixtureBytes();
       const generous = createBoundedTrackParser({
         execArgv,
         maxOldGenerationSizeMb: 1024,
@@ -70,7 +77,7 @@ describe('the server parse process has a real memory ceiling', () => {
 
       const tight = createBoundedTrackParser({
         execArgv,
-        maxOldGenerationSizeMb: 32,
+        maxOldGenerationSizeMb: CEILING_TEST_HEAP_MEGABYTES,
         timeoutMs: 120_000,
       });
       const overLimit = await tight.parse(bytes, selection);
@@ -80,6 +87,27 @@ describe('the server parse process has a real memory ceiling', () => {
       expect(tight.active()).toBe(0);
       const afterwards = await tight.parse(gpxBytes(3), selection);
       expect(afterwards.ok).toBe(true);
+    },
+  );
+
+  it(
+    'runs the ceiling fixture out of heap with room to spare, not at the edge of the ceiling',
+    { timeout: 120_000 },
+    async () => {
+      // M2-01aw: the tight-ceiling tests below and above flaked (`TRACK_OUTPUT_TOO_LARGE`
+      // instead of the memory code) because their old 60,000-point input needed only about
+      // 1 MiB more than the 32 MiB ceiling to reach the output bound, and GC timing could
+      // close that. The fixture must still run out of heap at a ceiling a quarter higher; the
+      // old input reaches the output bound there every time.
+      const probe = createBoundedTrackParser({
+        execArgv,
+        maxOldGenerationSizeMb: CEILING_MARGIN_PROBE_MEGABYTES,
+        timeoutMs: 120_000,
+      });
+      expect(await probe.parse(ceilingFixtureBytes(), selection)).toEqual({
+        ok: false,
+        code: 'TRACK_PARSE_MEMORY_EXCEEDED',
+      });
     },
   );
 
@@ -98,7 +126,9 @@ describe('the server parse process has a real memory ceiling', () => {
       // for, and the host had to refuse (TRACK_PARSE_CEILING_NOT_APPLIED). A parse process
       // inherits none of them (M2-01ai): the same 32 MiB ceiling applies under every host,
       // and the same bytes end in the memory code every time — never in a parse under
-      // roughly 1 GiB (TRACK_OUTPUT_TOO_LARGE) and never as a success.
+      // roughly 1 GiB (TRACK_OUTPUT_TOO_LARGE) and never as a success. The bytes are the
+      // shared ceiling fixture, sized so that only the heap ceiling can end them first
+      // (M2-01aw, `ceiling-fixture.ts`).
       for (const option of [[], ['--max-old-space-size=1024'], ['--max-old-space-size=128']]) {
         const host = run(option);
         expect(host.status).toBe(0);
