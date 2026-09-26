@@ -63,7 +63,7 @@
       "kind": "task",
       "status": "completed",
       "evidence": "docs/implementation/research/garmin-temporary-gate.md",
-      "scope": "사용자 결정(2026-09-25): 공식 Garmin 권한(EXT-G)을 기다리는 동안 python-garminconnect로 만든 임시 gate를 쓰고 나중에 공식 계획으로 갈아 끼운다. 범위는 소유자 자신의 계정에서 앱 내 수집까지이며 M2-07·G2는 임시 경로로 통과시키지 않는다. 별도 임시 노드로 기록하고 EXT-G·M0-07b·M1-06b·M2-07은 not_started로 둔다. 자격 증명은 앱 credential 저장소에 session token만 암호화해 둔다. 이 노드는 결정과 받아들인 위험, 임시 경로 조건의 기록이며 EXT-G의 증거가 아니다."
+      "scope": "역사 기록(사용자 결정 2026-09-25, 2026-09-27 현 출시 조건은 아래 G2/G2-PUBLIC 참조): 공식 Garmin 권한(EXT-G)을 기다리는 동안 python-garminconnect로 만든 임시 gate를 쓰고 나중에 공식 계획으로 갈아 끼운다. 당시 범위는 소유자 자신의 계정에서 앱 내 수집까지이며 M2-07·G2는 임시 경로로 통과시키지 않기로 했다. EXT-G·M0-07b·M1-06b·M2-07의 공식 작업은 2026-09-27 활성 그래프 밖의 후속 계획으로 이관됐다. 자격 증명은 앱 credential 저장소에 session token만 암호화해 둔다. 이 노드는 결정과 받아들인 위험, 임시 경로 조건의 기록이며 EXT-G의 증거가 아니다."
     },
     {
       "id": "M1-06b-tmp",

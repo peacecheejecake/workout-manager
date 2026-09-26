@@ -701,6 +701,9 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 6. 각 task 결과에는 FUT/S/F/A 매핑, 변경 목록, 실제 검증 명령·결과, 미완료 외부 조건, Herdr peer review 결과를 남긴다. 브라우저가 필요한 변경은 Aside → Chrome → Playwright 순으로 실제 사용 도구와 증거를 기록한다.
 7. 합류 순서: dependency PR 통합 → task branch 최신 기준 반영 → 관련 regression → 독립 peer review → commit/통합. 시작 작업에서 아직 존재하지 않는 후속 앱의 시험을 완료 조건으로 요구하지 않는다.
 
-M0-07b의 공식 다운로드 CLI는 보조 도구다. Web 출시의 필수 공식 수집 gate는 M1-06b이며, CLI 완성이 Web 출시를 별도로 막지는 않는다.
+**이전 Garmin 포함 출시 계획에서는** M0-07b 공식 다운로드 CLI가 보조 도구였고
+M1-06b 공식 수집이 Web 출시의 필수 조건이었다. 2026-09-27 결정으로 두 작업은
+[공식 연동 후속 계획](research/garmin-official-deferred.md)에 이관했다. 현재 G2/G2-PUBLIC의
+선행 조건은 [활성 그래프](task-graph.json)를 따른다.
 
 최소 병렬화는 M0-02 뒤 frontend/backend 분리다. 더 빠르게 진행하려고 승인 transaction·공유 schema·migration을 독립 구현 두 벌로 만드는 방식은 사용하지 않는다.

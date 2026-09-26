@@ -101,7 +101,9 @@ M1-05의 training-only 범위는 [DAG](task-graph.md)의 h~m과 [통합 수용](
 PKCE 흐름을 추가했다. [M1-06c 검증 기록](progress/M1-06c.md)과 [운영 설정](garmin-setup.md)에
 구현·로컬 fixture 검증 결과를 기록했다. 공식 연결·실제 수집의 원래 M1-06b 계약은
 [후속 계획](research/garmin-official-deferred.md)에 보존한다. 로그인·동의 화면은 Garmin이
-소유하며 앱은 Garmin 비밀번호를 받지 않는다. 현재 Web MVP의 G2는 공식 연동을 요구하지 않는다.
+소유하며 **이 공식 OAuth 경로에서는** 앱이 Garmin 비밀번호를 받지 않는다. 별도 비공식
+`M1-06b-tmp`는 앱이 비밀번호를 받아 서버·Python worker에 전달하는 소유자 한정 경로다
+([운영 안내](garmin-setup.md)). 현재 Web MVP의 G2는 공식 연동을 요구하지 않는다.
 
 2026-09-16 사용자 승인으로 M0-06b의 지도 coverage·OS IME 검증을 M1-04의 착수 의존성에서
 분리했다. 지도 기능 M2-01과 전체 통합 M2-06에서 해당 gate를 계속 요구하며 완료 조건은 유지한다.
