@@ -495,14 +495,28 @@ function choicesFor(
   }
 }
 
-/** How many of the line's vertices each circle covers, in the circles' own order. */
+/**
+ * How many of the line's vertices each circle covers, in the circles' own order — counted on
+ * the line the classification cuts: `coordinates` settled to the disclosed precision, as
+ * `disclosureChoices` settles them (M2-01ax). Counted on the raw coordinates, an end that only
+ * rounding pulls into a circle is cut but the screen said that area removed nothing. When the
+ * rounding does not settle the line does not leave (blocked); its one rounding is counted.
+ */
 export function removedVerticesPerCircle(
   coordinates: readonly CoursePosition[],
   circles: readonly ProtectedCircle[],
 ): number[] {
+  let settled: readonly CoursePosition[];
+  try {
+    settled = settleRounding(coordinates, []).coordinates;
+  } catch (error) {
+    if (!(error instanceof CourseTrimError)) throw error;
+    const digits = courseSharingLimits.disclosedCoordinateDigits;
+    settled = coordinates.map((position) => roundPosition(position, digits));
+  }
   return circles.map(
     (circle) =>
-      coordinates.filter(
+      settled.filter(
         (position) => greatCircleMeters(circle.center, position) <= circle.radiusMeters,
       ).length,
   );

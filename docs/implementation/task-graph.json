@@ -1633,6 +1633,15 @@
       "evidence": "docs/implementation/progress/M2-01aw.md"
     },
     {
+      "id": "M2-01ax",
+      "title": "M2-01 phase 리뷰 비차단 후속: 예산 claim 동시성 시험과 미리보기 제거 수",
+      "dependsOn": ["M2-01as"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "M2-01 phase 리뷰(Codex gpt-6-sol, 2차 APPROVE)의 비차단 두 건. (1) M14(claim 자체 advisory lock 제거)는 동치 변이가 아니다: 새로 겹치는 두 구역의 첫 claim이 동시에 오면 서로의 미확정 행을 보지 못해 둘 다 1로 적고 11링크가 허용될 수 있다. 두 세션 동시 첫 claim 통합 시험을 더하고 M14가 죽음을 보인다. (2) 미리보기의 구역별 제거 정점 수가 반올림 전 좌표로 세어져 반올림만으로 원 안에 든 끝을 0으로 보인다. 분류에 쓰는 settle된 좌표로 센다. 되돌리는 변이가 실패해야 한다.",
+      "evidence": "docs/implementation/progress/M2-01ax.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [

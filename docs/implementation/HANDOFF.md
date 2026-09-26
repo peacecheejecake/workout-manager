@@ -17,11 +17,11 @@
 
 ## 완료된 최신 작업
 
-[M2-01aw](progress/M2-01aw.md)를 완료했다(`phase/m2-01`). parse-host 메모리 상한 시험의 흔들림은 60,000점 fixture가 32 MiB 상한보다 1 MiB도
-안 되게 위에 있어 GC 시점에 따라 출력 상한(`TRACK_OUTPUT_TOO_LARGE`)에 먼저 닿았기 때문이었다(60회 중 2회 재현). 세 시험이 함께 쓰는
-150,000점 fixture로 바꿔 약 25 MiB 여유를 두고, 여유를 직접 단언하는 시험을 더했다(100회 0 실패). 제품 코드는 바꾸지 않았다.
+M2-01 phase(M2-01au·ap·ag·as·av·aw)가 Codex `gpt-6-sol` phase 리뷰를 통과해 main에 들어갔다(1차 REQUEST CHANGES — M2-01as의 반올림 재절단과
+겹친 구역 예산 — 를 고친 뒤 2차 APPROVE). 그 비차단 두 건을 [M2-01ax](progress/M2-01ax.md)로 닫았다: 새로 겹치는 두 구역의 동시 첫 claim
+시험(M14가 이제 죽는다)과, 미리보기의 구역별 제거 정점 수를 반올림 뒤 좌표로 세기.
 
-직전 완료: [M2-01av](progress/M2-01av.md)(남은 worker의 tenant 출처).
+직전 완료: [M2-01aw](progress/M2-01aw.md)(parse-host 시험 흔들림).
 
 ## 운영 메모
 

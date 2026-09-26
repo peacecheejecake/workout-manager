@@ -574,6 +574,81 @@ describe('lifetime link budget migration upgrade of a database built by every ea
     expect(rows.rows).toEqual([{ links_cut: 10 }, { links_cut: 10 }]);
   });
 
+  it('counts both of two concurrent first claims of two new overlapping areas (M2-01ax)', async () => {
+    await migrate(upgradeUrl());
+    // Two new 200 m areas ~800 m apart (one place), neither ever cut. Each session's claim
+    // writes its own area's row, and neither row is visible to the other until it commits:
+    // without the claim's own advisory lock both would see a place of one row at 0, both would
+    // write 1, and the place would then grant 9 more — 11 links. The lock makes the second
+    // wait for the first and see its row.
+    const areaE = randomUUID();
+    const areaF = randomUUID();
+    for (const [zone, longitude] of [
+      [areaE, 114.0],
+      [areaF, 114.0082],
+    ] as const)
+      await upgraded.query(
+        `INSERT INTO course_privacy_zone(athlete_id,zone_id,name,center_longitude,center_latitude,
+           radius_meters,created_at,updated_at) VALUES($1,$2,'새 겹침',$3,20.0,200,now(),now())`,
+        [liveTenant, zone, longitude],
+      );
+    let secondReturned = false;
+    let returnedBeforeFirstCommitted = false;
+    const first = await upgraded.connect();
+    const second = await upgraded.connect();
+    try {
+      for (const client of [first, second]) {
+        await client.query('BEGIN');
+        await client.query("SELECT set_config('app.athlete_id',$1,true)", [liveTenant]);
+      }
+      const one = await first.query<{ claimed: boolean }>(
+        'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+        [[areaE]],
+      );
+      const pending = second
+        .query<{ claimed: boolean }>(
+          'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+          [[areaF]],
+        )
+        .then((result) => {
+          secondReturned = true;
+          return result;
+        });
+      // Time for the second claim to finish if nothing holds it back.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      returnedBeforeFirstCommitted = secondReturned;
+      await first.query('COMMIT');
+      const two = await pending;
+      await second.query('COMMIT');
+      expect([one.rows[0]?.claimed, two.rows[0]?.claimed]).toEqual([true, true]);
+    } finally {
+      await first.query('ROLLBACK').catch(() => undefined);
+      await second.query('ROLLBACK').catch(() => undefined);
+      first.release();
+      second.release();
+    }
+    const rows = await upgraded.query(
+      `SELECT links_cut FROM course_share_area_budget
+       WHERE athlete_id=$1 AND zone_id=ANY($2::uuid[]) ORDER BY zone_id`,
+      [liveTenant, [areaE, areaF]],
+    );
+    expect(rows.rows).toEqual([{ links_cut: 2 }, { links_cut: 2 }]);
+    // The place's total stays the bound: 2 granted at once, then only 8 more.
+    let granted = 2;
+    for (let round = 0; round < 12; round += 1) {
+      const claimed = await asTenant(liveTenant, (client) =>
+        client.query<{ claimed: boolean }>(
+          'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+          [[round % 2 === 0 ? areaE : areaF]],
+        ),
+      );
+      if (claimed.rows[0]?.claimed) granted += 1;
+    }
+    expect(granted).toBe(courseSharingLimits.shareLinksPerAreaLifetime);
+    // And it was the lock that did it: the second claim waited for the first to commit.
+    expect(returnedBeforeFirstCommitted).toBe(false);
+  });
+
   it('lets only one of two concurrent claims on overlapping areas take the last link', async () => {
     await migrate(upgradeUrl());
     const areaC = randomUUID();

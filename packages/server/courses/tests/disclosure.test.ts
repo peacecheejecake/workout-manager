@@ -6,6 +6,7 @@ import {
   disclosureChoices,
   drawShareOffset,
   finishDisclosedLine,
+  removedVerticesPerCircle,
   roundPosition,
   shareCircle,
   shareCircles,
@@ -198,6 +199,25 @@ describe('rounding is checked again after it happens (R-2, T25)', () => {
     });
     expect(finished.coordinates[0]).toEqual([127.01, 37.5]);
     assertOutside(finished, [circle]);
+  });
+
+  it('counts an end only rounding pulls into a circle as removed there (M2-01ax)', () => {
+    const center: CoursePosition = [127, 37.5];
+    // The end itself is the raw vertex: outside the circle before rounding, inside after.
+    const grid: CoursePosition = [127.003, 37.5];
+    const raw: CoursePosition = [127.0030049, 37.5];
+    const circle: ProtectedCircle = { center, radiusMeters: greatCircleMeters(center, grid) + 0.2 };
+    const line: CoursePosition[] = [raw, [127.01, 37.5], [127.02, 37.5], [127.03, 37.5]];
+    for (const position of line)
+      expect(greatCircleMeters(center, position)).toBeGreaterThan(circle.radiusMeters);
+    // The confirmation cuts that end (it is classified on the rounded line) …
+    const choice = disclosureChoices('export', line, ends(line), [circle]).options[0];
+    expect(choice?.exposure).toBe('trimmed');
+    expect(choice?.coordinates[0]).toEqual([127.01, 37.5]);
+    // … so the screen says this area removes it, not "0 vertices" (and an area the line
+    // never comes near still removes nothing).
+    const away: ProtectedCircle = { center: [127.2, 37.7], radiusMeters: 200 };
+    expect(removedVerticesPerCircle(line, [circle, away])).toEqual([1, 0]);
   });
 });
 
