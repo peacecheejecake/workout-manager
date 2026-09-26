@@ -593,10 +593,13 @@ describe('lifetime link budget migration upgrade of a database built by every ea
         [liveTenant, zone, longitude],
       );
     let secondReturned = false;
-    let returnedBeforeFirstCommitted = false;
+    let secondState: 'returned' | 'waiting' | null = null;
     const first = await upgraded.connect();
     const second = await upgraded.connect();
     try {
+      const secondPid = (await second.query<{ pid: number }>('SELECT pg_backend_pid() AS pid'))
+        .rows[0]?.pid;
+      if (secondPid === undefined) throw new Error('no backend pid');
       for (const client of [first, second]) {
         await client.query('BEGIN');
         await client.query("SELECT set_config('app.athlete_id',$1,true)", [liveTenant]);
@@ -614,9 +617,27 @@ describe('lifetime link budget migration upgrade of a database built by every ea
           secondReturned = true;
           return result;
         });
-      // Time for the second claim to finish if nothing holds it back.
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      returnedBeforeFirstCommitted = secondReturned;
+      // The first session stays open until the second is seen in PostgreSQL either waiting on
+      // a lock inside its claim (the advisory lock: it will see E once the first commits) or
+      // already returned (no lock held it back: it saw only its own row). Either is observed,
+      // never assumed from a delay; neither within 10 s fails the test.
+      const deadline = Date.now() + 10_000;
+      while (secondState === null) {
+        if (secondReturned) {
+          secondState = 'returned';
+          break;
+        }
+        const activity = await upgraded.query<{ waiting: boolean }>(
+          `SELECT state='active' AND wait_event_type='Lock' AND query LIKE '%claim_course_share_budget%'
+             AS waiting
+           FROM pg_stat_activity WHERE pid=$1`,
+          [secondPid],
+        );
+        if (activity.rows[0]?.waiting === true) secondState = 'waiting';
+        else if (Date.now() > deadline)
+          throw new Error('the second claim was never seen waiting or returned');
+        else await new Promise((resolve) => setTimeout(resolve, 20));
+      }
       await first.query('COMMIT');
       const two = await pending;
       await second.query('COMMIT');
@@ -646,7 +667,7 @@ describe('lifetime link budget migration upgrade of a database built by every ea
     }
     expect(granted).toBe(courseSharingLimits.shareLinksPerAreaLifetime);
     // And it was the lock that did it: the second claim waited for the first to commit.
-    expect(returnedBeforeFirstCommitted).toBe(false);
+    expect(secondState).toBe('waiting');
   });
 
   it('lets only one of two concurrent claims on overlapping areas take the last link', async () => {
