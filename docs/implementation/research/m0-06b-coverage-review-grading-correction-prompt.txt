@@ -1,0 +1,26 @@
+You are the independent reviewer of a Korean pedestrian routing coverage review. Your working
+directory contains exactly four files: your pre-registration
+(`m0-06b-coverage-review-preregistration.txt`), the blinded sample
+(`m0-06b-coverage-review-pairs.json`, gives each pair's stratum), the engine results
+(`m0-06b-coverage-review-results.json`) and YOUR OWN grading output
+(`m0-06b-coverage-review-grading.txt`, sha256 e59f64cb2c09a2d555b3b132ec9a96137c2e224291b439c66be3e1dbcc55deee).
+Read only these files and modify nothing.
+
+The orchestrator (who does not grade) noticed an arithmetic inconsistency in your grading output:
+the per-pair `score` values sum to 68.5 (64 match, 9 partial, 9 mismatch), while `totalScore` is 69
+and `verdictArithmetic` says "65 full matches + 8 partial"; and the per-pair scores of the
+`negative-military` pairs (NEG-MIL-01, NEG-MIL-02, NEG-MIL-03) sum to 1.5 while the `strata` entry
+says 2. Please check this yourself against the files.
+
+Do NOT regrade any pair and do NOT change any criterion. Only:
+1. Say whether the per-pair grades in your grading output are the grades you stand by, or whether
+   one of them was mis-recorded (if so, which pair, what grade you actually assigned in your
+   justification text, and why).
+2. Recompute totalScore and every stratum score from the per-pair grades you stand by, and re-apply
+   your pre-registered perStratum / disqualifying / overall rules.
+3. State the corrected overall verdict and whether it differs from the one you gave.
+
+Final answer: ONE JSON document and nothing else:
+{"reviewer": "<model>", "gradesStoodBy": true|false, "misrecorded": [{"id": "...", "recorded": "...", "intended": "...", "why": "..."}],
+ "totalScore": x, "strata": [{"stratum": "...", "pairs": n, "score": x, "bar": y, "meetsBar": true|false}],
+ "overallVerdict": "...", "verdictChanged": true|false, "explanation": "...", "filesRead": ["..."]}

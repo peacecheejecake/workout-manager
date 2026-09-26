@@ -480,6 +480,18 @@
         "independent re-identification review of the implementation: r1 FAIL (rule-aware attacker), r2 PASS WITH CONDITIONS (cap 15 too thin), final PASS at cap 10 on tag m2-01as-final: the reviewer's own attackers over 4 test seeds and 7 models stay at or above 0.334 S (82 m) median and 0.112 S (25 m) p10; C1 closed. pnpm test 3,956; integration 1+773; identity 259"
       ],
       "note": "Re-judged by root from the gap node's executed evidence and the independent re-identification review; see docs/implementation/progress/M2-01as.md."
+    },
+    {
+      "node": "M0-06b-cov",
+      "date": "2026-09-26",
+      "rows": ["P8-coverage", "FUT-07-4"],
+      "decision": "Root arranged the independent Korean walking-coverage review of the M0-06b gate on the national graph with Codex gpt-6-sol as the independent reviewer, blinded pre-registration before the engine run and grading under the pre-registered criteria.",
+      "change": "P8-coverage not_executed -> failed (the review was executed and judged coverage inadequate); FUT-07-4 stays not_executed with the coverage part now reviewed; counts not_executed 6 -> 5, failed 0 -> 1.",
+      "executed": [
+        "docs/implementation/research/m0-06b-coverage-review.md: 82-pair stratified blinded sample (38 existing pairs plus 44 new, urban core, crosswalk, pedestrian and motorway bridges, stairs, parks, access time, 16 negative controls, 13 regions); the independent reviewer (Codex gpt-6-sol, high, run with no repository access) pre-registered per-pair expectations and verdict criteria (sha256 98ef1cee..., 2026-09-26T02:22:22Z) before the engine run (02:22:59Z) on the national graph 188b65effcc6ef5c with the pinned extract 848daadc; a second run was identical",
+        "the same reviewer graded under its own pre-registered criteria (from an empty directory with only the pre-registration, the blinded sample and the results): 68 of 82 against a bar of 70, four disqualifying results (military area entered at Yongsan and toward Panmunjom, an access=no gate, a foot=no bridge match), seven strata below their bars; verdict inadequate; a reviewer arithmetic slip was corrected by the reviewer itself and did not change the verdict"
+      ],
+      "note": "See docs/implementation/research/m0-06b-coverage-review.md and docs/implementation/progress/M0-06b-coverage.md; fixes are M2-01ay."
     }
   ],
   "rounds": [
@@ -603,9 +615,9 @@
   "counts": {
     "passed": 86,
     "partial": 18,
-    "failed": 0,
+    "failed": 1,
     "missing": 0,
-    "not_executed": 6
+    "not_executed": 5
   },
   "total": 110,
   "rows": [
@@ -2071,14 +2083,24 @@
       "quote": "- [ ] 대표 지역 품질, 이용 조건·표시 의무·credential·좌표 최소화 정책을 검토한다.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "Korean coverage `not_reviewed`, no independent reviewer (M0-06b gate); ODbL §4.2/§4.6 not carried out.",
+      "reason": "M0-06b-cov amendment: still not_executed. The representative-region quality part has now been reviewed independently and found inadequate (P8-coverage failed, fixes in M2-01ay); terms, attribution and ODbL section 4.2/4.6 obligations, credential and coordinate-minimisation review are still not carried out.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M0-06b-cov",
+        "date": "2026-09-26",
+        "previousVerdict": "not_executed",
+        "previousReason": "Korean coverage `not_reviewed`, no independent reviewer (M0-06b gate); ODbL §4.2/§4.6 not carried out.",
+        "executed": [
+          "docs/implementation/research/m0-06b-coverage-review.md: 82-pair stratified blinded sample (38 existing pairs plus 44 new, urban core, crosswalk, pedestrian and motorway bridges, stairs, parks, access time, 16 negative controls, 13 regions); the independent reviewer (Codex gpt-6-sol, high, run with no repository access) pre-registered per-pair expectations and verdict criteria (sha256 98ef1cee..., 2026-09-26T02:22:22Z) before the engine run (02:22:59Z) on the national graph 188b65effcc6ef5c with the pinned extract 848daadc; a second run was identical",
+          "the same reviewer graded under its own pre-registered criteria (from an empty directory with only the pre-registration, the blinded sample and the results): 68 of 82 against a bar of 70, four disqualifying results (military area entered at Yongsan and toward Panmunjom, an access=no gate, a foot=no bridge match), seven strata below their bars; verdict inadequate; a reviewer arithmetic slip was corrected by the reviewer itself and did not change the verdict"
+        ]
+      }
     },
     {
       "id": "K-oidc",
@@ -3328,16 +3350,26 @@
       "id": "P8-coverage",
       "source": "docs/implementation/map-implementation-plan.md:200",
       "quote": "| 보행 coverage | graph 신원 고정, 사전 기대 결과와 독립 검토자, 도심/횡단보도/다리/계단/공원/접근시간·음성 대조; HTTP 200만으로 통과 금지 |",
-      "verdict": "not_executed",
+      "verdict": "failed",
       "evidence": [],
-      "reason": "M0-06b external gate.",
+      "reason": "M0-06b-cov amendment: failed. The gate's procedure was carried out: fixed graph identity, pre-registered expectations and an independent reviewer, urban/crosswalk/bridge/stairs/park/access-time strata and negative controls. The reviewer judged coverage inadequate (68/82 against 70): routes enter military areas, ferries appear inside walking routes, a time-restricted way is crossed without a warning, and the adapter rejects a short stair route the engine returned. Fixes and a re-grade against the same pre-registration are M2-01ay. Limits: one model reviewer, no field check; OSM tag checks are geometric and some disqualifiers may be false matches.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
         "executed": [],
         "note": "Nothing was executed for this row in round 2; the verdict is carried from the round it names."
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M0-06b-cov",
+        "date": "2026-09-26",
+        "previousVerdict": "not_executed",
+        "previousReason": "M0-06b external gate.",
+        "executed": [
+          "docs/implementation/research/m0-06b-coverage-review.md: 82-pair stratified blinded sample (38 existing pairs plus 44 new, urban core, crosswalk, pedestrian and motorway bridges, stairs, parks, access time, 16 negative controls, 13 regions); the independent reviewer (Codex gpt-6-sol, high, run with no repository access) pre-registered per-pair expectations and verdict criteria (sha256 98ef1cee..., 2026-09-26T02:22:22Z) before the engine run (02:22:59Z) on the national graph 188b65effcc6ef5c with the pinned extract 848daadc; a second run was identical",
+          "the same reviewer graded under its own pre-registered criteria (from an empty directory with only the pre-registration, the blinded sample and the results): 68 of 82 against a bar of 70, four disqualifying results (military area entered at Yongsan and toward Panmunjom, an access=no gate, a foot=no bridge match), seven strata below their bars; verdict inadequate; a reviewer arithmetic slip was corrected by the reviewer itself and did not change the verdict"
+        ]
+      }
     }
   ]
 }

@@ -17,11 +17,12 @@
 
 ## 완료된 최신 작업
 
-M2-01 phase(M2-01au·ap·ag·as·av·aw)가 Codex `gpt-6-sol` phase 리뷰를 통과해 main에 들어갔다(1차 REQUEST CHANGES — M2-01as의 반올림 재절단과
-겹친 구역 예산 — 를 고친 뒤 2차 APPROVE). 그 비차단 두 건을 [M2-01ax](progress/M2-01ax.md)로 닫았다: 새로 겹치는 두 구역의 동시 첫 claim
-시험(M14가 이제 죽는다)과, 미리보기의 구역별 제거 정점 수를 반올림 뒤 좌표로 세기.
+[M0-06b-cov](progress/M0-06b-coverage.md)를 실행했다(`phase/m0-06`). 한국 보행 coverage의 독립 검토: 82쌍 층화 blind 표본, 독립 검토자
+(Codex `gpt-6-sol`)가 결과 전에 기대·판정 기준을 등록하고(sha256 `98ef1cee…`) 전국 graph `188b65effcc6ef5c` 실행 뒤 같은 기준으로 채점했다.
+판정은 **부적합**(68/82, 기준 70): 군사 구역 통과, 걷기 경로 안의 ferry, 경고 없는 시간 제한 way, adapter의 짧은 계단 경로 거절. P8-coverage는
+not_executed → **failed**. 수정과 같은 사전 등록으로의 재채점은 M2-01ay다.
 
-직전 완료: [M2-01aw](progress/M2-01aw.md)(parse-host 시험 흔들림).
+직전 완료: [M2-01ax](progress/M2-01ax.md)(M2-01 phase 리뷰 비차단 후속).
 
 ## 운영 메모
 
@@ -73,8 +74,9 @@ M2-01 phase(M2-01au·ap·ag·as·av·aw)가 Codex `gpt-6-sol` phase 리뷰를 �
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드는 없다. 남은 노드는 모두 외부 gate(EXT-OIDC, EXT-G, M0-06b, 실기기 보류 M0-06c)에 막혀 있다.
-M2-01 phase의 실행 가능한 노드는 `phase/m2-01`에 모두 커밋됐고 M2-01 phase 리뷰(Codex)를 기다린다. 재개 시 각
+task-graph에서 not_started인 ready 노드: M2-01ay(보행 coverage 결함 수정). 그 밖의 남은 노드는 외부 gate(EXT-OIDC, EXT-G, M0-06b의 실기기
+항목, 실기기 보류 M0-06c)에 막혀 있다.
+M2-01 phase의 실행 가능한 노드는 phase 리뷰(Codex)를 통과해 main에 들어갔다. 지금 phase 브랜치는 `phase/m0-06`(M0-06b-cov)이다. 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
 
 ## 알려진 흔들리는 시험

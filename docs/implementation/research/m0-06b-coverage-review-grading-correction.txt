@@ -1,0 +1,47 @@
+{
+  "reviewer": "GPT-6",
+  "gradesStoodBy": false,
+  "misrecorded": [
+    {
+      "id": "UNI-02",
+      "recorded": "match (1)",
+      "intended": "partial (0.5)",
+      "why": "My justification explicitly assigned a partial grade: the 816.3 m route is below the registered 850 m minimum but within the 25% tolerance. I mis-recorded its grade and score."
+    }
+  ],
+  "totalScore": 68,
+  "strata": [
+    {"stratum":"urban-core","pairs":11,"score":11,"bar":8.5,"meetsBar":true},
+    {"stratum":"suburban","pairs":4,"score":4,"bar":3,"meetsBar":true},
+    {"stratum":"mountain-trail","pairs":3,"score":2.5,"bar":2.5,"meetsBar":true},
+    {"stratum":"rural","pairs":2,"score":0.5,"bar":1.5,"meetsBar":false},
+    {"stratum":"riverside","pairs":4,"score":4,"bar":3,"meetsBar":true},
+    {"stratum":"campus-apartment","pairs":4,"score":3.5,"bar":3,"meetsBar":true},
+    {"stratum":"military-avoidance","pairs":2,"score":1,"bar":1.5,"meetsBar":false},
+    {"stratum":"access-restricted","pairs":1,"score":0,"bar":1,"meetsBar":false},
+    {"stratum":"bridge-foot-restricted","pairs":1,"score":1,"bar":1,"meetsBar":true},
+    {"stratum":"stairs","pairs":5,"score":4,"bar":4,"meetsBar":true},
+    {"stratum":"underpass","pairs":1,"score":1,"bar":1,"meetsBar":true},
+    {"stratum":"crosswalk","pairs":5,"score":4.5,"bar":4,"meetsBar":true},
+    {"stratum":"bridge-pedestrian","pairs":5,"score":3.5,"bar":4,"meetsBar":false},
+    {"stratum":"elevated-walkway","pairs":1,"score":1,"bar":1,"meetsBar":true},
+    {"stratum":"ferry","pairs":3,"score":2,"bar":2.5,"meetsBar":false},
+    {"stratum":"negative-sea-island","pairs":6,"score":4.5,"bar":4.5,"meetsBar":true},
+    {"stratum":"bridge-motorway-only","pairs":4,"score":3,"bar":3,"meetsBar":true},
+    {"stratum":"park","pairs":6,"score":6,"bar":4.5,"meetsBar":true},
+    {"stratum":"access-time","pairs":4,"score":2.5,"bar":3,"meetsBar":false},
+    {"stratum":"negative-military","pairs":3,"score":1.5,"bar":2.5,"meetsBar":false},
+    {"stratum":"negative-expressway-only","pairs":3,"score":3,"bar":2.5,"meetsBar":true},
+    {"stratum":"negative-outside-coverage","pairs":3,"score":3,"bar":2.5,"meetsBar":true},
+    {"stratum":"negative-request-limit","pairs":1,"score":1,"bar":1,"meetsBar":true}
+  ],
+  "overallVerdict": "inadequate",
+  "verdictChanged": false,
+  "explanation": "The corrected grades are 63 matches, 10 partials and 9 mismatches, totaling 68. Seven required strata miss their bars, including critical strata, and four recorded disqualifying results remain. Neither preregistered adequate verdict applies.",
+  "filesRead": [
+    "m0-06b-coverage-review-preregistration.txt",
+    "m0-06b-coverage-review-pairs.json",
+    "m0-06b-coverage-review-results.json",
+    "m0-06b-coverage-review-grading.txt"
+  ]
+}

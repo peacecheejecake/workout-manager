@@ -1,0 +1,834 @@
+{
+  "reviewer": "GPT-6",
+  "preRegistration": true,
+  "pairs": [
+    {
+      "id": "URB-SEL-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [750, 2200],
+      "must": ["Connect the Gangnam Station and Yeoksam Station street networks."],
+      "mustNot": ["Include ferry metres or restricted-access metres."],
+      "confidence": "high",
+      "rationale": "These stations are connected by ordinary city streets and sidewalks along or near Teheran-ro."
+    },
+    {
+      "id": "URB-SEL-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [900, 3000],
+      "must": ["Use a continuous pedestrian-accessible route between Myeongdong Cathedral and Namdaemun Market."],
+      "mustNot": ["Use a vehicle-only tunnel or ferry."],
+      "confidence": "high",
+      "rationale": "Both landmarks lie in Seoul's dense pedestrian street network."
+    },
+    {
+      "id": "URB-SEL-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1100, 3000],
+      "must": ["Connect the Hongik University Entrance and Hapjeong station areas on walkable streets."],
+      "mustNot": ["Use restricted-access metres or ferry metres."],
+      "confidence": "high",
+      "rationale": "The stations are close within a connected urban grid."
+    },
+    {
+      "id": "URB-SEL-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [8500, 20000],
+      "must": ["Cross the Han River on a bridge with pedestrian access and report bridge metres greater than zero."],
+      "mustNot": ["Cross the river through water geometry, by ferry, or on a pedestrian-prohibited bridge."],
+      "confidence": "high",
+      "rationale": "Several pedestrian-accessible Han River bridges can support this long city walk; the particular bridge need not be fixed in advance."
+    },
+    {
+      "id": "URB-BSN-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [500, 1700],
+      "must": ["Connect Seomyeon Station to the Jeonpo Cafe Street area on walkable streets."],
+      "mustNot": ["Use ferry or restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The endpoints are in adjacent, well-connected Busan neighbourhoods."
+    },
+    {
+      "id": "URB-BSN-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [450, 1600],
+      "must": ["Connect the Haeundae beach area to Haeundae Station on pedestrian-accessible ways."],
+      "mustNot": ["Use ferry or restricted-access metres."],
+      "confidence": "high",
+      "rationale": "This is a short walk through Haeundae's public street network."
+    },
+    {
+      "id": "SUB-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1000, 3000],
+      "must": ["Connect Seohyeon and Sunae through pedestrian-accessible streets or paths."],
+      "mustNot": ["Use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "Both stations are in Bundang's connected suburban street network."
+    },
+    {
+      "id": "SUB-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [800, 3000],
+      "must": ["Reach the Lake Park side on a public pedestrian-accessible entrance or path."],
+      "mustNot": ["Cross a lake or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "Jeongbalsan Station is near Ilsan Lake Park, though the approximate park coordinate may affect the chosen entrance."
+    },
+    {
+      "id": "SUB-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [900, 3000],
+      "must": ["Connect Beomgye and Pyeongchon on walkable streets."],
+      "mustNot": ["Use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The two station areas share a developed suburban street network."
+    },
+    {
+      "id": "SUB-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [500, 2200],
+      "must": ["Connect Hwaseong Haenggung and Paldalmun through walkable public ways."],
+      "mustNot": ["Pass through a restricted gate or wall without a mapped pedestrian opening."],
+      "confidence": "high",
+      "rationale": "The landmarks are close within Suwon's historic centre."
+    },
+    {
+      "id": "MTN-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [2800, 11000],
+      "must": ["Follow mapped walkable mountain trails to the Baegundae summit area if a route is computed."],
+      "mustNot": ["Cut across unmapped terrain or use closed or pedestrian-prohibited trail metres."],
+      "confidence": "medium",
+      "rationale": "A hiking route exists, but the rounded summit point and the completeness or restrictions of mapped trail connections could affect routing."
+    },
+    {
+      "id": "MTN-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [3500, 13000],
+      "must": ["Follow mapped walkable Gwanaksan trails toward Yeonju-dae if a route is computed."],
+      "mustNot": ["Take a straight off-trail line or use pedestrian-prohibited trail metres."],
+      "confidence": "medium",
+      "rationale": "The mountain has established hiking trails, while endpoint snapping and OSM trail connectivity are uncertain."
+    },
+    {
+      "id": "MTN-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [850, 3500],
+      "must": ["Connect the South Gate and Haenggung using walkable paths or streets."],
+      "mustNot": ["Cross a fortress wall except through a mapped opening."],
+      "confidence": "high",
+      "rationale": "These are nearby visitor destinations in the Namhansanseong area."
+    },
+    {
+      "id": "RUR-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [2200, 7500],
+      "must": ["Follow mapped pedestrian-accessible Seoraksan trails to Biseondae if a route is computed."],
+      "mustNot": ["Use closed trail metres or cross unmapped mountain terrain."],
+      "confidence": "medium",
+      "rationale": "Biseondae is reached by an established visitor trail, but national-park restrictions and mapping details cannot be verified from the sample."
+    },
+    {
+      "id": "RUR-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [3000, 40000],
+      "must": ["If computed, cross the Nakdong River only by a mapped pedestrian-accessible bridge or mapped foot-allowed ferry."],
+      "mustNot": ["Cross the river through water geometry or on an unconnected bridge."],
+      "confidence": "low",
+      "rationale": "Hahoe Village and Buyongdae are separated by the river despite their short straight-line distance. A correct route may require a substantial detour, and its availability depends on mapped crossings."
+    },
+    {
+      "id": "RIV-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1700, 5000],
+      "must": ["Remain on a pedestrian-accessible connection between the two south-bank park areas."],
+      "mustNot": ["Enter the Han River or use ferry metres."],
+      "confidence": "high",
+      "rationale": "The parks lie along the connected south-bank riverside corridor."
+    },
+    {
+      "id": "RIV-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1200, 4500],
+      "must": ["Follow a walkable street or Anyangcheon-side path between Omokgyo and Sinjeonggyo."],
+      "mustNot": ["Cross the stream except on a mapped pedestrian-accessible crossing."],
+      "confidence": "high",
+      "rationale": "Both points are on a developed stream corridor with public walking connections."
+    },
+    {
+      "id": "RIV-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1800, 5500],
+      "must": ["Connect Jeongja and Migeum by walkable streets or Tancheon paths."],
+      "mustNot": ["Cross Tancheon through water geometry or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The station areas and riverside paths form a connected suburban walking network."
+    },
+    {
+      "id": "RIV-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1700, 5500],
+      "must": ["Connect Dongnae and Oncheonjang through walkable streets or Oncheoncheon paths."],
+      "mustNot": ["Cross the stream without a mapped pedestrian-accessible crossing."],
+      "confidence": "high",
+      "rationale": "The two Busan station areas have ordinary street and streamside walking connections."
+    },
+    {
+      "id": "UNI-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [800, 3500],
+      "must": ["If computed, use campus ways on which pedestrian access is permitted."],
+      "mustNot": ["Use foot=no, access=private/no, or a restricted campus gate."],
+      "confidence": "medium",
+      "rationale": "Seoul National University's entrance and library should be connected, but individual campus access tags or gates may limit the mapped graph."
+    },
+    {
+      "id": "UNI-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [850, 3500],
+      "must": ["If computed, enter the Yonsei campus through a mapped pedestrian-accessible gate or way."],
+      "mustNot": ["Pass through a restricted gate or use foot=no or access=private/no metres."],
+      "confidence": "medium",
+      "rationale": "There are campus walking connections, but gate and access mapping cannot be checked in advance."
+    },
+    {
+      "id": "APT-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [550, 2800],
+      "must": ["If computed, leave the apartment complex through a mapped pedestrian-permitted connection."],
+      "mustNot": ["Use private or no-access residential ways or pass through a restricted gate."],
+      "confidence": "medium",
+      "rationale": "Apgujeong Station is nearby, while pedestrian access within the particular apartment grounds depends on OSM tags and gate mapping."
+    },
+    {
+      "id": "APT-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [650, 3000],
+      "must": ["If computed, connect the apartment grounds to public streets through a pedestrian-permitted exit."],
+      "mustNot": ["Use private or no-access residential ways or pass through a restricted gate."],
+      "confidence": "medium",
+      "rationale": "The station is close, but the rounded internal-complex point may be inaccessible on the mapped walking graph."
+    },
+    {
+      "id": "ACC-MIL-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1800, 6500],
+      "must": ["Connect Samgakji and Ichon on public pedestrian-accessible ways around any restricted part of the former base."],
+      "mustNot": ["Enter a military area or use a restricted node or restricted-access way."],
+      "confidence": "high",
+      "rationale": "Public streets provide a walkable detour; a straight line through restricted land is not a legal walking route."
+    },
+    {
+      "id": "ACC-MIL-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [4000, 20000],
+      "must": ["If computed, go around Seoul Air Base on public pedestrian-accessible ways."],
+      "mustNot": ["Enter the military airfield, cross a runway, or use restricted-access metres."],
+      "confidence": "medium",
+      "rationale": "A perimeter detour is plausible, but the local pedestrian graph and access restrictions could prevent a connection."
+    },
+    {
+      "id": "ACC-PRV-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [950, 5000],
+      "must": ["If computed, reach Samcheong Park using public pedestrian-accessible ways."],
+      "mustNot": ["Cross a private or no-access way or a restricted node in the Cheong Wa Dae area."],
+      "confidence": "medium",
+      "rationale": "Public approaches exist, but access within the adjacent precinct depends on the precise mapped restrictions."
+    },
+    {
+      "id": "ACC-FOOTNO-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [2200, 11000],
+      "must": ["If computed, cross the Han River on a bridge with pedestrian access and report bridge metres greater than zero."],
+      "mustNot": ["Use any foot=no bridge metres, ferry metres, or water-crossing geometry without a mapped crossing."],
+      "confidence": "medium",
+      "rationale": "The opposite-bank points require a permitted bridge detour; the nearby vehicle-oriented crossing must not be treated as walkable."
+    },
+    {
+      "id": "STR-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [250, 1400],
+      "must": ["Use mapped pedestrian-accessible steps or a mapped parallel walkable path up to Naksan Park."],
+      "mustNot": ["Cut directly across the hillside or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "Ihwa Village and Naksan Park are linked by a short, steep public walking network."
+    },
+    {
+      "id": "STR-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": [300, 2200],
+      "must": ["If computed, use mapped steps or a legal parallel street or path between the lower and upper areas."],
+      "mustNot": ["Cut across unmapped slopes or use restricted-access metres."],
+      "confidence": "medium",
+      "rationale": "The staircase area is walkable, but the rounded endpoints may miss the particular stairway and snap to surrounding streets."
+    },
+    {
+      "id": "UND-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [450, 1800],
+      "must": ["Use a continuous pedestrian-accessible surface or underground connection."],
+      "mustNot": ["Use a vehicle-only tunnel or cross through an unconnected underground level."],
+      "confidence": "high",
+      "rationale": "A surface walk is available even if the underground shopping and passage network is incompletely mapped."
+    },
+    {
+      "id": "UND-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [180, 1100],
+      "must": ["Cross Gangnam-daero at a mapped pedestrian crossing or connected grade-separated pedestrian passage."],
+      "mustNot": ["Cross a divided carriageway at an unconnected point."],
+      "confidence": "high",
+      "rationale": "This busy junction has pedestrian crossings and passages; the route must use a connected one."
+    },
+    {
+      "id": "BRG-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [950, 3000],
+      "must": ["If computed, cross the Han River on pedestrian-accessible Jamsugyo and report bridge metres greater than zero."],
+      "mustNot": ["Use ferry metres or cross the river through water geometry."],
+      "confidence": "medium",
+      "rationale": "Jamsugyo normally permits walking, but the sample gives no flood or closure time and OSM may encode a closure."
+    },
+    {
+      "id": "BRG-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [850, 3200],
+      "must": ["Connect Seoul Station's west side and Hoehyeon by pedestrian-accessible ways; Seoul-ro 7017 is acceptable if connected."],
+      "mustNot": ["Use a vehicle-only elevated road or cross between unconnected levels."],
+      "confidence": "high",
+      "rationale": "Seoul-ro 7017 offers a pedestrian connection, and ordinary streets offer other legal walking routes."
+    },
+    {
+      "id": "BRG-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [550, 2400],
+      "must": ["If computed, leave Seonyudo on a mapped pedestrian-accessible bridge and report bridge metres greater than zero."],
+      "mustNot": ["Cross the Han River through water geometry or use a vehicle-only bridge."],
+      "confidence": "medium",
+      "rationale": "Seonyugyo is a walking bridge, but the exact island exit and rounded park endpoints depend on mapped path connections."
+    },
+    {
+      "id": "FRY-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [2200, 15000],
+      "must": ["If computed, use a mapped foot-allowed ferry across the water and report ferry metres greater than zero."],
+      "mustNot": ["Walk across open water or use a pedestrian-prohibited vehicle bridge."],
+      "confidence": "medium",
+      "rationale": "A regular Wolmido–Yeongjong ferry can carry pedestrians; routing depends on whether its OSM relation and terminal connections are usable."
+    },
+    {
+      "id": "FRY-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [7500, 25000],
+      "must": ["Connect the two Han River landing areas using walkable riverside paths, streets, or a mapped foot-allowed ferry."],
+      "mustNot": ["Cross open water without a mapped ferry or pedestrian-accessible bridge."],
+      "confidence": "medium",
+      "rationale": "A land-based walking route exists between these Seoul locations; boat service is not needed to establish walking connectivity."
+    },
+    {
+      "id": "FRY-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [2800, 12000],
+      "must": ["If computed, use a mapped foot-allowed ferry to Udo and report ferry metres greater than zero."],
+      "mustNot": ["Cross open water without a mapped ferry."],
+      "confidence": "medium",
+      "rationale": "The regular Seongsan–Udo ferry carries pedestrians, subject to its mapping and terminal connections."
+    },
+    {
+      "id": "NEG-OFFSHORE",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry."],
+      "mustNot": ["Snap either offshore point to a distant island, ferry, or mainland way."],
+      "confidence": "high",
+      "rationale": "Both points are far out in the Yellow Sea, with no nearby pedestrian network."
+    },
+    {
+      "id": "URB-DGU-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [750, 2200],
+      "must": ["Connect Daegu Station to Dongseong-ro on pedestrian-accessible streets."],
+      "mustNot": ["Use restricted-access or ferry metres."],
+      "confidence": "high",
+      "rationale": "This is a short walk through central Daegu."
+    },
+    {
+      "id": "URB-GJ-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [650, 2200],
+      "must": ["Connect Geumnamno 4-ga Station and the Asia Culture Center on walkable streets or paths."],
+      "mustNot": ["Use restricted-access or ferry metres."],
+      "confidence": "high",
+      "rationale": "The landmarks are close in central Gwangju."
+    },
+    {
+      "id": "URB-DJ-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [700, 2200],
+      "must": ["Connect Daejeon Station and Jungangno Station on pedestrian-accessible streets."],
+      "mustNot": ["Use restricted-access or ferry metres."],
+      "confidence": "high",
+      "rationale": "The station areas are linked by the central Daejeon street grid."
+    },
+    {
+      "id": "URB-JJ-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1450, 3900],
+      "must": ["Connect Jeju City Hall and Dongmun Market on walkable streets."],
+      "mustNot": ["Use restricted-access or ferry metres."],
+      "confidence": "high",
+      "rationale": "Both sites are on Jeju City's connected public street network."
+    },
+    {
+      "id": "URB-GNG-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [950, 2900],
+      "must": ["Connect Gangneung Station and Jungang Market on walkable streets."],
+      "mustNot": ["Use restricted-access or ferry metres."],
+      "confidence": "high",
+      "rationale": "The points are close within Gangneung's urban street network."
+    },
+    {
+      "id": "XWK-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [220, 1200],
+      "must": ["Cross Sejong-daero using a mapped pedestrian crossing or connected grade-separated passage."],
+      "mustNot": ["Cross the carriageway at an unconnected point."],
+      "confidence": "high",
+      "rationale": "The opposite-side landmarks are served by pedestrian crossings or passages."
+    },
+    {
+      "id": "XWK-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [120, 900],
+      "must": ["Cross from Seoul Plaza toward Deoksugung at a mapped pedestrian crossing or connected passage."],
+      "mustNot": ["Cross the carriageway at an unconnected point or enter a restricted palace area."],
+      "confidence": "high",
+      "rationale": "Daehanmun faces a short, established pedestrian approach across the road."
+    },
+    {
+      "id": "XWK-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [180, 1100],
+      "must": ["Cross the road between Busan Station plaza and the Chinatown side at a connected pedestrian crossing or passage."],
+      "mustNot": ["Cross a divided carriageway at an unconnected point."],
+      "confidence": "high",
+      "rationale": "The station and Chinatown entrance have public pedestrian connections."
+    },
+    {
+      "id": "XWK-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [180, 1100],
+      "must": ["Use connected pedestrian crossings or a connected grade-separated passage between the opposite junction corners."],
+      "mustNot": ["Make an unmarked diagonal crossing through the intersection unless a mapped diagonal pedestrian crossing exists."],
+      "confidence": "high",
+      "rationale": "The correct path may use two crossings instead of a direct diagonal crossing, depending on what is mapped."
+    },
+    {
+      "id": "BRG-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1100, 3000],
+      "must": ["Cross the Han River on pedestrian-accessible Gwangjingyo and report bridge metres greater than zero."],
+      "mustNot": ["Use ferry metres or a pedestrian-prohibited bridge."],
+      "confidence": "high",
+      "rationale": "The endpoints are at opposite ends of Gwangjingyo, which has pedestrian space."
+    },
+    {
+      "id": "BRG-05",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [550, 2300],
+      "must": ["Cross to Yeongdo on pedestrian-accessible Yeongdodaegyo and report bridge metres greater than zero."],
+      "mustNot": ["Cross the harbour through water geometry or use a pedestrian-prohibited bridge."],
+      "confidence": "high",
+      "rationale": "Yeongdodaegyo provides a direct public walking connection."
+    },
+    {
+      "id": "BRG-06",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": [420, 1800],
+      "must": ["If computed, use pedestrian-accessible Wolyeonggyo and report bridge metres greater than zero."],
+      "mustNot": ["Cross the water outside a mapped bridge."],
+      "confidence": "medium",
+      "rationale": "Wolyeonggyo is a pedestrian bridge, though rounded endpoint placement may affect snapping."
+    },
+    {
+      "id": "BRG-MW-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [3500, 13000],
+      "must": ["Reach Marine City by a pedestrian-accessible land route around the bay."],
+      "mustNot": ["Use any part of the pedestrian-prohibited Gwangan Bridge."],
+      "confidence": "high",
+      "rationale": "The short bridge crossing is unavailable to walkers, but a land route through Busan exists."
+    },
+    {
+      "id": "BRG-MW-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "compute_budget_exceeded"],
+      "distanceRangeMeters": [15000, 150000],
+      "must": ["If computed, reach Yeongjong by a mapped foot-allowed ferry or another wholly pedestrian-accessible land connection."],
+      "mustNot": ["Use any pedestrian-prohibited Incheon Bridge metres or cross open water without a mapped ferry."],
+      "confidence": "low",
+      "rationale": "Incheon Bridge itself is unsuitable for walking. A safe ferry detour may be available, but ferry mapping, network continuity, and search cost are uncertain."
+    },
+    {
+      "id": "BRG-MW-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "compute_budget_exceeded"],
+      "distanceRangeMeters": [25000, 180000],
+      "must": ["If computed, use pedestrian-accessible roads around the bay or a mapped foot-allowed ferry."],
+      "mustNot": ["Use any pedestrian-prohibited Seohae Bridge metres or cross open water without a mapped ferry."],
+      "confidence": "low",
+      "rationale": "The expressway bridge is not a walking connection; a much longer route around the water may exist within the service limits."
+    },
+    {
+      "id": "BRG-MW-04",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["route_computed", "compute_budget_exceeded"],
+      "distanceRangeMeters": null,
+      "must": ["If computed, take a wholly pedestrian-accessible land detour or mapped foot-allowed ferry, with no Geoga Bridge or vehicle-only tunnel metres."],
+      "mustNot": ["Use pedestrian-prohibited Geoga Bridge or undersea tunnel metres."],
+      "confidence": "low",
+      "rationale": "The direct sea crossing is vehicle-only. A very long route via other land connections may be present, but its pedestrian continuity and fit within the route limits are uncertain."
+    },
+    {
+      "id": "STR-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": [150, 1900],
+      "must": ["If computed, use mapped pedestrian-accessible steps or a legal parallel route between the lower and upper areas."],
+      "mustNot": ["Cut through an unmapped hillside or use restricted-access metres."],
+      "confidence": "medium",
+      "rationale": "The 168 Steps area is walkable, while the hand-rounded points may not align exactly with the stair ends."
+    },
+    {
+      "id": "STR-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [70, 900],
+      "must": ["Use mapped pedestrian-accessible steps or a legal parallel street or path."],
+      "mustNot": ["Cross an unconnected level or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The 40 Steps are a short public pedestrian connection within central Busan."
+    },
+    {
+      "id": "STR-05",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [130, 1200],
+      "must": ["Use mapped pedestrian-accessible steps or a legal parallel approach to Cheongna Hill."],
+      "mustNot": ["Cut across an unconnected level or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The stairway and nearby public streets provide walking access up the hill."
+    },
+    {
+      "id": "PRK-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [600, 2400],
+      "must": ["Enter Seoul Forest on a mapped pedestrian-accessible entrance or path."],
+      "mustNot": ["Cross an unmapped park boundary or use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "Seoul Forest Station and the park interior are linked by established public walking paths."
+    },
+    {
+      "id": "PRK-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [950, 3300],
+      "must": ["Connect the north and south park areas on pedestrian-accessible paths."],
+      "mustNot": ["Use restricted-access metres or cross an unconnected park boundary."],
+      "confidence": "high",
+      "rationale": "Busan Citizens Park has an extensive internal walking network."
+    },
+    {
+      "id": "PRK-03",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1500, 6000],
+      "must": ["Use pedestrian-accessible paths or streets around the lakes."],
+      "mustNot": ["Cross either lake through water geometry."],
+      "confidence": "high",
+      "rationale": "Gwanggyo Lake Park has walking routes between the two lake areas, though a shoreline detour is expected."
+    },
+    {
+      "id": "PRK-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [850, 3500],
+      "must": ["Cross Duryu Park using pedestrian-accessible paths or streets."],
+      "mustNot": ["Use restricted-access metres."],
+      "confidence": "high",
+      "rationale": "The park has a connected public path network."
+    },
+    {
+      "id": "PRK-05",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [650, 2800],
+      "must": ["If computed, enter Halla Arboretum through a mapped pedestrian-accessible path or gate."],
+      "mustNot": ["Use a private or no-access way or pass a restricted node."],
+      "confidence": "medium",
+      "rationale": "Visitor paths should connect these points, but internal access tags and the rounded destination coordinate are uncertain."
+    },
+    {
+      "id": "PRK-06",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": [1500, 5400],
+      "must": ["Follow pedestrian-accessible streets or lakeside paths toward Gyeongpo Lake's east side."],
+      "mustNot": ["Cross the lake through water geometry."],
+      "confidence": "high",
+      "rationale": "The lake has an established walking circuit and surrounding public streets."
+    },
+    {
+      "id": "TIM-01",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route"],
+      "distanceRangeMeters": [1000, 4000],
+      "must": ["If computed, enter Seonyudo Park by a mapped pedestrian-accessible bridge and disclose any traversed time-conditional way metres."],
+      "mustNot": ["Use a way tagged access=private/no or foot=no, or imply that a route is open at a particular time without a departure time."],
+      "confidence": "medium",
+      "rationale": "The island park is normally reached on foot, but opening-hour tags may affect a route. No requested travel time is supplied."
+    },
+    {
+      "id": "TIM-02",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [850, 3900],
+      "must": ["If computed, follow mapped visitor-accessible palace paths and disclose any traversed time-conditional way metres."],
+      "mustNot": ["Use a permanently private or no-access way, pass a restricted node, or imply admission at a particular time without a departure time."],
+      "confidence": "low",
+      "rationale": "Gyeongbokgung is visitable under conditions, but the gate, admission and opening-hour details may be represented differently in OSM."
+    },
+    {
+      "id": "TIM-03",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["route_computed", "snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["If computed, follow mapped visitor-permitted paths and disclose any traversed time-conditional way metres."],
+      "mustNot": ["Use a permanently restricted garden path or node, or imply that a general unguided visit is permitted."],
+      "confidence": "low",
+      "rationale": "Changdeokgung's rear garden has controlled visitor access. Whether a generic pedestrian profile can route to Buyongji depends on the exact OSM access tagging."
+    },
+    {
+      "id": "TIM-04",
+      "expectedOutcome": "route_computed",
+      "alsoAcceptable": ["no_route", "snap_too_far"],
+      "distanceRangeMeters": [450, 2800],
+      "must": ["If computed, enter Bulguksa through mapped visitor-accessible ways and disclose any traversed time-conditional way metres."],
+      "mustNot": ["Use a permanently private or no-access way or imply admission at a particular time without a departure time."],
+      "confidence": "medium",
+      "rationale": "The temple admits visitors under conditions; internal path and access tagging may affect a generic walking route."
+    },
+    {
+      "id": "NEG-SEA-02",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry."],
+      "mustNot": ["Snap either offshore point to a distant shore, island, or ferry."],
+      "confidence": "high",
+      "rationale": "Both points are far out in the East Sea without nearby pedestrian ways."
+    },
+    {
+      "id": "NEG-SEA-03",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry."],
+      "mustNot": ["Snap either offshore point to a distant shore, island, or ferry."],
+      "confidence": "high",
+      "rationale": "Both points are far south of Jeju in open water."
+    },
+    {
+      "id": "NEG-ISL-01",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["outside_coverage", "snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry."],
+      "mustNot": ["Join Dokdo's East and West islets across open water without a mapped foot-allowed ferry."],
+      "confidence": "medium",
+      "rationale": "The islets have no bridge; sparse pedestrian mapping may instead prevent either point from snapping."
+    },
+    {
+      "id": "NEG-ISL-02",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["outside_coverage", "snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry."],
+      "mustNot": ["Cross open water to Hyeongje Island without a mapped foot-allowed ferry."],
+      "confidence": "high",
+      "rationale": "The uninhabited island has no walking bridge from the Jeju shore."
+    },
+    {
+      "id": "NEG-ISL-03",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["route_computed", "snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["If computed, use mapped foot-allowed ferry legs for every sea crossing, including any route via Jeju."],
+      "mustNot": ["Cross open water without a mapped ferry or invent a bridge between the islands."],
+      "confidence": "low",
+      "rationale": "There is no walking bridge between Marado and Gapado. A route via mapped ferries and Jeju could nevertheless be valid."
+    },
+    {
+      "id": "NEG-MIL-01",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["snap_too_far", "outside_coverage"],
+      "distanceRangeMeters": null,
+      "must": ["Return no route into the restricted Gyeryongdae compound."],
+      "mustNot": ["Enter a military area or pass a restricted gate or node."],
+      "confidence": "medium",
+      "rationale": "An unrestricted public walking route into military headquarters should not be offered; exact snapping depends on mapped access."
+    },
+    {
+      "id": "NEG-MIL-02",
+      "expectedOutcome": "no_route",
+      "alsoAcceptable": ["snap_too_far", "outside_coverage"],
+      "distanceRangeMeters": null,
+      "must": ["Return no unrestricted walking route to Panmunjom."],
+      "mustNot": ["Enter a military or civilian-control area or pass a restricted node."],
+      "confidence": "high",
+      "rationale": "Civilian access to the JSA is controlled and is not an ordinary pedestrian route."
+    },
+    {
+      "id": "NEG-MIL-03",
+      "expectedOutcome": "snap_too_far",
+      "alsoAcceptable": ["no_route", "outside_coverage"],
+      "distanceRangeMeters": null,
+      "must": ["Return no route along or across the airfield runways."],
+      "mustNot": ["Snap to a military service way as a public walking way or enter a military area."],
+      "confidence": "medium",
+      "rationale": "The runway points should have no nearby public pedestrian network; the exact failure class depends on restricted-way handling."
+    },
+    {
+      "id": "NEG-EXP-01",
+      "expectedOutcome": "snap_too_far",
+      "alsoAcceptable": ["outside_coverage", "no_route"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking route between the bridge-deck points."],
+      "mustNot": ["Treat Incheon Bridge's expressway carriageway as pedestrian-accessible."],
+      "confidence": "high",
+      "rationale": "The offshore bridge deck has only vehicle-only expressway infrastructure nearby."
+    },
+    {
+      "id": "NEG-EXP-02",
+      "expectedOutcome": "snap_too_far",
+      "alsoAcceptable": ["outside_coverage", "no_route"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking route between the bridge-deck points."],
+      "mustNot": ["Treat Gwangan Bridge's vehicle-only carriageway as pedestrian-accessible."],
+      "confidence": "high",
+      "rationale": "These offshore points are on a bridge unavailable to walkers."
+    },
+    {
+      "id": "NEG-EXP-03",
+      "expectedOutcome": "snap_too_far",
+      "alsoAcceptable": ["outside_coverage", "no_route"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking route between the bridge-deck points."],
+      "mustNot": ["Treat Seohae Bridge's expressway carriageway as pedestrian-accessible."],
+      "confidence": "high",
+      "rationale": "The sea crossing is an expressway without pedestrian access."
+    },
+    {
+      "id": "NEG-OUT-01",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry from this South Korea extract."],
+      "mustNot": ["Snap the Kaesong points across the border to distant South Korean ways."],
+      "confidence": "high",
+      "rationale": "Kaesong is outside the specified South Korea extract."
+    },
+    {
+      "id": "NEG-OUT-02",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry from this South Korea extract."],
+      "mustNot": ["Snap the Tsushima points across the sea to Korean ways."],
+      "confidence": "high",
+      "rationale": "Tsushima is in Japan and outside the specified extract."
+    },
+    {
+      "id": "NEG-OUT-03",
+      "expectedOutcome": "outside_coverage",
+      "alsoAcceptable": ["snap_too_far"],
+      "distanceRangeMeters": null,
+      "must": ["Return no walking geometry from this South Korea extract."],
+      "mustNot": ["Snap the Pyongyang points to distant South Korean ways."],
+      "confidence": "high",
+      "rationale": "Pyongyang is outside the specified South Korea extract."
+    },
+    {
+      "id": "NEG-LIM-01",
+      "expectedOutcome": "rejected_before_engine",
+      "alsoAcceptable": [],
+      "distanceRangeMeters": null,
+      "must": ["Apply the 30000 m straight-line leg limit before calling the engine."],
+      "mustNot": ["Return a computed route or report an engine search outcome."],
+      "confidence": "high",
+      "rationale": "The approximately 32 km straight-line distance exceeds the stated request limit."
+    }
+  ],
+  "acceptanceCriteria": {
+    "pairMatchRule": "A full match has the primary outcome, satisfies every applicable must and mustNot condition, and, for a computed route, has distance within the registered range and both snap distances at most 120 m. A partial match has an explicitly listed alternative outcome with all applicable conditions satisfied; or has the primary computed outcome with all conditions satisfied and a distance no more than 25% outside one end of its range. Where the primary outcome is non-route and route_computed is explicitly acceptable, the route is partial only if its stated conditional conditions hold and it is within the 250000 m route limit. All other results are mismatches. Any computed route with foot=no metres, access=private/no metres, a restricted node, an unauthorized military-area passage, an unsupported water crossing, or a pedestrian-prohibited bridge passage is a mismatch regardless of outcome or distance. A time-conditional way is not automatically prohibited because the request supplies no travel time; its presence must be reported and cannot establish that the venue is currently open. HTTP 200 has no bearing on pair matching.",
+    "perStratum": "Score a full match as 1, a partial match as 0.5, and a mismatch as 0. A stratum meets its bar when its score is at least 75% of its pair count, rounded up to the nearest 0.5 point; a one-pair stratum requires a full match. The stratum names and counts are: urban-core 11, suburban 4, mountain-trail 3, rural 2, riverside 4, campus-apartment 4, military-avoidance 2, access-restricted 1, bridge-foot-restricted 1, stairs 5, underpass 1, crosswalk 5, bridge-pedestrian 5, elevated-walkway 1, ferry 3, negative-sea-island 6, bridge-motorway-only 4, park 6, access-time 4, negative-military 3, negative-expressway-only 3, negative-outside-coverage 3, negative-request-limit 1.",
+    "requiredStrata": ["urban-core", "suburban", "mountain-trail", "rural", "riverside", "campus-apartment", "military-avoidance", "access-restricted", "bridge-foot-restricted", "stairs", "underpass", "crosswalk", "bridge-pedestrian", "elevated-walkway", "ferry", "negative-sea-island", "bridge-motorway-only", "park", "access-time", "negative-military", "negative-expressway-only", "negative-outside-coverage", "negative-request-limit"],
+    "disqualifying": ["Any computed route uses foot=no or access=private/no metres or passes a restricted node.", "Any computed route enters an unauthorized military area.", "Any computed route crosses open water without a connected pedestrian-accessible bridge or mapped foot-allowed ferry.", "Any computed route uses a pedestrian-prohibited bridge, expressway, or vehicle-only tunnel.", "NEG-LIM-01 is not rejected_before_engine.", "A far-offshore or outside-extract negative control returns a computed route."],
+    "overall": "There are 82 pairs. Adequate requires no disqualifying result, a total score of at least 70, and every required stratum meeting its bar. Adequate with limits requires no disqualifying result, a total score of at least 62, all of crosswalk, bridge-pedestrian, bridge-foot-restricted, bridge-motorway-only, military-avoidance, negative-military, negative-expressway-only, negative-outside-coverage, negative-sea-island and negative-request-limit meeting their bars, and no more than three other required strata below their bars. Every other result is inadequate.",
+    "sampleDesignAssumptions": "The stated OSM extract and foot-v1 graph identity are fixed for grading. Coordinates are rounded landmark locations, so a legal snap of up to 120 m and reasonable choice among nearby entrances or sidewalks are acceptable. Distance ranges are deliberately broad because exact OSM paths, gates, crossing placement, trail connections, ferry relations and access tags cannot be inspected at registration. A correct route follows connected pedestrian-permitted OSM ways; geometry cannot jump between levels or across water. A venue with opening hours or admission conditions may yield geometric connectivity without asserting availability at any particular time, since no departure time is supplied."
+  }
+}

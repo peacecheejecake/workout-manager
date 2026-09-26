@@ -41,9 +41,19 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { cpus, homedir, tmpdir, totalmem } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createConnection } from 'node:net';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -115,7 +125,10 @@ type Stratum =
 
 interface SamplePair {
   readonly id: string;
-  readonly stratum: Stratum;
+  /** One of {@link Stratum} for the built-in sample; free text from a `--pairs` file. */
+  readonly stratum: string;
+  /** Region label from a `--pairs` file. Not used by the built-in sample. */
+  readonly region?: string;
   readonly from: { readonly label: string; readonly position: Position };
   readonly to: { readonly label: string; readonly position: Position };
   /** What the independent reviewer should look at. Not an expected result. */
@@ -128,7 +141,7 @@ interface SamplePair {
  * the network and the snap distance is reported. No personal GPS data is used.
  * The order and the ids are fixed so a rerun is comparable.
  */
-const samplePairs: readonly SamplePair[] = [
+const samplePairs: readonly (SamplePair & { readonly stratum: Stratum })[] = [
   {
     id: 'URB-SEL-01',
     stratum: 'dense-urban-seoul',
@@ -407,13 +420,97 @@ function item<T>(list: readonly T[], index: number): T {
   return value;
 }
 
-function parseArguments(argv: readonly string[]): { reportPath: string } | null {
-  const reportName = argv.indexOf('--report-name');
-  const expected = reportName === -1 ? 1 : 3;
-  if (argv.length !== expected || !argv.includes('--execute')) return null;
-  if (reportName !== -1 && reportName + 1 >= argv.length) return null;
+interface Options {
+  readonly reportPath: string;
+  /** A sample file to run instead of the built-in pairs (M0-06b coverage review). */
+  readonly pairsPath: string | null;
+}
+
+function parseArguments(argv: readonly string[]): Options | 'list-pairs' | null {
+  if (argv.length === 1 && argv[0] === '--list-pairs') return 'list-pairs';
+  if (!argv.includes('--execute')) return null;
+  let pairsPath: string | null = null;
+  const seen = new Set<string>();
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = item(argv, index);
+    if (seen.has(flag)) return null;
+    seen.add(flag);
+    if (flag === '--execute') continue;
+    if (flag !== '--report-name' && flag !== '--pairs') return null;
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith('--')) return null;
+    if (flag === '--pairs') pairsPath = resolve(value);
+    index += 1;
+  }
   // A relocated run must name its own report (M2-01af F3), checked before anything starts.
-  return { reportPath: probeReportPath(argv, CANONICAL_REPORT) };
+  const reportPath = probeReportPath(argv, CANONICAL_REPORT);
+  // A different sample is a different record: it never lands in the canonical report either.
+  if (pairsPath !== null && (!seen.has('--report-name') || reportPath.endsWith(CANONICAL_REPORT)))
+    throw new Error('PAIRS_FILE_NEEDS_ITS_OWN_REPORT: pass --report-name other than the canonical');
+  return { reportPath, pairsPath };
+}
+
+/** The built-in sample in the `--pairs` file shape, so a review sample can start from it. */
+function listPairs(): string {
+  const pairs = samplePairs.map((pair) => ({
+    id: pair.id,
+    stratum: pair.stratum,
+    description: pair.reviewerFocus,
+    from: pair.from,
+    to: pair.to,
+  }));
+  return `${JSON.stringify({ pairs }, null, 2)}\n`;
+}
+
+function textField(value: unknown, pattern: RegExp, name: string): string {
+  if (typeof value !== 'string' || !pattern.test(value)) throw new Error(`PAIRS_FILE_BAD_${name}`);
+  return value;
+}
+
+function endpointField(value: unknown, name: string): SamplePair['from'] {
+  const endpoint = value as { label?: unknown; position?: unknown } | null;
+  const position = endpoint?.position;
+  if (
+    !isPosition(position) ||
+    position.length !== 2 ||
+    !position.every(Number.isFinite) ||
+    Math.abs(position[0]) > 180 ||
+    Math.abs(position[1]) > 90
+  )
+    throw new Error(`PAIRS_FILE_BAD_${name}_POSITION`);
+  return {
+    label: textField(endpoint?.label, /^.{1,80}$/u, `${name}_LABEL`),
+    position: [position[0], position[1]],
+  };
+}
+
+/**
+ * Reads a `--pairs` file: `{ "pairs": [{ id, stratum, region?, description, from, to }] }` with
+ * `from`/`to` as `{ label, position: [longitude, latitude] }`. Everything else in the file is
+ * ignored, so a blinded review file (ids, strata, landmark descriptions, coordinates) is a valid
+ * input and nothing here reads an expectation.
+ */
+async function loadPairs(path: string): Promise<{ pairs: SamplePair[]; sha256: string }> {
+  const bytes = await readFile(path);
+  const parsed = JSON.parse(bytes.toString('utf8')) as { pairs?: unknown };
+  if (!Array.isArray(parsed.pairs) || parsed.pairs.length === 0 || parsed.pairs.length > 200)
+    throw new Error('PAIRS_FILE_NEEDS_1_TO_200_PAIRS');
+  const pairs = parsed.pairs.map((raw: unknown): SamplePair => {
+    const entry = raw as Record<string, unknown>;
+    return {
+      id: textField(entry.id, /^[A-Z0-9-]{1,32}$/, 'ID'),
+      stratum: textField(entry.stratum, /^[a-z0-9-]{1,48}$/, 'STRATUM'),
+      ...(entry.region === undefined
+        ? {}
+        : { region: textField(entry.region, /^.{1,40}$/u, 'REGION') }),
+      from: endpointField(entry.from, 'FROM'),
+      to: endpointField(entry.to, 'TO'),
+      reviewerFocus: textField(entry.description, /^.{1,300}$/u, 'DESCRIPTION'),
+    };
+  });
+  if (new Set(pairs.map((pair) => pair.id)).size !== pairs.length)
+    throw new Error('PAIRS_FILE_DUPLICATE_ID');
+  return { pairs, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
 /**
@@ -546,8 +643,14 @@ function accessClass(tags: Tags): string | null {
 
 const reportedTagKeys = [
   'highway',
+  'name',
   'foot',
   'access',
+  'access:conditional',
+  'foot:conditional',
+  'opening_hours',
+  'footway',
+  'crossing',
   'sidewalk',
   'barrier',
   'indoor',
@@ -559,6 +662,18 @@ const reportedTagKeys = [
   'military',
   'sac_scale',
 ] as const;
+
+/**
+ * Whether the way carries a time condition the serving profile does not model (M0-06b coverage
+ * review): `access:conditional`, `foot:conditional` or `opening_hours`.
+ */
+function timeConditional(tags: Tags): boolean {
+  return (
+    tags['access:conditional'] !== undefined ||
+    tags['foot:conditional'] !== undefined ||
+    tags.opening_hours !== undefined
+  );
+}
 
 function reportedTags(tags: Tags): Record<string, string> {
   const picked: Record<string, string> = {};
@@ -613,6 +728,12 @@ async function buildTagIndex(scratch: string): Promise<TagIndex> {
     'w/indoor',
     'w/route=ferry',
     'w/sac_scale',
+    // Coverage review (M0-06b): crossings and time-conditional access, reported only.
+    'w/footway=crossing',
+    'w/access:conditional',
+    'w/foot:conditional',
+    'w/opening_hours',
+    'n/highway=crossing',
     'n/foot',
     'n/access',
     'n/barrier',
@@ -654,7 +775,7 @@ async function buildTagIndex(scratch: string): Promise<TagIndex> {
     const geometry = feature.geometry;
     if (!geometry) continue;
     if (geometry.type === 'Point' && isPosition(geometry.coordinates)) {
-      if (accessClass(tags) !== null)
+      if (accessClass(tags) !== null || tags.highway === 'crossing')
         nodes.push({ id, tags, position: [geometry.coordinates[0], geometry.coordinates[1]] });
       continue;
     }
@@ -685,7 +806,12 @@ async function buildTagIndex(scratch: string): Promise<TagIndex> {
         bump(`non-highway way with indoor=${tags.indoor}`, meters);
       }
       if (tags.route === 'ferry') bump('route=ferry', meters);
-      if (klass !== null || tags.route === 'ferry') ways.push({ id, tags, coordinates });
+      const crossing = highway !== undefined && tags.footway === 'crossing';
+      const conditional = highway !== undefined && timeConditional(tags);
+      if (crossing) bump('highway way with footway=crossing', meters);
+      if (conditional) bump('highway way with a time condition', meters);
+      if (klass !== null || tags.route === 'ferry' || crossing || conditional)
+        ways.push({ id, tags, coordinates });
       continue;
     }
     if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
@@ -716,7 +842,12 @@ async function buildTagIndex(scratch: string): Promise<TagIndex> {
   const statistics: Record<string, unknown> = {};
   for (const [key, value] of [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)))
     statistics[key] = { count: value.count, kilometers: Number((value.meters / 1000).toFixed(2)) };
-  statistics['restricted or access-tagged nodes indexed'] = nodes.length;
+  statistics['restricted or access-tagged nodes indexed'] = nodes.filter(
+    (node) => accessClass(node.tags) !== null,
+  ).length;
+  statistics['highway=crossing nodes indexed'] = nodes.filter(
+    (node) => node.tags.highway === 'crossing',
+  ).length;
   return { ways, nodes, areas, statistics };
 }
 
@@ -790,6 +921,17 @@ function indexSegments(ways: readonly TaggedWay[]): Map<string, IndexedSegment[]
   return grid;
 }
 
+function indexNodes(nodes: readonly TaggedNode[]): Map<string, TaggedNode[]> {
+  const grid = new Map<string, TaggedNode[]>();
+  for (const node of nodes) {
+    const key = cellKey(node.position[0], node.position[1]);
+    const bucket = grid.get(key) ?? [];
+    bucket.push(node);
+    grid.set(key, bucket);
+  }
+  return grid;
+}
+
 function neighbourKeys(position: Position): string[] {
   const x = Math.floor(position[0] / cellDegrees);
   const y = Math.floor(position[1] / cellDegrees);
@@ -849,6 +991,12 @@ interface TagCheck {
     ferryMeters: number;
     restrictedNodesPassed: number;
     militaryAreaMeters: number;
+    /** Along `footway=crossing` ways. */
+    crossingWayMeters: number;
+    /** `highway=crossing` nodes the route passes. */
+    crossingNodesPassed: number;
+    /** Along highway ways with `access:conditional`, `foot:conditional` or `opening_hours`. */
+    timeConditionMeters: number;
   };
 }
 
@@ -856,6 +1004,7 @@ function checkRouteTags(
   route: readonly Position[],
   index: TagIndex,
   grid: Map<string, IndexedSegment[]>,
+  nodeGrid: Map<string, TaggedNode[]>,
 ): TagCheck {
   const alongWay = new Map<string, { way: TaggedWay; meters: number }>();
   const insideArea = new Map<string, { area: TaggedArea; meters: number }>();
@@ -882,15 +1031,15 @@ function checkRouteTags(
         insideArea.set(area.id, { area, meters: entry.meters + meters });
       }
   }
-  const nodesOnRoute = index.nodes
-    .filter((node) =>
-      route.some(
-        (vertex) =>
-          Math.abs(vertex[0] - node.position[0]) < 0.0001 &&
-          Math.abs(vertex[1] - node.position[1]) < 0.0001 &&
-          haversineMeters(vertex, node.position) <= nodeMatchToleranceMeters,
-      ),
-    )
+  // Grid lookup: the national extract has far too many crossing nodes for a scan per route.
+  const passed = new Map<string, TaggedNode>();
+  for (const vertex of route)
+    for (const key of neighbourKeys(vertex))
+      for (const node of nodeGrid.get(key) ?? [])
+        if (haversineMeters(vertex, node.position) <= nodeMatchToleranceMeters)
+          passed.set(node.id, node);
+  const nodesOnRoute = [...passed.values()]
+    .sort((x, y) => x.id.localeCompare(y.id))
     .map((node) => ({
       nodeId: node.id,
       accessClass: accessClass(node.tags),
@@ -938,12 +1087,15 @@ function checkRouteTags(
           !klass.includes(' with foot='),
       ),
       ferryMeters: sum((_klass, tags) => tags.route === 'ferry'),
-      restrictedNodesPassed: nodesOnRoute.length,
+      restrictedNodesPassed: nodesOnRoute.filter((node) => node.accessClass !== null).length,
       militaryAreaMeters: Number(
         militaryAreasEntered
           .reduce((total, entry) => total + entry.routeMetersInside, 0)
           .toFixed(1),
       ),
+      crossingWayMeters: sum((_klass, tags) => tags.footway === 'crossing'),
+      crossingNodesPassed: nodesOnRoute.filter((node) => node.tags.highway === 'crossing').length,
+      timeConditionMeters: sum((_klass, tags) => timeConditional(tags)),
     },
   };
 }
@@ -952,7 +1104,17 @@ function checkRouteTags(
 // Supplementary engine request: details and snap distances
 // ---------------------------------------------------------------------------------------
 
-const detailKeys = ['road_class', 'road_environment', 'road_access', 'surface'] as const;
+/**
+ * `street_name` (M0-06b coverage review) is the OSM `name` of the edges, from the graph's
+ * key-value store: how a reviewer sees which named bridge or street a route used.
+ */
+const detailKeys = [
+  'road_class',
+  'road_environment',
+  'road_access',
+  'surface',
+  'street_name',
+] as const;
 
 interface EngineDetailView {
   readonly httpStatus: number;
@@ -1035,10 +1197,16 @@ async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
+  if (options === 'list-pairs') {
+    process.stdout.write(listPairs());
+    return;
+  }
   if (!options) {
     console.log(
       'Opt-in only: node --import tsx scripts/probe-routing-korea-coverage.mts --execute ' +
-        '[--report-name <file>.json] (required with ROUTING_GRAPH_ROOT). ' +
+        '[--report-name <file>.json] (required with ROUTING_GRAPH_ROOT) ' +
+        '[--pairs <file>.json] (a sample file instead of the built-in pairs; needs --report-name). ' +
+        '--list-pairs prints the built-in pairs in the --pairs shape and starts nothing. ' +
         'Runs the self-hosted GraphHopper engine on loopback 8997/8998 on a verified copy of the deployed graph ' +
         'and records an ungraded Korean coverage evidence set. Hold the shared harness lock while it runs. ' +
         'Never use as CI.',
@@ -1046,6 +1214,11 @@ async function main() {
     return;
   }
   if (process.env.CI) throw new Error('Routing engine runs are disabled in CI');
+  // Read and checked before the engine starts, so a bad file costs nothing.
+  const sample =
+    options.pairsPath === null
+      ? { pairs: samplePairs, source: 'built-in', sha256: null }
+      : { ...(await loadPairs(options.pairsPath)), source: basename(options.pairsPath) };
   for (const required of [extractPath, jarPath, routingGraphConfig, routingGraphDirectory]) {
     try {
       await stat(required);
@@ -1060,13 +1233,20 @@ async function main() {
   // The scratch directory (graph copy, osmium exports) goes on every path out, a failed run
   // included (M0-06b review).
   try {
-    await collect(scratch, options.reportPath);
+    await collect(scratch, options.reportPath, sample);
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
 }
 
-async function collect(scratch: string, reportPath: string) {
+interface Sample {
+  readonly pairs: readonly SamplePair[];
+  /** `built-in`, or the file name of the `--pairs` file (never a host path). */
+  readonly source: string;
+  readonly sha256: string | null;
+}
+
+async function collect(scratch: string, reportPath: string, sample: Sample) {
   const redact = makeRedactor([
     scratch,
     routingGraphRoot,
@@ -1107,6 +1287,7 @@ async function collect(scratch: string, reportPath: string) {
 
   const tagIndex = await buildTagIndex(scratch);
   const grid = indexSegments(tagIndex.ways);
+  const nodeGrid = indexNodes(tagIndex.nodes);
   const headerInfo = JSON.parse(await run('osmium', ['fileinfo', '--json', extractPath])) as {
     header?: { boxes?: unknown };
   };
@@ -1149,7 +1330,7 @@ async function collect(scratch: string, reportPath: string) {
     });
 
     let revision = 0;
-    for (const pair of samplePairs) {
+    for (const pair of sample.pairs) {
       revision += 1;
       const request: WalkingRouteRequest = {
         schemaVersion: 1,
@@ -1179,6 +1360,7 @@ async function collect(scratch: string, reportPath: string) {
       results.push({
         pairId: pair.id,
         stratum: pair.stratum,
+        region: pair.region ?? null,
         from: pair.from,
         to: pair.to,
         straightLineMeters: Number(
@@ -1195,7 +1377,7 @@ async function collect(scratch: string, reportPath: string) {
           ? computed.snappedWaypoints.map((entry) => Number(entry.snapDistanceMeters.toFixed(2)))
           : null,
         engineDetailView: detail,
-        tagCheck: geometry ? checkRouteTags(geometry, tagIndex, grid) : null,
+        tagCheck: geometry ? checkRouteTags(geometry, tagIndex, grid, nodeGrid) : null,
         latencyMs,
         graphBuildId: result?.computation.graph.graphBuildId ?? null,
         geometryPoints: geometry?.length ?? null,
@@ -1225,8 +1407,8 @@ async function collect(scratch: string, reportPath: string) {
   const verifiedAgain = await loadVerifiedRoutingGraph(routingGraphDirectory);
   if (verifiedAgain.manifest.graphContentSha256 !== deployed.manifest.graphContentSha256)
     problems.push('the deployed graph no longer verifies against its manifest');
-  if (results.length !== samplePairs.length)
-    problems.push(`ran ${results.length}/${samplePairs.length} pairs`);
+  if (results.length !== sample.pairs.length)
+    problems.push(`ran ${results.length}/${sample.pairs.length} pairs`);
   if (!results.some((entry) => entry.outcome === 'route_computed'))
     problems.push('no pair produced a route, so the probe measured nothing');
 
@@ -1247,6 +1429,11 @@ async function collect(scratch: string, reportPath: string) {
       tagCheck: `Ways tagged foot/access (and route=ferry), foot/access/barrier nodes and military areas exported from the same extract with osmium. A route segment counts as running along a way when its midpoint is within ${wayMatchToleranceMeters} m of a way segment and the directions differ by at most ${wayMatchMaxAngleDegrees} degrees. A route vertex within ${nodeMatchToleranceMeters} m of a tagged node counts as passing it. A military area counts when a route segment midpoint lies inside it. These are geometric matches against OSM tags, not ground truth.`,
       coordinates:
         'Synthetic, rounded points at public landmarks chosen by hand; approximate on purpose. No personal GPS data.',
+    },
+    sample: {
+      source: sample.source,
+      pairsFileSha256: sample.sha256,
+      pairs: sample.pairs.length,
     },
     machine: {
       platform: process.platform,

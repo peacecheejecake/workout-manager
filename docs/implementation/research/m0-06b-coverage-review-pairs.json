@@ -1,0 +1,1184 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Blinded sample for the independent Korean pedestrian routing coverage review (M0-06b, matrix P8-coverage). Contains no engine result and no expected result.",
+  "coordinates": "[longitude, latitude], WGS84. Synthetic, rounded points at public landmarks chosen by hand; approximate on purpose. No personal GPS data.",
+  "system": {
+    "engine": "Self-hosted GraphHopper 10.0, pedestrian profile foot-v1 (flexible, no contraction hierarchies)",
+    "data": "OpenStreetMap, Geofabrik South Korea extract south-korea-260901 (road data 2026-09-01)",
+    "outcomes": [
+      "route_computed",
+      "no_route",
+      "outside_coverage",
+      "snap_too_far",
+      "timeout",
+      "compute_budget_exceeded",
+      "rejected_before_engine"
+    ],
+    "outcomeMeaning": {
+      "route_computed": "a walking route was returned",
+      "no_route": "both ends are on the network but there is no walking connection",
+      "outside_coverage": "at least one point has no pedestrian network near it at all",
+      "snap_too_far": "a point would have to move more than 120 m onto the network",
+      "timeout": "the 8 s deadline elapsed",
+      "compute_budget_exceeded": "the engine search budget (1,000,000 visited nodes) was exhausted",
+      "rejected_before_engine": "the request broke a contract limit and the engine was not called"
+    },
+    "limits": {
+      "maxSnapMeters": 120,
+      "maxLegStraightLineMeters": 30000,
+      "maxRouteDistanceMeters": 250000,
+      "deadlineMilliseconds": 8000,
+      "maxEngineVisitedNodes": 1000000
+    }
+  },
+  "pairs": [
+    {
+      "id": "URB-SEL-01",
+      "stratum": "urban-core",
+      "region": "서울",
+      "description": "서울 강남 도심: 강남역에서 역삼역까지(테헤란로)",
+      "from": {
+        "label": "강남역",
+        "position": [127.0276, 37.4979]
+      },
+      "to": {
+        "label": "역삼역",
+        "position": [127.0364, 37.5006]
+      }
+    },
+    {
+      "id": "URB-SEL-02",
+      "stratum": "urban-core",
+      "region": "서울",
+      "description": "서울 명동: 명동성당에서 남대문시장까지",
+      "from": {
+        "label": "명동성당",
+        "position": [126.987, 37.5633]
+      },
+      "to": {
+        "label": "남대문시장",
+        "position": [126.9776, 37.5592]
+      }
+    },
+    {
+      "id": "URB-SEL-03",
+      "stratum": "urban-core",
+      "region": "서울",
+      "description": "서울 마포: 홍대입구역에서 합정역까지",
+      "from": {
+        "label": "홍대입구역",
+        "position": [126.9245, 37.5572]
+      },
+      "to": {
+        "label": "합정역",
+        "position": [126.9139, 37.5496]
+      }
+    },
+    {
+      "id": "URB-SEL-04",
+      "stratum": "urban-core",
+      "region": "서울",
+      "description": "서울역에서 강남역까지(한강을 건너는 긴 도심 보행)",
+      "from": {
+        "label": "서울역",
+        "position": [126.9707, 37.5547]
+      },
+      "to": {
+        "label": "강남역",
+        "position": [127.0276, 37.4979]
+      }
+    },
+    {
+      "id": "URB-BSN-01",
+      "stratum": "urban-core",
+      "region": "부산",
+      "description": "부산 서면역에서 전포카페거리까지",
+      "from": {
+        "label": "부산 서면역",
+        "position": [129.0592, 35.1578]
+      },
+      "to": {
+        "label": "부산 전포카페거리",
+        "position": [129.0648, 35.1555]
+      }
+    },
+    {
+      "id": "URB-BSN-02",
+      "stratum": "urban-core",
+      "region": "부산",
+      "description": "해운대해수욕장에서 해운대역까지",
+      "from": {
+        "label": "해운대해수욕장",
+        "position": [129.1604, 35.1587]
+      },
+      "to": {
+        "label": "해운대역",
+        "position": [129.1589, 35.1633]
+      }
+    },
+    {
+      "id": "SUB-01",
+      "stratum": "suburban",
+      "region": "경기",
+      "description": "성남 분당: 서현역에서 수내역까지",
+      "from": {
+        "label": "성남 서현역",
+        "position": [127.1233, 37.385]
+      },
+      "to": {
+        "label": "성남 수내역",
+        "position": [127.1143, 37.3786]
+      }
+    },
+    {
+      "id": "SUB-02",
+      "stratum": "suburban",
+      "region": "경기",
+      "description": "고양 일산: 정발산역에서 일산호수공원까지",
+      "from": {
+        "label": "고양 정발산역",
+        "position": [126.7733, 37.6597]
+      },
+      "to": {
+        "label": "일산호수공원",
+        "position": [126.766, 37.654]
+      }
+    },
+    {
+      "id": "SUB-03",
+      "stratum": "suburban",
+      "region": "경기",
+      "description": "안양 평촌: 범계역에서 평촌역까지",
+      "from": {
+        "label": "안양 범계역",
+        "position": [126.9728, 37.39]
+      },
+      "to": {
+        "label": "안양 평촌역",
+        "position": [126.9637, 37.3942]
+      }
+    },
+    {
+      "id": "SUB-04",
+      "stratum": "suburban",
+      "region": "수원",
+      "description": "수원 화성행궁에서 팔달문까지",
+      "from": {
+        "label": "수원 화성행궁",
+        "position": [127.0138, 37.2818]
+      },
+      "to": {
+        "label": "수원 팔달문",
+        "position": [127.0172, 37.2772]
+      }
+    },
+    {
+      "id": "MTN-01",
+      "stratum": "mountain-trail",
+      "region": "서울·경기",
+      "description": "북한산: 북한산성 탐방지원센터에서 백운대 정상까지",
+      "from": {
+        "label": "북한산 북한산성 탐방지원센터",
+        "position": [126.948, 37.659]
+      },
+      "to": {
+        "label": "북한산 백운대",
+        "position": [126.9778, 37.6587]
+      }
+    },
+    {
+      "id": "MTN-02",
+      "stratum": "mountain-trail",
+      "region": "서울",
+      "description": "관악산: 관악산 공원 입구에서 연주대까지",
+      "from": {
+        "label": "관악산 공원 입구",
+        "position": [126.9483, 37.471]
+      },
+      "to": {
+        "label": "관악산 연주대",
+        "position": [126.9637, 37.4449]
+      }
+    },
+    {
+      "id": "MTN-03",
+      "stratum": "mountain-trail",
+      "region": "경기",
+      "description": "남한산성: 남문에서 행궁까지",
+      "from": {
+        "label": "남한산성 남문",
+        "position": [127.1788, 37.4705]
+      },
+      "to": {
+        "label": "남한산성 행궁",
+        "position": [127.1811, 37.4786]
+      }
+    },
+    {
+      "id": "RUR-01",
+      "stratum": "rural",
+      "region": "강원",
+      "description": "설악산 국립공원: 설악산 소공원에서 비선대까지",
+      "from": {
+        "label": "설악산 소공원",
+        "position": [128.487, 38.1719]
+      },
+      "to": {
+        "label": "설악산 비선대",
+        "position": [128.473, 38.1615]
+      }
+    },
+    {
+      "id": "RUR-02",
+      "stratum": "rural",
+      "region": "경북",
+      "description": "안동 하회마을에서 낙동강 건너편 부용대까지",
+      "from": {
+        "label": "안동 하회마을",
+        "position": [128.5185, 36.539]
+      },
+      "to": {
+        "label": "안동 부용대",
+        "position": [128.5132, 36.5418]
+      }
+    },
+    {
+      "id": "RIV-01",
+      "stratum": "riverside",
+      "region": "서울",
+      "description": "한강 남안: 반포한강공원에서 잠원한강공원까지",
+      "from": {
+        "label": "반포한강공원",
+        "position": [126.996, 37.5105]
+      },
+      "to": {
+        "label": "잠원한강공원",
+        "position": [127.013, 37.5195]
+      }
+    },
+    {
+      "id": "RIV-02",
+      "stratum": "riverside",
+      "region": "서울",
+      "description": "안양천: 오목교에서 신정교까지",
+      "from": {
+        "label": "안양천 오목교",
+        "position": [126.875, 37.5245]
+      },
+      "to": {
+        "label": "안양천 신정교",
+        "position": [126.865, 37.517]
+      }
+    },
+    {
+      "id": "RIV-03",
+      "stratum": "riverside",
+      "region": "경기",
+      "description": "탄천: 성남 정자역에서 미금역까지",
+      "from": {
+        "label": "성남 정자역",
+        "position": [127.1113, 37.367]
+      },
+      "to": {
+        "label": "성남 미금역",
+        "position": [127.1087, 37.35]
+      }
+    },
+    {
+      "id": "RIV-04",
+      "stratum": "riverside",
+      "region": "부산",
+      "description": "온천천: 부산 동래역에서 온천장역까지",
+      "from": {
+        "label": "부산 동래역",
+        "position": [129.0784, 35.2055]
+      },
+      "to": {
+        "label": "부산 온천장역",
+        "position": [129.086, 35.2203]
+      }
+    },
+    {
+      "id": "UNI-01",
+      "stratum": "campus-apartment",
+      "region": "서울",
+      "description": "서울대 정문에서 중앙도서관까지(캠퍼스 내부)",
+      "from": {
+        "label": "서울대 정문",
+        "position": [126.9519, 37.4664]
+      },
+      "to": {
+        "label": "서울대 중앙도서관",
+        "position": [126.9526, 37.4596]
+      }
+    },
+    {
+      "id": "UNI-02",
+      "stratum": "campus-apartment",
+      "region": "서울",
+      "description": "연세대 정문에서 언더우드관까지(캠퍼스 내부)",
+      "from": {
+        "label": "연세대 정문",
+        "position": [126.9369, 37.5596]
+      },
+      "to": {
+        "label": "연세대 언더우드관",
+        "position": [126.9391, 37.5664]
+      }
+    },
+    {
+      "id": "APT-01",
+      "stratum": "campus-apartment",
+      "region": "서울",
+      "description": "압구정 현대아파트 단지 내부에서 압구정역까지",
+      "from": {
+        "label": "압구정 현대아파트 단지 내부",
+        "position": [127.0265, 37.532]
+      },
+      "to": {
+        "label": "압구정역",
+        "position": [127.0285, 37.527]
+      }
+    },
+    {
+      "id": "APT-02",
+      "stratum": "campus-apartment",
+      "region": "서울",
+      "description": "잠실 아파트 단지 내부에서 잠실새내역까지",
+      "from": {
+        "label": "잠실 아파트 단지 내부",
+        "position": [127.08, 37.514]
+      },
+      "to": {
+        "label": "잠실새내역",
+        "position": [127.0864, 37.5116]
+      }
+    },
+    {
+      "id": "ACC-MIL-01",
+      "stratum": "military-avoidance",
+      "region": "서울",
+      "description": "삼각지역에서 이촌역까지. 두 점 사이 직선이 옛 용산 미군기지 부지를 지난다",
+      "from": {
+        "label": "삼각지역",
+        "position": [126.9731, 37.5349]
+      },
+      "to": {
+        "label": "이촌역",
+        "position": [126.9752, 37.5218]
+      }
+    },
+    {
+      "id": "ACC-MIL-02",
+      "stratum": "military-avoidance",
+      "region": "경기",
+      "description": "서울공항(군 비행장) 서측에서 동측까지",
+      "from": {
+        "label": "서울공항 서측",
+        "position": [127.1, 37.445]
+      },
+      "to": {
+        "label": "서울공항 동측",
+        "position": [127.132, 37.442]
+      }
+    },
+    {
+      "id": "ACC-PRV-01",
+      "stratum": "access-restricted",
+      "region": "서울",
+      "description": "청와대로에서 삼청공원까지(청와대 권역 인접)",
+      "from": {
+        "label": "청와대로",
+        "position": [126.975, 37.583]
+      },
+      "to": {
+        "label": "삼청공원",
+        "position": [126.983, 37.59]
+      }
+    },
+    {
+      "id": "ACC-FOOTNO-01",
+      "stratum": "bridge-foot-restricted",
+      "region": "서울",
+      "description": "뚝섬한강공원에서 한강 건너 청담동 한강변까지",
+      "from": {
+        "label": "뚝섬한강공원",
+        "position": [127.069, 37.529]
+      },
+      "to": {
+        "label": "청담동 한강변",
+        "position": [127.056, 37.522]
+      }
+    },
+    {
+      "id": "STR-01",
+      "stratum": "stairs",
+      "region": "서울",
+      "description": "이화마을 계단길: 이화마을에서 낙산공원까지",
+      "from": {
+        "label": "이화마을",
+        "position": [127.007, 37.578]
+      },
+      "to": {
+        "label": "낙산공원",
+        "position": [127.0075, 37.5807]
+      }
+    },
+    {
+      "id": "STR-02",
+      "stratum": "stairs",
+      "region": "서울",
+      "description": "해방촌 108계단 아래에서 위까지",
+      "from": {
+        "label": "해방촌 108계단 아래",
+        "position": [126.985, 37.5445]
+      },
+      "to": {
+        "label": "해방촌 108계단 위",
+        "position": [126.987, 37.547]
+      }
+    },
+    {
+      "id": "UND-01",
+      "stratum": "underpass",
+      "region": "서울",
+      "description": "시청역에서 을지로입구역까지(지하상가·지하보도가 있는 구간)",
+      "from": {
+        "label": "시청역",
+        "position": [126.977, 37.5657]
+      },
+      "to": {
+        "label": "을지로입구역",
+        "position": [126.9826, 37.566]
+      }
+    },
+    {
+      "id": "UND-02",
+      "stratum": "crosswalk",
+      "region": "서울",
+      "description": "강남역 사거리: 강남대로 서측에서 동측까지 대로 횡단",
+      "from": {
+        "label": "강남대로 서측(강남역)",
+        "position": [127.0268, 37.4983]
+      },
+      "to": {
+        "label": "강남대로 동측(강남역)",
+        "position": [127.0287, 37.4975]
+      }
+    },
+    {
+      "id": "BRG-01",
+      "stratum": "bridge-pedestrian",
+      "region": "서울",
+      "description": "반포한강공원에서 잠수교(보행 가능, 홍수 때 통제)를 건너 북단까지",
+      "from": {
+        "label": "반포한강공원",
+        "position": [126.996, 37.5105]
+      },
+      "to": {
+        "label": "잠수교 북단",
+        "position": [126.995, 37.5195]
+      }
+    },
+    {
+      "id": "BRG-02",
+      "stratum": "elevated-walkway",
+      "region": "서울",
+      "description": "서울역 서부에서 회현역까지(서울로7017 고가 보행로 구간)",
+      "from": {
+        "label": "서울역 서부",
+        "position": [126.969, 37.556]
+      },
+      "to": {
+        "label": "회현역",
+        "position": [126.9785, 37.5585]
+      }
+    },
+    {
+      "id": "BRG-03",
+      "stratum": "bridge-pedestrian",
+      "region": "서울",
+      "description": "선유도공원에서 선유교를 건너 양화한강공원까지",
+      "from": {
+        "label": "선유도공원",
+        "position": [126.899, 37.543]
+      },
+      "to": {
+        "label": "양화한강공원",
+        "position": [126.903, 37.539]
+      }
+    },
+    {
+      "id": "FRY-01",
+      "stratum": "ferry",
+      "region": "인천",
+      "description": "인천 월미도 선착장에서 바다 건너 영종도 구읍뱃터까지(정기 도선 운항)",
+      "from": {
+        "label": "인천 월미도 선착장",
+        "position": [126.5975, 37.477]
+      },
+      "to": {
+        "label": "영종도 구읍뱃터",
+        "position": [126.5822, 37.4936]
+      }
+    },
+    {
+      "id": "FRY-03",
+      "stratum": "ferry",
+      "region": "서울",
+      "description": "여의도한강공원 선착장에서 압구정 한강 선착장까지",
+      "from": {
+        "label": "여의도한강공원 선착장",
+        "position": [126.935, 37.5286]
+      },
+      "to": {
+        "label": "압구정 한강 선착장",
+        "position": [127.0207, 37.5362]
+      }
+    },
+    {
+      "id": "FRY-02",
+      "stratum": "ferry",
+      "region": "제주",
+      "description": "제주 성산포항에서 바다 건너 우도 천진항까지(정기 도선 운항)",
+      "from": {
+        "label": "제주 성산포항",
+        "position": [126.9316, 33.4735]
+      },
+      "to": {
+        "label": "우도 천진항",
+        "position": [126.953, 33.494]
+      }
+    },
+    {
+      "id": "NEG-OFFSHORE",
+      "stratum": "negative-sea-island",
+      "region": "서해",
+      "description": "서해 먼바다 두 점",
+      "from": {
+        "label": "서해 해상",
+        "position": [125.5, 36.5]
+      },
+      "to": {
+        "label": "서해 해상",
+        "position": [125.52, 36.52]
+      }
+    },
+    {
+      "id": "URB-DGU-01",
+      "stratum": "urban-core",
+      "region": "대구",
+      "description": "대구 도심: 대구역에서 동성로 보행자 거리까지",
+      "from": {
+        "label": "대구역",
+        "position": [128.5971, 35.876]
+      },
+      "to": {
+        "label": "대구 동성로",
+        "position": [128.595, 35.869]
+      }
+    },
+    {
+      "id": "URB-GJ-01",
+      "stratum": "urban-core",
+      "region": "광주",
+      "description": "광주 도심: 금남로4가역에서 국립아시아문화전당까지",
+      "from": {
+        "label": "금남로4가역",
+        "position": [126.9136, 35.1514]
+      },
+      "to": {
+        "label": "국립아시아문화전당",
+        "position": [126.9195, 35.147]
+      }
+    },
+    {
+      "id": "URB-DJ-01",
+      "stratum": "urban-core",
+      "region": "대전",
+      "description": "대전 원도심: 대전역에서 중앙로역까지",
+      "from": {
+        "label": "대전역",
+        "position": [127.433, 36.3318]
+      },
+      "to": {
+        "label": "대전 중앙로역",
+        "position": [127.4259, 36.3286]
+      }
+    },
+    {
+      "id": "URB-JJ-01",
+      "stratum": "urban-core",
+      "region": "제주",
+      "description": "제주시 도심: 제주시청에서 동문시장까지",
+      "from": {
+        "label": "제주시청",
+        "position": [126.5305, 33.4995]
+      },
+      "to": {
+        "label": "제주 동문시장",
+        "position": [126.5268, 33.5123]
+      }
+    },
+    {
+      "id": "URB-GNG-01",
+      "stratum": "urban-core",
+      "region": "강원",
+      "description": "강릉 도심: 강릉역에서 강릉 중앙시장까지",
+      "from": {
+        "label": "강릉역",
+        "position": [128.8995, 37.764]
+      },
+      "to": {
+        "label": "강릉 중앙시장",
+        "position": [128.897, 37.7548]
+      }
+    },
+    {
+      "id": "XWK-01",
+      "stratum": "crosswalk",
+      "region": "서울",
+      "description": "세종대로 횡단: 교보생명빌딩 앞에서 길 건너 세종문화회관 앞까지",
+      "from": {
+        "label": "교보생명빌딩 앞(세종대로 동측)",
+        "position": [126.978, 37.5707]
+      },
+      "to": {
+        "label": "세종문화회관 앞(세종대로 서측)",
+        "position": [126.9762, 37.5723]
+      }
+    },
+    {
+      "id": "XWK-02",
+      "stratum": "crosswalk",
+      "region": "서울",
+      "description": "세종대로 횡단: 서울광장에서 길 건너 덕수궁 대한문까지",
+      "from": {
+        "label": "서울광장",
+        "position": [126.978, 37.5658]
+      },
+      "to": {
+        "label": "덕수궁 대한문",
+        "position": [126.9767, 37.5658]
+      }
+    },
+    {
+      "id": "XWK-03",
+      "stratum": "crosswalk",
+      "region": "부산",
+      "description": "중앙대로 횡단: 부산역 광장에서 길 건너 초량 차이나타운 입구까지",
+      "from": {
+        "label": "부산역 광장",
+        "position": [129.04, 35.115]
+      },
+      "to": {
+        "label": "초량 차이나타운 입구",
+        "position": [129.0385, 35.1163]
+      }
+    },
+    {
+      "id": "XWK-04",
+      "stratum": "crosswalk",
+      "region": "수원",
+      "description": "교차로 대각 횡단: 수원시청역 사거리 북동 모서리에서 남서 모서리까지",
+      "from": {
+        "label": "수원시청역 사거리 북동",
+        "position": [127.0325, 37.2622]
+      },
+      "to": {
+        "label": "수원시청역 사거리 남서",
+        "position": [127.0312, 37.2612]
+      }
+    },
+    {
+      "id": "BRG-04",
+      "stratum": "bridge-pedestrian",
+      "region": "서울",
+      "description": "한강 광진교(보도가 있는 교량) 북단에서 남단까지",
+      "from": {
+        "label": "광진교 북단(광장동)",
+        "position": [127.108, 37.5465]
+      },
+      "to": {
+        "label": "광진교 남단(천호동)",
+        "position": [127.12, 37.5426]
+      }
+    },
+    {
+      "id": "BRG-05",
+      "stratum": "bridge-pedestrian",
+      "region": "부산",
+      "description": "영도대교(보도가 있는 교량)로 남포동에서 영도까지",
+      "from": {
+        "label": "부산 남포동",
+        "position": [129.0358, 35.0975]
+      },
+      "to": {
+        "label": "영도대교 남단(영도)",
+        "position": [129.0372, 35.093]
+      }
+    },
+    {
+      "id": "BRG-06",
+      "stratum": "bridge-pedestrian",
+      "region": "경북",
+      "description": "안동 월영교(보행 전용 목조 교량) 서단에서 동단까지",
+      "from": {
+        "label": "월영교 서단",
+        "position": [128.7585, 36.5775]
+      },
+      "to": {
+        "label": "월영교 동단",
+        "position": [128.7632, 36.5758]
+      }
+    },
+    {
+      "id": "BRG-MW-01",
+      "stratum": "bridge-motorway-only",
+      "region": "부산",
+      "description": "광안대교(자동차 전용)를 사이에 둔 광안리해수욕장과 해운대 마린시티",
+      "from": {
+        "label": "광안리해수욕장",
+        "position": [129.118, 35.1535]
+      },
+      "to": {
+        "label": "해운대 마린시티",
+        "position": [129.144, 35.1565]
+      }
+    },
+    {
+      "id": "BRG-MW-02",
+      "stratum": "bridge-motorway-only",
+      "region": "인천",
+      "description": "인천대교(고속도로)를 사이에 둔 송도와 영종도 남측",
+      "from": {
+        "label": "송도 센트럴파크",
+        "position": [126.639, 37.3925]
+      },
+      "to": {
+        "label": "영종도 남측 해안",
+        "position": [126.5449, 37.4761]
+      }
+    },
+    {
+      "id": "BRG-MW-03",
+      "stratum": "bridge-motorway-only",
+      "region": "경기·충남",
+      "description": "서해대교(고속도로)를 사이에 둔 평택 포승과 당진 송악",
+      "from": {
+        "label": "평택 포승",
+        "position": [126.8675, 36.9668]
+      },
+      "to": {
+        "label": "당진 송악 한진리",
+        "position": [126.788, 36.94]
+      }
+    },
+    {
+      "id": "BRG-MW-04",
+      "stratum": "bridge-motorway-only",
+      "region": "부산·경남",
+      "description": "거가대교(자동차 전용 해상 교량·해저 터널)를 사이에 둔 가덕도와 거제 장목",
+      "from": {
+        "label": "부산 가덕도",
+        "position": [128.8299, 35.0435]
+      },
+      "to": {
+        "label": "거제 장목면",
+        "position": [128.6957, 34.9622]
+      }
+    },
+    {
+      "id": "STR-03",
+      "stratum": "stairs",
+      "region": "부산",
+      "description": "초량 이바구길 168계단 아래에서 위까지",
+      "from": {
+        "label": "168계단 아래",
+        "position": [129.036, 35.1172]
+      },
+      "to": {
+        "label": "168계단 위",
+        "position": [129.0343, 35.1172]
+      }
+    },
+    {
+      "id": "STR-04",
+      "stratum": "stairs",
+      "region": "부산",
+      "description": "중앙동 40계단 아래에서 위까지",
+      "from": {
+        "label": "40계단 아래",
+        "position": [129.035, 35.1039]
+      },
+      "to": {
+        "label": "40계단 위",
+        "position": [129.0343, 35.104]
+      }
+    },
+    {
+      "id": "STR-05",
+      "stratum": "stairs",
+      "region": "대구",
+      "description": "3·1만세운동길 90계단: 계산성당 쪽 아래에서 청라언덕 위까지",
+      "from": {
+        "label": "3·1운동 계단 아래(계산성당 쪽)",
+        "position": [128.5872, 35.868]
+      },
+      "to": {
+        "label": "청라언덕 위",
+        "position": [128.586, 35.8673]
+      }
+    },
+    {
+      "id": "PRK-01",
+      "stratum": "park",
+      "region": "서울",
+      "description": "서울숲: 서울숲역에서 공원 중앙까지",
+      "from": {
+        "label": "서울숲역",
+        "position": [127.0447, 37.5436]
+      },
+      "to": {
+        "label": "서울숲 공원 중앙",
+        "position": [127.0383, 37.5446]
+      }
+    },
+    {
+      "id": "PRK-02",
+      "stratum": "park",
+      "region": "부산",
+      "description": "부산시민공원 남측에서 북측까지 공원 안",
+      "from": {
+        "label": "부산시민공원 남측",
+        "position": [129.06, 35.164]
+      },
+      "to": {
+        "label": "부산시민공원 북측",
+        "position": [129.056, 35.172]
+      }
+    },
+    {
+      "id": "PRK-03",
+      "stratum": "park",
+      "region": "수원",
+      "description": "광교호수공원: 원천호수 서측에서 신대호수까지",
+      "from": {
+        "label": "광교호수공원 원천호수 서측",
+        "position": [127.06, 37.282]
+      },
+      "to": {
+        "label": "광교호수공원 신대호수",
+        "position": [127.073, 37.29]
+      }
+    },
+    {
+      "id": "PRK-04",
+      "stratum": "park",
+      "region": "대구",
+      "description": "두류공원 서측에서 동측까지",
+      "from": {
+        "label": "두류공원 서측",
+        "position": [128.553, 35.851]
+      },
+      "to": {
+        "label": "두류공원 동측",
+        "position": [128.5625, 35.849]
+      }
+    },
+    {
+      "id": "PRK-05",
+      "stratum": "park",
+      "region": "제주",
+      "description": "한라수목원 입구에서 수목원 안까지",
+      "from": {
+        "label": "한라수목원 입구",
+        "position": [126.485, 33.4699]
+      },
+      "to": {
+        "label": "한라수목원 안",
+        "position": [126.4918, 33.4693]
+      }
+    },
+    {
+      "id": "PRK-06",
+      "stratum": "park",
+      "region": "강원",
+      "description": "강릉 경포대에서 경포호 동측 둘레길까지",
+      "from": {
+        "label": "경포대",
+        "position": [128.8964, 37.7949]
+      },
+      "to": {
+        "label": "경포호 동측",
+        "position": [128.912, 37.799]
+      }
+    },
+    {
+      "id": "TIM-01",
+      "stratum": "access-time",
+      "region": "서울",
+      "description": "선유도공원(운영 시간이 있는 섬 공원): 당산역에서 공원 안까지",
+      "from": {
+        "label": "당산역",
+        "position": [126.9024, 37.5344]
+      },
+      "to": {
+        "label": "선유도공원 안",
+        "position": [126.8985, 37.543]
+      }
+    },
+    {
+      "id": "TIM-02",
+      "stratum": "access-time",
+      "region": "서울",
+      "description": "경복궁(관람 시간·유료, 화요일 휴궁): 광화문 앞에서 경복궁 향원정까지",
+      "from": {
+        "label": "광화문 앞",
+        "position": [126.9769, 37.5745]
+      },
+      "to": {
+        "label": "경복궁 향원정",
+        "position": [126.977, 37.5824]
+      }
+    },
+    {
+      "id": "TIM-03",
+      "stratum": "access-time",
+      "region": "서울",
+      "description": "창덕궁 후원(관람 시간·해설 동반 제한 관람): 돈화문에서 부용지까지",
+      "from": {
+        "label": "창덕궁 돈화문",
+        "position": [126.99, 37.5776]
+      },
+      "to": {
+        "label": "창덕궁 후원 부용지",
+        "position": [126.9929, 37.5817]
+      }
+    },
+    {
+      "id": "TIM-04",
+      "stratum": "access-time",
+      "region": "경북",
+      "description": "경주 불국사(관람 시간·유료): 불국사 버스정류장에서 경내까지",
+      "from": {
+        "label": "불국사 버스정류장",
+        "position": [129.3285, 35.786]
+      },
+      "to": {
+        "label": "불국사 경내",
+        "position": [129.332, 35.7894]
+      }
+    },
+    {
+      "id": "NEG-SEA-02",
+      "stratum": "negative-sea-island",
+      "region": "동해",
+      "description": "동해 먼바다 두 점",
+      "from": {
+        "label": "동해 해상",
+        "position": [129.8, 37.5]
+      },
+      "to": {
+        "label": "동해 해상",
+        "position": [129.82, 37.52]
+      }
+    },
+    {
+      "id": "NEG-SEA-03",
+      "stratum": "negative-sea-island",
+      "region": "제주 남쪽",
+      "description": "제주 남쪽 먼바다 두 점",
+      "from": {
+        "label": "제주 남쪽 해상",
+        "position": [126.9, 33.0]
+      },
+      "to": {
+        "label": "제주 남쪽 해상",
+        "position": [126.92, 33.02]
+      }
+    },
+    {
+      "id": "NEG-ISL-01",
+      "stratum": "negative-sea-island",
+      "region": "경북 울릉",
+      "description": "독도 동도에서 서도(두 섬 사이는 바다, 다리 없음)",
+      "from": {
+        "label": "독도 동도",
+        "position": [131.8694, 37.2396]
+      },
+      "to": {
+        "label": "독도 서도",
+        "position": [131.8647, 37.2419]
+      }
+    },
+    {
+      "id": "NEG-ISL-02",
+      "stratum": "negative-sea-island",
+      "region": "제주",
+      "description": "제주 사계해안에서 무인도 형제섬",
+      "from": {
+        "label": "제주 사계해안",
+        "position": [126.304, 33.229]
+      },
+      "to": {
+        "label": "형제섬(무인도)",
+        "position": [126.3142, 33.2102]
+      }
+    },
+    {
+      "id": "NEG-ISL-03",
+      "stratum": "negative-sea-island",
+      "region": "제주",
+      "description": "마라도에서 가파도(두 섬 모두 본섬과 다리 없음, 정기 도선만)",
+      "from": {
+        "label": "마라도",
+        "position": [126.2672, 33.1185]
+      },
+      "to": {
+        "label": "가파도 선착장",
+        "position": [126.2713, 33.1759]
+      }
+    },
+    {
+      "id": "NEG-MIL-01",
+      "stratum": "negative-military",
+      "region": "충남",
+      "description": "계룡 엄사리에서 계룡대(군 본부) 영내",
+      "from": {
+        "label": "계룡 엄사리",
+        "position": [127.24, 36.292]
+      },
+      "to": {
+        "label": "계룡대 영내",
+        "position": [127.2255, 36.308]
+      }
+    },
+    {
+      "id": "NEG-MIL-02",
+      "stratum": "negative-military",
+      "region": "경기 북부",
+      "description": "파주 임진각에서 판문점(민간인 통제·JSA)",
+      "from": {
+        "label": "임진각",
+        "position": [126.7435, 37.8924]
+      },
+      "to": {
+        "label": "판문점",
+        "position": [126.677, 37.9559]
+      }
+    },
+    {
+      "id": "NEG-MIL-03",
+      "stratum": "negative-military",
+      "region": "경기",
+      "description": "서울공항(군 비행장) 활주로 위 두 점",
+      "from": {
+        "label": "서울공항 활주로",
+        "position": [127.115, 37.446]
+      },
+      "to": {
+        "label": "서울공항 활주로",
+        "position": [127.119, 37.44]
+      }
+    },
+    {
+      "id": "NEG-EXP-01",
+      "stratum": "negative-expressway-only",
+      "region": "인천",
+      "description": "인천대교 해상 구간 상판 위 두 점(고속도로만 있음)",
+      "from": {
+        "label": "인천대교 해상 상판",
+        "position": [126.5668, 37.4137]
+      },
+      "to": {
+        "label": "인천대교 해상 상판",
+        "position": [126.5912, 37.4062]
+      }
+    },
+    {
+      "id": "NEG-EXP-02",
+      "stratum": "negative-expressway-only",
+      "region": "부산",
+      "description": "광안대교 해상 구간 상판 위 두 점(자동차 전용)",
+      "from": {
+        "label": "광안대교 해상 상판",
+        "position": [129.1281, 35.1454]
+      },
+      "to": {
+        "label": "광안대교 해상 상판",
+        "position": [129.13, 35.147]
+      }
+    },
+    {
+      "id": "NEG-EXP-03",
+      "stratum": "negative-expressway-only",
+      "region": "경기·충남",
+      "description": "서해대교 해상 구간 상판 위 두 점(고속도로만 있음)",
+      "from": {
+        "label": "서해대교 해상 상판",
+        "position": [126.8316, 36.9506]
+      },
+      "to": {
+        "label": "서해대교 해상 상판",
+        "position": [126.8409, 36.9518]
+      }
+    },
+    {
+      "id": "NEG-OUT-01",
+      "stratum": "negative-outside-coverage",
+      "region": "북한",
+      "description": "북한 개성 시내 두 점",
+      "from": {
+        "label": "개성",
+        "position": [126.555, 37.97]
+      },
+      "to": {
+        "label": "개성",
+        "position": [126.565, 37.975]
+      }
+    },
+    {
+      "id": "NEG-OUT-02",
+      "stratum": "negative-outside-coverage",
+      "region": "일본",
+      "description": "일본 쓰시마 이즈하라 두 점",
+      "from": {
+        "label": "쓰시마 이즈하라",
+        "position": [129.29, 34.203]
+      },
+      "to": {
+        "label": "쓰시마 이즈하라",
+        "position": [129.295, 34.207]
+      }
+    },
+    {
+      "id": "NEG-OUT-03",
+      "stratum": "negative-outside-coverage",
+      "region": "북한",
+      "description": "북한 평양 시내 두 점",
+      "from": {
+        "label": "평양",
+        "position": [125.754, 39.03]
+      },
+      "to": {
+        "label": "평양",
+        "position": [125.76, 39.035]
+      }
+    },
+    {
+      "id": "NEG-LIM-01",
+      "stratum": "negative-request-limit",
+      "region": "서울·수원",
+      "description": "서울역에서 수원역까지(직선 약 32 km)",
+      "from": {
+        "label": "서울역",
+        "position": [126.9707, 37.5547]
+      },
+      "to": {
+        "label": "수원역",
+        "position": [127.0, 37.266]
+      }
+    }
+  ]
+}

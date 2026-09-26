@@ -1,0 +1,78 @@
+You are the INDEPENDENT REVIEWER of Korean pedestrian (walking) routing coverage for a fitness
+app. This is step 2 of 2: GRADING. In step 1 you pre-registered, before any result existed for
+you, per-pair expectations and acceptance criteria. Now you grade the engine results against
+exactly that pre-registration.
+
+Your working directory contains exactly three files. Read only these; do not read anything
+outside this directory and do not modify anything.
+
+1. `m0-06b-coverage-review-preregistration.txt` (sha256 98ef1ceec76c7039be805c771b6b95fa0698d7eb34f623c3a58ed8c2e28a214b)
+   — YOUR step-1 output, verbatim. Completed 2026-09-26T02:22:22Z, before the engine run.
+2. `m0-06b-coverage-review-pairs.json` (sha256 603f6149384e2f532875bb24c4d29118b8d0f04815fdab1f2a9873d311b6cebf)
+   — the blinded sample you pre-registered against (same JSON content as in step 1; only
+   whitespace re-formatted, which is why the hash differs from the one quoted in step 1).
+3. `m0-06b-coverage-review-results.json` (sha256 07cd7ca812684e6e8a644696cc656dfcd4e1d6ad504d6a008dd586002a925f77)
+   — the engine results, run 2026-09-26T02:22:59Z–02:23:12Z on graph `188b65effcc6ef5c`
+   (see `graph`). A second run at 02:23:55Z gave byte-identical per-pair outcomes, distances,
+   geometry hashes, tag checks and detail views for all 82 pairs.
+
+How to read the results file (facts about the file, not guidance on grades):
+- `results[]` is in the sample order. `outcome` is the production adapter's answer class.
+  `engine_contract_violation` (not in the sample's outcome list) is a real adapter outcome:
+  "the engine answered, but the answer violates the contract — for example a geometry that is
+  just the requested points joined by a straight line, which is the fail-open shape this design
+  refuses to report as success". `rejected_before_engine` means the adapter refused the request
+  before calling the engine (`rejectedBeforeEngine` holds the code).
+- `distanceMeters`, `snapDistancesMeters`, `geometry` belong to the adapter answer (only for
+  `route_computed`).
+- `engineDetailView` is ONE extra direct engine request per pair with the same two points. It
+  exists for failed pairs too (then it may show the route the engine WOULD have returned, and
+  its snap distances), and gives `metersByDetail` per `road_class`, `road_environment` (bridge,
+  tunnel, ferry, ford), `road_access` (car-oriented; NOT pedestrian access), `surface` and
+  `street_name` (OSM `name` of edges; `null` = unnamed).
+- `tagCheck` (only for computed routes) matches the route geometry to OSM ways/nodes/areas of the
+  same extract: a route segment runs along a tagged way when its midpoint is within 1.5 m of it
+  and directions differ by at most 20 degrees; a node is passed within 1.0 m; a military area
+  counts when a segment midpoint lies inside it. `summary` has footNoMeters,
+  accessPrivateOrNoWithoutFootOverrideMeters, accessRestrictedWithFootOverrideMeters,
+  otherAccessValueMeters, ferryMeters, restrictedNodesPassed, militaryAreaMeters,
+  crossingWayMeters, crossingNodesPassed, timeConditionMeters; `waysAlongRoute`, `nodesOnRoute`
+  and `militaryAreasEntered` list the matches with tags. These are geometric matches: a
+  parallel way under or beside a bridge can be matched by mistake.
+- `extractTagStatistics` summarises tag counts in the extract.
+
+Your task:
+1. Grade EVERY pair against your own pre-registered expectation for it: `match`, `partial` or
+   `mismatch`, using your pre-registered `pairMatchRule` exactly, with a one-to-three sentence
+   justification citing the result fields you used (outcome, distance vs your range, the
+   specific must / mustNot conditions and the fields that satisfy or violate them).
+2. Apply your pre-registered `perStratum`, `requiredStrata`, `disqualifying` and `overall` rules
+   to give a per-stratum score and verdict, and an overall verdict: `adequate`,
+   `adequate with limits` or `inadequate`. Show the arithmetic.
+3. You must NOT move your expectations or criteria now that you see results. If you believe a
+   pre-registered expectation or criterion was wrong, you may say so in a separate
+   `criteriaChangesWanted` list, explicitly, with the reason — but grade with the
+   pre-registered version anyway; every such wish counts against the verdict and you must state
+   what the verdict would have been under the changed rule.
+4. List concrete coverage defects (pair id, what is wrong, the evidence field, severity
+   blocker / major / minor) and limits of this review (what the sample or evidence cannot show).
+5. Distinguish engine/data defects from sample-design artefacts (for example a coordinate that
+   was simply badly placed), and say which you think each mismatch is — but this does not
+   change the pre-registered grade.
+
+Final answer: ONE JSON document and nothing else:
+{
+  "reviewer": "<model>",
+  "grading": true,
+  "pairs": [{"id": "...", "grade": "match|partial|mismatch", "score": 1|0.5|0,
+             "disqualifying": true|false, "justification": "..."}],
+  "strata": [{"stratum": "...", "pairs": n, "score": x, "bar": y, "meetsBar": true|false}],
+  "totalScore": x,
+  "disqualifyingResults": ["<pair id: which pre-registered disqualifying rule>"],
+  "overallVerdict": "adequate" | "adequate with limits" | "inadequate",
+  "verdictArithmetic": "...",
+  "criteriaChangesWanted": [{"what": "...", "why": "...", "verdictUnderChange": "..."}],
+  "defects": [{"pairs": ["..."], "defect": "...", "evidence": "...", "severity": "blocker|major|minor", "kind": "engine-or-profile|osm-data|adapter|sample-design"}],
+  "limits": ["..."],
+  "filesRead": ["<every file you read>"]
+}
