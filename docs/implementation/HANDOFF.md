@@ -54,6 +54,9 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. 사용자 결정
 APPROVE를 받고 main `7d54934`로 fast-forward했다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_executed`다.
 `phase/m0-06c`는 [native probe 전체 diff](progress/M0-06c-native-host-addendum.md)의 독립 검토에서
 APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 검증은 `not_executed`, 노드는 `in_progress`다.
+이후 연결된 iPhone에서 서명·설치, 표식 있는 합성 HealthKit 표본의 두 차례 생성·수집·삭제·정리,
+중단·재실행·재설치 복구와 background delivery 설정·해제를 실행했다. 세부 결과와 미확인 항목은
+[실기기 후속 기록](progress/M0-06c-native-host-addendum.md#연결된-iphone-실기기-후속-실행--2026-09-27)에 따로 기록했다.
 `phase/m2-01k`는 반응형 초안·지도 상태·차트↔지도 확대·계정 전환과 늦은 응답·S13 카드 노면·S14 공급자 분리 수용을
 보강했다. 매트릭스는 passed 91 · partial 14 · failed 1 · not_executed 4이며, 부모 노드는 `in_progress`다.
 이 phase 브랜치는 main `9ac6aa1` 대비 전체 독립 검토 1차 지적 둘을 `f12c021`로 고쳤다. 2차 검토는
@@ -111,9 +114,10 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 
 ## 다음 작업 순서
 
-1. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
-   수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가
-   복구될 때까지 `not_executed`다. 제품 native host 통합은 M3-01이다.
+1. **M0-06c 실기기 후속**: 서명·설치, 표식 있는 합성 표본의 생성·수집·삭제·정리,
+   background delivery 설정·해제, 가로 입력 기록은 확보했다. 실제 background wake는 `not_executed`다.
+   미저장 Back 확인은 사용자 보고가 있으나 해당 결정의 probe 이벤트는 없어 기계 기록으로 확정하지 않는다.
+   새 device driver 수정은 phase 독립 검토 후 main에 반영한다. 제품 native host 통합은 M3-01이다.
 2. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
    제품 전체 행이라 partial이다. 실제 호스팅·실기기·공식 Garmin 행도 별도 gate로 남긴다.
 3. **재개 중 받은 사용자 결정**:
@@ -146,8 +150,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
   경로로 구현한다(task-graph EXT-G scope에 기록됨).
 - **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
   Xcode가 활성 developer dir이고 license를 수락했다.
-- **HealthKit 시험 자료(결정·probe 구현, 실기기 미실행):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용한다. 기존 건강 자료는 읽거나 내보내지
-  않는다. 수정 probe는 [별도 기록](progress/M0-06c-native-host-addendum.md)에 있으며, 아직 어떤 표본도 쓰지 않았다.
+- **HealthKit 시험 자료(결정과 후속 실행):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용했다. 기존 건강 자료는 수집·저장·내보내지
+  않았다. 연결된 iPhone에서 표식 있는 두 쌍의 합성 표본을 생성·삭제·정리했다. [별도 기록](progress/M0-06c-native-host-addendum.md)에 OS 호출과 한계를 남겼다.
 - **호스팅·ODbL:** ODbL 이행을 먼저 하고(M0-06b-odbl 노드), 실제 호스팅은 보류한다.
 - **ODbL §4.6 스크립트 공개(결정만, 미구현):** 빌드 스크립트 본문을 서비스의 로그인 불필요 데이터 출처 페이지에서 내려받게 한다(별도 공개
   저장소 없음, manifest의 SHA-256과 같은 바이트).
@@ -182,8 +186,9 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 
 - M0-06b: 한국 보행 경로 coverage·접근 제한 독립 검토, 자체 운영 engine/data 선택·검증,
   OS 한글 IME/물리 touch/성능·배포 조건.
-- M0-06c: 실기기 체크리스트 1–9는 끝났다(위). 남은 것은 합성 표본·outbox/anchor/ack·재설치·중단·재전송·background delivery,
-  제품 native host 통합, 실제 인증 기반 계정 전환.
+- M0-06c: 실기기 체크리스트 1–9와 합성 표본·outbox/anchor/ack·재설치·중단·재전송·background delivery 설정·해제는
+  후속 실행했다. 실제 background wake, 미저장 Back 분기의 기계 기록, 제품 native host 통합,
+  실제 인증 기반 계정 전환은 남았다.
 - EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
   별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내

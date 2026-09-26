@@ -95,3 +95,17 @@ Codex CLI `gpt-6-sol` high/read-only가 `main`
 회귀를 발견하지 못했다. 검토자는 `git diff --check`와 Swift SHA를 직접 확인하고
 제시된 검사·집중 시험·unsigned 빌드를 근거로 삼았다. 실기기 서명·설치와 HealthKit·IME·Back·
 background wake 검증은 모두 **not_executed**이며 M0-06c 노드는 `in_progress`다.
+
+## 연결된 iPhone 실기기 후속 실행 · 2026-09-27
+
+이 절은 위 검토 뒤 별도로 수행한 실행만 기록한다. 이전 시점의 `not_executed` 판정을 소급해서 바꾸지 않는다. 연결된 iPhone 15 Pro Max(iOS 27.0, 개발자 모드·터널 연결)의 device ID, HealthKit UUID, 입력 내용은 기록하지 않는다. 원본 실행 receipt와 화면 캡처는 Git 제외 `verification-logs/m0-06c-device/`에만 보관한다.
+
+- `pnpm build` 15/15 통과 후 임시 Capacitor `prepare`를 실행했다. 처음의 `@workout/mobile-web` 단독 빌드는 의존 package의 미생성 `dist` 때문에 실패했다. Xcode 27의 device 빌드는 `BUILD SUCCEEDED`, error 0, codesign 검증 true였다. Apple Development team `XVT9A9T7RP`, HealthKit·background entitlement와 사용 설명 키가 포함된 `org.workoutmanager.feasibility.deviceprobe`를 실제 기기에 설치·실행했다. 앱 SHA-256은 `5fc12aefb3c8d973634f9d63922996ef1ce7238cade699379d417d6c41d70858`이다.
+- 빈 기준 실행에서 앱 자신의 표식 있는 심박수·운동 표본은 각각 0건이었다. `add`는 2001-01-01 UTC로 날짜를 정한 합성 심박수·걷기 운동을 각각 1건 저장했고, `collect`는 anchor와 2건의 upsert outbox를 영속화했다. `send`는 이 2건을 로컬 대체 수신함에 기록·확인했다. 사용자 기존 건강 기록은 수집·저장·내보내지 않았다. Query가 거부한 범위 밖 삭제 객체는 처리하지 않았다.
+- `enableBackground`는 심박수·운동 두 유형에서 HealthKit OS 호출 `ok`와 영속 상태 `enabled=true`를 반환했다. 앱이 active/inactive일 때 observer callback은 관측됐다. **앱이 중지된 동안 OS가 깨운 background wake는 관측하지 못했으므로 `not_executed`다.** 이후 `disableBackground`와 최종 `cleanup`에서 두 유형의 해제 호출이 `ok`였고, 재시작 뒤에도 `enabled=false`, `cleanupPending=false`였다.
+- 첫 표본 쌍의 `delete`는 사전·사후 수집이 영속화되고 HealthKit 삭제 호출이 유형별 1건씩 성공했으며, 앱 표식 query는 이후 각각 0건이었다. `sendBeforeAck`에서 앱을 강제 종료하자 2건의 tombstone이 outbox에 남았다. 재실행 `send`가 둘을 ack했고 로컬 수신함은 중복 키를 만들지 않았다. 빈 query 단독으로 기기 전체에서 표본이 사라졌다고 단정하지 않으며, 삭제 API의 성공도 함께 기록했다.
+- 둘째 표본 쌍에서는 `collectBeforePersist`로 강제 종료했다. 재실행 때 `collectionPending`에서 복구해 2건의 upsert를 영속화했고, 같은 서명 앱을 다시 설치한 뒤에도 outbox가 유지됐다. 전송·삭제·tombstone 전송을 끝낸 뒤 `cleanup`의 삭제 호출 성공, 표식 query 0/0, outbox 0을 확인했다. 최종 cold launch의 상태도 정리 대기 없음이었고, 별도로 다시 실행한 빈 기준 단계가 표식 표본 0/0으로 끝났다. 첫 빈 기준 호출은 이어진 재실행으로 중단되어 성공 증거에 넣지 않았다. 수신함은 로컬 대체 구현이며 서버 동기화 증거가 아니다.
+- 세로 화면은 기기 캡처에서 확인했다. 가로에서는 probe 기록에 viewport 932×430, 키보드 열린 `visualViewport` 높이 172, 포커스 입력란 아래쪽 85, focus reveal 이벤트 15회와 한국어 입력 길이 변화가 남았다. 사용자는 입력란·커서 가시성과 Back 동작을 정상으로 보고했다. 기록에는 `unsavedInput=false`인 Back 시도만 있고 dirty Back 확인창의 선택·취소·이동 이벤트는 없다. 따라서 **가로 입력의 기기 telemetry와 사용자 관찰은 확보했지만, 미저장 Back 분기의 기계 기록은 미확보**다. 추가 반복 요청 없이 이 한계를 유지한다.
+- 기존 `terminate` 명령은 Xcode 27 프로세스 목록에 bundle ID가 없어 `PROBE_PROCESS_IDENTITY_UNAVAILABLE`로 안전하게 멈췄다. 설치 앱 조회의 정확한 bundle ID·실행 파일 URL과 프로세스의 전체 URL을 일치시키도록 driver를 수정했다. 수정 명령은 실제 probe 프로세스 1개만 종료했고 두 번째 호출은 대상 0개였다. 다른 `App.app` 이름의 프로세스를 고르지 않는 회귀 시험을 추가했다.
+
+Aside 업데이트는 `fetch failed`였으므로 native UI 증거는 `devicectl`·기기 캡처·사용자 관찰로 얻었다. sandbox의 첫 device 목록 조회는 CoreDeviceService timeout이었고, 접근 가능한 실행에서 재시도했다. 제품 native host 통합·실제 서버 동기화·실제 background wake는 여전히 별도 범위다. M0-06c는 `in_progress`를 유지한다.

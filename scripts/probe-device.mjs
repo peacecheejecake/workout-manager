@@ -316,31 +316,36 @@ export function deviceCommandOutcome(result) {
 }
 
 /** A process name or generic App.app path does not establish app ownership. */
-export function probeProcessIds(lookup) {
+export function probeProcessIds(lookup, installedAppLookup) {
   const processes = lookup?.json?.result?.runningProcesses;
   if (lookup?.ok !== true || lookup.json?.info?.outcome !== 'success' || !Array.isArray(processes))
     throw new Error('PROBE_PROCESS_LOOKUP_FAILED');
+  const apps = installedAppLookup?.json?.result?.apps;
+  if (
+    installedAppLookup?.ok !== true ||
+    installedAppLookup.json?.info?.outcome !== 'success' ||
+    !Array.isArray(apps) ||
+    apps.length !== 1 ||
+    apps[0]?.bundleIdentifier !== bundleId ||
+    typeof apps[0]?.url !== 'string' ||
+    !/^file:\/\/\/private\/var\/containers\/Bundle\/Application\/[A-Fa-f0-9-]+\/App\.app\/$/.test(
+      apps[0].url,
+    )
+  )
+    throw new Error('PROBE_APP_IDENTITY_UNAVAILABLE');
 
-  const identified = processes.filter(
-    (value) => typeof value?.bundleIdentifier === 'string' || typeof value?.bundleID === 'string',
-  );
-  if (identified.length !== processes.length) throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
-
-  const matches = identified.filter(
-    (value) => value.bundleIdentifier === bundleId || value.bundleID === bundleId,
-  );
+  // Xcode 27 lists only executable URLs and PIDs, without bundle identifiers.
+  // The installed-app response is filtered by the exact probe bundle ID. Require
+  // its full executable URL, never a generic App.app basename or suffix.
+  const executable = `${apps[0].url}App`;
+  const matches = processes.filter((value) => value?.executable === executable);
   if (
     matches.some(
       (value) =>
-        value.bundleIdentifier !== undefined &&
-        value.bundleID !== undefined &&
-        value.bundleIdentifier !== value.bundleID,
-    )
-  )
-    throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
-  if (
-    matches.some(
-      (value) => !Number.isSafeInteger(value.processIdentifier) || value.processIdentifier <= 0,
+        (value.bundleIdentifier !== undefined && value.bundleIdentifier !== bundleId) ||
+        (value.bundleID !== undefined && value.bundleID !== bundleId) ||
+        !Number.isSafeInteger(value.processIdentifier) ||
+        value.processIdentifier <= 0,
     )
   )
     throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
@@ -415,6 +420,15 @@ async function main([command, ...rest]) {
       });
     }
     case 'terminate': {
+      const installedApp = await devicectl('apps', [
+        'device',
+        'info',
+        'apps',
+        '--device',
+        device(),
+        '--bundle-id',
+        bundleId,
+      ]);
       const list = await devicectl('processes', [
         'device',
         'info',
@@ -424,7 +438,7 @@ async function main([command, ...rest]) {
       ]);
       let processIds;
       try {
-        processIds = probeProcessIds(list);
+        processIds = probeProcessIds(list, installedApp);
       } catch (error) {
         return journal({
           command,
