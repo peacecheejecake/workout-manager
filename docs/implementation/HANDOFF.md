@@ -140,8 +140,8 @@ APPROVE를 받았지만 수정 앱의 실기기 검증은 `not_executed`, 노드
   경로로 구현한다(task-graph EXT-G scope에 기록됨).
 - **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
   Xcode가 활성 developer dir이고 license를 수락했다.
-- **HealthKit 시험 자료(결정만, 미구현):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용한다. 기존 건강 자료는 읽거나 내보내지
-  않는다. 아직 어떤 표본도 쓰지 않는다.
+- **HealthKit 시험 자료(결정·probe 구현, 실기기 미실행):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용한다. 기존 건강 자료는 읽거나 내보내지
+  않는다. 수정 probe는 [별도 기록](progress/M0-06c-native-host-addendum.md)에 있으며, 아직 어떤 표본도 쓰지 않았다.
 - **호스팅·ODbL:** ODbL 이행을 먼저 하고(M0-06b-odbl 노드), 실제 호스팅은 보류한다.
 - **ODbL §4.6 스크립트 공개(결정만, 미구현):** 빌드 스크립트 본문을 서비스의 로그인 불필요 데이터 출처 페이지에서 내려받게 한다(별도 공개
   저장소 없음, manifest의 SHA-256과 같은 바이트).
@@ -195,5 +195,6 @@ APPROVE를 받았지만 수정 앱의 실기기 검증은 `not_executed`, 노드
   로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비했다.
   M0-06b는 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택했고, 실기기 검증의 남은 항목은 위에 기록했다.
 
-다음 세션은 working tree와 위 "다음 작업 순서"를 확인하고 EXT-OIDC의 새 main 기준 phase 재검토부터 진행한다. 실제 외부·실환경 증거가 필요한 gate를
+다음 세션은 working tree와 위 "다음 작업 순서"의 완료 여부를 git 기록으로 확인하고,
+남은 M2-01k 수용 항목과 외부 gate를 이어 간다. 실제 외부·실환경 증거가 필요한 gate를
 문서 검토나 합성 fixture로 완료 처리하지 않는다.
