@@ -1,6 +1,6 @@
 # M2-01k phase 통합 기록 · 2026-09-27
 
-기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2·3·4·5차의 지적을 수정했고 6차 검토는 APPROVE였다. 승인 결과 기록 후의 문서 변경을 포함한 검토 갱신과 main 병합은 아직 수행하지 않았다.
+기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2·3·4·5차의 지적을 수정했고 6차 검토와 7차 문서 갱신 검토가 APPROVE였다. 승인된 `0b183c8`을 main에 fast-forward했다.
 
 ## 이번 범위
 
@@ -23,7 +23,7 @@
 
 ## 남은 gate
 
-`M2-01k` 부모와 외부 조건은 여전히 열려 있다. 본 기록은 phase 코드의 검토 준비 상태만 나타낸다. 독립 phase review가 findings를 내면 같은 브랜치에서 수정·재검토하고, 승인된 base/head를 별도로 기록한 뒤에만 main을 fast-forward한다. Push는 사용자 작업이다.
+`M2-01k` 부모와 외부 조건은 여전히 열려 있다. phase의 검증된 코드와 근거는 독립 검토 승인 후 main에 들어갔다. Push는 사용자 작업이다.
 
 ## 독립 검토 1차와 수정
 
@@ -58,3 +58,7 @@ Codex CLI `gpt-6-sol` high/read-only가 `main` `9ac6aa1f5af54a09497d7e50504840fb
 ## 독립 검토 6차 승인
 
 Codex CLI `gpt-6-sol` high/read-only가 기준 `main` **`9ac6aa1f5af54a09497d7e50504840fb91aae8f5`**부터 phase HEAD **`3c2c74ad84e2650ab6f24eefeec0ee42f3f253cf`**까지 전체 44개 파일을 검토해 **APPROVE**를 냈다. 1차 두 건, 2차 두 건, 3차 한 건, 4차 한 건, 5차 한 건의 이전 지적은 모두 **FIXED**로 평가했고 새 차단 지적은 없었다. 작업 트리와 미추적 파일이 없고 `git diff --check`가 통과했음을 확인했다. 검토자는 시험을 재실행하지 않았으며 위의 root·구현 검증 결과를 코드와 대조했다. 부모 `M2-01k`와 역사적 failed·외부 not_executed의 상태는 변하지 않았다. 이 승인 결과를 기록하는 문서 변경은 승인된 HEAD 뒤에 생겼으므로 검토 갱신 뒤에만 main을 fast-forward한다.
+
+## 독립 검토 7차 갱신과 main 병합
+
+같은 설정의 읽기 전용 검토가 기준 `main` **`9ac6aa1f5af54a09497d7e50504840fb91aae8f5`**부터 문서 기록을 포함한 phase HEAD **`0b183c88ccf08e21826169b1d56e72051b48467f`**까지 전체 44개 파일을 확인해 **APPROVE**를 냈다. 일곱 이전 지적은 모두 **FIXED**, 새 지적 없음으로 판정했다. 6차 승인 뒤 변경은 이 검토 결과를 기록한 문서 두 개뿐임을 확인했다. root가 `main`을 `9ac6aa1`에서 `0b183c8`로 fast-forward했고 작업 트리는 깨끗했다. 이번 병합 사실을 기록하는 문서 변경은 별도 검토 대상이다.

@@ -61,8 +61,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 모두 FIXED로 확인하고 새 P2 지적 하나를 냈으며 `da2e201`로 수정했다. 4차 검토는 앞선 다섯 지적을
 모두 FIXED로 확인하고 resize 출처 문제를 새로 지적했으며 `c33091b`로 수정했다. 5차 검토는 앞선 여섯 지적을
 모두 FIXED로 확인하고 진행 중 wheel 완료 신호 소실을 새로 지적했으며 `58c9022`로 수정했다. 6차 전체 diff 검토는
-일곱 지적 모두 FIXED, 새 차단 지적 없이 `3c2c74a`에 APPROVE를 냈다. 승인 결과 기록 후의 문서 변경을
-포함한 검토 갱신 전이므로 아직 main에 병합하지 않았다.
+일곱 지적 모두 FIXED, 새 차단 지적 없이 `3c2c74a`에 APPROVE를 냈다. 7차 문서 갱신 검토도 전체 diff와
+일곱 지적 모두를 확인해 `0b183c8`에 APPROVE를 냈다. main을 그 HEAD로 fast-forward했다.
 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
@@ -111,24 +111,21 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 
 ## 다음 작업 순서
 
-1. **M2-01k phase 검토 갱신**: 6차 전체 검토가 코드 HEAD `3c2c74a`에 APPROVE를 냈다. 승인 결과를 기록한 문서 변경까지
-   Codex CLI `gpt-6-sol` high/read-only로 갱신 검토하고 APPROVE된 HEAD만 main에 fast-forward한다. 남은 partial·failed·
-   not_executed는 매트릭스의 근거와 외부 gate를 따른다.
-2. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
+1. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
    수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가
    복구될 때까지 `not_executed`다. 제품 native host 통합은 M3-01이다.
-3. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
+2. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
    제품 전체 행이라 partial이다. 실제 호스팅·실기기·공식 Garmin 행도 별도 gate로 남긴다.
-4. **재개 중 받은 사용자 결정**:
+3. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
      표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
    - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
    - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-5. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06c 실기기 실행,
+4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06c 실기기 실행,
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
-기준 스냅샷(2026-09-27): 현재 `main` HEAD는 `9ac6aa1`이며, `phase/m2-01k`는 그 위의 미검토 작업이다.
+기준 스냅샷(2026-09-27): `phase/m2-01k`의 승인된 작업은 `0b183c8`까지 main에 포함됐다.
 이후 결과는 재개 시 `git log -1`로 확인한다. push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
 전국 보행 graph 최종 root `.geo-build-routing/kr-260901-m2-01ay-r1`(`92e0fa5f319a41df`), 기본 `.geo-build`는 Seoul. 오래된 root
 `kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 사용자 승인 후 삭제했다. `.claude/worktrees/`의 agent worktree는
