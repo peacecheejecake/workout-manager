@@ -4,6 +4,17 @@
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
 재개할 때 `git log -1`, `git status --short`, 원격 동기화를 다시 확인한다.
 
+**최신 Garmin 범위 결정(2026-09-27):** 공식 권한·다운로드·adapter·출시 검증을
+[별도 후속 계획](research/garmin-official-deferred.md)으로 이관했다. 현 Web MVP의 `G2`는
+공식 Garmin을 요구하지 않는다. 완료된 `M1-06b-tmp`는 소유자 한정·기본 꺼짐 비공식
+개발 경로이고, 실제 Garmin 계정 실행은 `not_executed`다. 아래의 2026-09-25/26 결정
+기록은 역사로 보존하며, 현재 작업에는 이 새 결정을 적용한다.
+
+**최신 호스팅 범위 결정(2026-09-27):** `G2`는 내부 출시 준비 판정이다. 공개 Web 출시는
+새 `G2-PUBLIC` gate에서 `G2`와 `EXT-HOSTING`의 실제 HTTPS 배포 증거를 함께 요구한다.
+Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공개 Native 출시 `G3`도
+`G2-PUBLIC`을 요구한다. `EXT-HOSTING`은 `not_started`이고 배포 시험은 `not_executed`다.
+
 ## 사용자 결정과 작업 방식
 
 - 규칙은 [AGENTS.md](../../AGENTS.md)가 기본이다. Claude agent는 [CLAUDE.md](../../CLAUDE.md)의 override(Claude native orchestration)를
@@ -31,8 +42,8 @@
   가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **가로 화면에서 키보드가 입력란을 가린다**(결함 후보).
   WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 변경 후 단위·통합·빌드와
   브라우저 검증은 [진행 기록](progress/M0-06c.md)에 따로 남겼다. 수정 후 실기기 재실행은 아직 없다.
-- 당시 task-graph는 M0-06b-odbl 완료, M0-06b-odbl-places 미시작이었다. Places 후속은 아래처럼 이후 완료했고,
-  EXT-G scope의 사용자 결정은 유지한다.
+- 당시 task-graph는 M0-06b-odbl 완료, M0-06b-odbl-places 미시작이었다. Places 후속은 아래처럼 이후 완료했다.
+  당시 EXT-G 유지 결정은 위 2026-09-27 결정으로 현재 범위에서 대체됐다.
 - Codex CLI `gpt-6-sol` high/read-only가 `main` 기준 `5a4dfb5c98d99e88344f920da3ab14558a762ac8`부터
   `phase/m0-06` HEAD `97aee9a84cb6abb237a57b728ec34b920a903d96`까지의 전체 diff를 최종 **APPROVE**했다.
   앞선 지적은 수정 커밋과 재검토로 닫았고, main을 해당 HEAD로 fast-forward했다. 실기기 재실행 및
@@ -119,14 +130,14 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
    미저장 Back 확인은 사용자 보고가 있으나 해당 결정의 probe 이벤트는 없어 기계 기록으로 확정하지 않는다.
    새 device driver 수정은 phase 독립 검토 후 main에 반영한다. 제품 native host 통합은 M3-01이다.
 2. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
-   제품 전체 행이라 partial이다. 실제 호스팅·실기기·공식 Garmin 행도 별도 gate로 남긴다.
+   제품 전체 행이라 partial이다. 실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
 3. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
      표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
    - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
    - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06c 실제 background wake,
+4. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건), M0-06c 실제 background wake,
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
 기준 스냅샷(2026-09-27): `phase/m2-01k`의 승인된 작업은 `0b183c8`까지 main에 포함됐다.
@@ -146,8 +157,9 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 - **EXT-OIDC 분할(결정 후 `phase/ext-oidc`에서 구현):** localhost 실제 IdP 검증이 통과하면 EXT-OIDC를 완료로 하고, HTTPS 도메인·TLS ingress·secret manager
   항목은 새 노드 EXT-HOSTING(호스팅 gate)으로 분리한다. 그러면 M2-01k가 진행될 수 있고 HTTPS 행은 not_executed로 남는다.
   `phase/ext-oidc`에서 외부 gate 노드를 만들었다.
-- **EXT-G:** 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지 로컬 FIT 가져오기만 쓰고, 승인되면 M0-07b·M1-06b를 공식
-  경로로 구현한다(task-graph EXT-G scope에 기록됨).
+- **EXT-G(당시 결정, 현 범위에서 대체):** Garmin Connect Developer Program 승인 전까지 로컬 FIT 가져오기만 쓰고,
+  승인되면 M0-07b·M1-06b를 공식 경로로 구현하려던 계획이다. 2026-09-27 결정에 따라 현재 그래프 대신
+  [후속 계획](research/garmin-official-deferred.md)에 수용 계약을 보존한다.
 - **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
   Xcode가 활성 developer dir이고 license를 수락했다.
 - **HealthKit 시험 자료(결정과 후속 실행):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용했다. 기존 건강 자료는 수집·저장·내보내지
@@ -189,12 +201,12 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 - M0-06c: 실기기 체크리스트 1–9와 합성 표본·outbox/anchor/ack·재설치·중단·재전송·background delivery 설정·해제는
   후속 실행했다. 실제 background wake, 미저장 Back 분기의 기계 기록, 제품 native host 통합,
   실제 인증 기반 계정 전환은 남았다.
-- EXT-G/M1-06b: 공식 Garmin 권한과 허가된 실제 응답·자동 수집. 로컬 FIT,
-  별도 OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
+- 공식 Garmin 권한과 허가된 실제 응답·자동 수집은 [후속 계획](research/garmin-official-deferred.md)에 남는다.
+  로컬 FIT, OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
   수집을 하는 M1-06b-tmp를 완료했다([결정 기록](research/garmin-temporary-gate.md)). 실제 Garmin 계정 실행은 소유자가 앱에서
-  로그인해야 하는 별도 증거이며 not_executed다. EXT-G·M0-07b·M1-06b·M2-07은 그대로
-  not_started이고 G2는 공식 연동을 거친다.
+  로그인해야 하는 별도 증거이며 not_executed다. 당시 EXT-G·M0-07b·M1-06b·M2-07을
+  `not_started`로 두고 G2가 공식 연동을 요구하던 결정은 2026-09-27에 후속 계획으로 이관됐다.
 - 사용자 결정(2026-09-25): 코스 공유(M2-01k-o) [요구](research/m2-01k-o-sharing-requirement.md)를 승인했다. 범위는 확인 뒤 소유자
   GPX(A)와 보기 전용 unlisted 링크(B, 기본 꺼짐)이며, 링크는 보호 구역이 하나 이상 있어야 한다. B는 독립 재식별 검토의 차단 항목
   (공유용 확장 원과 비밀 오프셋 등)과 T22–T25가 통과해야 켤 수 있다. 계획 문장(map-implementation-plan.md:104, :187)을 개정했다.

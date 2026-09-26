@@ -520,14 +520,22 @@ FUT-10은 FUT-01/03의 공통 UI와 병행한다. FUT-11/12는 FUT-02의 원장/
 
 ## 5. 공개 조건과 대체 동작
 
+2026-09-27 사용자 결정: 현 Web MVP의 공식 Garmin 필수 조건은
+[후속 계획](../implementation/research/garmin-official-deferred.md)으로 이관했다.
+아래 표의 기존 v0.2/v0.2.2 기준은 역사 기록이며, 다른 보안·삭제·운영 수용 기준을
+면제하지 않는다. 소유자 한정 비공식 수집의 fixture 결과는 실계정 증거가 아니다.
+같은 날 호스팅 결정에 따라 `G2`는 내부 출시 준비 판정이며, 공개 Web 출시는
+`G2-PUBLIC`에서 `EXT-HOSTING` 실제 증거를 요구한다. `G3`도 공개 Web 출시를 선행한다.
+
 | 배포 수준 | 충족할 조건 | 미완료 항목의 표시 |
 |---|---|---|
-| v0.2.3 전체 Web MVP | S01~S35, 기존 gate + FUT-13~15의 기본 plan/actual·반응형·통합 승인·검토된 콘텐츠 | 이전 시안/문서/타입을 새 기능 완료로 표시하지 않음 |
+| v0.2.3 전체 Web MVP 내부 준비 (`G2`) | S01~S35, 공식 Garmin을 제외한 기존 gate + FUT-13~15의 기본 plan/actual·반응형·통합 승인·검토된 콘텐츠 | 이전 시안/문서/타입과 비공식 Garmin fixture를 실연동 완료로 표시하지 않음; 공개 배포 승인 아님 |
+| Web MVP 공개 출시 (`G2-PUBLIC`) | G2 + EXT-HOSTING의 실제 HTTPS/TLS·운영 OIDC·보안 쿠키·secret manager·지도 산출물 증거 | 호스팅 미실행/partial 항목을 통과로 바꾸지 않음 |
 | 디자인·로컬 prototype | 기존 가상 데이터·interaction 검토 | 실제 인증·수집·LLM·RAG·routing·native 제공 아님 |
 | 내부 end-to-end preview | FUT-01/02의 해당 핵심 흐름·FUT-03의 사용 부분 검증 | provider mock/미구현 기능을 명시, 실제 사용자 공개와 구분 |
 | 기존 v0.2 Web MVP 기준(역사 기록) | S01~S24 기본 업무, FUT-01/02/03/04/06/07의 해당 범위와 운영·보안 gate | Garmin 승인이 없으면 API-first Web MVP 완료로 부르지 않음 |
 | v0.2.2 Web MVP 기준(역사 기록) | S01~S30, 기존 Web 조건 + FUT-10/11/12의 실제 기본 업무 | 영양·보강과 3-mode를 문서만으로 완료 처리하지 않음 |
-| Native-inclusive MVP | Web 범위 + FUT-05, 실제 iOS·WebView·배포 준비 | 브라우저 반응형 시험으로 native 완료를 대체하지 않음 |
+| Native-inclusive MVP 공개 출시 (`G3`) | G2-PUBLIC + FUT-05, 실제 iOS·WebView·배포 준비 | 브라우저 반응형 시험으로 native 완료를 대체하지 않음 |
 | 개인 계획 이식 완료 | FUT-09 원문·미리보기·승인 | 일반 계획 editor 완료와 별개 |
 | 예측·효능 지표 공개 | FUT-08의 해당 지표·주장 범위에 맞춘 검증 | 통계·원점수 표시와 구분, 미검증 확률 비활성 |
 

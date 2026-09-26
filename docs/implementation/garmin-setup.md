@@ -2,7 +2,8 @@
 
 기존 [OIDC 앱 로그인](oidc-setup.md)은 유지한다. 이 설정은 로그인한 앱 계정의 Garmin 데이터 연결용이다.
 공식 client 발급·entitlement 증거는 아직 없으며 실제 Garmin 계정으로 검증하지 않았다.
-공식 자동 활동 수집은 별도 M1-06b 범위다. [설계와 완료 구분](garmin-oauth.md) 참고.
+공식 자동 활동 수집은 [후속 계획](research/garmin-official-deferred.md)의 M1-06b 범위다.
+[설계와 완료 구분](garmin-oauth.md) 참고.
 
 ## 서버 설정
 
@@ -100,7 +101,9 @@ pnpm --filter @workout/web start
 **공식 연동이 아니다.** 공식 권한(`EXT-G`)을 기다리는 동안 배포 소유자 한 명이 자기 Garmin 계정의 새 활동을 앱으로
 가져오는 임시 경로다. `python-garminconnect`로 문서화되지 않은 Garmin Connect endpoint를 쓴다. 조건과 받아들인 위험은
 [임시 gate](research/garmin-temporary-gate.md), 구현 기록은 [M1-06b-tmp](progress/M1-06b-tmp.md)에 있다. 이 경로는
-`M1-06b`·`M2-07`·`G2`의 증거가 아니다.
+`M1-06b`·`M2-07`의 공식 연동이나 실제 Garmin 계정 수집의 증거가 아니다. 현 `G2`는
+이 선택 기능의 fixture 회귀를 `M2-06`에서 확인하지만, 그것을 실계정·공식 수집 완료로
+판정하지 않는다.
 
 ### 설정
 

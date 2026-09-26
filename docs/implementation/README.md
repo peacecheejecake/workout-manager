@@ -86,9 +86,9 @@ M0의 외부 승인·실기기 gate가 미완료여도 mock/FIT 기반 M1 개발
 3. **M1-03 Import/Activity**: fixture/FIT → raw/source revision → canonical/overlay → 활동 조회. 중복·삭제 suppression·outbox 재실행과 집계 일치 검증.
 4. **M1-04 오늘/계획/활동/체크인**: M1-04a/b 체크인과 M1-04c/d 대시보드, M1-04e/f 활동 조회, M1-04g/h 수동 활동 계약/API와 입력·정정 UI, M1-04i 계획 연결·관측 영향, M1-04j Planner 실제 기록, M1-04k 로컬 삭제, M1-04l 명시적 Block 연결 필터, M1-04m 조회 달력 경계, M1-04n 계획 multi-view 공유 선택·초안 편집, M1-04o 달력·표 동시 보기와 반응형 전환, M1-04p 활동 기록 상태 필터, M1-04q 계획 표 정렬·열 표시, M1-04r 세션 복제 초안 선택·경계 보완, M1-04s 계획 표 고정 열·범위 선택·가상 스크롤, M1-04t 날짜 이동·시간 길이 조절, M1-04u Period Explorer·Orbit 계층 탐색, M1-04v 대시보드 카드 배치 편집, M1-04w 세션 강도 라벨 편집, M1-04x FIT 상세 수입 기반, M1-04y 구간·시계열 상세 UI, M1-04z 활동 다중 선택·일괄 로컬 삭제, M1-04aa 일괄 계획 연결·해제, M1-04ab 선택 활동 요약 JSON 내보내기, M1-04ac 세션 단계 순서 편집, M1-04ad 저장된 계획 버전 조회·기간 비교, M1-04ae 기간 우선순위 편집·버전 호환성, M1-04af 기간 운동 불가 날짜·가용 시간 제약, M1-04ag 선택 기간 계획·실제 요약과 주요 세션, M1-04ah 기간 타임라인·URL 보기 전환, M1-04ai/aj 사용자 완료 원장·UI, M1-04ak 기간 날짜 이동 영향 확인, M1-04al 세션 단계 단위 전환 확인, M1-04am 대시보드 기간 탐색, M1-04an 세션 페이스·심박 목표, M1-04ao 참석 잠금·삭제 보호, M1-04ap 거리·시간 목표 범위와 집계, M1-04aq 활동 로컬 태그·일괄 편집·필터, M1-04ar 계획 시나리오 A/B/C 저장·비교·적용, M1-04as 활동 페이스·심박 요약, M1-04at 체크인 자기보고 관측 추세, M1-04au 활동 상세 URL 탭·관측 상태 보존, M1-04av 계획 표 사용자 완료 보고 상태, M1-04aw 세션별 연결 실제 집계·거리 비교, M1-04ax 세션별 저장본·초안 변경 표시, M1-04ay 대시보드 실제 요약에서 기간별 활동 탐색을 연결하고 활동 workbench에 합류한다. S03~S12 중 해당 업무를 실제 API/DB까지 연결. chart/table·empty/partial/error·반응형 완결. 개별 slice 완료를 전체 workbench 완료로 간주하지 않는다.
 5. **M1-05 Evidence/Coach/Approval**: 독립 기반 M1-05a에서 기존 원장의 단일 snapshot 의존성 캡처·비교를 준비한다. M1-05b는 불변 계획의 검토 범위와 사용자 대화 저장·계정 수명주기를 준비한다. M1-05c는 사용자 상담 기록 UI와 저장 복구를 연결한다. M1-05d는 구조화 근거 본문·의존성을 같은 시점에 저장하고 삭제·철회를 연결한다. M1-05e는 상담에서 근거를 명시 저장하고 고정 본문·회수 상태를 검토하는 UI를 연결한다. M1-05f는 사용자가 명시 확인한 필수 제약 문장의 원장과 상담 UI를 연결하고, M1-05g는 새 running-core-v2 근거 본문·의존성에 강제 포함하고 삭제 회수를 연결한다. 기존 v1 근거는 당시 제외 범위를 보존한다. 부모 통합은 M1-04 완료를 계속 요구하며, 제한된 원장 비교를 완전한 승인 freshness로 간주하지 않는다. snapshot → 후보 → diff → 명시 승인 → PlanVersion. stale/중복/동시 승인과 transaction 실패 시험. LLM 실패는 실패 상태로 남김.
-6. **M1-06 운영·연결**: sync/settings/audit·내보내기/삭제, 승인된 공식 Garmin adapter 교체·회귀. mock 성공과 실제 provider 성공을 구분.
+6. **M1-06 운영·연결**: sync/settings/audit·내보내기/삭제와 소유자 한정 비공식 수집의 fixture 회귀. 공식 Garmin adapter는 [후속 계획](research/garmin-official-deferred.md)으로 이관한다. mock 성공과 실제 provider 성공을 구분.
 
-M1-04의 지도 독립 workbench 범위는 [수용 대조](progress/M1-04.md)와 통합 시험을 거쳐 완료했다. 위 4번의 전체 화면 요구나 출시 gate 완료를 뜻하지 않으며, 지도·Native·공식 Garmin 검증은 후속 task에 남는다.
+M1-04의 지도 독립 workbench 범위는 [수용 대조](progress/M1-04.md)와 통합 시험을 거쳐 완료했다. 위 4번의 전체 화면 요구나 출시 gate 완료를 뜻하지 않으며, 지도·Native 검증과 후속 공식 Garmin 검증은 별도로 남는다.
 
 M1-05의 training-only 범위는 [DAG](task-graph.md)의 h~m과 [통합 수용](progress/M1-05m.md)까지 완료했다. 고정 근거·대화·필수 제약, 결정론 실행, 서버 검증 후보·diff, 원자적 명시 승인, S10/S11 UI를 실제 OIDC·API·격리 PostgreSQL에서 연결했다. 일반 서버에서는 fixture를 명시 활성화한 개발·테스트 환경에서만 실행을 생성한다. 실제 LLM 판단·공식 Garmin 수집·생리학적 타당성은 별도 검증이며, 이 slice를 제품 출시 gate로 간주하지 않는다.
 
@@ -99,8 +99,11 @@ M1-05의 training-only 범위는 [DAG](task-graph.md)의 h~m과 [통합 수용](
 
 2026-09-16 결정: 기존 OIDC 앱 로그인은 유지하고 `/account` 설정에 별도의 **Garmin 연결** OAuth 2.0
 PKCE 흐름을 추가했다. [M1-06c 검증 기록](progress/M1-06c.md)과 [운영 설정](garmin-setup.md)에
-구현·로컬 fixture 검증 결과를 기록했다. M1-06b는 EXT-G와 M1-06c 이후 공식 연결·실제 수집을 검증한다. 로그인·동의 화면은 Garmin이
-소유하며 앱은 Garmin 비밀번호를 받지 않는다. 공식 권한·실연동·출시 gate는 유지한다.
+구현·로컬 fixture 검증 결과를 기록했다. 공식 연결·실제 수집의 원래 M1-06b 계약은
+[후속 계획](research/garmin-official-deferred.md)에 보존한다. 로그인·동의 화면은 Garmin이
+소유하며 **이 공식 OAuth 경로에서는** 앱이 Garmin 비밀번호를 받지 않는다. 별도 비공식
+`M1-06b-tmp`는 앱이 비밀번호를 받아 서버·Python worker에 전달하는 소유자 한정 경로다
+([운영 안내](garmin-setup.md)). 현재 Web MVP의 G2는 공식 연동을 요구하지 않는다.
 
 2026-09-16 사용자 승인으로 M0-06b의 지도 coverage·OS IME 검증을 M1-04의 착수 의존성에서
 분리했다. 지도 기능 M2-01과 전체 통합 M2-06에서 해당 gate를 계속 요구하며 완료 조건은 유지한다.
@@ -121,16 +124,23 @@ M1b 이후 S31~S35를 연결한다. blueprint → finite schedule/occurrence →
 외부 상용 지도·routing API 없이 MapLibre와 자체 지도 데이터/엔진을 사용한다. 기록 viewer →
 기존 활동 저장·차트 연결 → 별도 Course → 경유지 편집 → 목표 거리 후보 순으로 M2-01a~k를
 분리했다. a(계약)와 d(자체 인프라 spike)는 지금 착수 가능하다. 부모 M2-01의 M0-06b 의존성과
-M2-06·공식 Garmin·Native gate는 유지하며 신규 구현은 모두 미착수다. 아래 원래 순서는 전체
+M2-06·Native gate는 유지한다. 공식 Garmin은 2026-09-27 사용자 결정에 따라
+[후속 계획](research/garmin-official-deferred.md)으로 옮겼다. 아래 원래 순서는 전체
 기능 간 관계이며 이미 완료된 media/자료/RAG 작업을 다시 미완료로 바꾸지 않는다.
 
 코스/routing → 대회 → 갤러리/media → 자료 권한·version·삭제 → 검색/RAG·인용 → 검토된 영양/동작/회복 자료와 코치 연결 순서다. 나머지 S01~S35 화면, 검색·설정·연결·오류 복구를 목록으로 대조한다. 자료 생명주기와 ACL 이전에 RAG를 먼저 붙이지 않는다. FUT-06/07/09 및 기존 나머지 backlog를 회수한다. 공유 계획 원문이 없는 FUT-09는 확보하거나 미확정 상태를 유지한다.
 
-완료 조건은 모든 화면의 실제 업무, 수용 시험, 보안·삭제·backup restore·운영 검증이다. **공식 Garmin 승인/실연동이 없는 FIT 개발판을 기존 명세의 Web MVP 출시 완료로 간주하지 않는다.** 생리학적 타당성은 CRUD·계산 시험과 별도 gate다.
+완료 조건은 모든 화면의 실제 업무, 수용 시험, 보안·삭제·backup restore·운영 검증이다.
+**현 Web MVP는 공식 Garmin을 제외한다.** 완료된 소유자 한정 비공식 adapter는 기본 꺼짐 선택 기능이며,
+실제 계정 수집이 검증되기 전에는 fixture 결과를 실연동 통과로 표시하지 않는다. 이는 공식 연동 포함
+기존 명세의 완료 판정이 아니다. `G2`는 내부 출시 준비 판정이고, 공개 Web 출시는
+`G2-PUBLIC`에서 `EXT-HOSTING`의 HTTPS 배포 증거까지 확인한다. 생리학적 타당성은
+CRUD·계산 시험과 별도 gate다.
 
 ### M3 · Native 제품화
 
 mobile-web 모듈 재사용, secure transport/versioned bridge, HealthKit collector의 anchor/tombstone/outbox/ack, foreground·background·IME·back·offline을 실기기에서 시험한다. WebKit 브라우저 테스트를 WKWebView/HealthKit 실기기 검증으로 대체하지 않는다. Native-inclusive 출시에는 M3도 필요하다.
+최종 Native 통합은 내부 `G2` 뒤에 진행할 수 있지만 공개 출시 `G3`에는 `G2-PUBLIC`도 필요하다.
 
 ## 4. 테스트·Prettier·CI 설정 명세
 
@@ -177,7 +187,7 @@ uv run ruff check . / uv run ruff format --check .
 | Integration | 소유권/RLS·schema 거절·CSRF, 동시 승인/중복 요청/rollback, multi-domain write, outbox 재시도, 삭제 suppression |
 | E2E | 로그인 → FIT fixture import → 계획 preview/승인 → 새로고침 후 보존; stale 충돌; 영양/보강/루틴 actual·중단; 계정 전환 |
 | 실 브라우저 | Aside 우선, 불가 시 Chrome, 다음 Playwright; 한글 IME·키보드·drag 대안·reflow·focus·network 오류 |
-| 실기기/외부 | HealthKit lifecycle·공식 Garmin·실제 routing/LLM, 별도 자격/환경과 결과 기록 |
+| 실기기/외부 | HealthKit lifecycle·실제 routing/LLM은 각 범위에서 검증; 공식 Garmin은 후속 계획에서 별도 자격/환경과 결과 기록 |
 
 E2E와 실 브라우저 점검은 별개다. **Playwright 자동화는 M0부터 설정**하고 Aside/Chrome fallback 여부와 관계없이 CI에서 실행한다. MSW는 UI 개발·component 시험에 사용하며 실제 persistence를 증명하는 E2E에서는 API/DB를 mock하지 않는다.
 

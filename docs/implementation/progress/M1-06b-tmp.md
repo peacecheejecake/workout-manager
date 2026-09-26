@@ -1,5 +1,9 @@
 # M1-06b-tmp · 임시 Garmin 앱 내 수집(비공식, 소유자 한정)
 
+> 이 문서의 `G2` 출시 조건은 2026-09-25 당시 기준이다. 현 `G2`는 비공식
+> adapter의 fixture 회귀를 `M2-06`에서 요구하는 내부 준비 판정이며, 실제 Garmin 계정
+> 수집·공식 연동 완료를 뜻하지 않는다. [후속 범위 결정](../research/garmin-official-deferred.md).
+
 상태: **완료(2026-09-25).** 독립 보안 검토 1차(태그 `m1-06b-tmp-review-r1`, tree `c003efd9`) APPROVE 뒤 강화 항목 1–12(§9),
 2차 REQUEST CHANGES(§10), 3차 APPROVE의 비차단 2건(§11)을 반영했고 4차(`m1-06b-tmp-review-r4`, tree `15274da9`) APPROVE
 뒤 M2-01al 병합 위로 병합했다. 처음 기준 HEAD는 main `e00a992`였고, 반영 뒤 main `e54ef80` 위로
