@@ -1,6 +1,6 @@
 # M2-01k phase 통합 기록 · 2026-09-27
 
-기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2·3·4차의 지적을 수정했고 변경 HEAD의 재검토와 main 병합은 아직 수행하지 않았다.
+기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1·2·3·4·5차의 지적을 수정했고 변경 HEAD의 재검토와 main 병합은 아직 수행하지 않았다.
 
 ## 이번 범위
 
@@ -48,3 +48,9 @@ Codex CLI `gpt-6-sol` high/read-only가 `main` `9ac6aa1f5af54a09497d7e50504840fb
 같은 Codex CLI 설정의 전체 diff 재검토는 `main` `9ac6aa1` 대 HEAD `11a6278`에서 앞선 다섯 지적을 **모두 FIXED**로 확인했지만 새 P2 지적으로 **CHANGES_REQUESTED**를 냈다. MapLibre `resize()`가 이동 이벤트를 내는데 직전 800ms의 wheel 입력 때문에 이를 사용자 이동으로 오분류할 수 있었다.
 
 `c33091b`에서 fit과 resize 모두 adapter 고유 프로그램 출처 토큰 및 호출 중 guard를 사용하고, 이전 wheel의 늦은 이동 신호를 새 사용자 입력으로 처리하지 않도록 제스처 순서 경계를 추가했다. [확대 기록](M2-01k-zoom.md)의 Next/Vite 실제 브라우저 wheel→전체 보기→반응형 전환 시험을 포함해 **14/14 passed**, 관련 단위 **45/45 passed**였다. 출처 표식과 제스처 경계를 각각 제거한 변형은 관련 단위 시험에서 실패했다. root의 전체 `pnpm check`는 생성물·format·lint·typecheck와 Vitest **4,102/4,102 passed**(339 files)였다. 변경 HEAD의 phase 전체 독립 재검토는 아직 필요하다.
+
+## 독립 검토 5차와 수정
+
+같은 Codex CLI 설정의 전체 diff 재검토는 `main` `9ac6aa1` 대 HEAD `332823e`에서 앞선 여섯 지적을 **모두 FIXED**로 확인했지만 새 P2 지적으로 **CHANGES_REQUESTED**를 냈다. 진행 중인 사용자 wheel 이동 사이에 반응형 resize가 끼면 resize의 프로그램 이동 처리로 그 wheel의 나중 `moveend`까지 소실될 수 있었다.
+
+`58c9022`에서 fit만 진행 중 사용자 이동을 대체하고 resize는 자기 출처가 표시된 이벤트만 프로그램 이동으로 분류하도록 고쳤다. [확대 기록](M2-01k-zoom.md)의 `wheel movestart → resize → 기존 wheel moveend` 순서 및 MapLibre가 이동 중 resize 이벤트를 내지 않는 순서를 각각 단위 시험으로 확인했다. 이전 동작 변형은 두 단위 시험과 Next/Vite 브라우저 **2/2에서 실패**했다. 원복 뒤 관련 단위 **47/47**, 새 회귀를 포함한 Next/Vite 브라우저 **16/16**이 통과했고 생성물·format·lint·typecheck·두 shell 빌드도 통과했다. root의 전체 `pnpm check`는 Vitest **4,104/4,104 passed**(339 files)와 나머지 검사를 통과했다. 변경 HEAD의 phase 전체 독립 재검토는 아직 필요하다.
