@@ -33,6 +33,7 @@ import { drawCircle, encodePng } from './geo/png.mjs';
 import { assertSelfHostedStyle, createBasemapStyle, fontStack } from './geo/style.mjs';
 import {
   DISCLOSURE_FILE,
+  assertBasemapDisclosure,
   assertOdblNotice,
   basemapAttributionText,
   basemapStyleAttribution,
@@ -327,6 +328,7 @@ export async function verifyOdblArtifacts(stagingRoot, style) {
   // The shells show only the first paragraph on screen; it must carry the notice by itself.
   assertOdblNotice(notice.split(/\n\s*\n/)[0], 'ATTRIBUTION.txt first paragraph');
   const disclosure = JSON.parse(await readFile(join(stagingRoot, DISCLOSURE_FILE), 'utf8'));
+  assertBasemapDisclosure(disclosure);
   let rendered;
   try {
     rendered = renderBasemapAttribution(disclosure);

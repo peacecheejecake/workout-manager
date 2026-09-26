@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 
 import {
+  extractAcquisition,
   courseImportResultSchema,
   courseReadResultSchema,
   courseRouteCandidateResultSchema,
@@ -344,6 +345,11 @@ async function main() {
       extractSha256: await sha256File(extractPath),
       profileConfigSha256: await sha256File(routingGraphConfig),
       extractByteLength: (await stat(extractPath)).size,
+      source: await extractAcquisition(
+        routingExtract.sourceId,
+        extractPath,
+        await sha256File(extractPath),
+      ),
     });
     graphBImportMilliseconds = Math.round(performance.now() - started);
     graphBBuilt = true;

@@ -27,7 +27,10 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ExtractAcquisition } from '../packages/contracts/src/map-data-licence.js';
+import {
+  extractAcquisitionSchema,
+  type ExtractAcquisition,
+} from '../packages/contracts/src/map-data-licence.js';
 import {
   DERIVATION_FILE,
   EDGE_FACTS_DIRECTORY,
@@ -628,9 +631,9 @@ export async function importRoutingGraph(options: {
   readonly heapMegabytes?: number;
   /**
    * Where the extract came from (M0-06b-odbl), recorded in the derivation and in the graph's
-   * ODbL notice. Without it the notice says the URL and date were not recorded.
+   * ODbL notice. Required for every newly imported graph.
    */
-  readonly source?: ExtractAcquisition;
+  readonly source: ExtractAcquisition;
 }): Promise<RoutingGraphManifest> {
   await rm(options.graphDirectory, { recursive: true, force: true });
   await mkdir(options.graphDirectory, { recursive: true });
@@ -704,7 +707,7 @@ export async function importRoutingGraph(options: {
       });
       derivation.timeConditionalWays = list.wayIds.length;
     }
-    if (options.source !== undefined) derivation.source = options.source;
+    derivation.source = extractAcquisitionSchema.parse(options.source);
     await mkdir(join(options.graphDirectory, EDGE_FACTS_DIRECTORY), { recursive: true });
     await writeFile(
       join(options.graphDirectory, EDGE_FACTS_DIRECTORY, DERIVATION_FILE),

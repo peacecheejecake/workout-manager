@@ -224,3 +224,26 @@ identity 두 run의 실패는 서로 다른 spec이고, 이 노드가 바꾼 화
    `© OpenStreetMap contributors`와 copyright URL만 싣고 ODbL URI는 없다. 이 노드 scope에 명시되지 않아 바꾸지 않았다.
 5. 법적 검토는 하지 않았다. 공개 공유 기능 활성화 전 재확인(ADR §6-4)은 그대로다.
 6. 커밋 전 검토(phase 단위 Codex)는 root 몫. 이 노드는 검토자를 띄우지 않았다.
+
+## Phase 독립 검토 · 2026-09-26
+
+- 기준 `main` `5a4dfb5c98d99e88344f920da3ab14558a762ac8`, 검토 HEAD `b1933a9`의
+  전체 diff를 Codex CLI `gpt-6-sol` high, read-only sandbox에서 검토했다. 결과는
+  **CHANGES_REQUESTED**였다.
+- 배경 지도 disclosure의 변경 방법 필드 누락 허용: **FIXED**. 배포 검사에서 필수 필드를
+  런타임 검사하고, 고지 파일을 함께 바꾼 누락 변이도 거절하는 시험을 추가했다.
+- graph의 extract URL 없는 배포 허용: **FIXED**. 신규 import에 취득 기록을 필수로 하고
+  배포 검사는 출처 없는 graph를 거절한다. 별도 probe import 호출자도 기록을 넘긴다.
+- 실기기 서명 빌드 원문 로그 저장: **FIXED**. 새 probe 실행은 계정·경로·인증서 원문을
+  기록하지 않고 bounded 상태·오류 건수만 남긴다. 이전 worktree에 남은 Git 제외 원본
+  로그는 수정하지 않았으며 이 검토의 제품 증거로 다시 사용하지 않는다.
+- Xcode 종료 코드만으로 signed 성공 처리: **FIXED**. 서명 검증, team·bundle 식별자,
+  HealthKit entitlement, embedded profile, Info.plist 사용 설명을 모두 확인한다.
+- 수정된 HEAD의 독립 재검토는 대기 중이다. 실기기 실행 결과와 외부 gate 상태는
+  이 코드 수정만으로 변경하지 않는다.
+- root 재검증: Node 24.12.0에서 generated check·format·lint·typecheck는 통과했다.
+  첫 전체 `pnpm test`는 기본 sandbox의 loopback `EPERM`과 worktree `.venv` 부재로 실패했다.
+  `uv sync --extra garmin` 뒤 로컬 포트가 허용된 실행에서 330파일·4,034개 시험 통과,
+  `pnpm build` 통과, 실제 PostgreSQL 통합 80파일·794개 시험 통과했다.
+  `pnpm test:identity` 두 독립 실행은 각각 265 passed·9 skipped(13.3분 / 13.2분)였다.
+  이는 기존 앱의 브라우저 회귀 증거이며 M0-06c 실기기 잔여 항목의 증거가 아니다.

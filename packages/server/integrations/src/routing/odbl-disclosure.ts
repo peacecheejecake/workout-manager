@@ -180,10 +180,13 @@ async function attributionState(
  */
 export async function verifyRoutingGraphAttribution(graphDirectory: string): Promise<void> {
   const verified = await loadVerifiedRoutingGraph(graphDirectory);
-  const expected = renderRoutingAttribution(
-    verified.manifest,
-    await readDerivationFile(graphDirectory),
-  );
+  const derivation = await readDerivationFile(graphDirectory);
+  if (derivation?.source === undefined)
+    throw new RoutingAttributionError(
+      'ODBL_NOTICE_MISSING',
+      'extract acquisition URL not recorded',
+    );
+  const expected = renderRoutingAttribution(verified.manifest, derivation);
   const state = await attributionState(graphDirectory, expected);
   if (state === 'missing')
     throw new RoutingAttributionError('ODBL_NOTICE_MISSING', `no ${ROUTING_ATTRIBUTION_FILE}`);

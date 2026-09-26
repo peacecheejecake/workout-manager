@@ -180,3 +180,60 @@ export function renderBasemapAttribution(disclosure) {
   ];
   return lines.join('\n');
 }
+
+/** Reject incomplete alteration records before a deployment can be published. */
+export function assertBasemapDisclosure(value) {
+  const object = (item) => item !== null && typeof item === 'object' && !Array.isArray(item);
+  const nonempty = (item) => typeof item === 'string' && item.trim().length > 0;
+  const record = object(value) ? value : null;
+  const source = object(record?.source) ? record.source : null;
+  const licence = object(record?.licence) ? record.licence : null;
+  const acquisition = object(source?.acquisition) ? source.acquisition : null;
+  const method = object(record?.alterationMethod) ? record.alterationMethod : null;
+  const tools = object(record?.toolVersions) ? record.toolVersions : null;
+  const scripts = object(method?.scripts) ? Object.entries(method.scripts) : [];
+  if (
+    record?.schemaVersion !== 1 ||
+    record?.kind !== 'basemap-tiles' ||
+    licence?.name !== 'ODbL-1.0' ||
+    licence?.url !== ODBL_LICENCE_URL ||
+    licence?.copyrightUrl !== OSM_COPYRIGHT_URL ||
+    licence?.attribution !== OSM_ATTRIBUTION ||
+    !/^[0-9a-f]{12}$/.test(record.buildId ?? '') ||
+    !/^[a-z0-9][a-z0-9-]{0,63}$/.test(record.deploymentId ?? '') ||
+    !nonempty(record.region) ||
+    !/^[0-9a-f]{64}$/.test(source?.sha256 ?? '') ||
+    !Number.isInteger(source?.bytes) ||
+    source.bytes <= 0 ||
+    !nonempty(acquisition?.sourceId) ||
+    !/^https:\/\//.test(acquisition?.url ?? '') ||
+    !nonempty(method?.description) ||
+    !Array.isArray(method.layerFilters) ||
+    method.layerFilters.length === 0 ||
+    !method.layerFilters.every(
+      (filter) =>
+        object(filter) &&
+        nonempty(filter.layer) &&
+        Array.isArray(filter.expressions) &&
+        filter.expressions.length > 0 &&
+        filter.expressions.every(nonempty),
+    ) ||
+    !nonempty(method.osmiumExportFormat) ||
+    !Array.isArray(method.tippecanoeArguments) ||
+    method.tippecanoeArguments.length === 0 ||
+    !method.tippecanoeArguments.every(nonempty) ||
+    !Number.isInteger(method.minzoom) ||
+    !Number.isInteger(method.maxzoom) ||
+    method.minzoom > method.maxzoom ||
+    !Array.isArray(method.glyphRanges) ||
+    !method.glyphRanges.every((range) => /^[0-9]{1,5}-[0-9]{1,5}$/.test(range)) ||
+    scripts.length === 0 ||
+    !scripts.every(
+      ([path, digest]) => /^scripts\/[A-Za-z0-9/_.-]+$/.test(path) && /^[0-9a-f]{64}$/.test(digest),
+    ) ||
+    !nonempty(tools?.node) ||
+    (tools.osmium !== null && !nonempty(tools.osmium)) ||
+    (tools.tippecanoe !== null && !nonempty(tools.tippecanoe))
+  )
+    throw new Error(`ODBL_DISCLOSURE_INVALID: ${DISCLOSURE_FILE} lacks required alteration facts`);
+}

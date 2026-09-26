@@ -83,11 +83,34 @@ async function hashTree(directory) {
   );
   return hash(JSON.stringify(manifest));
 }
-const errorLines = (text) =>
-  text
-    .split('\n')
-    .filter((line) => /error:|BUILD (SUCCEEDED|FAILED)|\*\* /.test(line))
-    .slice(0, 20);
+/** Store bounded diagnostic facts only. Xcode output can contain account and profile data. */
+export function sanitizeBuildOutput(output) {
+  const lines = output.split('\n');
+  const status = lines.filter((line) => /\*\* BUILD (SUCCEEDED|FAILED) \*\*/.test(line));
+  const errorCount = lines.filter((line) => /error:/i.test(line)).length;
+  return (
+    [
+      ...status.map((line) => line.match(/BUILD (SUCCEEDED|FAILED)/)?.[0] ?? 'BUILD STATUS'),
+      `error lines: ${errorCount}`,
+    ].join('\n') + '\n'
+  );
+}
+
+export function signedBuildVerified(entry, team) {
+  const entitlements = entry.signedEntitlements;
+  return Boolean(
+    entry.verify === true &&
+    entry.embeddedProfilePresent === true &&
+    entry.signature?.teamIdentifier === team &&
+    entry.signature?.authorityIsAppleDevelopment === true &&
+    entry.signature?.identifier === bundleId &&
+    entitlements?.['com.apple.developer.healthkit'] === true &&
+    entitlements?.['com.apple.developer.healthkit.background-delivery'] === true &&
+    entry.builtInfo?.bundleId === bundleId &&
+    entry.builtInfo?.healthUsageKeys?.includes('NSHealthShareUsageDescription') &&
+    entry.builtInfo?.healthUsageKeys?.includes('NSHealthUpdateUsageDescription'),
+  );
+}
 
 async function prepare() {
   for (const name of ['core', 'cli', 'ios']) {
@@ -205,17 +228,13 @@ async function build(signed) {
     cwd: project,
     timeout: 600000,
   });
-  await writeFile(
-    join(workspace, `build-${signed ? 'signed' : 'unsigned'}.log`),
-    result.stdout + '\n' + result.stderr,
-  );
+  const diagnostics = sanitizeBuildOutput(result.stdout + '\n' + result.stderr);
+  await writeFile(join(workspace, `build-${signed ? 'signed' : 'unsigned'}.log`), diagnostics);
   const entry = {
     command: signed ? 'build-signed' : 'build-unsigned',
     ok: result.ok,
     xcode: (await run('xcodebuild', ['-version'])).stdout,
-    errors: errorLines(result.stdout + '\n' + result.stderr).map((line) =>
-      line.replace(/account '[^']+'/g, "account '<redacted>'"),
-    ),
+    errors: diagnostics.trim().split('\n'),
   };
   if (result.ok && signed) {
     const entitlements = await run('codesign', ['-d', '--entitlements', '-', '--xml', appPath]);
@@ -238,6 +257,7 @@ async function build(signed) {
       requiredCapabilities: info.UIRequiredDeviceCapabilities,
     };
   }
+  if (signed) entry.ok = result.ok && signedBuildVerified(entry, team);
   await journal(entry);
 }
 async function convertPlist(input) {
@@ -400,4 +420,4 @@ async function main([command, ...rest]) {
       );
   }
 }
-await main(process.argv.slice(2));
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main(process.argv.slice(2));

@@ -51,6 +51,13 @@ const facts = {
 const derivation: DerivationFile = {
   schemaVersion: 1,
   extractSha256: facts.extractSha256,
+  source: {
+    sourceId: 'osm-extract-south-korea',
+    url: 'https://download.geofabrik.de/asia/south-korea-260901.osm.pbf',
+    lastModified: null,
+    etag: null,
+    recordedBy: 'none',
+  },
   osmium: 'osmium version 1.19.1',
   militaryPerimeterBarriers: {
     tool: 'scripts/geo/MilitaryPerimeterBarriers.java',
@@ -118,7 +125,7 @@ describe('the notice inside a routing graph', () => {
       derivation.militaryPerimeterBarriers?.derivedExtractSha256 ?? '',
       'barrierNodes=4220',
       'time-conditional way list: 77 ways',
-      'extract URL and Last-Modified: not recorded by this build',
+      'extract URL https://download.geofabrik.de/asia/south-korea-260901.osm.pbf',
     ])
       expect(text, value).toContain(value);
     expect(renderRoutingAttribution(facts, null)).toContain(
@@ -132,6 +139,11 @@ describe('the notice inside a routing graph', () => {
     ).resolves.toBeUndefined();
     await expect(
       verifyRoutingGraphAttribution((await graph('none')).directory),
+    ).rejects.toMatchObject({ code: 'ODBL_NOTICE_MISSING' });
+    await expect(
+      verifyRoutingGraphAttribution(
+        (await graph('rendered', { ...derivation, source: undefined })).directory,
+      ),
     ).rejects.toMatchObject({ code: 'ODBL_NOTICE_MISSING' });
     // A notice without the licence URI, hashed into the graph: the graph verifies, the notice not.
     const withoutLicence = renderRoutingAttribution(facts, derivation).replaceAll(
@@ -161,7 +173,7 @@ describe('the public disclosure of a verified graph', () => {
       sha256: facts.extractSha256,
       region: facts.extractRegion,
       byteLength: facts.extractByteLength,
-      acquisition: null,
+      acquisition: derivation.source,
     });
     expect(disclosure.derivation?.militaryPerimeterBarriers?.derivedExtractSha256).toBe(
       derivation.militaryPerimeterBarriers?.derivedExtractSha256,

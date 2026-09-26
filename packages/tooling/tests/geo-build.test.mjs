@@ -276,6 +276,22 @@ describe('ODbL notice and alteration method in a staged deployment', () => {
     );
   });
 
+  it('refuses a self-consistent notice with missing alteration method facts', async () => {
+    for (const change of [
+      (method) => ({ ...method, layerFilters: [] }),
+      (method) => ({ ...method, tippecanoeArguments: [] }),
+      (method) => ({ ...method, scripts: {} }),
+    ]) {
+      const root = await workspace();
+      await stageComplete(root);
+      const disclosure = sampleDisclosure();
+      disclosure.alterationMethod = change(disclosure.alterationMethod);
+      await writeFile(join(root, DISCLOSURE_FILE), JSON.stringify(disclosure));
+      await writeFile(join(root, 'ATTRIBUTION.txt'), renderBasemapAttribution(disclosure));
+      await expect(verifyStagedBuild(root, 1)).rejects.toThrow('ODBL_DISCLOSURE_INVALID');
+    }
+  });
+
   it('refuses a notice that is not the rendering of the record, even one that names the licence', async () => {
     const root = await workspace();
     await stageComplete(root);

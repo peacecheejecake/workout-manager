@@ -102,7 +102,9 @@ export const basemapDataDisclosureSchema = z.strictObject({
     maxzoom: z.number().int().min(0).max(24),
     glyphRanges: z.array(z.string().regex(/^[0-9]{1,5}-[0-9]{1,5}$/)).max(64),
     /** SHA-256 of every script that defines the alteration, by repository path. */
-    scripts: z.record(z.string().regex(/^scripts\/[A-Za-z0-9/_.-]{1,120}$/), sha256Schema),
+    scripts: z
+      .record(z.string().regex(/^scripts\/[A-Za-z0-9/_.-]{1,120}$/), sha256Schema)
+      .refine((scripts) => Object.keys(scripts).length > 0),
   }),
   toolVersions: z.strictObject({
     osmium: z.string().min(1).max(200).nullable(),

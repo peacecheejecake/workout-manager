@@ -73,6 +73,7 @@ import {
   type RoutingDeploymentSwitch,
 } from '../apps/api/src/routing-deployment.ts';
 import {
+  extractAcquisition,
   importRoutingGraph,
   probeReportPath,
   relocatedDeploymentNote,
@@ -339,6 +340,7 @@ async function ensureGraphC(workDir: string, deploymentOf: (dir: string) => Prom
       profileConfigSha256: await sha256File(routingGraphConfig),
       extractByteLength: (await stat(clipPath)).size,
       extract: { path: clipPath, region: CLIP_REGION },
+      source: await extractAcquisition(routingExtract.sourceId, extractPath, sourceSha256),
       ports: IMPORT,
     });
     importMilliseconds = Math.round(performance.now() - started);
