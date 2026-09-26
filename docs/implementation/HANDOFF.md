@@ -71,15 +71,25 @@ P8-coverage는 **failed 유지**. 검토자는 남은 미달을 표본 설계와
   검사는 `git merge-base HEAD main`을 부르므로 CI checkout은 history와 로컬 `main` ref가 있어야 한다(지금은 없으면 skip으로 보고된다).
 
 - **리뷰 방식 변경(사용자 결정 2026-09-26).** task node마다 받던 독립 peer review를 멈추고, task-graph 접두 단위 phase 리뷰(예: M2-01
-  phase)를 Codex CLI `gpt-6-sol`(high)로 받는다. phase 안 task는 검증을 통과하면 `phase/<접두>` 브랜치(지금 `phase/m2-01`)에 커밋하고,
+  phase)를 Codex CLI `gpt-6-sol`(high)로 받는다. phase 안 task는 검증을 통과하면 `phase/<접두>` 브랜치(예: `phase/m2-01`, `phase/m0-06`)에 커밋하고,
   phase 리뷰를 통과한 뒤 main에 fast-forward한다. 요구가 정한 검토(예: M2-01as의 독립 재식별 검토)는 따로 받는다.
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드는 없다. 남은 노드는 외부 gate(EXT-OIDC, EXT-G, M0-06b의 실기기
-항목, 실기기 보류 M0-06c)에 막혀 있다.
-M2-01 phase의 실행 가능한 노드는 phase 리뷰(Codex)를 통과해 main에 들어갔다. 지금 phase 브랜치는 `phase/m0-06`(M0-06b-cov)이다. 재개 시 각
-worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.
+task-graph 193개 노드 중 177개 완료(2026-09-26). not_started인 ready 노드는 없다. 남은 16개는 모두 외부 gate나 사람의 결정에 막혀 있다.
+
+- EXT-OIDC(Zitadel instance·등록·secret) → M2-01k(in_progress) → M2-01 → M2-02 → M2-06 → M2-07 → G2.
+- EXT-G(공식 Garmin 경로) → M0-07b, M1-06b.
+- M0-06b(in_progress): 실기기 항목(OS IME·물리 touch·실기기 성능)·실제 호스팅·ODbL 이행. 보행 coverage(P8-coverage)는 M2-01ay 수정 뒤에도
+  같은 사전 등록으로 **부적합(73.5/82)**이라 failed다. 남은 미달(rural, bridge-pedestrian, negative-sea-island)은 검토자가 표본 설계와 OSM
+  자료 공백(잠수교)으로 분류했다. 기준을 바꿔 새로 사전 등록할지, OSM 자료를 고칠지, 표본을 늘릴지는 **사람의 결정**이다(기존 기준 이동 금지).
+- M0-06c(in_progress, 실기기 보류) → M3-01..03 → G3.
+
+브랜치: `main` = `phase/m0-06` = `phase/m2-01`의 후속(M2-01 phase와 M0-06 phase 모두 Codex phase 리뷰 APPROVE 뒤 fast-forward). M0-06 phase
+리뷰는 r1 REQUEST CHANGES(시간 조건 way 선택, `road_environment` 확인, runbook 문구) → 수정 `eee9fae` → r2 APPROVE. `main`은
+`origin/main`보다 앞서 있으며 push는 사용자가 한다. 전국 보행 graph의 최종 root는 `.geo-build-routing/kr-260901-m2-01ay-r1`
+(`92e0fa5f319a41df`)이고 기본 `.geo-build`는 아직 Seoul이다(서빙 교체는 runbook "전국 extract로의 교체" 절). 재개 시 `.claude/worktrees/`의
+agent·merge worktree는 모두 커밋되었거나 버려도 되는 사본이다. 지우기 전에 각 worktree의 미커밋 상태를 확인한다.
 
 ## 알려진 흔들리는 시험
 
