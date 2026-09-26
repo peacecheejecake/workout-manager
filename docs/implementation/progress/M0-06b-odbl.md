@@ -247,3 +247,23 @@ identity 두 run의 실패는 서로 다른 spec이고, 이 노드가 바꾼 화
   `pnpm build` 통과, 실제 PostgreSQL 통합 80파일·794개 시험 통과했다.
   `pnpm test:identity` 두 독립 실행은 각각 265 passed·9 skipped(13.3분 / 13.2분)였다.
   이는 기존 앱의 브라우저 회귀 증거이며 M0-06c 실기기 잔여 항목의 증거가 아니다.
+- 재검토 HEAD `b58d528`에서 이전 네 건은 모두 **FIXED**였으나 **CHANGES_REQUESTED**였다.
+  새 지적은 공유 코스 화면의 경로 데이터 고지 누락, 배포 검사가 허용한 disclosure를
+  공개 계약이 거절하는 경로, 이전 서명 빌드 산출물 설치 가능성이다. 공유 snapshot에는
+  비민감한 출처 고지 필요 여부만 투영하고, build 검증을 공개 schema에 맞추며,
+  설치는 같은 앱 바이트의 검증된 signed build receipt를 요구한다. 수정 HEAD의
+  전체 diff는 다시 검토받는다.
+- 두 번째 검토의 새 지적에 대한 검증: 공유 링크 응답은 라우팅 graph 사용 여부만 고정
+  snapshot에 싣고(imported course와 기존 snapshot은 필드 생략), 실제 PostgreSQL
+  통합 80파일·795개 통과했다. Next·Vite 셸의 공유 화면은 배경 지도가 없는 조건에서
+  라우팅 고지 표시/비표시 브라우저 시험 4개를 통과했다. 배포 disclosure의 공개 schema
+  불일치 변이 12개와 서명 빌드 receipt 변이는 단위 시험에 추가했다. generated check,
+  lint, typecheck, build, format check가 통과했다. 전체 단위 시험의 첫 실행은 다른
+  빌드와 병행해 여러 무관한 화면 시험이 시간 초과되어 중단했고, 단독 재실행에서는
+  330파일·4,037개가 통과했다. 변경 후 전체 `pnpm test:identity` 두 회차는 각각
+  269 passed·9 skipped(14.3분 / 14.4분)였다. skipped 중 실제 OIDC 공급자 검사는
+  이 실행의 환경 조건 밖이며 통과로 계산하지 않는다.
+  Aside는 설치 지침의 `aside --update`가 네트워크 오류(`fetch failed`)로 실패해
+  새 검증에 사용할 수 없었다. Chrome 앱은 열렸지만 검증 하네스의 응답 fixture를
+  연결하지 못해 공유 화면 확인에는 Playwright를 사용했다. 이 브라우저 증거는
+  native WKWebView·HealthKit 실기기 실행의 대체 증거가 아니다.

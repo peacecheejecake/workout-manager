@@ -305,6 +305,8 @@ export const sharedCourseSchema = z.strictObject({
   waypoints: z.array(sharedCourseWaypointSchema).min(2).max(courseLimits.waypoints),
   /** Planned length of the shared line, whole metres. */
   distanceMeters: z.number().int().nonnegative(),
+  /** True only when the frozen source revision used the OSM routing graph. Older snapshots omit it. */
+  routeDataNotice: z.boolean().optional(),
   expiresOn: localDateSchema,
 });
 export type SharedCourse = z.infer<typeof sharedCourseSchema>;

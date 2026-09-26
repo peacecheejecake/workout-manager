@@ -184,7 +184,25 @@ export function renderBasemapAttribution(disclosure) {
 /** Reject incomplete alteration records before a deployment can be published. */
 export function assertBasemapDisclosure(value) {
   const object = (item) => item !== null && typeof item === 'object' && !Array.isArray(item);
-  const nonempty = (item) => typeof item === 'string' && item.trim().length > 0;
+  const keys = (item, expected) =>
+    object(item) &&
+    Object.keys(item).length === expected.length &&
+    expected.every((key) => Object.hasOwn(item, key));
+  const text = (item, max) =>
+    typeof item === 'string' && item.trim().length > 0 && item.length <= max;
+  const matches = (item, pattern) => typeof item === 'string' && pattern.test(item);
+  const nullableText = (item, max) => item === null || text(item, max);
+  const httpsUrl = (item) => {
+    if (typeof item !== 'string' || item.length > 512) return false;
+    try {
+      const url = new URL(item);
+      return url.protocol === 'https:' && url.hostname.length > 0;
+    } catch {
+      return false;
+    }
+  };
+  const boundedArray = (item, min, max, accepts) =>
+    Array.isArray(item) && item.length >= min && item.length <= max && item.every(accepts);
   const record = object(value) ? value : null;
   const source = object(record?.source) ? record.source : null;
   const licence = object(record?.licence) ? record.licence : null;
@@ -193,47 +211,79 @@ export function assertBasemapDisclosure(value) {
   const tools = object(record?.toolVersions) ? record.toolVersions : null;
   const scripts = object(method?.scripts) ? Object.entries(method.scripts) : [];
   if (
+    !keys(record, [
+      'schemaVersion',
+      'kind',
+      'licence',
+      'buildId',
+      'deploymentId',
+      'region',
+      'source',
+      'alterationMethod',
+      'toolVersions',
+    ]) ||
+    !keys(licence, ['name', 'url', 'copyrightUrl', 'attribution']) ||
+    !keys(source, ['sha256', 'bytes', 'acquisition']) ||
+    !keys(acquisition, ['sourceId', 'url', 'lastModified', 'etag', 'recordedBy']) ||
+    !keys(method, [
+      'description',
+      'layerFilters',
+      'osmiumExportFormat',
+      'tippecanoeArguments',
+      'minzoom',
+      'maxzoom',
+      'glyphRanges',
+      'scripts',
+    ]) ||
+    !keys(tools, ['osmium', 'tippecanoe', 'node']) ||
     record?.schemaVersion !== 1 ||
     record?.kind !== 'basemap-tiles' ||
     licence?.name !== 'ODbL-1.0' ||
     licence?.url !== ODBL_LICENCE_URL ||
     licence?.copyrightUrl !== OSM_COPYRIGHT_URL ||
     licence?.attribution !== OSM_ATTRIBUTION ||
-    !/^[0-9a-f]{12}$/.test(record.buildId ?? '') ||
-    !/^[a-z0-9][a-z0-9-]{0,63}$/.test(record.deploymentId ?? '') ||
-    !nonempty(record.region) ||
-    !/^[0-9a-f]{64}$/.test(source?.sha256 ?? '') ||
-    !Number.isInteger(source?.bytes) ||
+    !matches(record.buildId, /^[0-9a-f]{12}$/) ||
+    !matches(record.deploymentId, /^[a-z0-9][a-z0-9-]{0,63}$/) ||
+    !text(record.region, 200) ||
+    !matches(source.sha256, /^[0-9a-f]{64}$/) ||
+    !Number.isSafeInteger(source?.bytes) ||
     source.bytes <= 0 ||
-    !nonempty(acquisition?.sourceId) ||
-    !/^https:\/\//.test(acquisition?.url ?? '') ||
-    !nonempty(method?.description) ||
-    !Array.isArray(method.layerFilters) ||
-    method.layerFilters.length === 0 ||
-    !method.layerFilters.every(
-      (filter) =>
-        object(filter) &&
-        nonempty(filter.layer) &&
-        Array.isArray(filter.expressions) &&
-        filter.expressions.length > 0 &&
-        filter.expressions.every(nonempty),
+    !matches(acquisition.sourceId, /^[a-z0-9-]{1,64}$/) ||
+    !httpsUrl(acquisition?.url) ||
+    !nullableText(acquisition?.lastModified, 64) ||
+    !nullableText(acquisition?.etag, 128) ||
+    !['download-response', 'acquisition-record', 'earlier-build-report', 'none'].includes(
+      acquisition?.recordedBy,
     ) ||
-    !nonempty(method.osmiumExportFormat) ||
-    !Array.isArray(method.tippecanoeArguments) ||
-    method.tippecanoeArguments.length === 0 ||
-    !method.tippecanoeArguments.every(nonempty) ||
+    !text(method?.description, 1000) ||
+    !boundedArray(
+      method?.layerFilters,
+      1,
+      32,
+      (filter) =>
+        keys(filter, ['layer', 'expressions']) &&
+        matches(filter.layer, /^[a-z]{1,32}$/) &&
+        boundedArray(filter.expressions, 1, 32, (expression) => text(expression, 200)),
+    ) ||
+    !text(method.osmiumExportFormat, 200) ||
+    !boundedArray(method.tippecanoeArguments, 1, 128, (argument) => text(argument, 1000)) ||
     !Number.isInteger(method.minzoom) ||
     !Number.isInteger(method.maxzoom) ||
+    method.minzoom < 0 ||
+    method.maxzoom > 24 ||
     method.minzoom > method.maxzoom ||
-    !Array.isArray(method.glyphRanges) ||
-    !method.glyphRanges.every((range) => /^[0-9]{1,5}-[0-9]{1,5}$/.test(range)) ||
+    !boundedArray(method.glyphRanges, 0, 64, (range) =>
+      matches(range, /^[0-9]{1,5}-[0-9]{1,5}$/),
+    ) ||
+    !object(method.scripts) ||
     scripts.length === 0 ||
     !scripts.every(
-      ([path, digest]) => /^scripts\/[A-Za-z0-9/_.-]+$/.test(path) && /^[0-9a-f]{64}$/.test(digest),
+      ([path, digest]) =>
+        /^scripts\/[A-Za-z0-9/_.-]{1,120}$/.test(path) && matches(digest, /^[0-9a-f]{64}$/),
     ) ||
-    !nonempty(tools?.node) ||
-    (tools.osmium !== null && !nonempty(tools.osmium)) ||
-    (tools.tippecanoe !== null && !nonempty(tools.tippecanoe))
+    !text(tools?.node, 64) ||
+    !nullableText(tools.osmium, 200) ||
+    !nullableText(tools.tippecanoe, 200)
   )
     throw new Error(`ODBL_DISCLOSURE_INVALID: ${DISCLOSURE_FILE} lacks required alteration facts`);
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeBuildOutput, signedBuildVerified } from '../../../scripts/probe-device.mjs';
+import {
+  assertInstallableBuild,
+  sanitizeBuildOutput,
+  signedBuildVerified,
+} from '../../../scripts/probe-device.mjs';
 
 describe('device build evidence', () => {
   it('stores bounded diagnostics without account, profile, path, or certificate text', () => {
@@ -39,5 +43,24 @@ describe('device build evidence', () => {
       { ...valid, builtInfo: { ...valid.builtInfo, bundleId: 'other.app' } },
     ])
       expect(signedBuildVerified(invalid, team)).toBe(false);
+  });
+
+  it('installs only the exact app from a verified signed build receipt', () => {
+    const digest = 'a'.repeat(64);
+    const receipt = {
+      bundleId: 'org.workoutmanager.feasibility.deviceprobe',
+      verified: true,
+      appSha256: digest,
+    };
+    expect(() => assertInstallableBuild(receipt, digest)).not.toThrow();
+    for (const invalid of [
+      null,
+      { ...receipt, verified: false },
+      { ...receipt, appSha256: 'b'.repeat(64) },
+      { ...receipt, bundleId: 'other.app' },
+    ])
+      expect(() => assertInstallableBuild(invalid, digest)).toThrow(
+        'SIGNED_BUILD_RECEIPT_REQUIRED',
+      );
   });
 });

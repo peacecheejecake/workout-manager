@@ -18,6 +18,7 @@ import {
   OSM_COPYRIGHT_URL,
   basemapAttributionText,
   basemapStyleAttribution,
+  assertBasemapDisclosure,
   createBasemapDisclosure,
   renderBasemapAttribution,
   resolveAcquisition,
@@ -225,6 +226,58 @@ describe('ODbL notice and alteration method in a staged deployment', () => {
       mapDataLicencePagePath,
     ]);
     expect(basemapDataDisclosureSchema.parse(sampleDisclosure())).toEqual(sampleDisclosure());
+  });
+
+  it('rejects records whose required public disclosure fields are absent or invalid', async () => {
+    const changes = [
+      (record) => {
+        delete record.source.acquisition.recordedBy;
+      },
+      (record) => {
+        record.source.acquisition.recordedBy = 'unknown';
+      },
+      (record) => {
+        delete record.source.acquisition.lastModified;
+      },
+      (record) => {
+        delete record.source.acquisition.etag;
+      },
+      (record) => {
+        record.source.acquisition.sourceId = 'Invalid ID';
+      },
+      (record) => {
+        record.source.sha256 = [record.source.sha256];
+      },
+      (record) => {
+        record.source.bytes = Number.MAX_SAFE_INTEGER + 1;
+      },
+      (record) => {
+        record.source.acquisition.url = 'https://';
+      },
+      (record) => {
+        record.alterationMethod.maxzoom = 25;
+      },
+      (record) => {
+        record.alterationMethod.layerFilters[0].layer = 'Roads';
+      },
+      (record) => {
+        delete record.toolVersions.node;
+      },
+      (record) => {
+        record.extra = 'not in the public schema';
+      },
+    ];
+    for (const change of changes) {
+      const disclosure = sampleDisclosure();
+      change(disclosure);
+      expect(basemapDataDisclosureSchema.safeParse(disclosure).success).toBe(false);
+      expect(() => assertBasemapDisclosure(disclosure)).toThrow('ODBL_DISCLOSURE_INVALID');
+      const root = await workspace();
+      await stageComplete(root);
+      await writeFile(join(root, DISCLOSURE_FILE), JSON.stringify(disclosure));
+      await writeFile(join(root, 'ATTRIBUTION.txt'), renderBasemapAttribution(disclosure));
+      await expect(verifyStagedBuild(root, 1)).rejects.toThrow('ODBL_DISCLOSURE_INVALID');
+    }
   });
 
   it('refuses an ATTRIBUTION.txt without the licence URI', async () => {

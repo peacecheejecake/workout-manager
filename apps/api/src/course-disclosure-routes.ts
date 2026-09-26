@@ -198,7 +198,12 @@ function exportLine(
 }
 
 /** A link's snapshot: the recipient's read model, names only where the owner kept them. */
-function linkSnapshot(name: string, line: DisclosedLine, includeNames: boolean) {
+function linkSnapshot(
+  name: string,
+  line: DisclosedLine,
+  includeNames: boolean,
+  routeDataNotice: boolean,
+) {
   return {
     ...(includeNames ? { name } : {}),
     coordinates: line.coordinates.map((position): CoursePosition => [position[0], position[1]]),
@@ -211,6 +216,7 @@ function linkSnapshot(name: string, line: DisclosedLine, includeNames: boolean) 
         : {}),
     })),
     distanceMeters: Math.round(line.distanceMeters),
+    ...(routeDataNotice ? { routeDataNotice: true } : {}),
   };
 }
 
@@ -469,7 +475,12 @@ export function registerCourseDisclosureRoutes(
             tokenDigest: shareTokenDigest(token),
             epoch: links.epoch,
             expiresInDays: body.expiresInDays ?? courseSharingLimits.shareExpiryDefaultDays,
-            snapshot: linkSnapshot(head.name, option.line, usable.receipt.includeNames),
+            snapshot: linkSnapshot(
+              head.name,
+              option.line,
+              usable.receipt.includeNames,
+              courseGenerationGraphBuildId(head.generation) !== null,
+            ),
             zoneIds: zones.map((zone) => zone.zoneId),
             // M2-01as: the areas that cut this link each give up one of their lifetime links.
             cutZoneIds: shareCutAreaIndexes(head.coordinates, circles, zones.length).flatMap(

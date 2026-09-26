@@ -27,6 +27,7 @@ const derived = join(workspace, 'derived');
 const fixtures = join(repository, 'scripts/fixtures/device-probe');
 const bundleId = 'org.workoutmanager.feasibility.deviceprobe';
 const appPath = join(derived, 'Build/Products/Debug-iphoneos/App.app');
+const signedBuildReceipt = join(workspace, 'signed-build-receipt.json');
 const steps = new Set([
   'none',
   'status',
@@ -112,7 +113,19 @@ export function signedBuildVerified(entry, team) {
   );
 }
 
+export function assertInstallableBuild(receipt, appSha256) {
+  if (
+    receipt?.bundleId !== bundleId ||
+    receipt?.verified !== true ||
+    !/^[0-9a-f]{64}$/.test(receipt?.appSha256 ?? '') ||
+    receipt.appSha256 !== appSha256
+  )
+    throw new Error('SIGNED_BUILD_RECEIPT_REQUIRED');
+}
+
 async function prepare() {
+  await rm(signedBuildReceipt, { force: true });
+  await rm(derived, { recursive: true, force: true });
   for (const name of ['core', 'cli', 'ios']) {
     const metadata = JSON.parse(
       await readFile(join(repository, 'node_modules/@capacitor', name, 'package.json'), 'utf8'),
@@ -198,6 +211,8 @@ async function prepare() {
 }
 
 async function build(signed) {
+  await rm(signedBuildReceipt, { force: true });
+  await rm(appPath, { recursive: true, force: true });
   const team = process.env.WM_DEVICE_TEAM;
   if (signed && !/^[A-Z0-9]{10}$/.test(team ?? '')) throw new Error('WM_DEVICE_TEAM_REQUIRED');
   const common = [
@@ -258,6 +273,11 @@ async function build(signed) {
     };
   }
   if (signed) entry.ok = result.ok && signedBuildVerified(entry, team);
+  if (signed && entry.ok) {
+    const appSha256 = await hashTree(appPath);
+    await writeFile(signedBuildReceipt, JSON.stringify({ bundleId, verified: true, appSha256 }));
+    entry.appSha256 = appSha256;
+  }
   await journal(entry);
 }
 async function convertPlist(input) {
@@ -299,6 +319,15 @@ async function main([command, ...rest]) {
     case 'build-signed':
       return build(true);
     case 'install': {
+      let receipt;
+      try {
+        receipt = JSON.parse(await readFile(signedBuildReceipt, 'utf8'));
+      } catch {
+        throw new Error('SIGNED_BUILD_RECEIPT_REQUIRED');
+      }
+      assertInstallableBuild(receipt, await hashTree(appPath));
+      if (!(await run('codesign', ['--verify', '--deep', '--strict', appPath])).ok)
+        throw new Error('SIGNED_BUILD_RECEIPT_REQUIRED');
       const result = await devicectl(
         'install',
         ['device', 'install', 'app', '--device', device(), appPath],

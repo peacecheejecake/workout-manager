@@ -182,6 +182,9 @@ export function sharedCourseAnswer(
       ...(includeNames && waypoint.name !== undefined ? { name: waypoint.name } : {}),
     })),
     distanceMeters: snapshot.distanceMeters,
+    ...(snapshot.routeDataNotice === undefined
+      ? {}
+      : { routeDataNotice: snapshot.routeDataNotice }),
     expiresOn: expiryDate(expiresAt),
   });
 }

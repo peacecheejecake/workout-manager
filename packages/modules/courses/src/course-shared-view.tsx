@@ -18,6 +18,7 @@ import type { MapViewProps } from '@workout/geo-kit/map-view';
 import { Button } from '@workout/ui-foundation/button';
 
 import { readSharedCourse } from './course-sharing-api';
+import { RouteDataNotice } from './route-data-notice';
 import styles from './course-sharing.module.css';
 
 /**
@@ -218,6 +219,7 @@ function SharedCourseBody({
           />
         </Suspense>
       </div>
+      {course.routeDataNotice === true ? <RouteDataNotice /> : null}
       <ul aria-label="코스 지점">
         {course.waypoints.map((waypoint, index) => (
           <li key={`${waypoint.role}:${index}`}>

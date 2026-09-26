@@ -2,6 +2,11 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import type { MapViewProps } from '@workout/geo-kit/map-view';
 
 import { SharedCourseView } from '../src/course-shared-view';
@@ -22,6 +27,7 @@ const answer = {
   ],
   distanceMeters: 1400,
   expiresOn: '2026-10-02',
+  routeDataNotice: true,
 };
 
 function FakeMap(props: MapViewProps) {
@@ -30,6 +36,10 @@ function FakeMap(props: MapViewProps) {
       {props.paths.length} · <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>
     </div>
   );
+}
+
+function FakeMapWithoutAttribution() {
+  return <div data-testid="fake-map">지도 배경 없음</div>;
 }
 
 beforeEach(() => {
@@ -51,6 +61,7 @@ describe('the shared course view', () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(sendBeacon).not.toHaveBeenCalled();
     expect(screen.queryByTestId('fake-map')).toBeNull();
+    expect(screen.queryByTestId('route-data-notice')).toBeNull();
     expect(window.location.hash).toBe(`#${token}`);
   });
 
@@ -88,14 +99,52 @@ describe('the shared course view', () => {
     expect(screen.queryByRole('button', { name: /다운로드|GPX|내보내기|받기/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /다운로드|GPX|내보내기/ })).toBeNull();
     expect(screen.getByRole('list', { name: '코스 지점' })).toHaveTextContent('출발');
-    // B-8: the one external link leaves without a referrer.
+    // B-8: all external attribution links leave without a referrer.
     await waitFor(() =>
       expect(screen.getByRole('link', { name: '© OpenStreetMap' })).toHaveAttribute(
         'rel',
         'noreferrer noopener',
       ),
     );
-    expect(container.querySelectorAll('a[href^="http"]')).toHaveLength(1);
+    expect(container.querySelectorAll('a[href^="http"]')).toHaveLength(3);
+    for (const anchor of container.querySelectorAll('a[href^="http"]')) {
+      expect(anchor).toHaveAttribute('rel', 'noreferrer noopener');
+      expect(anchor).toHaveAttribute('referrerpolicy', 'no-referrer');
+    }
+  });
+
+  it('shows routed data attribution with no basemap, and omits it for a recorded course', async () => {
+    const routedFetcher = vi.fn(async () => new Response(JSON.stringify(answer), { status: 200 }));
+    const routed = render(
+      <SharedCourseView fetcher={routedFetcher} mapView={FakeMapWithoutAttribution} />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: '코스 보기' }));
+    expect(await screen.findByTestId('fake-map')).toHaveTextContent('지도 배경 없음');
+    const notice = screen.getByTestId('route-data-notice');
+    expect(notice).toHaveTextContent('OpenStreetMap');
+    expect(screen.getByRole('link', { name: '저작권·출처' })).toHaveAttribute(
+      'href',
+      osmCopyrightUrl,
+    );
+    expect(screen.getByRole('link', { name: 'ODbL 1.0 라이선스' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
+    expect(screen.getByRole('link', { name: '지도 데이터 변경 방법' })).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
+    routed.unmount();
+
+    const recordedFetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ...answer, routeDataNotice: false }), { status: 200 }),
+    );
+    render(<SharedCourseView fetcher={recordedFetcher} mapView={FakeMapWithoutAttribution} />);
+    window.history.replaceState(null, '', `/shared/course#${token}`);
+    await userEvent.click(screen.getByRole('button', { name: '코스 보기' }));
+    await screen.findByTestId('fake-map');
+    expect(screen.queryByTestId('route-data-notice')).toBeNull();
   });
 
   it('says the same thing for every link that is not there', async () => {
@@ -108,6 +157,7 @@ describe('the shared course view', () => {
       '이 링크로 볼 수 있는 코스가 없습니다.',
     );
     expect(screen.queryByTestId('fake-map')).toBeNull();
+    expect(screen.queryByTestId('route-data-notice')).toBeNull();
   });
 
   it('does not ask the server at all when the address carries no token', async () => {

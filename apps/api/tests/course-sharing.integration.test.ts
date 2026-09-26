@@ -16,7 +16,7 @@ import {
   sharedCourseSchema,
 } from '@workout/contracts/course-sharing';
 import { accountExportSchema } from '@workout/contracts/operations';
-import type { CoursePosition, CourseWaypoint } from '@workout/contracts/courses';
+import type { CourseGeneration, CoursePosition, CourseWaypoint } from '@workout/contracts/courses';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import {
   drawShareOffset,
@@ -306,6 +306,7 @@ async function ownerWithCourse(
     name?: string;
     zones?: readonly { name: string; center: CoursePosition; radiusMeters: number }[];
     lineage?: { activityId: string };
+    generation?: CourseGeneration;
   } = {},
 ) {
   const athleteId = randomUUID();
@@ -328,12 +329,12 @@ async function ownerWithCourse(
 async function addCourse(
   athleteId: string,
   line: readonly CoursePosition[],
-  options: { name?: string; lineage?: { activityId: string } } = {},
+  options: { name?: string; lineage?: { activityId: string }; generation?: CourseGeneration } = {},
 ) {
   const name = options.name ?? '한강 둘레길';
   const coordinates = [...line];
   const waypoints = waypointsOf(coordinates);
-  const generation = {
+  const generation: CourseGeneration = options.generation ?? {
     kind: 'imported-file' as const,
     format: 'gpx' as const,
     sourceKind: 'gpx-rte' as const,
@@ -772,6 +773,57 @@ describe('T9: with the flag off (the shipped default) there is no link at all', 
 const sharedKeys = ['coordinates', 'distanceMeters', 'expiresOn', 'waypoints'];
 
 describe('B. the view-only link', () => {
+  it('discloses routing data on a shared computed course, including without a basemap', async () => {
+    const { courseId } = await ownerWithCourse(loop, {
+      generation: {
+        kind: 'routed-waypoints',
+        computation: {
+          schemaVersion: 1,
+          requestId: 'share-disclosure-fixture',
+          requestRevision: 1,
+          graph: {
+            engine: 'graphhopper',
+            identitySource: 'engine',
+            engineVersion: '10.0',
+            engineArtifactSha256: 'a'.repeat(64),
+            profileId: 'foot-v1',
+            profileConfigSha256: 'b'.repeat(64),
+            extractSha256: 'c'.repeat(64),
+            extractRegion: 'seoul',
+            graphContentSha256: 'd'.repeat(64),
+            graphBuildId: '0123456789abcdef',
+            graphImportedAt: '2026-03-01T00:00:00.000Z',
+            roadDataAt: '2026-02-01T00:00:00.000Z',
+          },
+          conditions: {
+            profileId: 'foot-v1',
+            algorithm: 'flexible',
+            contractionHierarchies: false,
+            maxVisitedNodes: 1_000_000,
+            deadlineMilliseconds: 8_000,
+            snapLimitMeters: 120,
+            waypointCount: 3,
+          },
+          computedAt: '2026-03-02T00:00:00.000Z',
+          computationMilliseconds: 42,
+          warnings: [],
+        },
+        engineDistanceMeters: 4_000,
+        engineDurationSeconds: 2_000,
+        maxSnapDistanceMeters: 4,
+        waypointCount: 3,
+        vertexCount: loop.length,
+      },
+    });
+    const instance = linkApp();
+    const { token } = await makeLink(instance, courseId);
+    const response = await read(instance, { token });
+    expect(response.statusCode).toBe(200);
+    expect(sharedCourseSchema.parse(response.json()).routeDataNotice).toBe(true);
+    expect(Object.keys(response.json()).sort()).toEqual([...sharedKeys, 'routeDataNotice'].sort());
+    expect(response.body).not.toContain('0123456789abcdef');
+  });
+
   it('T3/T25: serves a snapshot outside every share circle, rounded to five places', async () => {
     const { athleteId, courseId } = await ownerWithCourse(loop);
     const instance = linkApp();
