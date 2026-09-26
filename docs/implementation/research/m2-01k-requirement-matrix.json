@@ -560,6 +560,18 @@
         "root Chrome Next desktop manual check after Aside update failed: chart zoom changed displayed domain and visibly cropped/zoomed map line; Chrome did not inspect Ctrl+wheel, which Playwright did in both shells"
       ],
       "note": "Fixture Chromium and isolated PostgreSQL, not native touch/IME or production OIDC. M2-01k parent remains in_progress pending other rows and phase review."
+    },
+    {
+      "node": "M2-01k account-switch cache and draft slice",
+      "date": "2026-09-27",
+      "rows": ["P5-logout-clear", "P8-ui-component"],
+      "decision": "A direct Alice-to-Bob replacement is now asserted against a live unsaved course draft and a private browser-storage sentinel in both production shells. This closes the prior direct cache/draft assertion gap, while late old-account network re-entry remains unproven.",
+      "change": "Both rows remain partial; counts unchanged. Historical verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "tests/identity/course-account-switch.spec.ts: Next and Vite 2/2 passed after a direct fixture OIDC account replacement, with Alice's waypoint name absent, a fresh empty Bob draft, and the old private browser value removed",
+        "temporary bindPrivateBrowserStorageAccount clear-suppression mutant: rebuilt both shells, both new browser tests failed at the surviving Alice private value; restored source, rebuilt, 2/2 passed"
+      ],
+      "note": "A response arriving after an account switch was not delivered and asserted here; P5-logout-clear and the umbrella P8-ui-component retain partial verdicts. Fixture OIDC is not a production provider."
     }
   ],
   "rounds": [
@@ -2562,7 +2574,7 @@
       "quote": "로그아웃/계정 전환에서 private cache, worker 결과, map source, draft를 비우고 늦은 요청의 재유입을 차단한다.",
       "verdict": "partial",
       "evidence": [],
-      "reason": "M2-01k-d amendment: still partial. After sign-out or an account switch in another tab, the held track requests are cancelled and a track that was delivered before the change is removed and never re-added (both shells). A response arriving after the change could not be produced through the tested detection path (visibilitychange -> 401/409 -> expired() cancels), and a visible tab that never re-checks was not tested, so late re-entry is not shown as such. Four independent layers each prevent the leak: only removing all four fails, and that failure is the leaked activity list, not the track assertion; the track-discard assertion has no killing mutant. Clearing of the private cache and the course draft is not asserted directly, and the localStorage check has no mutant.",
+      "reason": "M2-01k account-switch addendum: still partial. A direct Alice-to-Bob replacement now clears a live unsaved course draft and a private browser-storage sentinel in Next/Vite; a clear-suppression mutant fails both shells at the old private value. Earlier M2-01k-d tests prove held track cancellation and removal of an already-delivered track. A response arriving after the change could not be produced through that detection path (visibilitychange -> 401/409 -> expired() cancels), and a visible tab that never re-checks was not tested, so late re-entry is not shown as such. Four independent layers each prevent the earlier track leak: only removing all four fails, and that failure is the leaked activity list, not the track assertion; the track-discard assertion has no killing mutant.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -3407,7 +3419,7 @@
       "quote": "| UI/component | 파일 교체/취소·stale 응답·차트 선택·초안 유지·계정 전환·WebGL 실패·키보드/목록 대안 |",
       "verdict": "partial",
       "evidence": ["pnpm test (3,207)"],
-      "reason": "See V2-A35, P5-logout-clear. M2-01k-c1: the stale-response part is now covered (see V2-A35); what remains is account switching, which belongs to M2-01k-d.",
+      "reason": "See V2-A35 and P5-logout-clear. M2-01k-c1 covers the stale route response. The account-switch addendum directly asserts clearing a live course draft and private browser value in Next/Vite and kills a cache-clear mutant. The broader P5 late old-account network re-entry condition is still unproven, so this umbrella row remains partial.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
