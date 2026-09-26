@@ -1148,10 +1148,10 @@ describe('engine memory budgets are bound to the graph they were baselined on (M
     const checkedIn = parseBudgetFile(
       JSON.parse(readFileSync(research('performance-budget.json'), 'utf8')),
     );
-    // M2-01ay: c1fa89fbaf155076 (was 188b65effcc6ef5c, content 138a1978..., in M2-01ak).
+    // M2-01ay: 92e0fa5f319a41df (was 188b65effcc6ef5c, content 138a1978..., in M2-01ak).
     for (const id of ['engine.idleRssMiB', 'engine.loadPeakRssMiB'])
       expect(checkedIn.desktop.metrics[id]?.baseline.routingGraphContentSha256, id).toBe(
-        '1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7',
+        '52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2',
       );
   });
 });

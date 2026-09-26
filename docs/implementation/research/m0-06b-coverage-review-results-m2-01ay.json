@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "node": "M0-06b",
-  "executedAt": "2026-09-26T03:56:37.301Z",
+  "executedAt": "2026-09-26T07:04:10.443Z",
   "purpose": "Ungraded evidence set for an independent reviewer of Korean pedestrian routing coverage. Nothing in this file is a pass or a fail.",
   "coverageReview": "not_reviewed",
   "method": {
@@ -35,12 +35,12 @@
       "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
       "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
       "extractByteLength": 286403403,
-      "graphContentSha256": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7",
-      "graphImportedAt": "2026-09-26T03:56:05.000Z",
+      "graphContentSha256": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2",
+      "graphImportedAt": "2026-09-26T07:03:27.000Z",
       "roadDataAt": "2026-09-01T20:20:50.000Z",
-      "builtAt": "2026-09-26T03:56:11.776Z"
+      "builtAt": "2026-09-26T07:03:33.885Z"
     },
-    "graphBuildId": "c1fa89fbaf155076",
+    "graphBuildId": "92e0fa5f319a41df",
     "deployedGraphDirectory": "<ROUTING_GRAPH_ROOT>/foot",
     "deployment": {
       "deployment": "relocated (ROUTING_GRAPH_ROOT)",
@@ -50,8 +50,8 @@
       "servedGraphBuildId": "c57f12f5975347e8"
     },
     "extractSource": "osm-extract-south-korea",
-    "deployedGraphContentBeforeRun": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7",
-    "deployedGraphContentAfterRun": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7",
+    "deployedGraphContentBeforeRun": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2",
+    "deployedGraphContentAfterRun": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2",
     "deployedDirectoryListingUnchanged": true,
     "extractSha256Recomputed": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
     "extractHeaderBbox": [124.3188, 32.36076, 132.3386, 38.64966]
@@ -547,8 +547,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 82,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 86,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 10,
       "geometrySha256": "fb84194d6b1f90c57c8c809516625059e72178bbb99a885a106bbea35bd46f77",
       "geometry": [
@@ -732,8 +732,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 19,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 21,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 35,
       "geometrySha256": "a00eb5f87fabba94c1a20b11898f45b7c861224ec366470c4f786c8c24346b62",
       "geometry": [
@@ -926,8 +926,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 12,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 15,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 39,
       "geometrySha256": "08db270beab547787cee89ab042300061f55520233dac95e2fd01f75504571d9",
       "geometry": [
@@ -2174,8 +2174,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 40,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 45,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 400,
       "geometrySha256": "b9565671fd822e036aad34d9975864162a605959ed0f0ebdb88e105fb83e17b2",
       "geometry": [
@@ -2710,8 +2710,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 10,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 20,
       "geometrySha256": "35c374f0e36c435ebc027861a879f2951d5a9920498ff5cc0ad3037bcae6a31f",
       "geometry": [
@@ -2956,8 +2956,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 25,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 20,
       "geometrySha256": "84305ecf74e4206c15907ffd22ec34073b542a4d9ac7616813f481e1a0044725",
       "geometry": [
@@ -3141,8 +3141,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 12,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 16,
       "geometrySha256": "709644b6819d0f6add0ac33c3fdcaa177222e264942f696e700243656108d385",
       "geometry": [
@@ -3335,8 +3335,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 13,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 39,
       "geometrySha256": "7def0882e9ba8499a94b860e98edfd86bc0e21a23ca28067f37f2845bdfb2122",
       "geometry": [
@@ -3512,8 +3512,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 10,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 11,
       "geometrySha256": "680bb62b8a24e2eb118c8d1d7b08ebfe05133e730fd8f230b984a75d4b013d85",
       "geometry": [
@@ -3671,8 +3671,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 18,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 11,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 33,
       "geometrySha256": "3c23e2c64a4e1868ca38ce828779798a3e9916dbdcbe3b8f832c7af9af879240",
       "geometry": [
@@ -3806,8 +3806,8 @@
         ]
       },
       "tagCheck": null,
-      "latencyMs": 9,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 10,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -4066,8 +4066,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 237,
       "geometrySha256": "178a42160b821b6f2a1b2dedb73eb7c15b788120431889e71bec032f645b8918",
       "geometry": [
@@ -4462,8 +4462,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 8,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 78,
       "geometrySha256": "bfd9d9206594c77b4b24e72b3c6741a3ca53b4509ea228996d212c7a69cbd5f7",
       "geometry": [
@@ -4717,7 +4717,7 @@
       },
       "tagCheck": null,
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -4840,8 +4840,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 76,
       "geometrySha256": "d8bea4f6d8a9d25b81ed53631f350591284edbcbe49cfe0ca844ca320cc5192d",
       "geometry": [
@@ -5104,7 +5104,7 @@
         }
       },
       "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 83,
       "geometrySha256": "688a3843ac84057d753be63c97f63567381b424d5a8cc89c0ab99d7576d908bd",
       "geometry": [
@@ -5409,7 +5409,7 @@
         }
       },
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 37,
       "geometrySha256": "e81e09f6f4a71a936a777a5fc36aee71d497189f81da9a899f24daa277000deb",
       "geometry": [
@@ -5684,8 +5684,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 37,
       "geometrySha256": "c3fc71bee7cc41414a81219d10d357946ea2638bf1ddc2f45544601134fc260a",
       "geometry": [
@@ -5940,8 +5940,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 38,
       "geometrySha256": "94af8ce9f27e3aa480bdf4362365356ec34d30ceb259087faf48ccc731a376f5",
       "geometry": [
@@ -6166,7 +6166,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 55,
       "geometrySha256": "f4b006610c860092ad9638c0e38b62bd0b6a976a710ff5e48f9f92d8955698f9",
       "geometry": [
@@ -6404,8 +6404,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 15,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 22,
       "geometrySha256": "685318cb2cc4c42ded8e55400b3ff2fd6145f633a60eb246a543ca8fb2b53ba2",
       "geometry": [
@@ -6630,8 +6630,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 28,
       "geometrySha256": "4ef31b557b9e7ac692023393362c9be10adca54e92d29fc7a898d5c4ff924bf8",
       "geometry": [
@@ -6785,7 +6785,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 22,
       "geometrySha256": "0540a2c0b11a8fc5940257726ec2f58e98e49eb27dae6396b585cbad133337f6",
       "geometry": [
@@ -7045,8 +7045,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 39,
       "geometrySha256": "0d3f2ed8d1dc37ed644cd0c406c5a8a85991e2367e768de9be98b5784e24aacc",
       "geometry": [
@@ -7485,8 +7485,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 11,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 8,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 168,
       "geometrySha256": "6102c2d2899e8d4e4e149fe935ef95171881980dff5b030c0598ee77009066c7",
       "geometry": [
@@ -7827,7 +7827,7 @@
         }
       },
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 73,
       "geometrySha256": "0e5d5f47f75299b0247ef6f84403808e16425a4537693c8299ee51f4bd87ec32",
       "geometry": [
@@ -8169,7 +8169,7 @@
         }
       },
       "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 56,
       "geometrySha256": "6d1e012016fed507d268a7fbed6f64979f25974e4dd0404133a1765323ace2f8",
       "geometry": [
@@ -8317,7 +8317,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 16,
       "geometrySha256": "eb97ecc95ce8175dc6ab6527fc81a80cc5d87bf83f716d3a45ae70a0f28025fa",
       "geometry": [
@@ -8470,8 +8470,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 10,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 43,
       "geometrySha256": "51d0d36574a7468020e5159e752bbb5e0f1de5de6bf4c2be8fa31961ec717af7",
       "geometry": [
@@ -8656,8 +8656,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 30,
       "geometrySha256": "7138753a5ef05bc7eace456f7250113d132c5d89eedff53afa1f10a71360162b",
       "geometry": [
@@ -8885,8 +8885,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 23,
       "geometrySha256": "f24c966e8f172506c7d7b3ebaed5b7f4693dfbabbd2623abc1f0e61d892d8d70",
       "geometry": [
@@ -9217,8 +9217,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 65,
       "geometrySha256": "69fcf5b280753103a51e9c56b8ddacfc3dedde61faabb17b12d457c95351502c",
       "geometry": [
@@ -9433,8 +9433,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 9,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 24,
       "geometrySha256": "a5b616b7a51d3bbe72d9a5c07f307a4dbdac9b1cf0dddd9e99e72ec21f220dc1",
       "geometry": [
@@ -9604,8 +9604,8 @@
           "timeConditionMeters": 246.9
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 46,
       "geometrySha256": "12de9d447029d186ef9df7207ead38ba8a1cee40acad431f6cf3e6d4f72802c2",
       "geometry": [
@@ -9749,8 +9749,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 11,
       "geometrySha256": "a0385f2e4e18eacebc55c6341b7ad82aa9fd2062eeb89387a12fbab3fdc0d13f",
       "geometry": [
@@ -10109,8 +10109,8 @@
           "timeConditionMeters": 434.4
         }
       },
-      "latencyMs": 23,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 20,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 272,
       "geometrySha256": "fb41456aef20dbda1af8c98228c5b2c04e61b50da94d22970800ffb1ac4adcfc",
       "geometry": [
@@ -10513,7 +10513,7 @@
         }
       },
       "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 29,
       "geometrySha256": "bba7fb5709aab990624323a9fabccdead33112890fc752439c60ea7aa3be4e24",
       "geometry": [
@@ -10579,8 +10579,8 @@
         "ways": null
       },
       "tagCheck": null,
-      "latencyMs": 14,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 9,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -10751,8 +10751,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 32,
       "geometrySha256": "9ed5c691a75deed46d003aecdaf63eb24131af97cf7a70808fe725ed2b7a719b",
       "geometry": [
@@ -10905,7 +10905,7 @@
         }
       },
       "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 16,
       "geometrySha256": "4177f09a2273c3f11c6f68397d6db943915e1b6fcee93704f73a27f346627000",
       "geometry": [
@@ -11090,8 +11090,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 11,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 19,
       "geometrySha256": "c18bbc39460884769154df8c2fa4936c5d051e2b9bd659f1e7f3e2f1b3baddbf",
       "geometry": [
@@ -11505,8 +11505,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 62,
       "geometrySha256": "cafe235427ec9f118c13c5a3c57c486aa97d34491c520de26230ded9dae9c603",
       "geometry": [
@@ -11741,8 +11741,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 28,
       "geometrySha256": "3dc0eb6569a79171dc169911478a636c7460dd25a28b7155c515e3644ecffdaa",
       "geometry": [
@@ -11878,8 +11878,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 10,
       "geometrySha256": "921c279a0031cbb718b0c6f6b9df815337052c771e60f4a734183c435494ca2f",
       "geometry": [
@@ -12055,8 +12055,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 28,
       "geometrySha256": "5bbc692bd8a694dcde6d3e1f341c859fecf56cc4d6ee46a13cde998431abd81a",
       "geometry": [
@@ -12258,8 +12258,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 28,
       "geometrySha256": "22f05e4ea5553f64927f5f358794ecfe45c2b58b89449f2169ce57d327dbe8c1",
       "geometry": [
@@ -12397,8 +12397,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 8,
       "geometrySha256": "202b3dd375fd2634323e4106e6f14a14309c784470cf852c0ab7699410f46d33",
       "geometry": [
@@ -12600,8 +12600,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 34,
       "geometrySha256": "1416f8733c726327fa6c6cd77c5a01967ec758d04037b4efeb1ddfcdc87969c0",
       "geometry": [
@@ -12742,8 +12742,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 15,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 11,
       "geometrySha256": "68b8892d39477a6adc25a475f02e788f68d291414f88717b252aad5cfb32c600",
       "geometry": [
@@ -12877,8 +12877,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 8,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 17,
       "geometrySha256": "86173c98f3f85bf06097148e3534991f357b161d10eb4aa6fee7cb668be4b05c",
       "geometry": [
@@ -13126,8 +13126,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 44,
       "geometrySha256": "a7bb6e22a33f9738b6731bca942d0ccd6c8384233ca63d01c4ae93abf8973874",
       "geometry": [
@@ -13893,8 +13893,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 20,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 21,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 222,
       "geometrySha256": "ef76a37dcc92c4fababe2fa2af85e1d5aa9553c0c26787ced39880bd3c92c0ea",
       "geometry": [
@@ -15102,8 +15102,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 31,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 34,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 818,
       "geometrySha256": "df715ceaf5d1fd6d7782cf5e608b89e00609d31b103b821426403c3eb7e2118a",
       "geometry": [
@@ -18780,8 +18780,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 87,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 89,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 4945,
       "geometrySha256": "4402f06ccfb396799dc404d529e7a2f4764afa7a5693dcaf6f1857e69734d686",
       "geometry": [
@@ -23830,8 +23830,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 12,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 9,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 10,
       "geometrySha256": "7d8f10500b7ca14e78d09ef45058fb2df10275053178b1b34f7ec9b4d020b0af",
       "geometry": [
@@ -23957,8 +23957,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 9,
       "geometrySha256": "d71d6275a4cdfea4af40ef608382faaa2b64cf66c8ec899632d3d25aaeb31958",
       "geometry": [
@@ -24077,7 +24077,7 @@
         }
       },
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 7,
       "geometrySha256": "3cf03eec262a76a46e340b123e6e73a452f641b80269d279a4528ae9468673b1",
       "geometry": [
@@ -24209,8 +24209,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 29,
       "geometrySha256": "126183dba3b47c742c340b38f23bca17af4697fd3de789d0c14a0dfaf9be5927",
       "geometry": [
@@ -24474,8 +24474,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 7,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 59,
       "geometrySha256": "2ff1ef1a91083abd499de7ba8324c7d9b48f6771ee383a4dc172360c3bce3ef5",
       "geometry": [
@@ -24772,8 +24772,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 56,
       "geometrySha256": "56909c83cfc0afbbf4fec87b8c799e5781c8964c09eeab98f56c0bd8b3bb6ae1",
       "geometry": [
@@ -24957,7 +24957,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 27,
       "geometrySha256": "e26f2e9357b04b7b204096ce1f87111ecfc7bba35ceb679d74e3dcaff2ee194f",
       "geometry": [
@@ -25090,8 +25090,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 39,
       "geometrySha256": "6a690fb5e12e5b895454c5f9be020ca7e7f2f5adceb108bb9fbb34e24becf411",
       "geometry": [
@@ -25276,7 +25276,7 @@
         }
       },
       "latencyMs": 7,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 54,
       "geometrySha256": "65d99317809794280c3b548ecf7796ee8f8caa38c9c434175dec01367e3d96db",
       "geometry": [
@@ -25628,8 +25628,8 @@
           "timeConditionMeters": 246.9
         }
       },
-      "latencyMs": 8,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 11,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 50,
       "geometrySha256": "964a0bc780215c8f34f60931d8d018bd6ed98abafd0f6a41f3a33cddd0e79158",
       "geometry": [
@@ -25883,8 +25883,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 6,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 61,
       "geometrySha256": "b543e17056d020daf36534c02108d4ebee595b2850ced765b0d4b71651511f8b",
       "geometry": [
@@ -26147,7 +26147,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 46,
       "geometrySha256": "e09675e699bc748c342968601fa5c1fa2f828b66c4da908e45e083f828662278",
       "geometry": [
@@ -26358,7 +26358,7 @@
         }
       },
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 30,
       "geometrySha256": "ad07640233fc5bed71543ef2e9f9bfb7095e7160dff83cbe0e2088aaec0e2101",
       "geometry": [
@@ -26426,7 +26426,7 @@
       },
       "tagCheck": null,
       "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -26462,8 +26462,8 @@
         "ways": null
       },
       "tagCheck": null,
-      "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -26602,7 +26602,7 @@
         }
       },
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 79,
       "geometrySha256": "390ebb74702a02fed56ae5b5a4d12c9ef0db28b968474e3dadc197fe03b2d9df",
       "geometry": [
@@ -26718,8 +26718,8 @@
         "ways": null
       },
       "tagCheck": null,
-      "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -26917,8 +26917,8 @@
           "timeConditionMeters": 0
         }
       },
-      "latencyMs": 4,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 5,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": 163,
       "geometrySha256": "aa2b3fa1fff776f75d5aca67568b02d978a167f70039fa0b6570f4960bd535e2",
       "geometry": [
@@ -27196,8 +27196,8 @@
         ]
       },
       "tagCheck": null,
-      "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -27233,8 +27233,8 @@
         "ways": null
       },
       "tagCheck": null,
-      "latencyMs": 9,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 11,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -27306,7 +27306,7 @@
       },
       "tagCheck": null,
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28080,8 +28080,8 @@
         ]
       },
       "tagCheck": null,
-      "latencyMs": 37,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 35,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28226,7 +28226,7 @@
       },
       "tagCheck": null,
       "latencyMs": 6,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28284,7 +28284,7 @@
       },
       "tagCheck": null,
       "latencyMs": 5,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28320,8 +28320,8 @@
         "ways": null
       },
       "tagCheck": null,
-      "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "latencyMs": 4,
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28358,7 +28358,7 @@
       },
       "tagCheck": null,
       "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,
@@ -28395,7 +28395,7 @@
       },
       "tagCheck": null,
       "latencyMs": 3,
-      "graphBuildId": "c1fa89fbaf155076",
+      "graphBuildId": "92e0fa5f319a41df",
       "geometryPoints": null,
       "geometrySha256": null,
       "geometry": null,

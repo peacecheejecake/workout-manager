@@ -15,7 +15,7 @@ import { verifiedDeployment } from './deployment-fixture.js';
 
 /**
  * M2-01ay: what the independent coverage review (M0-06b) found wrong in the adapter, against
- * real GraphHopper 10.0 answers captured from the loopback engine on graph `c1fa89fbaf155076`
+ * real GraphHopper 10.0 answers captured from the loopback engine on graphs `c1fa89fbaf155076` and `92e0fa5f319a41df` (byte-identical answers)
  * (the national graph built in M2-01ay), for public landmark pairs of the
  * review's blinded sample. Each answer is in the exact shape the adapter asks for on a graph
  * with edge facts: road_class, road_access, foot_access, surface, road_environment, osm_way_id.
@@ -211,6 +211,9 @@ describe('edge facts: ferry and time-conditional access are never silent (M2-01a
   });
 });
 
+/** The encoded values a graph with edge facts needs: both details the adapter asks for. */
+const FACT_VALUES = ['road_environment', 'osm_way_id'];
+
 describe('a deployment reads its edge facts from the verified graph directory (M2-01ay)', () => {
   const transport: RoutingEngineTransport = {
     async send() {
@@ -226,7 +229,7 @@ describe('a deployment reads its edge facts from the verified graph directory (M
   it('holds the list, read-only, when the graph encodes osm_way_id and carries it', async () => {
     const { deployment } = await verifiedDeployment({
       transport,
-      encodedValues: ['osm_way_id'],
+      encodedValues: ['road_environment', 'osm_way_id'],
       timeConditionalWays: timeConditionalWays([5, 270322121]),
     });
     expect(deployment.edgeFacts?.timeConditionalWayCount).toBe(2);
@@ -236,15 +239,17 @@ describe('a deployment reads its edge facts from the verified graph directory (M
   });
 
   it.each([
-    ['a graph that encodes osm_way_id without the list', ['osm_way_id'], undefined],
+    ['a graph that encodes osm_way_id without the list', FACT_VALUES, undefined],
     ['a list on a graph that does not encode osm_way_id', ['road_class'], timeConditionalWays([5])],
-    ['way ids out of order', ['osm_way_id'], timeConditionalWays([7, 5])],
-    ['a duplicate way id', ['osm_way_id'], timeConditionalWays([5, 5])],
+    // Codex phase review r1: the adapter would refuse every route on this graph.
     [
-      'another kind of list',
+      'a list and osm_way_id on a graph that does not encode road_environment',
       ['osm_way_id'],
-      { ...timeConditionalWays([5]), kind: 'something-else' },
+      timeConditionalWays([5]),
     ],
+    ['way ids out of order', FACT_VALUES, timeConditionalWays([7, 5])],
+    ['a duplicate way id', FACT_VALUES, timeConditionalWays([5, 5])],
+    ['another kind of list', FACT_VALUES, { ...timeConditionalWays([5]), kind: 'something-else' }],
   ])('refuses %s', async (_name, encodedValues, list) => {
     await expect(
       verifiedDeployment({

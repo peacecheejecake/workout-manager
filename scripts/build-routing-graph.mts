@@ -375,6 +375,55 @@ function runOsmium(args: readonly string[]): Promise<string> {
 }
 
 /**
+ * The ways the foot graph can hold (M2-01ay, Codex phase review r1): what GraphHopper 10.0's
+ * `FootAccessParser.getAccess` does not skip outright — any `highway=*`, a ferry
+ * (`FerrySpeedCalculator.isFerry`: `route=ferry` or `route=shuttle_train`), `railway=platform` and
+ * `man_made=pier` — less the highways the serving profile ignores at import
+ * (`import.osm.ignored_highways: motorway,trunk`). The military perimeter barriers and the
+ * time-conditional way list both select through this one filter, so neither can miss a way the
+ * graph routes over. It may keep a way the parser later refuses on its access tags; that way is
+ * simply never on a route.
+ */
+export const FOOT_GRAPH_WAY_EXPRESSIONS = [
+  'w/highway',
+  'w/route=ferry,shuttle_train',
+  'w/railway=platform',
+  'w/man_made=pier',
+] as const;
+export const FOOT_GRAPH_IGNORED_HIGHWAYS = 'w/highway=motorway,trunk';
+
+/** `input` narrowed to the ways of FOOT_GRAPH_WAY_EXPRESSIONS, as `output` (osmium). */
+export async function selectFootGraphWays(options: {
+  readonly input: string;
+  readonly output: string;
+  readonly scratch: string;
+  /** Keep the ways' nodes (needed for geometry); without them only the ways are written. */
+  readonly keepReferencedNodes: boolean;
+}): Promise<void> {
+  const referenced = options.keepReferencedNodes ? [] : ['--omit-referenced'];
+  const selected = join(options.scratch, `foot-graph-ways-${basename(options.output)}`);
+  await runOsmium([
+    'tags-filter',
+    ...referenced,
+    '--overwrite',
+    '--output',
+    selected,
+    options.input,
+    ...FOOT_GRAPH_WAY_EXPRESSIONS,
+  ]);
+  await runOsmium([
+    'tags-filter',
+    '--invert-match',
+    ...referenced,
+    '--overwrite',
+    '--output',
+    options.output,
+    selected,
+    FOOT_GRAPH_IGNORED_HIGHWAYS,
+  ]);
+}
+
+/**
  * The data the graph is imported from (M2-01ay): the pinned extract with a barrier node inserted at
  * every place where a way GraphHopper's foot parser can use crosses the perimeter of the extract's
  * merged `landuse=military` and `military=*` areas (`scripts/geo/MilitaryPerimeterBarriers.java`,
@@ -407,27 +456,12 @@ export async function deriveMilitaryPerimeterBarriers(options: {
     scratchFile('military.geojsonseq'),
     scratchFile('military.osm.pbf'),
   ]);
-  // The ways GraphHopper's foot parser can accept, less the highways the profile ignores.
-  await runOsmium([
-    'tags-filter',
-    '--overwrite',
-    '--output',
-    scratchFile('ways-all.osm.pbf'),
-    options.extractPath,
-    'w/highway',
-    'w/route=ferry',
-    'w/man_made=pier',
-    'w/railway=platform',
-  ]);
-  await runOsmium([
-    'tags-filter',
-    '--invert-match',
-    '--overwrite',
-    '--output',
-    scratchFile('ways.osm.pbf'),
-    scratchFile('ways-all.osm.pbf'),
-    'w/highway=motorway,trunk',
-  ]);
+  await selectFootGraphWays({
+    input: options.extractPath,
+    output: scratchFile('ways.osm.pbf'),
+    scratch: options.scratch,
+    keepReferencedNodes: true,
+  });
   await runOsmium([
     'add-locations-to-ways',
     '--overwrite',
@@ -491,9 +525,10 @@ export async function deriveMilitaryPerimeterBarriers(options: {
 }
 
 /**
- * The OSM ways a pedestrian route can use (`highway=*` or `route=ferry`) whose access depends on
- * the time: `access:conditional`, `foot:conditional` or `opening_hours` (M2-01ay, see
- * edge-facts.ts). Written to `<graph>/edge-facts/time-conditional-ways.json`.
+ * The OSM ways the foot graph can hold (`selectFootGraphWays`, the same selection as the military
+ * perimeter barriers) whose access depends on the time: `access:conditional`,
+ * `foot:conditional` or `opening_hours` (M2-01ay, see edge-facts.ts). Written to
+ * `<graph>/edge-facts/time-conditional-ways.json`.
  */
 export async function deriveTimeConditionalWays(options: {
   readonly extractPath: string;
@@ -511,16 +546,12 @@ export async function deriveTimeConditionalWays(options: {
     options.extractPath,
     ...timeConditionalKeys.map((key) => `w/${key}`),
   ]);
-  await runOsmium([
-    'tags-filter',
-    '--omit-referenced',
-    '--overwrite',
-    '--output',
-    routable,
-    conditional,
-    'w/highway',
-    'w/route=ferry',
-  ]);
+  await selectFootGraphWays({
+    input: conditional,
+    output: routable,
+    scratch: options.scratch,
+    keepReferencedNodes: false,
+  });
   const opl = await runOsmium(['cat', '--output-format', 'opl', routable]);
   const ids = new Set<number>();
   for (const line of opl.split('\n')) {

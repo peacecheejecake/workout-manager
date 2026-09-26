@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "node": "M2-01k-f",
-  "executedAt": "2026-09-26T04:00:46.873Z",
-  "finishedAt": "2026-09-26T04:01:48.507Z",
+  "executedAt": "2026-09-26T07:07:05.191Z",
+  "finishedAt": "2026-09-26T07:08:08.318Z",
   "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
   "mode": "judged",
   "budgetFile": "docs/implementation/research/performance-budget.json",
@@ -24,15 +24,17 @@
       "packages/tooling/tests/korea-coverage-probe.test.ts",
       "packages/tooling/tests/military-perimeter-barriers.test.mjs",
       "packages/tooling/tests/performance-budget.test.ts",
+      "packages/tooling/tests/time-conditional-ways.test.mjs",
       "scripts/build-routing-graph.mts",
       "scripts/geo/MilitaryPerimeterBarriers.java",
       "scripts/geo/graphhopper-foot-serving.yml",
       "scripts/geo/graphhopper-launch.mjs",
       "scripts/probe-performance-budget.mts",
-      "scripts/probe-routing-korea-coverage.mts"
+      "scripts/probe-routing-korea-coverage.mts",
+      "scripts/routing-tag-check.ts"
     ],
-    "diffSha256": "cb0494dc54930dc68b9ef00c54f56244e13ef7ea25f433f59886454c0c9e879a",
-    "contentSha256": "ac06ffeb46228318c895cd4f5fb7fb911cc3e9b3e81951e0c723b75c6d6a6963",
+    "diffSha256": "c4d7d9a12871443fd8fe167f4714b25a892d42fd0393af00f89604777ec9b58b",
+    "contentSha256": "91d0ee38977772052bccca5de467862a985f9610a84f8b1cad748b6f7e8ec570",
     "allowDirtyReason": "M2-01ay: uncommitted node changes (serving profile, adapter edge facts, probes, budget re-baseline)",
     "allowedProductPaths": [
       "packages/contracts/src/routing.ts",
@@ -57,8 +59,8 @@
     "cpus": 8,
     "memoryGiB": 32,
     "node": "v24.12.0",
-    "loadAverageAtStart": [2.91, 3.02, 3.01],
-    "loadAverageAtEnd": [2.8, 2.93, 2.98]
+    "loadAverageAtStart": [2.9, 3.15, 5.43],
+    "loadAverageAtEnd": [3.29, 3.23, 5.3]
   },
   "passed": true,
   "attempt": {
@@ -71,9 +73,9 @@
   },
   "rerunPolicy": {
     "previous": {
-      "executedAt": "2026-09-25T11:25:24.038Z",
-      "tree": "head:8429efad94fece4fadddd5528ec076d9b5ccfd84:0ef5d678f813fde5f4a58513cdbdb4640c928e5f56408c75cbae14731a889f0c",
-      "legacyTree": "head:8429efad94fece4fadddd5528ec076d9b5ccfd84:0ef5d678f813fde5f4a58513cdbdb4640c928e5f56408c75cbae14731a889f0c",
+      "executedAt": "2026-09-26T04:00:46.873Z",
+      "tree": "content:ac06ffeb46228318c895cd4f5fb7fb911cc3e9b3e81951e0c723b75c6d6a6963",
+      "legacyTree": "head:014516accb071dd19b47033d305900f837151c19:cb0494dc54930dc68b9ef00c54f56244e13ef7ea25f433f59886454c0c9e879a",
       "verdict": "passed"
     },
     "failedOnThisTree": null,
@@ -104,7 +106,7 @@
     {
       "id": "worker-heap-ceiling-is-a-real-threshold",
       "passed": true,
-      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok"
+      "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:TRACK_PARSE_MEMORY_EXCEEDED 48:ok"
     },
     {
       "id": "worker-concurrency-bound-at-limit",
@@ -148,12 +150,12 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
-        "observed": 539,
-        "median": 504
+        "observed": 528,
+        "median": 510
       },
       {
         "id": "api.finalizeMs",
@@ -162,11 +164,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
-        "observed": 7,
+        "observed": 9,
         "median": 5
       },
       {
@@ -176,8 +178,8 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
         "observed": 3,
@@ -190,11 +192,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
-        "observed": 6,
+        "observed": 8,
         "median": 5
       },
       {
@@ -204,8 +206,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
         "observed": 970464,
@@ -218,8 +220,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
         "observed": 5365290,
@@ -232,12 +234,12 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.76,
-          "max": 2.94
+          "min": 2.9,
+          "max": 3.4
         },
         "verdict": "passed",
-        "observed": 522,
-        "median": 513
+        "observed": 533,
+        "median": 531
       },
       {
         "id": "engine.idleRssMiB",
@@ -246,26 +248,26 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.5,
-          "max": 2.86
+          "min": 3.13,
+          "max": 3.6
         },
         "verdict": "passed",
-        "observed": 711,
-        "median": 711
+        "observed": 709,
+        "median": 709
       },
       {
         "id": "engine.loadPeakRssMiB",
         "statistic": "max",
-        "budget": 2000,
+        "budget": 2100,
         "unit": "MiB",
         "samples": 9,
         "loadAverage1m": {
-          "min": 2.5,
-          "max": 2.5
+          "min": 3.39,
+          "max": 3.39
         },
         "verdict": "passed",
-        "observed": 1266,
-        "median": 1144
+        "observed": 1342,
+        "median": 1198
       },
       {
         "id": "engine.routeUnderLoadMs",
@@ -274,12 +276,12 @@
         "unit": "ms",
         "samples": 36,
         "loadAverage1m": {
-          "min": 2.5,
-          "max": 2.5
+          "min": 3.39,
+          "max": 3.39
         },
         "verdict": "passed",
-        "observed": 99,
-        "median": 49
+        "observed": 105,
+        "median": 46
       },
       {
         "id": "worker.parseMs",
@@ -288,12 +290,12 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.35,
-          "max": 2.38
+          "min": 3.09,
+          "max": 3.39
         },
         "verdict": "passed",
-        "observed": 437,
-        "median": 427
+        "observed": 441,
+        "median": 431
       },
       {
         "id": "worker.concurrentAtBoundMs",
@@ -302,12 +304,12 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.58,
-          "max": 2.8
+          "min": 3.29,
+          "max": 3.34
         },
         "verdict": "passed",
-        "observed": 531,
-        "median": 511
+        "observed": 621,
+        "median": 517
       },
       {
         "id": "worker.minimumHeapCeilingMiB",
@@ -316,11 +318,11 @@
         "unit": "MiB",
         "samples": 2,
         "loadAverage1m": {
-          "min": 2.37,
-          "max": 2.58
+          "min": 2.85,
+          "max": 2.85
         },
         "verdict": "passed",
-        "observed": 32,
+        "observed": 48,
         "median": 32
       },
       {
@@ -330,11 +332,11 @@
         "unit": "MiB",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.37,
-          "max": 2.4
+          "min": 2.85,
+          "max": 3.09
         },
         "verdict": "passed",
-        "observed": 188,
+        "observed": 189,
         "median": 180
       },
       {
@@ -344,11 +346,11 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.8,
-          "max": 2.8
+          "min": 3.29,
+          "max": 3.29
         },
         "verdict": "passed",
-        "observed": 145,
+        "observed": 147,
         "median": 138
       },
       {
@@ -358,8 +360,8 @@
         "unit": "ms",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.8,
-          "max": 2.8
+          "min": 3.29,
+          "max": 3.29
         },
         "verdict": "passed",
         "observed": 19,
@@ -372,8 +374,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.8,
-          "max": 2.8
+          "min": 3.29,
+          "max": 3.29
         },
         "verdict": "passed",
         "observed": 5365364,
@@ -386,8 +388,8 @@
         "unit": "bytes",
         "samples": 20,
         "loadAverage1m": {
-          "min": 2.8,
-          "max": 2.8
+          "min": 3.29,
+          "max": 3.29
         },
         "verdict": "passed",
         "observed": 970538,
@@ -416,1450 +418,1450 @@
   "samples": {
     "api.uploadParseMs": [
       {
-        "value": 539,
-        "loadAverage1m": 2.76
+        "value": 561,
+        "loadAverage1m": 2.9
       },
       {
-        "value": 524,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 510,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 502,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 499,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 503,
-        "loadAverage1m": 2.76
+        "value": 528,
+        "loadAverage1m": 2.91
       },
       {
         "value": 505,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
-        "value": 501,
-        "loadAverage1m": 2.94
+        "value": 505,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 498,
-        "loadAverage1m": 2.94
+        "value": 525,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 516,
-        "loadAverage1m": 2.94
+        "value": 511,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 500,
-        "loadAverage1m": 2.94
+        "value": 510,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 502,
-        "loadAverage1m": 2.94
+        "value": 506,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 518,
-        "loadAverage1m": 2.94
+        "value": 522,
+        "loadAverage1m": 2.91
       },
       {
         "value": 515,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
-        "value": 509,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 498,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 517,
-        "loadAverage1m": 2.86
-      },
-      {
-        "value": 555,
-        "loadAverage1m": 2.86
+        "value": 503,
+        "loadAverage1m": 2.91
       },
       {
         "value": 500,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
-        "value": 504,
-        "loadAverage1m": 2.86
+        "value": 515,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 507,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 505,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 505,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 514,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 516,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 514,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 506,
+        "loadAverage1m": 3.4
       }
     ],
     "api.finalizeMs": [
       {
         "value": 9,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.9
       },
       {
         "value": 7,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 10,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 9,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 7,
+        "loadAverage1m": 2.91
       },
       {
         "value": 5,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 6,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
       },
       {
         "value": 6,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 3.4
       },
       {
         "value": 5,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 6,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.86
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.86
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.86
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       }
     ],
     "api.readMapPathMs": [
       {
-        "value": 4,
-        "loadAverage1m": 2.76
+        "value": 5,
+        "loadAverage1m": 2.9
       },
       {
         "value": 3,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 2,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 3,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 3,
+        "loadAverage1m": 3.4
       }
     ],
     "api.readMapPathBytes": [
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.9
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 970464,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       }
     ],
     "api.readNormalizedMs": [
       {
         "value": 6,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.9
       },
       {
         "value": 6,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
       },
       {
         "value": 6,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.76
-      },
-      {
-        "value": 7,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.94
-      },
-      {
-        "value": 5,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 2.91
       },
       {
         "value": 6,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 2.91
       },
       {
         "value": 5,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 2.91
       },
       {
         "value": 5,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 10,
+        "loadAverage1m": 2.91
+      },
+      {
+        "value": 8,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 5,
+        "loadAverage1m": 3.4
+      },
+      {
+        "value": 6,
+        "loadAverage1m": 3.4
       }
     ],
     "api.readNormalizedBytes": [
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.9
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.76
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 2.91
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.94
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       },
       {
         "value": 5365290,
-        "loadAverage1m": 2.86
+        "loadAverage1m": 3.4
       }
     ],
     "api.processPeakRssMiB": [
       {
-        "value": 407,
-        "loadAverage1m": 2.76
+        "value": 413,
+        "loadAverage1m": 2.9
       },
       {
-        "value": 440,
-        "loadAverage1m": 2.76
+        "value": 451,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 459,
-        "loadAverage1m": 2.76
+        "value": 464,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 496,
-        "loadAverage1m": 2.76
+        "value": 493,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 496,
-        "loadAverage1m": 2.76
+        "value": 500,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 501,
-        "loadAverage1m": 2.76
+        "value": 504,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 507,
-        "loadAverage1m": 2.94
+        "value": 504,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 507,
-        "loadAverage1m": 2.94
+        "value": 508,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 507,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 513,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 513,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 2.91
       },
       {
-        "value": 513,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.94
+        "value": 531,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.86
+        "value": 533,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.86
+        "value": 533,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.86
+        "value": 533,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.86
+        "value": 533,
+        "loadAverage1m": 3.4
       }
     ],
     "engine.idleRssMiB": [
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.4
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.86
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.13
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.63
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.5
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.5
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.5
+        "value": 709,
+        "loadAverage1m": 3.6
       },
       {
-        "value": 711,
-        "loadAverage1m": 2.5
+        "value": 709,
+        "loadAverage1m": 3.6
       }
     ],
     "engine.routeUnderLoadMs": [
       {
         "value": 95,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
       },
       {
-        "value": 99,
-        "loadAverage1m": 2.5
+        "value": 105,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 81,
-        "loadAverage1m": 2.5
+        "value": 108,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 102,
-        "loadAverage1m": 2.5
+        "value": 101,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 67,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 41,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 64,
+        "loadAverage1m": 3.39
       },
       {
         "value": 60,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
       },
       {
-        "value": 65,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 75,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 72,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 51,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 91,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 48,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 95,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 40,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 35,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 32,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 37,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 97,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 69,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 44,
-        "loadAverage1m": 2.5
+        "value": 58,
+        "loadAverage1m": 3.39
       },
       {
         "value": 66,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
       },
       {
-        "value": 38,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 41,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 36,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 44,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 46,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 52,
-        "loadAverage1m": 2.5
+        "value": 64,
+        "loadAverage1m": 3.39
       },
       {
         "value": 55,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
       },
       {
-        "value": 49,
-        "loadAverage1m": 2.5
+        "value": 41,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 50,
-        "loadAverage1m": 2.5
+        "value": 38,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 37,
-        "loadAverage1m": 2.5
+        "value": 36,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 55,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 42,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 52,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 47,
+        "loadAverage1m": 3.39
       },
       {
         "value": 44,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
       },
       {
-        "value": 41,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 41,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 51,
-        "loadAverage1m": 2.5
-      },
-      {
-        "value": 48,
-        "loadAverage1m": 2.5
+        "value": 38,
+        "loadAverage1m": 3.39
       },
       {
         "value": 46,
-        "loadAverage1m": 2.5
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 50,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 44,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 42,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 50,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 40,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 49,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 41,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 43,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 45,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 41,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 39,
+        "loadAverage1m": 3.39
+      },
+      {
+        "value": 49,
+        "loadAverage1m": 3.39
       }
     ],
     "engine.loadPeakRssMiB": [
       {
-        "value": 711,
-        "loadAverage1m": 2.5
+        "value": 709,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 877,
-        "loadAverage1m": 2.5
+        "value": 898,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1051,
-        "loadAverage1m": 2.5
+        "value": 1110,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1086,
-        "loadAverage1m": 2.5
+        "value": 1136,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1144,
-        "loadAverage1m": 2.5
+        "value": 1198,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1170,
-        "loadAverage1m": 2.5
+        "value": 1245,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1221,
-        "loadAverage1m": 2.5
+        "value": 1294,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1248,
-        "loadAverage1m": 2.5
+        "value": 1322,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 1266,
-        "loadAverage1m": 2.5
+        "value": 1342,
+        "loadAverage1m": 3.39
       }
     ],
     "worker.parseMs": [
       {
-        "value": 449,
-        "loadAverage1m": 2.38
+        "value": 441,
+        "loadAverage1m": 3.39
       },
       {
-        "value": 433,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 435,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 433,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 427,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 426,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 428,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 421,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 422,
-        "loadAverage1m": 2.38
-      },
-      {
-        "value": 428,
-        "loadAverage1m": 2.35
-      },
-      {
-        "value": 421,
-        "loadAverage1m": 2.35
-      },
-      {
-        "value": 424,
-        "loadAverage1m": 2.35
-      },
-      {
-        "value": 429,
-        "loadAverage1m": 2.35
-      },
-      {
-        "value": 425,
-        "loadAverage1m": 2.35
-      },
-      {
-        "value": 424,
-        "loadAverage1m": 2.35
+        "value": 431,
+        "loadAverage1m": 3.39
       },
       {
         "value": 436,
-        "loadAverage1m": 2.35
+        "loadAverage1m": 3.39
       },
       {
-        "value": 437,
-        "loadAverage1m": 2.35
+        "value": 431,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 429,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 429,
+        "loadAverage1m": 3.28
       },
       {
         "value": 433,
-        "loadAverage1m": 2.35
+        "loadAverage1m": 3.28
       },
       {
-        "value": 424,
-        "loadAverage1m": 2.35
+        "value": 431,
+        "loadAverage1m": 3.28
       },
       {
-        "value": 426,
-        "loadAverage1m": 2.35
+        "value": 449,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 433,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 432,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 434,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 432,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 430,
+        "loadAverage1m": 3.28
+      },
+      {
+        "value": 429,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 430,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 435,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 431,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 427,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 435,
+        "loadAverage1m": 3.09
       }
     ],
     "worker.parseProcessPeakRssMiB": [
       {
         "value": 179,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 188,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 180,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 176,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 178,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 180,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 181,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 178,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 180,
-        "loadAverage1m": 2.4
+        "loadAverage1m": 3.09
       },
       {
         "value": 179,
-        "loadAverage1m": 2.4
-      },
-      {
-        "value": 181,
-        "loadAverage1m": 2.4
+        "loadAverage1m": 3.09
       },
       {
         "value": 176,
-        "loadAverage1m": 2.37
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 177,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 188,
+        "loadAverage1m": 3.09
+      },
+      {
+        "value": 186,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 189,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 180,
+        "loadAverage1m": 2.93
       },
       {
         "value": 184,
-        "loadAverage1m": 2.37
-      },
-      {
-        "value": 178,
-        "loadAverage1m": 2.37
-      },
-      {
-        "value": 182,
-        "loadAverage1m": 2.37
+        "loadAverage1m": 2.93
       },
       {
         "value": 187,
-        "loadAverage1m": 2.37
+        "loadAverage1m": 2.93
       },
       {
-        "value": 175,
-        "loadAverage1m": 2.37
+        "value": 186,
+        "loadAverage1m": 2.93
       },
       {
-        "value": 182,
-        "loadAverage1m": 2.37
+        "value": 187,
+        "loadAverage1m": 2.93
       },
       {
-        "value": 185,
-        "loadAverage1m": 2.37
+        "value": 184,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 177,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 179,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 187,
+        "loadAverage1m": 2.93
+      },
+      {
+        "value": 179,
+        "loadAverage1m": 2.85
+      },
+      {
+        "value": 184,
+        "loadAverage1m": 2.85
+      },
+      {
+        "value": 179,
+        "loadAverage1m": 2.85
+      },
+      {
+        "value": 177,
+        "loadAverage1m": 2.85
       }
     ],
     "worker.minimumHeapCeilingMiB": [
       {
         "value": 32,
-        "loadAverage1m": 2.37
+        "loadAverage1m": 2.85
       },
       {
-        "value": 32,
-        "loadAverage1m": 2.58
+        "value": 48,
+        "loadAverage1m": 2.85
       }
     ],
     "worker.concurrentAtBoundMs": [
       {
-        "value": 506,
-        "loadAverage1m": 2.58
+        "value": 621,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 504,
-        "loadAverage1m": 2.58
+        "value": 521,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 509,
-        "loadAverage1m": 2.58
+        "value": 631,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 506,
-        "loadAverage1m": 2.58
+        "value": 606,
+        "loadAverage1m": 3.34
       },
       {
         "value": 531,
-        "loadAverage1m": 2.58
+        "loadAverage1m": 3.34
       },
       {
-        "value": 522,
-        "loadAverage1m": 2.58
+        "value": 516,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 504,
-        "loadAverage1m": 2.58
+        "value": 521,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 512,
-        "loadAverage1m": 2.69
+        "value": 524,
+        "loadAverage1m": 3.34
       },
       {
-        "value": 507,
-        "loadAverage1m": 2.69
-      },
-      {
-        "value": 508,
-        "loadAverage1m": 2.69
-      },
-      {
-        "value": 512,
-        "loadAverage1m": 2.69
-      },
-      {
-        "value": 512,
-        "loadAverage1m": 2.69
-      },
-      {
-        "value": 505,
-        "loadAverage1m": 2.69
-      },
-      {
-        "value": 510,
-        "loadAverage1m": 2.69
+        "value": 515,
+        "loadAverage1m": 3.34
       },
       {
         "value": 518,
-        "loadAverage1m": 2.69
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 513,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 517,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 515,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 506,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 524,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 516,
+        "loadAverage1m": 3.32
+      },
+      {
+        "value": 516,
+        "loadAverage1m": 3.32
       },
       {
         "value": 511,
-        "loadAverage1m": 2.69
+        "loadAverage1m": 3.32
       },
       {
-        "value": 520,
-        "loadAverage1m": 2.69
+        "value": 516,
+        "loadAverage1m": 3.32
       },
       {
-        "value": 535,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 511,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 511,
-        "loadAverage1m": 2.8
+        "value": 545,
+        "loadAverage1m": 3.29
       }
     ],
     "parse.parseNormalizeMs": [
       {
-        "value": 145,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 141,
-        "loadAverage1m": 2.8
+        "value": 147,
+        "loadAverage1m": 3.29
       },
       {
         "value": 143,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
-        "value": 137,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 142,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 141,
-        "loadAverage1m": 2.8
+        "value": 146,
+        "loadAverage1m": 3.29
       },
       {
         "value": 138,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 140,
+        "loadAverage1m": 3.29
       },
       {
         "value": 138,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 138,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 136,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 138,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 139,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
-        "value": 134,
-        "loadAverage1m": 2.8
+        "value": 139,
+        "loadAverage1m": 3.29
       },
       {
-        "value": 131,
-        "loadAverage1m": 2.8
+        "value": 140,
+        "loadAverage1m": 3.29
       },
       {
-        "value": 133,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 134,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 148,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 133,
-        "loadAverage1m": 2.8
+        "value": 139,
+        "loadAverage1m": 3.29
       },
       {
         "value": 137,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 134,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 140,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 134,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 137,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 134,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 134,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 148,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 134,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 134,
+        "loadAverage1m": 3.29
       }
     ],
     "parse.mapPathMs": [
       {
-        "value": 19,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 19,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 18,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 19,
-        "loadAverage1m": 2.8
-      },
-      {
         "value": 15,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 14,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 18,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 13,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 21,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 17,
-        "loadAverage1m": 2.8
-      },
-      {
-        "value": 15,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 18,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 15,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 13,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 18,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 19,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 14,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 22,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 13,
+        "loadAverage1m": 3.29
+      },
+      {
+        "value": 16,
+        "loadAverage1m": 3.29
       }
     ],
     "parse.normalizedBytes": [
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 5365364,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       }
     ],
     "parse.mapPathBytes": [
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       },
       {
         "value": 970538,
-        "loadAverage1m": 2.8
+        "loadAverage1m": 3.29
       }
     ]
   },
   "summary": {
     "api.uploadParseMs": {
       "n": 20,
-      "min": 498,
-      "p50": 504,
-      "p95": 539,
-      "max": 555
+      "min": 500,
+      "p50": 510,
+      "p95": 528,
+      "max": 561
     },
     "api.finalizeMs": {
       "n": 20,
       "min": 5,
       "p50": 5,
-      "p95": 7,
-      "max": 9
+      "p95": 9,
+      "max": 10
     },
     "api.readMapPathMs": {
       "n": 20,
-      "min": 2,
+      "min": 3,
       "p50": 3,
       "p95": 3,
-      "max": 4
+      "max": 5
     },
     "api.readMapPathBytes": {
       "n": 20,
@@ -1872,8 +1874,8 @@
       "n": 20,
       "min": 5,
       "p50": 5,
-      "p95": 6,
-      "max": 7
+      "p95": 8,
+      "max": 10
     },
     "api.readNormalizedBytes": {
       "n": 20,
@@ -1884,65 +1886,65 @@
     },
     "api.processPeakRssMiB": {
       "n": 20,
-      "min": 407,
-      "p50": 513,
-      "p95": 522,
-      "max": 522
+      "min": 413,
+      "p50": 531,
+      "p95": 533,
+      "max": 533
     },
     "engine.idleRssMiB": {
       "n": 20,
-      "min": 711,
-      "p50": 711,
-      "p95": 711,
-      "max": 711
+      "min": 709,
+      "p50": 709,
+      "p95": 709,
+      "max": 709
     },
     "engine.routeUnderLoadMs": {
       "n": 36,
-      "min": 32,
-      "p50": 49,
-      "p95": 99,
-      "max": 102
+      "min": 36,
+      "p50": 46,
+      "p95": 105,
+      "max": 108
     },
     "engine.loadPeakRssMiB": {
       "n": 9,
-      "min": 711,
-      "p50": 1144,
-      "p95": 1266,
-      "max": 1266
+      "min": 709,
+      "p50": 1198,
+      "p95": 1342,
+      "max": 1342
     },
     "worker.parseMs": {
       "n": 20,
-      "min": 421,
-      "p50": 427,
-      "p95": 437,
+      "min": 427,
+      "p50": 431,
+      "p95": 441,
       "max": 449
     },
     "worker.parseProcessPeakRssMiB": {
       "n": 20,
-      "min": 175,
+      "min": 176,
       "p50": 180,
-      "p95": 187,
-      "max": 188
+      "p95": 188,
+      "max": 189
     },
     "worker.minimumHeapCeilingMiB": {
       "n": 2,
       "min": 32,
       "p50": 32,
-      "p95": 32,
-      "max": 32
+      "p95": 48,
+      "max": 48
     },
     "worker.concurrentAtBoundMs": {
       "n": 20,
-      "min": 504,
-      "p50": 511,
-      "p95": 531,
-      "max": 535
+      "min": 506,
+      "p50": 517,
+      "p95": 621,
+      "max": 631
     },
     "parse.parseNormalizeMs": {
       "n": 20,
-      "min": 131,
+      "min": 134,
       "p50": 138,
-      "p95": 145,
+      "p95": 147,
       "max": 148
     },
     "parse.mapPathMs": {
@@ -1950,7 +1952,7 @@
       "min": 13,
       "p50": 15,
       "p95": 19,
-      "max": 21
+      "max": 22
     },
     "parse.normalizedBytes": {
       "n": 20,
@@ -1972,10 +1974,10 @@
       "extractSource": "osm-extract-south-korea",
       "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
       "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
-      "graphContentSha256": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7"
+      "graphContentSha256": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2"
     },
     "engineWarmUp": {
-      "ms": 151,
+      "ms": 176,
       "status": 200,
       "outcome": "route_computed",
       "distance": 23329
@@ -1987,9 +1989,9 @@
       "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
     },
     "parseProcessRss": {
-      "peakChildMiB": 188,
+      "peakChildMiB": 189,
       "parsesWithoutReading": 0,
-      "atBoundPeakSumMiB": 357,
+      "atBoundPeakSumMiB": 353,
       "intervalMs": 20,
       "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
     },
@@ -2019,6 +2021,10 @@
         },
         {
           "ceilingMb": 32,
+          "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+        },
+        {
+          "ceilingMb": 48,
           "outcome": "ok"
         }
       ]
@@ -32581,6 +32587,3188 @@
         },
         "engineWarmUp": {
           "ms": 178,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 23329
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-26T04:00:46.873Z",
+      "finishedAt": "2026-09-26T04:01:48.507Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "judged",
+      "budgetFile": "docs/implementation/research/performance-budget.json",
+      "sourceTree": {
+        "head": "014516accb071dd19b47033d305900f837151c19",
+        "dirtyPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts",
+          "packages/server/integrations/tests/deployment-fixture.ts",
+          "packages/server/integrations/tests/fixtures/graphhopper-busan-40-steps.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-seonyudo-time-conditional.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-wolmido-ferry.json",
+          "packages/server/integrations/tests/routing-edge-facts.test.ts",
+          "packages/tooling/tests/graphhopper-launch.test.mjs",
+          "packages/tooling/tests/korea-coverage-probe.test.ts",
+          "packages/tooling/tests/military-perimeter-barriers.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/MilitaryPerimeterBarriers.java",
+          "scripts/geo/graphhopper-foot-serving.yml",
+          "scripts/geo/graphhopper-launch.mjs",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-korea-coverage.mts"
+        ],
+        "diffSha256": "cb0494dc54930dc68b9ef00c54f56244e13ef7ea25f433f59886454c0c9e879a",
+        "contentSha256": "ac06ffeb46228318c895cd4f5fb7fb911cc3e9b3e81951e0c723b75c6d6a6963",
+        "allowDirtyReason": "M2-01ay: uncommitted node changes (serving profile, adapter edge facts, probes, budget re-baseline)",
+        "allowedProductPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts"
+        ]
+      },
+      "phases": ["api", "engine", "worker", "parse"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [2.91, 3.02, 3.01],
+        "loadAverageAtEnd": [2.8, 2.93, 2.98]
+      },
+      "passed": true,
+      "attempt": {
+        "number": 1,
+        "of": 2,
+        "retry": {
+          "retry": false,
+          "reason": "passed"
+        }
+      },
+      "rerunPolicy": {
+        "previous": {
+          "executedAt": "2026-09-25T11:25:24.038Z",
+          "tree": "head:8429efad94fece4fadddd5528ec076d9b5ccfd84:0ef5d678f813fde5f4a58513cdbdb4640c928e5f56408c75cbae14731a889f0c",
+          "legacyTree": "head:8429efad94fece4fadddd5528ec076d9b5ccfd84:0ef5d678f813fde5f4a58513cdbdb4640c928e5f56408c75cbae14731a889f0c",
+          "verdict": "passed"
+        },
+        "failedOnThisTree": null,
+        "reason": null,
+        "rule": "A judged run on source content (sourceTree.contentSha256) whose latest judged outcome failed is accepted only with a recorded reason (rerunReason); changed content of a scanned file needs none, while a commit, a rebase or a docs-only change does not change the content. An inconclusive outcome needs none: the admissible-load rule itself asks for the repeat."
+      },
+      "checks": [
+        {
+          "id": "api-map-path-carries-the-whole-track",
+          "passed": true,
+          "detail": "20000 vertices for 20000 samples"
+        },
+        {
+          "id": "api-every-request-succeeded",
+          "passed": true,
+          "detail": "120 requests, non-200: none"
+        },
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 23329 m"
+        },
+        {
+          "id": "worker-parse-process-rss-read-every-parse",
+          "passed": true,
+          "detail": "20 of 20 parses had their RSS read (0 without a reading)"
+        },
+        {
+          "id": "worker-heap-ceiling-is-a-real-threshold",
+          "passed": true,
+          "detail": "16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok | 16:TRACK_PARSE_MEMORY_EXCEEDED 24:TRACK_PARSE_MEMORY_EXCEEDED 32:ok"
+        },
+        {
+          "id": "worker-concurrency-bound-at-limit",
+          "passed": true,
+          "detail": "bound 2: 2 parsed, 1 TRACK_PARSER_BUSY, active after 0"
+        },
+        {
+          "id": "worker-no-parse-process-left",
+          "passed": true,
+          "detail": "0 parse processes alive after the phase"
+        },
+        {
+          "id": "budget-heap-below-product-ceiling",
+          "passed": true,
+          "detail": "96 MiB <= 256 MiB (docs/implementation/research/performance-budget.json)"
+        },
+        {
+          "id": "budget-parse-time-below-parser-deadline",
+          "passed": true,
+          "detail": "980 ms < 5000 ms"
+        },
+        {
+          "id": "budget-route-time-below-routing-deadline",
+          "passed": true,
+          "detail": "200 ms < 8000 ms"
+        },
+        {
+          "id": "budget-normalized-below-output-limit",
+          "passed": true,
+          "detail": "6000000 B < 8388608 B"
+        }
+      ],
+      "evaluation": {
+        "passed": true,
+        "inconclusive": false,
+        "metrics": [
+          {
+            "id": "api.uploadParseMs",
+            "statistic": "p95",
+            "budget": 1300,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 539,
+            "median": 504
+          },
+          {
+            "id": "api.finalizeMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 7,
+            "median": 5
+          },
+          {
+            "id": "api.readMapPathMs",
+            "statistic": "p95",
+            "budget": 30,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 3,
+            "median": 3
+          },
+          {
+            "id": "api.readNormalizedMs",
+            "statistic": "p95",
+            "budget": 55,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 6,
+            "median": 5
+          },
+          {
+            "id": "api.readMapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 970464,
+            "median": 970464
+          },
+          {
+            "id": "api.readNormalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 5365290,
+            "median": 5365290
+          },
+          {
+            "id": "api.processPeakRssMiB",
+            "statistic": "max",
+            "budget": 800,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.76,
+              "max": 2.94
+            },
+            "verdict": "passed",
+            "observed": 522,
+            "median": 513
+          },
+          {
+            "id": "engine.idleRssMiB",
+            "statistic": "max",
+            "budget": 1100,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.5,
+              "max": 2.86
+            },
+            "verdict": "passed",
+            "observed": 711,
+            "median": 711
+          },
+          {
+            "id": "engine.loadPeakRssMiB",
+            "statistic": "max",
+            "budget": 2000,
+            "unit": "MiB",
+            "samples": 9,
+            "loadAverage1m": {
+              "min": 2.5,
+              "max": 2.5
+            },
+            "verdict": "passed",
+            "observed": 1266,
+            "median": 1144
+          },
+          {
+            "id": "engine.routeUnderLoadMs",
+            "statistic": "p95",
+            "budget": 200,
+            "unit": "ms",
+            "samples": 36,
+            "loadAverage1m": {
+              "min": 2.5,
+              "max": 2.5
+            },
+            "verdict": "passed",
+            "observed": 99,
+            "median": 49
+          },
+          {
+            "id": "worker.parseMs",
+            "statistic": "p95",
+            "budget": 980,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.35,
+              "max": 2.38
+            },
+            "verdict": "passed",
+            "observed": 437,
+            "median": 427
+          },
+          {
+            "id": "worker.concurrentAtBoundMs",
+            "statistic": "p95",
+            "budget": 2600,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.58,
+              "max": 2.8
+            },
+            "verdict": "passed",
+            "observed": 531,
+            "median": 511
+          },
+          {
+            "id": "worker.minimumHeapCeilingMiB",
+            "statistic": "max",
+            "budget": 96,
+            "unit": "MiB",
+            "samples": 2,
+            "loadAverage1m": {
+              "min": 2.37,
+              "max": 2.58
+            },
+            "verdict": "passed",
+            "observed": 32,
+            "median": 32
+          },
+          {
+            "id": "worker.parseProcessPeakRssMiB",
+            "statistic": "max",
+            "budget": 300,
+            "unit": "MiB",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.37,
+              "max": 2.4
+            },
+            "verdict": "passed",
+            "observed": 188,
+            "median": 180
+          },
+          {
+            "id": "parse.parseNormalizeMs",
+            "statistic": "p95",
+            "budget": 710,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.8,
+              "max": 2.8
+            },
+            "verdict": "passed",
+            "observed": 145,
+            "median": 138
+          },
+          {
+            "id": "parse.mapPathMs",
+            "statistic": "p95",
+            "budget": 130,
+            "unit": "ms",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.8,
+              "max": 2.8
+            },
+            "verdict": "passed",
+            "observed": 19,
+            "median": 15
+          },
+          {
+            "id": "parse.normalizedBytes",
+            "statistic": "max",
+            "budget": 6000000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.8,
+              "max": 2.8
+            },
+            "verdict": "passed",
+            "observed": 5365364,
+            "median": 5365364
+          },
+          {
+            "id": "parse.mapPathBytes",
+            "statistic": "max",
+            "budget": 1100000,
+            "unit": "bytes",
+            "samples": 20,
+            "loadAverage1m": {
+              "min": 2.8,
+              "max": 2.8
+            },
+            "verdict": "passed",
+            "observed": 970538,
+            "median": 970538
+          }
+        ],
+        "realDevice": [
+          {
+            "id": "device.ios.navigationToDrawnMs",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.jsHeapAfterDrawnMiB",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.ios.panFrameP95Ms",
+            "verdict": "not_executed"
+          },
+          {
+            "id": "device.android.navigationToDrawnMs",
+            "verdict": "not_executed"
+          }
+        ]
+      },
+      "samples": {
+        "api.uploadParseMs": [
+          {
+            "value": 539,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 524,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 502,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 499,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 503,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 505,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 501,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 498,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 516,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 500,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 502,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 515,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 498,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 517,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 555,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 500,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.finalizeMs": [
+          {
+            "value": 9,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.readMapPathMs": [
+          {
+            "value": 4,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 2,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 3,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.readMapPathBytes": [
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 970464,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.readNormalizedMs": [
+          {
+            "value": 6,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 7,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 6,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.readNormalizedBytes": [
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 5365290,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "api.processPeakRssMiB": [
+          {
+            "value": 407,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 440,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 459,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 496,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 496,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 501,
+            "loadAverage1m": 2.76
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 513,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.94
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.86
+          }
+        ],
+        "engine.idleRssMiB": [
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.86
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.63
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 711,
+            "loadAverage1m": 2.5
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 95,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 99,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 81,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 102,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 75,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 72,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 91,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 95,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 35,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 37,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 97,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 69,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 66,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 52,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 55,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 37,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.5
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 711,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 877,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1051,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1086,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1144,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1170,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1221,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1248,
+            "loadAverage1m": 2.5
+          },
+          {
+            "value": 1266,
+            "loadAverage1m": 2.5
+          }
+        ],
+        "worker.parseMs": [
+          {
+            "value": 449,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 435,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 427,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 426,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 428,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 421,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 422,
+            "loadAverage1m": 2.38
+          },
+          {
+            "value": 428,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 421,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 424,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 429,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 425,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 424,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 436,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 437,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 433,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 424,
+            "loadAverage1m": 2.35
+          },
+          {
+            "value": 426,
+            "loadAverage1m": 2.35
+          }
+        ],
+        "worker.parseProcessPeakRssMiB": [
+          {
+            "value": 179,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 188,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 180,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 176,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 178,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 180,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 181,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 178,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 180,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 179,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 181,
+            "loadAverage1m": 2.4
+          },
+          {
+            "value": 176,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 184,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 178,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 187,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 175,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 182,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 185,
+            "loadAverage1m": 2.37
+          }
+        ],
+        "worker.minimumHeapCeilingMiB": [
+          {
+            "value": 32,
+            "loadAverage1m": 2.37
+          },
+          {
+            "value": 32,
+            "loadAverage1m": 2.58
+          }
+        ],
+        "worker.concurrentAtBoundMs": [
+          {
+            "value": 506,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 509,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 506,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 531,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 522,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 504,
+            "loadAverage1m": 2.58
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 507,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 508,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 512,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 505,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 510,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 518,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 511,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 520,
+            "loadAverage1m": 2.69
+          },
+          {
+            "value": 535,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 511,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 511,
+            "loadAverage1m": 2.8
+          }
+        ],
+        "parse.parseNormalizeMs": [
+          {
+            "value": 145,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 141,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 143,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 137,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 142,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 141,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 136,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 138,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 139,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 131,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 133,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 148,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 133,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 137,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 134,
+            "loadAverage1m": 2.8
+          }
+        ],
+        "parse.mapPathMs": [
+          {
+            "value": 19,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 19,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 19,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 14,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 13,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 21,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 17,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 15,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 18,
+            "loadAverage1m": 2.8
+          }
+        ],
+        "parse.normalizedBytes": [
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 5365364,
+            "loadAverage1m": 2.8
+          }
+        ],
+        "parse.mapPathBytes": [
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          },
+          {
+            "value": 970538,
+            "loadAverage1m": 2.8
+          }
+        ]
+      },
+      "summary": {
+        "api.uploadParseMs": {
+          "n": 20,
+          "min": 498,
+          "p50": 504,
+          "p95": 539,
+          "max": 555
+        },
+        "api.finalizeMs": {
+          "n": 20,
+          "min": 5,
+          "p50": 5,
+          "p95": 7,
+          "max": 9
+        },
+        "api.readMapPathMs": {
+          "n": 20,
+          "min": 2,
+          "p50": 3,
+          "p95": 3,
+          "max": 4
+        },
+        "api.readMapPathBytes": {
+          "n": 20,
+          "min": 970464,
+          "p50": 970464,
+          "p95": 970464,
+          "max": 970464
+        },
+        "api.readNormalizedMs": {
+          "n": 20,
+          "min": 5,
+          "p50": 5,
+          "p95": 6,
+          "max": 7
+        },
+        "api.readNormalizedBytes": {
+          "n": 20,
+          "min": 5365290,
+          "p50": 5365290,
+          "p95": 5365290,
+          "max": 5365290
+        },
+        "api.processPeakRssMiB": {
+          "n": 20,
+          "min": 407,
+          "p50": 513,
+          "p95": 522,
+          "max": 522
+        },
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 711,
+          "p50": 711,
+          "p95": 711,
+          "max": 711
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 32,
+          "p50": 49,
+          "p95": 99,
+          "max": 102
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 711,
+          "p50": 1144,
+          "p95": 1266,
+          "max": 1266
+        },
+        "worker.parseMs": {
+          "n": 20,
+          "min": 421,
+          "p50": 427,
+          "p95": 437,
+          "max": 449
+        },
+        "worker.parseProcessPeakRssMiB": {
+          "n": 20,
+          "min": 175,
+          "p50": 180,
+          "p95": 187,
+          "max": 188
+        },
+        "worker.minimumHeapCeilingMiB": {
+          "n": 2,
+          "min": 32,
+          "p50": 32,
+          "p95": 32,
+          "max": 32
+        },
+        "worker.concurrentAtBoundMs": {
+          "n": 20,
+          "min": 504,
+          "p50": 511,
+          "p95": 531,
+          "max": 535
+        },
+        "parse.parseNormalizeMs": {
+          "n": 20,
+          "min": 131,
+          "p50": 138,
+          "p95": 145,
+          "max": 148
+        },
+        "parse.mapPathMs": {
+          "n": 20,
+          "min": 13,
+          "p50": 15,
+          "p95": 19,
+          "max": 21
+        },
+        "parse.normalizedBytes": {
+          "n": 20,
+          "min": 5365364,
+          "p50": 5365364,
+          "p95": 5365364,
+          "max": 5365364
+        },
+        "parse.mapPathBytes": {
+          "n": 20,
+          "min": 970538,
+          "p50": 970538,
+          "p95": 970538,
+          "max": 970538
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7"
+        },
+        "engineWarmUp": {
+          "ms": 151,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 23329
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        },
+        "parseProcessRss": {
+          "peakChildMiB": 188,
+          "parsesWithoutReading": 0,
+          "atBoundPeakSumMiB": 357,
+          "intervalMs": 20,
+          "note": "ps RSS of the parser's own parse processes every 20 ms. peakChildMiB is the highest worker.parseProcessPeakRssMiB sample (one parse at a time, in parses separate from the worker.parseMs samples; budgeted since M2-01aj). atBoundPeakSumMiB is the highest sum over the processes of one parser at its concurrency bound, recorded only. A reading can miss a shorter peak."
+        },
+        "heapCeilingLadder": [
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
+              "outcome": "ok"
+            }
+          ],
+          [
+            {
+              "ceilingMb": 16,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 24,
+              "outcome": "TRACK_PARSE_MEMORY_EXCEEDED"
+            },
+            {
+              "ceilingMb": 32,
+              "outcome": "ok"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-26T07:05:39.437Z",
+      "finishedAt": "2026-09-26T07:05:56.456Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "014516accb071dd19b47033d305900f837151c19",
+        "dirtyPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts",
+          "packages/server/integrations/tests/deployment-fixture.ts",
+          "packages/server/integrations/tests/fixtures/graphhopper-busan-40-steps.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-seonyudo-time-conditional.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-wolmido-ferry.json",
+          "packages/server/integrations/tests/routing-edge-facts.test.ts",
+          "packages/tooling/tests/graphhopper-launch.test.mjs",
+          "packages/tooling/tests/korea-coverage-probe.test.ts",
+          "packages/tooling/tests/military-perimeter-barriers.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "packages/tooling/tests/time-conditional-ways.test.mjs",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/MilitaryPerimeterBarriers.java",
+          "scripts/geo/graphhopper-foot-serving.yml",
+          "scripts/geo/graphhopper-launch.mjs",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/routing-tag-check.ts"
+        ],
+        "diffSha256": "5be46fb7cb04c92a054ce65ff9aedfebf86c04f46fcd9e88b79a6d695b2f684a",
+        "contentSha256": "8f65966ca6c177c9bb716531f73d4de415797fd134deffdaf940238896c70fcd",
+        "allowDirtyReason": "M2-01ay: uncommitted node changes (serving profile, adapter edge facts, probes)",
+        "allowedProductPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts"
+        ]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [2.98, 3.26, 5.71],
+        "loadAverageAtEnd": [2.61, 3.17, 5.63]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 23329 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 706,
+            "loadAverage1m": 2.98
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.98
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.98
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.82
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 73,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 88,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 80,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 84,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 72,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 79,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 61,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 59,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 37,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 54,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 63,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 56,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 52,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 31,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 33,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 43,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 41,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 56,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 53,
+            "loadAverage1m": 2.61
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 706,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 881,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 966,
+            "loadAverage1m": 2.75
+          },
+          {
+            "value": 1025,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 1088,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 1139,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 1194,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 1223,
+            "loadAverage1m": 2.61
+          },
+          {
+            "value": 1245,
+            "loadAverage1m": 2.61
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 706,
+          "p50": 706,
+          "p95": 706,
+          "max": 706
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 31,
+          "p50": 46,
+          "p95": 84,
+          "max": 88
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 706,
+          "p50": 1088,
+          "p95": 1245,
+          "max": 1245
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2"
+        },
+        "engineWarmUp": {
+          "ms": 181,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 23329
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-26T07:05:56.881Z",
+      "finishedAt": "2026-09-26T07:06:13.915Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "014516accb071dd19b47033d305900f837151c19",
+        "dirtyPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts",
+          "packages/server/integrations/tests/deployment-fixture.ts",
+          "packages/server/integrations/tests/fixtures/graphhopper-busan-40-steps.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-seonyudo-time-conditional.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-wolmido-ferry.json",
+          "packages/server/integrations/tests/routing-edge-facts.test.ts",
+          "packages/tooling/tests/graphhopper-launch.test.mjs",
+          "packages/tooling/tests/korea-coverage-probe.test.ts",
+          "packages/tooling/tests/military-perimeter-barriers.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "packages/tooling/tests/time-conditional-ways.test.mjs",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/MilitaryPerimeterBarriers.java",
+          "scripts/geo/graphhopper-foot-serving.yml",
+          "scripts/geo/graphhopper-launch.mjs",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/routing-tag-check.ts"
+        ],
+        "diffSha256": "5be46fb7cb04c92a054ce65ff9aedfebf86c04f46fcd9e88b79a6d695b2f684a",
+        "contentSha256": "8f65966ca6c177c9bb716531f73d4de415797fd134deffdaf940238896c70fcd",
+        "allowDirtyReason": "M2-01ay: uncommitted node changes (serving profile, adapter edge facts, probes)",
+        "allowedProductPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts"
+        ]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [2.61, 3.17, 5.63],
+        "loadAverageAtEnd": [2.62, 3.14, 5.58]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 23329 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.64
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.59
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 709,
+            "loadAverage1m": 2.62
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 125,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 128,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 116,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 122,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 80,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 68,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 85,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 71,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 47,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 72,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 64,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 70,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 62,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 34,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 82,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 77,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 79,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 75,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 33,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 28,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 30,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 58,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 54,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.62
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 709,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 887,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 967,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1034,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1099,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1148,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1278,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1354,
+            "loadAverage1m": 2.62
+          },
+          {
+            "value": 1391,
+            "loadAverage1m": 2.62
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 709,
+          "p50": 709,
+          "p95": 709,
+          "max": 709
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 28,
+          "p50": 48,
+          "p95": 125,
+          "max": 128
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 709,
+          "p50": 1099,
+          "p95": 1391,
+          "max": 1391
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2"
+        },
+        "engineWarmUp": {
+          "ms": 148,
+          "status": 200,
+          "outcome": "route_computed",
+          "distance": 23329
+        },
+        "engineLoad": {
+          "inFlightPerRound": 4,
+          "rounds": 9,
+          "waypoints": 12,
+          "heapArguments": "-Xms512m -Xmx2048m (scripts/build-routing-graph.mts startEngine default)"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "node": "M2-01k-f",
+      "executedAt": "2026-09-26T07:06:14.342Z",
+      "finishedAt": "2026-09-26T07:06:31.392Z",
+      "label": "Desktop, this shared machine, synthetic 20,000-sample track. Not a device result. Every sample carries the 1-minute load average when it was taken.",
+      "mode": "record-only (baseline, not judged)",
+      "budgetFile": null,
+      "sourceTree": {
+        "head": "014516accb071dd19b47033d305900f837151c19",
+        "dirtyPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts",
+          "packages/server/integrations/tests/deployment-fixture.ts",
+          "packages/server/integrations/tests/fixtures/graphhopper-busan-40-steps.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-seonyudo-time-conditional.json",
+          "packages/server/integrations/tests/fixtures/graphhopper-wolmido-ferry.json",
+          "packages/server/integrations/tests/routing-edge-facts.test.ts",
+          "packages/tooling/tests/graphhopper-launch.test.mjs",
+          "packages/tooling/tests/korea-coverage-probe.test.ts",
+          "packages/tooling/tests/military-perimeter-barriers.test.mjs",
+          "packages/tooling/tests/performance-budget.test.ts",
+          "packages/tooling/tests/time-conditional-ways.test.mjs",
+          "scripts/build-routing-graph.mts",
+          "scripts/geo/MilitaryPerimeterBarriers.java",
+          "scripts/geo/graphhopper-foot-serving.yml",
+          "scripts/geo/graphhopper-launch.mjs",
+          "scripts/probe-performance-budget.mts",
+          "scripts/probe-routing-korea-coverage.mts",
+          "scripts/routing-tag-check.ts"
+        ],
+        "diffSha256": "5be46fb7cb04c92a054ce65ff9aedfebf86c04f46fcd9e88b79a6d695b2f684a",
+        "contentSha256": "8f65966ca6c177c9bb716531f73d4de415797fd134deffdaf940238896c70fcd",
+        "allowDirtyReason": "M2-01ay: uncommitted node changes (serving profile, adapter edge facts, probes)",
+        "allowedProductPaths": [
+          "packages/contracts/src/routing.ts",
+          "packages/server/integrations/src/routing/deployment.ts",
+          "packages/server/integrations/src/routing/edge-facts.ts",
+          "packages/server/integrations/src/routing/graph-manifest.ts",
+          "packages/server/integrations/src/routing/graphhopper-adapter.ts",
+          "packages/server/integrations/src/routing/index.ts"
+        ]
+      },
+      "phases": ["engine"],
+      "samplesPerMetric": 20,
+      "track": {
+        "kind": "synthetic",
+        "samples": 20000,
+        "fitBytes": 780044,
+        "approximateLengthMeters": 76014
+      },
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpus": 8,
+        "memoryGiB": 32,
+        "node": "v24.12.0",
+        "loadAverageAtStart": [3.21, 3.26, 5.6],
+        "loadAverageAtEnd": [2.88, 3.18, 5.53]
+      },
+      "passed": null,
+      "checks": [
+        {
+          "id": "engine-load-every-route-computed",
+          "passed": true,
+          "detail": "37 routes (4 in flight per round), 0 not computed ; distances 23329 m"
+        }
+      ],
+      "evaluation": null,
+      "samples": {
+        "engine.idleRssMiB": [
+          {
+            "value": 708,
+            "loadAverage1m": 3.21
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.21
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.21
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 3.04
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          }
+        ],
+        "engine.routeUnderLoadMs": [
+          {
+            "value": 90,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 93,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 98,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 101,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 57,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 67,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 60,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 102,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 87,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 49,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 51,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 65,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 56,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 40,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 38,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 44,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 36,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 42,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 50,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 48,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 39,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 46,
+            "loadAverage1m": 2.88
+          }
+        ],
+        "engine.loadPeakRssMiB": [
+          {
+            "value": 708,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 864,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 1044,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 1074,
+            "loadAverage1m": 2.95
+          },
+          {
+            "value": 1133,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 1171,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 1200,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 1243,
+            "loadAverage1m": 2.88
+          },
+          {
+            "value": 1268,
+            "loadAverage1m": 2.88
+          }
+        ]
+      },
+      "summary": {
+        "engine.idleRssMiB": {
+          "n": 20,
+          "min": 708,
+          "p50": 708,
+          "p95": 708,
+          "max": 708
+        },
+        "engine.routeUnderLoadMs": {
+          "n": 36,
+          "min": 36,
+          "p50": 48,
+          "p95": 101,
+          "max": 102
+        },
+        "engine.loadPeakRssMiB": {
+          "n": 9,
+          "min": 708,
+          "p50": 1133,
+          "p95": 1268,
+          "max": 1268
+        }
+      },
+      "details": {
+        "routingGraph": {
+          "extractSource": "osm-extract-south-korea",
+          "extractRegion": "South Korea (Geofabrik extract 2026-09-01)",
+          "extractSha256": "848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b",
+          "graphContentSha256": "52f05e6784284bec2b385d570144bcf1c14dac5ceec91e79a2e037e26295fef2"
+        },
+        "engineWarmUp": {
+          "ms": 160,
           "status": 200,
           "outcome": "route_computed",
           "distance": 23329

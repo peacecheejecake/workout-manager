@@ -19,9 +19,10 @@ import { GraphManifestError } from './graph-manifest.js';
  * detail, and a route over a listed way carries a warning.
  *
  * A graph built before M2-01ay has neither the list nor `osm_way_id`, and loads exactly as before
- * (`null`). A graph with `osm_way_id` and no list, or a list and no `osm_way_id`, is a broken
- * build and is refused: the adapter would otherwise either ask for a detail the engine does not
- * have or stay silent on a graph that promised to speak.
+ * (`null`). A graph with `osm_way_id` and no list, a list and no `osm_way_id`, or edge facts and
+ * no `road_environment` is a broken build and is refused: the adapter would otherwise either ask
+ * for a detail the engine does not have (and refuse every route) or stay silent on a graph that
+ * promised to speak.
  */
 export const EDGE_FACTS_DIRECTORY = 'edge-facts';
 export const TIME_CONDITIONAL_WAYS_FILE = 'time-conditional-ways.json';
@@ -93,7 +94,8 @@ export async function graphEncodedValueNames(graphDirectory: string): Promise<st
  * so these are the bytes the build wrote.
  */
 export async function loadGraphEdgeFacts(graphDirectory: string): Promise<GraphEdgeFacts | null> {
-  const encodesWayIds = (await graphEncodedValueNames(graphDirectory)).includes('osm_way_id');
+  const encoded = await graphEncodedValueNames(graphDirectory);
+  const encodesWayIds = encoded.includes('osm_way_id');
   let raw: string | null;
   try {
     raw = await readFile(
@@ -113,6 +115,13 @@ export async function loadGraphEdgeFacts(graphDirectory: string): Promise<GraphE
     throw new GraphManifestError(
       'EDGE_FACTS_INVALID',
       'the graph has a time-conditional way list but does not encode osm_way_id',
+    );
+  // The adapter asks a graph with edge facts for `road_environment` too, and refuses every
+  // answer without it (Codex phase review r1): such a graph is refused here, at load, instead.
+  if (!encoded.includes('road_environment'))
+    throw new GraphManifestError(
+      'EDGE_FACTS_INVALID',
+      'the graph has edge facts but does not encode road_environment',
     );
   let parsed: TimeConditionalWays;
   try {

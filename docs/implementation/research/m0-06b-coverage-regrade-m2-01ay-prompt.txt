@@ -11,9 +11,9 @@ outside this directory and do not modify anything.
    — YOUR pre-registration, verbatim, completed 2026-09-26T02:22:22Z before any engine run.
 2. `m0-06b-coverage-review-pairs.json` (sha256 603f6149384e2f532875bb24c4d29118b8d0f04815fdab1f2a9873d311b6cebf)
    — the blinded sample you pre-registered against (the same file you graded with the first time).
-3. `m0-06b-coverage-review-results-m2-01ay.json` (sha256 9b1f620028d2f200549bf55aa28d03d00181971a8707dc10669a18b7b809b033)
-   — the NEW engine results, run 2026-09-26T03:56:24Z–03:56:37Z on graph `c1fa89fbaf155076`
-   (see `graph`). A second run at 03:56:37Z–03:56:50Z gave identical per-pair outcomes, warnings,
+3. `m0-06b-coverage-review-results-m2-01ay.json` (sha256 4c3fd0512816426cba44d7e4bfc7aba6da6f7c6024fa1f5ddcd2e07fd6821e57)
+   — the NEW engine results, run 2026-09-26T07:03:57Z–07:04:10Z on graph `92e0fa5f319a41df`
+   (see `graph`). A second run at 07:04:10Z–07:04:23Z gave identical per-pair outcomes, warnings,
    distances, snap distances, geometry hashes, tag checks and detail views for all 82 pairs.
 4. `m0-06b-coverage-regrade-m2-01ay-objections.txt` (sha256 8c5bad4065b036093f8b1d04855927d2ccce31b9b444c769e63e0e36461f0280)
    — the implementers' short objections to two disqualifying findings of your first grading

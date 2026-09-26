@@ -17,8 +17,8 @@
 
 ## 완료된 최신 작업
 
-[M2-01ay](progress/M2-01ay.md)(`phase/m0-06`): 보행 coverage 결함 수정. 새 graph `c1fa89fbaf155076`(같은 pin extract `848daadc…`, 새 root
-`.geo-build-routing/kr-260901-m2-01ay-barriers`, `--replace-served-graph` 없음): 군사 구역 경계에 `foot=no` barrier를 넣은 파생 extract
+[M2-01ay](progress/M2-01ay.md)(`phase/m0-06`): 보행 coverage 결함 수정. 새 graph `92e0fa5f319a41df`(같은 pin extract `848daadc…`, 새 root
+`.geo-build-routing/kr-260901-m2-01ay-r1`, `--replace-served-graph` 없음; Codex phase review r1 수정으로 첫 최종 graph `c1fa89fbaf155076`을 대체, engine load-peak 예산 2000 → 2100 MiB): 군사 구역 경계에 `foot=no` barrier를 넣은 파생 extract
 (`scripts/geo/MilitaryPerimeterBarriers.java`, build host에 osmium 필요), ferry·시간 조건 way 경고(`route_includes_ferry`,
 `route_includes_time_conditional_access`), 계단 경로 거절(STR-04) 수정, probe의 엔진 `osm_way_id` 기반 way 대조. 같은 검토자가 같은 사전 등록
 (`98ef1cee…`)으로 다시 채점: **73.5/82, disqualifier 없음, 그러나 세 층(rural, bridge-pedestrian, negative-sea-island) 기준 미달 → 여전히 부적합.**

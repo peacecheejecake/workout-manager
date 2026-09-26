@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "node": "M2-01ay",
-  "measuredAt": "2026-09-26T03:57:02Z",
-  "what": "scripts/probe-routing-engine-logs.mts on the national graph c1fa89fbaf155076 (Geofabrik 2026-09-01, military perimeters closed by barrier nodes in the imported data; ROUTING_GRAPH_ROOT relocated deployment, a scratch copy of its graph directory), serving profile 9b6fa80a6aa8. R1: helper default. R8: console threshold and root level lowered to INFO, request-log override omitted; /spt, /isochrone and /navigate included. Stdout of each run, unchanged.",
-  "graphBuildId": "c1fa89fbaf155076",
+  "measuredAt": "2026-09-26T07:04:56Z",
+  "what": "scripts/probe-routing-engine-logs.mts on the national graph 92e0fa5f319a41df (Geofabrik 2026-09-01, military perimeters closed by barrier nodes in the imported data; ROUTING_GRAPH_ROOT relocated deployment, a scratch copy of its graph directory), serving profile 9b6fa80a6aa8. R1: helper default. R8: console threshold and root level lowered to INFO, request-log override omitted; /spt, /isochrone and /navigate included. Stdout of each run, unchanged.",
+  "graphBuildId": "92e0fa5f319a41df",
   "runs": {
     "R1": {
       "config": "scripts/geo/graphhopper-foot-serving.yml",
