@@ -612,6 +612,20 @@
         "course-cards.test.ts and course-list-card.test.tsx 23/23 passed; contracts, API, Next and Vite builds, 34-package/root typecheck, focused ESLint and diff check passed"
       ],
       "note": "GraphHopper/OSM tags are provider reports, not a field inspection or safety/walkability proof. The positive browser case needs the local Seoul graph and is skipped in fixture-only CI. Aside update failed with fetch failed; subagent Chrome CUA is root-only, so Playwright Chromium supplied the browser evidence."
+    },
+    {
+      "node": "M2-01k S14 provider isolation",
+      "date": "2026-09-27",
+      "rows": ["S14-providers"],
+      "decision": "Routing, place search, elevation, and self-hosted basemap rendering have separate availability boundaries. The map renderer failing WebGL does not disable the independent data APIs.",
+      "change": "S14-providers partial -> passed; counts passed 90 -> 91, partial 15 -> 14. Hosting and dataset coverage rows remain partial; historical failed and external not_executed rows are unchanged.",
+      "executed": [
+        "apps/api/tests/course-extras-routes.test.ts: 55/55 passed after integration; route-preview unavailable (404) while own place and elevation return results, and either dataset independently absent returns no_dataset",
+        "tests/identity/course-provider-isolation.spec.ts opt-in missing-data mode: Next/Vite 2/2 passed with real self-hosted basemap line drawn while place/elevation report no_dataset",
+        "same browser spec opt-in no-webgl mode: Next/Vite 2/2 passed with WebGL unavailable and the local place/elevation data APIs returning the same real results before and after map failure",
+        "temporary mutation coupling place search to elevation availability failed the new independent-data API assertion, then was reverted; 15/15 build, 34-package typecheck, ESLint, Prettier, diff check passed in the isolated worktree"
+      ],
+      "note": "Tests used local basemap/place/elevation artifacts and isolated PostgreSQL, not an external hosting deployment. The proof was prepared on codex/m2-01k-provider-proof commit 72a62cd and cherry-picked as 9b38f9a into this phase branch."
     }
   ],
   "rounds": [
@@ -733,8 +747,8 @@
     }
   ],
   "counts": {
-    "passed": 90,
-    "partial": 15,
+    "passed": 91,
+    "partial": 14,
     "failed": 1,
     "missing": 0,
     "not_executed": 4
@@ -1526,11 +1540,11 @@
       "id": "S14-providers",
       "source": "docs/.pre/01_product_screen_spec.md:163",
       "quote": "MapLibre는 지도 렌더러이며 routing·geocoder·tiles·elevation은 별도 provider다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [
         "scripts/probe-routing-operational.mts: routing routes are absent unless the routing deployment is configured (404)"
       ],
-      "reason": "Routing separation observed; geocoder/elevation/tiles separation is structural (code reading), not asserted.",
+      "reason": "M2-01k S14 provider-isolation amendment: passed. With routing unavailable, own place/elevation data still answer; each missing dataset independently returns no_dataset. Next/Vite draw a real self-hosted basemap while place/elevation are missing, and WebGL failure leaves real place/elevation API responses unchanged. A temporary coupling mutant fails the new API assertion. This proves the provider boundaries, not production hosting or dataset coverage.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1538,7 +1552,14 @@
           "probe-routing-operational --execute, real GraphHopper 10.0 (26/26 PASS, findings [])"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "providerIsolationAmendment": {
+        "node": "M2-01k S14 provider isolation",
+        "date": "2026-09-27",
+        "previousVerdict": "partial",
+        "previousReason": "Geocoder/elevation/tiles separation was structural only.",
+        "evidence": "Focused API 55/55 and Next/Vite missing-data and no-WebGL modes 4/4 on local artifacts; coupling mutant failed. See docs/implementation/progress/M2-01k-provider-isolation.md."
+      }
     },
     {
       "id": "S14-uncomputed-draft",
