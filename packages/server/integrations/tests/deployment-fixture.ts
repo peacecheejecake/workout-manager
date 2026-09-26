@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  EDGE_FACTS_DIRECTORY,
   ROUTING_GRAPH_MANIFEST_FILE,
+  TIME_CONDITIONAL_WAYS_FILE,
   hashGraphDirectory,
   loadRoutingDeployment,
   createRoutingEngineEndpoint,
@@ -19,9 +21,24 @@ import {
  * The tests deliberately do not have a shortcut for this. A deployment that could be
  * asserted rather than proved is exactly the hole this fixture exists to keep closed.
  */
+/**
+ * `graph.encoded_values` as GraphHopper 10.0 writes it into `properties.txt`: a list of JSON
+ * objects, each escaped as a string.
+ */
+export function encodedValuesLine(names: readonly string[]): string {
+  const values = names.map((name) =>
+    JSON.stringify(JSON.stringify({ className: 'x', name, bits: 1 })),
+  );
+  return `graph.encoded_values=[${values.join(', ')}]\n`;
+}
+
 export async function verifiedDeployment(options: {
   transport: RoutingEngineTransport;
   manifest?: Partial<RoutingGraphManifest>;
+  /** Encoded values the graph's `properties.txt` names (M2-01ay). None by default. */
+  encodedValues?: readonly string[];
+  /** Written as the graph's time-conditional way list when given (M2-01ay). */
+  timeConditionalWays?: unknown;
 }): Promise<{ deployment: RoutingDeployment; manifest: RoutingGraphManifest; directory: string }> {
   const directory = await mkdtemp(join(tmpdir(), 'routing-deployment-'));
   const enginePath = join(directory, 'engine.jar');
@@ -33,8 +50,16 @@ export async function verifiedDeployment(options: {
   await writeFile(join(graphDirectory, 'edges'), 'edge-bytes');
   await writeFile(
     join(graphDirectory, 'properties.txt'),
-    'datareader.import.date=2026-09-21T14:09:12Z\ndatareader.data.date=2026-09-18T23:00:00Z\n',
+    'datareader.import.date=2026-09-21T14:09:12Z\ndatareader.data.date=2026-09-18T23:00:00Z\n' +
+      (options.encodedValues === undefined ? '' : encodedValuesLine(options.encodedValues)),
   );
+  if (options.timeConditionalWays !== undefined) {
+    await mkdir(join(graphDirectory, EDGE_FACTS_DIRECTORY), { recursive: true });
+    await writeFile(
+      join(graphDirectory, EDGE_FACTS_DIRECTORY, TIME_CONDITIONAL_WAYS_FILE),
+      JSON.stringify(options.timeConditionalWays),
+    );
+  }
   const hashOf = async (path: string) =>
     createHash('sha256')
       .update(await readFile(path))

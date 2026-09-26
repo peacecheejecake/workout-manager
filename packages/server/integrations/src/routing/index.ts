@@ -42,11 +42,23 @@ export {
   geometryVisitsWaypointsInOrder,
   graphhopperRouteBody,
   requestedPathDetails,
+  edgeFactPathDetails,
+  edgeFactWarnings,
   type GraphHopperAdapterOptions,
   type RoutingClock,
   type RoutingComputeContext,
   type TrackedWalkingRoute,
 } from './graphhopper-adapter.js';
+export {
+  EDGE_FACTS_DIRECTORY,
+  TIME_CONDITIONAL_WAYS_FILE,
+  graphEncodedValueNames,
+  loadGraphEdgeFacts,
+  timeConditionalKeys,
+  timeConditionalWaysSchema,
+  type GraphEdgeFacts,
+  type TimeConditionalWays,
+} from './edge-facts.js';
 export {
   RoutingRequestError,
   WalkingRouteService,

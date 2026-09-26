@@ -113,8 +113,9 @@
       "title": "보행 routing coverage 결함 수정(군사 구역·ferry·시간 제한·계단 거절)",
       "dependsOn": ["M0-06b-cov"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "M0-06b-cov 독립 검토가 전국 graph의 보행 coverage를 부적합(68/82, 기준 70)으로 판정했다. 결함: 군사 구역을 지나는 경로(ACC-MIL-01 용산 15.8 m, NEG-MIL-02 임진각→판문점 27.9 km 중 18 km), 걷기 경로에 ferry가 반복해 들어감(FRY-*), 시간 제한 way를 지나며 경고가 없음(TIM-01), 엔진이 돌려준 짧은 계단 경로를 adapter가 engine_contract_violation으로 거절(STR-04), foot=no 다리 일치 의심(FRY-03, 평행 way 오탐 가능), 보행 다리 사용 증거 없음(BRG-01), 층 기준 미달(rural, military-avoidance, access-restricted, bridge-pedestrian, ferry, access-time, negative-military). serving profile(custom model: 군사 landuse·ferry·시간 조건 접근)과 adapter를 고치고, 변경은 새 graph import·rollout 절차(M2-01ak runbook)를 따른다. 고친 뒤 같은 blind 표본과 **같은 사전 등록(sha256 98ef1cee…)**으로 다시 돌리고 같은 검토자(Codex gpt-6-sol)가 같은 기준으로 다시 채점해야 한다(기준 이동 금지). 각 수정은 되돌리는 변이가 실패해야 한다. 오탐으로 보이는 disqualifier(ACC-PRV-01 access=no·foot=yes gate, FRY-03)는 검토자에게 근거와 함께 이의를 기록할 수 있으나 기준을 바꾸지 않는다. 출처: docs/implementation/research/m0-06b-coverage-review.md."
+      "status": "completed",
+      "scope": "M0-06b-cov 독립 검토가 전국 graph의 보행 coverage를 부적합(68/82, 기준 70)으로 판정했다. 결함: 군사 구역을 지나는 경로(ACC-MIL-01 용산 15.8 m, NEG-MIL-02 임진각→판문점 27.9 km 중 18 km), 걷기 경로에 ferry가 반복해 들어감(FRY-*), 시간 제한 way를 지나며 경고가 없음(TIM-01), 엔진이 돌려준 짧은 계단 경로를 adapter가 engine_contract_violation으로 거절(STR-04), foot=no 다리 일치 의심(FRY-03, 평행 way 오탐 가능), 보행 다리 사용 증거 없음(BRG-01), 층 기준 미달(rural, military-avoidance, access-restricted, bridge-pedestrian, ferry, access-time, negative-military). serving profile(custom model: 군사 landuse·ferry·시간 조건 접근)과 adapter를 고치고, 변경은 새 graph import·rollout 절차(M2-01ak runbook)를 따른다. 고친 뒤 같은 blind 표본과 **같은 사전 등록(sha256 98ef1cee…)**으로 다시 돌리고 같은 검토자(Codex gpt-6-sol)가 같은 기준으로 다시 채점해야 한다(기준 이동 금지). 각 수정은 되돌리는 변이가 실패해야 한다. 오탐으로 보이는 disqualifier(ACC-PRV-01 access=no·foot=yes gate, FRY-03)는 검토자에게 근거와 함께 이의를 기록할 수 있으나 기준을 바꾸지 않는다. 출처: docs/implementation/research/m0-06b-coverage-review.md.",
+      "evidence": "docs/implementation/progress/M2-01ay.md"
     },
     {
       "id": "M0-06c",

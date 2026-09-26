@@ -1,0 +1,31 @@
+Objections from the implementer (M2-01ay) to two disqualifying findings of the first grading.
+These are evidence for the reviewer to weigh. They do not change the pre-registered criteria,
+and the reviewer decides.
+
+1. FRY-03 (first grading: tagCheck.footNoMeters = 28.6 on w37395728, disqualifying).
+   - w37395728 is Gangbyeonbuk-ro: highway=trunk, foot=no, bridge=yes, layer=0. The first
+     results found it with a GEOMETRIC match: a route segment whose midpoint lay within 1.5 m of
+     the way and ran within 20 degrees of it counted as running along it.
+   - The graph ignores highway=trunk at import (serving profile:
+     `import.osm.ignored_highways: motorway,trunk`), so a highway=trunk way is not an edge of the
+     graph and no route can use it.
+   - The new results take the ways under each route from the engine's own `osm_way_id` path
+     detail (`tagCheck.wayMatchMethod` = `engine-way-ids`; the full list is
+     `engineDetailView.ways`). FRY-03's route is the same line as in the first results (same
+     distance, 10777.5 m) and runs over 39 OSM ways; w37395728 is not one of them, and
+     `tagCheck.summary.footNoMeters` is 0. The 28.6 m was a parallel way beside the route.
+
+2. ACC-PRV-01 (first grading: tagCheck.restrictedNodesPassed = 1, disqualifying).
+   - The node is n3792105220, "경복궁 유형문": barrier=gate, access=no, foot=yes.
+   - GraphHopper's foot parser reads `foot` before `access`, and so does the probe's own
+     `accessClass` label ("access=no with foot=yes"): the gate is tagged as open to pedestrians
+     and closed to other traffic. `restrictedNodesPassed` counts every node that carries an
+     access-type tag, whatever its foot value; it was not a count of nodes a pedestrian may not
+     pass.
+   - The new results keep `restrictedNodesPassed` with that same meaning (still 1 here) and add
+     `footRestrictedNodesPassed` (0 here: nodes whose pedestrian access is restricted) and
+     `accessRestrictedNodesWithFootOverridePassed` (1 here), and `nodesOnRoute[].pedestrianAccess`
+     (`foot-overrides-restrictive-access` for this gate).
+   - The objection: a gate explicitly tagged foot=yes is not a restricted node for a walking
+     route. Whether the pre-registered wording "a restricted node" covers it is the reviewer's
+     call.

@@ -4,9 +4,16 @@
 #
 # Kept separate from `graphhopper-foot.yml` on purpose: that file is the exact profile
 # whose SHA-256 the M2-01d candidate measurement recorded, and editing it would
-# invalidate an existing evidence record. The import settings below (encoded values,
-# ignored highways) are byte-identical to it, so the same graph directory is reusable;
-# only the serving-side bounds differ.
+# invalidate an existing evidence record. Until M2-01ay the import settings were
+# byte-identical to it; since M2-01ay this profile encodes two more values, so a graph built
+# from it is its own graph and needs a full import.
+#
+# Ferries (M2-01ay decision): GraphHopper's foot parser admits a mapped `route=ferry` unless it
+# says `foot=no`, and this profile keeps that. The independent coverage review's pre-registered
+# expectation (M0-06b, sha256 98ef1cee...) treats a mapped foot-allowed ferry as a legitimate
+# walking connection that must be REPORTED; the adapter reports it as the
+# `route_includes_ferry` warning (via `road_environment`) instead of dropping those
+# connections.
 #
 # datareader.file, graph.location and the listener ports are supplied on the command
 # line by the probe script so nothing outside .geo-build is touched and both connectors
@@ -15,9 +22,19 @@
 graphhopper:
   datareader.file: ''
   graph.location: ''
-  graph.encoded_values: foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, road_class, road_access, surface
+  # M2-01ay: `road_environment` names ferry edges and `osm_way_id` the OSM way of every edge, so
+  # a route can say when it takes a ferry or a way with a time-conditional access tag (the
+  # adapter reads both as path details). GraphHopper 10.0 stores a way id in 31 bits; the
+  # pinned extract's largest way id is 1,554,316,713.
+  graph.encoded_values: foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, road_class, road_access, surface, road_environment, osm_way_id
   # Pedestrian import: motorways and trunk roads carry no walking access.
   import.osm.ignored_highways: motorway,trunk
+  # Military areas (M2-01ay) are not in this file: the build imports the graph from the pinned
+  # extract with a barrier node (`foot=no`) inserted wherever a walkable way crosses the
+  # perimeter of a `landuse=military` / `military=*` area (scripts/build-routing-graph.mts,
+  # scripts/geo/MilitaryPerimeterBarriers.java), so no walking route enters or leaves one and
+  # nothing is evaluated per request. A custom-model area was measured first and cost about 3x
+  # per route: GraphHopper 10.0 re-serialises an area as text for every request.
   profiles:
     - name: foot
       custom_model_files: [foot.json]

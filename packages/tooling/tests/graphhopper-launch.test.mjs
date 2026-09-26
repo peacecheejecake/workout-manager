@@ -8,6 +8,7 @@ import {
   REQUEST_LOG_OVERRIDE,
   blockLines,
   graphhopperJavaArguments,
+  graphhopperToolJavaArguments,
   isQuietProfileLine as isQuiet,
   profileDisablesRequestLog,
   profileLines,
@@ -297,12 +298,16 @@ const PROCESS_API_JAVA =
  */
 export function codeLaunchProblem(fileText, chunk, rules = launchRules(chunk)) {
   if (rules.some((rule) => rule !== 'process-api-java')) return rules.join(',');
-  if (!/from ['"][./]*(?:geo\/)?graphhopper-launch\.mjs['"]/.test(fileText))
+  // `scripts/` for a test that imports the helper from the repository root (M2-01ay).
+  if (!/from ['"][./]*(?:scripts\/)?(?:geo\/)?graphhopper-launch\.mjs['"]/.test(fileText))
     return 'java without the launch helper';
   const joined = chunk.replace(/\\\r?\n\s*/g, ' ');
   for (const call of joined.matchAll(PROCESS_API_JAVA)) {
     const rest = joined.slice((call.index ?? 0) + call[0].length);
-    if (!/^graphhopperJavaArguments\(/.test(rest)) return 'java with arguments not from the helper';
+    // M2-01ay: `graphhopperToolJavaArguments` runs a repository Java source on the jar's
+    // classpath and can start neither the engine nor its server (it refuses `-jar` and `server`).
+    if (!/^graphhopper(?:Tool)?JavaArguments\(/.test(rest))
+      return 'java with arguments not from the helper';
   }
   return null;
 }
@@ -654,6 +659,11 @@ describe('GraphHopper launches in the repository', () => {
     expect(codeLaunchProblem(helped, helped)).toBe('java without the launch helper');
     const dashJar = `${imports}spawn('java', ['-jar', jar]);\n`;
     expect(codeLaunchProblem(dashJar, dashJar)).not.toBeNull();
+    // M2-01ay: a Java source on the jar's classpath goes through its own helper, never raw.
+    const tool = `${imports}spawn('java', graphhopperToolJavaArguments({ jarPath, sourcePath, args }));\n`;
+    expect(codeLaunchProblem(tool, tool)).toBeNull();
+    const rawTool = `${imports}spawn('java', ['-cp', jar, 'Tool.java']);\n`;
+    expect(codeLaunchProblem(rawTool, rawTool)).toBe('java with arguments not from the helper');
   });
 
   it('go through the helper everywhere, the runbook included', async () => {
@@ -698,5 +708,72 @@ describe('GraphHopper launches in the repository', () => {
         /\bnode scripts\/geo\/graphhopper-launch\.mjs\b/.test(chunk),
       ),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// M2-01ay: the serving profile's routing model, and the Java tool the build runs on the jar.
+
+/** The `profiles:` list of the `graphhopper` block, as lines. */
+function profileModelLines(text) {
+  const { lines, starts } = profileLines(text);
+  const block = blockLines(lines, starts.get('graphhopper') ?? -1);
+  const start = block.indexOf('  profiles:');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const model = [];
+  for (const line of block.slice(start + 1)) {
+    if (/^ {2}\S/.test(line)) break;
+    if (!isQuiet(line)) model.push(line);
+  }
+  return model;
+}
+
+describe('the serving profile routing model (M2-01ay)', () => {
+  it("is GraphHopper's own foot.json: military perimeters are closed in the imported data", async () => {
+    const text = await readFile(servingProfile, 'utf8');
+    // No custom-model area: GraphHopper 10.0 re-serialises an area on every request (measured
+    // at about 3x per route). The build inserts barrier nodes instead
+    // (scripts/geo/MilitaryPerimeterBarriers.java, military-perimeter-barriers.test.mjs).
+    expect(profileModelLines(text)).toEqual([
+      '    - name: foot',
+      '      custom_model_files: [foot.json]',
+    ]);
+    const live = text.split('\n').filter((line) => !isQuiet(line));
+    expect(live.filter((line) => /custom_areas|custom_model:|\bin_[a-z]/.test(line))).toEqual([]);
+  });
+
+  it('encodes the two values the adapter warns from', async () => {
+    const text = await readFile(servingProfile, 'utf8');
+    const encoded = /^ {2}graph\.encoded_values: (.*)$/m.exec(text)?.[1]?.split(/,\s*/) ?? [];
+    expect(encoded).toEqual(expect.arrayContaining(['road_environment', 'osm_way_id']));
+  });
+
+  it('run a Java source on the jar classpath without ever starting the engine', () => {
+    const args = graphhopperToolJavaArguments({
+      jarPath: '/jar/graphhopper-web.jar',
+      sourcePath: '/repo/scripts/geo/MilitaryPerimeterBarriers.java',
+      args: ['/in.geojsonseq', '/ways.opl', '/out.osc'],
+    });
+    expect(args).toEqual([
+      '-Xmx2048m',
+      '-cp',
+      '/jar/graphhopper-web.jar',
+      '/repo/scripts/geo/MilitaryPerimeterBarriers.java',
+      '/in.geojsonseq',
+      '/ways.opl',
+      '/out.osc',
+    ]);
+    expect(launchRules(`spawn('java', ${JSON.stringify(args)})`)).not.toContain('argv-dash-jar');
+    expect(() =>
+      graphhopperToolJavaArguments({ jarPath: '/j.jar', sourcePath: '/x.class', args: [] }),
+    ).toThrow('TOOL_SOURCE_MUST_BE_A_JAVA_FILE');
+    for (const argument of ['-jar', 'server'])
+      expect(() =>
+        graphhopperToolJavaArguments({
+          jarPath: '/j.jar',
+          sourcePath: '/x.java',
+          args: [argument],
+        }),
+      ).toThrow('TOOL_ARGUMENT_REFUSED');
   });
 });

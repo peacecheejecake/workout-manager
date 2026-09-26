@@ -8,6 +8,7 @@ import {
   loadVerifiedRoutingGraph,
   type RoutingGraphManifest,
 } from './graph-manifest.js';
+import { loadGraphEdgeFacts, type GraphEdgeFacts } from './edge-facts.js';
 import { createFetchRoutingTransport, type RoutingEngineTransport } from './transport.js';
 
 /**
@@ -79,6 +80,11 @@ export class RoutingDeployment {
   readonly graphDirectory: string;
   readonly endpoint: RoutingEngineEndpoint;
   readonly transport: RoutingEngineTransport;
+  /**
+   * What the graph lists about its edges beyond GraphHopper's encoded values (M2-01ay), read
+   * from inside the verified graph directory. `null` for a graph built before M2-01ay.
+   */
+  readonly edgeFacts: GraphEdgeFacts | null;
 
   constructor(
     key: symbol,
@@ -86,6 +92,7 @@ export class RoutingDeployment {
     graphDirectory: string,
     endpoint: RoutingEngineEndpoint,
     transport: RoutingEngineTransport,
+    edgeFacts: GraphEdgeFacts | null,
   ) {
     if (key !== constructionKey)
       throw new GraphManifestError(
@@ -99,6 +106,7 @@ export class RoutingDeployment {
     this.graphDirectory = graphDirectory;
     this.endpoint = endpoint;
     this.transport = transport;
+    this.edgeFacts = edgeFacts;
     Object.freeze(this);
     verifiedDeployments.add(this);
   }
@@ -176,6 +184,8 @@ export async function loadRoutingDeployment(
       'PROFILE_CONFIG_MISMATCH',
       `manifest ${verified.manifest.profileConfigSha256.slice(0, 12)} but ${options.profileConfigPath} is ${profileConfigSha256.slice(0, 12)}`,
     );
+  // Read after the graph hash matched the manifest, so these are the bytes the build wrote.
+  const edgeFacts = await loadGraphEdgeFacts(verified.graphDirectory);
   const transport = (options.transportFactory ?? createFetchRoutingTransport)(options.endpoint);
   return new RoutingDeployment(
     constructionKey,
@@ -183,5 +193,6 @@ export async function loadRoutingDeployment(
     verified.graphDirectory,
     options.endpoint,
     transport,
+    edgeFacts,
   );
 }

@@ -150,6 +150,15 @@ const defaultResultPath = join(
   'docs/implementation/research/performance-budget-result.json',
 );
 const ENGINE_PORT = 8991;
+/**
+ * Long-track samples that replace the evenly spread engine-load waypoints (M2-01ay). The even
+ * choice puts waypoint 6 (sample 10000, 126.975, 37.538) inside the Yongsan base, and since M2-01ay
+ * the serving profile lets no walking route enter or leave a military area, so every load
+ * request answered `no_route` (measured: 37 of 37 in each of three runs). Sample 9700 lies on the
+ * same leg about 1.1 km north, outside the base; the load route is then about 23 km instead of
+ * about 26 km. Before M2-01ay that route crossed the base.
+ */
+const HEAVY_WAYPOINT_SAMPLE_OVERRIDES: ReadonlyMap<number, number> = new Map([[6, 9700]]);
 const ALL_PHASES = ['api', 'engine', 'worker', 'parse'] as const;
 type ServerPhase = (typeof ALL_PHASES)[number];
 const execFileAsync = promisify(execFile);
@@ -708,10 +717,11 @@ async function servicePhases(fitBytes: Buffer, options: ProbeOptions) {
       await bob.login(app, 'bob');
       const heavy = Array.from({ length: routingLimits.maxWaypoints }, (_, index) =>
         longTrackPosition(
-          Math.min(
-            LONG_TRACK_SAMPLES - 1,
-            Math.floor((index * LONG_TRACK_SAMPLES) / routingLimits.maxWaypoints),
-          ),
+          HEAVY_WAYPOINT_SAMPLE_OVERRIDES.get(index) ??
+            Math.min(
+              LONG_TRACK_SAMPLES - 1,
+              Math.floor((index * LONG_TRACK_SAMPLES) / routingLimits.maxWaypoints),
+            ),
         ),
       );
       let requestRevision = 0;

@@ -308,3 +308,15 @@ ROUTING_GRAPH_ROOT=<main checkout>/.geo-build-routing/kr-260901 ROUTING_EXTRACT_
   --pairs docs/implementation/research/m0-06b-coverage-review-pairs.json \
   --report-name m0-06b-coverage-review-results.json
 ```
+
+## 10. M2-01ay 재채점 (이 문서의 위 절은 바꾸지 않았다)
+
+M2-01ay가 결함을 고친 새 graph `c1fa89fbaf155076`에서 **같은 blinded 표본**을 두 번 돌렸고(82쌍 모두 같음), **같은
+검토자**가 **같은 사전 등록**(sha256 `98ef1cee…8a214b`)으로 빈 디렉터리에서 다시 채점했다. 판정은 여전히
+**`inadequate`**, 73.5/82, 실격 조건 0건, 미달 층 3개(rural, bridge-pedestrian, negative-sea-island; 검토자 분류로 모두
+sample-design). 이의 두 건(FRY-03, ACC-PRV-01)은 검토자가 받아들였다. 기준은 바꾸지 않았다.
+
+- 결과: [m0-06b-coverage-review-results-m2-01ay.json](m0-06b-coverage-review-results-m2-01ay.json)
+- 프롬프트·이의·채점 원문: [prompt](m0-06b-coverage-regrade-m2-01ay-prompt.txt),
+  [objections](m0-06b-coverage-regrade-m2-01ay-objections.txt), [grading](m0-06b-coverage-regrade-m2-01ay-grading.txt)
+- 수정 내용과 근거: [M2-01ay](../progress/M2-01ay.md)

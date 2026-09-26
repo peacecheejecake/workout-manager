@@ -808,6 +808,28 @@ ROUTING_GRAPH_ROOT=$ROOT ROUTING_EXTRACT_SOURCE=osm-extract-south-korea \
 identity harness에서 실제 엔진을 쓰려면 위 변수에 `IDENTITY_E2E_ROUTING=graphhopper`를 더한다
 (기본은 fixture 엔진).
 
+### 군사 구역 경계 차단과 edge facts — M2-01ay
+
+M2-01ay부터 build는 **모든** graph를 pin된 extract 그대로가 아니라, 거기서 결정적으로 파생한 데이터로 import한다.
+
+- **군사 구역 경계 차단.** `landuse=military`·`military=*` 영역을 합친 경계와 보행 가능 way(`highway=*`에서
+  motorway·trunk 제외, `route=ferry`, `man_made=pier`, `railway=platform`)가 만나는 곳마다 새 node(`barrier=gate`,
+  `access=no`, `foot=no`, id 200억부터)를 way에 끼운다(`scripts/geo/MilitaryPerimeterBarriers.java`, jar classpath에서
+  helper의 `graphhopperToolJavaArguments`로 실행 → osmChange → `osmium apply-changes`). 경로는 군사 구역에 들어가지도
+  나오지도 않고, 구역 안 도로는 graph에 남아 그 안의 점은 `no_route`가 된다. pin된 extract 파일은 바뀌지 않고
+  manifest의 `extractSha256`도 그 파일이다. 파생 결과의 해시·개수·도구 해시·osmium 버전은 graph 디렉터리의
+  `edge-facts/derivation.json`에 남고, graph content hash가 그것을 덮는다. **build 호스트에 `osmium`(1.19.1로 측정)이
+  필요하다.**
+- **edge facts.** profile이 `road_environment`·`osm_way_id`를 encode하고, build가 같은 extract에서 시간 조건
+  (`access:conditional`·`foot:conditional`·`opening_hours`) way 목록을 `edge-facts/time-conditional-ways.json`에 쓴다.
+  배포 로드(`loadRoutingDeployment`)가 그것을 읽고, adapter가 경로에 `route_includes_ferry`·
+  `route_includes_time_conditional_access` 경고를 붙인다. `osm_way_id`와 목록 중 하나만 있는 graph는
+  `EDGE_FACTS_INVALID`로 거절된다. 그 이전 graph(kr-260901, Seoul)는 둘 다 없어 전과 같이 동작한다(경고 없음).
+- 절차는 위 M2-01ak와 같다(새 root, `--replace-served-graph` 없음, rollout probe). M2-01ay의 root는
+  `<main checkout>/.geo-build-routing/kr-260901-m2-01ay-barriers`(graph `c1fa89fbaf155076`)다. `kr-260901`
+  (`188b65effcc6ef5c`)은 지우지 않았고 rollback 대상으로 남는다. 엔진 메모리 예산은 새 graph에 다시 묶였다
+  (`performance-budget.json`, 예산 값은 같다).
+
 ### graph 교체·rollback — blue/green (M2-01k-e)
 
 **서빙 중인 엔진을 제자리에서 재시작하지 않는다.** 새 graph는 **두 번째 엔진**(다른 port)으로 띄우고,

@@ -17,12 +17,14 @@
 
 ## 완료된 최신 작업
 
-[M0-06b-cov](progress/M0-06b-coverage.md)를 실행했다(`phase/m0-06`). 한국 보행 coverage의 독립 검토: 82쌍 층화 blind 표본, 독립 검토자
-(Codex `gpt-6-sol`)가 결과 전에 기대·판정 기준을 등록하고(sha256 `98ef1cee…`) 전국 graph `188b65effcc6ef5c` 실행 뒤 같은 기준으로 채점했다.
-판정은 **부적합**(68/82, 기준 70): 군사 구역 통과, 걷기 경로 안의 ferry, 경고 없는 시간 제한 way, adapter의 짧은 계단 경로 거절. P8-coverage는
-not_executed → **failed**. 수정과 같은 사전 등록으로의 재채점은 M2-01ay다.
+[M2-01ay](progress/M2-01ay.md)(`phase/m0-06`): 보행 coverage 결함 수정. 새 graph `c1fa89fbaf155076`(같은 pin extract `848daadc…`, 새 root
+`.geo-build-routing/kr-260901-m2-01ay-barriers`, `--replace-served-graph` 없음): 군사 구역 경계에 `foot=no` barrier를 넣은 파생 extract
+(`scripts/geo/MilitaryPerimeterBarriers.java`, build host에 osmium 필요), ferry·시간 조건 way 경고(`route_includes_ferry`,
+`route_includes_time_conditional_access`), 계단 경로 거절(STR-04) 수정, probe의 엔진 `osm_way_id` 기반 way 대조. 같은 검토자가 같은 사전 등록
+(`98ef1cee…`)으로 다시 채점: **73.5/82, disqualifier 없음, 그러나 세 층(rural, bridge-pedestrian, negative-sea-island) 기준 미달 → 여전히 부적합.**
+P8-coverage는 **failed 유지**. 검토자는 남은 미달을 표본 설계와 OSM 자료 공백(잠수교)으로 분류했다. 기준을 바꿀지는 사람의 결정이다.
 
-직전 완료: [M2-01ax](progress/M2-01ax.md)(M2-01 phase 리뷰 비차단 후속).
+직전 완료: [M0-06b-cov](progress/M0-06b-coverage.md)(독립 coverage 검토, 68/82 부적합).
 
 ## 운영 메모
 
@@ -74,7 +76,7 @@ not_executed → **failed**. 수정과 같은 사전 등록으로의 재채점�
 
 ## 다음 ready 작업
 
-task-graph에서 not_started인 ready 노드: M2-01ay(보행 coverage 결함 수정). 그 밖의 남은 노드는 외부 gate(EXT-OIDC, EXT-G, M0-06b의 실기기
+task-graph에서 not_started인 ready 노드는 없다. 남은 노드는 외부 gate(EXT-OIDC, EXT-G, M0-06b의 실기기
 항목, 실기기 보류 M0-06c)에 막혀 있다.
 M2-01 phase의 실행 가능한 노드는 phase 리뷰(Codex)를 통과해 main에 들어갔다. 지금 phase 브랜치는 `phase/m0-06`(M0-06b-cov)이다. 재개 시 각
 worktree의 미커밋 상태를 먼저 확인한다. M2-01k는 이 gap 노드들과 외부 gate EXT-OIDC에 달려 있다.

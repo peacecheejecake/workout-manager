@@ -19,31 +19,53 @@
  * graph, and the graph files are hashed after the engine has exited. Load time recomputes
  * that hash, so a graph whose files changed is refused instead of served.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, lstatSync, readlinkSync, realpathSync } from 'node:fs';
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  EDGE_FACTS_DIRECTORY,
   ROUTING_GRAPH_MANIFEST_FILE,
+  TIME_CONDITIONAL_WAYS_FILE,
   graphBuildIdFromManifest,
+  graphEncodedValueNames,
   hashGraphDirectory,
   loadVerifiedRoutingGraph,
   readGraphProperties,
   routingGraphManifestSchema,
+  timeConditionalKeys,
+  timeConditionalWaysSchema,
   type RoutingGraphManifest,
+  type TimeConditionalWays,
 } from '../packages/server/integrations/src/routing/index.js';
 // The allowlist is the only way data acquisition happens; it takes ids, never URLs.
 import { verifyAllowedSourceFile } from './geo/sources.mjs';
-import { graphhopperJavaArguments } from './geo/graphhopper-launch.mjs';
+import {
+  graphhopperJavaArguments,
+  graphhopperToolJavaArguments,
+} from './geo/graphhopper-launch.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
 const jarPath = join(workRoot, 'graphhopper', 'graphhopper-web.jar');
 const servingConfigSource = join(repositoryRoot, 'scripts/geo/graphhopper-foot-serving.yml');
+const militaryBarriersTool = join(repositoryRoot, 'scripts/geo/MilitaryPerimeterBarriers.java');
+/**
+ * How the imported data was derived from the pinned extract (M2-01ay), inside `edge-facts`, so the
+ * graph content hash covers it.
+ */
+export const DERIVATION_FILE = 'derivation.json';
+/** The PBF header options a derived extract keeps from its source (GraphHopper's road-data date). */
+const KEPT_HEADER_OPTIONS = [
+  'osmosis_replication_timestamp',
+  'osmosis_replication_sequence_number',
+  'osmosis_replication_base_url',
+  'timestamp',
+] as const;
 
 /**
  * Where the served graph and its profile copy live: `.geo-build/routing-graph`, separate from
@@ -320,6 +342,203 @@ export async function stopEngine(engine: EngineHandle): Promise<void> {
   await wait(500);
 }
 
+/** A started tool, run to completion: its standard output, or an error with the end of its log. */
+function completed(child: ChildProcess, name: string): Promise<string> {
+  return new Promise((resolvePromise, reject) => {
+    if (child.stdout === null || child.stderr === null) {
+      reject(new Error(`${name}: output not piped`));
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-4000);
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolvePromise(stdout);
+      else reject(new Error(`${name} exited ${String(code)}: ${stderr.slice(-1500)}`));
+    });
+  });
+}
+
+const toolOutput: SpawnOptions = { stdio: ['ignore', 'pipe', 'pipe'] };
+
+/** `osmium` with these arguments, to completion. */
+function runOsmium(args: readonly string[]): Promise<string> {
+  return completed(spawn('osmium', args, toolOutput), 'osmium');
+}
+
+/**
+ * The data the graph is imported from (M2-01ay): the pinned extract with a barrier node inserted at
+ * every place where a way GraphHopper's foot parser can use crosses the perimeter of the extract's
+ * merged `landuse=military` and `military=*` areas (`scripts/geo/MilitaryPerimeterBarriers.java`,
+ * run on the pinned jar's classpath; the file says how and why in the data). Written to
+ * `scratch`; only its hash and the counts are kept, in the graph directory. The pinned extract
+ * itself is never changed, and the derivation is a function of its bytes, the tool and osmium.
+ */
+export async function deriveMilitaryPerimeterBarriers(options: {
+  readonly extractPath: string;
+  readonly scratch: string;
+}): Promise<{ readonly derivedExtractPath: string; readonly record: Record<string, unknown> }> {
+  const scratchFile = (name: string) => join(options.scratch, name);
+  await runOsmium([
+    'tags-filter',
+    '--overwrite',
+    '--output',
+    scratchFile('military.osm.pbf'),
+    options.extractPath,
+    'a/landuse=military',
+    'a/military',
+  ]);
+  await runOsmium([
+    'export',
+    '--overwrite',
+    '--format',
+    'geojsonseq',
+    '--geometry-types',
+    'polygon',
+    '--output',
+    scratchFile('military.geojsonseq'),
+    scratchFile('military.osm.pbf'),
+  ]);
+  // The ways GraphHopper's foot parser can accept, less the highways the profile ignores.
+  await runOsmium([
+    'tags-filter',
+    '--overwrite',
+    '--output',
+    scratchFile('ways-all.osm.pbf'),
+    options.extractPath,
+    'w/highway',
+    'w/route=ferry',
+    'w/man_made=pier',
+    'w/railway=platform',
+  ]);
+  await runOsmium([
+    'tags-filter',
+    '--invert-match',
+    '--overwrite',
+    '--output',
+    scratchFile('ways.osm.pbf'),
+    scratchFile('ways-all.osm.pbf'),
+    'w/highway=motorway,trunk',
+  ]);
+  await runOsmium([
+    'add-locations-to-ways',
+    '--overwrite',
+    '--output-format',
+    'opl',
+    '--output',
+    scratchFile('ways.opl'),
+    scratchFile('ways.osm.pbf'),
+  ]);
+  const changes = scratchFile('military-perimeter.osc');
+  // Through the launch helper, like every `java` start (the launch guard checks each call).
+  const summary = await completed(
+    spawn(
+      'java',
+      graphhopperToolJavaArguments({
+        jarPath,
+        sourcePath: militaryBarriersTool,
+        heapMegabytes: 4096,
+        args: [scratchFile('military.geojsonseq'), scratchFile('ways.opl'), changes],
+      }),
+      toolOutput,
+    ),
+    'java MilitaryPerimeterBarriers',
+  );
+  const header = JSON.parse(
+    await runOsmium(['fileinfo', '--extended', '--json', options.extractPath]),
+  ) as {
+    header?: { option?: Record<string, unknown> };
+    data?: { maxid?: { nodes?: unknown } };
+  };
+  // The tool numbers its nodes from 20,000,000,000; no node of the extract may already have one.
+  const maxNodeId = header.data?.maxid?.nodes;
+  if (typeof maxNodeId !== 'number' || maxNodeId >= 20_000_000_000)
+    throw new Error(`EXTRACT_NODE_IDS_REACH_THE_BARRIER_RANGE: ${String(maxNodeId)}`);
+  const kept = KEPT_HEADER_OPTIONS.flatMap((key) => {
+    const value = header.header?.option?.[key];
+    return typeof value === 'string' ? [`--output-header=${key}=${value}`] : [];
+  });
+  const derivedExtractPath = scratchFile('derived.osm.pbf');
+  await runOsmium([
+    'apply-changes',
+    '--overwrite',
+    ...kept,
+    '--output',
+    derivedExtractPath,
+    options.extractPath,
+    changes,
+  ]);
+  return {
+    derivedExtractPath,
+    record: {
+      tool: 'scripts/geo/MilitaryPerimeterBarriers.java',
+      toolSha256: await sha256File(militaryBarriersTool),
+      summary: JSON.parse(summary.trim().split('\n').at(-1) ?? '{}') as Record<string, unknown>,
+      changesSha256: await sha256File(changes),
+      derivedExtractSha256: await sha256File(derivedExtractPath),
+      extractMaxNodeId: maxNodeId,
+      keptHeaderOptions: kept.map((option) => option.replace('--output-header=', '')),
+    },
+  };
+}
+
+/**
+ * The OSM ways a pedestrian route can use (`highway=*` or `route=ferry`) whose access depends on
+ * the time: `access:conditional`, `foot:conditional` or `opening_hours` (M2-01ay, see
+ * edge-facts.ts). Written to `<graph>/edge-facts/time-conditional-ways.json`.
+ */
+export async function deriveTimeConditionalWays(options: {
+  readonly extractPath: string;
+  readonly graphDirectory: string;
+  readonly scratch: string;
+}): Promise<TimeConditionalWays> {
+  const conditional = join(options.scratch, 'time-conditional.osm.pbf');
+  const routable = join(options.scratch, 'time-conditional-routable.osm.pbf');
+  await runOsmium([
+    'tags-filter',
+    '--omit-referenced',
+    '--overwrite',
+    '--output',
+    conditional,
+    options.extractPath,
+    ...timeConditionalKeys.map((key) => `w/${key}`),
+  ]);
+  await runOsmium([
+    'tags-filter',
+    '--omit-referenced',
+    '--overwrite',
+    '--output',
+    routable,
+    conditional,
+    'w/highway',
+    'w/route=ferry',
+  ]);
+  const opl = await runOsmium(['cat', '--output-format', 'opl', routable]);
+  const ids = new Set<number>();
+  for (const line of opl.split('\n')) {
+    const id = /^w(\d+) /.exec(line)?.[1];
+    if (id !== undefined) ids.add(Number(id));
+  }
+  const list = timeConditionalWaysSchema.parse({
+    schemaVersion: 1,
+    kind: 'time-conditional-ways',
+    keys: [...timeConditionalKeys],
+    wayIds: [...ids].sort((a, b) => a - b),
+  } satisfies TimeConditionalWays);
+  const directory = join(options.graphDirectory, EDGE_FACTS_DIRECTORY);
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, TIME_CONDITIONAL_WAYS_FILE), `${JSON.stringify(list)}\n`);
+  return list;
+}
+
 /**
  * Import a fresh graph into `graphDirectory` with the deployed serving configuration and
  * write the manifest that binds it to its inputs. The directory is emptied first. The
@@ -351,11 +570,28 @@ export async function importRoutingGraph(options: {
 }): Promise<RoutingGraphManifest> {
   await rm(options.graphDirectory, { recursive: true, force: true });
   await mkdir(options.graphDirectory, { recursive: true });
+  const extractPath = options.extract?.path ?? routingExtract.path;
+
+  // M2-01ay: every graph is imported from the extract with its military perimeters closed
+  // (deriveMilitaryPerimeterBarriers). The pinned extract is verified and never changed; the
+  // manifest keeps naming it, and the derivation is recorded inside the graph directory.
+  const scratch = await mkdtemp(join(tmpdir(), 'routing-derive-'));
+  const derivation: Record<string, unknown> = {};
+  let importedExtractPath: string;
+  try {
+    derivation.osmium = (await runOsmium(['--version'])).split('\n')[0] ?? null;
+    const barriers = await deriveMilitaryPerimeterBarriers({ extractPath, scratch });
+    derivation.militaryPerimeterBarriers = barriers.record;
+    importedExtractPath = barriers.derivedExtractPath;
+  } catch (error) {
+    await rm(scratch, { recursive: true, force: true });
+    throw error;
+  }
 
   const engine = startEngine({
     jarPath,
     configPath: routingGraphConfig,
-    extractPath: options.extract?.path ?? routingExtract.path,
+    extractPath: importedExtractPath,
     graphPath: options.graphDirectory,
     heapMegabytes: options.heapMegabytes ?? routingExtract.importHeapMegabytes,
     ...(options.ports ? { ports: options.ports } : {}),
@@ -385,9 +621,32 @@ export async function importRoutingGraph(options: {
       data_date: parsed.data_date,
       profiles: parsed.profiles.map((profile) => String(profile.name)),
     };
+  } catch (error) {
+    await rm(scratch, { recursive: true, force: true });
+    throw error;
   } finally {
     // The graph is only hashed once the engine that wrote it has exited.
     await stopEngine(engine);
+  }
+
+  // M2-01ay: a graph that encodes `osm_way_id` carries the list of time-conditional ways the
+  // adapter warns about (edge-facts.ts), written before the graph is hashed.
+  try {
+    if ((await graphEncodedValueNames(options.graphDirectory)).includes('osm_way_id')) {
+      const list = await deriveTimeConditionalWays({
+        extractPath,
+        graphDirectory: options.graphDirectory,
+        scratch,
+      });
+      derivation.timeConditionalWays = list.wayIds.length;
+    }
+    await mkdir(join(options.graphDirectory, EDGE_FACTS_DIRECTORY), { recursive: true });
+    await writeFile(
+      join(options.graphDirectory, EDGE_FACTS_DIRECTORY, DERIVATION_FILE),
+      `${JSON.stringify({ schemaVersion: 1, extractSha256: options.extractSha256, ...derivation }, null, 2)}\n`,
+    );
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
   }
 
   const properties = await readGraphProperties(options.graphDirectory);

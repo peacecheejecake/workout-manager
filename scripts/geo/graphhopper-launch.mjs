@@ -200,6 +200,28 @@ export function graphhopperJavaArguments(options) {
 }
 
 /**
+ * A repository Java source file run on the pinned GraphHopper jar's CLASSPATH (M2-01ay:
+ * `scripts/geo/MilitaryPerimeterBarriers.java` uses the jar's JTS classes). It never starts the
+ * engine: no `-jar`, no `server`, no profile, so the logging concerns above do not arise. It exists
+ * so the launch guard can tell this use of `java` from a raw engine launch.
+ *
+ * @param {{ jarPath: string, sourcePath: string, args: readonly string[], heapMegabytes?: number }} options
+ * @returns {string[]} the arguments after `java`
+ */
+export function graphhopperToolJavaArguments(options) {
+  if (!options.sourcePath.endsWith('.java')) throw new Error('TOOL_SOURCE_MUST_BE_A_JAVA_FILE');
+  for (const argument of options.args)
+    if (argument === '-jar' || argument === 'server') throw new Error('TOOL_ARGUMENT_REFUSED');
+  return [
+    `-Xmx${options.heapMegabytes ?? 2048}m`,
+    '-cp',
+    options.jarPath,
+    options.sourcePath,
+    ...options.args,
+  ];
+}
+
+/**
  * The manual launch the runbook uses, so a person starting the engine by hand gets the same
  * command line as every launcher (M2-01af). Paths must be absolute.
  *

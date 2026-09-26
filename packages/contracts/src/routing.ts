@@ -140,6 +140,19 @@ export type RouteConditions = z.infer<typeof routeConditionsSchema>;
  * the reader must not assume the network is connected. Additive — schema version 1 is
  * unchanged, every earlier value still parses, and a `timeout` is never stored, so no stored
  * revision or export carries it.
+ *
+ * Two more ride on a `route_computed` (M2-01ay), on graphs that can tell (built since M2-01ay;
+ * an older graph's route never carries them, which says nothing either way):
+ *
+ * - `route_includes_ferry` — part of the line is a mapped ferry (`route=ferry`). The distance and
+ *   the time include the crossing, which is not walked, and the route says nothing about
+ *   sailings or fares.
+ * - `route_includes_time_conditional_access` — the line uses a way whose access depends on the
+ *   time (`access:conditional`, `foot:conditional` or `opening_hours`). The request carries no
+ *   departure time, so the route does not claim that the way is open when it is walked.
+ *
+ * Both additive in the same way. Unlike a `timeout` warning these can be stored with a revision,
+ * which is the point: the reader of a saved course must still see them.
  */
 export const routeWarningCodeSchema = z.enum([
   'no_route_may_be_engine_budget',
@@ -147,6 +160,8 @@ export const routeWarningCodeSchema = z.enum([
   'response_truncated_by_engine',
   'engine_version_unknown',
   'timeout_may_be_no_route',
+  'route_includes_ferry',
+  'route_includes_time_conditional_access',
 ]);
 
 /**

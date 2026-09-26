@@ -33,6 +33,15 @@
  *    route runs along a way tagged `foot=no`, `access=private` and similar values, passes a
  *    restricted node, or enters a military area.
  *
+ * M2-01ay: on a graph that encodes `osm_way_id` the supplementary request also asks for it, and
+ * the ways under a route are the engine's own (`wayMatchMethod: engine-way-ids`) with their tags
+ * read from the extract by id, instead of ways found near the line. The geometric match could
+ * take a parallel way under or beside a route for the route (the M0-06b review's FRY-03
+ * `foot=no` match). Bridges and tunnels are listed too, so a reviewer can see which crossing a
+ * route took. Nodes are still matched geometrically, and their pedestrian access is reported
+ * by `foot`-before-`access` precedence as well as by the M0-06b class. The graph directory is
+ * copied with its subdirectories (edge facts).
+ *
  * What it does NOT do: it grades nothing. There is no expected outcome in this file and the
  * report has no pass field. A computed route is evidence that the graph had edges, not that
  * a person can walk there today. The coordinates are synthetic points at public landmarks
@@ -65,6 +74,7 @@ import {
   WalkingRouteService,
   GraphHopperRoutingAdapter,
   createRoutingEngineEndpoint,
+  graphEncodedValueNames,
   hashGraphDirectory,
   haversineMeters,
   loadRoutingDeployment,
@@ -82,6 +92,28 @@ import {
   stopEngine,
   waitForEngine,
 } from './build-routing-graph.mjs';
+import {
+  accessClass,
+  checkRouteTags,
+  decodeOpl,
+  indexNodes,
+  indexSegments,
+  isPosition,
+  item,
+  nodeMatchToleranceMeters,
+  positions,
+  stringTags,
+  timeConditional,
+  wayMatchMaxAngleDegrees,
+  wayMatchToleranceMeters,
+  type EngineWay,
+  type Position,
+  type TagIndex,
+  type TaggedArea,
+  type TaggedNode,
+  type TaggedWay,
+  type Tags,
+} from './routing-tag-check.ts';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
@@ -96,14 +128,6 @@ const graphDirectoryLabel = routingGraphRelocated
 
 /** Ports away from the runbook's blue (8991) and green (8993) pair. */
 const enginePorts = { application: 8997, admin: 8998 } as const;
-
-/** Route segments closer than this to a tagged way segment, and parallel to it, count as on it. */
-const wayMatchToleranceMeters = 1.5;
-const wayMatchMaxAngleDegrees = 20;
-/** A route vertex this close to a tagged node counts as passing it. */
-const nodeMatchToleranceMeters = 1.0;
-
-type Position = [number, number];
 
 type Stratum =
   | 'dense-urban-seoul'
@@ -413,13 +437,6 @@ const samplePairs: readonly (SamplePair & { readonly stratum: Stratum })[] = [
   },
 ];
 
-/** Array access that fails loudly instead of asserting. */
-function item<T>(list: readonly T[], index: number): T {
-  const value = list[index];
-  if (value === undefined) throw new Error(`INDEX_OUT_OF_RANGE: ${index}`);
-  return value;
-}
-
 interface Options {
   readonly reportPath: string;
   /** A sample file to run instead of the built-in pairs (M0-06b coverage review). */
@@ -538,6 +555,59 @@ async function refuseBusyPorts(ports: readonly number[]): Promise<void> {
   }
 }
 
+/**
+ * A byte-identical copy of the graph directory, subdirectories included (M2-01ay: the edge facts
+ * live in `edge-facts/`). Anything but a regular file or a directory is refused.
+ */
+async function copyGraphDirectory(source: string, target: string): Promise<void> {
+  await mkdir(target);
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    if (entry.isDirectory())
+      await copyGraphDirectory(join(source, entry.name), join(target, entry.name));
+    else if (entry.isFile()) await copyFile(join(source, entry.name), join(target, entry.name));
+    else throw new Error(`UNEXPECTED_GRAPH_ENTRY: ${entry.name}`);
+  }
+}
+
+/**
+ * The tags of the given OSM ways, read from the extract with `osmium getid` (M2-01ay). Every id
+ * must be found: an engine way id that is not in the extract the graph was built from is a
+ * problem, not a gap.
+ */
+async function readWayTags(scratch: string, ids: readonly number[]): Promise<Map<number, Tags>> {
+  const unique = [...new Set(ids)].sort((a, b) => a - b);
+  const tags = new Map<number, Tags>();
+  if (unique.length === 0) return tags;
+  const idFile = join(scratch, 'engine-way-ids.txt');
+  await writeFile(idFile, `${unique.map((id) => `w${id}`).join('\n')}\n`);
+  const opl = await run('osmium', [
+    'getid',
+    extractPath,
+    '--id-file',
+    idFile,
+    '--output-format',
+    'opl',
+    '--output',
+    '-',
+  ]);
+  for (const line of opl.split('\n')) {
+    const match = /^w(\d+) .* T(\S*)/.exec(line);
+    if (match?.[1] === undefined) continue;
+    const entry: Record<string, string> = {};
+    for (const pair of (match[2] ?? '').split(',')) {
+      if (pair === '') continue;
+      const separator = pair.indexOf('=');
+      if (separator < 0) continue;
+      entry[decodeOpl(pair.slice(0, separator))] = decodeOpl(pair.slice(separator + 1));
+    }
+    tags.set(Number(match[1]), entry);
+  }
+  const missing = unique.filter((id) => !tags.has(id));
+  if (missing.length > 0)
+    throw new Error(`ENGINE_WAYS_NOT_IN_EXTRACT: ${missing.slice(0, 5).join(', ')}`);
+  return tags;
+}
+
 /** Removes host-specific path prefixes from any text that goes into the report. */
 function makeRedactor(prefixes: readonly string[]) {
   return (text: string): string =>
@@ -578,139 +648,6 @@ function run(command: string, args: readonly string[]): Promise<string> {
       else fail(new Error(`${command} exited ${code}: ${stderr}`));
     });
   });
-}
-
-// ---------------------------------------------------------------------------------------
-// OSM tag index from the same extract
-// ---------------------------------------------------------------------------------------
-
-type Tags = Readonly<Record<string, string>>;
-
-interface TaggedWay {
-  readonly id: string;
-  readonly tags: Tags;
-  readonly coordinates: readonly Position[];
-}
-
-interface TaggedNode {
-  readonly id: string;
-  readonly tags: Tags;
-  readonly position: Position;
-}
-
-interface TaggedArea {
-  readonly id: string;
-  readonly tags: Tags;
-  /** Outer and inner rings of every polygon part. */
-  readonly polygons: readonly (readonly (readonly Position[])[])[];
-  readonly bbox: readonly [number, number, number, number];
-}
-
-const restrictiveValues = new Set([
-  'no',
-  'private',
-  'restricted',
-  'military',
-  'emergency',
-  'permit',
-]);
-const otherAccessValues = new Set([
-  'destination',
-  'customers',
-  'delivery',
-  'agricultural',
-  'forestry',
-  'discouraged',
-]);
-
-/**
- * How GraphHopper 10.0's foot access parser would read the way's `foot`/`access` tags.
- * The more specific key wins (`foot` before `access`). This is a label for the reviewer,
- * derived from the tags, not a statement about the ground.
- */
-function accessClass(tags: Tags): string | null {
-  const foot = tags.foot;
-  const access = tags.access;
-  if (foot === 'no') return 'foot=no';
-  if (foot !== undefined && restrictiveValues.has(foot)) return `foot=${foot}`;
-  if (access !== undefined && restrictiveValues.has(access))
-    return foot === undefined ? `access=${access}` : `access=${access} with foot=${foot}`;
-  if (foot !== undefined && otherAccessValues.has(foot)) return `foot=${foot}`;
-  if (access !== undefined && otherAccessValues.has(access))
-    return foot === undefined ? `access=${access}` : `access=${access} with foot=${foot}`;
-  return null;
-}
-
-const reportedTagKeys = [
-  'highway',
-  'name',
-  'foot',
-  'access',
-  'access:conditional',
-  'foot:conditional',
-  'opening_hours',
-  'footway',
-  'crossing',
-  'sidewalk',
-  'barrier',
-  'indoor',
-  'level',
-  'tunnel',
-  'bridge',
-  'route',
-  'landuse',
-  'military',
-  'sac_scale',
-] as const;
-
-/**
- * Whether the way carries a time condition the serving profile does not model (M0-06b coverage
- * review): `access:conditional`, `foot:conditional` or `opening_hours`.
- */
-function timeConditional(tags: Tags): boolean {
-  return (
-    tags['access:conditional'] !== undefined ||
-    tags['foot:conditional'] !== undefined ||
-    tags.opening_hours !== undefined
-  );
-}
-
-function reportedTags(tags: Tags): Record<string, string> {
-  const picked: Record<string, string> = {};
-  for (const key of reportedTagKeys) {
-    const value = tags[key];
-    if (value !== undefined) picked[key] = value;
-  }
-  return picked;
-}
-
-function stringTags(properties: unknown): Tags {
-  const tags: Record<string, string> = {};
-  if (typeof properties !== 'object' || properties === null) return tags;
-  for (const [key, value] of Object.entries(properties)) {
-    if (typeof value === 'string') tags[key] = value;
-  }
-  return tags;
-}
-
-function isPosition(value: unknown): value is Position {
-  return (
-    Array.isArray(value) &&
-    value.length >= 2 &&
-    typeof value[0] === 'number' &&
-    typeof value[1] === 'number'
-  );
-}
-
-function positions(value: unknown): Position[] {
-  return Array.isArray(value) ? value.filter(isPosition).map(([x, y]): Position => [x, y]) : [];
-}
-
-interface TagIndex {
-  readonly ways: readonly TaggedWay[];
-  readonly nodes: readonly TaggedNode[];
-  readonly areas: readonly TaggedArea[];
-  readonly statistics: Record<string, unknown>;
 }
 
 async function buildTagIndex(scratch: string): Promise<TagIndex> {
@@ -852,255 +789,6 @@ async function buildTagIndex(scratch: string): Promise<TagIndex> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Geometry helpers for the tag check
-// ---------------------------------------------------------------------------------------
-
-const metersPerDegreeLatitude = 111_320;
-
-/** Local planar projection around a latitude, in meters. Adequate for metre-scale checks. */
-function project(position: Position, originLatitude: number): [number, number] {
-  return [
-    position[0] * metersPerDegreeLatitude * Math.cos((originLatitude * Math.PI) / 180),
-    position[1] * metersPerDegreeLatitude,
-  ];
-}
-
-function pointToSegmentMeters(point: Position, a: Position, b: Position): number {
-  const [px, py] = project(point, point[1]);
-  const [ax, ay] = project(a, point[1]);
-  const [bx, by] = project(b, point[1]);
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lengthSquared = dx * dx + dy * dy;
-  const t =
-    lengthSquared === 0
-      ? 0
-      : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function bearingDegrees(a: Position, b: Position): number {
-  const [ax, ay] = project(a, a[1]);
-  const [bx, by] = project(b, a[1]);
-  return (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
-}
-
-function parallel(first: number, second: number): boolean {
-  const difference = Math.abs(first - second) % 180;
-  return Math.min(difference, 180 - difference) <= wayMatchMaxAngleDegrees;
-}
-
-const cellDegrees = 0.001;
-const cellKey = (x: number, y: number) =>
-  `${Math.floor(x / cellDegrees)}:${Math.floor(y / cellDegrees)}`;
-
-interface IndexedSegment {
-  readonly way: TaggedWay;
-  readonly a: Position;
-  readonly b: Position;
-}
-
-function indexSegments(ways: readonly TaggedWay[]): Map<string, IndexedSegment[]> {
-  const grid = new Map<string, IndexedSegment[]>();
-  for (const way of ways)
-    for (let index = 1; index < way.coordinates.length; index += 1) {
-      const a = item(way.coordinates, index - 1);
-      const b = item(way.coordinates, index);
-      const keys = new Set<string>();
-      const steps = Math.max(1, Math.ceil(haversineMeters(a, b) / 50));
-      for (let step = 0; step <= steps; step += 1) {
-        const t = step / steps;
-        keys.add(cellKey(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t));
-      }
-      for (const key of keys) {
-        const bucket = grid.get(key) ?? [];
-        bucket.push({ way, a, b });
-        grid.set(key, bucket);
-      }
-    }
-  return grid;
-}
-
-function indexNodes(nodes: readonly TaggedNode[]): Map<string, TaggedNode[]> {
-  const grid = new Map<string, TaggedNode[]>();
-  for (const node of nodes) {
-    const key = cellKey(node.position[0], node.position[1]);
-    const bucket = grid.get(key) ?? [];
-    bucket.push(node);
-    grid.set(key, bucket);
-  }
-  return grid;
-}
-
-function neighbourKeys(position: Position): string[] {
-  const x = Math.floor(position[0] / cellDegrees);
-  const y = Math.floor(position[1] / cellDegrees);
-  const keys: string[] = [];
-  for (let dx = -1; dx <= 1; dx += 1)
-    for (let dy = -1; dy <= 1; dy += 1) keys.push(`${x + dx}:${y + dy}`);
-  return keys;
-}
-
-function ringContains(ring: readonly Position[], point: Position): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    const [xi, yi] = item(ring, i);
-    const [xj, yj] = item(ring, j);
-    if (
-      yi > point[1] !== yj > point[1] &&
-      point[0] < ((xj - xi) * (point[1] - yi)) / (yj - yi) + xi
-    )
-      inside = !inside;
-  }
-  return inside;
-}
-
-function areaContains(area: TaggedArea, point: Position): boolean {
-  const [minX, minY, maxX, maxY] = area.bbox;
-  if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) return false;
-  return area.polygons.some(
-    (rings) =>
-      rings[0] !== undefined &&
-      ringContains(rings[0], point) &&
-      !rings.slice(1).some((hole) => ringContains(hole, point)),
-  );
-}
-
-interface TagCheck {
-  readonly waysAlongRoute: {
-    wayId: string;
-    accessClass: string | null;
-    tags: Record<string, string>;
-    metersAlongRoute: number;
-  }[];
-  readonly nodesOnRoute: {
-    nodeId: string;
-    accessClass: string | null;
-    tags: Record<string, string>;
-  }[];
-  readonly militaryAreasEntered: {
-    areaId: string;
-    tags: Record<string, string>;
-    routeMetersInside: number;
-  }[];
-  readonly summary: {
-    footNoMeters: number;
-    accessPrivateOrNoWithoutFootOverrideMeters: number;
-    accessRestrictedWithFootOverrideMeters: number;
-    otherAccessValueMeters: number;
-    ferryMeters: number;
-    restrictedNodesPassed: number;
-    militaryAreaMeters: number;
-    /** Along `footway=crossing` ways. */
-    crossingWayMeters: number;
-    /** `highway=crossing` nodes the route passes. */
-    crossingNodesPassed: number;
-    /** Along highway ways with `access:conditional`, `foot:conditional` or `opening_hours`. */
-    timeConditionMeters: number;
-  };
-}
-
-function checkRouteTags(
-  route: readonly Position[],
-  index: TagIndex,
-  grid: Map<string, IndexedSegment[]>,
-  nodeGrid: Map<string, TaggedNode[]>,
-): TagCheck {
-  const alongWay = new Map<string, { way: TaggedWay; meters: number }>();
-  const insideArea = new Map<string, { area: TaggedArea; meters: number }>();
-  for (let i = 1; i < route.length; i += 1) {
-    const a = item(route, i - 1);
-    const b = item(route, i);
-    const meters = haversineMeters(a, b);
-    if (meters < 0.5) continue;
-    const middle: Position = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const bearing = bearingDegrees(a, b);
-    const matched = new Set<string>();
-    for (const key of neighbourKeys(middle))
-      for (const segment of grid.get(key) ?? []) {
-        if (matched.has(segment.way.id)) continue;
-        if (pointToSegmentMeters(middle, segment.a, segment.b) > wayMatchToleranceMeters) continue;
-        if (!parallel(bearing, bearingDegrees(segment.a, segment.b))) continue;
-        matched.add(segment.way.id);
-        const entry = alongWay.get(segment.way.id) ?? { way: segment.way, meters: 0 };
-        alongWay.set(segment.way.id, { way: entry.way, meters: entry.meters + meters });
-      }
-    for (const area of index.areas)
-      if (areaContains(area, middle)) {
-        const entry = insideArea.get(area.id) ?? { area, meters: 0 };
-        insideArea.set(area.id, { area, meters: entry.meters + meters });
-      }
-  }
-  // Grid lookup: the national extract has far too many crossing nodes for a scan per route.
-  const passed = new Map<string, TaggedNode>();
-  for (const vertex of route)
-    for (const key of neighbourKeys(vertex))
-      for (const node of nodeGrid.get(key) ?? [])
-        if (haversineMeters(vertex, node.position) <= nodeMatchToleranceMeters)
-          passed.set(node.id, node);
-  const nodesOnRoute = [...passed.values()]
-    .sort((x, y) => x.id.localeCompare(y.id))
-    .map((node) => ({
-      nodeId: node.id,
-      accessClass: accessClass(node.tags),
-      tags: reportedTags(node.tags),
-    }));
-
-  const waysAlongRoute = [...alongWay.values()]
-    .map(({ way, meters }) => ({
-      wayId: way.id,
-      accessClass: accessClass(way.tags),
-      tags: reportedTags(way.tags),
-      metersAlongRoute: Number(meters.toFixed(1)),
-    }))
-    .sort((x, y) => x.wayId.localeCompare(y.wayId));
-  const sum = (predicate: (klass: string | null, tags: Record<string, string>) => boolean) =>
-    Number(
-      waysAlongRoute
-        .filter((entry) => predicate(entry.accessClass, entry.tags))
-        .reduce((total, entry) => total + entry.metersAlongRoute, 0)
-        .toFixed(1),
-    );
-  const militaryAreasEntered = [...insideArea.values()].map(({ area, meters }) => ({
-    areaId: area.id,
-    tags: reportedTags(area.tags),
-    routeMetersInside: Number(meters.toFixed(1)),
-  }));
-  return {
-    waysAlongRoute,
-    nodesOnRoute,
-    militaryAreasEntered,
-    summary: {
-      footNoMeters: sum((klass) => klass === 'foot=no'),
-      accessPrivateOrNoWithoutFootOverrideMeters: sum(
-        (klass) => klass === 'access=private' || klass === 'access=no',
-      ),
-      accessRestrictedWithFootOverrideMeters: sum(
-        (klass) => klass !== null && klass.startsWith('access=') && klass.includes(' with foot='),
-      ),
-      otherAccessValueMeters: sum(
-        (klass) =>
-          klass !== null &&
-          klass !== 'foot=no' &&
-          klass !== 'access=private' &&
-          klass !== 'access=no' &&
-          !klass.includes(' with foot='),
-      ),
-      ferryMeters: sum((_klass, tags) => tags.route === 'ferry'),
-      restrictedNodesPassed: nodesOnRoute.filter((node) => node.accessClass !== null).length,
-      militaryAreaMeters: Number(
-        militaryAreasEntered
-          .reduce((total, entry) => total + entry.routeMetersInside, 0)
-          .toFixed(1),
-      ),
-      crossingWayMeters: sum((_klass, tags) => tags.footway === 'crossing'),
-      crossingNodesPassed: nodesOnRoute.filter((node) => node.tags.highway === 'crossing').length,
-      timeConditionMeters: sum((_klass, tags) => timeConditional(tags)),
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------------------
 // Supplementary engine request: details and snap distances
 // ---------------------------------------------------------------------------------------
 
@@ -1122,9 +810,14 @@ interface EngineDetailView {
   readonly distanceMeters: number | null;
   readonly snapDistancesMeters: number[] | null;
   readonly metersByDetail: Record<string, Record<string, number>> | null;
+  /**
+   * M2-01ay, on a graph that encodes `osm_way_id`: the OSM ways under the route in order, with the
+   * metres on each (consecutive edges of one way merged). `null` on an older graph or a failure.
+   */
+  readonly ways: EngineWay[] | null;
 }
 
-async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
+async function engineDetailView(pair: SamplePair, withWayIds: boolean): Promise<EngineDetailView> {
   const query = new URLSearchParams({
     profile: 'foot',
     'ch.disable': 'true',
@@ -1136,6 +829,7 @@ async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
     timeout_ms: '7000',
   });
   for (const key of detailKeys) query.append('details', key);
+  if (withWayIds) query.append('details', 'osm_way_id');
   for (const [longitude, latitude] of [pair.from.position, pair.to.position])
     query.append('point', `${latitude},${longitude}`);
   const response = await fetch(`http://127.0.0.1:${enginePorts.application}/route?${query}`, {
@@ -1158,6 +852,7 @@ async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
       distanceMeters: null,
       snapDistancesMeters: null,
       metersByDetail: null,
+      ways: null,
     };
   const points = positions(path.points?.coordinates);
   const snapped = positions(path.snapped_waypoints?.coordinates);
@@ -1179,6 +874,25 @@ async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
       }
     metersByDetail[key] = totals;
   }
+  let ways: EngineWay[] | null = null;
+  const wayIntervals = path.details?.osm_way_id;
+  if (withWayIds) {
+    if (!Array.isArray(wayIntervals)) throw new Error(`${pair.id}: NO_OSM_WAY_ID_DETAIL`);
+    const merged: EngineWay[] = [];
+    for (const interval of wayIntervals) {
+      const [from, to, value] = interval as [unknown, unknown, unknown];
+      if (typeof from !== 'number' || typeof to !== 'number' || typeof value !== 'number')
+        throw new Error(`${pair.id}: BAD_OSM_WAY_ID_INTERVAL`);
+      let meters = 0;
+      for (let index = from + 1; index <= to && index < points.length; index += 1)
+        meters += haversineMeters(item(points, index - 1), item(points, index));
+      const last = merged.at(-1);
+      if (last !== undefined && last.wayId === value)
+        merged[merged.length - 1] = { wayId: value, meters: last.meters + meters };
+      else merged.push({ wayId: value, meters });
+    }
+    ways = merged.map((way) => ({ wayId: way.wayId, meters: Number(way.meters.toFixed(1)) }));
+  }
   return {
     httpStatus: response.status,
     engineMessage: null,
@@ -1190,6 +904,7 @@ async function engineDetailView(pair: SamplePair): Promise<EngineDetailView> {
           )
         : null,
     metersByDetail,
+    ways,
   };
 }
 
@@ -1271,11 +986,9 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
 
   // 2. A byte-identical copy the engine may lock.
   const graphCopy = join(scratch, 'foot');
-  await mkdir(graphCopy);
-  for (const entry of await readdir(routingGraphDirectory, { withFileTypes: true })) {
-    if (!entry.isFile()) throw new Error(`UNEXPECTED_GRAPH_ENTRY: ${entry.name}`);
-    await copyFile(join(routingGraphDirectory, entry.name), join(graphCopy, entry.name));
-  }
+  await copyGraphDirectory(routingGraphDirectory, graphCopy);
+  // M2-01ay: a graph that encodes `osm_way_id` lets the tag check read the engine's own way ids.
+  const withWayIds = (await graphEncodedValueNames(routingGraphDirectory)).includes('osm_way_id');
   const deployment = await loadRoutingDeployment({
     graphDirectory: graphCopy,
     engineArtifactPath: jarPath,
@@ -1310,6 +1023,11 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
 
   const results: Record<string, unknown>[] = [];
   const problems: string[] = [];
+  const pending: {
+    entry: Record<string, unknown>;
+    geometry: Position[];
+    ways: EngineWay[] | null;
+  }[] = [];
   try {
     await waitForEngine(engine, enginePorts.application);
     const clock = { now: () => new Date() };
@@ -1350,7 +1068,7 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
       }
       const latencyMs = Date.now() - started;
       const computed = result?.outcome === 'route_computed' ? result : null;
-      const detail = await engineDetailView(pair);
+      const detail = await engineDetailView(pair, withWayIds);
       const geometry = computed
         ? computed.geometry.coordinates.map(([x, y]): Position => [
             Number(x.toFixed(6)),
@@ -1377,7 +1095,8 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
           ? computed.snappedWaypoints.map((entry) => Number(entry.snapDistanceMeters.toFixed(2)))
           : null,
         engineDetailView: detail,
-        tagCheck: geometry ? checkRouteTags(geometry, tagIndex, grid, nodeGrid) : null,
+        // Filled in below, once the tags of the ways the engine reported are read.
+        tagCheck: null,
         latencyMs,
         graphBuildId: result?.computation.graph.graphBuildId ?? null,
         geometryPoints: geometry?.length ?? null,
@@ -1392,9 +1111,31 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
         if (Math.abs(detail.distanceMeters - computed.distanceMeters) > 1)
           problems.push(`${pair.id}: detail request distance differs from the adapter answer`);
       }
+      if (geometry) pending.push({ entry: results.at(-1) ?? {}, geometry, ways: detail.ways });
     }
   } finally {
     await stopEngine(engine);
+  }
+
+  // The engine's way ids are exact for the edges a route uses; their tags come from the extract.
+  const wayTags = withWayIds
+    ? await readWayTags(
+        scratch,
+        pending.flatMap((route) => (route.ways ?? []).map((way) => way.wayId)),
+      )
+    : new Map<number, Tags>();
+  for (const route of pending) {
+    if (withWayIds && route.ways === null) {
+      problems.push(`${String(route.entry.pairId)}: no engine way ids for a computed route`);
+      continue;
+    }
+    route.entry.tagCheck = checkRouteTags(
+      route.geometry,
+      tagIndex,
+      grid,
+      nodeGrid,
+      withWayIds && route.ways !== null ? { ways: route.ways, tags: wayTags } : null,
+    );
   }
 
   // 3. The deployed graph must be unchanged by the run.
@@ -1423,10 +1164,11 @@ async function collect(scratch: string, reportPath: string, sample: Sample) {
       engine:
         'Pinned GraphHopper jar started on loopback through startEngine / graphhopperJavaArguments (runbook launch), on a byte-identical temporary copy of the deployed graph verified against the same manifest. The deployed graph directory was only read.',
       requestPath:
-        'Production WalkingRouteService + GraphHopperRoutingAdapter (default limits: snap 120 m, deadline 8 s, 1,000,000 visited nodes). Admission window widened to 1000/60 s so one sequential run is not refused; concurrency 1.',
-      supplementaryRequest:
-        'One direct loopback /route request per pair with details road_class, road_environment, road_access, surface, used for snap distances of failed pairs and per-class metres. road_access is GraphHopper 10.0 car-oriented (motorcar, motor_vehicle, vehicle, access), not foot access.',
-      tagCheck: `Ways tagged foot/access (and route=ferry), foot/access/barrier nodes and military areas exported from the same extract with osmium. A route segment counts as running along a way when its midpoint is within ${wayMatchToleranceMeters} m of a way segment and the directions differ by at most ${wayMatchMaxAngleDegrees} degrees. A route vertex within ${nodeMatchToleranceMeters} m of a tagged node counts as passing it. A military area counts when a route segment midpoint lies inside it. These are geometric matches against OSM tags, not ground truth.`,
+        "Production WalkingRouteService + GraphHopperRoutingAdapter (default limits: snap 120 m, deadline 8 s, 1,000,000 visited nodes). Admission window widened to 1000/60 s so one sequential run is not refused; concurrency 1. `warnings` are the adapter answer's own; on a graph with edge facts (built since M2-01ay) they include route_includes_ferry and route_includes_time_conditional_access.",
+      supplementaryRequest: `One direct loopback /route request per pair with details ${[...detailKeys, ...(withWayIds ? ['osm_way_id'] : [])].join(', ')}, used for snap distances of failed pairs, per-class metres and (with osm_way_id) the OSM ways under the route in order (engineDetailView.ways). road_access is GraphHopper 10.0 car-oriented (motorcar, motor_vehicle, vehicle, access), not foot access. street_name is the OSM name of the edges.`,
+      tagCheck: withWayIds
+        ? `Ways: EXACT, from the engine's own osm_way_id detail (wayMatchMethod engine-way-ids): each way's metres are summed from the engine's intervals and its tags read from the same extract with osmium; waysAlongRoute lists the ways that are access-tagged, a ferry, a crossing, time-conditional, a bridge or a tunnel. A parallel way under or beside the route cannot be matched. Nodes: foot/access/barrier nodes exported from the same extract; a route vertex within ${nodeMatchToleranceMeters} m of one counts as passing it (geometric). restrictedNodesPassed keeps its M0-06b meaning (any access-tagged node); footRestrictedNodesPassed counts only nodes whose pedestrian access is restricted (a restrictive foot value, or a restrictive access value with no foot value) and accessRestrictedNodesWithFootOverridePassed those where a foot value overrides a restrictive access value. Military areas (landuse=military or military=*): a route segment midpoint inside one counts (geometric). None of this is ground truth.`
+        : `Ways tagged foot/access (and route=ferry), foot/access/barrier nodes and military areas exported from the same extract with osmium. A route segment counts as running along a way when its midpoint is within ${wayMatchToleranceMeters} m of a way segment and the directions differ by at most ${wayMatchMaxAngleDegrees} degrees. A route vertex within ${nodeMatchToleranceMeters} m of a tagged node counts as passing it. A military area counts when a route segment midpoint lies inside it. These are geometric matches against OSM tags, not ground truth.`,
       coordinates:
         'Synthetic, rounded points at public landmarks chosen by hand; approximate on purpose. No personal GPS data.',
     },

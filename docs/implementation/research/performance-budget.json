@@ -13,7 +13,7 @@
     "statistic": "Nearest-rank percentile over at least 20 samples per p95 metric (minimumSamples), so the p95 is the 19th of 20 and one outlier on the loaded machine does not decide it. Baseline runs with fewer samples stay in the record but do not set a p95 baseline. max metrics (memory, sizes, the heap ladder) take the worst sample.",
     "flakeAvoidance": "Budgets are judged only in separate opt-in steps (the probe; playwright.performance.config.ts), never in pnpm test or pnpm test:identity. Headroom is set on the loaded baseline, so an idle machine meets it with more margin. Admissible load (rule added in M2-01k-f round 4, after judged run 3 failed at a load average up to 124; no earlier version defined one): a time budget exceeded while any of its samples was taken above that metric's baseline.loadAverage1m.max is `inconclusive`, not failed, and the run is repeated at an admissible load. Load never turns a failure into a pass and never excuses memory or size metrics. evaluateBudget enforces this.",
     "noArtificialLoad": "No load generator was run. The engine load is product requests at the admission limits, bounded in count and duration.",
-    "graphBinding": "M2-01ak: the two engine memory budgets were re-baselined on the national South Korea routing graph (188b65effcc6ef5c) and widened with it (idle 470 -> 1100 MiB, load peak 800 -> 2000 MiB), because engine RSS grows with the graph it loads. Applied to the Seoul graph those numbers would let a doubled Seoul RSS pass, so each engine MiB metric names the graph it was baselined on (baseline.routingGraphContentSha256) and evaluateBudget refuses (ENGINE_GRAPH_NOT_BASELINED) to judge it on samples from another graph or from a run that does not record its graph (details.routingGraph). engine.routeUnderLoadMs keeps its M2-01k-f (Seoul) baseline; it is a time budget and not graph-bound."
+    "graphBinding": "M2-01ak: the two engine memory budgets were re-baselined on the national South Korea routing graph (188b65effcc6ef5c) and widened with it (idle 470 -> 1100 MiB, load peak 800 -> 2000 MiB), because engine RSS grows with the graph it loads. Applied to the Seoul graph those numbers would let a doubled Seoul RSS pass, so each engine MiB metric names the graph it was baselined on (baseline.routingGraphContentSha256) and evaluateBudget refuses (ENGINE_GRAPH_NOT_BASELINED) to judge it on samples from another graph or from a run that does not record its graph (details.routingGraph). engine.routeUnderLoadMs keeps its M2-01k-f (Seoul) baseline; it is a time budget and not graph-bound. M2-01ay: re-baselined on the next national graph (c1fa89fbaf155076, same extract, military perimeters closed in the imported data, two more encoded values); worst idle 715 and load peak 1322 MiB give the same budgets (1100, 2000). Six earlier record-only runs of 2026-09-26 on an abandoned interim graph (content edad53a8...), three at 03:31Z where every load route answered no_route (see probe-performance-budget.mts HEAVY_WAYPOINT_SAMPLE_OVERRIDES) and three at 03:34Z after that fix, stay in the result history and are not baselines."
   },
   "desktop": {
     "label": "Desktop: darwin arm64, 8 CPUs, 32 GiB, Node 24.12.0, headless Chromium (Playwright). Shared machine under load from other agents. Not a device result.",
@@ -190,21 +190,21 @@
         "statistic": "max",
         "budget": 1100,
         "minimumSamples": 5,
-        "description": "GraphHopper JVM RSS after one warm-up route, before load (-Xms512m -Xmx2048m). Since M2-01ak on the national South Korea graph (188b65effcc6ef5c, Geofabrik 2026-09-01, 297 MiB on disk); the M2-01k-f baseline (310, budget 470) was the Seoul graph (41 MiB). Bound to that graph: runs on any other graph are refused, not judged.",
+        "description": "GraphHopper JVM RSS after one warm-up route, before load (-Xms512m -Xmx2048m). Since M2-01ay on the national South Korea graph c1fa89fbaf155076 (Geofabrik 2026-09-01, military perimeters closed by barrier nodes, osm_way_id and road_environment encoded; 308 MiB on disk); M2-01ak baselined 706 on 188b65effcc6ef5c (297 MiB) and M2-01k-f 310 (budget 470) on the Seoul graph (41 MiB). Bound to that graph: runs on any other graph are refused, not judged.",
         "baseline": {
-          "statisticValue": 706,
+          "statisticValue": 715,
           "samples": 60,
           "runs": [
-            "2026-09-25T11:12:23.431Z",
-            "2026-09-25T11:12:40.832Z",
-            "2026-09-25T11:12:58.173Z"
+            "2026-09-26T03:58:34.246Z",
+            "2026-09-26T03:58:51.663Z",
+            "2026-09-26T03:59:09.095Z"
           ],
-          "perRunStatistic": [696, 706, 699],
+          "perRunStatistic": [709, 711, 715],
           "loadAverage1m": {
-            "min": 17.87,
-            "max": 23.3
+            "min": 2.55,
+            "max": 2.86
           },
-          "routingGraphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+          "routingGraphContentSha256": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7"
         },
         "headroom": {
           "factor": 1.5,
@@ -217,21 +217,21 @@
         "statistic": "max",
         "budget": 2000,
         "minimumSamples": 5,
-        "description": "Peak GraphHopper JVM RSS per load round: two tenants at their concurrency limit (4 heavy 12-waypoint routes in flight), sampled every 250 ms. Since M2-01ak on the national South Korea graph (188b65effcc6ef5c); the M2-01k-f baseline (527, budget 800) was the Seoul graph. Bound to that graph: runs on any other graph are refused, not judged.",
+        "description": "Peak GraphHopper JVM RSS per load round: two tenants at their concurrency limit (4 heavy 12-waypoint routes in flight), sampled every 250 ms. Since M2-01ay on the national South Korea graph c1fa89fbaf155076; M2-01ak baselined 1302 on 188b65effcc6ef5c and M2-01k-f 527 (budget 800) on the Seoul graph. Bound to that graph: runs on any other graph are refused, not judged.",
         "baseline": {
-          "statisticValue": 1302,
+          "statisticValue": 1322,
           "samples": 27,
           "runs": [
-            "2026-09-25T11:12:23.431Z",
-            "2026-09-25T11:12:40.832Z",
-            "2026-09-25T11:12:58.173Z"
+            "2026-09-26T03:58:34.246Z",
+            "2026-09-26T03:58:51.663Z",
+            "2026-09-26T03:59:09.095Z"
           ],
-          "perRunStatistic": [1286, 1274, 1302],
+          "perRunStatistic": [1322, 1246, 1273],
           "loadAverage1m": {
-            "min": 18.44,
-            "max": 23.92
+            "min": 2.36,
+            "max": 2.98
           },
-          "routingGraphContentSha256": "138a1978042736ce55b784d942a45b55a4b635c4a67a848e2265d523d130f085"
+          "routingGraphContentSha256": "1805d537ebc4e713dd1ccf90bc7bb341453510d3a6b5a1d561dfb19bbb2761a7"
         },
         "headroom": {
           "factor": 1.5,
@@ -244,7 +244,7 @@
         "statistic": "p95",
         "budget": 200,
         "minimumSamples": 20,
-        "description": "API walking-route latency of one 12-waypoint request (the contract maximum count, a ~26 km route along the long track) while 4 are in flight.",
+        "description": "API walking-route latency of one 12-waypoint request (the contract maximum count, a ~26 km route along the long track) while 4 are in flight. Since M2-01ay the 7th waypoint is long-track sample 9700 instead of 10000: the even choice lies inside the Yongsan base, which a walking route may no longer enter, so the route is about 23 km. The time baseline was not retaken.",
         "baseline": {
           "statisticValue": 98,
           "samples": 100,

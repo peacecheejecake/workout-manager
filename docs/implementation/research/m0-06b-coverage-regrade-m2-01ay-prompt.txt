@@ -1,0 +1,102 @@
+You are the INDEPENDENT REVIEWER of Korean pedestrian (walking) routing coverage for a fitness
+app. Earlier you pre-registered, before any result existed for you, per-pair expectations and
+acceptance criteria, and then graded a first set of engine results against them (verdict:
+inadequate). The implementers have since changed the routing and re-run the SAME blinded sample.
+This is a RE-GRADE of the new results against exactly the same pre-registration.
+
+Your working directory contains exactly four files. Read only these; do not read anything
+outside this directory and do not modify anything.
+
+1. `m0-06b-coverage-review-preregistration.txt` (sha256 98ef1ceec76c7039be805c771b6b95fa0698d7eb34f623c3a58ed8c2e28a214b)
+   — YOUR pre-registration, verbatim, completed 2026-09-26T02:22:22Z before any engine run.
+2. `m0-06b-coverage-review-pairs.json` (sha256 603f6149384e2f532875bb24c4d29118b8d0f04815fdab1f2a9873d311b6cebf)
+   — the blinded sample you pre-registered against (the same file you graded with the first time).
+3. `m0-06b-coverage-review-results-m2-01ay.json` (sha256 9b1f620028d2f200549bf55aa28d03d00181971a8707dc10669a18b7b809b033)
+   — the NEW engine results, run 2026-09-26T03:56:24Z–03:56:37Z on graph `c1fa89fbaf155076`
+   (see `graph`). A second run at 03:56:37Z–03:56:50Z gave identical per-pair outcomes, warnings,
+   distances, snap distances, geometry hashes, tag checks and detail views for all 82 pairs.
+4. `m0-06b-coverage-regrade-m2-01ay-objections.txt` (sha256 8c5bad4065b036093f8b1d04855927d2ccce31b9b444c769e63e0e36461f0280)
+   — the implementers' short objections to two disqualifying findings of your first grading
+   (FRY-03, ACC-PRV-01). Weigh them as evidence; they are not criteria and you decide.
+
+What changed since the first results (facts, not guidance on grades):
+- The graph is new: same pinned extract (sha256 848daadc…), new serving profile
+  (`graph.manifest.profileConfigSha256`) that encodes `road_environment` and `osm_way_id`. The
+  graph was imported from that extract with a barrier node (`foot=no`) inserted wherever a
+  walkable way meets the perimeter of a mapped `landuse=military` / `military=*` area, so routes
+  neither enter nor leave one; the roads inside those areas stay in the graph. Mapped ferries
+  remain routable.
+- The production adapter now adds two warnings to a computed route on this graph:
+  `route_includes_ferry` (part of the line is a mapped `route=ferry`) and
+  `route_includes_time_conditional_access` (the line uses a way tagged `access:conditional`,
+  `foot:conditional` or `opening_hours`; the request has no departure time). It also no longer
+  refuses a geometry whose second-to-last vertex lies within 1 m of the end point.
+- The probe's tag check reads the ways under a route from the engine's own `osm_way_id` detail.
+
+How to read the results file (facts about the file, not guidance on grades):
+- `results[]` is in the sample order. `outcome` is the production adapter's answer class.
+  `engine_contract_violation` is a real adapter outcome: "the engine answered, but the answer
+  violates the contract". `rejected_before_engine` means the adapter refused the request before
+  calling the engine (`rejectedBeforeEngine` holds the code). `warnings` are the adapter
+  answer's own warnings.
+- `distanceMeters`, `snapDistancesMeters`, `geometry` belong to the adapter answer (only for
+  `route_computed`).
+- `engineDetailView` is ONE extra direct engine request per pair with the same two points. It
+  exists for failed pairs too (then it may show the route the engine WOULD have returned, and its
+  snap distances), and gives `metersByDetail` per `road_class`, `road_environment` (bridge,
+  tunnel, ferry, ford), `road_access` (car-oriented; NOT pedestrian access), `surface` and
+  `street_name` (OSM `name` of edges; `null` = unnamed), and `ways`: the OSM way ids under the
+  route in order with the metres on each (from the engine's `osm_way_id` detail).
+- `tagCheck` (only for computed routes): `wayMatchMethod` is `engine-way-ids`: `waysAlongRoute`
+  lists, from the engine's own way ids with their tags read from the same extract, the ways that
+  are access-tagged, a ferry, a crossing, time-conditional, a bridge or a tunnel, with the route
+  metres on each; `summary` metres (footNoMeters, accessPrivateOrNoWithoutFootOverrideMeters,
+  accessRestrictedWithFootOverrideMeters, otherAccessValueMeters, ferryMeters, crossingWayMeters,
+  timeConditionMeters) are sums over those ways. Nodes are still matched geometrically (a route
+  vertex within 1.0 m of a tagged node): `restrictedNodesPassed` counts nodes carrying any
+  access-type tag (the same meaning as in the first results), `footRestrictedNodesPassed` those
+  whose pedestrian access is restricted (a restrictive `foot` value, or a restrictive `access`
+  value with no `foot` value), `accessRestrictedNodesWithFootOverridePassed` those where a `foot`
+  value overrides a restrictive `access` value; each `nodesOnRoute` entry has `pedestrianAccess`.
+  A military area (`landuse=military` or `military=*`) counts when a route segment midpoint lies
+  inside it (`militaryAreaMeters`, `militaryAreasEntered`). These are matches against OSM tags,
+  not ground truth.
+- `extractTagStatistics` summarises tag counts in the extract.
+
+Your task:
+1. Grade EVERY pair against your own pre-registered expectation for it: `match`, `partial` or
+   `mismatch`, using your pre-registered `pairMatchRule` exactly, with a one-to-three sentence
+   justification citing the result fields you used (outcome, distance vs your range, the
+   specific must / mustNot conditions and the fields that satisfy or violate them).
+2. Apply your pre-registered `perStratum`, `requiredStrata`, `disqualifying` and `overall` rules
+   to give a per-stratum score and verdict, and an overall verdict: `adequate`,
+   `adequate with limits` or `inadequate`. Show the arithmetic, and check that `totalScore` and
+   every stratum score equal the sums of your own per-pair scores.
+3. You must NOT move your expectations or criteria. If you believe a pre-registered expectation
+   or criterion was wrong, you may say so in a separate `criteriaChangesWanted` list, explicitly,
+   with the reason — but grade with the pre-registered version anyway; every such wish counts
+   against the verdict and you must state what the verdict would have been under the changed rule.
+4. Say for each objection in file 4 whether you accept it, and why, citing the fields.
+5. List concrete coverage defects (pair id, what is wrong, the evidence field, severity
+   blocker / major / minor) and limits of this review (what the sample or evidence cannot show).
+6. Distinguish engine/data defects from sample-design artefacts, and say which you think each
+   mismatch is — but this does not change the pre-registered grade.
+
+Final answer: ONE JSON document and nothing else:
+{
+  "reviewer": "<model>",
+  "grading": true,
+  "regrade": true,
+  "pairs": [{"id": "...", "grade": "match|partial|mismatch", "score": 1|0.5|0,
+             "disqualifying": true|false, "justification": "..."}],
+  "strata": [{"stratum": "...", "pairs": n, "score": x, "bar": y, "meetsBar": true|false}],
+  "totalScore": x,
+  "disqualifyingResults": ["<pair id: which pre-registered disqualifying rule>"],
+  "overallVerdict": "adequate" | "adequate with limits" | "inadequate",
+  "verdictArithmetic": "...",
+  "objections": [{"pair": "...", "accepted": true|false, "why": "..."}],
+  "criteriaChangesWanted": [{"what": "...", "why": "...", "verdictUnderChange": "..."}],
+  "defects": [{"pairs": ["..."], "defect": "...", "evidence": "...", "severity": "blocker|major|minor", "kind": "engine-or-profile|osm-data|adapter|sample-design"}],
+  "limits": ["..."],
+  "filesRead": ["<every file you read>"]
+}

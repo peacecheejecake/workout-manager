@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { haversineMeters, polylineLengthMeters } from './geo.js';
 import { assertVerifiedDeployment, type RoutingDeployment } from './deployment.js';
 import { graphBuildIdFromManifest, type RoutingGraphManifest } from './graph-manifest.js';
+import type { GraphEdgeFacts } from './edge-facts.js';
 import {
   RoutingTransportError,
   type RoutingEngineJsonBody,
@@ -181,6 +182,8 @@ const enginePathSchema = z.object({
     road_access: z.array(detailIntervalSchema).optional(),
     foot_access: z.array(detailIntervalSchema).optional(),
     surface: z.array(detailIntervalSchema).optional(),
+    road_environment: z.array(detailIntervalSchema).optional(),
+    osm_way_id: z.array(detailIntervalSchema).optional(),
   }),
 });
 
@@ -194,6 +197,16 @@ export const requestedPathDetails = [
   'foot_access',
   'surface',
 ] as const;
+
+/**
+ * Asked for in addition on a graph with edge facts (M2-01ay): `road_environment` says which
+ * edges are a ferry and `osm_way_id` which OSM way each edge came from, which the graph's list of
+ * time-conditional ways is matched against. Neither is handed on in the result; they become the
+ * `route_includes_ferry` and `route_includes_time_conditional_access` warnings. An older graph
+ * encodes no `osm_way_id`, and asking it for one would fail the request, so they are asked only
+ * when the deployment carries the edge facts.
+ */
+export const edgeFactPathDetails = ['road_environment', 'osm_way_id'] as const;
 const engineRouteSchema = z.object({ paths: z.array(enginePathSchema).min(1) });
 const engineErrorSchema = z.object({
   message: z.string().max(2000).nullish(),
@@ -220,6 +233,7 @@ export class GraphHopperRoutingAdapter {
   readonly #maxVisitedNodes: number;
   readonly #snapLimitMeters: number;
   readonly #maxResponsePoints: number;
+  readonly #edgeFacts: GraphEdgeFacts | null;
 
   constructor(options: GraphHopperAdapterOptions) {
     // Consumption is guarded, not just construction: a structurally identical object that
@@ -227,6 +241,7 @@ export class GraphHopperRoutingAdapter {
     const deployment = assertVerifiedDeployment(options.deployment);
     this.#transport = deployment.transport;
     this.#pinned = pinnedGraphFromManifest(deployment.manifest);
+    this.#edgeFacts = deployment.edgeFacts;
     this.#clock = options.clock;
     this.#deadlineMilliseconds = options.deadlineMilliseconds ?? routingLimits.deadlineMilliseconds;
     this.#maxVisitedNodes = options.maxVisitedNodes ?? routingLimits.maxEngineVisitedNodes;
@@ -494,6 +509,7 @@ export class GraphHopperRoutingAdapter {
         waypoints: request.waypoints,
         maxVisitedNodes: this.#maxVisitedNodes,
         engineTimeoutMilliseconds,
+        edgeFacts: this.#edgeFacts !== null,
       });
 
       // The engine connection's own bound: the deadline plus a grace period, and only then
@@ -596,6 +612,13 @@ export class GraphHopperRoutingAdapter {
       if (violation) return failed('engine_contract_violation', identity, warnings);
       const pathDetails = describedEdges(path.details, coordinates.length);
       if (pathDetails === null) return failed('engine_contract_violation', identity, warnings);
+      if (this.#edgeFacts !== null) {
+        const factWarnings = edgeFactWarnings(path.details, coordinates.length, this.#edgeFacts);
+        // Asked for and not answered, or answered for another line: the engine is not the one
+        // the graph's edge facts were built for, and a silent route is exactly what M2-01ay removes.
+        if (factWarnings === null) return failed('engine_contract_violation', identity, warnings);
+        warnings.push(...factWarnings);
+      }
 
       const computed = walkingRouteResultSchema.safeParse({
         outcome: 'route_computed',
@@ -667,6 +690,8 @@ export function graphhopperRouteBody(options: {
   readonly waypoints: readonly RoutingPosition[];
   readonly maxVisitedNodes: number;
   readonly engineTimeoutMilliseconds: number;
+  /** The deployment's graph has edge facts (M2-01ay): ask for its two details too. */
+  readonly edgeFacts?: boolean;
 }): RoutingEngineJsonBody {
   return {
     profile: options.profileName,
@@ -677,8 +702,9 @@ export function graphhopperRouteBody(options: {
     calc_points: true,
     elevation: false,
     // `road_class` so the answer can be checked against the edges it claims to use; the rest
-    // so the edges can be described to the owner (M2-01ap).
-    details: [...requestedPathDetails],
+    // so the edges can be described to the owner (M2-01ap) and, on a graph with edge facts,
+    // warned about (M2-01ay).
+    details: [...requestedPathDetails, ...(options.edgeFacts === true ? edgeFactPathDetails : [])],
     max_visited_nodes: options.maxVisitedNodes,
     // Per leg; the engine caps it at its configured `routing.timeout_ms`.
     timeout_ms: options.engineTimeoutMilliseconds,
@@ -734,8 +760,10 @@ export function geometryVisitsWaypointsInOrder(
   if (firstWaypoint === undefined || lastWaypoint === undefined) return false;
   if (haversineMeters(first, firstWaypoint) > WAYPOINT_ANCHOR_METERS) return false;
   if (haversineMeters(last, lastWaypoint) > WAYPOINT_ANCHOR_METERS) return false;
+  // Every waypoint but the last: the earliest vertex, from where the previous one was found,
+  // that lies on it. The earliest match leaves the most room for the waypoints after it.
   let cursor = 0;
-  for (const waypoint of snappedWaypoints) {
+  for (const waypoint of snappedWaypoints.slice(0, -1)) {
     let found = -1;
     for (let index = cursor; index < coordinates.length; index += 1) {
       const vertex = coordinates[index];
@@ -748,7 +776,13 @@ export function geometryVisitsWaypointsInOrder(
     if (found < 0) return false;
     cursor = found;
   }
-  return cursor === coordinates.length - 1;
+  // The last waypoint is the LAST vertex (checked above), not the earliest one near it
+  // (M2-01ay, STR-04). A real route can pass within 1 m of its end one vertex before it: on the
+  // Busan 40 Steps the engine's second-to-last vertex lay 0.7 m from the snapped end, the old
+  // earliest-match stopped there, and a 93.4 m stair route was refused as a contract violation.
+  // What still fails: a geometry whose last vertex is not the last waypoint, and one that
+  // reaches the earlier waypoints only after the end of the line.
+  return true;
 }
 
 /**
@@ -824,6 +858,41 @@ export function describedEdges(
   if (roadClass === null || roadClass === 'invalid') return null;
   if (roadAccess === 'invalid' || footAccess === 'invalid' || surface === 'invalid') return null;
   return { roadClass, roadAccess, footAccess, surface };
+}
+
+/**
+ * The warnings a graph's edge facts give a computed line (M2-01ay), or `null` when the
+ * engine did not send the two details it was asked for, sent them for another geometry, or sent
+ * values of the wrong kind.
+ *
+ * - `route_includes_ferry`: some edge's `road_environment` is `ferry`.
+ * - `route_includes_time_conditional_access`: some edge came from an OSM way the graph lists as
+ *   time-conditional. GraphHopper stores one way id per edge (`osm_way_id`), so this is exact
+ *   for the edges the line uses, not a geometric guess.
+ */
+export function edgeFactWarnings(
+  details: {
+    readonly road_environment?:
+      readonly (readonly [number, number, string | number | boolean])[] | undefined;
+    readonly osm_way_id?:
+      readonly (readonly [number, number, string | number | boolean])[] | undefined;
+  },
+  vertexCount: number,
+  facts: GraphEdgeFacts,
+): Warning[] | null {
+  const environment = details.road_environment;
+  const wayIds = details.osm_way_id;
+  if (environment === undefined || wayIds === undefined) return null;
+  if (!pathDetailsCoverGeometry(environment, vertexCount)) return null;
+  if (!pathDetailsCoverGeometry(wayIds, vertexCount)) return null;
+  if (environment.some(([, , value]) => typeof value !== 'string')) return null;
+  if (wayIds.some(([, , value]) => typeof value !== 'number' || !Number.isInteger(value)))
+    return null;
+  const warnings: Warning[] = [];
+  if (environment.some(([, , value]) => value === 'ferry')) warnings.push('route_includes_ferry');
+  if (wayIds.some(([, , value]) => facts.isTimeConditionalWay(Number(value))))
+    warnings.push('route_includes_time_conditional_access');
+  return warnings;
 }
 
 /**
