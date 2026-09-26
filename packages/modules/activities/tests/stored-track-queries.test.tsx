@@ -23,6 +23,14 @@ function transportOf(handler: (input: TransportRequest) => Reply): Authenticated
 
 const context = () => ({ signal: new AbortController().signal }) as never;
 
+function deferredReply() {
+  let release: (reply: Reply) => void = () => undefined;
+  const response = new Promise<Reply>((resolve) => {
+    release = resolve;
+  });
+  return { response, release };
+}
+
 async function runMetadata(handler: (input: TransportRequest) => Reply) {
   const options = storedTrackQueryOptions(scope, transportOf(handler), activityId);
   return options.queryFn?.(context());
@@ -78,6 +86,19 @@ describe('stored track metadata query', () => {
       idempotencyKey: null,
       signal: expect.anything(),
     });
+  });
+
+  it('discards a metadata answer delivered after its query was aborted', async () => {
+    const pending = deferredReply();
+    const controller = new AbortController();
+    const query = storedTrackQueryOptions(
+      scope,
+      { request: () => pending.response },
+      activityId,
+    ).queryFn?.({ signal: controller.signal } as never);
+    controller.abort();
+    pending.release(reply({ status: 'available', track: storedRevision() }));
+    await expect(query).rejects.toThrow('CANCELLED');
   });
 });
 
@@ -147,5 +168,22 @@ describe('stored track artifact query', () => {
     await expect(
       storedTrackArtifactsQueryOptions(scope, half, track).queryFn?.(context()),
     ).rejects.toThrow('STORED_TRACK_CONTENT_UNAVAILABLE');
+  });
+
+  it('discards both artifact answers delivered after the query was aborted', async () => {
+    const normalized = deferredReply();
+    const mapPath = deferredReply();
+    const request = vi.fn((input: TransportRequest) =>
+      input.path.endsWith('variant=normalized') ? normalized.response : mapPath.response,
+    );
+    const controller = new AbortController();
+    const query = storedTrackArtifactsQueryOptions(scope, { request }, track).queryFn?.({
+      signal: controller.signal,
+    } as never);
+    expect(request).toHaveBeenCalledTimes(2);
+    controller.abort();
+    normalized.release(reply(storedTrack()));
+    mapPath.release(reply(storedMapPath()));
+    await expect(query).rejects.toThrow('CANCELLED');
   });
 });

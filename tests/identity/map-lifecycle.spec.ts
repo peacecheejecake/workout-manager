@@ -723,6 +723,132 @@ for (const shell of shells) {
       await other.close();
     });
 
+    test('discards real track content responses returned after a silent account replacement', async ({
+      page,
+      context,
+    }) => {
+      test.setTimeout(90_000);
+      const headers = await login(page);
+      const shown = await storeTrack(page, headers);
+      const late = await storeTrack(page, headers);
+      await instrumentLifecycle(page);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(route(shell.origin, shown, 'overview'));
+      const mark = await lifecycleMark(page);
+      await page.getByRole('tab', { name: '경로', exact: true }).click();
+      await expectLineDrawn(trackMap(page));
+      expect(kinds(await heldSince(page, mark))).toContain('worker-map-state');
+
+      // Hold both genuine HTTP 200 Responses after native fetch, before the authenticated
+      // transport receives them. A route-level hold can be aborted without delivery.
+      await page.evaluate((activityId) => {
+        const original = window.fetch.bind(window);
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const probe = {
+          statuses: { normalized: null as number | null, map_path: null as number | null },
+          returned: { normalized: false, map_path: false },
+          bodyRead: { normalized: false, map_path: false },
+          release,
+        };
+        (window as typeof window & { __lateTrack?: typeof probe }).__lateTrack = probe;
+        window.fetch = async (input, init) => {
+          const response = await original(input, init);
+          const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+          if (url.pathname !== `/bff/v1/activities/${activityId}/track/content`) return response;
+          const variant = url.searchParams.get('variant');
+          if (variant !== 'normalized' && variant !== 'map_path') return response;
+          probe.statuses[variant] = response.status;
+          const read = response.json.bind(response);
+          response.json = async () => {
+            probe.bodyRead[variant] = true;
+            return read();
+          };
+          await gate;
+          probe.returned[variant] = true;
+          return response;
+        };
+        for (const type of ['focus', 'visibilitychange'])
+          window.addEventListener(type, (event) => event.stopImmediatePropagation(), true);
+      }, late);
+      await page.evaluate((address) => {
+        history.pushState(null, '', address);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }, `/activities?selected=${late}&detailTab=route`);
+      await expect(trackPanel(page).getByText('경로 좌표를 불러오고 있습니다.')).toBeVisible();
+      await expect(trackMap(page)).toHaveCount(0);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (
+                window as typeof window & {
+                  __lateTrack?: { statuses: Record<string, number | null> };
+                }
+              ).__lateTrack?.statuses,
+          ),
+        )
+        .toEqual({ normalized: 200, map_path: 200 });
+
+      const other = await context.newPage();
+      await other.goto(`${shell.origin}/bff/v1/auth/login`);
+      await other.getByRole('link', { name: 'Sign in as Bob' }).click();
+      await expect(other.getByRole('button', { name: '로그아웃', exact: true })).toBeVisible();
+      const bob = (await (await other.request.get('/bff/v1/session')).json()) as {
+        athleteId: string;
+      };
+      await other.goto(`${shell.origin}/activities`);
+      await expect(other.getByRole('main')).toBeVisible();
+      await page.bringToFront();
+      await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible');
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem('workout:private:account-scope')))
+        .toBe(bob.athleteId);
+      await expect(trackPanel(page)).toHaveCount(0);
+      // Write Bob's own private value after Alice's workspace has been invalidated, then
+      // prove that delivering Alice's old answers does not remove Bob's state.
+      await other.evaluate(() => localStorage.setItem('workout:private:bob-track', 'Bob'));
+      await page.evaluate(() =>
+        (
+          window as typeof window & { __lateTrack?: { release: () => void } }
+        ).__lateTrack?.release(),
+      );
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __lateTrack?: { returned: Record<string, boolean> } })
+                .__lateTrack?.returned,
+          ),
+        )
+        .toEqual({ normalized: true, map_path: true });
+      expect(
+        await page.evaluate(
+          () =>
+            (window as typeof window & { __lateTrack?: { bodyRead: Record<string, boolean> } })
+              .__lateTrack?.bodyRead,
+        ),
+      ).toEqual({ normalized: false, map_path: false });
+      await expect(trackPanel(page)).toHaveCount(0);
+      await expect(mapRegion(page, '저장된 활동 경로')).toHaveCount(0);
+      await expect(page.getByText(/위치 있음 6개|선택 표본/)).toHaveCount(0);
+      // Bob's new Vite workspace may register global listeners after this mark; those
+      // belong to Bob. Alice's map source, worker map state and drawing resources must go.
+      await expect
+        .poll(async () =>
+          (await leftovers(page, mark)).filter((label) =>
+            /^(worker-map-state|webgl-context|resize-observer|blob-url)/.test(label),
+          ),
+        )
+        .toEqual([]);
+      expect(await page.evaluate(() => localStorage.getItem('workout:private:bob-track'))).toBe(
+        'Bob',
+      );
+      await other.close();
+    });
+
     /**
      * Data that did arrive. A response can only reach this page while the account it belongs
      * to is still the page's account: once the account changes elsewhere, the next request
