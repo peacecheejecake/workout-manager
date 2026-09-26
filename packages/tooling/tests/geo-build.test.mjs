@@ -407,6 +407,53 @@ describe('ODbL notice and alteration method in a staged deployment', () => {
     });
   });
 
+  it('does not disclose an acquisition URL or date that differs from the allowed source', () => {
+    const allowlistedUrl = 'https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf';
+    const tokenUrl = `${allowlistedUrl}?token=private`;
+    const sha256 = '7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea';
+    const reused = { sourceId: 'osm-extract-seoul', url: null, sha256, reusedFromDisk: true };
+    const expected = {
+      sourceId: reused.sourceId,
+      url: allowlistedUrl,
+      lastModified: null,
+      etag: null,
+      recordedBy: 'none',
+    };
+    const record = {
+      sourceId: reused.sourceId,
+      url: tokenUrl,
+      lastModified: 'Sat, 19 Sep 2026 16:20:02 GMT',
+      etag: 'secret',
+    };
+    const earlierRuns = [
+      {
+        source: {
+          ...reused,
+          url: tokenUrl,
+          reusedFromDisk: false,
+          lastModified: record.lastModified,
+          etag: record.etag,
+        },
+      },
+    ];
+    expect(resolveAcquisition({ download: reused, record, earlierRuns, allowlistedUrl })).toEqual(
+      expected,
+    );
+    expect(
+      resolveAcquisition({
+        download: {
+          ...reused,
+          url: tokenUrl,
+          reusedFromDisk: false,
+          lastModified: record.lastModified,
+        },
+        record: null,
+        earlierRuns: [],
+        allowlistedUrl,
+      }),
+    ).toEqual(expected);
+  });
+
   it('builds a relocated scratch deployment only outside .geo-build', async () => {
     const shared = await workspace();
     expect(basemapWorkRootFrom(undefined, shared)).toMatchObject({

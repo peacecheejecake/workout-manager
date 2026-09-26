@@ -96,6 +96,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 54, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M2-01av: 055_worker_tenant_source.sql.
       { version: 55, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M0-06b: response-only legacy share route notice.
+      { version: 56, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

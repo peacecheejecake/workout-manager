@@ -772,6 +772,22 @@ describe('T9: with the flag off (the shipped default) there is no link at all', 
 
 const sharedKeys = ['coordinates', 'distanceMeters', 'expiresOn', 'waypoints'];
 
+async function removeSnapshotNotice(athleteId: string, courseId: string): Promise<void> {
+  // A pre-disclosure link has no notice field. The production transition trigger rightly
+  // forbids snapshot edits; only the isolated test fixture bypasses it to model old rows.
+  await admin.query('ALTER TABLE course_share DISABLE TRIGGER course_share_transition');
+  try {
+    const updated = await admin.query(
+      `UPDATE course_share SET snapshot=snapshot-'routeDataNotice'
+       WHERE athlete_id=$1 AND course_id=$2`,
+      [athleteId, courseId],
+    );
+    expect(updated.rowCount).toBe(1);
+  } finally {
+    await admin.query('ALTER TABLE course_share ENABLE TRIGGER course_share_transition');
+  }
+}
+
 describe('B. the view-only link', () => {
   it('discloses routing data on a shared computed course, including without a basemap', async () => {
     const { courseId } = await ownerWithCourse(loop, {
@@ -822,6 +838,76 @@ describe('B. the view-only link', () => {
     expect(sharedCourseSchema.parse(response.json()).routeDataNotice).toBe(true);
     expect(Object.keys(response.json()).sort()).toEqual([...sharedKeys, 'routeDataNotice'].sort());
     expect(response.body).not.toContain('0123456789abcdef');
+  });
+
+  it('recovers only the disclosure bit for old computed links from the pinned immutable revision', async () => {
+    const graphBuildId = 'fedcba9876543210';
+    const { athleteId, courseId } = await ownerWithCourse(loop, {
+      generation: {
+        kind: 'routed-waypoints',
+        computation: {
+          schemaVersion: 1,
+          requestId: 'legacy-share-disclosure-fixture',
+          requestRevision: 1,
+          graph: {
+            engine: 'graphhopper',
+            identitySource: 'engine',
+            engineVersion: '10.0',
+            engineArtifactSha256: 'a'.repeat(64),
+            profileId: 'foot-v1',
+            profileConfigSha256: 'b'.repeat(64),
+            extractSha256: 'c'.repeat(64),
+            extractRegion: 'seoul',
+            graphContentSha256: 'd'.repeat(64),
+            graphBuildId,
+            graphImportedAt: '2026-03-01T00:00:00.000Z',
+            roadDataAt: '2026-02-01T00:00:00.000Z',
+          },
+          conditions: {
+            profileId: 'foot-v1',
+            algorithm: 'flexible',
+            contractionHierarchies: false,
+            maxVisitedNodes: 1_000_000,
+            deadlineMilliseconds: 8_000,
+            snapLimitMeters: 120,
+            waypointCount: 3,
+          },
+          computedAt: '2026-03-02T00:00:00.000Z',
+          computationMilliseconds: 42,
+          warnings: [],
+        },
+        engineDistanceMeters: 4_000,
+        engineDurationSeconds: 2_000,
+        maxSnapDistanceMeters: 4,
+        waypointCount: 3,
+        vertexCount: loop.length,
+      },
+    });
+    const instance = linkApp();
+    const { token } = await makeLink(instance, courseId);
+    await removeSnapshotNotice(athleteId, courseId);
+    const response = await read(instance, { token });
+    expect(response.statusCode).toBe(200);
+    const shared = sharedCourseSchema.parse(response.json());
+    expect(shared.routeDataNotice).toBe(true);
+    expect(Object.keys(response.json()).sort()).toEqual([...sharedKeys, 'routeDataNotice'].sort());
+    expect(response.body).not.toContain(graphBuildId);
+    expect(response.body).not.toContain(courseId);
+    const stored = await admin.query('SELECT snapshot FROM course_share WHERE athlete_id=$1', [
+      athleteId,
+    ]);
+    expect(stored.rows[0]?.snapshot).not.toHaveProperty('routeDataNotice');
+  });
+
+  it('does not attach a computed-route notice to an old imported link', async () => {
+    const { athleteId, courseId } = await ownerWithCourse(loop);
+    const instance = linkApp();
+    const { token } = await makeLink(instance, courseId);
+    await removeSnapshotNotice(athleteId, courseId);
+    const response = await read(instance, { token });
+    expect(response.statusCode).toBe(200);
+    expect(sharedCourseSchema.parse(response.json()).routeDataNotice).toBeUndefined();
+    expect(Object.keys(response.json()).sort()).toEqual(sharedKeys);
   });
 
   it('T3/T25: serves a snapshot outside every share circle, rounded to five places', async () => {

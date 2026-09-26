@@ -60,6 +60,8 @@ const migrationFiles = [
   '054_course_share_area_budget.sql',
   // M2-01av: the worker paths' tenant source.
   '055_worker_tenant_source.sql',
+  // M0-06b: historical shared route snapshots receive a response-only OSM notice.
+  '056_course_share_legacy_route_notice.sql',
 ] as const;
 
 /**

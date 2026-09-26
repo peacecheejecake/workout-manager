@@ -354,7 +354,8 @@ describe('course-sharing migration upgrade of a database built by every earlier 
         await client.query(
           `INSERT INTO course_share(athlete_id,share_id,course_id,course_revision,receipt_id,
              token_digest,epoch,state,include_names,zone_ids,snapshot,created_at,expires_at)
-           VALUES($1,$2,$3,1,$4,$5,1,'active',false,ARRAY[$6::uuid],'{"coordinates":[]}'::jsonb,
+           VALUES($1,$2,$3,1,$4,$5,1,'active',false,ARRAY[$6::uuid],
+             '{"coordinates":[],"routeDataNotice":false}'::jsonb,
              now(),now()+interval '1 day')`,
           [tenant, randomUUID(), randomUUID(), randomUUID(), tokenOf(tenant), randomUUID()],
         );
@@ -390,5 +391,30 @@ describe('course-sharing migration upgrade of a database built by every earlier 
     } finally {
       caller.release();
     }
+    // A pre-disclosure snapshot needs its pinned revision. This fake share has no FK target,
+    // so even a plain function owner permitted to read tenant-scoped revisions must return
+    // not_found rather than inventing provenance or leaking a database permission error.
+    await upgraded.query(`GRANT SELECT ON course_revision TO "${plainOwner}"`);
+    const tokenDigest = createHash('sha256').update(randomUUID()).digest('hex');
+    const legacyClient = await upgraded.connect();
+    try {
+      await legacyClient.query('BEGIN');
+      await legacyClient.query('SET LOCAL session_replication_role = replica');
+      await legacyClient.query(
+        `INSERT INTO course_share(athlete_id,share_id,course_id,course_revision,receipt_id,
+           token_digest,epoch,state,include_names,zone_ids,snapshot,created_at,expires_at)
+         VALUES($1,$2,$3,1,$4,$5,1,'active',false,ARRAY[$6::uuid],
+           '{"coordinates":[]}'::jsonb,now(),now()+interval '1 day')`,
+        [liveTenant, randomUUID(), randomUUID(), randomUUID(), tokenDigest, randomUUID()],
+      );
+      await legacyClient.query('COMMIT');
+    } finally {
+      legacyClient.release();
+    }
+    const response = await upgraded.query<{ outcome: string }>(
+      'SELECT outcome FROM public.read_course_share($1,1,$2,30,60,100)',
+      [tokenDigest, 'c'.repeat(64)],
+    );
+    expect(response.rows[0]?.outcome).toBe('not_found');
   });
 });

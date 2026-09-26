@@ -267,3 +267,17 @@ identity 두 run의 실패는 서로 다른 spec이고, 이 노드가 바꾼 화
   새 검증에 사용할 수 없었다. Chrome 앱은 열렸지만 검증 하네스의 응답 fixture를
   연결하지 못해 공유 화면 확인에는 Playwright를 사용했다. 이 브라우저 증거는
   native WKWebView·HealthKit 실기기 실행의 대체 증거가 아니다.
+- 독립 재검토 HEAD `9be1962`는 **CHANGES_REQUESTED**였다. 새 링크의 공유 고지는
+  고쳐졌으나 이전 snapshot에서 라우팅 출처 비트가 없어 고지가 빠짐(**NOT FIXED**),
+  보호 구역으로 잘라낸 라우팅 코스의 소유자 화면 고지 누락, 이전 빌드 보고서의
+  비허용 URL이 공개 기록으로 전파될 수 있음이 추가 지적됐다. 공개 schema 일치와
+  오래된 signed 앱 설치 방지는 **FIXED**로 확인됐다. 현재 수정은 이전 공유 링크의
+  저장 원본을 바꾸지 않고 고정된 코스 revision에서 출처를 읽어 응답 고지만 보강하고,
+  graph ID가 남은 보호 구역 축소본에도 고지를 표시하며, 취득 URL은 허용 목록과
+  정확히 일치할 때만 공개하도록 한다. 고정 revision 조회는 migration 056의
+  읽기 전용 응답 경로이며 기존 snapshot은 수정하지 않는다. 격리 PostgreSQL
+  통합 80파일·797개, 전체 단위 330파일·4,042개, generated check·lint·typecheck
+  (34 작업)·build(15 작업)·format·diff check가 통과했다. 보호 구역 축소본의 실제
+  Next/Vite 브라우저 검사 2개는 빌드 갱신 전 첫 실행에서 실패했고, 새 빌드 뒤
+  두 독립 실행에서 각각 2개가 통과했다. 이 UI 증거도 실기기 증거는 아니다.
+  수정 HEAD의 전체 diff 재검토는 대기 중이다.

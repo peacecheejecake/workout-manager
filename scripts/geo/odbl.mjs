@@ -53,7 +53,7 @@ export function assertOdblNotice(text, where) {
  * }} input
  */
 export function resolveAcquisition({ download, record, earlierRuns, allowlistedUrl }) {
-  if (!download.reusedFromDisk && download.url !== null)
+  if (!download.reusedFromDisk && download.url === allowlistedUrl)
     return {
       sourceId: download.sourceId,
       url: download.url,
@@ -61,7 +61,7 @@ export function resolveAcquisition({ download, record, earlierRuns, allowlistedU
       etag: download.etag ?? null,
       recordedBy: 'download-response',
     };
-  if (record !== null && record.sourceId === download.sourceId)
+  if (record !== null && record.sourceId === download.sourceId && record.url === allowlistedUrl)
     return { ...record, recordedBy: 'acquisition-record' };
   // Newest first: the last run that downloaded exactly these bytes.
   for (const run of [...earlierRuns].reverse()) {
@@ -71,7 +71,7 @@ export function resolveAcquisition({ download, record, earlierRuns, allowlistedU
       source.sha256 === download.sha256 &&
       source.sourceId === download.sourceId &&
       source.reusedFromDisk === false &&
-      typeof source.url === 'string' &&
+      source.url === allowlistedUrl &&
       typeof source.lastModified === 'string'
     )
       return {

@@ -198,6 +198,94 @@ describe('course workbench', () => {
     ).toBeInTheDocument();
   });
 
+  it('attributes a privacy-trimmed line that was computed on a routing graph', async () => {
+    setup((input) =>
+      input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET'
+        ? reply({
+            status: 'available',
+            course: head,
+            revision: {
+              ...revision,
+              generation: {
+                kind: 'privacy-trimmed',
+                sourceRevision: 1,
+                sourceGenerationKind: 'routed-waypoints',
+                sourceGraphBuildId: '92e0fa5f319a41df',
+                policyVersion: 1,
+                zoneSetDigest: 'c'.repeat(64),
+                appliedZoneCount: 1,
+                removedVertexCount: 1,
+                removedLeadingVertexCount: 1,
+                removedTrailingVertexCount: 0,
+                removedWaypointCount: 0,
+                vertexCount: 2,
+              },
+            },
+            thumbnail: { status: 'none' },
+          })
+        : null,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    expect(await screen.findByTestId('route-data-notice')).toBeInTheDocument();
+  });
+
+  it('does not attribute a recorded line to a routing graph', async () => {
+    setup();
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    expect(screen.queryByTestId('route-data-notice')).toBeNull();
+  });
+
+  it.each([
+    [
+      'imported',
+      {
+        kind: 'imported-file',
+        format: 'gpx',
+        sourceKind: 'gpx-trk',
+        itemIndex: 0,
+        parserId: 'gpx-track-v1',
+        parserVersion: 1,
+        fileSha256: 'd'.repeat(64),
+        fileByteLength: 123,
+        originalFilename: null,
+        fileCreator: null,
+        vertexCount: 2,
+        importedWaypointCount: 0,
+        ignoredFileWaypointCount: 0,
+      },
+    ],
+    [
+      'trimmed recorded',
+      {
+        kind: 'privacy-trimmed',
+        sourceRevision: 1,
+        sourceGenerationKind: 'recorded-segment',
+        sourceGraphBuildId: null,
+        policyVersion: 1,
+        zoneSetDigest: 'c'.repeat(64),
+        appliedZoneCount: 1,
+        removedVertexCount: 1,
+        removedLeadingVertexCount: 1,
+        removedTrailingVertexCount: 0,
+        removedWaypointCount: 0,
+        vertexCount: 2,
+      },
+    ],
+  ])('does not attribute a %s line to a routing graph', async (_kind, generation) => {
+    setup((input) =>
+      input.path === `/bff/v1/courses/${courseId}` && input.method === 'GET'
+        ? reply({
+            status: 'available',
+            course: head,
+            revision: { ...revision, generation },
+            thumbnail: { status: 'none' },
+          })
+        : null,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
+    expect(screen.queryByTestId('route-data-notice')).toBeNull();
+  });
+
   it('sends the revision it was showing with a rename', async () => {
     const { request } = setup();
     await userEvent.click(await screen.findByRole('button', { name: 'Seoul loop' }));
