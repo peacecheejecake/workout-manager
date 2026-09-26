@@ -338,6 +338,33 @@ for (const shell of shells) {
     await expect(panel.getByTestId('chart-zoom-domain')).toHaveText('전체');
   });
 
+  test(`${shell.name}: responsive resize during a wheel keeps chart and map linked`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const headers = await login(page);
+    const activityId = await storeTrack(page, headers);
+    await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
+    const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+    const map = mapRegion(panel, '저장된 활동 경로');
+    await expectLineDrawn(map);
+    const before = await map.getAttribute('data-viewport-bounds');
+    const canvas = map.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -700);
+    await page.setViewportSize({ width: 1279, height: 1000 });
+    await page.keyboard.up('Control');
+
+    await expect(page.getByTestId('stored-track-panes')).toHaveAttribute('data-layout', 'tablet');
+    await expect.poll(() => map.getAttribute('data-viewport-bounds')).not.toBe(before);
+    await expect(map).toHaveAttribute('data-viewport-source', 'user');
+    await expect(panel.getByTestId('chart-zoom-domain')).not.toHaveText('전체');
+  });
+
   test(`${shell.name}: map zoom reaches observations beyond the first 500-chart page`, async ({
     page,
   }) => {

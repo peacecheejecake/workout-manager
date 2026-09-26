@@ -185,3 +185,35 @@ adapter가 이를 사용자 이동으로 오분류하여 전체 보기 뒤 차�
 `aside --update`는 `fetch failed`였으므로 직접 UI 근거는 Playwright
 Chromium이다. 실제 기기·운영 공급자 및 과거 `not_executed` 판정은
 변경하지 않았다. 수정된 HEAD는 전체 단계 독립 검토를 다시 받아야 한다.
+
+## 다섯 번째 단계 독립 검토 지적 수정 · 2026-09-27
+
+다섯 번째 독립 검토 기준은 `main` `9ac6aa1` 대 phase `332823e`였다.
+검토자는 앞선 여섯 지적을 모두 **FIXED**로 확인했다. 새 P2는 실제 wheel
+이동이 진행 중일 때 반응형 resize가 끼어들면, 이후 도착하는 wheel의
+`moveend`를 프로그램 이동으로 처리해 지도만 확대되고 차트 범위와 복원
+viewport가 뒤처지는 문제였다.
+
+- **새 P2 FIXED:** 전체 fit은 이전 사용자 이동을 대체하므로 진행 중 표시와
+  제스처 차단 경계를 지운다. resize는 이전 사용자 이동을 대체하지 않는다.
+  MapLibre `resize(eventData)`에는 기존 프로그램 출처 토큰을 전달하되,
+  토큰이 있는 resize의 시작·완료 이벤트가 진행 중인 사용자 이동 표시를
+  소비하지 않게 했다. 따라서 resize 자체는 `programmatic`, 뒤이어 오는
+  원래 wheel 완료는 `user`로 보고한다.
+- 단위 시험은 `wheel movestart → 표시된 resize movement → 원래 wheel
+moveend`와, 설치된 MapLibre처럼 이동 중 resize가 별도 이동 이벤트를
+  내지 않는 순서를 각각 재현한다. 예전처럼 resize를 fit과 동일하게 처리하는
+  변이는 새 단위 시험 **2/2 실패**했다.
+- Next/Vite 실제 브라우저에서 Ctrl+wheel 직후 전체 보기 없이 1440px에서
+  1279px로 전환하여 실제 지도 viewport 변경, `user` 출처, 차트의 확대
+  범위를 확인했다. 새 시험 **2/2 통과**했고, 같은 이전 동작 변이는 두 shell
+  모두 `programmatic` 오분류로 **2/2 실패**했다. 최종 원복 트리의
+  `activity-range-link.spec.ts` 전체는 **16/16 통과**했다.
+
+관련 단위 시험 **47/47**, `pnpm check:generated`, 전체 `pnpm format:check`·
+`pnpm lint`·`pnpm typecheck`(34 package와 root), Next/Vite 생산 빌드가
+통과했다. 브라우저는 승인된 로컬 실행의 격리 PostgreSQL, fixture OIDC,
+합성 FIT과 Playwright Chromium을 썼다. Aside `aside --update`의 이전
+`fetch failed`로 이번 UI 직접 검증도 Playwright를 사용했다. 운영 공급자·
+실기기 및 기존 `not_executed` 판정은 변경하지 않았다. 수정된 HEAD는
+전체 단계 독립 검토를 다시 받아야 한다.

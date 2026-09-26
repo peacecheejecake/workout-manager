@@ -22,6 +22,7 @@ const renderer = vi.hoisted(() => ({
   features: new Map<string, { properties: Record<string, unknown> }[]>(),
   handlers: new Map<string, ((event?: unknown) => void)[]>(),
   layers: [] as { id: string; type: string }[],
+  resizeEmitsMovement: true,
 }));
 
 vi.mock('maplibre-gl', () => {
@@ -76,6 +77,7 @@ vi.mock('maplibre-gl', () => {
       for (const handler of renderer.handlers.get('moveend') ?? []) handler(eventData);
     }
     resize(eventData?: unknown) {
+      if (!renderer.resizeEmitsMovement) return;
       const event = eventData ?? {};
       for (const handler of renderer.handlers.get('movestart') ?? []) handler(event);
       for (const handler of renderer.handlers.get('moveend') ?? []) handler(event);
@@ -96,6 +98,7 @@ async function adapterWith(
   renderer.features = new Map(Object.entries(features));
   renderer.handlers.clear();
   renderer.layers = [];
+  renderer.resizeEmitsMovement = true;
   const { createMapLibreAdapter } = await import('../src/maplibre-adapter');
   const observations: MapRenderIdleInfo[] = [];
   const container = document.createElement('div');
@@ -125,6 +128,32 @@ const uncomputedDraft = toFeatureCollection([
 ]);
 
 describe('MapLibre adapter render observation', () => {
+  it('keeps the original wheel completion after marked resize movement', async () => {
+    const events: MapViewportEvent[] = [];
+    const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));
+    container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    for (const handler of renderer.handlers.get('movestart') ?? []) handler({});
+    handle.resize();
+    expect(events.at(-1)?.source).toBe('programmatic');
+    for (const handler of renderer.handlers.get('moveend') ?? []) handler({});
+    expect(events.at(-1)?.source).toBe('user');
+    handle.destroy();
+  });
+
+  it('keeps wheel provenance when resize occurs while MapLibre is moving', async () => {
+    const events: MapViewportEvent[] = [];
+    const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));
+    container.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+    for (const handler of renderer.handlers.get('movestart') ?? []) handler({});
+    // Installed MapLibre suppresses resize movement events while its camera is moving.
+    renderer.resizeEmitsMovement = false;
+    handle.resize();
+    expect(events).toHaveLength(0);
+    for (const handler of renderer.handlers.get('moveend') ?? []) handler({});
+    expect(events.at(-1)?.source).toBe('user');
+    handle.destroy();
+  });
+
   it('does not label resize as a new user move after a wheel since the last fit', async () => {
     const events: MapViewportEvent[] = [];
     const { handle, container } = await adapterWith({}, {}, {}, (event) => events.push(event));

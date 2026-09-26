@@ -246,22 +246,22 @@ async function initialise(
     let gestureSequence = 0;
     let programmaticGestureCutoff = 0;
     const programmaticOrigin = {};
-    let programmaticMoveInProgress = false;
+    let fitInProgress = false;
     const fromProgrammaticMove = (event: unknown) =>
       typeof event === 'object' &&
       event !== null &&
       'workoutGeoKitProgrammaticOrigin' in event &&
       event.workoutGeoKitProgrammaticOrigin === programmaticOrigin;
-    const runProgrammaticMove = (move: () => void) => {
+    const runFit = (move: () => void) => {
       userMoving = false;
       // A late movement report from a wheel that preceded this command must not
       // regain user provenance merely because its timestamp is still recent.
       programmaticGestureCutoff = gestureSequence;
-      programmaticMoveInProgress = true;
+      fitInProgress = true;
       try {
         move();
       } finally {
-        programmaticMoveInProgress = false;
+        fitInProgress = false;
       }
     };
     const noteGesture = () => {
@@ -281,15 +281,17 @@ async function initialise(
       container.removeEventListener('keydown', noteGesture);
     };
     map.on('movestart', (event) => {
+      // A marked resize can occur while a user's wheel movement is in flight.
+      // Its own events must not consume the pending user's eventual moveend.
+      if (fitInProgress || fromProgrammaticMove(event)) return;
       userMoving =
-        !programmaticMoveInProgress &&
-        !fromProgrammaticMove(event) &&
         gestureSequence > programmaticGestureCutoff &&
         (event.originalEvent !== undefined || Date.now() - lastGestureAt < 800);
     });
     map.on('moveend', (event) => {
       if (destroyed || !onViewportChange) return;
       const viewport = map.getBounds();
+      const programmatic = fitInProgress || fromProgrammaticMove(event);
       onViewportChange({
         bounds: {
           west: viewport.getWest(),
@@ -298,12 +300,9 @@ async function initialise(
           north: viewport.getNorth(),
           crossesAntimeridian: viewport.getEast() < viewport.getWest(),
         },
-        source:
-          !programmaticMoveInProgress && !fromProgrammaticMove(event) && userMoving
-            ? 'user'
-            : 'programmatic',
+        source: !programmatic && userMoving ? 'user' : 'programmatic',
       });
-      userMoving = false;
+      if (!programmatic || fitInProgress) userMoving = false;
     });
 
     map.addSource(pathSourceId, { type: 'geojson', data: emptyCollection });
@@ -472,7 +471,7 @@ async function initialise(
       fitBounds(bounds: MapBounds) {
         // MapLibre's movement events can arrive within the prior wheel's 800 ms window.
         // Tag this fit itself, including its synchronous interruption of that movement.
-        runProgrammaticMove(() =>
+        runFit(() =>
           map.fitBounds(
             [
               [bounds.west, bounds.south],
@@ -486,9 +485,7 @@ async function initialise(
       resize() {
         // MapLibre resize emits movement events too. Their origin is the layout, even
         // when a wheel gesture happened moments before the ResizeObserver callback.
-        runProgrammaticMove(() =>
-          map.resize({ workoutGeoKitProgrammaticOrigin: programmaticOrigin }),
-        );
+        map.resize({ workoutGeoKitProgrammaticOrigin: programmaticOrigin });
       },
       destroy() {
         if (destroyed) return;
