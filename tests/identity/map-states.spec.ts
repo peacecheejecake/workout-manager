@@ -48,6 +48,28 @@ const noBackground = '배경 지도 없이 경로를 표시했습니다.';
 const overBackground = '지도에 경로를 표시했습니다.';
 const partialNotice = /기록이 \d+회 끊겼습니다\. 끊긴 구간은 직선으로 잇지 않습니다\./;
 
+async function hasBasemapDeployment(page: Page, origin: string): Promise<boolean> {
+  const pointer = await page.request.get(`${origin}/map/basemap/current.json`);
+  if (!pointer.ok()) return false;
+  let parsed: unknown;
+  try {
+    parsed = await pointer.json();
+  } catch {
+    // Vite can return its HTML fallback with status 200 when no basemap proxy is set.
+    return false;
+  }
+  const deploymentId =
+    parsed !== null && typeof parsed === 'object' && 'deploymentId' in parsed
+      ? parsed.deploymentId
+      : null;
+  if (typeof deploymentId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(deploymentId))
+    return false;
+  const attribution = await page.request.get(
+    `${origin}/map/basemap/${deploymentId}/ATTRIBUTION.txt`,
+  );
+  return attribution.ok() && (await attribution.text()).trim() !== '';
+}
+
 function recordBackgroundRequests(page: Page): string[] {
   const seen: string[] = [];
   page.on('request', (request) => {
@@ -106,9 +128,8 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(60_000);
       const headers = await login(page);
-      const pointer = await page.request.get(`${shell.origin}/map/basemap/current.json`);
       test.skip(
-        pointer.status() !== 200,
+        !(await hasBasemapDeployment(page, shell.origin)),
         'No self-hosted basemap deployment on this machine (scripts/build-basemap.mjs is opt-in).',
       );
       const name = `배경 상태 ${shell.name} ${randomUUID().slice(0, 8)}`;
@@ -152,6 +173,61 @@ for (const shell of shells) {
         expect(background.filter((path) => path !== '/map/basemap/current.json')).toEqual([]);
         await page.unrouteAll({ behavior: 'ignoreErrors' });
       }
+    });
+
+    test('keeps computing and stale proposals distinct from the rendered uncomputed draft', async ({
+      page,
+    }) => {
+      await login(page);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(`${shell.origin}/courses/new`);
+      const screen = page.getByRole('region', { name: '새 코스' });
+      const editor = screen.getByRole('region', { name: '경유지 편집' });
+      const status = editor.getByTestId('draft-route-status');
+      const map = mapRegion(screen, '코스 지도');
+      const courseWrites: string[] = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/bff/v1/courses' && request.method() === 'POST')
+          courseWrites.push(request.url());
+      });
+      await place(editor, 126.978, 37.566);
+      await place(editor, 126.982, 37.569);
+      await expect(status).toHaveAttribute('data-status', 'uncomputed');
+      await expectLineDrawn(map);
+      await expect(map).toHaveAttribute('data-rendered-line-roles', 'uncomputed');
+
+      let release: (() => void) | undefined;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route('**/bff/v1/courses/route-previews', async (route) => {
+        const response = await route.fetch();
+        expect(response.status()).toBe(200);
+        await held;
+        await route.fulfill({ response });
+      });
+      await editor.getByRole('button', { name: '경로 계산' }).click();
+      await expect(status).toHaveAttribute('data-status', 'computing');
+      await expect(status).toContainText('계산 중');
+      await expect(editor.getByRole('group', { name: '계산된 경로 검토' })).toHaveCount(0);
+      if (!release) throw new Error('route preview was not held');
+      release();
+      await expect(status).toHaveAttribute('data-status', 'computed');
+      await expect(editor.getByRole('group', { name: '계산된 경로 검토' })).toBeVisible();
+      await expectLineDrawn(map);
+      await expect(map).toHaveAttribute('data-rendered-line-roles', 'candidate');
+
+      // Editing after a calculation leaves its answer in history, but it no longer belongs
+      // to this draft. The renderer must show the dashed straight line, not that answer.
+      const before = await map.getAttribute('data-paths-generation');
+      await place(editor, 126.9801, 37.5676);
+      await expect(status).toHaveAttribute('data-status', 'stale');
+      await expect(status).toContainText('이전 초안의 것');
+      await expect(editor.getByRole('group', { name: '계산된 경로 검토' })).toHaveCount(0);
+      await expectLineDrawn(map, { changedFrom: before });
+      await expect(map).toHaveAttribute('data-rendered-line-roles', 'uncomputed');
+      expect(courseWrites).toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     /**
