@@ -330,7 +330,7 @@ async function up() {
   const out = openSync(join(LOGS, 'supervisor.log'), 'a');
   const child = spawn(
     process.execPath,
-    [...process.execArgv, new URL(import.meta.url).pathname, 'supervise'],
+    [...process.execArgv, fileURLToPath(import.meta.url), 'supervise'],
     {
       cwd: WORKTREE,
       detached: true,

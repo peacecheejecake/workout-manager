@@ -230,6 +230,10 @@ lint·format 검사를 통과하지 못하던 파일들이다.
   실패했다. `uv sync --extra garmin`으로 준비한 뒤 전체 시험을 재실행해 위 결과를 얻었다.
   기존 실제 Zitadel 브라우저 수행은 이번 rebase 뒤에 반복 실행하지 않았으며, 배포 HTTPS·취소 경로는
   `not_executed` 상태를 유지한다.
+- 새 main 대비 첫 독립 검토는 **CHANGES_REQUESTED**: `stack.mts`의 supervisor 실행 경로를 URL
+  `pathname`으로 넘겨 공백이 있는 checkout에서 `%20`이 남는다고 지적했다. `fileURLToPath(import.meta.url)`로
+  바꾸고 공백 경로에서 하위 Node 프로세스 실행이 되는 회귀 시험을 추가했다. 집중 시험 2/2,
+  touched ESLint·Prettier·diff check가 통과했다. 실제 Zitadel 스택 재기동 증거로 취급하지 않는다.
 
 ## 열린 항목
 
