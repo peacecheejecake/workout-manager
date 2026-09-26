@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -141,9 +141,19 @@ export async function sha256File(path) {
  * Response headers are captured so the run can record the server's own date for the
  * bytes, and the SHA-256 is verified against the pin when the allowlist entry has one.
  *
- * @param {{ id: string, destination: string, range?: string, execute?: typeof execFileAsync }} options
+ * With `recordAcquisition`, the response facts are also written beside the file as
+ * `<destination>.acquisition.json` (M0-06b-odbl): a later build that reuses the file reads
+ * the extract's `Last-Modified` from there instead of losing it or having it typed in.
+ *
+ * @param {{ id: string, destination: string, range?: string, recordAcquisition?: boolean, execute?: typeof execFileAsync }} options
  */
-export async function fetchAllowedSource({ id, destination, range, execute = execFileAsync }) {
+export async function fetchAllowedSource({
+  id,
+  destination,
+  range,
+  recordAcquisition = false,
+  execute = execFileAsync,
+}) {
   const source = allowedSource(id);
   const url = resolveUrl(source, { range });
   await mkdir(dirname(destination), { recursive: true });
@@ -193,7 +203,7 @@ export async function fetchAllowedSource({ id, destination, range, execute = exe
     await rm(destination, { force: true });
     throw new Error(`SOURCE_HASH_MISMATCH: ${source.id}`);
   }
-  return {
+  const result = {
     sourceId: source.id,
     url: url.href,
     bytes: size,
@@ -206,6 +216,57 @@ export async function fetchAllowedSource({ id, destination, range, execute = exe
     license: source.license,
     licenseUrl: source.licenseUrl,
     attribution: source.attribution,
+  };
+  if (recordAcquisition) {
+    const record = {
+      schemaVersion: 1,
+      sourceId: result.sourceId,
+      url: result.url,
+      bytes: result.bytes,
+      sha256: result.sha256,
+      httpStatus: result.httpStatus,
+      lastModified: result.lastModified,
+      etag: result.etag,
+      fetchedAt: new Date().toISOString(),
+    };
+    const recordPath = acquisitionRecordPath(destination);
+    const temporaryRecord = `${recordPath}.${process.pid}.tmp`;
+    await writeFile(temporaryRecord, `${JSON.stringify(record, null, 2)}\n`);
+    await rename(temporaryRecord, recordPath);
+  }
+  return result;
+}
+
+/** Where `fetchAllowedSource({ recordAcquisition: true })` records a download. */
+export function acquisitionRecordPath(/** @type {string} */ path) {
+  return `${path}.acquisition.json`;
+}
+
+/**
+ * The recorded acquisition of the file at `path`, only when it describes these exact
+ * bytes (`sha256`) and the allowlisted URL of its source. Anything else — no record,
+ * another file's record, an unreadable one — is `null`: an unrecorded date stays unrecorded.
+ *
+ * @param {string} path @param {string} sha256
+ * @returns {Promise<{ sourceId: string, url: string, lastModified: string | null, etag: string | null } | null>}
+ */
+export async function readAcquisitionRecord(path, sha256) {
+  let record;
+  try {
+    record = JSON.parse(await readFile(acquisitionRecordPath(path), 'utf8'));
+  } catch {
+    return null;
+  }
+  if (record === null || typeof record !== 'object' || record.sha256 !== sha256) return null;
+  const source = allowedSources.find((entry) => entry.id === record.sourceId);
+  if (!source || source.url.includes('{') || record.url !== resolveUrl(source).href) return null;
+  const text = (/** @type {unknown} */ value) =>
+    typeof value === 'string' && value !== '' ? value : null;
+  return {
+    sourceId: source.id,
+    url: record.url,
+    lastModified: text(record.lastModified),
+    etag: text(record.etag),
   };
 }
 

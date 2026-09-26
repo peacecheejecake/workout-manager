@@ -233,6 +233,13 @@ gzip 그대로 꺼낸 **정적 XYZ 피라미드**. 산출물은 staging에서 �
 4. **검토 시점.** 공개 공유 기능(계획 7절)이 활성화되기 전에 다시 확인한다. 개인 export는
    배포가 아닐 수 있으나 그 판단은 여기서 내리지 않는다.
 
+**구현 상태 ([M0-06b-odbl](../progress/M0-06b-odbl.md), 2026-09-26).** 1–3을 코드로 구현했다. 배경 build와
+graph import가 두 URI와 변경 방법을 산출물 안(`ATTRIBUTION.txt`, 배경은 `odbl-disclosure.json`도)에 쓰고, 빠지거나
+기록과 다르면 게시·import가 실패한다. 공개 페이지는 두 셸의 `/map-data-licence`다. 값은 모두 build 산출물에서 읽는다.
+**외부 배포는 여전히 하지 않았다.** 공유 배경 deployment `ec81f3367889-mub8vb9q`와 전국 graph `92e0fa5f319a41df`는
+이 구현 전에 만들어져 산출물 안 고지가 없으므로(점검 `ODBL_NOTICE_MISSING`) 배포 전에 다시 만들어야 한다. 스크립트
+본문의 공개 위치, 개인 GPX export의 배포 해당 여부는 결정하지 않았다(진행 기록의 열린 질문). 법적 검토가 아니다.
+
 ## 7. 보행 경로 엔진 선정
 
 세 후보 중 **두 개를 같은 extract로 실제 빌드·질의**했다. 모든 요청은 loopback 서버에

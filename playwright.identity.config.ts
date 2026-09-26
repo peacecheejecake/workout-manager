@@ -12,7 +12,10 @@ import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-cap
  * without it runs the same tests with no background map — which is a state the route
  * screen supports. The stored-track spec asserts the background map only when this is set.
  */
-const basemapDirectory = join(import.meta.dirname, '.geo-build/dist');
+const basemapDirectory =
+  // M0-06b-odbl: a scratch deployment (BASEMAP_WORK_ROOT build) can be served instead of the
+  // shared one, to see the licence page against a deployment that carries its disclosure.
+  process.env['IDENTITY_E2E_BASEMAP_DIST_DIR'] ?? join(import.meta.dirname, '.geo-build/dist');
 const basemapEnv = existsSync(join(basemapDirectory, 'current.json'))
   ? { BASEMAP_DIST_DIR: basemapDirectory }
   : {};

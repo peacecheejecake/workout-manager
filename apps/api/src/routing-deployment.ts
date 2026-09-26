@@ -8,10 +8,12 @@ import {
   createRoutingEngineEndpoint,
   defaultRoutingEngineHosts,
   loadRoutingDeployment,
+  routingDataDisclosure,
   type LoadRoutingDeploymentOptions,
   type RoutingAdmission,
   type RoutingClock,
 } from '@workout/server-integrations/routing';
+import type { RoutingDataDisclosure } from '@workout/contracts/map-data-licence';
 import { z } from 'zod';
 
 import type { WalkingRoutePort } from './routing-routes.js';
@@ -156,6 +158,11 @@ interface ServingDeployment {
   readonly engineOrigin: string;
   readonly adapter: GraphHopperRoutingAdapter;
   readonly service: WalkingRouteService;
+  /**
+   * The ODbL disclosure of this deployment's graph (M0-06b-odbl), built once from the files
+   * that were just verified, so the public page names the graph that answers routes.
+   */
+  readonly disclosure: RoutingDataDisclosure;
 }
 
 export class RoutingSwitchError extends Error {
@@ -233,6 +240,11 @@ export class RoutingDeploymentSwitch {
       compute: (athleteId, request, context) =>
         this.#active.service.compute(athleteId, request, context),
     };
+  }
+
+  /** The public ODbL disclosure of the graph serving routes right now (M0-06b-odbl). */
+  get activeDisclosure(): RoutingDataDisclosure {
+    return this.#active.disclosure;
   }
 
   get activeGraphBuildId(): string {
@@ -344,6 +356,7 @@ export async function createConfiguredWalkingRoutes(
       engineOrigin: endpoint.resolve('/info').origin,
       adapter,
       service: new WalkingRouteService({ adapter, admission, clock }),
+      disclosure: await routingDataDisclosure(deployment),
     };
   };
   const initial = await prepare(settings);

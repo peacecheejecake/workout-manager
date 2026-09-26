@@ -11,6 +11,9 @@ import {
   resolveSameOriginPath,
   validateAttributionMarkup,
   validateBasemap,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+  withOdblNotice,
 } from '@workout/geo-kit/basemap';
 import {
   computeBounds,
@@ -263,6 +266,21 @@ describe('basemap descriptor', () => {
       ok: false,
       problem: 'INVALID_ORIGIN',
     });
+  });
+
+  it('completes an on-screen notice with the licence links, and leaves a complete one alone (M0-06b-odbl)', () => {
+    // The same two URIs as the contract: compared in the courses module's tests, which see both.
+    expect(osmCopyrightUrl).toBe('https://www.openstreetmap.org/copyright');
+    expect(odblLicenceUrl).toBe('https://opendatacommons.org/licenses/odbl/1-0/');
+    const completed = withOdblNotice('Background map tiles. licensed ODbL 1.0 (see copyright)');
+    expect(completed).toContain(osmCopyrightUrl);
+    expect(completed).toContain(odblLicenceUrl);
+    expect(completed.startsWith('Background map tiles.')).toBe(true);
+    const current = `Map data © OpenStreetMap contributors (${osmCopyrightUrl}), ODbL 1.0 (${odblLicenceUrl}).`;
+    expect(withOdblNotice(current)).toBe(current);
+    // Only the copyright link is not enough.
+    expect(withOdblNotice(`© OSM ${osmCopyrightUrl}`)).toContain(odblLicenceUrl);
+    expect(withOdblNotice('  ')).toContain(odblLicenceUrl);
   });
 
   it('requires attribution text and refuses markup in it', () => {
@@ -594,7 +612,8 @@ describe('MapView', () => {
       />,
     );
     await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
-    expect(screen.getByText('© OpenStreetMap')).toBeInTheDocument();
+    // The deployment's text, completed with the licence links (M0-06b-odbl).
+    expect(screen.getByText(/^© OpenStreetMap · /)).toBeInTheDocument();
     adapter.idle(idleInfo());
     expect(mapStatus()).toHaveTextContent('지도에 경로를 표시했습니다.');
   });
@@ -685,6 +704,28 @@ describe('MapView', () => {
     expect(screen.getAllByRole('button')).toHaveLength(3);
     await userEvent.click(screen.getByRole('button', { name: '37.56800, 126.98000' }));
     expect(onSelect).toHaveBeenCalledWith({ pathId: 'track-1', vertexIndex: 1 });
+  });
+
+  it('keeps the ODbL notice with the licence URI next to the map when the renderer fails (M0-06b-odbl)', async () => {
+    const adapter = fakeAdapter();
+    const view = render(
+      <MapView
+        label="기록 지도"
+        paths={[path()]}
+        selection={null}
+        onSelect={vi.fn()}
+        basemap={basemap}
+        createAdapter={adapter.factory}
+      />,
+    );
+    await waitFor(() => expect(adapter.handle.setPaths).toHaveBeenCalled());
+    adapter.fail();
+    await screen.findByText(/지도 렌더러\(WebGL\)를 사용할 수 없습니다/);
+    // The deployment's own text ('© OpenStreetMap') names neither link; the line still does.
+    const notice = screen.getByText(/© OpenStreetMap/);
+    expect(notice).toHaveTextContent('https://www.openstreetmap.org/copyright');
+    expect(notice).toHaveTextContent('https://opendatacommons.org/licenses/odbl/1-0/');
+    view.unmount();
   });
 
   it('reports invalid geometry instead of drawing it', async () => {

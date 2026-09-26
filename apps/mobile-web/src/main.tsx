@@ -64,6 +64,14 @@ const CoursePage = lazy(() =>
 const SharedCoursePage = lazy(() =>
   import('./shared-course-page').then((module) => ({ default: module.SharedCoursePage })),
 );
+// M0-06b-odbl: the public map-data licence page. No session is read on it.
+const MapDataLicencePage = lazy(() =>
+  import('@workout/modules-courses/map-data-licence').then((module) => ({
+    default: module.MapDataLicenceView,
+  })),
+);
+const mapDataLicenceScreen =
+  location.pathname === '/map-data-licence' || location.pathname === '/map-data-licence/';
 // M2-01k-o: the recipient's screen of a view-only link. Before anything renders, the page
 // stops sending a referrer and asks not to be indexed (§3 B, R7); this shell has no server
 // to send those as headers. The token stays in the fragment until "코스 보기".
@@ -123,6 +131,10 @@ createRoot(root).render(
       {sharedCourseScreen ? (
         <Suspense fallback={<p role="status">공유된 코스 화면 준비 중</p>}>
           <SharedCoursePage />
+        </Suspense>
+      ) : mapDataLicenceScreen ? (
+        <Suspense fallback={<p role="status">데이터 라이선스 화면 준비 중</p>}>
+          <MapDataLicencePage />
         </Suspense>
       ) : integratedProposalCandidateId?.success ? (
         <Suspense fallback={<p role="status">통합 후보 검토 화면 준비 중</p>}>

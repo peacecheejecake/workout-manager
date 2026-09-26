@@ -60,6 +60,18 @@ export {
   type TimeConditionalWays,
 } from './edge-facts.js';
 export {
+  DERIVATION_FILE,
+  ROUTING_ATTRIBUTION_FILE,
+  RoutingAttributionError,
+  derivationFileSchema,
+  derivationFromFile,
+  renderRoutingAttribution,
+  routingDataDisclosure,
+  verifyRoutingGraphAttribution,
+  type DerivationFile,
+  type RoutingAttributionFacts,
+} from './odbl-disclosure.js';
+export {
   RoutingRequestError,
   WalkingRouteService,
   type WalkingRouteComputation,

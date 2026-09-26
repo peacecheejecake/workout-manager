@@ -41,6 +41,7 @@ import {
 } from './course-out-and-back';
 import { isOutAndBack } from './out-and-back';
 import { WaypointListEditor } from './course-waypoint-list';
+import { RouteDataNotice } from './route-data-notice';
 import styles from './courses.module.css';
 
 /**
@@ -789,6 +790,7 @@ export function CourseEditor({
                 </li>
               ))}
             </ul>
+            <RouteDataNotice />
           </div>
         ) : null}
         {picked ? (
@@ -937,6 +939,7 @@ export function RouteReviewSummary({ route }: { readonly route: ComputedDraftRou
         이 거리는 경로 계산 엔진의 예상값입니다. 기기 보고 거리·GPS 재계산 거리·저장되는 계획 선
         길이와 다른 값입니다.
       </p>
+      <RouteDataNotice />
       {route.warnings.length > 0 ? (
         <ul aria-label="경로 계산 경고">
           {route.warnings.map((warning) => (

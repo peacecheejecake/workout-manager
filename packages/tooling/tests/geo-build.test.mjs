@@ -3,12 +3,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  basemapWorkRootFrom,
   parseArguments,
   pruneDeployments,
   publishStagedBuild,
   verifyStagedBuild,
   withDistributionLock,
 } from '../../../scripts/build-basemap.mjs';
+import {
+  DISCLOSURE_FILE,
+  MAP_DATA_LICENCE_PAGE,
+  ODBL_LICENCE_URL,
+  OSM_ATTRIBUTION,
+  OSM_COPYRIGHT_URL,
+  basemapAttributionText,
+  basemapStyleAttribution,
+  createBasemapDisclosure,
+  renderBasemapAttribution,
+  resolveAcquisition,
+} from '../../../scripts/geo/odbl.mjs';
+import {
+  basemapDataDisclosureSchema,
+  basemapDisclosureFile,
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmAttribution,
+  osmCopyrightUrl,
+} from '../../contracts/src/map-data-licence.ts';
 
 const created = [];
 
@@ -33,11 +54,61 @@ async function stageComplete(root, { tileBody = 'tile' } = {}) {
     JSON.stringify({
       version: 8,
       glyphs: '/map/basemap/abc/glyphs/{fontstack}/{range}.pbf',
-      sources: { basemap: { tiles: ['/map/basemap/abc/tiles/{z}/{x}/{y}.pbf'] } },
+      sources: {
+        basemap: {
+          tiles: ['/map/basemap/abc/tiles/{z}/{x}/{y}.pbf'],
+          attribution: basemapStyleAttribution,
+        },
+      },
     }),
   );
-  await writeFile(join(root, 'tiles.json'), '{}');
-  await writeFile(join(root, 'ATTRIBUTION.txt'), 'attribution');
+  await writeFile(
+    join(root, 'tiles.json'),
+    JSON.stringify({
+      tiles: ['/map/basemap/abc/tiles/{z}/{x}/{y}.pbf'],
+      attribution: basemapStyleAttribution,
+      attributionText: basemapAttributionText,
+    }),
+  );
+  const disclosure = sampleDisclosure();
+  await writeFile(join(root, DISCLOSURE_FILE), JSON.stringify(disclosure));
+  await writeFile(join(root, 'ATTRIBUTION.txt'), renderBasemapAttribution(disclosure));
+}
+
+/** A deployment record as the build writes it, for deployment `abc`. */
+function sampleDisclosure(overrides = {}) {
+  return createBasemapDisclosure({
+    buildId: 'ec81f3367889',
+    deploymentId: 'abc',
+    region: 'Seoul (BBBike city extract)',
+    source: {
+      sha256: '7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea',
+      bytes: 51_884_841,
+      acquisition: {
+        sourceId: 'osm-extract-seoul',
+        url: 'https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf',
+        lastModified: 'Sat, 19 Sep 2026 16:20:02 GMT',
+        etag: '"2533873529"',
+        recordedBy: 'download-response',
+      },
+    },
+    alterationMethod: {
+      description: 'Layer-by-layer osmium tag filter.',
+      layerFilters: [{ layer: 'roads', expressions: ['w/highway'] }],
+      osmiumExportFormat: 'geojsonseq (--add-unique-id=type_id)',
+      tippecanoeArguments: ['--force', '--output', '<stage>/basemap.mbtiles'],
+      minzoom: 9,
+      maxzoom: 15,
+      glyphRanges: ['0-255'],
+      scripts: { 'scripts/build-basemap.mjs': 'a'.repeat(64) },
+    },
+    toolVersions: {
+      osmium: 'osmium version 1.19.1',
+      tippecanoe: 'tippecanoe v2',
+      node: 'v24.12.0',
+    },
+    ...overrides,
+  });
 }
 
 afterEach(async () => {
@@ -113,6 +184,178 @@ describe('staged build verification', () => {
       JSON.stringify({ version: 8, sprite: '/\\outside.example/sprite' }),
     );
     await expect(verifyStagedBuild(root, 1)).rejects.toThrow('EXTERNAL_STYLE_REFERENCE');
+  });
+});
+
+/**
+ * ODbL §4.2 / §4.6 on the deployment (M0-06b-odbl): an artifact without the licence URI, a
+ * notice nobody generated from the build record, or a record of another deployment is
+ * refused before anything is published.
+ */
+describe('ODbL notice and alteration method in a staged deployment', () => {
+  const mutateJson = async (path, change) =>
+    writeFile(path, JSON.stringify(change(JSON.parse(await readFile(path, 'utf8')))));
+
+  it('names both the OSM copyright page and the licence URI in every attribution it writes', () => {
+    for (const text of [basemapStyleAttribution, basemapAttributionText]) {
+      expect(text).toContain(OSM_COPYRIGHT_URL);
+      expect(text).toContain(ODBL_LICENCE_URL);
+    }
+    const notice = renderBasemapAttribution(sampleDisclosure());
+    const [firstParagraph] = notice.split(/\n\s*\n/);
+    expect(firstParagraph).toContain(OSM_COPYRIGHT_URL);
+    expect(firstParagraph).toContain(ODBL_LICENCE_URL);
+    // The alteration method, from the record: extract, date, filters, tippecanoe, scripts.
+    expect(notice).toContain('https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf');
+    expect(notice).toContain('7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea');
+    expect(notice).toContain('Last-Modified Sat, 19 Sep 2026 16:20:02 GMT (download-response)');
+    expect(notice).toContain('layer roads: osmium tags-filter w/highway');
+    expect(notice).toContain('tippecanoe --force --output <stage>/basemap.mbtiles');
+    expect(notice).toContain(`script scripts/build-basemap.mjs SHA-256 ${'a'.repeat(64)}`);
+  });
+
+  it('agrees with the contract: the same URIs, and a record the page accepts', () => {
+    expect([OSM_COPYRIGHT_URL, ODBL_LICENCE_URL, OSM_ATTRIBUTION]).toEqual([
+      osmCopyrightUrl,
+      odblLicenceUrl,
+      osmAttribution,
+    ]);
+    expect([DISCLOSURE_FILE, MAP_DATA_LICENCE_PAGE]).toEqual([
+      basemapDisclosureFile,
+      mapDataLicencePagePath,
+    ]);
+    expect(basemapDataDisclosureSchema.parse(sampleDisclosure())).toEqual(sampleDisclosure());
+  });
+
+  it('refuses an ATTRIBUTION.txt without the licence URI', async () => {
+    const root = await workspace();
+    await stageComplete(root);
+    const path = join(root, 'ATTRIBUTION.txt');
+    await writeFile(path, (await readFile(path, 'utf8')).replaceAll(ODBL_LICENCE_URL, ''));
+    await expect(verifyStagedBuild(root, 1)).rejects.toThrow(
+      'ODBL_NOTICE_MISSING: ATTRIBUTION.txt has no ODbL 1.0 licence URI',
+    );
+  });
+
+  it('refuses a tiles.json or style source whose attribution lacks the licence URI', async () => {
+    for (const [file, change, message] of [
+      [
+        'tiles.json',
+        (json) => ({ ...json, attribution: '© OpenStreetMap contributors ' + OSM_COPYRIGHT_URL }),
+        'tiles.json attribution',
+      ],
+      [
+        'tiles.json',
+        (json) => ({ ...json, attributionText: OSM_COPYRIGHT_URL }),
+        'tiles.json attributionText',
+      ],
+      [
+        'style.json',
+        (json) => ({
+          ...json,
+          sources: { basemap: { ...json.sources.basemap, attribution: OSM_COPYRIGHT_URL } },
+        }),
+        'style.json source basemap attribution',
+      ],
+    ]) {
+      const root = await workspace();
+      await stageComplete(root);
+      await mutateJson(join(root, file), change);
+      await expect(verifyStagedBuild(root, 1), file).rejects.toThrow(
+        `ODBL_NOTICE_MISSING: ${message}`,
+      );
+    }
+  });
+
+  it('refuses a deployment without its alteration record', async () => {
+    const root = await workspace();
+    await stageComplete(root);
+    await rm(join(root, DISCLOSURE_FILE));
+    await expect(verifyStagedBuild(root, 1)).rejects.toThrow(
+      `STAGED_BUILD_INCOMPLETE: ${DISCLOSURE_FILE}`,
+    );
+  });
+
+  it('refuses a notice that is not the rendering of the record, even one that names the licence', async () => {
+    const root = await workspace();
+    await stageComplete(root);
+    const path = join(root, 'ATTRIBUTION.txt');
+    // Still carries both URIs; only a hand edit of the method below them.
+    await writeFile(path, (await readFile(path, 'utf8')).replace('w/highway', 'w/footway'));
+    await expect(verifyStagedBuild(root, 1)).rejects.toThrow('ODBL_ATTRIBUTION_STALE');
+  });
+
+  it("refuses another deployment's record", async () => {
+    const root = await workspace();
+    await stageComplete(root);
+    const foreign = sampleDisclosure({ deploymentId: 'other' });
+    await writeFile(join(root, DISCLOSURE_FILE), JSON.stringify(foreign));
+    await writeFile(join(root, 'ATTRIBUTION.txt'), renderBasemapAttribution(foreign));
+    await expect(verifyStagedBuild(root, 1)).rejects.toThrow('ODBL_DISCLOSURE_FOREIGN');
+  });
+
+  it('takes the extract date from the artifacts that recorded it, never from nowhere', () => {
+    const allowlistedUrl = 'https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf';
+    const sha256 = '7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea';
+    const reused = { sourceId: 'osm-extract-seoul', url: null, sha256, reusedFromDisk: true };
+    const downloaded = {
+      sourceId: 'osm-extract-seoul',
+      url: allowlistedUrl,
+      sha256,
+      lastModified: 'Sat, 19 Sep 2026 16:20:02 GMT',
+      etag: '"1"',
+      reusedFromDisk: false,
+    };
+    expect(
+      resolveAcquisition({ download: downloaded, record: null, earlierRuns: [], allowlistedUrl })
+        .recordedBy,
+    ).toBe('download-response');
+    const record = {
+      sourceId: 'osm-extract-seoul',
+      url: allowlistedUrl,
+      lastModified: 'D',
+      etag: null,
+    };
+    expect(
+      resolveAcquisition({ download: reused, record, earlierRuns: [], allowlistedUrl }),
+    ).toMatchObject({ lastModified: 'D', recordedBy: 'acquisition-record' });
+    const runs = [
+      { source: { ...downloaded, lastModified: 'older' } },
+      { source: { ...downloaded, sha256: 'f'.repeat(64), lastModified: 'other bytes' } },
+      { source: { ...reused } },
+    ];
+    expect(
+      resolveAcquisition({ download: reused, record: null, earlierRuns: runs, allowlistedUrl }),
+    ).toMatchObject({ lastModified: 'older', recordedBy: 'earlier-build-report' });
+    expect(
+      resolveAcquisition({ download: reused, record: null, earlierRuns: [], allowlistedUrl }),
+    ).toEqual({
+      sourceId: 'osm-extract-seoul',
+      url: allowlistedUrl,
+      lastModified: null,
+      etag: null,
+      recordedBy: 'none',
+    });
+  });
+
+  it('builds a relocated scratch deployment only outside .geo-build', async () => {
+    const shared = await workspace();
+    expect(basemapWorkRootFrom(undefined, shared)).toMatchObject({
+      workRoot: shared,
+      relocated: false,
+    });
+    const elsewhere = await workspace();
+    expect(basemapWorkRootFrom(elsewhere, shared)).toEqual({
+      workRoot: elsewhere,
+      reportPath: join(elsewhere, 'basemap-build-report.json'),
+      relocated: true,
+    });
+    expect(() => basemapWorkRootFrom(join(shared, 'inside'), shared)).toThrow(
+      'BASEMAP_WORK_ROOT_INSIDE_GEO_BUILD',
+    );
+    expect(() => basemapWorkRootFrom('relative/dir', shared)).toThrow(
+      'BASEMAP_WORK_ROOT_NOT_ABSOLUTE',
+    );
   });
 });
 

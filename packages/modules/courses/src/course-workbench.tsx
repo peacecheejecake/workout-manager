@@ -63,6 +63,7 @@ import {
 } from './course-extras';
 import { useLayoutModeFromViewport } from './course-layout';
 import { CourseMapLeaf } from './course-map-leaf';
+import { RouteDataNotice } from './route-data-notice';
 import styles from './courses.module.css';
 
 /**
@@ -718,6 +719,11 @@ function Workbench({
           계획 선 길이는 이 코스 선의 길이입니다. 기기 보고 거리·GPS 재계산 거리·경로 계산 예상
           거리와 다른 값입니다.
         </p>
+        {/* M0-06b-odbl: a line the routing graph computed carries its data's attribution. */}
+        {current.revision.generation.kind === 'routed-waypoints' ||
+        current.revision.generation.kind === 'target-distance-loop' ? (
+          <RouteDataNotice />
+        ) : null}
         <form onSubmit={submitRename}>
           <TextField
             label="코스 이름"

@@ -140,6 +140,27 @@ export function resolveSameOriginPath(
 }
 
 /**
+ * ODbL §4.2 on screen (M0-06b-odbl): the plain-text line next to the map — the one that stays
+ * when the renderer fails — always names the OSM copyright page and the ODbL 1.0 licence URI.
+ * The values equal `@workout/contracts/map-data-licence` (a test compares them); the kit keeps
+ * its own copy because it depends on no contract package.
+ */
+export const osmCopyrightUrl = 'https://www.openstreetmap.org/copyright';
+export const odblLicenceUrl = 'https://opendatacommons.org/licenses/odbl/1-0/';
+
+/**
+ * The deployment's own notice, completed with the licence notice when it lacks either link.
+ * A deployment built before the notice named the licence URI still shows it on screen; a
+ * current one already carries both and is shown as it is.
+ */
+export function withOdblNotice(attribution: string): string {
+  const text = attribution.trim();
+  if (text.includes(osmCopyrightUrl) && text.includes(odblLicenceUrl)) return text;
+  const notice = `지도 데이터 © OpenStreetMap contributors · ${osmCopyrightUrl} · ODbL 1.0 ${odblLicenceUrl}`;
+  return text === '' ? notice : `${text} · ${notice}`;
+}
+
+/**
  * Attribution shown by the renderer's own control is HTML. Only plain text and anchors
  * are allowed there: an `<img src="https://…">` inside attribution is a network request
  * that never passes through the renderer's request hook, and the installed sanitiser

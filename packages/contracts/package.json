@@ -188,6 +188,10 @@
     "./routing": {
       "types": "./src/routing.ts",
       "default": "./dist/routing.js"
+    },
+    "./map-data-licence": {
+      "types": "./src/map-data-licence.ts",
+      "default": "./dist/map-data-licence.js"
     }
   },
   "scripts": {

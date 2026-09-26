@@ -439,6 +439,10 @@ describe('waypoint editor', () => {
       { generation: routedHead },
     );
     await openCourse();
+    // M0-06b-odbl: the stored line was computed from the routing graph, so its data notice
+    // (OSM copyright, ODbL URI, the public method page) is on screen with it.
+    expect(screen.getByTestId('course-generation')).toHaveTextContent('경유지 경로 계산');
+    expect(screen.getAllByTestId('route-data-notice')).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: '경로 계산' }));
     const notice = await screen.findByTestId('graph-changed');
     expect(notice).toHaveTextContent('aaaaaaaaaaaaaaaa');

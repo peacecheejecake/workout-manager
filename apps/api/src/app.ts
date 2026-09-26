@@ -20,11 +20,13 @@ import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { TenantErasedError } from '@workout/server-persistence/database';
 import type { SharedCourseReader } from '@workout/server-persistence/course-sharing';
+import type { RoutingDataDisclosure } from '@workout/contracts/map-data-licence';
 import {
   courseSharingOff,
   registerSharedCourseRead,
   type CourseSharingConfiguration,
 } from './course-sharing.js';
+import { registerMapDataLicenceRead } from './map-data-licence-routes.js';
 import {
   consentKindSchema,
   consentSchema,
@@ -62,6 +64,11 @@ export interface ApiOptions extends ProductRepositories {
   courseSharing?: CourseSharingConfiguration;
   /** The tenantless reader behind that read. Used only while the flag is on. */
   sharedCourseReader?: SharedCourseReader;
+  /**
+   * The ODbL disclosure of the routing graph being served (M0-06b-odbl), read per request by
+   * the public `GET /bff/v1/map-data/licence`. Absent when this server computes no routes.
+   */
+  mapDataDisclosure?: () => RoutingDataDisclosure;
   close?: () => Promise<void>;
 }
 
@@ -230,13 +237,15 @@ export function createApi(options: ApiOptions): FastifyInstance {
   });
   app.get('/health', async () => ({ status: 'ok' }));
   registerGarminCallback(app, options.garmin, options.auth);
-  // M2-01k-o B: the one unauthenticated data read, outside the authenticated plugin below. It
+  // M2-01k-o B: the unauthenticated course read, outside the authenticated plugin below. It
   // is always registered so that "off" and "no such link" are the same 404.
   registerSharedCourseRead(
     app,
     options.courseSharing ?? courseSharingOff,
     options.sharedCourseReader,
   );
+  // M0-06b-odbl: the public ODbL §4.6 disclosure, also outside the authenticated plugin.
+  registerMapDataLicenceRead(app, options.mapDataDisclosure);
   if (options.identity !== undefined) {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {

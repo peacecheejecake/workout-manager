@@ -18,7 +18,9 @@ const localIdeographFontFamily = "'Noto Sans KR', 'Apple SD Gothic Neo', sans-se
 const deploymentIdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function sanitizeAttribution(value: string): string {
-  return value
+  // The on-screen notice is the first paragraph; the rest of ATTRIBUTION.txt is the ODbL 4.6
+  // alteration method (M0-06b-odbl), which the public page shows instead.
+  return (value.split(/\n\s*\n/).find((paragraph) => paragraph.trim() !== '') ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '')

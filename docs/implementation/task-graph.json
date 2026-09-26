@@ -122,8 +122,9 @@
       "title": "ODbL §4.2/§4.6 이행(라이선스 고지·파생 데이터베이스 변경 방법 공개 페이지)",
       "dependsOn": ["M2-01ay"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "사용자 결정(2026-09-26): ODbL을 먼저 이행하고 실제 호스팅은 보류한다. self-hosted-map-adr.md §6 '공개 배포 전 이행 절차'를 구현한다. (1) §4.2: 모든 OSM 파생 배포물(vector tile 배포 디렉터리의 ATTRIBUTION.txt, style/tiles.json attribution, routing graph 산출물)과 화면 표기에 ODbL 1.0 라이선스 URI(https://opendatacommons.org/licenses/odbl/1-0/)를 OSM copyright 링크와 함께 싣는다. 지도가 실패해도 남는 평문 attribution 경로와 경로 결과를 보여주는 화면(경로 응답의 OSM 귀속)도 포함한다. (2) §4.6 방식 (b): 빌드 manifest의 alterationMethod와 routing graph identity(엔진 버전·프로필 해시·추출물 URL/SHA-256·파생 단계 예: 군사 경계 barrier)를 기계적으로 모아, 배포 아티팩트 안 ATTRIBUTION.txt와 서비스의 공개(로그인 불필요) 페이지 양쪽에 게시한다. 값은 빌드 산출물에서 생성하고 손으로 적지 않는다. (3) 스크립트 본문 공개 위치처럼 정책 결정이 필요한 것은 결정하지 말고 열린 질문으로 남긴다. 법적 검토가 아니라고 명시한다. 실제 호스팅·외부 공개는 하지 않는다. 시험: 산출물에 URI가 빠지면 실패하는 시험, 공개 페이지가 인증 없이 열리고 현재 graph/tiles identity와 일치하는 시험, 변이 기록. UI 검증은 Aside → Chrome → Playwright."
+      "status": "completed",
+      "scope": "사용자 결정(2026-09-26): ODbL을 먼저 이행하고 실제 호스팅은 보류한다. self-hosted-map-adr.md §6 '공개 배포 전 이행 절차'를 구현한다. (1) §4.2: 모든 OSM 파생 배포물(vector tile 배포 디렉터리의 ATTRIBUTION.txt, style/tiles.json attribution, routing graph 산출물)과 화면 표기에 ODbL 1.0 라이선스 URI(https://opendatacommons.org/licenses/odbl/1-0/)를 OSM copyright 링크와 함께 싣는다. 지도가 실패해도 남는 평문 attribution 경로와 경로 결과를 보여주는 화면(경로 응답의 OSM 귀속)도 포함한다. (2) §4.6 방식 (b): 빌드 manifest의 alterationMethod와 routing graph identity(엔진 버전·프로필 해시·추출물 URL/SHA-256·파생 단계 예: 군사 경계 barrier)를 기계적으로 모아, 배포 아티팩트 안 ATTRIBUTION.txt와 서비스의 공개(로그인 불필요) 페이지 양쪽에 게시한다. 값은 빌드 산출물에서 생성하고 손으로 적지 않는다. (3) 스크립트 본문 공개 위치처럼 정책 결정이 필요한 것은 결정하지 말고 열린 질문으로 남긴다. 법적 검토가 아니라고 명시한다. 실제 호스팅·외부 공개는 하지 않는다. 시험: 산출물에 URI가 빠지면 실패하는 시험, 공개 페이지가 인증 없이 열리고 현재 graph/tiles identity와 일치하는 시험, 변이 기록. UI 검증은 Aside → Chrome → Playwright.",
+      "evidence": "docs/implementation/progress/M0-06b-odbl.md"
     },
     {
       "id": "M0-06c",

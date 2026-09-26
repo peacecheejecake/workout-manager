@@ -155,7 +155,7 @@ function run(command: string, args: string[]) {
 }
 async function identityWalkingRoutes(database: Database) {
   const mode = process.env['IDENTITY_E2E_ROUTING'] ?? 'fixture';
-  if (mode === 'fixture') return createFixtureWalkingRoutePort();
+  if (mode === 'fixture') return { walkingRoutes: createFixtureWalkingRoutePort() };
   if (mode !== 'graphhopper') throw new Error(`Unsupported IDENTITY_E2E_ROUTING: ${mode}`);
   const environment = { ...process.env };
   // The production limiter, on this harness's PostgreSQL (M2-01ah).
@@ -165,7 +165,11 @@ async function identityWalkingRoutes(database: Database) {
   if (routing === null)
     throw new Error('IDENTITY_E2E_ROUTING=graphhopper needs ROUTING_* settings');
   console.log(`Identity E2E routing: self-hosted engine, graph ${routing.graphBuildId}.`);
-  return routing.walkingRoutes;
+  // M0-06b-odbl: the public disclosure of the graph this harness serves.
+  return {
+    walkingRoutes: routing.walkingRoutes,
+    mapDataDisclosure: () => routing.deployments.activeDisclosure,
+  };
 }
 let started = false;
 const closers: Array<() => Promise<void>> = [];
@@ -586,7 +590,7 @@ try {
     // With IDENTITY_E2E_ROUTING=graphhopper (M2-01k) the port comes from the production
     // factory instead, through the same on-disk verification `configured.ts` uses; the
     // engine itself is started by the operator on loopback before this harness.
-    walkingRoutes: await identityWalkingRoutes(database),
+    ...(await identityWalkingRoutes(database)),
     // M2-01k-o. The privacy confirmation and the confirmed GPX, always. Link sharing is OFF
     // here exactly as in every shipped configuration, unless this run opts in with
     // IDENTITY_E2E_COURSE_SHARING=on (the test environment §8 names for the link specs).

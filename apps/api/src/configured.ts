@@ -351,7 +351,13 @@ export async function createConfiguredApi(
       },
       courseSharing,
       ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
-      ...(routing === null ? {} : { walkingRoutes: routing.walkingRoutes }),
+      ...(routing === null
+        ? {}
+        : {
+            walkingRoutes: routing.walkingRoutes,
+            // M0-06b-odbl: the public disclosure follows the ACTIVE deployment.
+            mapDataDisclosure: () => routing.deployments.activeDisclosure,
+          }),
       activityTracks: {
         tracks: createActivityTrackRepository(database),
         storage: resourceStorage,

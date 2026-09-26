@@ -779,7 +779,9 @@ rollout·swap·운영·coverage·성능 probe가 모두 그 deployment와 extrac
 ```sh
 ROOT=<절대 경로, .geo-build 밖, 영속 위치>   # M2-01ak: <main checkout>/.geo-build-routing/kr-260901
 # 1. extract: allowlist fetcher로만 받는다(redirect 불허, pin 대조).
-node -e "import('./scripts/geo/sources.mjs').then((m) => m.fetchAllowedSource({ id: 'osm-extract-south-korea', destination: '$ROOT/extract/south-korea.osm.pbf' }))"
+#    recordAcquisition(M0-06b-odbl): 응답의 Last-Modified·ETag를 extract 옆 .acquisition.json에 남긴다. build가
+#    그것을 graph의 ODbL 변경 방법 기록에 싣는다.
+node -e "import('./scripts/geo/sources.mjs').then((m) => m.fetchAllowedSource({ id: 'osm-extract-south-korea', destination: '$ROOT/extract/south-korea.osm.pbf', recordAcquisition: true }))"
 # 2. import (--replace-served-graph 없음). 하네스 잠금 안에서.
 ROUTING_GRAPH_ROOT=$ROOT ROUTING_EXTRACT_SOURCE=osm-extract-south-korea \
   node --import tsx scripts/build-routing-graph.mts --execute
@@ -833,6 +835,44 @@ M2-01ay부터 build는 **모든** graph를 pin된 extract 그대로가 아니라
   `kr-260901-m2-01ay-barriers`(`c1fa89fbaf155076`, 시간 조건 목록이 부두·승강장을 빠뜨린 판)와 `kr-260901`
   (`188b65effcc6ef5c`)은 지우지 않았고 rollback 대상으로 남는다. 엔진 메모리 예산은 새 graph에 다시 묶였다
   (`performance-budget.json`, idle 1100, 부하 peak 2100).
+
+### ODbL 고지와 변경 방법 공개 — M0-06b-odbl
+
+self-hosted-map-adr.md §6 "공개 배포 전 이행 절차"의 구현이다. **법적 검토가 아니다.** 실제 호스팅·외부 공개는 하지
+않았다. 배경 타일과 routing graph는 OSM의 파생 데이터베이스이고, §4.6은 방식 (b)(원본 extract에 적용한 변경 방법
+공개)로 이행한다.
+
+- **산출물 안.** 배경 build는 deployment마다 `odbl-disclosure.json`(build id, extract URL·SHA-256·Last-Modified와 그 출처,
+  레이어별 `osmium tags-filter`, export 형식, `tippecanoe` 인자 전체, zoom·glyph 구간, 도구 버전, build 스크립트
+  5개의 SHA-256)과 그것을 렌더한 `ATTRIBUTION.txt`를 쓴다. `ATTRIBUTION.txt`의 첫 문단이 화면 고지이고 OSM copyright
+  링크와 ODbL 1.0 URI(`https://opendatacommons.org/licenses/odbl/1-0/`)를 담는다. style·`tiles.json`의 attribution도
+  두 링크를 담는다. publish 전에 `verifyStagedBuild`가 모든 attribution의 두 URI, `ATTRIBUTION.txt` = 기록의 렌더,
+  기록의 deployment id를 확인하고 하나라도 어긋나면 게시하지 않는다(`ODBL_NOTICE_MISSING`·`ODBL_ATTRIBUTION_STALE`·
+  `ODBL_DISCLOSURE_FOREIGN`). style revision이 2로 올라 build id가 바뀐다.
+- **routing graph 안.** import는 graph 디렉터리를 hash하기 **전에** `ATTRIBUTION.txt`를 쓴다(manifest 사실 + `edge-facts/
+derivation.json`: 군사 구역 경계 차단 도구·해시·개수·파생 extract 해시, 시간 조건 way 수, 엔진·프로필·extract 해시,
+  extract 취득 기록). graph content hash가 고지를 덮으므로 나중에 고치면 graph 자체가 `GRAPH_CONTENT_CHANGED`다.
+  import 끝에 `verifyRoutingGraphAttribution`으로 확인한다.
+- **extract 날짜.** `fetchAllowedSource({ recordAcquisition: true })`가 extract 옆에 `<파일>.acquisition.json`을 남긴다.
+  배경 build는 이번 다운로드 응답 → 그 기록 → 같은 바이트를 받은 이전 build 보고서 순으로 찾고, 없으면 `null`(기록 없음)이다.
+  손으로 채우지 않는다.
+- **공개 페이지.** 두 셸의 `/map-data-licence`(로그인 불필요). 배경은 공개 정적 파일(`current.json` → deployment의
+  `odbl-disclosure.json`), graph는 API의 무인증 `GET /bff/v1/map-data/licence`(활성 deployment의 검증된 manifest·
+  derivation, blue/green 전환을 바로 따른다; 경로·호스트 없음)를 읽는다. 경로 결과 화면(검토 요약, 목표 거리 후보,
+  경로로 만든 코스 revision)에는 두 링크와 이 페이지 링크가 붙는다. 지도 옆 평문 attribution(렌더러 실패 시에도 남는
+  줄)은 deployment 문구에 두 링크가 없으면 geo-kit이 고지를 덧붙인다.
+- **배포 전 점검.** 읽기 전용이며 실패하면 exit 1이다.
+
+```sh
+node --import tsx scripts/check-odbl-artifacts.mts \
+  --basemap <dist>/<deploymentId> --graph <ROUTING_GRAPH_ROOT>/foot
+```
+
+- **이 노드 이전 산출물은 통과하지 못한다(2026-09-26 확인).** 공유 배경 deployment `ec81f3367889-mub8vb9q`와 전국 graph
+  `92e0fa5f319a41df`(`kr-260901-m2-01ay-r1`)는 둘 다 `ODBL_NOTICE_MISSING`이다. 외부 배포 전에 배경은 다시 build하고, graph는
+  새 root에 다시 import한다(graph id가 바뀌므로 M2-01ak 절차와 증거 재수집이 따른다). 그 전에도 공개 페이지는 두 산출물의
+  변경 방법을 build 기록에서 보여 주고, 산출물 안 고지가 없다고 표시한다. 전국 extract에는 취득 기록이 없어 graph의 extract
+  URL·Last-Modified는 "기록 없음"이다(다시 받거나, 결정을 받아 기록을 만든다).
 
 ### graph 교체·rollback — blue/green (M2-01k-e)
 

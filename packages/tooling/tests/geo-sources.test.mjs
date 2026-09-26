@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  acquisitionRecordPath,
   allowedSource,
   allowedSources,
   fetchAllowedSource,
+  readAcquisitionRecord,
   resolveUrl,
   verifyAllowedSourceFile,
 } from '../../../scripts/geo/sources.mjs';
@@ -125,5 +127,51 @@ describe('the data acquisition allowlist', () => {
     await expect(verifyAllowedSourceFile('graphhopper-web-jar', destination)).rejects.toThrow(
       'SOURCE_HASH_MISMATCH',
     );
+  });
+});
+
+describe('the acquisition record (M0-06b-odbl)', () => {
+  it('keeps the server date of a download beside the file, for these bytes only', async () => {
+    const fake = curl({ headers: 'last-modified: Sat, 19 Sep 2026 16:20:02 GMT\r\netag: "e1"' });
+    const destination = join(directory, 'region.osm.pbf');
+    const result = await fetchAllowedSource({
+      id: 'osm-extract-seoul',
+      destination,
+      recordAcquisition: true,
+      execute: fake.execute,
+    });
+    expect((await readdir(directory)).sort()).toEqual([
+      'region.osm.pbf',
+      'region.osm.pbf.acquisition.json',
+    ]);
+    expect(await readAcquisitionRecord(destination, result.sha256)).toEqual({
+      sourceId: 'osm-extract-seoul',
+      url: 'https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf',
+      lastModified: 'Sat, 19 Sep 2026 16:20:02 GMT',
+      etag: '"e1"',
+    });
+    // Other bytes under the same name are not what the record describes.
+    expect(await readAcquisitionRecord(destination, '0'.repeat(64))).toBeNull();
+  });
+
+  it('writes no record unless asked, and refuses one that names a URL off the allowlist', async () => {
+    const destination = join(directory, 'region.osm.pbf');
+    const result = await fetchAllowedSource({
+      id: 'osm-extract-seoul',
+      destination,
+      execute: curl().execute,
+    });
+    expect(await readdir(directory)).toEqual(['region.osm.pbf']);
+    expect(await readAcquisitionRecord(destination, result.sha256)).toBeNull();
+    await writeFile(
+      acquisitionRecordPath(destination),
+      JSON.stringify({
+        sourceId: 'osm-extract-seoul',
+        url: 'https://elsewhere.example/Seoul.osm.pbf',
+        sha256: result.sha256,
+        lastModified: 'Mon, 01 Jan 2024 00:00:00 GMT',
+      }),
+    );
+    expect(await readAcquisitionRecord(destination, result.sha256)).toBeNull();
   });
 });

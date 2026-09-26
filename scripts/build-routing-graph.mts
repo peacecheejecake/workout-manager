@@ -27,23 +27,29 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ExtractAcquisition } from '../packages/contracts/src/map-data-licence.js';
 import {
+  DERIVATION_FILE,
   EDGE_FACTS_DIRECTORY,
+  ROUTING_ATTRIBUTION_FILE,
   ROUTING_GRAPH_MANIFEST_FILE,
   TIME_CONDITIONAL_WAYS_FILE,
+  derivationFileSchema,
   graphBuildIdFromManifest,
   graphEncodedValueNames,
   hashGraphDirectory,
   loadVerifiedRoutingGraph,
   readGraphProperties,
+  renderRoutingAttribution,
   routingGraphManifestSchema,
   timeConditionalKeys,
   timeConditionalWaysSchema,
+  verifyRoutingGraphAttribution,
   type RoutingGraphManifest,
   type TimeConditionalWays,
 } from '../packages/server/integrations/src/routing/index.js';
 // The allowlist is the only way data acquisition happens; it takes ids, never URLs.
-import { verifyAllowedSourceFile } from './geo/sources.mjs';
+import { allowedSource, readAcquisitionRecord, verifyAllowedSourceFile } from './geo/sources.mjs';
 import {
   graphhopperJavaArguments,
   graphhopperToolJavaArguments,
@@ -56,9 +62,31 @@ const servingConfigSource = join(repositoryRoot, 'scripts/geo/graphhopper-foot-s
 const militaryBarriersTool = join(repositoryRoot, 'scripts/geo/MilitaryPerimeterBarriers.java');
 /**
  * How the imported data was derived from the pinned extract (M2-01ay), inside `edge-facts`, so the
- * graph content hash covers it.
+ * graph content hash covers it. Defined beside the disclosure that reads it (M0-06b-odbl).
  */
-export const DERIVATION_FILE = 'derivation.json';
+export { DERIVATION_FILE };
+
+/**
+ * Where an extract on disk came from, from the build artifacts only (M0-06b-odbl): the record
+ * the allowlist downloader left beside it when it describes these bytes, otherwise the
+ * allowlisted URL with no date. A date is never filled in by hand.
+ */
+export async function extractAcquisition(
+  sourceId: string,
+  path: string,
+  sha256: string,
+): Promise<ExtractAcquisition> {
+  const record = await readAcquisitionRecord(path, sha256);
+  if (record !== null && record.sourceId === sourceId)
+    return { ...record, recordedBy: 'acquisition-record' };
+  return {
+    sourceId,
+    url: allowedSource(sourceId).url,
+    lastModified: null,
+    etag: null,
+    recordedBy: 'none',
+  };
+}
 /** The PBF header options a derived extract keeps from its source (GraphHopper's road-data date). */
 const KEPT_HEADER_OPTIONS = [
   'osmosis_replication_timestamp',
@@ -598,6 +626,11 @@ export async function importRoutingGraph(options: {
   readonly ports?: EnginePorts;
   /** Engine heap for the import; defaults to the selected extract's (`routingExtract`). */
   readonly heapMegabytes?: number;
+  /**
+   * Where the extract came from (M0-06b-odbl), recorded in the derivation and in the graph's
+   * ODbL notice. Without it the notice says the URL and date were not recorded.
+   */
+  readonly source?: ExtractAcquisition;
 }): Promise<RoutingGraphManifest> {
   await rm(options.graphDirectory, { recursive: true, force: true });
   await mkdir(options.graphDirectory, { recursive: true });
@@ -671,6 +704,7 @@ export async function importRoutingGraph(options: {
       });
       derivation.timeConditionalWays = list.wayIds.length;
     }
+    if (options.source !== undefined) derivation.source = options.source;
     await mkdir(join(options.graphDirectory, EDGE_FACTS_DIRECTORY), { recursive: true });
     await writeFile(
       join(options.graphDirectory, EDGE_FACTS_DIRECTORY, DERIVATION_FILE),
@@ -687,6 +721,23 @@ export async function importRoutingGraph(options: {
   )
     throw new Error('GRAPH_PROPERTIES_DISAGREE_WITH_ENGINE');
   if (!info.profiles.includes('foot')) throw new Error('ENGINE_PROFILE_MISSING');
+
+  // ODbL §4.2/§4.6 (M0-06b-odbl): the notice and alteration method go INTO the graph directory
+  // before it is hashed, rendered from the facts the manifest below records and the derivation
+  // file just written — so the content hash covers the notice.
+  await writeRoutingGraphAttribution(options.graphDirectory, {
+    engine: 'graphhopper',
+    engineVersion: info.version,
+    engineArtifactSha256: options.engineArtifactSha256,
+    profileId: 'foot-v1',
+    profileConfigSha256: options.profileConfigSha256,
+    profileName: 'foot',
+    extractSha256: options.extractSha256,
+    extractRegion: options.extract?.region ?? routingExtract.region,
+    extractByteLength: options.extractByteLength,
+    graphImportedAt: properties.graphImportedAt,
+    roadDataAt: properties.roadDataAt,
+  });
 
   const graphContentSha256 = await hashGraphDirectory(options.graphDirectory);
   const manifest: RoutingGraphManifest = routingGraphManifestSchema.parse({
@@ -710,7 +761,33 @@ export async function importRoutingGraph(options: {
     join(options.graphDirectory, ROUTING_GRAPH_MANIFEST_FILE),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
+  // The same check a distribution runs: the notice is there and is what the manifest renders to.
+  await verifyRoutingGraphAttribution(options.graphDirectory);
   return manifest;
+}
+
+/**
+ * Write `ATTRIBUTION.txt` into a graph directory from `facts` and the directory's own
+ * derivation record (M0-06b-odbl). Exported for the build's tests.
+ */
+export async function writeRoutingGraphAttribution(
+  graphDirectory: string,
+  facts: Parameters<typeof renderRoutingAttribution>[0],
+): Promise<void> {
+  let derivation = null;
+  try {
+    derivation = derivationFileSchema.parse(
+      JSON.parse(
+        await readFile(join(graphDirectory, EDGE_FACTS_DIRECTORY, DERIVATION_FILE), 'utf8'),
+      ),
+    );
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+  await writeFile(
+    join(graphDirectory, ROUTING_ATTRIBUTION_FILE),
+    renderRoutingAttribution(facts, derivation),
+  );
 }
 
 /**
@@ -835,6 +912,7 @@ async function main() {
     extractSha256,
     profileConfigSha256,
     extractByteLength,
+    source: await extractAcquisition(routingExtract.sourceId, extractPath, extractSha256),
   });
   console.log(
     JSON.stringify({

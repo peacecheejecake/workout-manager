@@ -19,19 +19,73 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { fetchAllowedSource, sha256File } from './geo/sources.mjs';
+import { realpathSync } from 'node:fs';
+import {
+  allowedSource,
+  fetchAllowedSource,
+  readAcquisitionRecord,
+  sha256File,
+} from './geo/sources.mjs';
 import { drawCircle, encodePng } from './geo/png.mjs';
 import { assertSelfHostedStyle, createBasemapStyle, fontStack } from './geo/style.mjs';
+import {
+  DISCLOSURE_FILE,
+  assertOdblNotice,
+  basemapAttributionText,
+  basemapStyleAttribution,
+  createBasemapDisclosure,
+  renderBasemapAttribution,
+  resolveAcquisition,
+} from './geo/odbl.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
-const workRoot = join(repositoryRoot, '.geo-build');
-const reportPath = join(
+const sharedWorkRoot = join(repositoryRoot, '.geo-build');
+const canonicalReportPath = join(
   repositoryRoot,
   'docs/implementation/research/self-hosted-basemap-build.json',
 );
+
+/**
+ * Where a build reads its extract and writes its deployment (M0-06b-odbl).
+ *
+ * Unset: the shared `.geo-build`, and the committed build report — as before.
+ * `BASEMAP_WORK_ROOT=<absolute directory outside .geo-build>`: a separate build whose
+ * deployment, staging area and report all stay in that directory, so a scratch build can
+ * never replace the shared deployment or rewrite the committed report.
+ *
+ * @param {string | undefined} value
+ * @param {string} [shared]
+ */
+export function basemapWorkRootFrom(value, shared = sharedWorkRoot) {
+  if (value === undefined || value === '')
+    return { workRoot: shared, reportPath: canonicalReportPath, relocated: false };
+  if (!isAbsolute(value)) throw new Error('BASEMAP_WORK_ROOT_NOT_ABSOLUTE');
+  const target = realNearest(resolve(value)).toLowerCase();
+  const sharedReal = realNearest(resolve(shared)).toLowerCase();
+  if (target === sharedReal || target.startsWith(`${sharedReal}${sep}`))
+    throw new Error('BASEMAP_WORK_ROOT_INSIDE_GEO_BUILD: leave it unset for .geo-build');
+  const workRoot = resolve(value);
+  return { workRoot, reportPath: join(workRoot, 'basemap-build-report.json'), relocated: true };
+}
+
+/** `path` with its nearest existing ancestor resolved through symbolic links. */
+function realNearest(/** @type {string} */ path) {
+  const missing = [];
+  let existing = path;
+  for (;;) {
+    try {
+      return join(realpathSync(existing), ...missing.reverse());
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return path;
+      missing.push(basename(existing));
+      existing = parent;
+    }
+  }
+}
 
 /** Seoul city extract: the smallest permitted region that still exercises Korean data. */
 const region = {
@@ -43,11 +97,10 @@ const region = {
   maxzoom: 15,
 };
 
-const attribution =
-  '지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · <a href="https://www.openstreetmap.org/copyright">라이선스</a>';
+/** ODbL §4.2: the OSM copyright link and the licence URI (M0-06b-odbl, scripts/geo/odbl.mjs). */
+const attribution = basemapStyleAttribution;
 /** Same obligation without markup, for surfaces that render text rather than HTML. */
-const attributionText =
-  '지도 데이터 © OpenStreetMap contributors (ODbL 1.0) · 자체 생성 타일 · https://www.openstreetmap.org/copyright';
+const attributionText = basemapAttributionText;
 
 /** Layer name -> osmium tags-filter expressions. One extract pass per rendered layer. */
 const layerFilters = [
@@ -232,6 +285,7 @@ export async function verifyStagedBuild(stagingRoot, tileCount) {
     'style.json',
     'tiles.json',
     'ATTRIBUTION.txt',
+    DISCLOSURE_FILE,
     'sprite.json',
     'sprite.png',
     'sprite@2x.json',
@@ -244,6 +298,55 @@ export async function verifyStagedBuild(stagingRoot, tileCount) {
     const info = await stat(join(stagingRoot, entry)).catch(() => null);
     if (!info?.isFile() || info.size === 0) throw new Error(`STAGED_BUILD_INCOMPLETE: ${entry}`);
   }
+  await verifyOdblArtifacts(stagingRoot, style);
+}
+
+/**
+ * ODbL §4.2 and §4.6 on a staged deployment (M0-06b-odbl): every artifact that carries an
+ * attribution names both the OSM copyright page and the licence URI, and `ATTRIBUTION.txt`
+ * is exactly the rendering of the deployment's own `odbl-disclosure.json`, which describes
+ * this deployment. A hand-edited or stale notice is refused like a missing one.
+ *
+ * @param {string} stagingRoot @param {Record<string, unknown>} style
+ */
+export async function verifyOdblArtifacts(stagingRoot, style) {
+  const sources = style.sources;
+  const styleSources =
+    sources !== null && typeof sources === 'object' ? Object.entries(sources) : [];
+  if (styleSources.length === 0) throw new Error('ODBL_NOTICE_MISSING: style.json has no source');
+  for (const [name, source] of styleSources)
+    assertOdblNotice(
+      source !== null && typeof source === 'object' ? Reflect.get(source, 'attribution') : null,
+      `style.json source ${name} attribution`,
+    );
+  const tileJson = JSON.parse(await readFile(join(stagingRoot, 'tiles.json'), 'utf8'));
+  assertOdblNotice(tileJson?.attribution, 'tiles.json attribution');
+  assertOdblNotice(tileJson?.attributionText, 'tiles.json attributionText');
+  const notice = await readFile(join(stagingRoot, 'ATTRIBUTION.txt'), 'utf8');
+  assertOdblNotice(notice, 'ATTRIBUTION.txt');
+  // The shells show only the first paragraph on screen; it must carry the notice by itself.
+  assertOdblNotice(notice.split(/\n\s*\n/)[0], 'ATTRIBUTION.txt first paragraph');
+  const disclosure = JSON.parse(await readFile(join(stagingRoot, DISCLOSURE_FILE), 'utf8'));
+  let rendered;
+  try {
+    rendered = renderBasemapAttribution(disclosure);
+  } catch {
+    throw new Error(`ODBL_DISCLOSURE_INVALID: ${DISCLOSURE_FILE} cannot be rendered`);
+  }
+  if (rendered !== notice)
+    throw new Error(
+      `ODBL_ATTRIBUTION_STALE: ATTRIBUTION.txt is not the rendering of ${DISCLOSURE_FILE}`,
+    );
+  const tiles = Array.isArray(tileJson?.tiles) ? tileJson.tiles : [];
+  if (
+    typeof disclosure.deploymentId !== 'string' ||
+    tiles.length === 0 ||
+    !tiles.every(
+      (/** @type {unknown} */ url) =>
+        typeof url === 'string' && url.includes(`/${disclosure.deploymentId}/`),
+    )
+  )
+    throw new Error(`ODBL_DISCLOSURE_FOREIGN: ${DISCLOSURE_FILE} describes another deployment`);
 }
 
 /**
@@ -372,6 +475,7 @@ async function main() {
   }
   if (process.env.CI) throw new Error('Basemap builds are disabled in CI');
 
+  const { workRoot, reportPath, relocated } = basemapWorkRootFrom(process.env.BASEMAP_WORK_ROOT);
   const sourceDirectory = join(workRoot, 'source');
   const stageDirectory = join(workRoot, 'stage');
   await mkdir(stageDirectory, { recursive: true });
@@ -392,7 +496,12 @@ async function main() {
   } else {
     const started = performance.now();
     download = {
-      ...(await fetchAllowedSource({ id: 'osm-extract-seoul', destination: extractPath })),
+      ...(await fetchAllowedSource({
+        id: 'osm-extract-seoul',
+        destination: extractPath,
+        // Kept beside the file, so a later --reuse build still knows the server's date.
+        recordAcquisition: true,
+      })),
       reusedFromDisk: false,
     };
     steps.push({
@@ -473,7 +582,8 @@ async function main() {
         // The serving prefix is baked into style.json and tiles.json, so content built
         // for a different prefix must not be able to claim the same immutable path.
         basePath: options.basePath,
-        styleRevision: 1,
+        // 2: the attribution names the ODbL licence URI (M0-06b-odbl).
+        styleRevision: 2,
       }),
     )
     .digest('hex')
@@ -542,17 +652,44 @@ async function main() {
       2,
     )}\n`,
   );
-  await writeFile(
-    join(stagingRoot, 'ATTRIBUTION.txt'),
-    [
-      'Background map tiles built by Workout Manager from an OpenStreetMap extract.',
-      'Map data © OpenStreetMap contributors, licensed ODbL 1.0 (https://www.openstreetmap.org/copyright).',
-      'Produced tiles are a derived database; ODbL attribution and share-alike apply to redistribution.',
-      'Label glyphs: Noto Sans, SIL Open Font License 1.1 (see glyphs/OFL.txt).',
-      'Sprite icons generated by this repository; no third-party asset.',
-      '',
-    ].join('\n'),
-  );
+  // ODbL 4.6: the method used to alter the source database, recorded per run so a
+  // distribution can publish it instead of the derived database itself. The same object
+  // goes into the report and into the deployment's own disclosure (M0-06b-odbl).
+  const alterationMethod = {
+    description:
+      'Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.',
+    layerFilters,
+    osmiumExportFormat: 'geojsonseq (--add-unique-id=type_id)',
+    // The full invocation, with the machine-specific staging directory replaced by a
+    // placeholder so the record is reproducible rather than local.
+    tippecanoeArguments: tippecanoeArguments.map((argument) =>
+      argument.split(stageDirectory).join('<stage>'),
+    ),
+    tippecanoeLayers: layerInputs.map(({ layer }) => layer),
+    minzoom: region.minzoom,
+    maxzoom: region.maxzoom,
+    glyphRanges,
+    scripts: await scriptHashes(),
+  };
+  const disclosure = createBasemapDisclosure({
+    buildId,
+    deploymentId,
+    region: region.name,
+    source: {
+      sha256: download.sha256,
+      bytes: download.bytes,
+      acquisition: resolveAcquisition({
+        download,
+        record: await readAcquisitionRecord(extractPath, download.sha256),
+        earlierRuns: await earlierReportRuns(reportPath),
+        allowlistedUrl: allowedSource('osm-extract-seoul').url,
+      }),
+    },
+    alterationMethod,
+    toolVersions,
+  });
+  await writeFile(join(stagingRoot, DISCLOSURE_FILE), `${JSON.stringify(disclosure, null, 2)}\n`);
+  await writeFile(join(stagingRoot, 'ATTRIBUTION.txt'), renderBasemapAttribution(disclosure));
 
   // Verify the staged build before anything deployed is touched.
   await verifyStagedBuild(stagingRoot, pyramid.tileCount);
@@ -567,8 +704,9 @@ async function main() {
   const report = {
     schemaVersion: 1,
     executedAt: new Date().toISOString(),
-    scope:
-      'M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.',
+    scope: relocated
+      ? 'Scratch build into BASEMAP_WORK_ROOT (not the shared .geo-build deployment). Not a production deployment and not an operations acceptance.'
+      : 'M2-01d preparation build on a developer machine. Not a production deployment and not an operations acceptance.',
     buildId,
     deploymentId,
     basePath: options.basePath,
@@ -589,24 +727,8 @@ async function main() {
       glyphLicenseSha256: glyphLicense.sha256,
       mbtilesMetadataKeys: Object.keys(pyramid.metadata).sort(),
     },
-    // ODbL 4.6: the method used to alter the source database, recorded per run so a
-    // distribution can publish it instead of the derived database itself.
-    alterationMethod: {
-      description:
-        'Layer-by-layer osmium tag filter and GeoJSONSeq export, then tippecanoe into MBTiles, then a static XYZ pyramid. Applied to the extract identified in `source`.',
-      layerFilters,
-      osmiumExportFormat: 'geojsonseq (--add-unique-id=type_id)',
-      // The full invocation, with the machine-specific staging directory replaced by a
-      // placeholder so the record is reproducible rather than local.
-      tippecanoeArguments: tippecanoeArguments.map((argument) =>
-        argument.split(stageDirectory).join('<stage>'),
-      ),
-      tippecanoeLayers: layerInputs.map(({ layer }) => layer),
-      minzoom: region.minzoom,
-      maxzoom: region.maxzoom,
-      glyphRanges,
-      scripts: await scriptHashes(),
-    },
+    alterationMethod,
+    odblDisclosure: { file: DISCLOSURE_FILE, acquisition: disclosure.source.acquisition },
     licenses: {
       osmData: 'ODbL-1.0',
       glyphs: 'OFL-1.1',
@@ -624,7 +746,7 @@ async function main() {
       'Build feasibility, size and cost evidence only. Cartographic quality, Korean pedestrian coverage and production serving are not established here.',
   };
 
-  await writeReport(report);
+  await writeReport(reportPath, report);
   console.log(
     JSON.stringify({
       buildId,
@@ -642,7 +764,13 @@ async function main() {
  * the code that produced it rather than to a description of it.
  */
 async function scriptHashes() {
-  const files = ['build-basemap.mjs', 'geo/style.mjs', 'geo/sources.mjs', 'geo/png.mjs'];
+  const files = [
+    'build-basemap.mjs',
+    'geo/style.mjs',
+    'geo/sources.mjs',
+    'geo/png.mjs',
+    'geo/odbl.mjs',
+  ];
   /** @type {Record<string, string>} */
   const hashes = {};
   for (const file of files) {
@@ -667,8 +795,29 @@ async function commandVersion(command, args) {
   return output.split('\n')[0].trim() || null;
 }
 
-/** @param {Record<string, unknown>} report */
-async function writeReport(report) {
+/**
+ * Every run a build report holds, oldest first: the canonical committed report (read
+ * only) and, for a relocated build, its own report. Used to find the download that
+ * produced a reused extract.
+ * @param {string} reportPath
+ */
+async function earlierReportRuns(reportPath) {
+  /** @type {unknown[]} */
+  const runs = [];
+  for (const path of new Set([canonicalReportPath, reportPath])) {
+    try {
+      const { previousRuns: history = [], ...lastRun } = JSON.parse(await readFile(path, 'utf8'));
+      if (Array.isArray(history)) runs.push(...history);
+      runs.push(lastRun);
+    } catch {
+      // No report yet: nothing recorded there.
+    }
+  }
+  return runs;
+}
+
+/** @param {string} reportPath @param {Record<string, unknown>} report */
+async function writeReport(reportPath, report) {
   const previousRuns = [];
   try {
     const previous = JSON.parse(await readFile(reportPath, 'utf8'));

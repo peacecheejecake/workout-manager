@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -370,6 +370,8 @@ describe('target-distance candidates on screen', () => {
     expect(set).toHaveTextContent('feedfacefeedface');
     expect(screen.getByTestId('candidate-duplicates')).toHaveTextContent('1');
     expect(screen.getByTestId('evaluation-version')).toHaveTextContent('2');
+    // M0-06b-odbl: candidates are routing-graph output and carry its data notice.
+    expect(within(set).getByTestId('route-data-notice')).toHaveTextContent('ODbL 1.0');
     // Four proposals on screen, nothing written.
     expect(patches(request)).toHaveLength(0);
     expect(screen.queryByTestId('candidate-review')).toBeNull();

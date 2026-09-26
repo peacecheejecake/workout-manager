@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,10 +7,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { realpathSync } from 'node:fs';
 
 import {
+  DERIVATION_FILE,
+  extractAcquisition,
   fullImportRefusal,
   routingExtractFrom,
   routingGraphRootFrom,
+  writeRoutingGraphAttribution,
 } from '../../../scripts/build-routing-graph.mts';
+import {
+  EDGE_FACTS_DIRECTORY,
+  ROUTING_ATTRIBUTION_FILE,
+  ROUTING_GRAPH_MANIFEST_FILE,
+  hashGraphDirectory,
+  verifyRoutingGraphAttribution,
+} from '../../server/integrations/src/routing/index.ts';
 import { allowedSource } from '../../../scripts/geo/sources.mjs';
 
 /**
@@ -178,5 +188,119 @@ describe('ROUTING_GRAPH_ROOT is judged by where it leads (M2-01ak review round 1
     expect(routingGraphRootFrom(sibling, geoBuild)).toBe(sibling);
     await mkdir(sibling, { recursive: true });
     expect(routingGraphRootFrom(sibling, geoBuild)).toBe(sibling);
+  });
+});
+
+/**
+ * M0-06b-odbl: the build writes the graph's ODbL notice and alteration method INTO the graph
+ * directory before it is hashed, from the facts the manifest records and the derivation record
+ * — and checks the result the way a distribution would.
+ */
+describe('the routing graph ODbL notice', () => {
+  const facts = {
+    engine: 'graphhopper',
+    engineVersion: '10.0',
+    engineArtifactSha256: 'e5a1268f2cd6b1e4ef849b9237e98b651bf3c31adf4a3766c6d9f5feb241bb41',
+    profileId: 'foot-v1',
+    profileConfigSha256: '9b6fa80a6aa83f49ac0ebc115871858864aa431602b3d30e4c43d2917364ef8c',
+    profileName: 'foot',
+    extractSha256: '848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b',
+    extractRegion: 'South Korea (Geofabrik extract 2026-09-01)',
+    extractByteLength: 286_403_403,
+    graphImportedAt: '2026-09-26T07:03:27.000Z',
+    roadDataAt: '2026-09-01T20:20:50.000Z',
+  };
+  const derivation = {
+    schemaVersion: 1,
+    extractSha256: facts.extractSha256,
+    osmium: 'osmium version 1.19.1',
+    militaryPerimeterBarriers: {
+      tool: 'scripts/geo/MilitaryPerimeterBarriers.java',
+      toolSha256: 'f5c555245e3c57ce24d3038c7943c07cdd54b0119d625b51d22efaa07a7954a9',
+      summary: { waysGivenBarriers: 2764, barrierNodes: 4220 },
+      changesSha256: 'cda8e30e28134622c183fa8cab8d8b4893994b4bdeb3cc0cda54b4f3e76fbec5',
+      derivedExtractSha256: '623b6705a8985b0a507471598ae5236b059e11fb9b6fdd5586acd894b4b5a48a',
+      extractMaxNodeId: 14_140_850_977,
+      keptHeaderOptions: ['timestamp=2026-09-01T20:20:50Z'],
+    },
+    timeConditionalWays: 77,
+    source: {
+      sourceId: 'osm-extract-south-korea',
+      url: 'https://download.geofabrik.de/asia/south-korea-260901.osm.pbf',
+      lastModified: 'Wed, 02 Sep 2026 05:13:33 GMT',
+      etag: null,
+      recordedBy: 'acquisition-record',
+    },
+  };
+
+  /** A graph directory as the import leaves it, then the notice, the hash and the manifest. */
+  async function builtGraph({ withNotice = true } = {}) {
+    const graph = join(await directory(), 'foot');
+    await mkdir(join(graph, EDGE_FACTS_DIRECTORY), { recursive: true });
+    await writeFile(join(graph, 'edges'), 'edge-bytes');
+    await writeFile(join(graph, EDGE_FACTS_DIRECTORY, DERIVATION_FILE), JSON.stringify(derivation));
+    if (withNotice) await writeRoutingGraphAttribution(graph, facts);
+    await writeFile(
+      join(graph, ROUTING_GRAPH_MANIFEST_FILE),
+      JSON.stringify({
+        schemaVersion: 1,
+        ...facts,
+        graphContentSha256: await hashGraphDirectory(graph),
+        builtAt: '2026-09-26T07:03:33.885Z',
+      }),
+    );
+    return graph;
+  }
+
+  it('writes a notice the distribution check accepts, covered by the graph hash', async () => {
+    const graph = await builtGraph();
+    await expect(verifyRoutingGraphAttribution(graph)).resolves.toBeUndefined();
+    const notice = await readFile(join(graph, ROUTING_ATTRIBUTION_FILE), 'utf8');
+    const [firstParagraph] = notice.split(/\n\s*\n/);
+    expect(firstParagraph).toContain('https://www.openstreetmap.org/copyright');
+    expect(firstParagraph).toContain('https://opendatacommons.org/licenses/odbl/1-0/');
+    // The alteration method, from the derivation record: the military perimeter barriers.
+    expect(notice).toContain('scripts/geo/MilitaryPerimeterBarriers.java SHA-256 f5c55524');
+    expect(notice).toContain('derived extract SHA-256 623b6705');
+    expect(notice).toContain('https://download.geofabrik.de/asia/south-korea-260901.osm.pbf');
+    expect(notice).toContain('Last-Modified Wed, 02 Sep 2026 05:13:33 GMT (acquisition-record)');
+    expect(notice).toContain('graphhopper 10.0');
+    expect(notice).toContain(facts.profileConfigSha256);
+    // Editing the notice afterwards changes the graph: it no longer verifies at all.
+    await writeFile(join(graph, ROUTING_ATTRIBUTION_FILE), notice.replace('10.0', '9.0'));
+    await expect(verifyRoutingGraphAttribution(graph)).rejects.toThrow('GRAPH_CONTENT_CHANGED');
+  });
+
+  it('fails the distribution check for a graph built without the notice', async () => {
+    const graph = await builtGraph({ withNotice: false });
+    await expect(verifyRoutingGraphAttribution(graph)).rejects.toThrow('ODBL_NOTICE_MISSING');
+  });
+
+  it('records the extract acquisition only from the record the downloader left', async () => {
+    const root = await directory();
+    const extract = join(root, 'south-korea.osm.pbf');
+    await writeFile(extract, 'extract-bytes');
+    const sha256 = 'a'.repeat(64);
+    expect(await extractAcquisition('osm-extract-south-korea', extract, sha256)).toEqual({
+      sourceId: 'osm-extract-south-korea',
+      url: allowedSource('osm-extract-south-korea').url,
+      lastModified: null,
+      etag: null,
+      recordedBy: 'none',
+    });
+    await writeFile(
+      `${extract}.acquisition.json`,
+      JSON.stringify({
+        sourceId: 'osm-extract-south-korea',
+        url: allowedSource('osm-extract-south-korea').url,
+        sha256,
+        lastModified: 'Wed, 02 Sep 2026 05:13:33 GMT',
+        etag: '"11122b4b-65a7918cd6a87"',
+      }),
+    );
+    expect(await extractAcquisition('osm-extract-south-korea', extract, sha256)).toMatchObject({
+      lastModified: 'Wed, 02 Sep 2026 05:13:33 GMT',
+      recordedBy: 'acquisition-record',
+    });
   });
 });

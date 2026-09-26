@@ -11,7 +11,7 @@
  * selecting a vertex does not rebuild the map and a resize only resizes.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { BasemapDescriptor } from './basemap';
+import { withOdblNotice, type BasemapDescriptor } from './basemap';
 import { MapAdapterError } from './map-adapter';
 import type { MapAdapterFactory, MapAdapterFailure, MapAdapterHandle } from './map-adapter';
 import {
@@ -467,7 +467,7 @@ export function MapView({
       <p className={styles.status} role="status">
         {message}
       </p>
-      {basemap ? <p className={styles.attribution}>{basemap.attribution}</p> : null}
+      {basemap ? <p className={styles.attribution}>{withOdblNotice(basemap.attribution)}</p> : null}
       {/*
         Always available alternative: the map is never the only way to reach a vertex.
         The list is bounded — a long recorded track has tens of thousands of samples and

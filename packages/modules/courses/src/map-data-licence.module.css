@@ -1,0 +1,10 @@
+/* Hashes, URLs and tool arguments are long unbroken strings; they wrap instead of widening
+   the page, so it reflows at 320px (M0-06b-odbl). */
+.page {
+  overflow-wrap: anywhere;
+  max-inline-size: 72rem;
+}
+
+.page code {
+  font-size: 0.875em;
+}

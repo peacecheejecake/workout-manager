@@ -342,6 +342,9 @@ test('draws the stored path over the self-hosted basemap with its attribution', 
   const attribution = panel.getByText(/Background map tiles built by Workout Manager/);
   await expect(attribution).toBeVisible();
   await expect(attribution).toContainText('OpenStreetMap contributors');
+  // ODbL §4.2 (M0-06b-odbl): the copyright page and the licence URI, whatever deployment.
+  await expect(attribution).toContainText('https://www.openstreetmap.org/copyright');
+  await expect(attribution).toContainText('https://opendatacommons.org/licenses/odbl/1-0/');
   await expect(panel.getByText(/배경 지도를 불러오지 못했습니다/)).toHaveCount(0);
   await expect(panel.getByText(/WebGL/)).toHaveCount(0);
   await expect

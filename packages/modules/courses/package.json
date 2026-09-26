@@ -28,6 +28,9 @@
     "./course-new": "./src/course-new.tsx",
     "./course-disclosure": "./src/course-disclosure.tsx",
     "./course-sharing-api": "./src/course-sharing-api.ts",
-    "./course-shared-view": "./src/course-shared-view.tsx"
+    "./course-shared-view": "./src/course-shared-view.tsx",
+    "./map-data-licence": "./src/map-data-licence.tsx",
+    "./map-data-licence-api": "./src/map-data-licence-api.ts",
+    "./route-data-notice": "./src/route-data-notice.tsx"
   }
 }

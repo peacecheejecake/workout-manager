@@ -368,6 +368,19 @@ describe('blue/green graph replacement (M2-01k-e)', () => {
     expect(routing.deployments.previousGraphBuildId).toBe(switched.to);
   });
 
+  it('discloses the graph that is serving: blue, then green, then blue again (M0-06b-odbl)', async () => {
+    const fake = engines();
+    const routing = await started(fake);
+    const blueId = routing.deployments.activeGraphBuildId;
+    expect(routing.deployments.activeDisclosure.graph.graphBuildId).toBe(blueId);
+    expect(routing.deployments.activeDisclosure.extract.region).toBe('Seoul (BBBike city extract)');
+    const switched = await routing.deployments.switchTo(green(await greenGraph()));
+    expect(routing.deployments.activeDisclosure.graph.graphBuildId).toBe(switched.to);
+    expect(routing.deployments.activeDisclosure.extract.region).toBe('Seoul clip (test)');
+    await routing.deployments.rollback();
+    expect(routing.deployments.activeDisclosure.graph.graphBuildId).toBe(blueId);
+  });
+
   it('finishes a computation that started on blue on blue, even after the switch', async () => {
     const fake = engines();
     const routing = await started(fake);
