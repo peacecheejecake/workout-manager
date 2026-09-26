@@ -83,3 +83,11 @@ NULL-`sid` 세션을 재생성할 수 있는 순서 경합을 줄였다. 업그�
 전체 단위의 기본 sandbox 실행은 로컬 HTTP fixture를 여는 identity/API 시험 34건이 실패했다.
 로컬 loopback 허용 실행에서 같은 집중 시험 4파일/46건과 전체 단위 **335 files passed,
 1 skipped; 4,069 passed, 7 skipped**로 통과했다. `git diff --check`도 통과했다.
+
+세 번째 독립 phase review는 `main` `17982f2187f75384a3410663cc954307e6cd5261` →
+`phase/ext-backchannel` `188ae8f9c757489764c5d45d89ea2f0b125393c4` 전체 diff를
+Codex CLI `gpt-6-sol` high/read-only로 검토해 **APPROVE**했다. 이전 P1(7인자 함수 우회)과
+P2(이전 `sid=NULL` 세션 잔존)는 각각 **FIXED**이며 새 지적은 없다. 검토자는 실DB
+업그레이드 시험과 제공된 전체 검증 결과를 근거로 삼았고, 직접 시험을 재실행하지는 않았다.
+통제되지 않은 혼합 버전 배포의 원자성은 주장하지 않는다. 실제 Zitadel HTTPS 전파와
+계정 정지 이벤트는 `not_executed`다.

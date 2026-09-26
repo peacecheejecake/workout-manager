@@ -31,24 +31,29 @@
   가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **가로 화면에서 키보드가 입력란을 가린다**(결함 후보).
   WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 변경 후 단위·통합·빌드와
   브라우저 검증은 [진행 기록](progress/M0-06c.md)에 따로 남겼다. 수정 후 실기기 재실행은 아직 없다.
-- task-graph: M0-06b-odbl(완료), M0-06b-odbl-places(not_started), EXT-G scope에 사용자 결정 기록.
+- 당시 task-graph는 M0-06b-odbl 완료, M0-06b-odbl-places 미시작이었다. Places 후속은 아래처럼 이후 완료했고,
+  EXT-G scope의 사용자 결정은 유지한다.
 - Codex CLI `gpt-6-sol` high/read-only가 `main` 기준 `5a4dfb5c98d99e88344f920da3ab14558a762ac8`부터
   `phase/m0-06` HEAD `97aee9a84cb6abb237a57b728ec34b920a903d96`까지의 전체 diff를 최종 **APPROVE**했다.
   앞선 지적은 수정 커밋과 재검토로 닫았고, main을 해당 HEAD로 fast-forward했다. 실기기 재실행 및
   합성 HealthKit 표본·background delivery 증거는 여전히 `not_executed`다.
 
-`phase/ext-oidc`(새 main 대비 재검토 대기):
+`phase/ext-oidc`(독립 재검토 APPROVE 후 main에 fast-forward 완료):
 
 - [EXT-OIDC](progress/EXT-OIDC.md) 완료(사용자 결정: 분할). Zitadel Cloud(`personal-workout-lgn7dx.eu1.zitadel.cloud`)에 사람이
   localhost에서 실제 로그인 체크리스트를 수행하고 서버 증거로 확인. K-oidc not_executed → **partial**. HTTPS·TLS·secret manager·
   배포 환경 확인은 새 노드 **EXT-HOSTING**. 로컬 스택: `scripts/ext-oidc-local/`(`stack.sh up|down|sessions|log-check|outage-on|off|
-expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel logout은 Zitadel이 지원하지만 앱은 미구현이며,
-  사용자 결정으로 후속 `EXT-BACKCHANNEL` 노드를 추가했다.
-- 이전 main `5a4dfb5c98d99e88344f920da3ab14558a762ac8` 대비 HEAD `754f974` 전체 diff는 Codex CLI
-  `gpt-6-sol` high/read-only에서 **APPROVE**였다. M0-06 병합 뒤 새 main `97aee9a` 위로 rebase했으므로
-  현재 diff는 별도로 독립 재검토해야 한다. **재검토 APPROVE 전에는 main에 병합하지 않는다.**
+expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. 사용자 결정으로 back-channel logout 후속 노드
+  `EXT-BACKCHANNEL`을 추가했다.
+- M0-06 병합 뒤 새 main 대비 재검토가 APPROVE였고, main을 `c3455868fcc70b50b3f1e35c4bfd262fcd6a970f`로 fast-forward했다.
 
-main에는 이전 M0-06 coverage phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE)와 이번 M0-06 phase가 반영됐다.
+이후 `phase/m0-06b-odbl-places`(최종 review APPROVE, main `53563e3`)와 `phase/m2-01az`
+(최종 review APPROVE, main `17982f2`)가 차례로 반영됐다. P8 새 기준의 82쌍 재실행과 별도 채점은
+`adequate` 75.5/82이며, 과거 `failed`는 보존한다. [P8 기록](progress/M2-01az.md)을 참고한다.
+`phase/ext-backchannel`은 [별도 phase 기록](progress/EXT-BACKCHANNEL.md)의 전체 diff 검토에서
+APPROVE를 받았다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_executed`다.
+`phase/m0-06c`는 native probe 수정과 독립 재검토 중이며, 실기기 실행은 `not_executed`다.
+`phase/m2-01k`는 반응형 초안·지도 상태 수용을 보강 중이고 부모 노드는 `in_progress`다.
 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
@@ -97,20 +102,24 @@ main에는 이전 M0-06 coverage phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE)와
 
 ## 다음 작업 순서
 
-1. **EXT-OIDC phase 재검토**: rebase 뒤의 `phase/ext-oidc` 전체 diff를 새 main 대비 Codex CLI `gpt-6-sol`
-   high/read-only로 검토받고, APPROVE 뒤에만 main에 fast-forward한다. 수정하면 다시 검토한다.
-2. **ready 노드**(EXT-OIDC 병합 뒤): M0-06b-odbl-places와 EXT-BACKCHANNEL의 실행 가능한 범위를 확인한다.
-   EXT-OIDC 완료로 M2-01k의 외부 의존이 풀렸으므로 M2-01k(요구 대조·E2E·복구 등; HTTPS 행은
-   EXT-HOSTING까지 `not_executed`)를 재평가한다. P8 새 기준은 과거 판정과 분리한 후속 노드에서 다룬다.
-3. **재개 중 받은 사용자 결정**:
+1. **승인된 EXT-BACKCHANNEL 반영**: 마지막 문서 커밋까지 phase diff를 독립 재검토한 뒤 main에 fast-forward한다.
+   실제 Zitadel HTTPS logout 전파·계정 정지 이벤트는 EXT-HOSTING까지 `not_executed`다.
+2. **M0-06c 재검토**: HealthKit 수집·background 처리의 검토 지적을 수정한 phase 전체 diff를 독립 검토한다.
+   수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가
+   복구될 때까지 `not_executed`다. 제품 native host 통합은 M3-01이다.
+3. **M2-01k 계속**: 반응형 초안·선택과 지도 상태의 실행 증거를 반영했다. 차트↔지도 확대 공유 등 남은
+   실행 가능한 수용 항목을 검증하고, 실제 호스팅·실기기 행은 외부 gate로 남긴다.
+4. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
      표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
    - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
    - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06b의 실기기 성능·ODbL 외 항목.
+5. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06c 실기기 실행,
+   M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
-현재 브랜치(2026-09-27): `main` HEAD는 `97aee9a`이며 push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
+기준 스냅샷(2026-09-27): 이 후속 작업의 기준 `main` HEAD는 `17982f2`이며, 이후 결과는 재개 시
+`git log -1`로 확인한다. push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
 전국 보행 graph 최종 root `.geo-build-routing/kr-260901-m2-01ay-r1`(`92e0fa5f319a41df`), 기본 `.geo-build`는 Seoul. 오래된 root
 `kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 사용자 승인 후 삭제했다. `.claude/worktrees/`의 agent worktree에는
 이전 task의 미커밋 사본이 남아 있다(커밋 여부 대조 전이라 지우지 않았다).
