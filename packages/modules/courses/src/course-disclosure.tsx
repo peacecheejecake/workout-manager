@@ -65,7 +65,7 @@ export function readableSharingError(error: unknown): string {
     case 'COURSE_SHARE_LIMIT_REACHED':
       return `켜져 있는 링크가 너무 많습니다. 코스당 ${courseSharingLimits.activeSharesPerCourse}개, 전체 ${courseSharingLimits.activeSharesPerOwner}개까지 만들 수 있습니다.`;
     case 'COURSE_SHARE_AREA_LIFETIME_REACHED':
-      return `이 보호 구역 근처에서 만들 수 있는 링크 ${courseSharingLimits.shareLinksPerAreaLifetime}개를 모두 썼습니다. 끈 링크, 만료된 링크, 지운 뒤 다시 만든 보호 구역의 링크도 모두 셉니다. 새 보호 구역은 첫 링크 때 가까운 구역(약 1.5 km 안, 큰 구역일수록 더 멀리)이 이미 쓴 개수에서 시작합니다. 이 코스는 GPX로만 내보낼 수 있습니다.`;
+      return `이 보호 구역 근처에서 만들 수 있는 링크 ${courseSharingLimits.shareLinksPerAreaLifetime}개를 모두 썼습니다. 끈 링크, 만료된 링크, 지운 뒤 다시 만든 보호 구역의 링크도 모두 셉니다. 가까이 있는 보호 구역들(약 1.5 km 안, 큰 구역일수록 더 멀리, 지운 구역 포함)은 이 개수를 함께 씁니다. 이 코스는 GPX로만 내보낼 수 있습니다.`;
     default:
       return readableExtrasError(error);
   }
@@ -452,13 +452,12 @@ function DisclosureBody({
             <p data-testid="share-residual">
               그래서 한 보호 구역 근처에서 만들 수 있는 링크는 모두 합쳐{' '}
               {courseSharingLimits.shareLinksPerAreaLifetime}개입니다(끈 링크, 만료된 링크, 지운 뒤
-              다시 만든 보호 구역의 링크도 셉니다). 새로 만든 보호 구역은 첫 링크 때, 가까운 곳(약
-              1.5 km 안, 큰 구역일수록 더 멀리 — 3 km쯤까지)의 구역이 이미 쓴 개수에서 시작하고, 그
-              뒤로는 구역마다 따로 셉니다. 합성 코스로 한 실험에서, 한 구역의 링크{' '}
-              {courseShareMeasuredResidual.links}개를 모두 모은 사람은 집 위치를 절반의 경우{' '}
-              {courseShareMeasuredResidual.medianMeters}m 안팎까지, 열 번에 한 번은{' '}
-              {courseShareMeasuredResidual.p10Meters}m 안까지 좁혔습니다. 링크는 잘린 끝에서 코스를
-              따라 더 잘라 내므로 짧은 코스는 링크로 공유할 수 없습니다.
+              다시 만든 보호 구역의 링크도 셉니다). 가까이 있는 보호 구역들은(약 1.5 km 안, 큰
+              구역일수록 더 멀리 — 3 km쯤까지, 지운 구역도 포함) 이 개수를 함께 씁니다. 합성 코스로
+              한 실험에서, 한 구역의 링크 {courseShareMeasuredResidual.links}개를 모두 모은 사람은
+              집 위치를 절반의 경우 {courseShareMeasuredResidual.medianMeters}m 안팎까지, 열 번에 한
+              번은 {courseShareMeasuredResidual.p10Meters}m 안까지 좁혔습니다. 링크는 잘린 끝에서
+              코스를 따라 더 잘라 내므로 짧은 코스는 링크로 공유할 수 없습니다.
             </p>
           </>
         )}

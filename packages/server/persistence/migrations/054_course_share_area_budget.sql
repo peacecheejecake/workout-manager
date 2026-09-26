@@ -15,21 +15,22 @@
 --
 --   * `course_share_area_budget` — one row per protected area a link was ever cut against:
 --     the area's id, a coarse cell of its centre (the 0.01° grid square it lies in, about a
---     kilometre), its share reach (3 · max(r, 200 m)) rounded UP to 100 m, and how many links
---     were cut against it. No
---     centre, no name, no time. The row is not tied to the area by a foreign key: deleting the
---     area leaves it behind as the place's tombstone, which is exactly what it is for.
---   * `claim_course_share_budget(zone_ids)` — the one writer. It takes one link's worth from
---     each area the link was cut against, all or nothing, and refuses (false) when any of them
---     has none left. An area's row is made on its first link, starting at the highest count of
---     every row of the account whose place the new area's links could describe (another live
---     area, or a deleted one's tombstone). Each area's share circles reach 3 · S from its
---     centre (offset 1 · S + radius 2 · S), so a new area inherits from every row whose reach
---     meets its own: the new centre within 3 · S_new + 3 · S_old of the old centre's cell.
---     (First written with the new area's own radius — review r1 finding 5 — then with the old
---     area's radius — review r2 finding 4; both missed areas made over the same home.) The
---     match is conservative — it may inherit from a neighbour that did not overlap, never miss
---     one that did. After that first link each area counts on its own.
+--     kilometre), its share reach (3 · max(r, 200 m)) rounded UP to 100 m, and the count of the
+--     place it belongs to (below). No centre, no name, no time. The row is not tied to the area
+--     by a foreign key: deleting the area leaves it behind as the place's tombstone, which is
+--     exactly what it is for.
+--   * `claim_course_share_budget(zone_ids)` — the one writer. A link's PLACE is every row of
+--     the account (live area or a deleted one's tombstone) whose share reach meets the reach of
+--     any area the link was cut against: each area's share circles reach 3 · S from its centre
+--     (offset 1 · S + radius 2 · S), so a row belongs when the cut area's centre is within
+--     3 · S_cut + 3 · S_row of the row's cell. The place shares ONE count, on every claim: the
+--     link is refused (false) when the highest count of the place has reached the bound, and
+--     otherwise every row of the place moves to that count + 1, all or nothing. (First
+--     written as inheritance at an area's first link only — the M2-01 phase review showed two
+--     overlapping areas, each cut alone, then reaching 10 apiece: 19 links in one place. The
+--     match itself was first too narrow twice — review r1 finding 5, review r2 finding 4.)
+--     The match is conservative — it may join a neighbour that did not overlap, never miss
+--     one that did — and, as rows only move up, a chain of neighbours can pull each other up.
 --   * The bound (10) lives here as well as in the contract; the runtime role cannot pass
 --     another one, cannot write a row, and cannot lower a count (a trigger refuses any UPDATE
 --     that is not an increase of the count alone, and any DELETE but the owner's erasure).
@@ -130,7 +131,7 @@ DECLARE lifetime constant integer:=10;
 DECLARE wanted uuid;
 DECLARE area record;
 DECLARE used integer;
-DECLARE exhausted boolean:=false;
+DECLARE place uuid[];
 BEGIN
   -- 20 is `courseLimits.privacyZonesPerTenant`: a link names at most every area of its
   -- account (the upgrade test checks the two stay equal).
@@ -138,35 +139,47 @@ BEGIN
     OR array_position($1,NULL) IS NOT NULL THEN
     RAISE EXCEPTION 'INVALID_SHARE_BUDGET_CLAIM';
   END IF;
+  -- Defense in depth: `createShare` already holds this lock, and the place's rows are locked
+  -- below (a new area's row by ON CONFLICT, the rest by FOR UPDATE), which alone serialises
+  -- two claims on one place — the concurrency tests pass with or without this line.
   PERFORM pg_advisory_xact_lock(hashtextextended(tenant,0));
+  -- Every area the link was cut against has its row (a new one at 0: the group below is what
+  -- carries a place's count, not the row alone).
   FOR wanted IN SELECT DISTINCT u FROM unnest($1) AS u ORDER BY u LOOP
     SELECT z.center_longitude,z.center_latitude,z.radius_meters INTO area
       FROM public.course_privacy_zone z WHERE z.athlete_id=tenant AND z.zone_id=wanted;
     IF NOT FOUND THEN RAISE EXCEPTION 'COURSE_SHARE_AREA_UNKNOWN'; END IF;
-    SELECT b.links_cut INTO used FROM public.course_share_area_budget b
-      WHERE b.athlete_id=tenant AND b.zone_id=wanted FOR UPDATE;
-    IF NOT FOUND THEN
-      -- The area's first link: it starts where any place whose share reach meets its own
-      -- stands — both reaches, 3 · S_new + 3 · S_old (offset 1 · S + radius 2 · S each, S =
-      -- max(r, 200 m)). Matching only the new reach against the old radius (review r2
-      -- finding 4) missed ~6 % of large old areas when a new one was made over the home.
-      SELECT coalesce(max(b.links_cut),0) INTO used FROM public.course_share_area_budget b
-        WHERE b.athlete_id=tenant AND b.zone_id<>wanted
-          AND public.course_share_cell_distance(b.cell_latitude,b.cell_longitude,
-            area.center_latitude,area.center_longitude,
-            3*greatest(area.radius_meters,200)+b.reach_meters+1)
-            <=3*greatest(area.radius_meters,200)+b.reach_meters+1;
-      INSERT INTO public.course_share_area_budget(athlete_id,zone_id,cell_latitude,
-          cell_longitude,reach_meters,links_cut)
-        VALUES(tenant,wanted,floor(area.center_latitude*100)::integer,
-          floor(area.center_longitude*100)::integer,
-          (ceil(3*greatest(area.radius_meters,200)/100)*100)::integer,used);
-    END IF;
-    IF used>=lifetime THEN exhausted:=true; END IF;
+    INSERT INTO public.course_share_area_budget(athlete_id,zone_id,cell_latitude,
+        cell_longitude,reach_meters,links_cut)
+      VALUES(tenant,wanted,floor(area.center_latitude*100)::integer,
+        floor(area.center_longitude*100)::integer,
+        (ceil(3*greatest(area.radius_meters,200)/100)*100)::integer,0)
+      ON CONFLICT (athlete_id,zone_id) DO NOTHING;
   END LOOP;
-  IF exhausted THEN RETURN false; END IF;
-  UPDATE public.course_share_area_budget SET links_cut=links_cut+1
-    WHERE athlete_id=tenant AND zone_id=ANY($1);
+  -- The place: every row of the account — live area or deleted one's tombstone — whose share
+  -- reach meets the reach of ANY area this link was cut against (3 · S_cut + 3 · S_row of the
+  -- row's cell; S = max(r, 200 m), each reach offset 1 · S + radius 2 · S). The whole place
+  -- shares one count, on every claim, not only an area's first (M2-01 phase review finding
+  -- 2: two overlapping areas each cut alone reached 10 apiece, 19 links in one place). The
+  -- count of the place is the highest of its rows; the link is refused when it has reached
+  -- the bound, and otherwise every row of the place moves to that count + 1 — all or nothing,
+  -- and only ever up.
+  SELECT array_agg(DISTINCT b.zone_id ORDER BY b.zone_id) INTO place
+    FROM public.course_share_area_budget b
+    JOIN public.course_privacy_zone z ON z.athlete_id=tenant AND z.zone_id=ANY($1)
+    WHERE b.athlete_id=tenant
+      AND (b.zone_id=z.zone_id
+        OR public.course_share_cell_distance(b.cell_latitude,b.cell_longitude,
+          z.center_latitude,z.center_longitude,
+          3*greatest(z.radius_meters,200)+b.reach_meters+1)
+          <=3*greatest(z.radius_meters,200)+b.reach_meters+1);
+  PERFORM 1 FROM public.course_share_area_budget b
+    WHERE b.athlete_id=tenant AND b.zone_id=ANY(place) ORDER BY b.zone_id FOR UPDATE;
+  SELECT coalesce(max(b.links_cut),0) INTO used FROM public.course_share_area_budget b
+    WHERE b.athlete_id=tenant AND b.zone_id=ANY(place);
+  IF used>=lifetime THEN RETURN false; END IF;
+  UPDATE public.course_share_area_budget SET links_cut=used+1
+    WHERE athlete_id=tenant AND zone_id=ANY(place);
   RETURN true;
 END $$;
 REVOKE ALL ON FUNCTION public.claim_course_share_budget(uuid[]) FROM PUBLIC;

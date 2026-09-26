@@ -314,17 +314,25 @@ describe('lifetime link budget migration upgrade of a database built by every ea
     expect((await claim([far])).rows[0]?.claimed).toBe(true);
     const counts = await upgraded.query(
       `SELECT zone_id::text,links_cut FROM course_share_area_budget
-       WHERE athlete_id=$1 AND zone_id=ANY($2::uuid[]) ORDER BY links_cut`,
+       WHERE athlete_id=$1 AND zone_id=ANY($2::uuid[]) ORDER BY links_cut,zone_id`,
       [liveTenant, [gap, near, far]],
     );
-    // The gap area inherits the tombstone's 2 and takes 1; the near one (~300 m from the old
-    // centre) inherits the highest reachable count, now the gap area's 3, and takes 1; the
-    // area 46 km away starts from nothing.
-    expect(counts.rows).toEqual([
-      { zone_id: far, links_cut: 1 },
-      { zone_id: gap, links_cut: 3 },
-      { zone_id: near, links_cut: 4 },
-    ]);
+    // The gap area joins the tombstone's place (2) and the place takes 1 (3); the near area
+    // (~300 m from the old centre) is in the same place, so its link moves the whole place to
+    // 4 — the gap area included; the area 46 km away is a place of its own.
+    expect(counts.rows).toEqual(
+      [
+        { zone_id: far, links_cut: 1 },
+        { zone_id: gap, links_cut: 4 },
+        { zone_id: near, links_cut: 4 },
+      ].sort((left, right) =>
+        left.links_cut !== right.links_cut
+          ? left.links_cut - right.links_cut
+          : left.zone_id < right.zone_id
+            ? -1
+            : 1,
+      ),
+    );
   });
 
   it('replays a captured budget only upward, only for a known and unerased tenant', async () => {
@@ -527,5 +535,89 @@ describe('lifetime link budget migration upgrade of a database built by every ea
       [liveTenant, fresh],
     );
     expect(counted.rows).toEqual([{ links_cut: 2 }]);
+  });
+
+  it('shares one count across overlapping areas on every claim (phase review finding 2)', async () => {
+    await migrate(upgradeUrl());
+    // Two live 200 m areas ~800 m apart (reaches 600 m each: they overlap). Each link is cut
+    // against one of them only. First-link inheritance let them reach 10 apiece (19 links in
+    // one place); the place's one count stops the pair at 10 links in total.
+    const areaA = randomUUID();
+    const areaB = randomUUID();
+    for (const [zone, longitude] of [
+      [areaA, 110.0],
+      [areaB, 110.0082],
+    ] as const)
+      await upgraded.query(
+        `INSERT INTO course_privacy_zone(athlete_id,zone_id,name,center_longitude,center_latitude,
+           radius_meters,created_at,updated_at) VALUES($1,$2,'겹침',$3,20.0,200,now(),now())`,
+        [liveTenant, zone, longitude],
+      );
+    const claim = async (zones: string[]) =>
+      (
+        await asTenant(liveTenant, (client) =>
+          client.query<{ claimed: boolean }>(
+            'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+            [zones],
+          ),
+        )
+      ).rows[0]?.claimed;
+    let granted = 0;
+    for (let round = 0; round < 15; round += 1)
+      for (const zone of [areaA, areaB]) if (await claim([zone])) granted += 1;
+    expect(granted).toBe(courseSharingLimits.shareLinksPerAreaLifetime);
+    const rows = await upgraded.query(
+      `SELECT links_cut FROM course_share_area_budget
+       WHERE athlete_id=$1 AND zone_id=ANY($2::uuid[]) ORDER BY zone_id`,
+      [liveTenant, [areaA, areaB]],
+    );
+    expect(rows.rows).toEqual([{ links_cut: 10 }, { links_cut: 10 }]);
+  });
+
+  it('lets only one of two concurrent claims on overlapping areas take the last link', async () => {
+    await migrate(upgradeUrl());
+    const areaC = randomUUID();
+    const areaD = randomUUID();
+    for (const [zone, longitude] of [
+      [areaC, 112.0],
+      [areaD, 112.0082],
+    ] as const)
+      await upgraded.query(
+        `INSERT INTO course_privacy_zone(athlete_id,zone_id,name,center_longitude,center_latitude,
+           radius_meters,created_at,updated_at) VALUES($1,$2,'동시 겹침',$3,20.0,200,now(),now())`,
+        [liveTenant, zone, longitude],
+      );
+    for (let index = 0; index < 9; index += 1)
+      await asTenant(liveTenant, (client) =>
+        client.query('SELECT public.claim_course_share_budget($1::uuid[])', [
+          [index % 2 === 0 ? areaC : areaD],
+        ]),
+      );
+    const first = await upgraded.connect();
+    const second = await upgraded.connect();
+    try {
+      for (const client of [first, second]) {
+        await client.query('BEGIN');
+        await client.query("SELECT set_config('app.athlete_id',$1,true)", [liveTenant]);
+      }
+      const one = await first.query<{ claimed: boolean }>(
+        'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+        [[areaC]],
+      );
+      const pending = second.query<{ claimed: boolean }>(
+        'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',
+        [[areaD]],
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await first.query('COMMIT');
+      const two = await pending;
+      await second.query('COMMIT');
+      expect([one.rows[0]?.claimed, two.rows[0]?.claimed]).toEqual([true, false]);
+    } finally {
+      await first.query('ROLLBACK').catch(() => undefined);
+      await second.query('ROLLBACK').catch(() => undefined);
+      first.release();
+      second.release();
+    }
   });
 });

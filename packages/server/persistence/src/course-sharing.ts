@@ -564,9 +564,10 @@ export function createCourseSharingRepository(
           room.for_course >= courseSharingLimits.activeSharesPerCourse
         )
           throw new CourseSharingStateError('COURSE_SHARE_LIMIT_REACHED');
-        // M2-01as: every area that cut this link gives up one link of its lifetime budget —
-        // revoked, expired and restored-away links stay counted, and an area made again over
-        // the same place inherits the count (migration 054). Refused when any has none left.
+        // M2-01as: the place this link was cut against — every area (and deleted area) whose
+        // share reach meets that of an area that cut it — gives up one link of its one lifetime
+        // budget; revoked, expired and restored-away links stay counted (migration 054).
+        // Refused when the place has none left.
         if (cutZoneIds.length > 0) {
           const claimed = await tx.query(
             'SELECT public.claim_course_share_budget($1::uuid[]) AS claimed',

@@ -615,6 +615,54 @@ describe('M2-01as: a link loses a further 2.5 · S of path past each cut end', (
     }
   });
 
+  it('continues an end that only rounding pulls into a circle (phase review finding 1)', () => {
+    // A grid point (five decimals) just inside the 400 m share circle, and a raw end a few
+    // decimetres further out that rounds onto it: outside before rounding, inside after.
+    let found: { grid: CoursePosition; raw: CoursePosition } | null = null;
+    for (let i = 450; i <= 470 && found === null; i += 1)
+      for (let j = -40; j <= 40 && found === null; j += 1) {
+        const grid: CoursePosition = [
+          Number((127.02 + i * 1e-5).toFixed(5)),
+          Number((37.5 + j * 1e-5).toFixed(5)),
+        ];
+        const inside = greatCircleMeters(home.center, grid);
+        if (!(inside > 399.7 && inside <= 400)) continue;
+        for (const [dx, dy] of [
+          [0.45e-5, 0],
+          [0.45e-5, 0.45e-5],
+          [0.45e-5, -0.45e-5],
+        ] as const) {
+          const raw: CoursePosition = [grid[0] + dx, grid[1] + dy];
+          if (greatCircleMeters(home.center, raw) > 400 && roundPosition(raw, 5)[0] === grid[0]) {
+            found = { grid, raw };
+            break;
+          }
+        }
+      }
+    if (!found) throw new Error('no grid point found');
+    const { grid, raw } = found;
+    expect(greatCircleMeters(home.center, raw)).toBeGreaterThan(400);
+    expect(roundPosition(raw, 5)).toEqual(grid);
+    // Out from the raw end, straight away from the home, for 3 km.
+    const bearing = [raw[0] - home.center[0], raw[1] - home.center[1]] as const;
+    const unit = Math.hypot(bearing[0], bearing[1]);
+    const line: CoursePosition[] = [
+      raw,
+      ...Array.from({ length: 300 }, (_, index): CoursePosition => {
+        const k = ((index + 1) * 10) / 400;
+        return [raw[0] + (bearing[0] / unit) * unit * k, raw[1] + (bearing[1] / unit) * unit * k];
+      }),
+    ];
+    const choice = disclosureChoices('share', line, ends(line), circles).options[0];
+    const start = choice?.line.coordinates[0];
+    if (!choice || !start) throw new Error('no link line');
+    // The end rounding put inside is cut like any other — with its 500 m continuation — and
+    // the link says it was trimmed.
+    expect(choice.exposure).toBe('trimmed');
+    expect(greatCircleMeters(home.center, start)).toBeGreaterThanOrEqual(900);
+    assertOutside(choice.line, circles);
+  });
+
   it('drops a via waypoint on the hidden stretch and keeps one on the line that leaves', () => {
     const hidden = east[60];
     const shown = east[150];

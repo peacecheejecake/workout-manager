@@ -4274,6 +4274,32 @@ async function execute() {
         );
         assert.equal(await budgetOf(restored, recreated.zoneId), 2);
         checks.push('area_made_again_after_restore_inherits_the_replayed_tombstone');
+        // M2-01 phase review finding 2: a live area ~440 m from the first shares its place's
+        // one count — a link cut against it moves the whole place, the first area included.
+        const neighbourCenter: [number, number] = [127.025, 37.5];
+        const neighbour = (
+          await createCoursePreferenceRepository(linksDb).createPrivacyZone(sharingAthlete, {
+            name: 'Drill share area beside the first',
+            center: neighbourCenter,
+            radiusMeters: 200,
+          })
+        ).find((zone) => zone.name === 'Drill share area beside the first');
+        assert.ok(neighbour);
+        await seedDrillLink(
+          linksDb,
+          restoredSharing,
+          sharingAthlete,
+          await seedShareableCourse(
+            linksDb,
+            sharingAthlete,
+            'Drill link of the area beside the first',
+            neighbourCenter,
+          ),
+          shareEpochAfterRestore,
+        );
+        assert.equal(await budgetOf(restored, neighbour.zoneId), 6);
+        assert.equal(await budgetOf(restored, firstArea.zoneId), 6);
+        checks.push('overlapping_areas_share_one_place_count_after_restore');
       } finally {
         await restoredReader.close();
       }

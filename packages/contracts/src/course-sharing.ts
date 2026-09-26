@@ -65,8 +65,8 @@ export const courseSharingLimits = {
   shareContinuationCutFactor: 2.5,
   /**
    * M2-01as: links that may ever be cut against one place — every link counted, revoked,
-   * expired and restored-away ones included, and a protected area deleted and made again
-   * over the same place inherits the count. The attack suite passes up to this N and not
+   * expired and restored-away ones included; every protected area whose share reach meets
+   * the place's, live or deleted, shares the one count (M2-01 phase review finding 2). The attack suite passes up to this N and not
    * past it. User decision 2026-09-26 (after re-identification review r2): 10. At N = 15 the
    * learned per-model attacker on loops scored 0.28–0.32 · S across the reviewer's four test
    * seeds (below the 0.3 · S bar on two); at N = 10 it stays ≥ 0.33 · S on every seed.

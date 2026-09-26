@@ -207,10 +207,10 @@ describe('the confirmation screen (§5, T2)', () => {
     expect(residual).toContain(`열 번에 한 번은 ${courseShareMeasuredResidual.p10Meters}m 안까지`);
     expect(courseShareMeasuredResidual.medianMeters).toBeGreaterThan(0);
     expect(residual).toContain('짧은 코스는 링크로 공유할 수 없습니다');
-    // Review r1 item 6 / r2 peer 6: a new nearby area starts from the count already used, then
-    // counts on its own; the range grows with the area.
-    expect(residual).toContain('첫 링크 때, 가까운 곳(약 1.5 km 안, 큰 구역일수록 더 멀리');
-    expect(residual).toContain('그 뒤로는 구역마다 따로 셉니다');
+    // Review r1 item 6 / phase review finding 2: nearby areas — deleted ones included — share
+    // one count, and the range grows with the area.
+    expect(residual).toContain('가까이 있는 보호 구역들은(약 1.5 km 안, 큰');
+    expect(residual).toContain('이 개수를 함께 씁니다');
     // D6: names are out by default for a link.
     expect(within(region).getByLabelText('코스 이름과 경유점 이름 포함')).not.toBeChecked();
     // D3b / V18b: no way to pick the exact line in the link flow.

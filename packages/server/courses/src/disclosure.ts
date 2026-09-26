@@ -117,6 +117,13 @@ export function finishDisclosedLine(input: {
   readonly cutStart: boolean;
   readonly cutFinish: boolean;
   readonly endsOnLine?: boolean;
+  /**
+   * The line was already rounded and cut on its rounded coordinates (every disclosure the
+   * confirmation offers, M2-01 phase review finding 1): the re-check must then find nothing
+   * more to cut. If it does, rounding was not settled and the line does not leave — a cut
+   * here would skip the continuation the first cut got.
+   */
+  readonly settled?: boolean;
 }): DisclosedLine {
   const digits = courseSharingLimits.disclosedCoordinateDigits;
   const rounded = input.coordinates.map((position) => roundPosition(position, digits));
@@ -130,6 +137,7 @@ export function finishDisclosedLine(input: {
   if (input.circles.length > 0) {
     try {
       const again = trimLineAgainstCircles(rounded, roundedWaypoints, input.circles);
+      if (input.settled === true) throw new CourseTrimError('COURSE_TRIM_LINE_CROSSES_AREA');
       line = again.coordinates;
       cutStart ||= again.removedLeadingVertexCount > 0;
       cutFinish ||= again.removedTrailingVertexCount > 0;
@@ -362,19 +370,62 @@ export function disclosureChoices(
   }
 }
 
-function choicesFor(
-  purpose: CourseDisclosurePurpose,
+/**
+ * Round a line to the disclosed precision until rounding changes nothing more (in practice
+ * once: rounding to five places is idempotent up to floating point, and a second pass is
+ * checked rather than assumed).
+ */
+function settleRounding(
   coordinates: readonly CoursePosition[],
   waypoints: readonly CourseWaypoint[],
+): { coordinates: CoursePosition[]; waypoints: CourseWaypoint[] } {
+  const digits = courseSharingLimits.disclosedCoordinateDigits;
+  let line = coordinates.map((position) => roundPosition(position, digits));
+  let points = waypoints.map((waypoint) => ({
+    ...waypoint,
+    position: roundPosition(waypoint.position, digits),
+  }));
+  for (let pass = 0; pass < 3; pass += 1) {
+    const again = line.map((position) => roundPosition(position, digits));
+    const againPoints = points.map((waypoint) => ({
+      ...waypoint,
+      position: roundPosition(waypoint.position, digits),
+    }));
+    const same =
+      again.every(
+        (position, index) => position[0] === line[index]?.[0] && position[1] === line[index]?.[1],
+      ) &&
+      againPoints.every(
+        (waypoint, index) =>
+          waypoint.position[0] === points[index]?.position[0] &&
+          waypoint.position[1] === points[index]?.position[1],
+      );
+    line = again;
+    points = againPoints;
+    if (same) return { coordinates: line, waypoints: points };
+  }
+  throw new CourseTrimError('COURSE_TRIM_LINE_CROSSES_AREA');
+}
+
+function choicesFor(
+  purpose: CourseDisclosurePurpose,
+  original: readonly CoursePosition[],
+  originalWaypoints: readonly CourseWaypoint[],
   circles: readonly DisclosureCircle[],
 ): DisclosureChoices {
+  // M2-01 phase review finding 1: the line is cut on its ROUNDED coordinates. Cutting first
+  // and rounding after let rounding pull an end that sat just outside a circle inside it, and
+  // the re-check then cut that end with no continuation — a link ending metres from its
+  // circle, heading intact. Rounded first, every end any circle cuts is cut by the one trim
+  // below and gets its continuation; the finishing re-check must then find nothing (settled).
+  const { coordinates, waypoints } = settleRounding(original, originalWaypoints);
   const classification = classifyDisclosure(coordinates, waypoints, circles);
   const finish = (line: {
     coordinates: readonly CoursePosition[];
     waypoints: readonly CourseWaypoint[];
     cutStart: boolean;
     cutFinish: boolean;
-  }) => finishDisclosedLine({ ...line, circles, endsOnLine: purpose === 'share' });
+  }) => finishDisclosedLine({ ...line, circles, endsOnLine: purpose === 'share', settled: true });
   switch (classification.outcome) {
     case 'blocked':
       return { classification, options: [], defaultExposure: null };
@@ -384,7 +435,7 @@ function choicesFor(
       return {
         classification,
         options: [
-          option('no-zones-exact', coordinates, line, {
+          option('no-zones-exact', original, line, {
             requiresAcknowledgement: true,
             appendsRevision: false,
             coordinateDigits: 5,
@@ -399,7 +450,7 @@ function choicesFor(
       return {
         classification,
         options: [
-          option('no-zone-intersection', coordinates, line, {
+          option('no-zone-intersection', original, line, {
             requiresAcknowledgement: false,
             appendsRevision: false,
             coordinateDigits: 5,
@@ -417,7 +468,7 @@ function choicesFor(
         cutStart: trimmed.removedLeadingVertexCount > 0,
         cutFinish: trimmed.removedTrailingVertexCount > 0,
       });
-      const trimmedOption = option('trimmed', coordinates, line, {
+      const trimmedOption = option('trimmed', original, line, {
         requiresAcknowledgement: false,
         // Only the owner's GPX writes a revision: the link keeps its snapshot beside the
         // ledger and never adds to it (B-1).
@@ -431,7 +482,7 @@ function choicesFor(
         classification,
         options: [
           trimmedOption,
-          option('owner-exact', coordinates, exactLine(coordinates, waypoints), {
+          option('owner-exact', original, exactLine(original, originalWaypoints), {
             requiresAcknowledgement: true,
             appendsRevision: false,
             coordinateDigits: 7,
