@@ -98,7 +98,13 @@ GRANT SELECT, INSERT ON activity_source_revision, activity_overlay_revision,
 
 `identity_private` 테이블/스키마에 runtime 직접 권한을 주지 않는다. `grantIdentityFunctions`는
 검증된 role 이름에 인증용 함수와 back-channel 재생 방지·세션 철회 함수의 EXECUTE만 허용한다.
-Migration 057 적용 뒤 이 grant 함수를 다시 실행한다. `grantOperations`는 삭제 차단 원장 조회,
+Migration 057 적용 뒤 이 grant 함수를 다시 실행한다. Migration 057은 기존 7인자 세션 생성 함수를
+먼저 제거하고 migration 이전 앱 세션을 모두 만료시킨다. 이 변경은 `identity_private.session`의
+소유자인 migration role로 실행해야 한다. runtime role에는 세션 테이블 직접 권한이 필요하지 않다.
+이전 API 인스턴스의 새 로그인은 함수가 없어
+실패한다. 배포 시 이전 API 인스턴스를 먼저 drain하고 migration·grant를 적용한 다음 새 API를
+올린다. 기존 사용자는 다시 로그인해야 한다. 로그아웃 철회가 시작된 뒤 이전 버전 API를 재투입하지 않는다.
+`grantOperations`는 삭제 차단 원장 조회,
 민감 내용 없는 작업 이력 조회·추가와 계정 삭제 함수 실행을 허용한다. `grantGarmin`은 현재 tenant의
 연결·시도 및 제한된 연결 관리 함수 권한을 추가한다. `grantCheckIns`는 자기보고 원장·정정·
 명령 receipt의 제한된 DML을 허용한다. `grantSessionCompletions`는 사용자 세션 완료 확인·철회

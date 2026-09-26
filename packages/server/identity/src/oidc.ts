@@ -229,8 +229,9 @@ export async function createOidcProvider(
       )
         throw new Error('Invalid OIDC identity');
       if (
-        claims.sid !== undefined &&
-        (typeof claims.sid !== 'string' || claims.sid.length === 0 || claims.sid.length > 255)
+        (metadata.backchannel_logout_session_supported === true && claims.sid === undefined) ||
+        (claims.sid !== undefined &&
+          (typeof claims.sid !== 'string' || claims.sid.length === 0 || claims.sid.length > 255))
       )
         throw new Error('Invalid OIDC session');
       return {

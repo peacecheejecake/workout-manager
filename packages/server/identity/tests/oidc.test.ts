@@ -28,6 +28,7 @@ interface FixtureOptions {
   endSession?: string;
   /** Advertise this authorization_endpoint instead of the real one. */
   authorizationEndpoint?: string;
+  backchannelSessionSupported?: boolean;
   /** Do not sign in once while building the fixture (so nothing is discovered yet). */
   lazy?: boolean;
   adapter?: Record<string, unknown>;
@@ -73,6 +74,9 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
           response_types_supported: ['code'],
           subject_types_supported: ['public'],
           id_token_signing_alg_values_supported: ['RS256'],
+          ...(fixtureOptions.backchannelSessionSupported === undefined
+            ? {}
+            : { backchannel_logout_session_supported: fixtureOptions.backchannelSessionSupported }),
           token_endpoint_auth_methods_supported: ['client_secret_basic'],
           code_challenge_methods_supported: ['S256'],
         }),
@@ -187,6 +191,19 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
 }
 
 describe('standard OIDC adapter using a real local signed provider protocol', () => {
+  it('refuses a login without sid when the provider advertises sid-only back-channel logout', async () => {
+    const fixture = await providerFixture({ backchannelSessionSupported: true });
+    await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).rejects.toThrow(
+      'Invalid OIDC session',
+    );
+    const withSid = await providerFixture({ backchannelSessionSupported: true });
+    withSid.setProviderSessionId('op-session-123');
+    await expect(
+      withSid.provider.exchange(withSid.callback, withSid.checks),
+    ).resolves.toMatchObject({
+      providerSessionId: 'op-session-123',
+    });
+  });
   it('carries the verified ID Token sid into the local session contract', async () => {
     const fixture = await providerFixture();
     fixture.setProviderSessionId('op-session-123');

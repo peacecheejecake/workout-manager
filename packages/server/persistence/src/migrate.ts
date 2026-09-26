@@ -661,7 +661,6 @@ export async function grantIdentityFunctions(
       'auth_create_attempt(text, text, text, text, timestamptz)',
       'auth_consume_attempt(text, text, timestamptz)',
       'auth_consume_attempt_v2(text, text, timestamptz)',
-      'auth_create_session(text, text, text, text, timestamptz, timestamptz, text)',
       'auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text, timestamptz)',
       'auth_find_session(text, timestamptz)',
       'auth_revoke_session(text)',

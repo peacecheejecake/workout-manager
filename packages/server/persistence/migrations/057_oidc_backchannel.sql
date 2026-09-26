@@ -2,6 +2,14 @@ ALTER TABLE identity_private.login_attempt
   ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
 ALTER TABLE identity_private.session
   ADD COLUMN provider_session_id text CHECK (length(provider_session_id) BETWEEN 1 AND 255);
+-- A mixed-version API must fail closed at login. This removes every previously granted
+-- EXECUTE privilege together with the old signature, rather than leaving a barrier bypass.
+-- Retire it before deleting legacy rows so calls resolved after this migration commit fail;
+-- deployment must drain old API instances before the migration to cover in-flight calls.
+DROP FUNCTION public.auth_create_session(text, text, text, text, timestamptz, timestamptz, text);
+-- No pre-upgrade app session has a verified OP sid. Invalidate them before a sid-only
+-- Logout Token can arrive; browsers retain their cookie and request reauthentication.
+DELETE FROM identity_private.session WHERE provider_session_id IS NULL;
 CREATE INDEX identity_session_provider_sid ON identity_private.session (provider_session_id)
   WHERE provider_session_id IS NOT NULL;
 

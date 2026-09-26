@@ -13,6 +13,11 @@
   하나 이상의 `sub`/`sid`를 확인한다. 기한이 있으면 JWT 검증에서 확인한다.
 - 로그인 때 검증된 ID Token의 `sid`를 앱 세션에 저장한다. Migration 057은 이 값과 로그인 시도 생성 시각,
   issuer별 해시 `jti` 원장을 추가한다. 새 세션 생성 함수는 기존 계정 삭제 경합 잠금을 보존한다.
+  Migration 057은 이전 7인자 세션 생성 함수를 제거하고 이전 앱 세션을 전부 만료시킨다. 이전 API가
+  새 로그인으로 철회 장벽을 우회하지 못하며, `sid`가 없는 기존 세션이 `sid` 전용 로그아웃 뒤 남지 않는다.
+  운영 배포는 이전 API를 drain한 뒤 migration·grant와 새 API를 순서대로 적용해야 한다. 배포 중
+  이전 API로 로그인하면 실패하고 기존 사용자는 다시 로그인해야 한다.
+  공급자가 session back-channel을 광고하면 ID Token에 검증 가능한 `sid`가 없을 때 새 로그인을 거절한다.
   JWT 검증은 DB 거래 전에 끝난다. 하나의 DB 함수에서 `jti`를 기록하고 해당 issuer·subject·sid의
   앱 세션만 지운다. `sub`와 `sid`가 함께 있으면 둘 다 일치해야 한다. 다른 계정과 issuer는 유지한다.
   로그인 callback과 로그아웃은 동일한 subject·sid 잠금을 같은 순서로 획득한다. 로그아웃이 먼저
@@ -28,6 +33,7 @@
 | callback 본문·코드·토큰 로그 비노출                               | Fastify inject 시험 통과                         |
 | 재전송 동시성·issuer/subject/sid 격리·DB 권한·기존 계정 삭제 잠금 | 임시 PostgreSQL 실통합 시험 통과                 |
 | logout/callback 양쪽 경합 순서와 JWKS 장애 503 분류               | 독립 검토 지적 후 추가 시험 통과                 |
+| 기존 7인자 함수 우회·migration 이전 sid 없는 세션                 | 채워진 이전 DB 업그레이드 실통합 시험            |
 | 실제 Zitadel Back-Channel Logout 전파                             | **not_executed** · 외부 HTTPS callback 등록 필요 |
 | 실제 계정 정지/로그아웃 후 앱 세션 전파                           | **not_executed** · EXT-HOSTING                   |
 
@@ -58,3 +64,22 @@ ESLint, 변경 파일 Prettier 검사, `git diff --check`가 통과했다. 로�
 `build`(15/15), `test`(335 files passed, 1 skipped; 4,067 passed, 7 skipped), 임시 PostgreSQL
 `test:integration`(80 files, 803 passed)이 통과했다. 기존 `not_executed` 외부 증거는 그대로다.
 수정 후 재검토의 base/head·결과는 root가 기록한다.
+
+두 번째 독립 phase review `main` `17982f2187f75384a3410663cc954307e6cd5261` →
+`phase/ext-backchannel` `9f39ea30da136ae24b17980d3296880a18c2677f`는
+**CHANGES_REQUESTED**였다. 이전 경합/JWKS 두 지적은 **FIXED**로 판정했다. 새 지적은 남은 7인자
+함수의 혼합 배포 우회와 migration 이전 `sid=NULL` 세션의 잔존이었다. Migration 057에서 이전 함수와
+기존 세션을 함께 제거하고, 채워진 056 DB를 057로 올리는 시험을 추가했다. 수정 후 독립 재검토의
+base/head·결과는 root가 기록한다.
+
+Migration 057은 이전 함수 제거를 기존 세션 삭제보다 먼저 수행해 업그레이드 도중 이전 API 호출이
+NULL-`sid` 세션을 재생성할 수 있는 순서 경합을 줄였다. 업그레이드 시험은
+`NOSUPERUSER NOBYPASSRLS`인 DB 소유자 역할로 실행해 기존 세션 삭제, 7인자 함수 호출 실패,
+새 `sid` 세션의 철회를 확인했다. 임시 PostgreSQL 전체 통합은 **81 files, 804/804 passed**.
+실제 운영은 이전 API 인스턴스 drain을 먼저 수행해야 한다. 실제 Zitadel 전파 항목은 계속
+**not_executed**다.
+
+이번 수정의 `check:generated`, `format:check`, `lint`, `typecheck`(34/34), `build`(15/15)는 통과했다.
+전체 단위의 기본 sandbox 실행은 로컬 HTTP fixture를 여는 identity/API 시험 34건이 실패했다.
+로컬 loopback 허용 실행에서 같은 집중 시험 4파일/46건과 전체 단위 **335 files passed,
+1 skipped; 4,069 passed, 7 skipped**로 통과했다. `git diff --check`도 통과했다.
