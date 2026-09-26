@@ -40,7 +40,7 @@ import type {
   MapAdapterFailure,
   MapViewportEvent,
 } from '@workout/geo-kit/map-adapter';
-import { computeBounds, type MapBounds, type MapSelection } from '@workout/geo-kit/map-path';
+import type { MapBounds, MapSelection } from '@workout/geo-kit/map-path';
 import type { MapViewProps, MapViewStatus } from '@workout/geo-kit/map-view';
 import type { MapRenderIdleInfo, RenderedPathPiece } from '@workout/geo-kit/render-evidence';
 import { Button } from '@workout/ui-foundation/button';
@@ -411,10 +411,13 @@ function StoredTrackView({
   const index = useMemo(() => indexStoredTrack(recorded), [recorded]);
   const onChartZoom = useCallback(
     (next: TimeRange | null) => {
-      const bounds = next
-        ? viewportForTimeDomain(geometry, index, next)
-        : computeBounds([geometry.path]);
       setZoomDomain(next);
+      if (next === null) {
+        setViewportRequest(null);
+        setFitRequest((value) => value + 1);
+        return;
+      }
+      const bounds = viewportForTimeDomain(geometry, index, next);
       if (!bounds) return;
       setViewportRequest((previous) => ({ revision: (previous?.revision ?? 0) + 1, bounds }));
     },
@@ -616,6 +619,7 @@ function StoredTrackView({
           disabled={total === 0}
           onClick={() => {
             setZoomDomain(null);
+            setViewportRequest(null);
             setFitRequest((value) => value + 1);
           }}
         >
@@ -1036,14 +1040,21 @@ function TrackChartPane({
   readonly onRangeDragEnd: (outcome: 'commit' | 'cancel') => void;
 }) {
   const [page, setPage] = useState(0);
-  const pages = Math.max(1, Math.ceil(records.length / recordsPerChartPage));
-  const position = selected === null ? -1 : records.findIndex((r) => r.index === selected);
+  // Map-driven time ranges may start beyond the current chart page. Slice the matching
+  // observations after applying the range, while retaining the 500-observation cap.
+  const scoped = useMemo(
+    () =>
+      zoomDomain === null ? records : records.filter((record) => recordInRange(record, zoomDomain)),
+    [records, zoomDomain],
+  );
+  const pages = Math.max(1, Math.ceil(scoped.length / recordsPerChartPage));
+  const position = selected === null ? -1 : scoped.findIndex((r) => r.index === selected);
   const shown = Math.min(
     position < 0 ? page : Math.floor(position / recordsPerChartPage),
     pages - 1,
   );
   const start = shown * recordsPerChartPage;
-  const listed = records.slice(start, start + recordsPerChartPage);
+  const listed = scoped.slice(start, start + recordsPerChartPage);
   const times = listed.map(recordTime).filter((time): time is number => time !== null);
   const pageDomain =
     times.length > 1 ? { start: Math.min(...times), end: Math.max(...times) } : null;
@@ -1073,7 +1084,8 @@ function TrackChartPane({
       <p className={styles.note}>
         차트 원본 순번 범위:{' '}
         {listed.length ? `${listed[0]?.index}–${listed.at(-1)?.index}` : '없음'} · 전체{' '}
-        {records.length}개 중 {listed.length}개 표시 (페이지당 최대 {recordsPerChartPage}개)
+        {records.length}개 중 {zoomDomain === null ? '' : `확대 범위 ${scoped.length}개 · `}
+        {listed.length}개 표시 (페이지당 최대 {recordsPerChartPage}개)
       </p>
       {pages > 1 ? (
         <div className={styles.actions}>

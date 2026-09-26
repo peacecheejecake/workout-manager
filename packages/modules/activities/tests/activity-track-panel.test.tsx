@@ -148,7 +148,7 @@ function renderPanel(options: {
 }) {
   const { transport, request } = transportOf(options.handler);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const view = render(
+  const tree = (basemap: { styleUrl: string; attribution: string } | null) => (
     <QueryClientProvider client={client}>
       <DetailSelectionProvider identity="activity-1">
         {options.withWorkbench ? (
@@ -162,13 +162,20 @@ function renderPanel(options: {
           activitySourceRevision={options.activitySourceRevision ?? 1}
           details={options.details === undefined ? storedDetails() : options.details}
           scope={scope}
-          basemap={null}
+          basemap={basemap}
           {...(options.probe ? { createMapAdapter: options.probe.factory } : {})}
         />
       </DetailSelectionProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...view, request, client };
+  const view = render(tree(null));
+  return {
+    ...view,
+    request,
+    client,
+    rerenderBasemap: (basemap: { styleUrl: string; attribution: string } | null) =>
+      view.rerender(tree(basemap)),
+  };
 }
 
 /** The chart points are SVG circles with a click handler, not real buttons. */
@@ -508,6 +515,32 @@ describe('stored activity track selection', () => {
     await waitFor(() => expect(probe.fitBounds).toHaveLength(2));
     expect(probe.created).toHaveLength(1);
     expect(probe.destroyed()).toBe(0);
+  });
+
+  it('discards a partial viewport before rebuilding the adapter after full view', async () => {
+    setViewport(1440);
+    const probe = adapterProbe();
+    const { rerenderBasemap } = renderPanel({ handler: available(), probe });
+    const map = await screen.findByRole('region', { name: '저장된 활동 경로' });
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(1));
+    const fullBounds = probe.fitBounds[0];
+    const graph = within(routePanel()).getByRole('group', {
+      name: '저장된 경로 관측 그래프',
+    });
+    await userEvent.click(within(graph).getByRole('button', { name: '차트 확대' }));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(2));
+    expect(probe.fitBounds[1]).not.toEqual(fullBounds);
+    expect(map).toHaveAttribute('data-viewport-request', '1');
+
+    await userEvent.click(within(routePanel()).getByRole('button', { name: '전체 보기' }));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(3));
+    expect(probe.fitBounds[2]).toEqual(fullBounds);
+    expect(map).not.toHaveAttribute('data-viewport-request');
+
+    rerenderBasemap({ styleUrl: '/map/basemap/changed/style.json', attribution: '© OSM' });
+    await waitFor(() => expect(probe.created).toHaveLength(2));
+    await waitFor(() => expect(probe.fitBounds).toHaveLength(4));
+    expect(probe.fitBounds[3]).toEqual(fullBounds);
   });
 });
 

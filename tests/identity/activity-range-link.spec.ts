@@ -81,7 +81,27 @@ async function login(page: Page) {
 }
 
 /** Imports the activity with detail observations and laps, then stores the FIT track. */
-async function storeTrack(page: Page, headers: Record<string, string>) {
+async function storeTrack(page: Page, headers: Record<string, string>, recordCount = 12) {
+  const long = recordCount > recordIndices.length;
+  const indices = long ? Array.from({ length: recordCount }, (_, index) => index) : recordIndices;
+  const elapsed = long ? recordCount - 1 : 110;
+  const distance = long ? recordCount - 1 : 1100;
+  const bytes = long
+    ? Buffer.from(
+        fitFile([
+          sessionMessage({ startedAt: at(0), elapsedSeconds: elapsed, distanceMeters: distance }),
+          ...indices.map((index) =>
+            recordMessage({
+              at: at(index),
+              longitude: 126.978 + index / 200000,
+              latitude: 37.566 + index / 200000,
+              heartRate: 140 + (index % 60),
+              distanceMeters: index,
+            }),
+          ),
+        ]),
+      )
+    : fitBytes;
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
     source: { kind: 'fit', sourceId: randomUUID(), revision: 1, contentHash: 'e'.repeat(64) },
@@ -90,25 +110,25 @@ async function storeTrack(page: Page, headers: Record<string, string>) {
       kind: 'running',
       startedAt: at(0),
       timezone: 'UTC',
-      durationSeconds: 110,
+      durationSeconds: elapsed,
       durationKind: 'elapsed',
-      distanceMeters: 1100,
+      distanceMeters: distance,
     },
     details: {
       schemaVersion: 1,
       streamIndex: 0,
       sessionIndex: 0,
       startedAt: at(0),
-      recordedAt: at(110),
-      elapsedSeconds: 110,
+      recordedAt: at(elapsed),
+      elapsedSeconds: elapsed,
       // Same instants as the FIT records: the correspondence is by instant.
-      records: recordIndices.map((index) => ({
+      records: indices.map((index) => ({
         index,
-        timestamp: at(index * 10),
-        distanceMeters: index * 100,
-        heartRateBpm: 140 + index,
+        timestamp: at(long ? index : index * 10),
+        distanceMeters: long ? index : index * 100,
+        heartRateBpm: long ? 140 + (index % 60) : 140 + index,
       })),
-      laps: laps.map((lap) => ({
+      laps: (long ? [] : laps).map((lap) => ({
         index: lap.index,
         startedAt: at(lap.from),
         recordedAt: at(lap.from + lap.seconds),
@@ -144,7 +164,7 @@ async function storeTrack(page: Page, headers: Record<string, string>) {
         'content-type': 'application/octet-stream',
         'x-track-file-name': encodeURIComponent('range.fit'),
       },
-      data: fitBytes,
+      data: bytes,
     },
   );
   expect(uploaded.status()).toBe(200);
@@ -208,6 +228,51 @@ const shells = [
 ] as const;
 
 for (const shell of shells) {
+  test(`${shell.name}: map zoom reaches observations beyond the first 500-chart page`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const headers = await login(page);
+    const activityId = await storeTrack(page, headers, 2100);
+    await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
+    const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
+    const graph = panel.getByRole('group', { name: '저장된 경로 관측 그래프', exact: true });
+    const map = mapRegion(panel, '저장된 활동 경로');
+    await expectLineDrawn(map);
+    await expect(graph).toContainText('전체 2100개 중 500개 표시');
+    const canvas = map.locator('canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    await page.mouse.move(box.x + box.width * 0.79, box.y + box.height * 0.21);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await page.keyboard.down('Control');
+      await page.mouse.wheel(0, -700);
+      await page.keyboard.up('Control');
+      await expect(map).toHaveAttribute('data-viewport-source', 'user');
+      const domain = await graph.getByTestId('chart-zoom-domain').textContent();
+      if (domain && Number(domain.split('–')[0]) >= Date.parse(at(500))) break;
+    }
+    await expect
+      .poll(async () => {
+        const domain = await graph.getByTestId('chart-zoom-domain').textContent();
+        return domain ? Number(domain.split('–')[0]) : 0;
+      })
+      .toBeGreaterThanOrEqual(Date.parse(at(500)));
+    await expect(graph).toContainText('확대 범위');
+    await expect(graph.getByRole('img', { name: '원본 심박 (bpm) 차트' })).toBeVisible();
+    const plotted = await graph
+      .getByRole('img', { name: '원본 심박 (bpm) 차트' })
+      .locator('circle[aria-label]')
+      .evaluateAll((circles) =>
+        circles.map((circle) =>
+          Number(circle.getAttribute('aria-label')?.match(/관측 (\d+)/)?.[1]),
+        ),
+      );
+    expect(plotted.some((index) => index >= 500)).toBe(true);
+    expect(plotted.every((index) => index >= 500)).toBe(true);
+  });
+
   test(`${shell.name}: chart and map zoom share a viewport without changing the chosen range`, async ({
     page,
   }) => {

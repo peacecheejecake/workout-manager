@@ -466,10 +466,11 @@ export function MapView({
   const total = paths.reduce((sum, path) => sum + path.positions.length, 0);
   const truncated = total - listed.length;
 
-  const fitted = useRef(-1);
+  const fitted = useRef<{ adapter: MapAdapterHandle; request: number } | null>(null);
   useEffect(() => {
-    if (!adapter || !bounds || fitted.current === fitRequest) return;
-    fitted.current = fitRequest;
+    if (!adapter || !bounds) return;
+    if (fitted.current?.adapter === adapter && fitted.current.request === fitRequest) return;
+    fitted.current = { adapter, request: fitRequest };
     adapter.fitBounds(bounds);
   }, [adapter, bounds, fitRequest]);
 

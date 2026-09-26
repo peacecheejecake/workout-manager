@@ -1700,10 +1700,11 @@
       "verdict": "passed",
       "evidence": [
         "tests/identity/activity-track-map.spec.ts:272",
-        "tests/identity/activity-range-link.spec.ts:211",
-        "packages/modules/activities/tests/linked-viewport.test.tsx"
+        "tests/identity/activity-range-link.spec.ts:231",
+        "packages/modules/activities/tests/linked-viewport.test.tsx",
+        "packages/modules/activities/tests/activity-track-panel.test.tsx:516"
       ],
-      "reason": "M2-01k R-S09 zoom closure (2026-09-27): passed. M2-01k-d proves mobile mount-on-demand and tablet two-pane view, including lifecycle and selection retention mutants; M2-01k-n proves linked desktop chart/map/lap range selection. The new explicit geo-kit viewport contract and S09 chart zoom domain share zoom in both directions: chart zoom changes actual map bounds and direct map Ctrl+wheel changes the rendered chart domain in Next and Vite. The focused two-shell browser tests keep selection/range stable, report zero API writes and leave the map fit request unchanged after a user map gesture, so there is no feedback loop. Separate chart-to-map and map-to-chart mutants fail at the actual viewport/domain assertion in both shells. This is Chromium with a fixture provider; native touch/IME is separate.",
+      "reason": "M2-01k R-S09 zoom closure (2026-09-27): passed. M2-01k-d proves mobile mount-on-demand and tablet two-pane view, including lifecycle and selection retention mutants; M2-01k-n proves linked desktop chart/map/lap range selection. The explicit geo-kit viewport contract and S09 chart zoom domain share zoom in both directions: chart zoom changes actual map bounds and direct map Ctrl+wheel changes the rendered chart domain in Next and Vite. Map-driven ranges filter observations before bounded 500-record pagination, so ranges starting beyond the first page still plot the corresponding observations. Full view invalidates the previous partial fit request and a recreated map adapter fits the full track. The focused two-shell browser tests keep selection/range stable, report zero API writes and leave the map fit request unchanged after a user map gesture, so there is no feedback loop. Separate chart-to-map, map-to-chart, long-track pagination, and adapter recreation mutants fail. This is Chromium with a fixture provider; native touch/IME is separate.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1733,6 +1734,20 @@
           "linked-viewport.test.tsx 3/3 and related geo-kit/activity unit suites 111/111",
           "two-shell builds and root Chrome Next chart-to-map manual inspection; see docs/implementation/progress/M2-01k-zoom.md"
         ]
+      },
+      "phaseReviewFix": {
+        "base": "9ac6aa1",
+        "reviewedHead": "354cd5e",
+        "findings": [
+          "P1 FIXED: 2100-record real activity, user map zoom after the first 500-record chart page, Next/Vite 2/2 passed; old-page slicing mutant failed 2/2 with an absent chart",
+          "P2 FIXED: full-view clears stale partial viewport request; adapter recreation refits full bounds in activity-track-panel.test.tsx; removal of clear and old adapter-independent fitted ref each failed the focused test"
+        ],
+        "restoredChecks": [
+          "activity-range-link.spec.ts Next/Vite 8/8 passed with isolated PostgreSQL",
+          "activity-track-panel.test.tsx and geo-kit.test.tsx 102/102 passed",
+          "generated check, focused format/lint, 34-package and root typecheck, Next/Vite production builds passed"
+        ],
+        "limitations": "Local Chromium with fixture OIDC and synthetic FIT; native touch/IME and production provider remain separate. Phase review refresh is required for the changed head."
       }
     },
     {

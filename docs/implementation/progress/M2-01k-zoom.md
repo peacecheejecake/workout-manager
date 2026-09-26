@@ -60,3 +60,33 @@ revision은 `063bee94c3f4df8453406c830b0a7df0f2860278`다
 touch/IME, 배경 지도 배포 여부를 통과로 판정하지 않는다. `R-S09`만
 **partial → passed**로 재판정하고 과거 round 기록과 외부 `not_executed`
 행은 유지한다. M2-01k 부모와 phase 독립 검토는 아직 끝나지 않았다.
+
+## 단계 독립 검토 지적 수정 · 2026-09-27
+
+독립 검토 기준은 `main` `9ac6aa1` 대 phase `354cd5e`였다. 두 지적을
+유효한 것으로 판정하고 이 phase branch에서 고쳤다. 이 변경을 포함한 새
+HEAD는 다시 단계 독립 검토를 받아야 한다.
+
+- **P1 FIXED:** 지도에서 얻은 시간 범위에 속하는 원본 관측을 먼저 선별한 뒤
+  페이지당 최대 500개로 나눈다. 확대 전의 페이지 상태와 원본 선택은 유지하며,
+  선택이 확대 범위 안에 있으면 해당 페이지를 보여 준다. 시각이 없거나 범위
+  밖인 관측을 임의로 채우지 않는다. 합성 FIT 2,100개를 실제 API·격리
+  PostgreSQL에 저장한 뒤, 사용자가 지도를 확대해 첫 500개 이후의
+  시간으로 이동하는 Next/Vite 시험 **2/2 통과**. 예전 방식으로 첫 원본
+  페이지를 자르는 변이는 양쪽 shell에서 차트가 사라지는 단언으로 **2/2
+  실패**했다.
+- **P2 FIXED:** `전체 보기`와 `차트 전체`가 이전 부분 viewport 요청을
+  지우고 전체 경로 fit을 요청한다. geo-kit은 fit 요청 번호뿐 아니라 adapter
+  identity도 확인해 새 adapter에 전체 경로를 다시 맞춘다. 실제 `MapView`
+  계약을 통과하는 adapter probe 단위 시험에서 차트 확대 → 전체 보기 →
+  배경 지도 변경으로 adapter 재생성 순서를 검증했다. 부분 요청 지우기를
+  제거한 변이는 남은 request 단언에서, adapter identity를 제거한 변이는
+  재생성 뒤 전체 fit 단언에서 각각 실패했다.
+
+변이 원복 후 관련 단위 시험 **102/102**, `activity-range-link.spec.ts`
+Next/Vite **8/8**, 생성물 검사·대상 파일 format/lint·전체 34 package와
+root typecheck·두 shell 생산 빌드가 통과했다. Aside는 `aside --update`에서
+`fetch failed`라 사용할 수 없었고, 이 검증의 직접 UI 증거는 Playwright
+Chromium이다. 합성 FIT·fixture OIDC·로컬 PostgreSQL 조건이며 실제 기기와
+운영 공급자 증거를 추가하지 않았다. `R-S09` passed 외의 매트릭스 판정과
+과거 `not_executed`는 바꾸지 않았다.
