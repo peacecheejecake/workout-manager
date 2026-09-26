@@ -231,5 +231,7 @@ uv run pytest
 
 - Contract changes require validation and consumer typechecks; approval/persistence changes need transaction tests;
   UI changes need build and real-browser evidence. Update documentation and status with actual results.
-- Distinguish implemented, mocked, verified, externally blocked, and not executed. Web MVP includes the specified
-  official Garmin integration; native-inclusive release additionally requires M3. FIT fallback is not automatic sync.
+- Distinguish implemented, mocked, verified, externally blocked, and not executed. Web MVP defers official Garmin
+  integration under the user-approved 2026-09-27 scope decision; native-inclusive release additionally requires M3.
+  The owner-only unofficial Garmin adapter is optional and off by default, and neither it nor FIT fallback is proof
+  of official integration or general production automatic sync.

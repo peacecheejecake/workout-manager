@@ -57,14 +57,6 @@
       "evidence": "docs/implementation/progress/M0-06a.md"
     },
     {
-      "id": "EXT-G",
-      "title": "Garmin 권한 확보",
-      "dependsOn": ["M0-06a"],
-      "kind": "external",
-      "status": "not_started",
-      "scope": "외부 조건: 공식 entitlement·파트너 명세·검증 계정 · 사용자 결정(2026-09-26): 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지는 로컬 FIT 가져오기(M0-07a)만 쓰고, 승인되면 M0-07b·M1-06b를 공식 경로로 구현한다. 공식이 아닌 API 경로는 만들지 않는다."
-    },
-    {
       "id": "EXT-G-tmp",
       "title": "임시 Garmin gate 결정(비공식 garminconnect)",
       "dependsOn": ["M0-07a"],
@@ -179,14 +171,6 @@
       "status": "completed",
       "scope": "Python CLI·CSV/Parquet·pytest; synthetic fixture",
       "evidence": "docs/implementation/progress/M0-07a.md"
-    },
-    {
-      "id": "M0-07b",
-      "title": "허가된 FIT 다운로드",
-      "dependsOn": ["M0-07a", "EXT-G"],
-      "kind": "task",
-      "status": "not_started",
-      "scope": "공식 provider 경로·resume/manifest; 로컬 import와 별도 완료"
     },
     {
       "id": "M1-01",
@@ -1034,14 +1018,6 @@
       "evidence": "docs/implementation/progress/M1-06c.md"
     },
     {
-      "id": "M1-06b",
-      "title": "공식 Garmin adapter",
-      "dependsOn": ["M1-03", "EXT-G", "M1-06c"],
-      "kind": "task",
-      "status": "not_started",
-      "scope": "integrations/garmin; 허가된 실제 응답·자동 수집 검증"
-    },
-    {
       "id": "G1",
       "title": "러닝 core 통합",
       "dependsOn": ["M1-05", "M1-06a"],
@@ -1815,26 +1791,18 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": ["M2-02", "M2-05", "M0-06b"],
+      "dependsOn": ["M2-02", "M2-05", "M0-06b", "M1-06b-tmp"],
       "kind": "task",
       "status": "not_started",
-      "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정"
-    },
-    {
-      "id": "M2-07",
-      "title": "공식 연동 출시 검증",
-      "dependsOn": ["M2-06", "M1-06b"],
-      "kind": "task",
-      "status": "not_started",
-      "scope": "실제 Garmin 수집을 전체 앱과 통합 검증; 동의·실패 복구·공급자 회귀"
+      "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md"
     },
     {
       "id": "G2",
       "title": "Web MVP 출시 gate",
-      "dependsOn": ["M2-06", "M2-07"],
+      "dependsOn": ["M2-06"],
       "kind": "gate",
       "status": "not_started",
-      "scope": "공식 Garmin 포함; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단"
+      "scope": "사용자 결정(2026-09-27): 공식 Garmin 연동 제외 Web MVP. M2-06의 Web 전체 업무·보안·운영 수용을 요구한다. 비공식 Garmin 연결은 소유자 한정·기본 꺼짐 선택 기능이며 그 fixture 결과를 실계정/공식 연동 증거로 승격하지 않는다. 공개 배포의 HTTPS·TLS·secret manager·실제 OIDC 검증은 EXT-HOSTING에 남고, 미실행 외부 증거를 통과로 표시하지 않는다."
     },
     {
       "id": "M3-01",

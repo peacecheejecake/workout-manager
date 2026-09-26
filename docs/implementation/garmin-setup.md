@@ -2,7 +2,8 @@
 
 기존 [OIDC 앱 로그인](oidc-setup.md)은 유지한다. 이 설정은 로그인한 앱 계정의 Garmin 데이터 연결용이다.
 공식 client 발급·entitlement 증거는 아직 없으며 실제 Garmin 계정으로 검증하지 않았다.
-공식 자동 활동 수집은 별도 M1-06b 범위다. [설계와 완료 구분](garmin-oauth.md) 참고.
+공식 자동 활동 수집은 [후속 계획](research/garmin-official-deferred.md)의 M1-06b 범위다.
+[설계와 완료 구분](garmin-oauth.md) 참고.
 
 ## 서버 설정
 

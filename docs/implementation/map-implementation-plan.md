@@ -21,7 +21,9 @@ MapLibre 같은 오픈소스 렌더러와 자체 운영하는 지도 데이터·
 기존 [아키텍처](../.pre/02_frontend_architecture.md), [디자인](../.pre/03_design_system.md),
 [반응형](../.pre/07_responsive_layout.md)을 유지한다. 이전 문서의 hosted routing 후보는
 이 결정으로 현재 채택 경로에서 제외하지만 과거 조사·실패·미확인 증거는 보존한다.
-공식 Garmin·Native·한국 보행 coverage·OS IME gate는 면제하지 않는다.
+Native·한국 보행 coverage·OS IME gate는 면제하지 않는다. 공식 Garmin은 이 계획 당시
+별도 gate였으나 [2026-09-27 사용자 결정](research/garmin-official-deferred.md)으로 현
+Web MVP 밖의 후속 작업이 됐다.
 
 ## 2. 현재 구현과 재사용 경계
 

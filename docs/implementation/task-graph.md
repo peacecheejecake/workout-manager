@@ -15,7 +15,8 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 마쳤다. [M2-03 갤러리·media](progress/M2-03.md)도 완료했다. 두 task는 병렬로 구현하고
 독립 peer review를 반복한 뒤 각각 커밋했다. 검색 색인·retrieval cache·인용 저장소의 실제
 삭제 실행기는 당시 없어 derived cleanup manifest가 열려 있었으며 아래 M2-05에서 구현했다.
-지도 coverage·Native 실기기·공식 Garmin의 독립 gate는 유지한다.
+지도 coverage·Native 실기기의 독립 gate는 유지한다. 공식 Garmin 작업은
+[2026-09-27 후속 계획](research/garmin-official-deferred.md)에 이관했다.
 
 EXT-OIDC의 localhost 실제 Zitadel 검증은 완료했다. 공개 HTTPS·TLS·secret manager 및 배포 환경의
 취소 경로 검증은 외부 gate EXT-HOSTING에 남는다. 앱의 back-channel logout 구현과 실제 공급자
@@ -31,7 +32,8 @@ gate를 조회 시점에 다시 통과한 자료만 반환한다. 검토 pin이 
 2026-09-21 [지도 실행 계획](map-implementation-plan.md)에 따라 M2-01a~k를 분해했다.
 M2-01a 계약과 M2-01d 자체 인프라 spike는 ready이며 신규 노드는 모두 not_started다.
 총 133개 노드(완료 108, 진행 2, 미착수 23). 부모 M2-01은 M0-06b와 k를 계속 요구한다.
-EXT-G 공식 Garmin·M0-06b 실제 coverage/IME·M0-06c 실기기 gate는 유지한다.
+M0-06b 실제 coverage/IME·M0-06c 실기기 gate는 유지한다. 이 단락의 133개 수치는
+2026-09-21 당시 스냅샷이며, 최신 노드 상태는 JSON을 따른다.
 
 M1-04는 [화면별 수용 대조](progress/M1-04.md)의 지도 독립 workbench 범위를 완료했다. S05 계획 종류는 운동·영양·회복·루틴
 도메인 분류로 확정했고 운동 종목과 별도 필드로 유지한다. 지도·코치·제공자·Native 등 기존 후속
@@ -61,10 +63,11 @@ M1-05j는 훈련 후보의 순수 계약·diff/검증(j1), tenant 불변 원장�
 ## 읽는 방법
 
 - `A → B`: B를 구현·통합하려면 A의 완료 계약을 충족해야 한다. 여러 화살표는 AND 조건이다.
-- `EXT-G`: 엔지니어링 완료와 별개인 외부 권한 조건. 점선도 필수 의존성이며 선택 조건이 아니다.
-- `G1/G2/G3`: 통합/출시 gate. mock 기반 개발 gate와 공식 연동 출시 gate를 구분한다.
+- 공식 Garmin 권한·다운로드·adapter·출시 검증은 활성 그래프에서 제외하고
+  [후속 계획](research/garmin-official-deferred.md)에 원래 선행 조건과 수용 증거를 보존했다.
+- `G1/G2/G3`: 통합/출시 gate. `G2`는 공식 Garmin을 제외한 Web MVP의 gate다.
 - 기계 판독 원본은 [task-graph.json](task-graph.json)이다. 그래프/표와 JSON을 같은 변경에서 갱신한다.
-- M0-06은 `a 조사 / b UI·지도 spike / c native feasibility`, M0-07은 `a 로컬 / b 공식 다운로드`, M1-06은 `a 운영 / b 공식 연동 / c OAuth 연결 기반`으로 분할했다. 부모 작업의 완료는 해당 자식 모두를 요구한다.
+- M0-06은 `a 조사 / b UI·지도 spike / c native feasibility`다. 활성 그래프의 M0-07은 로컬 FIT 도구, M1-06은 운영·OAuth 기반과 완료된 소유자 한정 비공식 수집을 포함한다. 공식 작업은 후속 계획에 있다.
 - M1b/M1c/M2/M3의 하위 ID는 이번 실행 계획에서 추가했다. 기존 FUT/S/F/A 요구 ID를 대체하지 않는다.
 
 ## M0~M1: 기반과 러닝 core
@@ -77,32 +80,26 @@ flowchart TD
     task3["M0-04 UI·반응형"]
     task4["M0-05 API·DB 기반"]
     task5["M0-06a 공급자 조건 조사"]
-    task6{{"EXT-G Garmin 권한 확보"}}
     task7["M0-06b UI·지도 spike"]
     task8["M0-06c Native feasibility"]
     task9["M0-07a 로컬 FIT batch 도구"]
-    task10["M0-07b 허가된 FIT 다운로드"]
     task11["M1-01 Identity·Consent"]
     task12["M1-02 Plan·Planner"]
     task13["M1-03 Import·Activity"]
     task14["M1-04 오늘·활동·체크인 UI"]
     task15["M1-05 Evidence·Coach·승인"]
     task16["M1-06a 운영·삭제·내보내기"]
-    task17["M1-06b 공식 Garmin adapter"]
     garminOAuth["M1-06c Garmin OAuth 연결 기반"]
     task18{{"G1 러닝 core 통합"}}
     task0 --> task1
     task1 --> task2
     task2 --> task3
     task1 --> task4
-    task5 --> task6
     task3 --> task7
     task5 --> task7
     task2 --> task8
     task5 --> task8
     task0 --> task9
-    task9 --> task10
-    task6 -.-> task10
     task2 --> task11
     task4 --> task11
     task11 --> task12
@@ -415,30 +412,27 @@ flowchart TD
     coachAcceptance --> task15
     task14 --> task15
     task13 --> task16
-    task13 --> task17
-    task6 -.-> task17
     task11 --> garminOAuth
     task16 --> garminOAuth
-    garminOAuth --> task17
     task15 --> task18
     task16 --> task18
 ```
 
 2026-09-16 사용자 결정으로 [Garmin OAuth 연결 기반](garmin-oauth.md)을 분리했다. 기존 OIDC 앱 로그인은
 유지하고 설정에 별도 연결을 추가한다. M1-06c는 로컬 OAuth fixture로 구현·검증하며 EXT-G를 요구하지
-않는다. [M1-06c 구현·로컬 검증](progress/M1-06c.md)은 완료했다. 실제 공식 연결·자동 수집은
-M1-06b에서 EXT-G와 함께 검증하므로 기존 외부 gate를 완화하지 않는다.
+않는다. [M1-06c 구현·로컬 검증](progress/M1-06c.md)은 완료했다. 실제 공식 연결·자동 수집의
+검증 계약은 [후속 계획](research/garmin-official-deferred.md)에 보존했다.
 
 2026-09-16 사용자 승인으로 지도와 독립적인 M1 제품 구현 의존성을 분리했다. M1-04a 체크인
 서버 작업 후 M1-04b 체크인 UI를 진행하고 M1-04의 대시보드·활동 화면에 합류한다. M0-06b는 진행 중으로 유지하며 지도 기능 M2-01과
-전체 통합 M2-06에서 합류한다. OS IME·지도 coverage·실기기·공식 Garmin의 완료 조건은 유지한다.
+전체 통합 M2-06에서 합류한다. OS IME·지도 coverage·실기기의 완료 조건은 유지한다.
 
 ## M1b~M2: 기능 확장과 Web 출시
 
 ```mermaid
 flowchart TD
     task7["M0-06b UI·지도 spike"]
-    task17["M1-06b 공식 Garmin adapter"]
+    garminTmp["M1-06b-tmp 소유자 한정 비공식 수집"]
     task18{{"G1 러닝 core 통합"}}
     task19["M1b-01 영양 수동 core"]
     task20["M1b-02 보강 수동 core"]
@@ -486,7 +480,6 @@ flowchart TD
     task29d["M2-04d 접근·coach 경계"]
     task30["M2-05 RAG·검토 자료·코치"]
     task31["M2-06 전체 화면·내부 통합 검증"]
-    task32["M2-07 공식 연동 출시 검증"]
     task33{{"G2 Web MVP 출시 gate"}}
     task18 --> task19
     task18 --> task20
@@ -513,10 +506,8 @@ flowchart TD
     task7 --> task31
     task27 --> task31
     task30 --> task31
-    task31 --> task32
-    task17 --> task32
+    garminTmp --> task31
     task31 --> task33
-    task32 --> task33
 ```
 
 ## M3: Native 병행과 최종 통합
@@ -552,11 +543,9 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M0-04 UI·반응형 | M0-03 | ui/Storybook; tokens·breakpoint 생성·draft 유지 |
 | M0-05 API·DB 기반 | M0-02 | api/persistence; migration·RLS·outbox·실DB 시험 |
 | M0-06a 공급자 조건 조사 | 없음 | Garmin tracker·routing 조건·native 준비; 조사만으로 권한 확보 아님 |
-| EXT-G Garmin 권한 확보 | M0-06a | 외부 조건: 공식 entitlement·파트너 명세·검증 계정 |
 | M0-06b UI·지도 spike | M0-04, M0-06a | adapter 호환성·라이선스·지도 coverage; 브라우저 증거 |
 | M0-06c Native feasibility | M0-03, M0-06a | HealthKit feasibility; 서명·권한·실기기 증거 |
 | M0-07a 로컬 FIT batch 도구 | M0-01 | Python CLI·CSV/Parquet·pytest; synthetic fixture |
-| M0-07b 허가된 FIT 다운로드 | M0-07a, EXT-G | 공식 provider 경로·resume/manifest; 로컬 import와 별도 완료 |
 | M1-01 Identity·Consent | M0-03, M0-05 | identity/auth/consent; tenant·session·cache 격리 |
 | M1-02 Plan·Planner | M1-01, M0-04 | planning/planner-kit; version·projection·draft |
 | M1-03 Import·Activity | M1-01, M0-07a | activities/worker; fixture/FIT·dedup·suppression |
@@ -643,7 +632,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M1-05 Evidence·Coach·승인 | M1-04, M1-05a~m | training-only core; stale·동시성·원자성·실제 LLM 별도 검증 |
 | M1-06a 운영·삭제·내보내기 | M1-03 | settings/sync/audit; 관측·삭제·backup restore 기반 |
 | M1-06c Garmin OAuth 연결 기반 | M1-01, M1-06a | 설정 연결·PKCE·credential 수명주기·로컬 fixture 검증 |
-| M1-06b 공식 Garmin adapter | M1-03, EXT-G, M1-06c | integrations/garmin; 허가된 실제 OAuth·응답·자동 수집 검증 |
+| M1-06b-tmp 소유자 한정 비공식 수집 | EXT-G-tmp, M1-03, M1-06c | 기본 꺼짐·소유자 한정; fixture 개발 경로, 실계정 실행은 별도 not_executed |
 | G1 러닝 core 통합 | M1-05, M1-06a | mock/FIT 개발 gate; 실제 DB E2E·권한·회귀. 공식 연동 완료 아님 |
 | M1b-01 영양 수동 core | G1 | nutrition; plan/intake/food·부분 기록 |
 | M1b-02 보강 수동 core | G1 | supplementary; exercise/set actual·timer |
@@ -672,9 +661,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-04c URL 수집·parser lifecycle | M2-04b | 완료; SSRF/redirect 방어·bounded parser·출처/실패·파생물 삭제 |
 | M2-04d 자료 접근·공유·coach 사용 경계 | M2-04b, M2-04c | ACL revision·명시 공유/철회·reviewed/coach 전환·index/cache/citation 삭제 manifest |
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
-| M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b | S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정 |
-| M2-07 공식 연동 출시 검증 | M2-06, M1-06b | 실제 Garmin 수집을 전체 앱과 통합 검증; 동의·실패 복구·공급자 회귀 |
-| G2 Web MVP 출시 gate | M2-06, M2-07 | 공식 Garmin 포함; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단 |
+| M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b, M1-06b-tmp | S01–S35·보안·운영·내부 수용 기준 대조; 비공식 수집의 선택 기능·fixture 회귀와 실계정 미검증 구분 |
+| G2 Web MVP 출시 gate | M2-06 | 공식 Garmin 제외; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단 |
 | M3-01 Native shell·secure bridge | M1c-04, M0-06c | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
 | M3-02 HealthKit collector | M3-01 | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
@@ -688,7 +676,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M0-01 이후 | M0-02 계약 / M0-07a 로컬 FIT | FIT는 독립 Python 도구; 서버 모델을 새로 정의하지 않음 |
 | M0-02 이후 | M0-03 Host·상태 / M0-05 API·DB / 남은 FIT | version·오류·인증 transport 계약 공유 |
 | Identity와 UI 기반 이후 | M1-02 계획 / M1-03 활동 수집 | M1-04에서 두 read model 연결 |
-| 활동 수집 이후 | M1-04~05 core / M1-06a 운영 / 권한 있는 M1-06b 공식 연동 | 운영 기반은 G1, 공식 연동은 G2에 필수 |
+| 활동 수집 이후 | M1-04~05 core / M1-06a 운영 / 소유자 한정 M1-06b-tmp | 운영 기반은 G1, 비공식 수집의 fixture 회귀는 M2-06; 공식 연동은 후속 계획 |
 | M1-01·M1-06a 이후 | M1-06c OAuth 연결 기반 / M0-06b·c 남은 검증 | OAuth 기반은 공식 자격 증명 검증·자동 수집과 별도 완료 |
 | G1 이후 | M1b-01 영양 / M1b-02 보강 | M1b-03 joint 승인·집계 회귀 |
 | M1b-03 이후 | M1c-01 루틴 / M1c-02 스트레칭 / M1c-03 회복 | M1c-04 다영역 승인; 상대 도메인은 확정 port/fixture 사용 |
