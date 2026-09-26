@@ -56,7 +56,8 @@ APPROVE를 받고 main `7d54934`로 fast-forward했다. 실제 HTTPS 공급자 �
 APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 검증은 `not_executed`, 노드는 `in_progress`다.
 `phase/m2-01k`는 반응형 초안·지도 상태·차트↔지도 확대·계정 전환과 늦은 응답·S13 카드 노면·S14 공급자 분리 수용을
 보강했다. 매트릭스는 passed 91 · partial 14 · failed 1 · not_executed 4이며, 부모 노드는 `in_progress`다.
-이 phase 브랜치는 main `9ac6aa1` 대비 전체 독립 검토 전이므로 아직 main에 병합하지 않았다.
+이 phase 브랜치는 main `9ac6aa1` 대비 전체 독립 검토 1차에서 두 지적을 받았고 `f12c021`로 수정했다.
+변경 HEAD의 재검토 전이므로 아직 main에 병합하지 않았다.
 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
@@ -105,8 +106,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 
 ## 다음 작업 순서
 
-1. **M2-01k phase 검토**: 브랜치의 전체 검증 결과와 main 대비 diff를 Codex CLI `gpt-6-sol` high/read-only로
-   독립 검토한다. 지적을 수정·재검토하고 APPROVE된 HEAD만 main에 fast-forward한다. 아직 남은 partial·failed·
+1. **M2-01k phase 재검토**: 1차 독립 검토의 P1·P2를 `f12c021`에서 고쳤다. 브랜치의 변경 HEAD 전체를
+   Codex CLI `gpt-6-sol` high/read-only로 재검토하고 APPROVE된 HEAD만 main에 fast-forward한다. 남은 partial·failed·
    not_executed는 매트릭스의 근거와 외부 gate를 따른다.
 2. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
    수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가

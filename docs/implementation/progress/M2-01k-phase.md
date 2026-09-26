@@ -1,6 +1,6 @@
 # M2-01k phase 통합 기록 · 2026-09-27
 
-기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토와 main 병합은 이 기록 작성 시점에 아직 수행하지 않았다.
+기준 `main`은 `9ac6aa1`. 이 phase의 실행 가능한 보강 작업은 `phase/m2-01k`에 개별 커밋했다. 부모 `M2-01k`는 외부 gate와 미수용 행 때문에 `in_progress`를 유지한다. phase 전체 독립 검토 1차의 지적을 수정했고 변경 HEAD의 재검토와 main 병합은 아직 수행하지 않았다.
 
 ## 이번 범위
 
@@ -24,3 +24,9 @@
 ## 남은 gate
 
 `M2-01k` 부모와 외부 조건은 여전히 열려 있다. 본 기록은 phase 코드의 검토 준비 상태만 나타낸다. 독립 phase review가 findings를 내면 같은 브랜치에서 수정·재검토하고, 승인된 base/head를 별도로 기록한 뒤에만 main을 fast-forward한다. Push는 사용자 작업이다.
+
+## 독립 검토 1차와 수정
+
+Codex CLI `gpt-6-sol` high/read-only가 `main` `9ac6aa1f5af54a09497d7e50504840fb91aae8f5`부터 phase HEAD `354cd5ebd7175455fb045d635d6e68485615454a`까지 전체 diff를 검토하고 **CHANGES_REQUESTED**를 냈다. P1은 500개를 넘는 활동에서 지도 확대 범위가 첫 차트 페이지 밖이면 빈 차트가 되는 문제, P2는 `전체 보기` 뒤 지도 adapter 재생성 시 이전 부분 확대가 되살아나는 문제였다.
+
+두 지적은 `f12c021`에서 수정했다. [확대 기록](M2-01k-zoom.md)의 2,100개 관측 Next/Vite 실행과 실패 변형, adapter 재생성 단위 시험에 따라 **P1 FIXED · P2 FIXED**로 평가한다. 수정 뒤 `pnpm check`는 생성물·포맷·lint·typecheck 및 Vitest **4,098/4,098 passed**(339 files)가 통과했다. `activity-range-link.spec.ts`의 Next/Vite 브라우저 사례를 2회씩 실행해 **16/16 passed**했다. 서버·DB 코드는 바뀌지 않아 앞선 PostgreSQL 804/804 근거를 유지한다. 변경된 HEAD 전체에 대한 독립 재검토는 아직 필요하다.
