@@ -1,14 +1,20 @@
 // Client authentication (client_secret_basic) and RP-initiated logout registration checks.
 // Prints only fixed error codes / statuses, never the client id or secret.
 import { loadEnv } from './env.mjs';
+import { verifiedProviderTargets } from './provider-target.mjs';
 import { safeError } from './safe-error.mjs';
 
 const env = loadEnv();
-const d = await (await fetch(new URL('.well-known/openid-configuration', env.OIDC_ISSUER))).json();
+const issuer = new URL(env.OIDC_ISSUER);
+if (issuer.protocol !== 'https:') throw new Error('OIDC_PROBE_PROVIDER_MISMATCH');
+const discovery = new URL('.well-known/openid-configuration', issuer);
+const d = await (await fetch(discovery, { redirect: 'error' })).json();
+const targets = verifiedProviderTargets(issuer.href, d);
 const enc = (v) => encodeURIComponent(v).replace(/%20/g, '+');
 async function token(label, id, secret) {
-  const r = await fetch(d.token_endpoint, {
+  const r = await fetch(targets.tokenEndpoint, {
     method: 'POST',
+    redirect: 'error',
     headers: {
       authorization: `Basic ${Buffer.from(`${enc(id)}:${enc(secret)}`).toString('base64')}`,
       'content-type': 'application/x-www-form-urlencoded',
@@ -27,7 +33,7 @@ await token('client_secret_basic, configured secret', env.OIDC_CLIENT_ID, env.OI
 await token('client_secret_basic, wrong secret', env.OIDC_CLIENT_ID, `${env.OIDC_CLIENT_SECRET}x`);
 
 async function endSession(label, postLogout) {
-  const u = new URL(d.end_session_endpoint);
+  const u = new URL(targets.endSessionEndpoint);
   u.searchParams.set('client_id', env.OIDC_CLIENT_ID);
   u.searchParams.set('post_logout_redirect_uri', postLogout);
   const r = await fetch(u, { redirect: 'manual' });

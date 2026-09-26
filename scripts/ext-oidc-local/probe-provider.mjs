@@ -1,5 +1,6 @@
 // Machine-checks the configured OIDC provider's public metadata. Prints no client id/secret.
 import { loadEnv } from './env.mjs';
+import { verifiedProviderTargets } from './provider-target.mjs';
 
 const env = loadEnv();
 const issuer = new URL(env.OIDC_ISSUER);
@@ -17,9 +18,10 @@ const wellKnown = new URL(
   `${issuer.pathname.replace(/\/$/, '')}/.well-known/openid-configuration`,
   issuer,
 );
-const res = await fetch(wellKnown, { signal: AbortSignal.timeout(10000) });
+const res = await fetch(wellKnown, { signal: AbortSignal.timeout(10000), redirect: 'error' });
 console.log('discovery HTTP', res.status, res.headers.get('content-type'));
 const m = await res.json();
+const targets = verifiedProviderTargets(issuer.href, m);
 const pick = (k) => console.log(`  ${k}:`, JSON.stringify(m[k]));
 console.log(
   'issuer match (URL-normalized):',
@@ -60,7 +62,10 @@ const https = ['authorization_endpoint', 'token_endpoint', 'jwks_uri', 'end_sess
 );
 console.log('https endpoints:', JSON.stringify(Object.fromEntries(https)));
 
-const jwksRes = await fetch(m.jwks_uri, { signal: AbortSignal.timeout(10000) });
+const jwksRes = await fetch(targets.jwksUri, {
+  signal: AbortSignal.timeout(10000),
+  redirect: 'error',
+});
 console.log('JWKS HTTP', jwksRes.status, 'cache-control:', jwksRes.headers.get('cache-control'));
 const jwks = await jwksRes.json();
 for (const key of jwks.keys ?? [])

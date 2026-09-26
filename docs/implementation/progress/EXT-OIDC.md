@@ -211,6 +211,10 @@ lint·format 검사를 통과하지 못하던 파일들이다.
 - 재검토 HEAD `670c888`에서 이전 4건은 모두 **FIXED**였으나, HANDOFF가 EXT-HOSTING과
   back-channel 후속 결정을 이전 상태로 안내하는 새 지적이 있어 **CHANGES_REQUESTED**였다.
   HANDOFF의 현재 상태와 사용자 결정을 고쳤다. 이 새 지적의 수정 HEAD는 다시 검토받는다.
+- 재검토 HEAD `02d84ef`에서 HANDOFF 지적은 **FIXED**였으나, `probe-client`가 검증하지 않은
+  discovery `token_endpoint`에 실제 client secret을 보낼 수 있다는 새 지적이 있어
+  **CHANGES_REQUESTED**였다. 현재 checkout의 provider probe는 issuer와 같은 HTTPS origin의
+  token/logout/JWKS endpoint만 허용하고 redirect를 거절한다. 다음 전체 diff 재검토를 기다린다.
 
 ## 열린 항목
 
