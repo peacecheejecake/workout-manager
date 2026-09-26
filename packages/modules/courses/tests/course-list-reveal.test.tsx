@@ -148,7 +148,7 @@ function setup() {
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: Array.from({ length: count }, (_, i) => headOf(i)), total: count });
-    if (input.path === '/bff/v1/courses/cards' && input.method === 'GET')
+    if (input.path === '/bff/v1/courses/cards?surface=graph-v1' && input.method === 'GET')
       return reply({ cards: [], total: 0 });
     const detail = /^\/bff\/v1\/courses\/([0-9a-f-]{36})$/.exec(input.path);
     if (detail && input.method === 'GET') {

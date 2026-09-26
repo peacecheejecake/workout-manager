@@ -109,7 +109,7 @@ function setup(
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
       return reply({ courses: [head], total: 1 });
-    if (input.path === '/bff/v1/courses/cards' && input.method === 'GET') {
+    if (input.path === '/bff/v1/courses/cards?surface=graph-v1' && input.method === 'GET') {
       cardReads += 1;
       const thumbnail = cardThumbnails[Math.min(cardReads, cardThumbnails.length) - 1];
       return reply({ cards: [card(thumbnail)], total: 1 });
