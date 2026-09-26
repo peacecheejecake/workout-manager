@@ -1,8 +1,8 @@
 #!/bin/bash
 # EXT-OIDC local stack (real Zitadel Cloud). Usage: stack.sh up|down|status|outage-on|outage-off|sessions|expire-sessions|log-check|purge|probes
 set -euo pipefail
-WT=/Users/minjiwon/workout-manager/.claude/worktrees/agent-ad7c53a040be4faf0
-HERE=/private/tmp/claude-501/-Users-minjiwon-workout-manager/91dc98ad-1a94-4465-a873-811aee767c3c/scratchpad/ext-oidc
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+WT="$(cd -- "$HERE/../.." && pwd -P)"
 export PATH="$HOME/.local/share/fnm/node-versions/v24.12.0/installation/bin:$PATH"
 cd "$WT"
 if [ "${1:-}" = "probes" ]; then

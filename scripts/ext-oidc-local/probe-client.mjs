@@ -1,6 +1,7 @@
 // Client authentication (client_secret_basic) and RP-initiated logout registration checks.
 // Prints only fixed error codes / statuses, never the client id or secret.
 import { loadEnv } from './env.mjs';
+import { safeError } from './safe-error.mjs';
 
 const env = loadEnv();
 const d = await (await fetch(new URL('.well-known/openid-configuration', env.OIDC_ISSUER))).json();
@@ -20,7 +21,7 @@ async function token(label, id, secret) {
     }),
   });
   const j = await r.json().catch(() => ({}));
-  console.log(`[token ${label}] HTTP ${r.status} error=${j.error} desc=${j.error_description}`);
+  console.log(`[token ${label}] HTTP ${r.status} error=${safeError(j.error)}`);
 }
 await token('client_secret_basic, configured secret', env.OIDC_CLIENT_ID, env.OIDC_CLIENT_SECRET);
 await token('client_secret_basic, wrong secret', env.OIDC_CLIENT_ID, `${env.OIDC_CLIENT_SECRET}x`);
@@ -31,15 +32,13 @@ async function endSession(label, postLogout) {
   u.searchParams.set('post_logout_redirect_uri', postLogout);
   const r = await fetch(u, { redirect: 'manual' });
   const loc = r.headers.get('location');
-  let where = '(none)';
-  if (loc) {
-    const l = new URL(loc, u);
-    where = l.href.startsWith(postLogout)
-      ? `POST-LOGOUT REDIRECT (${l.origin}${l.pathname})`
-      : `${l.origin}${l.pathname} keys=${[...l.searchParams.keys()].join(',')}`;
-  }
-  const body = r.status === 302 ? '' : (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
-  console.log(`[end_session ${label}] HTTP ${r.status} -> ${where} ${body}`);
+  const redirect = loc ? new URL(loc, u) : null;
+  const registeredRedirect =
+    redirect?.origin === new URL(postLogout).origin &&
+    redirect.pathname === new URL(postLogout).pathname;
+  console.log(
+    `[end_session ${label}] HTTP ${r.status} registered_redirect=${registeredRedirect} error=${safeError(redirect?.searchParams.get('error'))}`,
+  );
 }
 await endSession('registered /account (as the app sends it)', `${env.PUBLIC_ORIGIN}/account`);
 await endSession('unregistered URI', `${env.PUBLIC_ORIGIN}/elsewhere`);

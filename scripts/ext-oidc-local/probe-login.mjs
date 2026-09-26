@@ -1,6 +1,7 @@
 // Probes /bff/v1/auth/login through the web shell as a browser would. Prints no client id,
 // state, nonce, code challenge or cookie value — only shapes and booleans.
 import { loadEnv } from './env.mjs';
+import { safeError } from './safe-error.mjs';
 
 const env = loadEnv();
 const discovery = await (
@@ -47,7 +48,7 @@ async function probe(label, cookie) {
     const u = new URL(opLoc, loc);
     const isCallback = u.href.startsWith(p.get('redirect_uri'));
     where = isCallback
-      ? `CALLBACK error=${u.searchParams.get('error')}`
+      ? `CALLBACK error=${safeError(u.searchParams.get('error'))}`
       : `${u.origin}${u.pathname} (query keys: ${[...u.searchParams.keys()].join(',')})`;
   }
   console.log(`  provider answer: HTTP ${op.status} -> ${where}`);

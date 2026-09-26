@@ -16,20 +16,22 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import * as migrations from '../../packages/server/persistence/src/migrate.ts';
 import { loadEnv } from './env.mjs';
 
-const WORKTREE = '/Users/minjiwon/workout-manager/.claude/worktrees/agent-ad7c53a040be4faf0';
-const SCRATCH =
-  '/private/tmp/claude-501/-Users-minjiwon-workout-manager/91dc98ad-1a94-4465-a873-811aee767c3c/scratchpad';
+const WORKTREE = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const CHECKOUT_ID = createHash('sha256').update(WORKTREE).digest('hex').slice(0, 12);
+const SCRATCH = join(tmpdir(), 'workout-manager-ext-oidc', CHECKOUT_ID);
 const LOCK = join(SCRATCH, 'harness.lock');
 const PRIORITY = join(SCRATCH, 'harness.root-priority');
 const STATE = join(SCRATCH, 'ext-oidc', 'state');
 const PGDATA = join(STATE, 'pgdata');
-// Unix socket paths are limited to 103 bytes; the scratchpad path is too long for one.
-const SOCK = '/tmp/wm-ext-oidc-sock';
+// Unix socket paths are limited to 103 bytes; keep this short and checkout-specific.
+const SOCK = join('/tmp', `wm-ext-oidc-${CHECKOUT_ID}-sock`);
 const LOGS = join(STATE, 'logs');
 const RESOURCES = join(STATE, 'resources');
 const PIDFILE = join(STATE, 'supervisor.pid');

@@ -136,7 +136,8 @@ DB 행은 `stack.sh sessions`로 보며 session id·athlete id·만료만 담는
    [oidc-setup.md](../oidc-setup.md)에 적힌 그대로다.
 2. **`end_session_endpoint`**: 광고, localhost post-logout URI 등록 확인(Phase 1). `id_token_hint` 없는 요청에 확인
    화면을 보인다(5). https post-logout URI 등록은 EXT-HOSTING.
-3. **back-channel logout**: Zitadel은 광고하고, 앱은 미구현. 후속 노드(migration 포함) 여부는 root·사용자 결정.
+3. **back-channel logout**: Zitadel은 광고하고, 앱은 미구현. 사용자 결정에 따라 후속 노드
+   `EXT-BACKCHANNEL`(migration 포함)을 추가했다.
    그 전까지 Zitadel 쪽 계정 정지의 앱 도달 상한은 8 h.
 4. **체크리스트 추가 항목**:
    - 취소(7): Zitadel "Back"은 오류 응답 없이 되돌아간다.
@@ -195,9 +196,24 @@ identity 1회차의 실패는 비공식 Garmin 수집기 경로이며, 이 노�
 `scripts/ext-oidc-local/`의 다른 변경은 prettier 서식뿐이다(`probe-*.mjs`, `stack.mts`). root의 1회차 커밋에서
 lint·format 검사를 통과하지 못하던 파일들이다.
 
+## Phase 독립 검토 · 2026-09-26
+
+- 기준 `main` `5a4dfb5c98d99e88344f920da3ab14558a762ac8`, 검토 HEAD `904f662`의 전체 diff를
+  Codex CLI `gpt-6-sol` high, read-only sandbox에서 검토했다. 결과는 **CHANGES_REQUESTED**였다.
+- 발견 1(옛 worktree·scratchpad 절대 경로): **FIXED**. stack은 현재 checkout을 기준으로 실행하고
+  상태 디렉터리를 checkout별로 분리한다.
+- 발견 2(실제 IdP의 미검증 취소 경로 누락): **FIXED**. EXT-HOSTING에 검증을 배정하고 실제 확인 전까지
+  `not_executed`로 남긴다.
+- 발견 3(EXT-HOSTING을 일반 task로 분류): **FIXED**. 외부 gate로 표시했다.
+- 발견 4(공급자 응답 원문 출력): **FIXED**. probe 출력은 허용된 오류 코드와 상태로 제한한다.
+- 수정 후 root가 bash/Node 구문, 오류 코드 허용 목록, graph 노드·의존성, `git diff --check`를
+  재검증했다. 실제 Zitadel 로그인은 재실행하지 않았다. **수정된 HEAD의 독립 재검토는 대기 중**이다.
+
 ## 열린 항목
 
-- EXT-HOSTING(root가 생성): 위 이동 항목 전부.
-- back-channel logout 후속 노드 여부(migration 필요) — 사용자 결정.
-- 4, 10(화면), 11은 필요하면 EXT-HOSTING 수행 때 함께 한다.
-- `scripts/ext-oidc-local/`는 세션 scratchpad 경로를 담은 WIP 복사본이다. 재사용하려면 경로를 고쳐야 한다.
+- EXT-HOSTING: 위 이동 항목 전부. Zitadel Back이 앱의 `cancelled` 경로를 실행하지 않은 항목(7)도
+  이 gate에 배정했다. 실제 공급자에서 실행 가능한 취소 수단이 없다면 미검증으로 남긴다.
+- EXT-BACKCHANNEL: 앱 구현, migration, 실제 공급자 전파 시험. 현재 `not_started`.
+- 4, 10(화면), 11은 EXT-HOSTING에서 확인한다.
+- `scripts/ext-oidc-local/`는 현재 checkout을 기준으로 실행하며 별도 checkout의 `.env`는
+  `WORKOUT_OIDC_ENV_FILE`로 지정할 수 있다. 이 경로 수정은 기존 실제 브라우저 증거의 재실행이 아니다.

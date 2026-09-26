@@ -1,5 +1,6 @@
 // Negative controls: does the provider refuse an unregistered redirect_uri / unknown client?
 // (So that its acceptance of the app's request means something.) Prints no secrets.
+import { safeError } from './safe-error.mjs';
 const res = await fetch('http://localhost:3100/bff/v1/auth/login', { redirect: 'manual' });
 const base = new URL(res.headers.get('location'));
 async function ask(label, mutate) {
@@ -7,14 +8,10 @@ async function ask(label, mutate) {
   mutate(u.searchParams);
   const op = await fetch(u, { redirect: 'manual' });
   const loc = op.headers.get('location');
-  let where = '(none)';
-  if (loc) {
-    const l = new URL(loc, u);
-    where = `${l.origin}${l.pathname} keys=${[...l.searchParams.keys()].join(',')}${l.searchParams.get('error') ? ` error=${l.searchParams.get('error')}` : ''}`;
-  }
-  let body = '';
-  if (op.status !== 302) body = (await op.text()).replace(/\s+/g, ' ').slice(0, 200);
-  console.log(`[${label}] HTTP ${op.status} -> ${where} ${body}`);
+  const redirect = loc ? new URL(loc, u) : null;
+  console.log(
+    `[${label}] HTTP ${op.status} redirect=${redirect !== null} error=${safeError(redirect?.searchParams.get('error'))}`,
+  );
 }
 await ask('as sent by the app', () => {});
 await ask('redirect_uri not registered', (p) =>
