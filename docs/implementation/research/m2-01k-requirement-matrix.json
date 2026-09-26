@@ -516,6 +516,20 @@
         "provider facts machine-checked against the real endpoints: discovery issuer, S256, client_secret_basic (a wrong secret gets invalid_client), exact redirect and post-logout registration (negative controls rejected), end_session_endpoint"
       ],
       "note": "passed needs the EXT-HOSTING deployed run and a repeatable automated real-IdP login with a mutant (see docs/implementation/progress/EXT-OIDC.md)."
+    },
+    {
+      "node": "M2-01k responsive retention slice",
+      "date": "2026-09-27",
+      "rows": ["R-state-retention"],
+      "decision": "The existing M2-01k-d lifecycle evidence covers renderer cleanup and S09 selection across layouts; a new two-shell browser test covers continuous course draft, list/map selection and focus retention across both responsive boundaries.",
+      "change": "R-state-retention partial -> passed; counts passed 86 -> 87, partial 19 -> 18. Historical round verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "tests/identity/course-responsive-retention.spec.ts: Next and Vite 2/2 passed on the restored tree; 767→768→1279→1280→1279→767 in one document per shell, full waypoint content and revision, list/map selection, focus, zero course-body writes, unchanged saved head, reload clearing the memory draft",
+        "M2-01k-d tests/identity/map-lifecycle.spec.ts: S09 shared selection and renderer identity across mobile, tablet and desktop; WebGL/worker/listener/ResizeObserver/blob URL cleanup and request abort, with the previously recorded D4/D5/D6/D8/D11 failures on removed cleanup guards",
+        "temporary mutant key={layout} on CourseDraftProvider in course-workbench.tsx: both new browser tests failed at the first 768px transition because the unsaved waypoint disappeared; mutant removed, both tests re-passed 2/2 and the product file has no diff",
+        "pnpm build 15/15, pnpm typecheck 34/34 and root, pnpm lint, pnpm format:check, pnpm check:generated passed on the unmutated tree"
+      ],
+      "note": "The evidence is local Chromium with fixture OIDC and isolated PostgreSQL, not native rotation, touch or OS IME; those remain separate external rows. The M2-01k parent remains in_progress."
     }
   ],
   "rounds": [
@@ -637,8 +651,8 @@
     }
   ],
   "counts": {
-    "passed": 86,
-    "partial": 19,
+    "passed": 87,
+    "partial": 18,
     "failed": 1,
     "missing": 0,
     "not_executed": 4
@@ -1639,9 +1653,9 @@
       "id": "R-state-retention",
       "source": "docs/implementation/map-implementation-plan.md:121",
       "quote": "선택·초안은 반응형 renderer 밖에 두고 SDK instance·worker·listener·요청·blob URL을 정리한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "M2-01k-d amendment: still partial. The cleanup half is proven: unmount releases the WebGL context, per-map worker state, window/document listeners, ResizeObservers and blob URLs, and aborts the track request (D4, D5, D6, D8, D11 killed in both shells; MapLibre's single shared worker is allowed and asserted to be exactly one). Keeping the selection and draft outside the renderer across layout switches was not executed or mutated in this node.",
+      "reason": "The M2-01k-d browser lifecycle tests and mutants cover WebGL, worker state, listeners, ResizeObserver, blob URL and request cleanup plus S09 selection and renderer identity across layouts. The M2-01k responsive retention slice adds Next and Vite continuous 767/768/1279/1280 course draft, list/map selection and focus assertions with zero course-body writes and unchanged saved head; a provider-remount mutant fails in both shells at 768px. The scope is local browser behavior, not real-device rotation, touch or OS IME.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -1659,6 +1673,17 @@
           "packages/modules/activities/tests/activity-track-panel.test.tsx (mobile on-demand mount, tablet two-pane view)",
           "mutants D1-D9, D11 each fail in both shells; D10a-d and D10abc survive (each of four protection layers alone suffices) and D10abcd fails on the leaked activity list, not on the track assertion; the independent review re-killed D3, D9 and a tablet mutant (unit)",
           "pnpm test and two identity runs on the merged tree"
+        ]
+      },
+      "closure": {
+        "node": "M2-01k responsive retention slice",
+        "date": "2026-09-27",
+        "previousVerdict": "partial",
+        "evidence": "docs/implementation/progress/M2-01k-state-retention.md",
+        "executed": [
+          "tests/identity/course-responsive-retention.spec.ts Next and Vite 2/2 on the restored tree",
+          "CourseDraftProvider key={layout} mutant fails both shells on lost waypoint at 768px; restored and re-tested 2/2",
+          "M2-01k-d map-lifecycle browser and cleanup mutant evidence combined with this slice"
         ]
       }
     },

@@ -1,7 +1,7 @@
 # M2-01k · 반응형 코스 초안·선택 유지 수용 보완
 
 기준: `main` `c3455868fcc70b50b3f1e35c4bfd262fcd6a970f`. 이 문서는
-`M2-01k.md`와 요구 매트릭스의 기존 판정을 덮어쓰지 않는 추가 검증 기록이다.
+`M2-01k.md`와 요구 매트릭스의 이전 round 기록을 보존하는 추가 검증 기록이다.
 
 ## 범위와 판정 기준
 
@@ -40,8 +40,31 @@ SDK/worker/listener/요청/blob URL 수명 정리는 기존 `M2-01k-d` 증거를
   reload 뒤 메모리 초안 소멸을 실제로 단언했다. fixture OIDC와 routing의 실행이지
   운영 공급자 또는 실기기 증거가 아니다.
 
-## 남은 범위
+## 재판정과 비공허성 확인
 
-기존 매트릭스의 `R-state-retention`은 이 문서만으로 판정을 바꾸지 않는다. 실행된
-두 shell 결과와 기존 cleanup 증거를 root가 대조하고 phase 독립 검토를 받아야 한다. 실제 기기
-`R-touch-ime`, `P5-gesture-escape`와 native HealthKit/WKWebView 검증은 별도 gate다.
+기존 `M2-01k-d`의 두 shell lifecycle 검증은 S09 선택과 지도 renderer 신원을 mobile→tablet→desktop에서
+유지하고, WebGL·worker 상태·listener·ResizeObserver·blob URL·미완료 요청을 unmount에서 정리한다.
+이번 시험이 코스 초안 쪽을 직접 단언하는지 확인하려고 `CourseDraftProvider`에 임시
+`key={layout}`을 붙여 layout마다 store를 다시 만들었다. Next와 Vite가 모두 첫 768px
+전환에서 **실패**했고, 사라진 경유점의 전체 내용 차이가 출력됐다. 한 줄을 되돌린 뒤
+두 shell을 다시 빌드하고 같은 시험 **2/2 통과**를 확인했다. 제품 파일에는 이 변이의
+diff가 남지 않았다.
+
+따라서 `R-state-retention`은 위 두 증거를 합쳐 **partial → passed**로 재판정했다.
+매트릭스 합계는 passed 87, partial 18, failed 1, not_executed 4다. 이전 round 판정은
+보존했고, 새 판정은 별도 amendment와 row closure에 기록했다. M2-01k 부모 노드는
+다른 미완료 행 때문에 **in_progress**다. phase 전체 독립 검토는 아직 받지 않았다.
+
+## 계속 열린 실행 가능 항목
+
+| 행                                   | 남은 핵심                                                                                      | 이번 판정    |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------ |
+| `R-S09`                              | desktop chart zoom과 지도 zoom의 양방향 공유가 구현·증명되지 않았다                            | partial 유지 |
+| `P5-logout-clear`, `P8-ui-component` | 계정 전환 후 늦은 응답의 재유입 차단, private cache와 코스 초안 제거를 직접 죽이는 검증이 없다 | partial 유지 |
+| `P5-states`                          | 모든 상태의 현재 renderer 단언과 결함 변이를 같은 기준으로 대조하지 않았다                     | partial 유지 |
+| `V2-F35`                             | 모델·tool·retrieval 자원 한도는 실제 측정되지 않았다                                           | partial 유지 |
+| `P8-self-ops`                        | 대표 장기 track 시간·메모리·GPU의 운영 판정은 이 추가 시험에서 실행하지 않았다                 | partial 유지 |
+
+나머지 partial 행에는 외부 데이터·운영 배포·제품 전체 범위 또는 이미 문서화된
+구조적 한계가 있다. 이 행들을 구현 코드 읽기나 이번 코스 시험만으로 통과시키지 않는다.
+실제 기기 `R-touch-ime`, `P5-gesture-escape`와 native HealthKit/WKWebView 검증은 별도 gate다.
