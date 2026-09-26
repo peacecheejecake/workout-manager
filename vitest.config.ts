@@ -31,7 +31,7 @@ export default defineConfig({
         test: {
           name: 'contracts',
           environment: 'node',
-          include: ['packages/contracts/tests/**/*.test.ts'],
+          include: ['packages/contracts/tests/**/*.test.{ts,mjs}'],
         },
       },
       {

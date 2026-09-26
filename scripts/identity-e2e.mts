@@ -53,7 +53,7 @@ import {
   courseSharingOff,
   type CourseSharingConfiguration,
 } from '../apps/api/src/course-sharing.ts';
-import { loadGeoDatasets } from '../apps/api/src/geo-datasets.ts';
+import { loadGeoDatasets, readGeoDatasetsLicence } from '../apps/api/src/geo-datasets.ts';
 import { createFixtureWalkingRoutePort } from './fixtures/walking-route-fixture.ts';
 import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deployment.ts';
 import { createConfiguredRoutingAdmission } from '../apps/api/src/routing-admission.ts';
@@ -478,6 +478,7 @@ try {
   // Present only when a dataset directory is configured for the run; otherwise place
   // search and elevation answer `no_dataset`, which is a state the screens show.
   const geoDatasets = await loadGeoDatasets();
+  const geoDatasetsLicence = await readGeoDatasetsLicence(geoDatasets);
   const garminUnofficialStore = createGarminUnofficialStore(database);
   const activities = createActivityRepository(database);
   const garminUnofficial =
@@ -502,6 +503,7 @@ try {
   const api = createApi({
     auth: identity,
     identity,
+    geoDatasetsLicence,
     ...(garminUnofficial === undefined ? {} : { garminUnofficial }),
     garminCollectionProvenance: garminUnofficialStore,
     garmin: createGarminService({

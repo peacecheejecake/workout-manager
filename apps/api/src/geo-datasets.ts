@@ -6,6 +6,12 @@ import {
   placeDatasetDocumentSchema,
 } from '@workout/contracts/geo-data';
 import {
+  carriesOdblNotice,
+  geoDatasetsDisclosureSchema,
+  renderGeoDatasetsAttribution,
+  type GeoDatasetsLicenceState,
+} from '@workout/contracts/map-data-licence';
+import {
   createElevationIndex,
   createPlaceIndex,
   type ElevationIndex,
@@ -31,6 +37,7 @@ export interface GeoDatasets {
 }
 
 export const MAX_DATASET_BYTES = 256 * 1024 * 1024;
+const MAX_DISCLOSURE_BYTES = 64 * 1024;
 
 /**
  * Read one dataset document, refusing an oversized file **before** reading it.
@@ -81,4 +88,56 @@ export async function loadGeoDatasets(directory?: string | undefined): Promise<G
     elevation = null;
   }
   return { places, elevation };
+}
+
+/**
+ * The public page reports only records matching the datasets loaded by this process.
+ * A pre-disclosure deployment is named as such; a corrupt/mismatched notice is unavailable.
+ */
+export async function readGeoDatasetsLicence(
+  datasets: GeoDatasets,
+  directory?: string | undefined,
+): Promise<GeoDatasetsLicenceState> {
+  const configured = directory ?? process.env['GEO_DATA_DIR'];
+  if (configured === undefined || configured === '') return { kind: 'none' };
+  const root = resolve(configured);
+  const placesDatasetId = datasets.places?.identity.datasetId ?? null;
+  const elevationDatasetId = datasets.elevation?.identity.datasetId ?? null;
+  const missing = (): GeoDatasetsLicenceState =>
+    placesDatasetId === null && elevationDatasetId === null
+      ? { kind: 'none' }
+      : { kind: 'undisclosed', placesDatasetId, elevationDatasetId };
+
+  let raw: unknown;
+  try {
+    raw = await readDatasetDocument(join(root, 'odbl-disclosure.json'), MAX_DISCLOSURE_BYTES);
+  } catch (error) {
+    const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : null;
+    return code === 'ENOENT' ? missing() : { kind: 'unavailable' };
+  }
+  const parsed = geoDatasetsDisclosureSchema.safeParse(raw);
+  if (!parsed.success) return { kind: 'unavailable' };
+  const disclosure = parsed.data;
+  if (
+    disclosure.datasets.placesDatasetId !== placesDatasetId ||
+    disclosure.datasets.elevationDatasetId !== elevationDatasetId ||
+    disclosure.source.sha256 !== datasets.places?.identity.sourceExtractSha256 ||
+    disclosure.source.sha256 !== datasets.elevation?.identity.sourceExtractSha256 ||
+    datasets.places?.identity.licenceUrl !== disclosure.licence.url ||
+    datasets.elevation?.identity.licenceUrl !== disclosure.licence.url ||
+    !carriesOdblNotice(datasets.places?.identity.attribution ?? '') ||
+    !carriesOdblNotice(datasets.elevation?.identity.attribution ?? '')
+  )
+    return { kind: 'unavailable' };
+  try {
+    const noticePath = join(root, 'ATTRIBUTION.txt');
+    const entry = await stat(noticePath);
+    if (entry.size > MAX_DISCLOSURE_BYTES) return { kind: 'unavailable' };
+    const notice = await readFile(noticePath, 'utf8');
+    if (Buffer.byteLength(notice, 'utf8') > MAX_DISCLOSURE_BYTES) return { kind: 'unavailable' };
+    if (notice !== renderGeoDatasetsAttribution(disclosure)) return { kind: 'unavailable' };
+  } catch {
+    return { kind: 'unavailable' };
+  }
+  return { kind: 'disclosed', disclosure };
 }

@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
+import {
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 
 import { CourseWorkbench } from '../src/course-workbench';
 import { decimalOrNull } from '../src/course-extras';
@@ -797,6 +802,19 @@ describe('place search and elevation', () => {
     expect(
       screen.getByText(/© OpenStreetMap contributors · 데이터 0123456789ab/),
     ).toBeInTheDocument();
+    const search = screen.getByRole('region', { name: '장소 검색' });
+    expect(within(search).getByRole('link', { name: 'OpenStreetMap 출처·저작권' })).toHaveAttribute(
+      'href',
+      osmCopyrightUrl,
+    );
+    expect(within(search).getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
+    expect(within(search).getByRole('link', { name: '데이터 변경 방법' })).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
   });
 
   /**
@@ -899,6 +917,10 @@ describe('place search and elevation', () => {
     expect(panel.textContent).toContain('모름');
     expect(panel.textContent).not.toContain('누적 상승 ');
     expect(panel.textContent).toContain('확인되지 않음');
+    expect(within(panel).getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
   });
 
   it('says so when no elevation dataset is deployed', async () => {

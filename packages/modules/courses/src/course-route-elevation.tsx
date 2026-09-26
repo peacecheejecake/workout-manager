@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useId, useState } from 'react';
 import type { CourseElevationResult } from '@workout/contracts/geo-data';
+import {
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import { Button } from '@workout/ui-foundation/button';
 
 import type { ComputedDraftRoute } from './course-draft';
@@ -158,10 +163,13 @@ export function RouteElevationProfile({ check }: { readonly check: RouteElevatio
         </p>
       ) : null}
       {state.status === 'answered' && state.result.outcome === 'outside_region' ? (
-        <p data-testid="route-elevation-unavailable">
-          이 경로는 고도 데이터 범위({state.result.dataset.region}) 밖입니다. 고도는{' '}
-          <strong>확인되지 않음</strong>이며, 평지나 0m로 보지 않습니다.
-        </p>
+        <>
+          <p data-testid="route-elevation-unavailable">
+            이 경로는 고도 데이터 범위({state.result.dataset.region}) 밖입니다. 고도는{' '}
+            <strong>확인되지 않음</strong>이며, 평지나 0m로 보지 않습니다.
+          </p>
+          <GeoElevationLicenceNotice />
+        </>
       ) : null}
       {state.status === 'answered' && state.result.outcome === 'profile' ? (
         <ProfileView profile={state.result} />
@@ -348,6 +356,7 @@ function ProfileView({ profile }: { readonly profile: Profile }) {
         0m가 아니라 <strong>모름</strong>이며, 사이를 잇거나 채우지 않고 누적 상승도 계산하지
         않습니다. {datasetNote(profile.dataset)}.
       </p>
+      <GeoElevationLicenceNotice />
       <details className={styles.samples}>
         <summary>표본별 고도 ({points.length}곳)</summary>
         <ol aria-label="고도 표본">
@@ -366,5 +375,14 @@ function ProfileView({ profile }: { readonly profile: Profile }) {
         </ol>
       </details>
     </>
+  );
+}
+
+function GeoElevationLicenceNotice() {
+  return (
+    <p className={styles.note} data-testid="route-elevation-licence">
+      고도 데이터: <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+      <a href={odblLicenceUrl}>ODbL 1.0</a> · <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
+    </p>
   );
 }

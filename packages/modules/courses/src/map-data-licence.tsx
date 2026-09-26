@@ -4,6 +4,8 @@ import {
   osmAttribution,
   osmCopyrightUrl,
   type BasemapDataDisclosure,
+  type GeoDatasetsDisclosure,
+  type GeoDatasetsLicenceState,
   type RoutingDataDisclosure,
 } from '@workout/contracts/map-data-licence';
 
@@ -20,8 +22,8 @@ import page from './map-data-licence.module.css';
  * The public map-data licence page (M0-06b-odbl, `/map-data-licence` in both shells).
  *
  * It needs no sign-in and reads no session. It states the ODbL notice (§4.2) and, for the
- * background tile deployment and the routing graph that are being served right now, the
- * method used to alter the OpenStreetMap extract (§4.6 option (b)). Every value comes from the
+ * background tile deployment, routing graph and place/elevation datasets being served right
+ * now, the method used to alter the OpenStreetMap extract (§4.6 option (b)). Every value comes from the
  * deployments' own build records as they are read now; the page types none of them.
  */
 export interface MapDataLicenceViewProps {
@@ -54,7 +56,8 @@ export function MapDataLicenceView({ fetcher }: MapDataLicenceViewProps) {
           </a>
         </p>
         <p>
-          이 데이터와 여기서 만든 배경 타일·보행 경로 graph는 Open Database License 1.0을 따릅니다.{' '}
+          이 데이터와 여기서 만든 배경 타일·보행 경로 graph·장소·고도 데이터셋은 Open Database
+          License 1.0을 따릅니다.{' '}
           <a href={odblLicenceUrl} rel="noreferrer noopener" referrerPolicy="no-referrer">
             {odblLicenceUrl}
           </a>
@@ -70,9 +73,80 @@ export function MapDataLicenceView({ fetcher }: MapDataLicenceViewProps) {
         <>
           <BasemapSection state={state.basemap} />
           <RoutingSection state={state.routing} />
+          <GeoDatasetsSection state={state.geoDatasets} />
         </>
       )}
     </article>
+  );
+}
+
+function GeoDatasetsSection({ state }: { readonly state: GeoDatasetsLicenceState }) {
+  return (
+    <section aria-labelledby="map-data-geo-datasets" data-testid="map-data-geo-datasets">
+      <h2 id="map-data-geo-datasets">장소·고도 데이터</h2>
+      {state.kind === 'none' ? <p>이 서버는 장소·고도 데이터셋을 제공하지 않습니다.</p> : null}
+      {state.kind === 'unavailable' ? (
+        <p role="alert">장소·고도 데이터셋의 배포 기록을 확인하지 못했습니다.</p>
+      ) : null}
+      {state.kind === 'undisclosed' ? (
+        <p role="alert" data-testid="map-data-geo-undisclosed">
+          배포된 장소 데이터셋 {state.placesDatasetId ?? '없음'}·고도 데이터셋{' '}
+          {state.elevationDatasetId ?? '없음'}의 변경 방법 기록이 없습니다. 기록을 함께 싣도록 다시
+          빌드해야 배포할 수 있습니다.
+        </p>
+      ) : null}
+      {state.kind === 'disclosed' ? (
+        <GeoDatasetsDisclosureView disclosure={state.disclosure} />
+      ) : null}
+    </section>
+  );
+}
+
+function GeoDatasetsDisclosureView({ disclosure }: { readonly disclosure: GeoDatasetsDisclosure }) {
+  const { source, alterationMethod: method, toolVersions } = disclosure;
+  return (
+    <>
+      <dl className={styles.summary}>
+        <dt>장소 데이터셋</dt>
+        <dd data-testid="map-data-places-dataset">{disclosure.datasets.placesDatasetId}</dd>
+        <dt>고도 데이터셋</dt>
+        <dd data-testid="map-data-elevation-dataset">{disclosure.datasets.elevationDatasetId}</dd>
+        <dt>원본 추출물</dt>
+        <dd data-testid="map-data-geo-extract-url">{source.acquisition.url}</dd>
+        <dt>추출물 SHA-256</dt>
+        <dd>
+          <code>{source.sha256}</code> ({source.bytes.toLocaleString('ko-KR')} bytes)
+        </dd>
+        <dt>Last-Modified</dt>
+        <dd>
+          {source.acquisition.lastModified ?? '기록 없음'} ({recordedByText(source.acquisition)})
+        </dd>
+        <dt>도구</dt>
+        <dd>
+          osmium {toolVersions.osmium ?? '알 수 없음'} · node {toolVersions.node}
+        </dd>
+      </dl>
+      <h3>변경 방법</h3>
+      <p>{method.description}</p>
+      <h4>장소 추출 필터</h4>
+      <ul>
+        {method.placeFilters.map((filter) => (
+          <li key={filter}>
+            <code>{filter}</code>
+          </li>
+        ))}
+      </ul>
+      <h4>고도 추출 필터</h4>
+      <ul>
+        {method.elevationFilters.map((filter) => (
+          <li key={filter}>
+            <code>{filter}</code>
+          </li>
+        ))}
+      </ul>
+      <p>고도값 연결 최대 거리: {method.maxElevationSourceDistanceMeters}m.</p>
+      <ScriptHashes scripts={method.scripts} />
+    </>
   );
 }
 

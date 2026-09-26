@@ -20,7 +20,10 @@ import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { TenantErasedError } from '@workout/server-persistence/database';
 import type { SharedCourseReader } from '@workout/server-persistence/course-sharing';
-import type { RoutingDataDisclosure } from '@workout/contracts/map-data-licence';
+import type {
+  GeoDatasetsLicenceState,
+  RoutingDataDisclosure,
+} from '@workout/contracts/map-data-licence';
 import {
   courseSharingOff,
   registerSharedCourseRead,
@@ -69,6 +72,8 @@ export interface ApiOptions extends ProductRepositories {
    * the public `GET /bff/v1/map-data/licence`. Absent when this server computes no routes.
    */
   mapDataDisclosure?: () => RoutingDataDisclosure;
+  /** The loaded place/elevation artifacts' public licence status, fixed for this process. */
+  geoDatasetsLicence?: GeoDatasetsLicenceState;
   close?: () => Promise<void>;
 }
 
@@ -245,7 +250,7 @@ export function createApi(options: ApiOptions): FastifyInstance {
     options.sharedCourseReader,
   );
   // M0-06b-odbl: the public ODbL §4.6 disclosure, also outside the authenticated plugin.
-  registerMapDataLicenceRead(app, options.mapDataDisclosure);
+  registerMapDataLicenceRead(app, options.mapDataDisclosure, options.geoDatasetsLicence);
   if (options.identity !== undefined) {
     const identity = options.identity;
     app.get('/bff/v1/auth/login', async (request, reply) => {

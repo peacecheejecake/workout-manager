@@ -1,6 +1,7 @@
 import {
   mapDataLicenceReadPath,
   mapDataLicenceResponseSchema,
+  type GeoDatasetsLicenceState,
   type MapDataLicenceResponse,
   type RoutingDataDisclosure,
 } from '@workout/contracts/map-data-licence';
@@ -18,11 +19,13 @@ import type { FastifyInstance } from 'fastify';
 export function registerMapDataLicenceRead(
   app: FastifyInstance,
   disclosure: (() => RoutingDataDisclosure) | undefined,
+  geoDatasets: GeoDatasetsLicenceState = { kind: 'none' },
 ) {
   app.get(mapDataLicenceReadPath, async (_request, reply) => {
     const body: MapDataLicenceResponse = mapDataLicenceResponseSchema.parse({
       schemaVersion: 1,
       routing: disclosure === undefined ? null : disclosure(),
+      geoDatasets,
     });
     return reply
       .code(200)

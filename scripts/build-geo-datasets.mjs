@@ -31,7 +31,19 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
-import { allowedSource, fetchAllowedSource, sha256File } from './geo/sources.mjs';
+import {
+  allowedSource,
+  fetchAllowedSource,
+  readAcquisitionRecord,
+  sha256File,
+} from './geo/sources.mjs';
+import {
+  assertOdblNotice,
+  ODBL_LICENCE_URL,
+  OSM_ATTRIBUTION,
+  OSM_COPYRIGHT_URL,
+  resolveAcquisition,
+} from './geo/odbl.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
@@ -43,7 +55,9 @@ const reportPath = join(
 const DATASET_VERSION = 1;
 /** How often the operations plan says these are rebuilt. Stated intent, not a promise. */
 const UPDATE_CADENCE = '월 1회, basemap·routing graph와 같은 extract에서 함께 빌드';
-const ATTRIBUTION = '장소·고도 데이터 © OpenStreetMap contributors (ODbL 1.0)';
+const ATTRIBUTION = `장소·고도 데이터 ${OSM_ATTRIBUTION} · ${OSM_COPYRIGHT_URL} · ODbL 1.0 ${ODBL_LICENCE_URL}`;
+export const GEO_DATA_DISCLOSURE_FILE = 'odbl-disclosure.json';
+export const GEO_DATA_ATTRIBUTION_FILE = 'ATTRIBUTION.txt';
 
 const region = {
   id: 'seoul-bbbike',
@@ -199,6 +213,137 @@ function round(value, digits) {
   return Math.round(value * factor) / factor;
 }
 
+/**
+ * The alteration record is assembled from this run's source and both dataset identities.
+ * No acquisition timestamp is inferred from file metadata or the build timestamp.
+ *
+ * @param {{
+ *   placesDatasetId: string, elevationDatasetId: string,
+ *   source: { sha256: string, bytes: number, acquisition: ReturnType<typeof resolveAcquisition> },
+ *   scripts: Record<string, string>, osmiumVersion: string | null,
+ * }} input
+ */
+export function createGeoDatasetDisclosure({
+  placesDatasetId,
+  elevationDatasetId,
+  source,
+  scripts,
+  osmiumVersion,
+}) {
+  return {
+    schemaVersion: 1,
+    kind: 'geo-datasets',
+    licence: {
+      name: 'ODbL-1.0',
+      url: ODBL_LICENCE_URL,
+      copyrightUrl: OSM_COPYRIGHT_URL,
+      attribution: OSM_ATTRIBUTION,
+    },
+    datasets: { placesDatasetId, elevationDatasetId },
+    source,
+    alterationMethod: {
+      description:
+        'Filter positioned OSM nodes with osmium tags-filter -R, export GeoJSONSeq, keep named point places and plain numeric ele tags, then write separate JSON datasets. No elevation interpolation is performed.',
+      placeFilters: [...placeFilters],
+      elevationFilters: [...elevationFilters],
+      maxElevationSourceDistanceMeters: MAX_ELEVATION_SOURCE_DISTANCE_METERS,
+      scripts: { ...scripts },
+    },
+    toolVersions: { osmium: osmiumVersion, node: process.version },
+  };
+}
+
+/** @param {ReturnType<typeof createGeoDatasetDisclosure>} disclosure */
+export function renderGeoDatasetsAttribution(disclosure) {
+  const { source, alterationMethod: method } = disclosure;
+  return [
+    `Place and elevation data ${OSM_ATTRIBUTION} (${OSM_COPYRIGHT_URL}), available under the Open Database License 1.0 (${ODBL_LICENCE_URL}).`,
+    '',
+    `Alteration method (ODbL 4.6), generated from ${GEO_DATA_DISCLOSURE_FILE}:`,
+    `- places dataset ${disclosure.datasets.placesDatasetId}; elevation dataset ${disclosure.datasets.elevationDatasetId}`,
+    `- extract ${source.acquisition.url}`,
+    `  SHA-256 ${source.sha256}, ${source.bytes} bytes`,
+    `  Last-Modified ${source.acquisition.lastModified ?? 'not recorded'} (${source.acquisition.recordedBy})`,
+    `- ${method.description}`,
+    `- places: osmium tags-filter -R ${method.placeFilters.join(' ')} | osmium export -f geojsonseq`,
+    `- elevation: osmium tags-filter -R ${method.elevationFilters.join(' ')} | osmium export -f geojsonseq`,
+    `- maximum elevation source distance ${method.maxElevationSourceDistanceMeters} m`,
+    `- tools: osmium ${disclosure.toolVersions.osmium ?? 'unknown'}; node ${disclosure.toolVersions.node}`,
+    ...Object.entries(method.scripts)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, sha256]) => `- script ${path} SHA-256 ${sha256}`),
+    'Public page: /map-data-licence',
+    '',
+  ].join('\n');
+}
+
+/**
+ * Refuse a staged distribution if either dataset loses its notice or if its sidecar is
+ * incomplete, inconsistent with the documents, or has a stale rendered attribution.
+ * @param {{places: unknown, elevation: unknown, disclosure: unknown, attribution: unknown}} artifacts
+ */
+export function assertGeoDatasetArtifacts({ places, elevation, disclosure, attribution }) {
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const sha256 = (value) => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+  const datasetId = (value) => typeof value === 'string' && /^[0-9a-f]{12}$/.test(value);
+  const placeIdentity = object(places) && object(places.identity) ? places.identity : null;
+  const elevationIdentity =
+    object(elevation) && object(elevation.identity) ? elevation.identity : null;
+  const record = object(disclosure) ? disclosure : null;
+  const licence = object(record?.licence) ? record.licence : null;
+  const datasets = object(record?.datasets) ? record.datasets : null;
+  const source = object(record?.source) ? record.source : null;
+  const acquisition = object(source?.acquisition) ? source.acquisition : null;
+  const method = object(record?.alterationMethod) ? record.alterationMethod : null;
+  const tools = object(record?.toolVersions) ? record.toolVersions : null;
+  const scriptEntries = object(method?.scripts) ? Object.entries(method.scripts) : [];
+  const valid =
+    placeIdentity?.kind === 'places' &&
+    elevationIdentity?.kind === 'elevation' &&
+    datasetId(placeIdentity.datasetId) &&
+    datasetId(elevationIdentity.datasetId) &&
+    placeIdentity.datasetId === datasets?.placesDatasetId &&
+    elevationIdentity.datasetId === datasets.elevationDatasetId &&
+    sha256(placeIdentity.sourceExtractSha256) &&
+    placeIdentity.sourceExtractSha256 === elevationIdentity.sourceExtractSha256 &&
+    placeIdentity.sourceExtractSha256 === source?.sha256 &&
+    placeIdentity.licence === 'ODbL-1.0' &&
+    elevationIdentity.licence === 'ODbL-1.0' &&
+    placeIdentity.licenceUrl === ODBL_LICENCE_URL &&
+    elevationIdentity.licenceUrl === ODBL_LICENCE_URL &&
+    record?.schemaVersion === 1 &&
+    record.kind === 'geo-datasets' &&
+    licence?.name === 'ODbL-1.0' &&
+    licence.url === ODBL_LICENCE_URL &&
+    licence.copyrightUrl === OSM_COPYRIGHT_URL &&
+    licence.attribution === OSM_ATTRIBUTION &&
+    Number.isSafeInteger(source.bytes) &&
+    source.bytes > 0 &&
+    acquisition?.sourceId === 'osm-extract-seoul' &&
+    acquisition.url === allowedSource('osm-extract-seoul').url &&
+    (acquisition.lastModified === null || typeof acquisition.lastModified === 'string') &&
+    (acquisition.etag === null || typeof acquisition.etag === 'string') &&
+    ['download-response', 'acquisition-record', 'earlier-build-report', 'none'].includes(
+      acquisition.recordedBy,
+    ) &&
+    typeof method?.description === 'string' &&
+    method.description.length > 0 &&
+    JSON.stringify(method.placeFilters) === JSON.stringify(placeFilters) &&
+    JSON.stringify(method.elevationFilters) === JSON.stringify(elevationFilters) &&
+    method.maxElevationSourceDistanceMeters === MAX_ELEVATION_SOURCE_DISTANCE_METERS &&
+    scriptEntries.length === 1 &&
+    scriptEntries[0][0] === 'scripts/build-geo-datasets.mjs' &&
+    sha256(scriptEntries[0][1]) &&
+    typeof tools?.node === 'string' &&
+    (tools.osmium === null || typeof tools.osmium === 'string');
+  if (!valid) throw new Error('GEO_DATA_ODBL_DISCLOSURE_INVALID');
+  assertOdblNotice(placeIdentity.attribution, 'places.json identity attribution');
+  assertOdblNotice(elevationIdentity.attribution, 'elevation.json identity attribution');
+  assertOdblNotice(attribution, GEO_DATA_ATTRIBUTION_FILE);
+  if (attribution !== renderGeoDatasetsAttribution(record))
+    throw new Error('GEO_DATA_ODBL_ATTRIBUTION_STALE');
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (!options) {
@@ -229,7 +374,11 @@ async function main() {
     };
   } else {
     download = {
-      ...(await fetchAllowedSource({ id: source.id, destination: extractPath })),
+      ...(await fetchAllowedSource({
+        id: source.id,
+        destination: extractPath,
+        recordAcquisition: true,
+      })),
       reusedFromDisk: false,
     };
   }
@@ -329,7 +478,7 @@ async function main() {
     region: region.name,
     sourceExtractSha256: download.sha256,
     licence: source.license,
-    licenceUrl: source.licenseUrl,
+    licenceUrl: ODBL_LICENCE_URL,
     attribution: ATTRIBUTION,
     updateCadence: UPDATE_CADENCE,
     builtAt,
@@ -349,6 +498,28 @@ async function main() {
 
   await writeFile(join(stageDirectory, 'places.json'), JSON.stringify(placeDocument));
   await writeFile(join(stageDirectory, 'elevation.json'), JSON.stringify(elevationDocument));
+  const disclosure = createGeoDatasetDisclosure({
+    placesDatasetId: placeDocument.identity.datasetId,
+    elevationDatasetId: elevationDocument.identity.datasetId,
+    source: {
+      sha256: download.sha256,
+      bytes: download.bytes,
+      acquisition: resolveAcquisition({
+        download,
+        record: await readAcquisitionRecord(extractPath, download.sha256),
+        earlierRuns: [],
+        allowlistedUrl: source.url,
+      }),
+    },
+    scripts: { 'scripts/build-geo-datasets.mjs': await sha256File(fileURLToPath(import.meta.url)) },
+    osmiumVersion,
+  });
+  const attribution = renderGeoDatasetsAttribution(disclosure);
+  await writeFile(
+    join(stageDirectory, GEO_DATA_DISCLOSURE_FILE),
+    `${JSON.stringify(disclosure, null, 2)}\n`,
+  );
+  await writeFile(join(stageDirectory, GEO_DATA_ATTRIBUTION_FILE), attribution);
   // Intermediates are not part of the dataset directory the server reads.
   for (const name of [
     'places.osm.pbf',
@@ -357,6 +528,12 @@ async function main() {
     'elevation.geojsonseq',
   ])
     await rm(join(stageDirectory, name), { force: true });
+  assertGeoDatasetArtifacts({
+    places: JSON.parse(await readFile(join(stageDirectory, 'places.json'), 'utf8')),
+    elevation: JSON.parse(await readFile(join(stageDirectory, 'elevation.json'), 'utf8')),
+    disclosure: JSON.parse(await readFile(join(stageDirectory, GEO_DATA_DISCLOSURE_FILE), 'utf8')),
+    attribution: await readFile(join(stageDirectory, GEO_DATA_ATTRIBUTION_FILE), 'utf8'),
+  });
   await rm(outputDirectory, { recursive: true, force: true });
   await rename(stageDirectory, outputDirectory);
 

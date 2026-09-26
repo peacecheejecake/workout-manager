@@ -7,6 +7,11 @@ import {
   type CoursePosition,
   type CourseReadResult,
 } from '@workout/contracts/courses';
+import {
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import { Button } from '@workout/ui-foundation/button';
 import { TextField } from '@workout/ui-foundation/text-field';
 
@@ -404,7 +409,13 @@ export function CoursePlaceSearch({ api, onPick }: CoursePlaceSearchProps) {
         </ul>
       ) : null}
       {message ? <p role="status">{message}</p> : null}
-      {attribution ? <p className={styles.note}>{attribution}</p> : null}
+      {attribution ? (
+        <p className={styles.note}>
+          {attribution}. 장소 데이터는 <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+          <a href={odblLicenceUrl}>ODbL 1.0</a> ·{' '}
+          <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -448,7 +459,10 @@ export function CourseElevationPanel({ api, courseId, scope }: CourseElevationPa
           <p className={styles.note}>
             {profile.data.dataset.attribution} · 데이터 {profile.data.dataset.datasetId} · 갱신 주기{' '}
             {profile.data.dataset.updateCadence}. 값이 없는 지점은 0이 아니라 <strong>모름</strong>
-            이며, 사이를 채우거나 누적 상승을 계산하지 않습니다.
+            이며, 사이를 채우거나 누적 상승을 계산하지 않습니다. 고도 데이터는{' '}
+            <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+            <a href={odblLicenceUrl}>ODbL 1.0</a> ·{' '}
+            <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
           </p>
         </>
       ) : null}

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
+import { mapDataLicencePagePath, odblLicenceUrl } from '@workout/contracts/map-data-licence';
 import type { MapViewProps } from '@workout/geo-kit/map-view';
 import { NewCourseWorkbench } from '../src/course-new';
 import { elevationRuns } from '../src/course-route-elevation';
@@ -353,6 +354,15 @@ describe('the elevation check of an unsaved preview', () => {
       expect(samples[index]?.textContent).not.toMatch(/\d+(\.\d+)?m \(가장/);
     }
     expectNoInventedZero(check);
+    const notice = within(check).getByTestId('route-elevation-licence');
+    expect(within(notice).getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute(
+      'href',
+      odblLicenceUrl,
+    );
+    expect(within(notice).getByRole('link', { name: '데이터 변경 방법' })).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
     expect(within(check).getByRole('img')).toHaveAccessibleName(
       '고도 표본 5곳 중 값 있음 3곳, 모름 2곳(모름 구간 1개), 값 있는 표본의 최저 38m·최고 44.5m',
     );

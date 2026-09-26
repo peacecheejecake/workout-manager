@@ -6,6 +6,11 @@ import type {
   CourseCardElevation,
   CourseCardSurface,
 } from '@workout/contracts/course-cards';
+import {
+  mapDataLicencePagePath,
+  odblLicenceUrl,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import { CourseThumbnail, StoredCourseThumbnail } from './course-thumbnail';
 import styles from './course-list-card.module.css';
 
@@ -157,6 +162,14 @@ export function CourseListCardFacts({
             data-status={available ? available.elevation.status : 'none'}
           >
             {available ? courseCardElevationText(available.elevation) : missing}
+            {available && available.elevation.status !== 'not_deployed' ? (
+              <span data-testid="course-card-elevation-licence">
+                {' '}
+                · <a href={osmCopyrightUrl}>OpenStreetMap 출처·저작권</a> ·{' '}
+                <a href={odblLicenceUrl}>ODbL 1.0</a> ·{' '}
+                <a href={mapDataLicencePagePath}>데이터 변경 방법</a>
+              </span>
+            ) : null}
           </dd>
         </div>
         <div className={styles.fact}>

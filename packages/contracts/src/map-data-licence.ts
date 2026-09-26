@@ -178,9 +178,83 @@ export const routingDataDisclosureSchema = z.strictObject({
 });
 export type RoutingDataDisclosure = z.infer<typeof routingDataDisclosureSchema>;
 
+/** The two place/elevation datasets are built together from one OSM extract. */
+export const geoDatasetsDisclosureSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal('geo-datasets'),
+  licence: licenceSchema,
+  datasets: z.strictObject({
+    placesDatasetId: z.string().regex(/^[0-9a-f]{12}$/),
+    elevationDatasetId: z.string().regex(/^[0-9a-f]{12}$/),
+  }),
+  source: z.strictObject({
+    sha256: sha256Schema,
+    bytes: z.number().int().positive(),
+    acquisition: extractAcquisitionSchema,
+  }),
+  alterationMethod: z.strictObject({
+    description: z.string().min(1).max(1000),
+    placeFilters: z.array(shortTextSchema).min(1).max(32),
+    elevationFilters: z.array(shortTextSchema).min(1).max(32),
+    maxElevationSourceDistanceMeters: z.number().finite().positive().max(10_000),
+    scripts: z
+      .record(z.string().regex(/^scripts\/[A-Za-z0-9/_.-]{1,120}$/), sha256Schema)
+      .refine((scripts) => Object.keys(scripts).length > 0),
+  }),
+  toolVersions: z.strictObject({
+    osmium: z.string().min(1).max(200).nullable(),
+    node: z.string().min(1).max(64),
+  }),
+});
+export type GeoDatasetsDisclosure = z.infer<typeof geoDatasetsDisclosureSchema>;
+
+/** The server verifies that the distributed notice is this record's exact rendering. */
+export function renderGeoDatasetsAttribution(disclosure: GeoDatasetsDisclosure): string {
+  const { source, alterationMethod: method } = disclosure;
+  return [
+    `Place and elevation data ${osmAttribution} (${osmCopyrightUrl}), available under the Open Database License 1.0 (${odblLicenceUrl}).`,
+    '',
+    'Alteration method (ODbL 4.6), generated from odbl-disclosure.json:',
+    `- places dataset ${disclosure.datasets.placesDatasetId}; elevation dataset ${disclosure.datasets.elevationDatasetId}`,
+    `- extract ${source.acquisition.url}`,
+    `  SHA-256 ${source.sha256}, ${source.bytes} bytes`,
+    `  Last-Modified ${source.acquisition.lastModified ?? 'not recorded'} (${source.acquisition.recordedBy})`,
+    `- ${method.description}`,
+    `- places: osmium tags-filter -R ${method.placeFilters.join(' ')} | osmium export -f geojsonseq`,
+    `- elevation: osmium tags-filter -R ${method.elevationFilters.join(' ')} | osmium export -f geojsonseq`,
+    `- maximum elevation source distance ${method.maxElevationSourceDistanceMeters} m`,
+    `- tools: osmium ${disclosure.toolVersions.osmium ?? 'unknown'}; node ${disclosure.toolVersions.node}`,
+    ...Object.entries(method.scripts)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, sha256]) => `- script ${path} SHA-256 ${sha256}`),
+    'Public page: /map-data-licence',
+    '',
+  ].join('\n');
+}
+
+export const geoDatasetsLicenceStateSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('none') }),
+  z.strictObject({
+    kind: z.literal('undisclosed'),
+    placesDatasetId: z
+      .string()
+      .regex(/^[0-9a-f]{12}$/)
+      .nullable(),
+    elevationDatasetId: z
+      .string()
+      .regex(/^[0-9a-f]{12}$/)
+      .nullable(),
+  }),
+  z.strictObject({ kind: z.literal('disclosed'), disclosure: geoDatasetsDisclosureSchema }),
+  z.strictObject({ kind: z.literal('unavailable') }),
+]);
+export type GeoDatasetsLicenceState = z.infer<typeof geoDatasetsLicenceStateSchema>;
+
 /** `GET /bff/v1/map-data/licence`. `routing` is `null` when this server computes no routes. */
 export const mapDataLicenceResponseSchema = z.strictObject({
   schemaVersion: z.literal(1),
   routing: routingDataDisclosureSchema.nullable(),
+  /** An older server omitted this additive field; clients must show unknown, not zero. */
+  geoDatasets: geoDatasetsLicenceStateSchema.default({ kind: 'unavailable' }),
 });
 export type MapDataLicenceResponse = z.infer<typeof mapDataLicenceResponseSchema>;

@@ -148,8 +148,9 @@
       "title": "장소·고도 데이터셋의 ODbL 고지",
       "dependsOn": ["M0-06b-odbl"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "사용자 결정(2026-09-26): 후속 노드. M2-01j의 장소·고도 데이터셋도 OSM 파생인데 ODbL 1.0 URI와 변경 방법 기록이 없다. M0-06b-odbl과 같은 방식(빌드가 쓰는 disclosure 기록, 그 기록에서 렌더링한 ATTRIBUTION.txt, URI 누락 시 빌드 거부, 공개 /map-data-licence 페이지에 포함)으로 이행한다. 법적 검토가 아니다. 서빙 산출물 재빌드는 EXT-HOSTING 때 한다."
+      "status": "completed",
+      "scope": "사용자 결정(2026-09-26): 후속 노드. M2-01j의 장소·고도 데이터셋도 OSM 파생인데 ODbL 1.0 URI와 변경 방법 기록이 없다. M0-06b-odbl과 같은 방식(빌드가 쓰는 disclosure 기록, 그 기록에서 렌더링한 ATTRIBUTION.txt, URI 누락 시 빌드 거부, 공개 /map-data-licence 페이지에 포함)으로 이행한다. 법적 검토가 아니다. 서빙 산출물 재빌드는 EXT-HOSTING 때 한다.",
+      "evidence": "docs/implementation/progress/M0-06b-odbl-places.md"
     },
     {
       "id": "M0-06c",

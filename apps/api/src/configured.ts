@@ -39,7 +39,7 @@ import {
   sharedLineTouchesCircle,
 } from '@workout/server-courses/disclosure';
 import { courseSharingFromEnvironment } from './course-sharing.js';
-import { loadGeoDatasets } from './geo-datasets.js';
+import { loadGeoDatasets, readGeoDatasetsLicence } from './geo-datasets.js';
 import {
   createConfiguredWalkingRoutes,
   type RoutingDeploymentSwitch,
@@ -204,6 +204,7 @@ export async function createConfiguredApi(
     // artifact in a configured directory, and an absent or malformed one leaves the
     // feature off rather than reaching for an external service.
     const geoDatasets = await loadGeoDatasets();
+    const geoDatasetsLicence = await readGeoDatasetsLicence(geoDatasets);
     // The self-hosted pedestrian engine, verified against its graph manifest before any
     // route can be computed. Unset leaves the routing routes unregistered; half-set or
     // unverifiable refuses to start rather than serving under an unchecked identity.
@@ -350,6 +351,7 @@ export async function createConfiguredApi(
         ...(courseSharing.enabled ? { links: { epoch: courseSharing.epoch } } : {}),
       },
       courseSharing,
+      geoDatasetsLicence,
       ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
       ...(routing === null
         ? {}

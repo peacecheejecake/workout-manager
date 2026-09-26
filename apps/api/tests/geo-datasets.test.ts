@@ -4,7 +4,17 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { loadGeoDatasets, MAX_DATASET_BYTES, readDatasetDocument } from '../src/geo-datasets.js';
+import {
+  loadGeoDatasets,
+  MAX_DATASET_BYTES,
+  readDatasetDocument,
+  readGeoDatasetsLicence,
+} from '../src/geo-datasets.js';
+import {
+  mapDataLicence,
+  renderGeoDatasetsAttribution,
+  type GeoDatasetsDisclosure,
+} from '@workout/contracts/map-data-licence';
 
 /**
  * Loading the self-hosted geo datasets (M2-01j).
@@ -20,8 +30,8 @@ const identity = {
   region: 'Seoul (BBBike city extract)',
   sourceExtractSha256: 'a'.repeat(64),
   licence: 'ODbL-1.0',
-  licenceUrl: 'https://www.openstreetmap.org/copyright',
-  attribution: '© OpenStreetMap contributors',
+  licenceUrl: mapDataLicence.url,
+  attribution: `© OpenStreetMap contributors · ${mapDataLicence.copyrightUrl} · ${mapDataLicence.url}`,
   updateCadence: '월 1회',
   builtAt: '2026-09-22T00:00:00.000Z',
   bbox: [126.734, 37.413, 127.269, 37.715],
@@ -112,5 +122,64 @@ describe('loading the self-hosted geo datasets', () => {
     await expect(readDatasetDocument(path)).rejects.toThrow('GEO_DATASET_TOO_LARGE');
     // And through the loader it is a state, not a crash.
     expect((await loadGeoDatasets(directory)).places).toBeNull();
+  });
+});
+
+const disclosure: GeoDatasetsDisclosure = {
+  schemaVersion: 1,
+  kind: 'geo-datasets',
+  licence: mapDataLicence,
+  datasets: { placesDatasetId: '0123456789ab', elevationDatasetId: 'beef0123cafe' },
+  source: {
+    sha256: 'a'.repeat(64),
+    bytes: 100,
+    acquisition: {
+      sourceId: 'osm-extract-seoul',
+      url: 'https://download.example/source.osm.pbf',
+      lastModified: null,
+      etag: null,
+      recordedBy: 'none',
+    },
+  },
+  alterationMethod: {
+    description: 'Filter named point nodes and explicit ele tags.',
+    placeFilters: ['n/place'],
+    elevationFilters: ['n/ele'],
+    maxElevationSourceDistanceMeters: 150,
+    scripts: { 'scripts/build-geo-datasets.mjs': 'b'.repeat(64) },
+  },
+  toolVersions: { osmium: '1.18', node: 'v24.12.0' },
+};
+
+describe('public licence of the loaded geo datasets', () => {
+  it('reports pre-disclosure deployments as undisclosed', async () => {
+    await writeDocument('places.json', placesDocument);
+    await writeDocument('elevation.json', elevationDocument);
+    expect(await readGeoDatasetsLicence(await loadGeoDatasets(directory), directory)).toEqual({
+      kind: 'undisclosed',
+      placesDatasetId: '0123456789ab',
+      elevationDatasetId: 'beef0123cafe',
+    });
+  });
+
+  it('discloses only a sidecar and notice matching both loaded dataset identities', async () => {
+    await writeDocument('places.json', placesDocument);
+    await writeDocument('elevation.json', elevationDocument);
+    await writeDocument('odbl-disclosure.json', disclosure);
+    await writeFile(join(directory, 'ATTRIBUTION.txt'), renderGeoDatasetsAttribution(disclosure));
+    const datasets = await loadGeoDatasets(directory);
+    expect(await readGeoDatasetsLicence(datasets, directory)).toEqual({
+      kind: 'disclosed',
+      disclosure,
+    });
+
+    await writeFile(join(directory, 'ATTRIBUTION.txt'), '© OpenStreetMap contributors');
+    expect(await readGeoDatasetsLicence(datasets, directory)).toEqual({ kind: 'unavailable' });
+    await writeFile(join(directory, 'ATTRIBUTION.txt'), renderGeoDatasetsAttribution(disclosure));
+    await writeDocument('odbl-disclosure.json', {
+      ...disclosure,
+      datasets: { ...disclosure.datasets, placesDatasetId: 'f'.repeat(12) },
+    });
+    expect(await readGeoDatasetsLicence(datasets, directory)).toEqual({ kind: 'unavailable' });
   });
 });

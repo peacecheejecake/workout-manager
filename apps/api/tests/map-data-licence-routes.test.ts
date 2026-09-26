@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   mapDataLicenceReadPath,
   mapDataLicenceResponseSchema,
+  type GeoDatasetsLicenceState,
 } from '@workout/contracts/map-data-licence';
 import {
   ROUTING_ATTRIBUTION_FILE,
@@ -95,7 +96,12 @@ async function configuredRouting() {
   return routing;
 }
 
-function app(options: { routing?: Awaited<ReturnType<typeof configuredRouting>> } = {}) {
+function app(
+  options: {
+    routing?: Awaited<ReturnType<typeof configuredRouting>>;
+    geoDatasetsLicence?: GeoDatasetsLicenceState;
+  } = {},
+) {
   const authenticate = vi.fn(async () => null);
   const routing = options.routing;
   const instance = createApi({
@@ -104,6 +110,7 @@ function app(options: { routing?: Awaited<ReturnType<typeof configuredRouting>> 
     logStream: new Writable({ write: (_chunk, _encoding, done) => done() }),
     auth: { authenticate },
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
+    ...(options.geoDatasetsLicence ? { geoDatasetsLicence: options.geoDatasetsLicence } : {}),
     ...(routing
       ? {
           walkingRoutes: routing.walkingRoutes,
@@ -116,6 +123,21 @@ function app(options: { routing?: Awaited<ReturnType<typeof configuredRouting>> 
 }
 
 describe('the public map-data licence read', () => {
+  it('reports loaded legacy place/elevation datasets without a disclosure', async () => {
+    const geoDatasetsLicence: GeoDatasetsLicenceState = {
+      kind: 'undisclosed',
+      placesDatasetId: 'a'.repeat(12),
+      elevationDatasetId: 'b'.repeat(12),
+    };
+    const { instance, authenticate } = app({ geoDatasetsLicence });
+    const response = await instance.inject({ method: 'GET', url: mapDataLicenceReadPath });
+    expect(response.statusCode).toBe(200);
+    expect(mapDataLicenceResponseSchema.parse(response.json()).geoDatasets).toEqual(
+      geoDatasetsLicence,
+    );
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
   it('answers anyone, with no session, the graph this API is serving', async () => {
     const routing = await configuredRouting();
     const { instance, authenticate } = app({ routing });
@@ -151,6 +173,10 @@ describe('the public map-data licence read', () => {
     const { instance } = app();
     const response = await instance.inject({ method: 'GET', url: mapDataLicenceReadPath });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schemaVersion: 1, routing: null });
+    expect(response.json()).toEqual({
+      schemaVersion: 1,
+      routing: null,
+      geoDatasets: { kind: 'none' },
+    });
   });
 });

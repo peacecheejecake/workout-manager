@@ -8,6 +8,7 @@ import {
   odblLicenceUrl,
   osmCopyrightUrl,
   type BasemapDataDisclosure,
+  type GeoDatasetsDisclosure,
   type RoutingDataDisclosure,
 } from '@workout/contracts/map-data-licence';
 import {
@@ -94,6 +95,35 @@ const routing: RoutingDataDisclosure = {
   artifactNotice: 'missing',
 };
 
+const geoDatasets: GeoDatasetsDisclosure = {
+  schemaVersion: 1,
+  kind: 'geo-datasets',
+  licence: basemap.licence,
+  datasets: {
+    placesDatasetId: '0123456789ab',
+    elevationDatasetId: 'beef0123cafe',
+  },
+  source: {
+    sha256: sha('4'),
+    bytes: 286_403_403,
+    acquisition: {
+      sourceId: 'osm-extract-south-korea',
+      url: 'https://download.geofabrik.de/asia/south-korea-latest.osm.pbf',
+      lastModified: null,
+      etag: null,
+      recordedBy: 'none',
+    },
+  },
+  alterationMethod: {
+    description: 'Build place and elevation datasets from tagged OpenStreetMap nodes.',
+    placeFilters: ['n/place'],
+    elevationFilters: ['n/ele'],
+    maxElevationSourceDistanceMeters: 300,
+    scripts: { 'scripts/build-geo-datasets.mjs': sha('1') },
+  },
+  toolVersions: { osmium: 'osmium version 1.19.1', node: 'v24.12.0' },
+};
+
 type Answers = Record<string, { status: number; body?: unknown }>;
 
 function fetcher(answers: Answers) {
@@ -109,7 +139,14 @@ function fetcher(answers: Answers) {
 const served = (deploymentId = basemap.deploymentId): Answers => ({
   [basemapPointerPath]: { status: 200, body: { deploymentId } },
   [`/map/basemap/${deploymentId}/odbl-disclosure.json`]: { status: 200, body: basemap },
-  [mapDataLicenceReadPath]: { status: 200, body: { schemaVersion: 1, routing } },
+  [mapDataLicenceReadPath]: {
+    status: 200,
+    body: {
+      schemaVersion: 1,
+      routing,
+      geoDatasets: { kind: 'disclosed', disclosure: geoDatasets },
+    },
+  },
 });
 
 describe('the route data notice', () => {
@@ -167,6 +204,11 @@ describe('the public map-data licence page', () => {
       basemap.deploymentId,
     );
     expect(screen.getByTestId('map-data-graph')).toHaveTextContent('92e0fa5f319a41df');
+    expect(screen.getByTestId('map-data-places-dataset')).toHaveTextContent('0123456789ab');
+    expect(screen.getByTestId('map-data-elevation-dataset')).toHaveTextContent('beef0123cafe');
+    expect(screen.getByTestId('map-data-geo-extract-url')).toHaveTextContent(
+      'https://download.geofabrik.de/asia/south-korea-latest.osm.pbf',
+    );
     expect(screen.getByTestId('map-data-notice')).toHaveTextContent(osmCopyrightUrl);
     expect(screen.getByRole('link', { name: odblLicenceUrl })).toHaveAttribute(
       'href',
@@ -175,6 +217,9 @@ describe('the public map-data licence page', () => {
     // The alteration method from both records, with the military perimeter derivation.
     expect(screen.getByText(/osmium tags-filter w\/highway/)).toBeInTheDocument();
     expect(screen.getByTestId('map-data-military-barriers')).toHaveTextContent(sha('6'));
+    expect(
+      screen.getByText('Build place and elevation datasets from tagged OpenStreetMap nodes.'),
+    ).toBeInTheDocument();
     expect(screen.getByTestId('map-data-basemap-extract-url')).toHaveTextContent(
       'https://download.bbbike.org/osm/bbbike/Seoul/Seoul.osm.pbf',
     );
@@ -220,9 +265,12 @@ describe('the public map-data licence page', () => {
   it('reads a single-page fallback in place of the pointer as no deployment', async () => {
     const spaFallback = vi.fn<typeof fetch>(async (input) =>
       String(input) === mapDataLicenceReadPath
-        ? new Response(JSON.stringify({ schemaVersion: 1, routing: null }), {
-            headers: { 'content-type': 'application/json' },
-          })
+        ? new Response(
+            JSON.stringify({ schemaVersion: 1, routing: null, geoDatasets: { kind: 'none' } }),
+            {
+              headers: { 'content-type': 'application/json' },
+            },
+          )
         : new Response('<!doctype html><title>shell</title>', {
             headers: { 'content-type': 'text/html' },
           }),
@@ -237,7 +285,10 @@ describe('the public map-data licence page', () => {
     render(
       <MapDataLicenceView
         fetcher={fetcher({
-          [mapDataLicenceReadPath]: { status: 200, body: { schemaVersion: 1, routing: null } },
+          [mapDataLicenceReadPath]: {
+            status: 200,
+            body: { schemaVersion: 1, routing: null, geoDatasets: { kind: 'none' } },
+          },
         })}
       />,
     );
@@ -245,6 +296,48 @@ describe('the public map-data licence page', () => {
       await screen.findByText('이 서버는 배경 지도 타일을 제공하지 않습니다.'),
     ).toBeInTheDocument();
     expect(screen.getByText('이 서버는 경로를 계산하지 않습니다.')).toBeInTheDocument();
+    expect(
+      screen.getByText('이 서버는 장소·고도 데이터셋을 제공하지 않습니다.'),
+    ).toBeInTheDocument();
+  });
+
+  it('distinguishes an old deployed dataset without a method from a failed read', async () => {
+    const answers = served();
+    answers[mapDataLicenceReadPath] = {
+      status: 200,
+      body: {
+        schemaVersion: 1,
+        routing: null,
+        geoDatasets: {
+          kind: 'undisclosed',
+          placesDatasetId: '0123456789ab',
+          elevationDatasetId: null,
+        },
+      },
+    };
+    render(<MapDataLicenceView fetcher={fetcher(answers)} />);
+    expect(await screen.findByTestId('map-data-geo-undisclosed')).toHaveTextContent(
+      '장소 데이터셋 0123456789ab·고도 데이터셋 없음',
+    );
+    expect(screen.queryByTestId('map-data-places-dataset')).not.toBeInTheDocument();
+  });
+
+  it('does not show a malformed disclosure as the served dataset', async () => {
+    const answers = served();
+    answers[mapDataLicenceReadPath] = {
+      status: 200,
+      body: {
+        schemaVersion: 1,
+        routing: null,
+        geoDatasets: { kind: 'disclosed', disclosure: { ...geoDatasets, kind: 'other' } },
+      },
+    };
+    render(<MapDataLicenceView fetcher={fetcher(answers)} />);
+    const section = await screen.findByTestId('map-data-geo-datasets');
+    expect(await within(section).findByRole('alert')).toHaveTextContent(
+      '장소·고도 데이터셋의 배포 기록을 확인하지 못했습니다',
+    );
+    expect(screen.queryByTestId('map-data-places-dataset')).not.toBeInTheDocument();
   });
 
   it('says a routing read failed rather than that there is no routing', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   carriesOdblNotice,
+  geoDatasetsDisclosureSchema,
   mapDataLicence,
   mapDataLicenceResponseSchema,
   odblLicenceUrl,
@@ -19,9 +20,16 @@ describe('the ODbL notice test', () => {
   });
 
   it('fixes the licence a disclosure may name', () => {
-    expect(mapDataLicenceResponseSchema.parse({ schemaVersion: 1, routing: null })).toEqual({
+    expect(
+      mapDataLicenceResponseSchema.parse({
+        schemaVersion: 1,
+        routing: null,
+        geoDatasets: { kind: 'none' },
+      }),
+    ).toEqual({
       schemaVersion: 1,
       routing: null,
+      geoDatasets: { kind: 'none' },
     });
     expect(mapDataLicence).toEqual({
       name: 'ODbL-1.0',
@@ -29,5 +37,45 @@ describe('the ODbL notice test', () => {
       copyrightUrl: osmCopyrightUrl,
       attribution: '© OpenStreetMap contributors',
     });
+    expect(mapDataLicenceResponseSchema.parse({ schemaVersion: 1, routing: null })).toEqual({
+      schemaVersion: 1,
+      routing: null,
+      geoDatasets: { kind: 'unavailable' },
+    });
+  });
+
+  it('rejects a place/elevation disclosure without the ODbL licence URI', () => {
+    const disclosure = {
+      schemaVersion: 1,
+      kind: 'geo-datasets',
+      licence: mapDataLicence,
+      datasets: { placesDatasetId: 'a'.repeat(12), elevationDatasetId: 'b'.repeat(12) },
+      source: {
+        sha256: 'c'.repeat(64),
+        bytes: 100,
+        acquisition: {
+          sourceId: 'osm-extract-seoul',
+          url: 'https://example.org/source.osm.pbf',
+          lastModified: null,
+          etag: null,
+          recordedBy: 'none',
+        },
+      },
+      alterationMethod: {
+        description: 'Filter named nodes and explicit elevation tags.',
+        placeFilters: ['n/place'],
+        elevationFilters: ['n/ele'],
+        maxElevationSourceDistanceMeters: 150,
+        scripts: { 'scripts/build-geo-datasets.mjs': 'd'.repeat(64) },
+      },
+      toolVersions: { osmium: '1.18', node: 'v24.12.0' },
+    };
+    expect(geoDatasetsDisclosureSchema.safeParse(disclosure).success).toBe(true);
+    expect(
+      geoDatasetsDisclosureSchema.safeParse({
+        ...disclosure,
+        licence: { ...mapDataLicence, url: 'https://example.org/not-odbl' },
+      }).success,
+    ).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { courseCardSchema, type CourseCard } from '@workout/contracts/course-cards';
+import { mapDataLicencePagePath, odblLicenceUrl } from '@workout/contracts/map-data-licence';
 
 import {
   CourseListCardFacts,
@@ -97,6 +98,12 @@ describe('course list card', () => {
     expect(screen.getByTestId('course-card-elevation')).toHaveTextContent(
       '© OpenStreetMap contributors, 데이터셋 beef0123cafe · 표본 2곳 중 1곳 값 있음, 나머지는 모름',
     );
+    const notice = screen.getByTestId('course-card-elevation-licence');
+    expect(screen.getByRole('link', { name: 'ODbL 1.0' })).toHaveAttribute('href', odblLicenceUrl);
+    expect(notice.querySelector('a[href="/map-data-licence"]')).toHaveAttribute(
+      'href',
+      mapDataLicencePagePath,
+    );
     expect(screen.getByTestId('course-card-surface')).toHaveTextContent('확인되지 않음');
     expect(screen.getByTestId('course-card-last-used')).toHaveTextContent(
       `마지막 사용 ${new Date('2026-09-20T03:00:00Z').toLocaleDateString('ko-KR')}`,
@@ -126,6 +133,7 @@ describe('course list card', () => {
     expect(elevation).toHaveAttribute('data-status', 'not_deployed');
     expect(elevation.textContent?.startsWith('없음')).toBe(true);
     expect(elevation).not.toHaveTextContent('데이터셋');
+    expect(screen.queryByTestId('course-card-elevation-licence')).not.toBeInTheDocument();
     expect(courseCardElevationText({ status: 'outside_region', dataset })).toContain(
       'Seoul 범위 밖',
     );

@@ -5,12 +5,14 @@ import {
   mapDataLicenceReadPath,
   mapDataLicenceResponseSchema,
   type BasemapDataDisclosure,
+  type GeoDatasetsLicenceState,
   type RoutingDataDisclosure,
 } from '@workout/contracts/map-data-licence';
 
 /**
  * Reads what the public map-data licence page shows (M0-06b-odbl): the background tile
- * deployment the shell serves right now and the routing graph the API serves right now.
+ * deployment the shell serves right now and the routing graph and place/elevation datasets
+ * the API serves right now.
  *
  * Both are public: the tile deployment's files are public static assets, and the routing
  * disclosure is the API's unauthenticated read. Nothing here sends a cookie
@@ -34,6 +36,7 @@ export type RoutingLicenceState =
 export interface MapDataLicenceState {
   readonly basemap: BasemapLicenceState;
   readonly routing: RoutingLicenceState;
+  readonly geoDatasets: GeoDatasetsLicenceState;
 }
 
 const deploymentIdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -85,21 +88,36 @@ export async function readBasemapLicence(
   }
 }
 
+async function readApiLicence(
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<Pick<MapDataLicenceState, 'routing' | 'geoDatasets'>> {
+  const unavailable = {
+    routing: { kind: 'unavailable' },
+    geoDatasets: { kind: 'unavailable' },
+  } as const;
+  try {
+    const response = await publicRead(fetcher, mapDataLicenceReadPath, signal);
+    if (!response.ok) return unavailable;
+    const parsed = mapDataLicenceResponseSchema.safeParse(await response.json());
+    if (!parsed.success) return unavailable;
+    return {
+      routing:
+        parsed.data.routing === null
+          ? { kind: 'none' }
+          : { kind: 'disclosed', disclosure: parsed.data.routing },
+      geoDatasets: parsed.data.geoDatasets,
+    };
+  } catch {
+    return unavailable;
+  }
+}
+
 export async function readRoutingLicence(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<RoutingLicenceState> {
-  try {
-    const response = await publicRead(fetcher, mapDataLicenceReadPath, signal);
-    if (!response.ok) return { kind: 'unavailable' };
-    const parsed = mapDataLicenceResponseSchema.safeParse(await response.json());
-    if (!parsed.success) return { kind: 'unavailable' };
-    return parsed.data.routing === null
-      ? { kind: 'none' }
-      : { kind: 'disclosed', disclosure: parsed.data.routing };
-  } catch {
-    return { kind: 'unavailable' };
-  }
+  return (await readApiLicence(fetcher, signal)).routing;
 }
 
 /** Both reads at once; neither waits for the other. */
@@ -107,9 +125,9 @@ export async function readMapDataLicence(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<MapDataLicenceState> {
-  const [basemap, routing] = await Promise.all([
+  const [basemap, apiLicence] = await Promise.all([
     readBasemapLicence(fetcher, signal),
-    readRoutingLicence(fetcher, signal),
+    readApiLicence(fetcher, signal),
   ]);
-  return { basemap, routing };
+  return { basemap, ...apiLicence };
 }

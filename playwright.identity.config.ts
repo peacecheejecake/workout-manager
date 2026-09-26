@@ -26,7 +26,8 @@ const basemapEnv = existsSync(join(basemapDirectory, 'current.json'))
  * checkout without it runs the same tests against "no dataset" — which is a state both
  * screens support and say out loud.
  */
-const geoDataDirectory = join(import.meta.dirname, '.geo-build/geo-data');
+const geoDataDirectory =
+  process.env['IDENTITY_E2E_GEO_DATA_DIR'] ?? join(import.meta.dirname, '.geo-build/geo-data');
 const geoDataEnv = existsSync(join(geoDataDirectory, 'places.json'))
   ? { GEO_DATA_DIR: geoDataDirectory }
   : {};
