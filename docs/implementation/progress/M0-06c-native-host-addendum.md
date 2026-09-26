@@ -71,3 +71,15 @@
 직전 addendum의 “수집 성공 시에만 completion” 설명은 이 변경으로 **수집 성공 또는 영속 retry 작업 기록 성공 시에만 completion**으로 갱신된다. 실제 HealthKit 호출과 OS 재기동/foreground 복구는 연결된 물리 기기에서 검증해야 하므로 **not_executed**로 유지한다.
 
 검사: Swift 구문·`swift-format lint --strict`, Node 24 ESLint, Prettier, diff check, 집중 Vitest 3파일·9시험 통과. 임시 Capacitor `prepare`는 `AppDelegate.swift` SHA-256 `ee5a91068c8a7979f679ca3591b9e86ad2c6ee9587030c2223c94d0402fe80f3`과 `SceneDelegate.swift` SHA-256 `2d770ac8a38345f8328c51734922ada8ef11a68bb167481ad8dac9a761a7f91d`를 복사했다. Xcode 27.0 unsigned iOS device 빌드 **BUILD SUCCEEDED**, error 0. 물리 iPhone은 다시 `unavailable`로 조회되어 서명·설치와 모든 실기기 HealthKit·keyboard·Back 조작은 **not_executed**다.
+
+## 4차 독립 phase 검토 지적 수정 · 2026-09-27
+
+4차 읽기 전용 검토는 main `7d54934` → phase `6e3d3f4`에서 **CHANGES_REQUESTED**였다. 앞선 지적은 검토자가 모두 FIXED로 판정했다. 새 지적의 구현자 판정은 다음과 같으며, 독립 재검토 승인이나 실기기 수용 판정이 아니다.
+
+| 지적                                                       | 현재 판정·근거                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 복구 작업이 이후 명시적 background enable을 취소할 수 있음 | **FIXED** — `ProbeStateGate.retryPending`이 pending 상태를 같은 직렬 구간 안에서 다시 읽고, 여전히 필요할 때만 `setBackgroundDeliveryExclusive(false)`를 호출한다. 명시적 enable이 먼저 완료되면 복구는 건너뛴다. 복구가 먼저 실행되면 뒤의 enable이 최종 상태가 된다. 별도 Swift 동시 실행 시험에서 두 순서를 강제로 만들어 확인했다. |
+
+실제 기기의 서명·설치, background delivery 재시작·foreground 복구, HealthKit 표본 변경과 keyboard/Back 조작은 여전히 **not_executed**다.
+
+검사: Swift 구문·`swift-format lint --strict`, Node 24 ESLint·Prettier·diff check, 집중 Vitest 3파일·9시험, 실제 `ProbeStateGate` 코드를 추출해 실행한 Swift 동시 순서 시험 2경우가 통과했다. 임시 Capacitor `prepare`는 `AppDelegate.swift` SHA-256 `6e6281411d3793dca764cd04488de2c07239949ed15fb52d28bbc78177477bd4`를 복사했고 Xcode 27.0 unsigned iOS device 빌드 **BUILD SUCCEEDED**, error 0. 물리 iPhone은 이번에도 `unavailable`로 조회되어 실기기 결과는 추가되지 않았다.

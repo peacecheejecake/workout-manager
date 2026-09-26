@@ -116,6 +116,10 @@ it('blocks deletion on failed precollection and retries incomplete background cl
   );
   assert.match(
     swift,
-    /if state\.backgroundCleanupPending == true \{[^]*?await setBackgroundDelivery\(false\)/,
+    /func retryPending<T>\(isPending: \(\) -> Bool, operation: \(\) async -> T\) async -> T\? \{\s*await withExclusive \{\s*guard isPending\(\) else \{ return nil \}/,
+  );
+  assert.match(
+    swift,
+    /stateGate\.retryPending\(\s*isPending: \{ self\.loadState\(\)\.backgroundCleanupPending == true \},\s*operation: \{ await self\.setBackgroundDeliveryExclusive\(false\) \}/,
   );
 });

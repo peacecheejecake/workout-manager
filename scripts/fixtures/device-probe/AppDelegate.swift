@@ -111,6 +111,14 @@ actor ProbeStateGate {
     }
     return try await operation()
   }
+
+  /// Recheck persisted cleanup intent while holding the same gate as explicit enable/disable.
+  func retryPending<T>(isPending: () -> Bool, operation: () async -> T) async -> T? {
+    await withExclusive {
+      guard isPending() else { return nil }
+      return await operation()
+    }
+  }
 }
 
 func digest(_ data: Data?) -> String {
@@ -617,9 +625,10 @@ final class HealthProbe {
 
   /// Startup/foreground recovery also runs if background delivery stopped notifying this app.
   func recoverOnActivation(_ source: String) async {
-    let state = loadState()
-    if state.backgroundCleanupPending == true {
-      let delivery = await setBackgroundDelivery(false)
+    let delivery = await stateGate.retryPending(
+      isPending: { self.loadState().backgroundCleanupPending == true },
+      operation: { await self.setBackgroundDeliveryExclusive(false) })
+    if let delivery {
       ProbeLog.shared.record("backgroundCleanupRetry", ["source": source, "result": delivery])
     }
     let current = loadState()
