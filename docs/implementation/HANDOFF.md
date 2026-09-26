@@ -60,8 +60,9 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 그 둘을 FIXED로 확인하고 새 지적 둘을 냈으며 `9967344`로 수정했다. 3차 검토는 앞선 네 지적을
 모두 FIXED로 확인하고 새 P2 지적 하나를 냈으며 `da2e201`로 수정했다. 4차 검토는 앞선 다섯 지적을
 모두 FIXED로 확인하고 resize 출처 문제를 새로 지적했으며 `c33091b`로 수정했다. 5차 검토는 앞선 여섯 지적을
-모두 FIXED로 확인하고 진행 중 wheel 완료 신호 소실을 새로 지적했으며 `58c9022`로 수정했다. 변경 HEAD의 재검토 전이므로
-아직 main에 병합하지 않았다.
+모두 FIXED로 확인하고 진행 중 wheel 완료 신호 소실을 새로 지적했으며 `58c9022`로 수정했다. 6차 전체 diff 검토는
+일곱 지적 모두 FIXED, 새 차단 지적 없이 `3c2c74a`에 APPROVE를 냈다. 승인 결과 기록 후의 문서 변경을
+포함한 검토 갱신 전이므로 아직 main에 병합하지 않았다.
 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
@@ -110,8 +111,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 
 ## 다음 작업 순서
 
-1. **M2-01k phase 재검토**: 1·2·3·4·5차 독립 검토의 지적을 각각 `f12c021`·`9967344`·`da2e201`·`c33091b`·`58c9022`에서 고쳤다. 브랜치의 변경 HEAD 전체를
-   Codex CLI `gpt-6-sol` high/read-only로 재검토하고 APPROVE된 HEAD만 main에 fast-forward한다. 남은 partial·failed·
+1. **M2-01k phase 검토 갱신**: 6차 전체 검토가 코드 HEAD `3c2c74a`에 APPROVE를 냈다. 승인 결과를 기록한 문서 변경까지
+   Codex CLI `gpt-6-sol` high/read-only로 갱신 검토하고 APPROVE된 HEAD만 main에 fast-forward한다. 남은 partial·failed·
    not_executed는 매트릭스의 근거와 외부 gate를 따른다.
 2. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
    수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가
