@@ -1,24 +1,53 @@
-ALTER TABLE identity_private.session
-  ADD COLUMN provider_session_id text CHECK (length(provider_session_id) BETWEEN 1 AND 255),
+ALTER TABLE identity_private.login_attempt
   ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+ALTER TABLE identity_private.session
+  ADD COLUMN provider_session_id text CHECK (length(provider_session_id) BETWEEN 1 AND 255);
 CREATE INDEX identity_session_provider_sid ON identity_private.session (provider_session_id)
   WHERE provider_session_id IS NOT NULL;
 
 CREATE TABLE identity_private.logout_token_replay (
   issuer text NOT NULL CHECK (length(issuer) BETWEEN 1 AND 2048),
   jti_hash text NOT NULL CHECK (jti_hash ~ '^[a-f0-9]{64}$'),
+  subject text CHECK (length(subject) BETWEEN 1 AND 255),
+  provider_session_id text CHECK (length(provider_session_id) BETWEEN 1 AND 255),
   received_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CHECK (subject IS NOT NULL OR provider_session_id IS NOT NULL),
   PRIMARY KEY (issuer, jti_hash)
 );
 CREATE INDEX logout_token_replay_expiry ON identity_private.logout_token_replay (received_at);
 
-CREATE FUNCTION public.auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text)
+CREATE FUNCTION public.auth_consume_attempt_v2(text, text, timestamptz)
+RETURNS TABLE(nonce text, verifier text, created_at timestamptz)
+LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog AS $$
+  WITH consumed AS (
+    DELETE FROM identity_private.login_attempt WHERE state_hash = $1 AND browser_hash = $2
+    RETURNING login_attempt.nonce, login_attempt.verifier, login_attempt.created_at, expires_at
+  ) SELECT nonce, verifier, created_at FROM consumed WHERE expires_at > $3;
+$$;
+
+CREATE FUNCTION public.auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text, timestamptz)
 RETURNS TABLE(athlete_id text, session_id text)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 DECLARE identity_id uuid; attempt integer; retired boolean; previous_tenant text := current_setting('app.athlete_id', true);
 BEGIN
   IF $5 <= $6 OR $5 > $6 + interval '24 hours' THEN RAISE EXCEPTION 'INVALID_SESSION_EXPIRY'; END IF;
   IF $8 IS NOT NULL AND length($8) NOT BETWEEN 1 AND 255 THEN RAISE EXCEPTION 'INVALID_PROVIDER_SID'; END IF;
+  IF $9 < clock_timestamp() - interval '15 minutes' OR $9 > clock_timestamp() + interval '1 minute'
+  THEN RAISE EXCEPTION 'INVALID_LOGIN_START'; END IF;
+  -- Both paths lock subject before sid. If login wins, logout waits then deletes it;
+  -- if logout wins, login sees its committed barrier and cannot recreate the session.
+  PERFORM pg_advisory_xact_lock(hashtextextended('oidc-sub:' || $3 || ':' || $4, 77207));
+  IF $8 IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('oidc-sid:' || $3 || ':' || $8, 77207));
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM identity_private.logout_token_replay r
+    WHERE r.issuer = $3 AND (
+      (r.subject = $4 AND r.provider_session_id IS NULL AND r.received_at >= $9)
+      OR (r.subject IS NULL AND $8 IS NOT NULL AND r.provider_session_id = $8)
+      OR (r.subject = $4 AND $8 IS NOT NULL AND r.provider_session_id = $8)
+    )
+  ) THEN RAISE EXCEPTION 'LOGIN_REVOKED'; END IF;
   FOR attempt IN 1..3 LOOP
     identity_id := NULL;
     SELECT account.athlete_id INTO identity_id FROM identity_private.account WHERE issuer=$3 AND subject=$4;
@@ -57,9 +86,17 @@ BEGIN
     OR $3 > clock_timestamp() + interval '1 minute'
   THEN RAISE EXCEPTION 'INVALID_LOGOUT_CLAIMS'; END IF;
 
+  IF $4 IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('oidc-sub:' || $1 || ':' || $4, 77207));
+  END IF;
+  IF $5 IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('oidc-sid:' || $1 || ':' || $5, 77207));
+  END IF;
+
   DELETE FROM identity_private.logout_token_replay
     WHERE received_at < clock_timestamp() - interval '1 day';
-  INSERT INTO identity_private.logout_token_replay (issuer, jti_hash) VALUES ($1, $2)
+  INSERT INTO identity_private.logout_token_replay (issuer, jti_hash, subject, provider_session_id)
+    VALUES ($1, $2, $4, $5)
     ON CONFLICT DO NOTHING;
   GET DIAGNOSTICS inserted = ROW_COUNT;
   IF inserted = 0 THEN RETURN false; END IF;
@@ -68,11 +105,11 @@ BEGIN
   USING identity_private.account AS a
   WHERE a.athlete_id = s.athlete_id AND a.issuer = $1
     AND ($4 IS NULL OR a.subject = $4)
-    AND ($5 IS NULL OR s.provider_session_id = $5)
-    AND s.created_at <= $3 + interval '1 minute';
+    AND ($5 IS NULL OR s.provider_session_id = $5);
   RETURN true;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.auth_consume_attempt_v2(text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.auth_create_session(text, text, text, text, timestamptz, timestamptz, text, text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.auth_revoke_provider_sessions(text, text, timestamptz, text, text) FROM PUBLIC;

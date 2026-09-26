@@ -1,6 +1,6 @@
 import * as client from 'openid-client';
 import { createHash } from 'node:crypto';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, customFetch, errors, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { ProviderUnavailableError, type OidcProvider } from './service.js';
 
@@ -150,6 +150,16 @@ export async function createOidcProvider(
     const jwks = createRemoteJWKSet(new URL(jwksUri), {
       timeoutDuration: 5_000,
       cooldownDuration: 30_000,
+      [customFetch]: async (url, request) => {
+        try {
+          const response = await fetch(url, request);
+          if (response.status !== 200) throw new ProviderUnavailableError();
+          await response.clone().json();
+          return response;
+        } catch {
+          throw new ProviderUnavailableError();
+        }
+      },
     });
     return { config, metadata, endSession, permittedAlgorithms, jwks };
   }
@@ -232,13 +242,19 @@ export async function createOidcProvider(
     async verifyLogoutToken(token) {
       if (token.length === 0 || token.length > 8_192) throw new Error('Invalid logout token');
       const { metadata, permittedAlgorithms, jwks } = await discovered();
-      const { payload } = await jwtVerify(token, jwks, {
-        issuer: metadata.issuer,
-        audience: options.clientId,
-        algorithms: permittedAlgorithms,
-        clockTolerance: 60,
-        requiredClaims: ['iat', 'jti'],
-      });
+      let payload;
+      try {
+        ({ payload } = await jwtVerify(token, jwks, {
+          issuer: metadata.issuer,
+          audience: options.clientId,
+          algorithms: permittedAlgorithms,
+          clockTolerance: 60,
+          requiredClaims: ['iat', 'jti'],
+        }));
+      } catch (error) {
+        if (error instanceof errors.JWKSInvalid) throw new ProviderUnavailableError();
+        throw error;
+      }
       const nowSeconds = Math.floor(Date.now() / 1000);
       const eventKey = 'http://schemas.openid.net/event/backchannel-logout';
       const event: unknown =

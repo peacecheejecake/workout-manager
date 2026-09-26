@@ -19,7 +19,11 @@ function fixture() {
       const value = attempts.get(state);
       if (!value || value.browserHash !== browser || value.expiresAt <= time) return null;
       attempts.delete(state);
-      return { nonce: value.nonce, verifier: value.verifier };
+      return {
+        nonce: value.nonce,
+        verifier: value.verifier,
+        createdAt: new Date(value.expiresAt.getTime() - 600_000),
+      };
     },
     async createSession(input) {
       sessions.set(input.tokenHash, input);

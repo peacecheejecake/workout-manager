@@ -32,7 +32,11 @@ function fixture(backchannelLogout?: { logout(token: string): Promise<void> }) {
         attempt.expiresAt <= now
       )
         return null;
-      const result = { nonce: attempt.nonce, verifier: attempt.verifier };
+      const result = {
+        nonce: attempt.nonce,
+        verifier: attempt.verifier,
+        createdAt: new Date(attempt.expiresAt.getTime() - 600_000),
+      };
       attempt = undefined;
       return result;
     },
@@ -453,6 +457,20 @@ describe('EXT-BACKCHANNEL callback boundary', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: { code: 'LOGOUT_TOKEN_REPLAY' } });
     expect(data.logs.join('')).not.toContain('private-secret');
+    const unavailable = fixture({
+      async logout() {
+        throw new BackchannelLogoutError('IDENTITY_UNAVAILABLE');
+      },
+    });
+    const retry = await unavailable.app.inject({
+      method: 'POST',
+      url: '/bff/v1/auth/backchannel-logout',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'logout_token=private-secret',
+    });
+    expect(retry.statusCode).toBe(503);
+    expect(retry.json()).toMatchObject({ error: { code: 'IDENTITY_UNAVAILABLE' } });
+    expect(unavailable.logs.join('')).not.toContain('private-secret');
   });
 });
 

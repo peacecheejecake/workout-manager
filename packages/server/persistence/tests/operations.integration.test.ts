@@ -72,6 +72,7 @@ const sessionInput = () => ({
   issuer: 'https://identity.example',
   subject: randomUUID(),
   now: new Date(),
+  loginStartedAt: new Date(),
   expiresAt: new Date(Date.now() + 60000),
 });
 async function waitForBlockedLogin() {
@@ -595,7 +596,7 @@ it('honors FORCE RLS tombstones when the authentication definer is not a superus
   const identities = createIdentityRepository({ connectionString: runtimeUrl });
   const role = `auth_owner_${randomUUID().replaceAll('-', '')}`;
   const signature =
-    'public.auth_create_session(text,text,text,text,timestamptz,timestamptz,text,text)';
+    'public.auth_create_session(text,text,text,text,timestamptz,timestamptz,text,text,timestamptz)';
   const result = await admin.query(
     'SELECT pg_get_userbyid(proowner) AS owner FROM pg_proc WHERE oid=$1::regprocedure',
     [signature],
@@ -610,6 +611,7 @@ it('honors FORCE RLS tombstones when the authentication definer is not a superus
     await admin.query(
       `GRANT SELECT,INSERT,DELETE ON identity_private.account,identity_private.session TO ${role}`,
     );
+    await admin.query(`GRANT SELECT ON identity_private.logout_token_replay TO ${role}`);
     await admin.query(`GRANT SELECT ON tenant_erasure TO ${role}`);
     await admin.query(`ALTER FUNCTION ${signature} OWNER TO ${role}`);
     await expect(identities.createSession({ ...input, tokenHash: hash() })).rejects.toThrow(

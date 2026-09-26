@@ -21,6 +21,7 @@ const sessionInputSchema = z.strictObject({
   providerSessionId: z.string().min(1).max(255).optional(),
   expiresAt: z.date(),
   now: z.date(),
+  loginStartedAt: z.date(),
   previousTokenHash: hashSchema.optional(),
 });
 const identitySchema = z.object({ athlete_id: z.string().uuid(), session_id: z.string().uuid() });
@@ -36,7 +37,7 @@ export interface IdentityRepository {
     stateHash: string,
     browserHash: string,
     now: Date,
-  ): Promise<{ nonce: string; verifier: string } | null>;
+  ): Promise<{ nonce: string; verifier: string; createdAt: Date } | null>;
   createSession(input: SessionInput): Promise<{ athleteId: string; sessionId: string }>;
   findSession(
     tokenHash: string,
@@ -96,7 +97,7 @@ export function createIdentityRepository(options: {
       hashSchema.parse(stateHash);
       hashSchema.parse(browserHash);
       z.date().parse(now);
-      const result = await query('SELECT * FROM public.auth_consume_attempt($1, $2, $3)', [
+      const result = await query('SELECT * FROM public.auth_consume_attempt_v2($1, $2, $3)', [
         stateHash,
         browserHash,
         now,
@@ -104,13 +105,22 @@ export function createIdentityRepository(options: {
       return result.rows.length === 0
         ? null
         : z
-            .object({ nonce: attemptSchema.shape.nonce, verifier: attemptSchema.shape.verifier })
+            .object({
+              nonce: attemptSchema.shape.nonce,
+              verifier: attemptSchema.shape.verifier,
+              created_at: z.date(),
+            })
+            .transform((value) => ({
+              nonce: value.nonce,
+              verifier: value.verifier,
+              createdAt: value.created_at,
+            }))
             .parse(result.rows[0]);
     },
     async createSession(input) {
       const value = sessionInputSchema.parse(input);
       const result = await query(
-        'SELECT * FROM public.auth_create_session($1, $2, $3, $4, $5, $6, $7, $8)',
+        'SELECT * FROM public.auth_create_session($1, $2, $3, $4, $5, $6, $7, $8, $9)',
         [
           value.tokenHash,
           value.csrfToken,
@@ -120,6 +130,7 @@ export function createIdentityRepository(options: {
           value.now,
           value.previousTokenHash ?? null,
           value.providerSessionId ?? null,
+          value.loginStartedAt,
         ],
       );
       const identity = identitySchema.parse(result.rows[0]);

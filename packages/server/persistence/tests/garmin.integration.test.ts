@@ -80,6 +80,7 @@ async function session() {
     subject: randomUUID(),
     expiresAt: new Date(now.getTime() + 3600000),
     now,
+    loginStartedAt: now,
   });
   return { ...principal, now, tokenHash };
 }

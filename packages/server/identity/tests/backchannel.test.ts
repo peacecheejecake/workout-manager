@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createOidcProvider } from '../src/oidc.js';
+import { ProviderUnavailableError } from '../src/service.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -17,6 +18,7 @@ async function fixture() {
   const key = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const wrongKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
   let issuer = '';
+  let jwksMode: 'ok' | 'error' | 'invalid' | 'disconnect' | 'timeout' = 'ok';
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json');
     if (request.url === '/.well-known/openid-configuration') {
@@ -32,6 +34,20 @@ async function fixture() {
         }),
       );
     } else if (request.url === '/jwks') {
+      if (jwksMode === 'timeout') return;
+      if (jwksMode === 'disconnect') {
+        request.socket.destroy();
+        return;
+      }
+      if (jwksMode === 'error') {
+        response.statusCode = 503;
+        response.end('{}');
+        return;
+      }
+      if (jwksMode === 'invalid') {
+        response.end('not-json');
+        return;
+      }
       response.end(
         JSON.stringify({
           keys: [
@@ -83,7 +99,16 @@ async function fixture() {
     );
     return `${message}.${signature.toString('base64url')}`;
   }
-  return { verify, issuer, now, base, jwt };
+  return {
+    verify,
+    issuer,
+    now,
+    base,
+    jwt,
+    setJwksMode: (value: typeof jwksMode) => {
+      jwksMode = value;
+    },
+  };
 }
 
 describe('OIDC Back-Channel Logout Token verification', () => {
@@ -119,4 +144,19 @@ describe('OIDC Back-Channel Logout Token verification', () => {
     ];
     for (const token of bad) await expect(data.verify(token)).rejects.toThrow();
   });
+
+  it.each(['error', 'invalid', 'disconnect'] as const)(
+    'classifies JWKS %s as provider unavailable, not an invalid token',
+    async (mode) => {
+      const data = await fixture();
+      data.setJwksMode(mode);
+      await expect(data.verify(data.jwt())).rejects.toBeInstanceOf(ProviderUnavailableError);
+    },
+  );
+
+  it('classifies a JWKS timeout as provider unavailable', async () => {
+    const data = await fixture();
+    data.setJwksMode('timeout');
+    await expect(data.verify(data.jwt())).rejects.toBeInstanceOf(ProviderUnavailableError);
+  }, 10_000);
 });

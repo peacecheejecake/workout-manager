@@ -24,6 +24,7 @@ const session = () => ({
   issuer: 'https://id.example',
   subject: randomUUID(),
   now: new Date(),
+  loginStartedAt: new Date(),
   expiresAt: new Date(Date.now() + 60_000),
 });
 beforeAll(async () => {
@@ -47,7 +48,9 @@ describe('M1-01 identity private persistence', () => {
       repository.consumeAttempt(input.stateHash, input.browserHash, new Date()),
       repository.consumeAttempt(input.stateHash, input.browserHash, new Date()),
     ]);
-    expect(results.filter(Boolean)).toEqual([{ nonce: input.nonce, verifier: input.verifier }]);
+    expect(results.filter(Boolean)).toEqual([
+      { nonce: input.nonce, verifier: input.verifier, createdAt: expect.any(Date) },
+    ]);
     expect(results.filter((result) => result === null)).toHaveLength(1);
   });
   it('rejects expired attempts and deletes them without nonce exposure', async () => {
@@ -143,6 +146,18 @@ describe('M1-01 identity private persistence', () => {
 });
 
 describe('EXT-BACKCHANNEL atomic provider logout', () => {
+  async function waitForAdvisoryWait(fragment: string) {
+    const deadline = Date.now() + 3_000;
+    while (Date.now() < deadline) {
+      const result = await admin.query(
+        "SELECT 1 FROM pg_stat_activity WHERE wait_event='advisory' AND position($1 in query)>0 AND pid<>pg_backend_pid()",
+        [fragment],
+      );
+      if (result.rowCount) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    throw new Error(`Expected ${fragment} to wait on the logout barrier`);
+  }
   const logout = (
     overrides: Partial<Parameters<IdentityRepository['revokeProviderSessions']>[0]> = {},
   ) => ({
@@ -212,5 +227,105 @@ describe('EXT-BACKCHANNEL atomic provider logout', () => {
     ).rejects.toMatchObject({
       code: '42501',
     });
+  });
+
+  it('serializes logout before a pending callback and refuses recreation after 204', async () => {
+    const subject = randomUUID();
+    const providerSessionId = randomUUID();
+    const loginAttempt = attempt();
+    await repository.createAttempt(loginAttempt);
+    const consumed = await repository.consumeAttempt(
+      loginAttempt.stateHash,
+      loginAttempt.browserHash,
+      new Date(),
+    );
+    if (consumed === null) throw new Error('Missing login attempt');
+    const pendingSession = {
+      ...session(),
+      subject,
+      providerSessionId,
+      loginStartedAt: consumed.createdAt,
+    };
+    const blocker = await admin.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77207))', [
+        `oidc-sub:https://id.example:${subject}`,
+      ]);
+      const pendingLogout = repository.revokeProviderSessions(
+        logout({ subject, providerSessionId }),
+      );
+      await waitForAdvisoryWait('auth_revoke_provider_sessions');
+      const pendingCreate = repository.createSession(pendingSession).then(
+        () => 'created',
+        (error: unknown) => (error instanceof Error ? error.message : 'unexpected error'),
+      );
+      await waitForAdvisoryWait('auth_create_session');
+      await blocker.query('COMMIT');
+      expect(await pendingLogout).toBe(true);
+      expect(await pendingCreate).toBe('LOGIN_REVOKED');
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+      blocker.release();
+    }
+    expect(await repository.findSession(pendingSession.tokenHash, new Date())).toBeNull();
+    const fresh = {
+      ...session(),
+      subject,
+      providerSessionId: randomUUID(),
+      // This login began before the logout too, but belongs to a different OP sid.
+      loginStartedAt: consumed.createdAt,
+    };
+    expect((await repository.createSession(fresh)).athleteId).toBeTruthy();
+  });
+
+  it('lets a callback created first be revoked before logout returns', async () => {
+    const pendingSession = {
+      ...session(),
+      subject: randomUUID(),
+      providerSessionId: randomUUID(),
+    };
+    const blocker = await admin.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77207))', [
+        `oidc-sub:https://id.example:${pendingSession.subject}`,
+      ]);
+      const pendingCreate = repository.createSession(pendingSession);
+      await waitForAdvisoryWait('auth_create_session');
+      const pendingLogout = repository.revokeProviderSessions(
+        logout({
+          subject: pendingSession.subject,
+          providerSessionId: pendingSession.providerSessionId,
+        }),
+      );
+      await waitForAdvisoryWait('auth_revoke_provider_sessions');
+      await blocker.query('COMMIT');
+      expect((await pendingCreate).athleteId).toBeTruthy();
+      expect(await pendingLogout).toBe(true);
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+      blocker.release();
+    }
+    expect(await repository.findSession(pendingSession.tokenHash, new Date())).toBeNull();
+  });
+
+  it('blocks an old subject-only login but allows a new login started after logout', async () => {
+    const subject = randomUUID();
+    const oldStart = new Date();
+    expect(await repository.revokeProviderSessions(logout({ subject }))).toBe(true);
+    await expect(
+      repository.createSession({ ...session(), subject, loginStartedAt: oldStart }),
+    ).rejects.toThrow('LOGIN_REVOKED');
+    const newAttempt = attempt();
+    await repository.createAttempt(newAttempt);
+    const consumed = await repository.consumeAttempt(
+      newAttempt.stateHash,
+      newAttempt.browserHash,
+      new Date(),
+    );
+    if (consumed === null) throw new Error('Missing new login attempt');
+    const newSession = { ...session(), subject, loginStartedAt: consumed.createdAt };
+    expect((await repository.createSession(newSession)).athleteId).toBeTruthy();
   });
 });

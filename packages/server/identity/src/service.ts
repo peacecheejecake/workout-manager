@@ -12,7 +12,7 @@ export interface IdentityStore {
     stateHash: string,
     browserHash: string,
     now: Date,
-  ): Promise<{ nonce: string; verifier: string } | null>;
+  ): Promise<{ nonce: string; verifier: string; createdAt: Date } | null>;
   createSession(input: {
     tokenHash: string;
     csrfToken: string;
@@ -21,6 +21,7 @@ export interface IdentityStore {
     providerSessionId?: string;
     expiresAt: Date;
     now: Date;
+    loginStartedAt: Date;
     previousTokenHash?: string;
   }): Promise<{ athleteId: string; sessionId: string }>;
   findSession(
@@ -204,14 +205,21 @@ export function createIdentityService(options: IdentityOptions) {
       }
       const sessionToken = token();
       const previous = readCookie(header, sessionName);
-      await options.store.createSession({
-        ...(previous === null ? {} : { previousTokenHash: hash(previous) }),
-        tokenHash: hash(sessionToken),
-        csrfToken: token(),
-        ...identity,
-        now: now(),
-        expiresAt: new Date(now().getTime() + 28_800_000),
-      });
+      try {
+        await options.store.createSession({
+          ...(previous === null ? {} : { previousTokenHash: hash(previous) }),
+          tokenHash: hash(sessionToken),
+          csrfToken: token(),
+          ...identity,
+          loginStartedAt: attempt.createdAt,
+          now: now(),
+          expiresAt: new Date(now().getTime() + 28_800_000),
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'LOGIN_REVOKED')
+          throw new IdentityError('LOGIN_REJECTED');
+        throw error;
+      }
       return {
         location: '/account',
         cookies: [
