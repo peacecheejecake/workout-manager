@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertInstallableBuild,
+  probeProcessIds,
   sanitizeBuildOutput,
   signedBuildVerified,
 } from '../../../scripts/probe-device.mjs';
@@ -62,5 +63,69 @@ describe('device build evidence', () => {
       expect(() => assertInstallableBuild(invalid, digest)).toThrow(
         'SIGNED_BUILD_RECEIPT_REQUIRED',
       );
+  });
+});
+
+describe('device process termination scope', () => {
+  const lookup = (runningProcesses) => ({
+    ok: true,
+    json: { info: { outcome: 'success' }, result: { runningProcesses } },
+  });
+
+  it('selects only the exact probe bundle, never another App.app process', () => {
+    expect(
+      probeProcessIds(
+        lookup([
+          {
+            bundleIdentifier: 'org.workoutmanager.feasibility.deviceprobe',
+            executable: '/private/Applications/App.app/App',
+            processIdentifier: 101,
+          },
+          {
+            bundleIdentifier: 'org.other.app',
+            executable: '/private/Applications/App.app/App',
+            processIdentifier: 202,
+          },
+        ]),
+      ),
+    ).toEqual([101]);
+  });
+
+  it('fails closed when process lookup fails or identity is unavailable', () => {
+    const valid = lookup([
+      { bundleID: 'org.workoutmanager.feasibility.deviceprobe', processIdentifier: 101 },
+    ]);
+    expect(probeProcessIds(valid)).toEqual([101]);
+    expect(() => probeProcessIds({ ...valid, ok: false })).toThrow('PROBE_PROCESS_LOOKUP_FAILED');
+    expect(() => probeProcessIds({ ...valid, json: null })).toThrow('PROBE_PROCESS_LOOKUP_FAILED');
+    expect(() =>
+      probeProcessIds(
+        lookup([{ executable: '/private/Applications/App.app/App', processIdentifier: 202 }]),
+      ),
+    ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+    expect(() =>
+      probeProcessIds(
+        lookup([
+          { bundleIdentifier: 'org.other.app', processIdentifier: 202 },
+          { executable: '/private/Applications/App.app/App', processIdentifier: 101 },
+        ]),
+      ),
+    ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+    expect(() =>
+      probeProcessIds(
+        lookup([
+          {
+            bundleIdentifier: 'org.other.app',
+            bundleID: 'org.workoutmanager.feasibility.deviceprobe',
+            processIdentifier: 101,
+          },
+        ]),
+      ),
+    ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+    expect(() =>
+      probeProcessIds(
+        lookup([{ bundleID: 'org.workoutmanager.feasibility.deviceprobe', processIdentifier: 0 }]),
+      ),
+    ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
   });
 });

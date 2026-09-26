@@ -3,8 +3,8 @@ import UIKit
 import WebKit
 
 // M0-06c physical-device feasibility probe: lifecycle, safe-area, keyboard and WKWebView
-// input/IME/scroll observation of the shared Vite mobile-web bundle. Records UI labels,
-// lengths and counts only; typed text is compared to a fixed test phrase and never stored.
+// input/IME/scroll observation of the shared Vite mobile-web bundle. Records fixed
+// operation and route classes, lengths and counts only; typed text is never stored.
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
@@ -52,6 +52,38 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
     "page", "focus", "blur", "composition", "input", "scroll", "viewport", "visibility",
     "pagehide", "pageshow", "popstate", "click", "memoState",
   ]
+  private static let allowedStrings: [String: Set<String>] = [
+    "focus.operation": ["memo-input", "other-input", "button", "link", "other-control"],
+    "blur.operation": ["memo-input", "other-input", "button", "link", "other-control"],
+    "input.operation": ["memo-input", "other-input", "button", "link", "other-control"],
+    "click.operation": ["button", "link"],
+    "input.inputType": [
+      "none", "insertText", "insertCompositionText", "insertFromComposition", "insertFromPaste",
+      "deleteContentBackward", "deleteContentForward", "deleteByCut", "historyUndo", "historyRedo",
+      "other",
+    ],
+    "composition.phase": ["compositionstart", "compositionupdate", "compositionend"],
+    "visibility.state": ["visible", "hidden", "prerender"],
+    "page.route": ["home", "activities", "account", "other"],
+    "pageshow.route": ["home", "activities", "account", "other"],
+    "popstate.route": ["home", "activities", "account", "other"],
+  ]
+  private static let allowedNumbers: Set<String> = [
+    "innerWidth", "innerHeight", "headingTop", "headingLeft", "scrollWidth", "dataLength",
+    "length", "scrollY", "maxScroll", "height", "width", "offsetTop", "focusedBottom",
+    "focusedTop",
+  ]
+  private static let allowedBooleans: Set<String> = [
+    "memoPresent", "isComposing", "matchesExpected", "persisted", "present",
+  ]
+  private static let allowedNumberArrays: Set<String> = ["insets"]
+  private static let allowedRoutes: [String: String] = [
+    "/": "home", "/activities": "activities", "/account": "account",
+  ]
+
+  private static func routeClass(_ path: String?) -> String {
+    allowedRoutes[path ?? ""] ?? "other"
+  }
 
   override func capacitorDidLoad() {
     guard let webView else { return }
@@ -61,8 +93,13 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
     webView.configuration.userContentController.addUserScript(
       WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     urlObservation = webView.observe(\.url, options: [.new]) { view, _ in
+      let scheme = view.url?.scheme ?? ""
       ProbeLog.shared.record(
-        "webUrl", ["path": view.url?.path ?? "none", "scheme": view.url?.scheme ?? "none"])
+        "webUrl",
+        [
+          "route": Self.routeClass(view.url?.path),
+          "scheme": ["capacitor", "https", "http"].contains(scheme) ? scheme : "other",
+        ])
     }
     for (name, event) in [
       (UIResponder.keyboardDidShowNotification, "didShow"),
@@ -108,10 +145,20 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
       ProbeLog.shared.record("webMessageRejected")
       return
     }
-    var fields = body
-    fields.removeValue(forKey: "kind")
-    for (key, value) in fields {
-      if let text = value as? String, text.count > 60 { fields[key] = String(text.prefix(60)) }
+    var fields: [String: Any] = [:]
+    for (key, value) in body where key != "kind" {
+      let field = kind + "." + key
+      if let text = value as? String, Self.allowedStrings[field]?.contains(text) == true {
+        fields[key] = text
+      } else if Self.allowedNumbers.contains(key), let number = value as? NSNumber {
+        fields[key] = number
+      } else if Self.allowedBooleans.contains(key), let boolean = value as? Bool {
+        fields[key] = boolean
+      } else if Self.allowedNumberArrays.contains(key),
+        let values = value as? [NSNumber], values.count <= 4
+      {
+        fields[key] = values
+      }
     }
     ProbeLog.shared.record("web." + kind, fields)
   }
@@ -130,30 +177,37 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
         probe.remove();
         return value;
       };
-      const labelOf = (element) => {
-        if (!element) return 'none';
-        const label = element.labels?.[0]?.textContent ?? element.getAttribute?.('aria-label') ?? '';
-        return (label || element.textContent || '').trim().slice(0, 40);
+      const memo = () => document.querySelector('#workspace-note');
+      const operationOf = (element) => {
+        if (element?.id === 'workspace-note') return 'memo-input';
+        if (element?.tagName === 'INPUT' || element?.tagName === 'TEXTAREA') return 'other-input';
+        if (element?.tagName === 'BUTTON') return 'button';
+        if (element?.tagName === 'A') return 'link';
+        return 'other-control';
       };
-      const memo = () => [...document.querySelectorAll('textarea, input')].find((element) => labelOf(element).startsWith('작업 메모'));
+      const routeClass = () => ({ '/': 'home', '/activities': 'activities', '/account': 'account' })[location.pathname] ?? 'other';
+      const inputTypeOf = (value) => new Set([
+        'insertText', 'insertCompositionText', 'insertFromComposition', 'insertFromPaste',
+        'deleteContentBackward', 'deleteContentForward', 'deleteByCut', 'historyUndo', 'historyRedo',
+      ]).has(value) ? value : 'other';
       const page = () => {
         const heading = document.querySelector('h1');
         const rect = heading?.getBoundingClientRect();
         post('page', {
-          path: location.pathname, insets: insets(), innerWidth, innerHeight,
+          route: routeClass(), insets: insets(), innerWidth, innerHeight,
           headingTop: rect ? rect.top : -1, headingLeft: rect ? rect.left : -1,
           scrollWidth: document.documentElement.scrollWidth, memoPresent: Boolean(memo()),
         });
       };
       addEventListener('load', () => setTimeout(page, 800));
       addEventListener('orientationchange', () => setTimeout(page, 800));
-      addEventListener('focusin', (event) => post('focus', { tag: event.target.tagName, label: labelOf(event.target) }));
-      addEventListener('focusout', (event) => post('blur', { tag: event.target.tagName, label: labelOf(event.target) }));
+      addEventListener('focusin', (event) => post('focus', { operation: operationOf(event.target) }));
+      addEventListener('focusout', (event) => post('blur', { operation: operationOf(event.target) }));
       for (const phase of ['compositionstart', 'compositionupdate', 'compositionend'])
         addEventListener(phase, (event) => post('composition', { phase, dataLength: (event.data ?? '').length }), true);
       addEventListener('input', (event) => {
         const value = event.target.value ?? '';
-        post('input', { inputType: event.inputType ?? 'none', isComposing: Boolean(event.isComposing), length: value.length, matchesExpected: value === expected, label: labelOf(event.target) });
+        post('input', { inputType: inputTypeOf(event.inputType), isComposing: Boolean(event.isComposing), length: value.length, matchesExpected: value === expected, operation: operationOf(event.target) });
       }, true);
       let scrollTimer;
       addEventListener('scroll', () => {
@@ -170,12 +224,12 @@ final class ProbeBridgeViewController: CAPBridgeViewController, WKScriptMessageH
       });
       document.addEventListener('visibilitychange', () => post('visibility', { state: document.visibilityState }));
       addEventListener('pagehide', (event) => post('pagehide', { persisted: event.persisted }));
-      addEventListener('pageshow', (event) => post('pageshow', { persisted: event.persisted, path: location.pathname }));
-      addEventListener('popstate', () => post('popstate', { path: location.pathname }));
+      addEventListener('pageshow', (event) => post('pageshow', { persisted: event.persisted, route: routeClass() }));
+      addEventListener('popstate', () => post('popstate', { route: routeClass() }));
       addEventListener('click', (event) => {
         const target = event.target.closest?.('button, a');
         if (!target) return;
-        post('click', { tag: target.tagName, text: labelOf(target) });
+        post('click', { operation: operationOf(target) });
         setTimeout(() => { const field = memo(); post('memoState', { present: Boolean(field), length: field ? field.value.length : -1, matchesExpected: field ? field.value === expected : false }); }, 600);
       }, true);
     })();

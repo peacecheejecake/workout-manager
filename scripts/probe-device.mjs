@@ -309,6 +309,38 @@ const outcome = (result) => ({
       result.stderr.split('\n').slice(-3).join(' ').slice(0, 400)),
 });
 
+/** A process name or generic App.app path does not establish app ownership. */
+export function probeProcessIds(lookup) {
+  const processes = lookup?.json?.result?.runningProcesses;
+  if (lookup?.ok !== true || lookup.json?.info?.outcome !== 'success' || !Array.isArray(processes))
+    throw new Error('PROBE_PROCESS_LOOKUP_FAILED');
+
+  const identified = processes.filter(
+    (value) => typeof value?.bundleIdentifier === 'string' || typeof value?.bundleID === 'string',
+  );
+  if (identified.length !== processes.length) throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+
+  const matches = identified.filter(
+    (value) => value.bundleIdentifier === bundleId || value.bundleID === bundleId,
+  );
+  if (
+    matches.some(
+      (value) =>
+        value.bundleIdentifier !== undefined &&
+        value.bundleID !== undefined &&
+        value.bundleIdentifier !== value.bundleID,
+    )
+  )
+    throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+  if (
+    matches.some(
+      (value) => !Number.isSafeInteger(value.processIdentifier) || value.processIdentifier <= 0,
+    )
+  )
+    throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+  return [...new Set(matches.map((value) => value.processIdentifier))];
+}
+
 async function main([command, ...rest]) {
   await mkdir(workspace, { recursive: true });
   switch (command) {
@@ -383,11 +415,20 @@ async function main([command, ...rest]) {
         '--device',
         device(),
       ]);
-      const processes = (list.json?.result?.runningProcesses ?? []).filter((value) =>
-        String(value.executable ?? '').includes('/App.app/'),
-      );
+      let processIds;
+      try {
+        processIds = probeProcessIds(list);
+      } catch (error) {
+        return journal({
+          command,
+          ok: false,
+          reason: error.message,
+          matchedProcesses: 0,
+          results: [],
+        });
+      }
       const results = [];
-      for (const value of processes) {
+      for (const processId of processIds) {
         const result = await devicectl('terminate', [
           'device',
           'process',
@@ -395,11 +436,18 @@ async function main([command, ...rest]) {
           '--device',
           device(),
           '--pid',
-          String(value.processIdentifier),
+          String(processId),
         ]);
-        results.push(outcome(result));
+        results.push({ ok: result.ok && result.json?.info?.outcome === 'success' });
       }
-      return journal({ command, matchedProcesses: processes.length, results });
+      const ok = results.every((result) => result.ok);
+      return journal({
+        command,
+        ok,
+        reason: ok ? null : 'PROBE_PROCESS_TERMINATE_FAILED',
+        matchedProcesses: processIds.length,
+        results,
+      });
     }
     case 'pull': {
       const destination = join(workspace, 'pulled', new Date().toISOString().replace(/[:.]/g, '-'));
