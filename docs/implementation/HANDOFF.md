@@ -1,4 +1,4 @@
-# 다음 세션 handoff · 2026-09-26
+# 다음 세션 handoff · 2026-09-27
 
 최신 상태는 [task-graph.json](task-graph.json), 요구·수용 기준은
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
@@ -18,9 +18,9 @@
 - JavaScript workspace는 Node 24.12.0(`~/.local/share/fnm/node-versions/v24.12.0/installation/bin`)과 pnpm 10.34.5. 새 worktree는
   `uv sync`(Garmin worker 시험)와 `.geo-build` symlink가 필요하다.
 
-## 완료된 최신 작업 (2026-09-26, 아직 phase 리뷰 전)
+## 완료된 최신 작업과 phase 검토 (2026-09-27)
 
-`phase/m0-06`(main 대비 미리뷰):
+`phase/m0-06`(독립 검토 APPROVE 후 main에 fast-forward 완료):
 
 - [M0-06b-odbl](progress/M0-06b-odbl.md) 완료: 타일 배포·routing graph가 빌드 값에서 만든 ODbL disclosure와 그 렌더링인
   `ATTRIBUTION.txt`(OSM copyright·ODbL 1.0 URI)를 쓰고, 누락·불일치면 빌드를 거부한다. 인증 없는 `/map-data-licence` 페이지와
@@ -29,18 +29,27 @@
 - [M0-06c](progress/M0-06c.md) 진행(in_progress): 유료 team `XVT9A9T7RP`로 서명한 probe 앱(`org.workoutmanager.feasibility.deviceprobe`)을
   실제 iPhone(iPhone16,2, iOS 27.0)에서 실행. 사람 조작 체크리스트 1–9 완료(HealthKit 쓰기 권한, 자기 source 빈 조회, IME, 스크롤,
   가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **가로 화면에서 키보드가 입력란을 가린다**(결함 후보).
-  WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 전체 검증 묶음은 아직 안 돌렸다.
+  WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 변경 후 단위·통합·빌드와
+  브라우저 검증은 [진행 기록](progress/M0-06c.md)에 따로 남겼다. 수정 후 실기기 재실행은 아직 없다.
 - task-graph: M0-06b-odbl(완료), M0-06b-odbl-places(not_started), EXT-G scope에 사용자 결정 기록.
+- Codex CLI `gpt-6-sol` high/read-only가 `main` 기준 `5a4dfb5c98d99e88344f920da3ab14558a762ac8`부터
+  `phase/m0-06` HEAD `97aee9a84cb6abb237a57b728ec34b920a903d96`까지의 전체 diff를 최종 **APPROVE**했다.
+  앞선 지적은 수정 커밋과 재검토로 닫았고, main을 해당 HEAD로 fast-forward했다. 실기기 재실행 및
+  합성 HealthKit 표본·background delivery 증거는 여전히 `not_executed`다.
 
-`phase/ext-oidc`(main 대비 미리뷰):
+`phase/ext-oidc`(새 main 대비 재검토 대기):
 
 - [EXT-OIDC](progress/EXT-OIDC.md) 완료(사용자 결정: 분할). Zitadel Cloud(`personal-workout-lgn7dx.eu1.zitadel.cloud`)에 사람이
   localhost에서 실제 로그인 체크리스트를 수행하고 서버 증거로 확인. K-oidc not_executed → **partial**. HTTPS·TLS·secret manager·
   배포 환경 확인은 새 노드 **EXT-HOSTING**. 로컬 스택: `scripts/ext-oidc-local/`(`stack.sh up|down|sessions|log-check|outage-on|off|
 expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel logout은 Zitadel이 지원하지만 앱은 미구현이며,
   사용자 결정으로 후속 `EXT-BACKCHANNEL` 노드를 추가했다.
+- 이전 main `5a4dfb5c98d99e88344f920da3ab14558a762ac8` 대비 HEAD `754f974` 전체 diff는 Codex CLI
+  `gpt-6-sol` high/read-only에서 **APPROVE**였다. M0-06 병합 뒤 새 main `97aee9a` 위로 rebase했으므로
+  현재 diff는 별도로 독립 재검토해야 한다. **재검토 APPROVE 전에는 main에 병합하지 않는다.**
 
-직전 main 반영: M0-06 phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE), 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override).
+main에는 이전 M0-06 coverage phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE)와 이번 M0-06 phase가 반영됐다.
+규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
 
@@ -88,10 +97,11 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
 
 ## 다음 작업 순서
 
-1. **phase 리뷰**: `phase/m0-06`과 `phase/ext-oidc`를 각각 main 대비 Codex `gpt-6-sol` high로 검토받고 APPROVE 뒤 main에 fast-forward.
-   두 브랜치 모두 `task-graph.json`을 고쳤으므로 먼저 들어간 쪽 뒤에 다른 쪽을 rebase한다(충돌은 노드 추가·상태 변경뿐).
-2. **ready 노드**(두 phase가 main에 들어간 뒤): M0-06b-odbl-places. EXT-OIDC 완료로 M2-01k의 외부 의존이 풀렸으므로 M2-01k(요구 대조·
-   E2E·복구 등; HTTPS 행은 EXT-HOSTING까지 not_executed)를 재평가한다.
+1. **EXT-OIDC phase 재검토**: rebase 뒤의 `phase/ext-oidc` 전체 diff를 새 main 대비 Codex CLI `gpt-6-sol`
+   high/read-only로 검토받고, APPROVE 뒤에만 main에 fast-forward한다. 수정하면 다시 검토한다.
+2. **ready 노드**(EXT-OIDC 병합 뒤): M0-06b-odbl-places와 EXT-BACKCHANNEL의 실행 가능한 범위를 확인한다.
+   EXT-OIDC 완료로 M2-01k의 외부 의존이 풀렸으므로 M2-01k(요구 대조·E2E·복구 등; HTTPS 행은
+   EXT-HOSTING까지 `not_executed`)를 재평가한다. P8 새 기준은 과거 판정과 분리한 후속 노드에서 다룬다.
 3. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
      표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
@@ -100,9 +110,9 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
 4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06b의 실기기 성능·ODbL 외 항목.
 
-현재 브랜치(2026-09-26): `main`은 origin보다 약 20 커밋 앞(사용자 push 필요). `phase/m2-01`은 이미 main에 포함(삭제 가능).
+현재 브랜치(2026-09-27): `main` HEAD는 `97aee9a`이며 push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
 전국 보행 graph 최종 root `.geo-build-routing/kr-260901-m2-01ay-r1`(`92e0fa5f319a41df`), 기본 `.geo-build`는 Seoul. 오래된 root
-`kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 지워도 되는지 사용자 확인 전이다. `.claude/worktrees/`의 agent worktree 29개에는
+`kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 사용자 승인 후 삭제했다. `.claude/worktrees/`의 agent worktree에는
 이전 task의 미커밋 사본이 남아 있다(커밋 여부 대조 전이라 지우지 않았다).
 
 ## 사용자 결정 기록(2026-09-26, 외부 gate)
@@ -126,7 +136,10 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
 - **ODbL §4.6 스크립트 공개(결정만, 미구현):** 빌드 스크립트 본문을 서비스의 로그인 불필요 데이터 출처 페이지에서 내려받게 한다(별도 공개
   저장소 없음, manifest의 SHA-256과 같은 바이트).
 - **GPX export 표기(결정만, 미구현):** 법적 판단 없이 보수적으로 GPX 메타데이터에 OSM 출처와 ODbL 1.0 URI를 넣는다.
-- **P8-coverage:** 기준을 바꾸지 않고 failed로 둔다(외부 gate 대기 결정).
+- **P8-coverage(기존 결정과 후속 변경):** 기존 사전등록 기준과 `failed` 판정은 역사 기록으로 보존한다.
+  후속 결정에서 RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한 한강 다리, NEG-ISL-01의 지도에 있는
+  보행 허용 페리 경로를 인정하는 새 기준을 채택했다. 새 기준은 별도 사전등록·재실행·독립 검토 전까지
+  판정에 반영하지 않는다.
 
 ## 알려진 흔들리는 시험
 
@@ -165,10 +178,10 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
   (공유용 확장 원과 비밀 오프셋 등)과 T22–T25가 통과해야 켤 수 있다. 계획 문장(map-implementation-plan.md:104, :187)을 개정했다.
 - 사용자 결정(2026-09-25): routing 지도 데이터를 서울 extract에서 한국 전체 extract로 바꿨다(M2-01ak 완료, graph
   `188b65effcc6ef5c`). M0-06b 증거 묶음은 [m0-06b-routing-evidence.md](research/m0-06b-routing-evidence.md)이며 독립 coverage 검토는
-  새 graph로 받는다(P8-coverage not_executed).
+  새 graph로 받았다. 기존 사전등록 기준의 P8-coverage `failed`는 보존하고, 후속 새 기준의 실행·검토는 미수행이다.
   운영 OIDC는 Google을 평가했고([평가](research/ext-oidc-google-evaluation.md): Google 단독은 prompt=login·새 auth_time·OP
-  로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비한다. M0-06b는 현재 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택하고 증거 묶음과
-  독립 coverage 검토를 준비한다. M0-06c 실기기 작업은 계속 보류한다.
+  로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비했다.
+  M0-06b는 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택했고, 실기기 검증의 남은 항목은 위에 기록했다.
 
-다음 세션은 working tree와 위 "다음 작업 순서"를 확인하고 phase 리뷰부터 진행한다. 실제 외부·실환경 증거가 필요한 gate를
+다음 세션은 working tree와 위 "다음 작업 순서"를 확인하고 EXT-OIDC의 새 main 기준 phase 재검토부터 진행한다. 실제 외부·실환경 증거가 필요한 gate를
 문서 검토나 합성 fixture로 완료 처리하지 않는다.

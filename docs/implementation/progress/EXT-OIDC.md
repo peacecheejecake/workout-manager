@@ -2,7 +2,8 @@
 
 상태: **Phase 1(기계 확인 + 로컬 실행 스택 + 사람 체크리스트)과 Phase 2(사용자의 실제 브라우저 수행 + 서버측
 확인 + 판정 제안 + 검증 묶음) 완료.** 기준 HEAD `52ccb09`(Phase 1), Phase 2는 `d6918aa` 위. 제품 코드 변경 없음.
-`task-graph.json`·`AGENTS.md`·`CLAUDE.md`·`.geo-build`·M2-01k 매트릭스는 건드리지 않았다.
+`task-graph.json`에는 완료 상태와 EXT-HOSTING·EXT-BACKCHANNEL 후속 노드를 기록했다.
+`AGENTS.md`·`CLAUDE.md`·`.geo-build`는 건드리지 않았고, M2-01k 매트릭스의 K-oidc 판정을 아래 근거로 갱신했다.
 **`K-oidc` 제안 판정은 `partial`이다**(아래 "K-oidc 판정 제안") — 실제 IdP로 사람이 로그인한 증거는 생겼으나
 매트릭스 header 규칙의 "이 노드에서 실행한 시험이 핵심을 단언하고, 기능 없이는 실패함"을 사람 수행으로는 보일 수
 없고, 운영 배포 조건은 EXT-HOSTING으로 넘어갔다. `passed`로 올리지 않는다.
@@ -18,8 +19,8 @@
 4. 비밀 값은 저장소 root의 git-ignored `.env`(`PUBLIC_ORIGIN`, `ALLOW_INSECURE_LOCALHOST`, `OIDC_ISSUER`,
    `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`)에만 있고, 실행 시 프로세스 환경으로만 넣는다.
 5. **EXT-OIDC / EXT-HOSTING 분리.** EXT-OIDC는 localhost + 실제 Zitadel 증거로 완료하고, HTTPS 도메인·TLS
-   ingress·secret manager·배포 환경 검증은 root가 새로 만드는 노드 **EXT-HOSTING**으로 옮긴다(task-graph 반영은
-   root 몫). 아래 "범위 구분" 표가 그 경계다.
+   ingress·secret manager·배포 환경 검증은 후속 노드 **EXT-HOSTING**으로 옮겼다(`task-graph.json`에 반영).
+   아래 "범위 구분" 표가 그 경계다.
 
 ## 범위 구분 — localhost에서 하는 것 / EXT-HOSTING으로 넘어가는 것
 
@@ -218,7 +219,17 @@ lint·format 검사를 통과하지 못하던 파일들이다.
 - 재검토 HEAD `d410232`에서 client secret 전송 대상 지적은 **FIXED**였으나, 실제 Zitadel
   discovery issuer에는 끝 `/`가 없고 설정에는 있어 probe가 중단되는 새 지적이 있어
   **CHANGES_REQUESTED**였다. issuer URL을 정규화해 비교하고 그 실제 조합을 회귀 시험에 추가했다.
-  수정된 HEAD의 전체 diff는 다시 검토받는다.
+  수정된 HEAD `754f974`의 전체 diff는 같은 기준 main `5a4dfb5c98d99e88344f920da3ab14558a762ac8`에
+  대해 Codex CLI `gpt-6-sol` high/read-only 재검토에서 **APPROVE**를 받았다. 이전 지적은 모두 **FIXED**로 확인됐다.
+- M0-06 phase가 독립 검토 **APPROVE**를 받고 main `97aee9a84cb6abb237a57b728ec34b920a903d96`으로
+  fast-forward된 뒤 이 branch를 새 main 위로 rebase했다. 이전 APPROVE는 옛 기준 diff에 대한 기록이며,
+  현재 diff는 **새 main 대비 독립 재검토 대기**다. 재검토 승인 전에는 main에 병합하지 않는다.
+- Rebase 후 Node 24.12.0에서 `pnpm check:generated`, ESLint, typecheck 34/34, build 15/15,
+  Prettier, 전체 단위 331파일 통과·1파일 skip(4,040 passed·7 skipped), 격리 PostgreSQL 통합
+  80파일·797개가 통과했다. 첫 전체 단위 시도는 이 worktree의 `.venv`가 아직 없어 Garmin bridge suite가
+  실패했다. `uv sync --extra garmin`으로 준비한 뒤 전체 시험을 재실행해 위 결과를 얻었다.
+  기존 실제 Zitadel 브라우저 수행은 이번 rebase 뒤에 반복 실행하지 않았으며, 배포 HTTPS·취소 경로는
+  `not_executed` 상태를 유지한다.
 
 ## 열린 항목
 
