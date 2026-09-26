@@ -185,7 +185,8 @@ async function build(signed) {
     '-configuration',
     'Debug',
     '-destination',
-    'generic/platform=iOS',
+    // A signed build targets the connected device so automatic signing can register it.
+    signed ? `id=${device()}` : 'generic/platform=iOS',
     '-derivedDataPath',
     derived,
     '-clonedSourcePackagesDirPath',
@@ -193,7 +194,12 @@ async function build(signed) {
     'CODE_SIGN_ENTITLEMENTS=App/App.entitlements',
   ];
   const signing = signed
-    ? ['-allowProvisioningUpdates', `DEVELOPMENT_TEAM=${team}`, 'CODE_SIGN_STYLE=Automatic']
+    ? [
+        '-allowProvisioningUpdates',
+        '-allowProvisioningDeviceRegistration',
+        `DEVELOPMENT_TEAM=${team}`,
+        'CODE_SIGN_STYLE=Automatic',
+      ]
     : ['CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'CODE_SIGN_IDENTITY='];
   const result = await run('xcodebuild', [...common, ...signing, 'build'], {
     cwd: project,
@@ -244,7 +250,7 @@ async function convertPlist(input) {
 
 async function devicectl(command, args, timeout = 120000) {
   const output = join(workspace, `devicectl-${process.pid}.json`);
-  const result = await run('xcrun', ['devicectl', ...args, '--json-output', output], { timeout });
+  const result = await run('xcrun', ['devicectl', '--json-output', output, ...args], { timeout });
   let json = null;
   try {
     json = JSON.parse(await readFile(output, 'utf8'));
@@ -307,6 +313,8 @@ async function main([command, ...rest]) {
         '--terminate-existing',
         bundleId,
       ];
+      // `--` stops devicectl option parsing so the app receives its own arguments.
+      if (step !== 'none' || crash !== 'none') args.push('--');
       if (step !== 'none') args.push('-wmProbeStep', step);
       if (crash !== 'none') args.push('-wmProbeCrash', crash);
       const result = await devicectl('launch', args);
