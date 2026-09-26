@@ -37,6 +37,7 @@ const steps = new Set([
   'collect',
   'send',
   'delete',
+  'cleanup',
   'enableBackground',
   'disableBackground',
   'state',

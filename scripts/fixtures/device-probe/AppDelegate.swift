@@ -55,7 +55,7 @@ final class ProbeLog {
 
 /// Durable collector state: anchors and outbox are committed together in one atomic write.
 struct ProbeState: Codable {
-  var schemaVersion = 1
+  var schemaVersion = 2
   var anchors: [String: Data] = [:]
   var outbox: [OutboxEntry] = []
   var backgroundDeliveryEnabled = false
@@ -114,11 +114,31 @@ final class HealthProbe {
   private var observers: [HKObserverQuery] = []
   private let ownSource = HKQuery.predicateForObjects(from: HKSource.default())
 
+  func loadState() -> ProbeState {
+    var state = ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
+    if state.schemaVersion == 1 {
+      // v1 anchored every own-source sample; its anchors/outbox cannot be reused for tagged-only reads.
+      state.schemaVersion = 2
+      state.anchors = [:]
+      state.outbox = []
+    }
+    return state
+  }
+
   private var probeOnly: NSPredicate {
-    NSCompoundPredicate(andPredicateWithSubpredicates: [
+    taggedPredicate(runId: nil)
+  }
+
+  private func taggedPredicate(runId: String?) -> NSPredicate {
+    var predicates: [NSPredicate] = [
       ownSource,
       HKQuery.predicateForObjects(withMetadataKey: probeTagKey, allowedValues: [probeTag]),
-    ])
+    ]
+    if let runId {
+      predicates.append(
+        HKQuery.predicateForObjects(withMetadataKey: probeRunKey, allowedValues: [runId]))
+    }
+    return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
   }
 
   func status() async -> [String: Any] {
@@ -156,9 +176,7 @@ final class HealthProbe {
     let run = UUID().uuidString
     var counts: [String: Int] = [:]
     for type in sampleTypes {
-      let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-        ownSource, HKQuery.predicateForObjects(withMetadataKey: probeRunKey, allowedValues: [run]),
-      ])
+      let predicate = taggedPredicate(runId: run)
       counts[type.identifier] = (try? await samples(type, predicate).count) ?? -1
     }
     var ownProbe: [String: Int] = [:]
@@ -188,7 +206,7 @@ final class HealthProbe {
   func addSynthetic() async -> [String: Any] {
     let run = UUID().uuidString
     let metadata: [String: Any] = [probeTagKey: probeTag, probeRunKey: run]
-    let start = Date(timeIntervalSinceReferenceDate: Double(Int.random(in: 0..<1440)) * 60)
+    let start = Date(timeIntervalSinceReferenceDate: 0)
     var result: [String: Any] = ["runId": run]
     do {
       let sample = HKQuantitySample(
@@ -205,22 +223,31 @@ final class HealthProbe {
       try await builder.addMetadata(metadata)
       try await builder.endCollection(at: start.addingTimeInterval(600))
       let saved = try await builder.finishWorkout()
-      result["workoutUUID"] = saved?.uuid.uuidString ?? "none"
+      guard let saved else {
+        result["saved"] = false
+        result["workoutMissing"] = true
+        result["cleanup"] = await deleteSynthetic(runId: run)
+        return result
+      }
+      result["workoutUUID"] = saved.uuid.uuidString
       result["saved"] = true
     } catch {
       result["saved"] = false
       result.merge(describe(error)) { $1 }
+      // A failed workout save can leave the earlier heart-rate sample behind.
+      result["cleanup"] = await deleteSynthetic(runId: run)
     }
     return result
   }
 
-  func deleteSynthetic() async -> [String: Any] {
+  func deleteSynthetic(runId: String? = nil) async -> [String: Any] {
     var deleted: [String: Int] = [:]
     var result: [String: Any] = [:]
+    let predicate = taggedPredicate(runId: runId)
     for type in sampleTypes {
       do {
         deleted[type.identifier] = try await withCheckedThrowingContinuation { continuation in
-          store.deleteObjects(of: type, predicate: probeOnly) { _, count, error in
+          store.deleteObjects(of: type, predicate: predicate) { _, count, error in
             if let error {
               continuation.resume(throwing: error)
             } else {
@@ -234,12 +261,25 @@ final class HealthProbe {
       }
     }
     result["deletedCounts"] = deleted
+    var remaining: [String: Int] = [:]
+    for type in sampleTypes {
+      do {
+        remaining[type.identifier] = try await samples(type, predicate).count
+      } catch {
+        remaining[type.identifier] = -1
+        result[type.identifier + ".verifyError"] = describe(error)
+      }
+    }
+    result["remainingTaggedCounts"] = remaining
+    result["deleteCallsSucceeded"] = deleted.values.allSatisfy { $0 >= 0 }
+    // HealthKit hides read authorization, so an empty query cannot prove that deletion finished.
+    result["taggedQueryEmpty"] = remaining.values.allSatisfy { $0 == 0 }
     return result
   }
 
   /// Anchored own-source query → outbox, committing new anchors only together with the outbox.
   func collect(crashBeforePersist: Bool) async -> [String: Any] {
-    var state = ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
+    var state = loadState()
     var perType: [String: Any] = [:]
     var anchors = state.anchors
     for type in sampleTypes {
@@ -253,13 +293,14 @@ final class HealthProbe {
         }
         var entries: [OutboxEntry] = []
         let probeAdded = added.filter { ($0.metadata?[probeTagKey] as? String) == probeTag }
+        let probeDeleted = deleted.filter { ($0.metadata?[probeTagKey] as? String) == probeTag }
         for sample in probeAdded {
           entries.append(
             OutboxEntry(
               key: "\(type.identifier)|\(sample.uuid.uuidString)|upsert", type: type.identifier,
               uuid: sample.uuid.uuidString, op: "upsert", attempts: 0))
         }
-        for object in deleted {
+        for object in probeDeleted {
           entries.append(
             OutboxEntry(
               key: "\(type.identifier)|\(object.uuid.uuidString)|tombstone", type: type.identifier,
@@ -272,8 +313,9 @@ final class HealthProbe {
         perType[type.identifier] = [
           "fromAnchor": digest(state.anchors[type.identifier]), "toAnchor": digest(newAnchor),
           "added": probeAdded.map { $0.uuid.uuidString },
-          "ownNonProbeAdded": added.count - probeAdded.count,
-          "deleted": deleted.map { $0.uuid.uuidString },
+          "rejectedUntaggedAdded": added.count - probeAdded.count,
+          "deleted": probeDeleted.map { $0.uuid.uuidString },
+          "rejectedUntaggedDeleted": deleted.count - probeDeleted.count,
         ]
       } catch {
         perType[type.identifier] = describe(error)
@@ -299,7 +341,7 @@ final class HealthProbe {
     try await withCheckedThrowingContinuation { continuation in
       store.execute(
         HKAnchoredObjectQuery(
-          type: type, predicate: ownSource, anchor: anchor, limit: HKObjectQueryNoLimit
+          type: type, predicate: probeOnly, anchor: anchor, limit: 100
         ) {
           _, added, deleted, newAnchor, error in
           if let error {
@@ -313,7 +355,7 @@ final class HealthProbe {
 
   /// Deliver outbox entries to the local stand-in sink, then acknowledge (remove) them.
   func send(crashBeforeAck: Bool) -> [String: Any] {
-    var state = ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
+    var state = loadState()
     var sink = ProbeFiles.load(LocalSink.self, "sink.json", fallback: LocalSink())
     let sending = state.outbox.map { entry -> OutboxEntry in
       var copy = entry
@@ -348,6 +390,8 @@ final class HealthProbe {
 
   func setBackgroundDelivery(_ enabled: Bool) async -> [String: Any] {
     var result: [String: Any] = [:]
+    var succeeded = true
+    var rollbackSucceeded = true
     for type in sampleTypes {
       do {
         if enabled {
@@ -356,24 +400,72 @@ final class HealthProbe {
           try await store.disableBackgroundDelivery(for: type)
         }
         result[type.identifier] = "ok"
-      } catch { result[type.identifier] = describe(error) }
+      } catch {
+        succeeded = false
+        result[type.identifier] = describe(error)
+      }
     }
-    var state = ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
-    state.backgroundDeliveryEnabled = enabled
-    try? ProbeFiles.save(state, "state.json")
-    if enabled { registerObservers() }
+    if enabled && !succeeded {
+      // Never leave one type registered while local state claims both are enabled.
+      var rollback: [String: Any] = [:]
+      for type in sampleTypes {
+        do {
+          try await store.disableBackgroundDelivery(for: type)
+          rollback[type.identifier] = "ok"
+        } catch {
+          rollbackSucceeded = false
+          rollback[type.identifier] = describe(error)
+        }
+      }
+      result["rollback"] = rollback
+    }
+    var state = loadState()
+    // A failed disable or rollback can leave OS delivery active; retry cleanup on next launch.
+    state.backgroundDeliveryEnabled = enabled ? succeeded || !rollbackSucceeded : !succeeded
+    do {
+      try ProbeFiles.save(state, "state.json")
+    } catch {
+      result["persisted"] = false
+      result["persistError"] = describe(error)
+      if enabled {
+        for type in sampleTypes { try? await store.disableBackgroundDelivery(for: type) }
+      }
+      return result
+    }
+    result["persisted"] = true
+    result["enabled"] = enabled && succeeded
+    result["cleanupRequired"] = state.backgroundDeliveryEnabled && !(enabled && succeeded)
+    if state.backgroundDeliveryEnabled { registerObservers() }
+    if !state.backgroundDeliveryEnabled {
+      for observer in observers { store.stop(observer) }
+      observers.removeAll()
+    }
     return result
+  }
+
+  /// Idempotent final cleanup for the probe's own tagged samples and delivery registration.
+  func cleanup() async -> [String: Any] {
+    let delivery = await setBackgroundDelivery(false)
+    let samples = await deleteSynthetic()
+    let deliveryClean =
+      delivery["persisted"] as? Bool == true
+      && delivery["cleanupRequired"] as? Bool == false
+      && sampleTypes.allSatisfy { delivery[$0.identifier] as? String == "ok" }
+    return [
+      "backgroundDelivery": delivery,
+      "taggedSamples": samples,
+      "cleanupCallsSucceeded": deliveryClean && samples["deleteCallsSucceeded"] as? Bool == true,
+    ]
   }
 
   /// Observer queries must be registered on every launch, including background wake-ups.
   func registerObservers() {
     guard observers.isEmpty,
-      ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
-        .backgroundDeliveryEnabled
+      loadState().backgroundDeliveryEnabled
     else { return }
     for type in sampleTypes {
-      let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completion, error in
-        // Only the callback is recorded; other sources' samples are never queried.
+      let query = HKObserverQuery(sampleType: type, predicate: probeOnly) { _, completion, error in
+        // Only tagged, own-source changes can trigger the callback or follow-up query.
         DispatchQueue.main.async {
           var fields: [String: Any] = ["type": type.identifier, "appState": appStateName()]
           if let error { fields.merge(describe(error)) { $1 } }
@@ -420,10 +512,11 @@ final class ProbeRunner {
         result = await probe.collect(crashBeforePersist: crash == "collectBeforePersist")
       case "send": result = probe.send(crashBeforeAck: crash == "sendBeforeAck")
       case "delete": result = await probe.deleteSynthetic()
+      case "cleanup": result = await probe.cleanup()
       case "enableBackground": result = await probe.setBackgroundDelivery(true)
       case "disableBackground": result = await probe.setBackgroundDelivery(false)
       case "state":
-        let state = ProbeFiles.load(ProbeState.self, "state.json", fallback: ProbeState())
+        let state = probe.loadState()
         result = [
           "outbox": state.outbox.map { $0.key }, "anchors": state.anchors.mapValues { digest($0) },
           "backgroundDeliveryEnabled": state.backgroundDeliveryEnabled,

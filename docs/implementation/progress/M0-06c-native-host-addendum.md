@@ -22,3 +22,14 @@
 1. 연결 기기의 개발 서비스가 복구되면 수정된 probe를 서명·설치한다. 세로·가로에서 한국어 메모를 입력하고 포커스/키보드 전환 때 입력란과 caret, Back 버튼의 가시성을 사람 관찰과 probe 기록으로 함께 확인한다.
 2. 실제 내비게이션 이력이 있고 현재 화면에 미저장 입력이 있을 때 edge 제스처와 버튼을 각각 눌러 확인 표시, 취소 후 초안 보존, 이동 후 Back을 확인한다. 입력이 없을 때는 바로 이동하는지 확인한다.
 3. HealthKit 표식 있는 합성 표본 쓰기·삭제 및 background delivery는 사용자 허용을 받았지만 이 변경에서 실행하지 않았다. 별도 bounded 실행 결과가 생기기 전까지 `not_executed`다.
+
+## HealthKit 합성 표본·background delivery 후속 · 2026-09-27
+
+사용자가 앱 표식이 있는 합성 표본 쓰기·삭제와 background delivery 실행을 허용했다. 기존 건강 기록은 읽거나 내보내지 않는 범위를 유지한다. 이번에는 실행용 probe 경로를 보강했으며, **실기기의 HealthKit 작업은 수행하지 않았다**.
+
+- 합성 심박수 1건과 걷기 운동 1건은 2001-01-01 UTC에 `WMSyntheticProbe=M0-06c` 및 실행별 `WMProbeRunID`를 붙인다. 추가 중 한 유형이 실패하면 같은 실행 ID의 표식 있는 표본만 삭제를 시도한다.
+- sample·anchored·observer query와 삭제는 기본적으로 probe 앱의 `HKSource.default()`와 표식을 함께 요구한다. anchored 결과의 추가·삭제 객체도 metadata 표식을 다시 확인한 뒤 outbox에 넣는다. 최대 100개 변경씩 읽는다. v1의 넓은 own-source query에서 만든 anchor·outbox는 v2로 전환하면서 버려 재사용하지 않는다.
+- `cleanup` 단계는 두 유형의 background delivery 해제와 앱 자신의 표식 있는 표본 삭제를 반복 실행할 수 있다. enable 중 일부 유형이 실패하면 모두 해제를 시도한다. 해제나 rollback이 실패할 가능성이 있으면 다음 시작에서도 observer를 등록하고 정리를 다시 시도하도록 상태를 보존한다. 결과는 API 호출 성공과 표식 query의 빈 결과를 따로 기록한다. HealthKit은 앱에 읽기 허용 여부를 알려주지 않으므로 빈 query만으로 완전 삭제를 단정하지 않는다.
+- [Apple의 observer query 지침](https://developer.apple.com/documentation/healthkit/executing-observer-queries)에 맞춰 앱 시작 시 observer를 등록하고 변경 처리 후 completion을 호출한다. [Apple의 anchored query](https://developer.apple.com/documentation/healthkit/hkanchoredobjectquery)와 [deleted object metadata](https://developer.apple.com/documentation/healthkit/hkdeletedobject)를 표식 확인에 사용한다. Simulator는 background delivery 증거가 아니다.
+
+검사: Swift 구문·`swift-format lint --strict`, ESLint·Prettier·diff check, 범위/driver 집중 Vitest 2파일·8시험 통과. 임시 Capacitor `prepare`가 수정된 Swift 소스 SHA-256 `08dec3899c501590d6b37aa93e4cc0dbb52f1974f09e10ca31df47dc729f6185`을 복사했고 Xcode 27.0의 **unsigned device 빌드가 `BUILD SUCCEEDED`, error 0**이었다. 물리 기기는 목록에 1개 있으나 tunnel `unavailable`, developer services `false`여서 서명·설치·`add`·`collect`·`delete`·`cleanup`·background wake-up은 **not_executed**다. 이 컴파일 및 합성 시험으로 HealthKit 기능 통과를 판정하지 않는다.
