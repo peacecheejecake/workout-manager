@@ -83,3 +83,15 @@
 실제 기기의 서명·설치, background delivery 재시작·foreground 복구, HealthKit 표본 변경과 keyboard/Back 조작은 여전히 **not_executed**다.
 
 검사: Swift 구문·`swift-format lint --strict`, Node 24 ESLint·Prettier·diff check, 집중 Vitest 3파일·9시험, 실제 `ProbeStateGate` 코드를 추출해 실행한 Swift 동시 순서 시험 2경우가 통과했다. 임시 Capacitor `prepare`는 `AppDelegate.swift` SHA-256 `6e6281411d3793dca764cd04488de2c07239949ed15fb52d28bbc78177477bd4`를 복사했고 Xcode 27.0 unsigned iOS device 빌드 **BUILD SUCCEEDED**, error 0. 물리 iPhone은 이번에도 `unavailable`로 조회되어 실기기 결과는 추가되지 않았다.
+
+## Codex 독립 phase review 최종 판정
+
+Codex CLI `gpt-6-sol` high/read-only가 `main`
+`7d54934a58862f3f2d8edc016a7e1f0b010ae82a` → `phase/m0-06c`
+`76011606a12aea81e170abf9149f53c0e959980f` 전체 diff를 검토해
+**APPROVE**했다. 4차 검토의 복구·활성화 경합 P2는 **FIXED**이며 새 지적은 없다.
+기존 표식 UUID·삭제/observer 범위, 상태 직렬화, 전체 페이지 수집·영속 재시도,
+삭제 전 수집 차단, background 정리 재시도, React 제어형 Back, 키보드 회전 경로에서도
+회귀를 발견하지 못했다. 검토자는 `git diff --check`와 Swift SHA를 직접 확인하고
+제시된 검사·집중 시험·unsigned 빌드를 근거로 삼았다. 실기기 서명·설치와 HealthKit·IME·Back·
+background wake 검증은 모두 **not_executed**이며 M0-06c 노드는 `in_progress`다.

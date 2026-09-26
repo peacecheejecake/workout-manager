@@ -51,9 +51,10 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. 사용자 결정
 (최종 review APPROVE, main `17982f2`)가 차례로 반영됐다. P8 새 기준의 82쌍 재실행과 별도 채점은
 `adequate` 75.5/82이며, 과거 `failed`는 보존한다. [P8 기록](progress/M2-01az.md)을 참고한다.
 `phase/ext-backchannel`은 [별도 phase 기록](progress/EXT-BACKCHANNEL.md)의 전체 diff 검토에서
-APPROVE를 받았다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_executed`다.
-`phase/m0-06c`는 native probe 수정과 독립 재검토 중이며, 실기기 실행은 `not_executed`다.
-`phase/m2-01k`는 반응형 초안·지도 상태 수용을 보강 중이고 부모 노드는 `in_progress`다.
+APPROVE를 받고 main `7d54934`로 fast-forward했다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_executed`다.
+`phase/m0-06c`는 [native probe 전체 diff](progress/M0-06c-native-host-addendum.md)의 독립 검토에서
+APPROVE를 받았지만 수정 앱의 실기기 검증은 `not_executed`, 노드는 `in_progress`다.
+`phase/m2-01k`는 반응형 초안·지도 상태·차트↔지도 확대 수용을 보강 중이고 부모 노드는 `in_progress`다.
 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override)은 그보다 앞선 기록이다.
 
 ## 운영 메모
@@ -102,12 +103,12 @@ APPROVE를 받았다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_ex
 
 ## 다음 작업 순서
 
-1. **승인된 EXT-BACKCHANNEL 반영**: 마지막 문서 커밋까지 phase diff를 독립 재검토한 뒤 main에 fast-forward한다.
-   실제 Zitadel HTTPS logout 전파·계정 정지 이벤트는 EXT-HOSTING까지 `not_executed`다.
-2. **M0-06c 재검토**: HealthKit 수집·background 처리의 검토 지적을 수정한 phase 전체 diff를 독립 검토한다.
+1. **M0-06c 최종 기록 반영**: phase review가 승인한 native probe 기록의 마지막 문서 변경을 재검토한 뒤
+   main에 fast-forward한다. M0-06c 노드의 실기기 gate는 계속 열린다.
+2. **M0-06c 실기기 재개**: 연결된 기기의 개발 서비스가 복구되면 수정 probe를 서명·설치한다.
    수정 앱의 서명·설치·가로 IME/Back·표식 있는 표본 쓰기/삭제·background wake-up은 기기 개발 서비스가
    복구될 때까지 `not_executed`다. 제품 native host 통합은 M3-01이다.
-3. **M2-01k 계속**: 반응형 초안·선택과 지도 상태의 실행 증거를 반영했다. 차트↔지도 확대 공유 등 남은
+3. **M2-01k 계속**: 반응형 초안·선택, 지도 상태, 차트↔지도 확대 공유의 실행 증거를 반영했다. 남은
    실행 가능한 수용 항목을 검증하고, 실제 호스팅·실기기 행은 외부 gate로 남긴다.
 4. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
@@ -118,11 +119,11 @@ APPROVE를 받았다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_ex
 5. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06c 실기기 실행,
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
-기준 스냅샷(2026-09-27): 이 후속 작업의 기준 `main` HEAD는 `17982f2`이며, 이후 결과는 재개 시
+기준 스냅샷(2026-09-27): 이 후속 작업의 기준 `main` HEAD는 `7d54934`이며, 이후 결과는 재개 시
 `git log -1`로 확인한다. push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
 전국 보행 graph 최종 root `.geo-build-routing/kr-260901-m2-01ay-r1`(`92e0fa5f319a41df`), 기본 `.geo-build`는 Seoul. 오래된 root
-`kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 사용자 승인 후 삭제했다. `.claude/worktrees/`의 agent worktree에는
-이전 task의 미커밋 사본이 남아 있다(커밋 여부 대조 전이라 지우지 않았다).
+`kr-260901-m2-01ay-barriers`(대체됨)·`kr-260924`는 사용자 승인 후 삭제했다. `.claude/worktrees/`의 agent worktree는
+현재 작업용이므로 삭제 전 상태를 각각 확인한다.
 
 ## 사용자 결정 기록(2026-09-26, 외부 gate)
 
