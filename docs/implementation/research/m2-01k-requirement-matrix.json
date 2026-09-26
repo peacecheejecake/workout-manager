@@ -530,6 +530,21 @@
         "pnpm build 15/15, pnpm typecheck 34/34 and root, pnpm lint, pnpm format:check, pnpm check:generated passed on the unmutated tree"
       ],
       "note": "The evidence is local Chromium with fixture OIDC and isolated PostgreSQL, not native rotation, touch or OS IME; those remain separate external rows. The M2-01k parent remains in_progress."
+    },
+    {
+      "node": "M2-01k P5-states closure",
+      "date": "2026-09-27",
+      "rows": ["P5-states"],
+      "decision": "The nine named map/editor states have distinct current-tree browser assertions in both shells; the three previously missing states were re-run with a mutation per state.",
+      "change": "P5-states partial -> passed; counts passed 87 -> 88, partial 18 -> 17. Historical round verdicts and external not_executed rows are unchanged.",
+      "executed": [
+        "M2-01k-c1 map-states.spec.ts: partial recording, no background, and save failures were each distinguished with PR1, NB1, and SF1-SF3 mutants failing on the earlier M2-01k-c1 tree; current-tree full file re-ran those non-deployment cases",
+        "M2-01k-map-states-addendum.md / map-states.spec.ts: uncomputed line, held real response in computing, computed candidate line, then stale edit returning renderer to uncomputed; Next and Vite 2/2 passed, stale->uncomputed mutant failed 2/2, restored 2/2 passed",
+        "current-tree activity-track-no-position.spec.ts and map-render.spec.ts: GPS-free activity, no-worker renderer error across all three map screens, and WebGL unavailable in Next and Vite; six focused tests passed on restored tree",
+        "three temporary product mutants: render map with zero GPS vertices, announce not-drawn as preparing, announce WebGL unavailable as preparing; each failed its Next and Vite browser assertion (6/6 failures total); restored code, rebuilt both shells, six focused tests passed",
+        "map-states.spec.ts full file: 6 passed and 2 honestly skipped because this machine has no valid self-hosted basemap deployment; JSON pointer plus attribution preflight prevents Vite's 200 HTML fallback from masquerading as a deployment"
+      ],
+      "note": "Fixture OIDC and local PostgreSQL/browser evidence, not an operational provider or real device. R-S09 remains partial; the M2-01k phase is not complete."
     }
   ],
   "rounds": [
@@ -651,8 +666,8 @@
     }
   ],
   "counts": {
-    "passed": 87,
-    "partial": 18,
+    "passed": 88,
+    "partial": 17,
     "failed": 1,
     "missing": 0,
     "not_executed": 4
@@ -2583,9 +2598,9 @@
       "id": "P5-states",
       "source": "docs/implementation/map-implementation-plan.md:131",
       "quote": "오류·GPS 없음·부분 기록·배경 없음·WebGL unavailable·미계산·계산 중·stale·저장 실패를 구별한다.",
-      "verdict": "partial",
+      "verdict": "passed",
       "evidence": [],
-      "reason": "Still partial. Asserted in both shells' real renderers: drawn, not-drawn (no worker, all three map screens), WebGL unavailable, unconfirmed, out-of-view (map-render.spec); no-GPS recording (activity-track-no-position.spec); editor states stored/uncomputed/computing/computed/stale (course-draft.test.tsx) and the uncomputed draft in E2E. M2-01k-c1 added executed assertions with killed mutants for three states that round 2 could not trace to their own assertion: partial recording, no background map and save failure in a real browser. The row lists nine states; the other six rely on earlier-node mutants that were not re-run in this matrix, so the row stays partial.",
+      "reason": "M2-01k P5-states closure (2026-09-27): passed for the nine states named in the plan. M2-01k-c1 real-browser assertions and killed mutants distinguish partial recording, no background, and unknown/refused save failure. The new map-states course-draft flow in both shells distinguishes uncomputed, computing with a held real route-preview response, computed candidate, and stale after editing; the stale->uncomputed mutant fails both. Current-tree Next/Vite tests then distinguish no-GPS (no renderer or fabricated path), no-worker rendering error (not-drawn on courses, stored activity, and local preview), and WebGL unavailable, with one meaningful temporary product mutant for each state failing both shells (6/6) and restored tests passing 6/6. The self-hosted basemap deployment-dependent cases are skipped when absent and are not counted as passed evidence. Fixture OIDC and local browser/DB are not native or production-provider evidence.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -2595,7 +2610,17 @@
           "pnpm test:identity x2 (map-render, activity-track-no-position, course-new-edit)"
         ]
       },
-      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)"
+      "evidenceRound": "round 1 (M2-01k, e2b3bf5 / 17effce)",
+      "amendment": {
+        "node": "M2-01k P5-states closure",
+        "date": "2026-09-27",
+        "previousVerdict": "partial",
+        "executed": [
+          "M2-01k-c1 partial/no-background/save-failure real-browser assertions and mutants",
+          "map-states.spec.ts Next/Vite course draft state sequence, 2/2 passed; stale mutant 2/2 failed then restored",
+          "activity-track-no-position.spec.ts and map-render.spec.ts Next/Vite focused cases, 6/6 passed; three separate state mutants caused 6/6 failures and were restored"
+        ]
+      }
     },
     {
       "id": "P5-gesture-escape",
