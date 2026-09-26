@@ -13,6 +13,10 @@ const metadata = {
 describe('credential-bearing OIDC probes', () => {
   it('accepts only the configured HTTPS issuer and same-origin endpoints', () => {
     expect(verifiedProviderTargets(issuer, metadata).tokenEndpoint).toBe(metadata.token_endpoint);
+    expect(
+      verifiedProviderTargets(issuer, { ...metadata, issuer: 'https://example.zitadel.cloud' })
+        .tokenEndpoint,
+    ).toBe(metadata.token_endpoint);
     for (const unsafe of [
       { ...metadata, issuer: 'https://other.example/' },
       { ...metadata, token_endpoint: 'https://other.example/token' },

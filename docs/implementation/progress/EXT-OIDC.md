@@ -215,6 +215,10 @@ lint·format 검사를 통과하지 못하던 파일들이다.
   discovery `token_endpoint`에 실제 client secret을 보낼 수 있다는 새 지적이 있어
   **CHANGES_REQUESTED**였다. 현재 checkout의 provider probe는 issuer와 같은 HTTPS origin의
   token/logout/JWKS endpoint만 허용하고 redirect를 거절한다. 다음 전체 diff 재검토를 기다린다.
+- 재검토 HEAD `d410232`에서 client secret 전송 대상 지적은 **FIXED**였으나, 실제 Zitadel
+  discovery issuer에는 끝 `/`가 없고 설정에는 있어 probe가 중단되는 새 지적이 있어
+  **CHANGES_REQUESTED**였다. issuer URL을 정규화해 비교하고 그 실제 조합을 회귀 시험에 추가했다.
+  수정된 HEAD의 전체 diff는 다시 검토받는다.
 
 ## 열린 항목
 

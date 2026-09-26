@@ -9,7 +9,8 @@ export function verifiedProviderTargets(configuredIssuer, metadata) {
     issuer.hash ||
     metadata === null ||
     typeof metadata !== 'object' ||
-    metadata.issuer !== issuer.href
+    typeof metadata.issuer !== 'string' ||
+    new URL(metadata.issuer).href !== issuer.href
   )
     throw new Error('OIDC_PROBE_PROVIDER_MISMATCH');
 
