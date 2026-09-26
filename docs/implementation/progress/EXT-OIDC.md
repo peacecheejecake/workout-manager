@@ -208,6 +208,9 @@ lint·format 검사를 통과하지 못하던 파일들이다.
 - 발견 4(공급자 응답 원문 출력): **FIXED**. probe 출력은 허용된 오류 코드와 상태로 제한한다.
 - 수정 후 root가 bash/Node 구문, 오류 코드 허용 목록, graph 노드·의존성, `git diff --check`를
   재검증했다. 실제 Zitadel 로그인은 재실행하지 않았다. **수정된 HEAD의 독립 재검토는 대기 중**이다.
+- 재검토 HEAD `670c888`에서 이전 4건은 모두 **FIXED**였으나, HANDOFF가 EXT-HOSTING과
+  back-channel 후속 결정을 이전 상태로 안내하는 새 지적이 있어 **CHANGES_REQUESTED**였다.
+  HANDOFF의 현재 상태와 사용자 결정을 고쳤다. 이 새 지적의 수정 HEAD는 다시 검토받는다.
 
 ## 열린 항목
 

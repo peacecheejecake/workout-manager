@@ -37,7 +37,8 @@
 - [EXT-OIDC](progress/EXT-OIDC.md) 완료(사용자 결정: 분할). Zitadel Cloud(`personal-workout-lgn7dx.eu1.zitadel.cloud`)에 사람이
   localhost에서 실제 로그인 체크리스트를 수행하고 서버 증거로 확인. K-oidc not_executed → **partial**. HTTPS·TLS·secret manager·
   배포 환경 확인은 새 노드 **EXT-HOSTING**. 로컬 스택: `scripts/ext-oidc-local/`(`stack.sh up|down|sessions|log-check|outage-on|off|
-expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel logout은 Zitadel이 지원하지만 앱은 미구현(후속 여부 결정 필요).
+expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel logout은 Zitadel이 지원하지만 앱은 미구현이며,
+  사용자 결정으로 후속 `EXT-BACKCHANNEL` 노드를 추가했다.
 
 직전 main 반영: M0-06 phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE), 규칙 변경(AGENTS.md phase 리뷰, CLAUDE.md 영구 override).
 
@@ -91,11 +92,12 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
    두 브랜치 모두 `task-graph.json`을 고쳤으므로 먼저 들어간 쪽 뒤에 다른 쪽을 rebase한다(충돌은 노드 추가·상태 변경뿐).
 2. **ready 노드**(두 phase가 main에 들어간 뒤): M0-06b-odbl-places. EXT-OIDC 완료로 M2-01k의 외부 의존이 풀렸으므로 M2-01k(요구 대조·
    E2E·복구 등; HTTPS 행은 EXT-HOSTING까지 not_executed)를 재평가한다.
-3. **사용자 결정 대기**:
-   - M0-06c: 가로 키보드 가림을 어디서 고칠지(native host keyboard 처리 / mobile-web focus 유지, 노드), 제품 back 동작, 합성 HealthKit
-     표본 쓰기·삭제와 background delivery 실행 허가("기록만" 결정 해제 여부), 제품 native host 통합을 M0-06c와 M3-01 중 어디서 할지.
-   - EXT-OIDC: back-channel logout 후속 노드 여부.
-   - P8-coverage 기준(failed 유지 결정).
+3. **재개 중 받은 사용자 결정**:
+   - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
+     표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
+   - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
+   - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
+     한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
 4. **외부 gate**: EXT-HOSTING(호스팅 보류), EXT-G(Garmin 개발자 프로그램 승인), M0-06b의 실기기 성능·ODbL 외 항목.
 
 현재 브랜치(2026-09-26): `main`은 origin보다 약 20 커밋 앞(사용자 push 필요). `phase/m2-01`은 이미 main에 포함(삭제 가능).
@@ -111,9 +113,9 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. back-channel log
   secret, Development Mode). 호스팅 보류로 `PUBLIC_ORIGIN=http://localhost:3100`, `ALLOW_INSECURE_LOCALHOST=true`. redirect는
   `/bff/v1/auth/callback`, post-logout은 `/account`. 시험 사용자 둘(하나 MFA). 값은 저장소 밖 `.env`(Git 제외)에만 있다. discovery
   200, S256·`client_secret_basic`·`end_session_endpoint` 광고 확인.
-- **EXT-OIDC 분할(결정만, 미구현):** localhost 실제 IdP 검증이 통과하면 EXT-OIDC를 완료로 하고, HTTPS 도메인·TLS ingress·secret manager
-  항목은 새 노드 EXT-HOSTING(호스팅 gate)으로 분리한다. 그러면 M2-01k가 진행될 수 있고 HTTPS 행은 not_executed로 남는다. 노드는 아직
-  만들지 않았다.
+- **EXT-OIDC 분할(결정 후 `phase/ext-oidc`에서 구현):** localhost 실제 IdP 검증이 통과하면 EXT-OIDC를 완료로 하고, HTTPS 도메인·TLS ingress·secret manager
+  항목은 새 노드 EXT-HOSTING(호스팅 gate)으로 분리한다. 그러면 M2-01k가 진행될 수 있고 HTTPS 행은 not_executed로 남는다.
+  `phase/ext-oidc`에서 외부 gate 노드를 만들었다.
 - **EXT-G:** 범위에서 빼지 않는다. Garmin Connect Developer Program 승인 전까지 로컬 FIT 가져오기만 쓰고, 승인되면 M0-07b·M1-06b를 공식
   경로로 구현한다(task-graph EXT-G scope에 기록됨).
 - **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
