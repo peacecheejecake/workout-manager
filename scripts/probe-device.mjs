@@ -300,14 +300,19 @@ async function devicectl(command, args, timeout = 120000) {
   await rm(output, { force: true });
   return { ...result, json, command };
 }
-const outcome = (result) => ({
-  ok: result.ok,
-  jsonOutcome: result.json?.info?.outcome ?? null,
-  error: result.ok
-    ? null
-    : (result.json?.error?.userInfo?.NSLocalizedDescription?.string ??
-      result.stderr.split('\n').slice(-3).join(' ').slice(0, 400)),
-});
+/** devicectl messages and outcome fields may contain device, account, or local paths. */
+export function deviceCommandOutcome(result) {
+  const succeeded = result.ok === true && result.json?.info?.outcome === 'success';
+  return {
+    ok: succeeded,
+    jsonOutcome: succeeded ? 'success' : 'failure',
+    error: succeeded
+      ? null
+      : result.ok === true
+        ? 'DEVICECTL_OUTCOME_FAILED'
+        : 'DEVICECTL_COMMAND_FAILED',
+  };
+}
 
 /** A process name or generic App.app path does not establish app ownership. */
 export function probeProcessIds(lookup) {
@@ -367,8 +372,9 @@ async function main([command, ...rest]) {
       );
       return journal({
         command,
-        ...outcome(result),
-        installedBundle: result.json?.result?.installedApplications?.[0]?.bundleID ?? null,
+        ...deviceCommandOutcome(result),
+        installedBundle:
+          result.json?.result?.installedApplications?.[0]?.bundleID === bundleId ? bundleId : null,
       });
     }
     case 'uninstall': {
@@ -380,7 +386,7 @@ async function main([command, ...rest]) {
         device(),
         bundleId,
       ]);
-      return journal({ command, ...outcome(result) });
+      return journal({ command, ...deviceCommandOutcome(result) });
     }
     case 'launch': {
       const [step = 'none', crash = 'none'] = rest;
@@ -403,7 +409,7 @@ async function main([command, ...rest]) {
         command,
         step,
         crash,
-        ...outcome(result),
+        ...deviceCommandOutcome(result),
         pidReported: Number.isInteger(result.json?.result?.process?.processIdentifier),
       });
     }
@@ -469,7 +475,7 @@ async function main([command, ...rest]) {
       ]);
       return journal({
         command,
-        ...outcome(result),
+        ...deviceCommandOutcome(result),
         destination: destination.slice(repository.length + 1),
       });
     }
@@ -486,7 +492,7 @@ async function main([command, ...rest]) {
       const apps = result.json?.result?.apps ?? [];
       return journal({
         command,
-        ...outcome(result),
+        ...deviceCommandOutcome(result),
         installed: apps.some((app) => app.bundleIdentifier === bundleId),
       });
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertInstallableBuild,
+  deviceCommandOutcome,
   probeProcessIds,
   sanitizeBuildOutput,
   signedBuildVerified,
@@ -127,5 +128,36 @@ describe('device process termination scope', () => {
         lookup([{ bundleID: 'org.workoutmanager.feasibility.deviceprobe', processIdentifier: 0 }]),
       ),
     ).toThrow('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
+  });
+});
+
+describe('device command journal privacy', () => {
+  it('records only fixed outcomes when devicectl returns private errors', () => {
+    const secret = 'PRIVATE /Users/athlete/Health.fit device-identifier';
+    const failed = deviceCommandOutcome({
+      ok: false,
+      stderr: secret,
+      json: {
+        info: { outcome: secret },
+        error: { userInfo: { NSLocalizedDescription: { string: secret } } },
+      },
+    });
+    expect(failed).toEqual({
+      ok: false,
+      jsonOutcome: 'failure',
+      error: 'DEVICECTL_COMMAND_FAILED',
+    });
+    expect(JSON.stringify(failed)).not.toContain(secret);
+
+    expect(deviceCommandOutcome({ ok: true, json: { info: { outcome: secret } } })).toEqual({
+      ok: false,
+      jsonOutcome: 'failure',
+      error: 'DEVICECTL_OUTCOME_FAILED',
+    });
+    expect(deviceCommandOutcome({ ok: true, json: { info: { outcome: 'success' } } })).toEqual({
+      ok: true,
+      jsonOutcome: 'success',
+      error: null,
+    });
   });
 });
