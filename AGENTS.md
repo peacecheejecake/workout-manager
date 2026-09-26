@@ -174,44 +174,43 @@ Follow user instructions first, then the nearest applicable repository guidance.
   through the root integrator. Native agents may prepare independent parts of one ready task in parallel.
 - Report actual files changed, checks run, failures, and remaining dependencies to the root. The root reviews and
   verifies the combined result before advancing task status; an agent's completion message alone is not a pass.
-- Keep the Herdr split-pane workflow below specifically for independent pre-commit peer review. It does not replace
-  Codex native implementation orchestration. This explicit project choice takes precedence over skill defaults
-  that would otherwise select Orca orchestration.
+- Independent review follows the phase review below; it does not replace native implementation orchestration.
+  This explicit project choice takes precedence over skill defaults that would otherwise select Orca orchestration.
 
-## Peer review before every commit
+## Independent phase review before main
 
-- Follow the **Herdr skill**; obtain current instructions with `herdr --skill`. Confirm `HERDR_ENV=1` before any
-  control command. Never inspect/control another focused Herdr session from outside a managed pane.
-- Before committing, use an independent peer reviewer in a split pane in the current tab and repository. Preserve
-  user focus with `--no-focus`; select right/down based on layout and skill guidance. Do not run bare `codex` as a
-  subprocess in place of pane isolation. Do not use GitHub Connector review as an automatic fallback.
-- Learn installed syntax with `herdr --help`, `herdr pane`, and `herdr agent`. Parse returned JSON IDs; do not guess
-  pane identifiers. A typical sequence, subject to installed CLI syntax, is:
+User decision (2026-09-26): independent review runs per **phase**, not per task node.
 
-```bash
-herdr pane split --current --direction right --cwd "$PWD" --no-focus
-# Read .result.pane.pane_id from the response; use a unique reviewer name.
-herdr agent start <reviewer-name> --kind codex --pane <returned-pane-id>
-herdr agent prompt <reviewer-name> "Review the current task diff and relevant untracked files against requirements. Read only; do not edit or commit. Report actionable findings with file/line and validation gaps." --wait --timeout 60000
-herdr agent read <reviewer-name> --source recent-unwrapped --lines 200
-```
-
+- **Phase unit.** Task-graph nodes with the same prefix form one phase (e.g. all `M2-01xx` nodes form the M2-01 phase;
+  `M2-02xx`, `M3-01xx`, ...). When every runnable node of the phase (excluding nodes blocked by external gates) is
+  done, request one phase review. Per-task peer review and root merge-delta review are not required.
+- **Phase branch.** Commit each verified task to the phase branch `phase/<prefix>` (e.g. `phase/m2-01`). Unreviewed
+  code never enters `main`. After the phase review approves, fast-forward `main` to the phase branch. Fix findings with
+  new commits on the same branch and request re-review. Pushing is the user's action.
+- **Reviewer: Codex CLI.** Run `codex exec` (or `codex exec review --base <main commit>`) with
+  `-c model="gpt-6-sol" -c model_reasoning_effort="high"` in a **read-only sandbox**. The reviewer does not edit,
+  stage, commit, or change the working tree, and the root does not touch that tree during review. The reviewed diff is
+  the whole phase branch against `main`; state the base commit and the phase branch HEAD (or a tag pinning it).
 - Give the reviewer scope, design references, actual changed/untracked files, and validation results. Review must
   cover contracts, domain invariants, security/ownership, style/boundaries, regression risk, and tests.
-- Wait for completed review and read its findings. A timeout, blocked/unknown state, startup success, or no visible
-  output is not review completion. Use bounded waits and report progress; follow Herdr instructions for state/read.
-- Address valid findings, verify fixes, and request re-review of materially changed code before committing. Assess
-  every previous finding against current content; a reply or absence of a repeated finding is not fix evidence.
-- Record reviewed diff identity (base HEAD and content hash or equivalent), outcome, fixes, and test evidence in the
-  task/PR record. Changes after review require a relevant review refresh.
-- If Herdr/peer review is unavailable, finish authorized edits/checks and report the specific blocker; leave the commit
-  pending unless the user explicitly authorizes a different review workflow. Never claim self-review is peer review.
+- Wait for completed review and read its findings. A start, timeout, or no output is not review completion. If Codex
+  is unavailable, do not merge the phase branch into `main`; report the specific blocker.
+- Address valid findings, verify fixes, and request re-review. Assess every previous finding against current content
+  (FIXED / NOT FIXED); a reply or absence of a repeated finding is not fix evidence.
+- Record reviewed diff identity (base and head), outcome, fixes, and test evidence in the task/phase record. Changes
+  after review require a review refresh.
+- The root's own review, or the implementing agent's review of its own work, is never an independent review.
+- **Requirement-mandated reviews stay separate.** An independent review required by a requirement document or a node's
+  acceptance criteria (e.g. the re-identification review of the M2-01k-o requirement §7) is still obtained as that
+  node's acceptance condition, independent of the phase review.
+- Per-task verification (install, generated check, lint, typecheck, build, test, integration, drill when needed,
+  identity x2, format) still runs for every task.
 
 ## Commits, PRs, and completion
 
 - Use Conventional Commits (`type(scope): subject`). Use `docs` only for documentation-only changes.
-- Commit/push only within user-authorized scope. Peer review is required before a commit; it is not authorization to
-  create a commit. Preserve staged changes and keep unrelated files out of the task.
+- Commit/push only within user-authorized scope. A passed phase review is required before `main`; it is not authorization
+  to create a commit. Preserve staged changes and keep unrelated files out of the task.
 - PRs describe the concrete problem/result, changed boundaries, validation, and remaining limitations; follow an
   existing PR template. Link FUT/S/F/A IDs where applicable. Do not initiate external review mentions automatically.
 - Run narrow checks during iteration and relevant broader checks before completion. Planned commands after M0:
