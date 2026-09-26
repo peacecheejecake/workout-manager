@@ -15,6 +15,16 @@
 | extract      | allowlist `osm-extract-south-korea`, 재계산 SHA-256 `848daadc56b2c2a808b30b2778f834c2802097ab382805c9fd42f248f4d6284b`; road data `2026-09-01T20:20:50Z`                               |
 | engine       | GraphHopper 10.0, jar SHA-256 `e5a1268f2cd6b1e4ef849b9237e98b651bf3c31adf4a3766c6d9f5feb241bb41`                                                                                       |
 
+기준 파일은 첫 엔진 실행 전에 로컬 기록으로 고정했다. Codex 세션 기록
+`~/.codex/sessions/2026/09/27/rollout-2026-09-27T00-52-48-01a0de6b-4910-7933-976d-6ef46163ad10.jsonl`의
+105–106행은 **2026-09-26T15:54:11.090–15:54:11.152Z**에 `shasum -a 256`과
+`git status --short`를 실행해 위 기준 SHA-256과 신규 기준 파일을 확인한 요청·성공 응답이다.
+같은 기록의 121–122행은 **15:54:59Z**에 82개 표본 ID, 세 쌍만 변경, 공통 기준 동일,
+기준 SHA-256 동일을 확인한 요청·성공 응답이다. 첫 실제 probe 명령은 405행의
+**16:05:42.422Z**에 시작됐고 첫 결과의 실행 시작 시각은 아래 표의 **16:05:46Z**다.
+이것은 로컬 세션 로그와 파일 해시의 순서 증거이며, 외부 타임스탬프나 서명된 사전등록은 아니다.
+이전 결과를 본 뒤 세 표본 정의를 바꾼 사실도 그대로 적용된다.
+
 `ROUTING_GRAPH_ROOT`와 `ROUTING_EXTRACT_SOURCE=osm-extract-south-korea`를 고정하고, 공유 harness lock 아래 loopback 8997/8998에서 아래 명령을 각 결과 이름으로 실행했다. Node 24.12.0, `osmium`, Java 17을 사용했다. 첫 일반 sandbox 시도는 loopback bind `EPERM`으로 결과를 쓰기 전에 중단했다. 로컬 loopback 실행 권한으로 다시 실행했다.
 
 ```sh

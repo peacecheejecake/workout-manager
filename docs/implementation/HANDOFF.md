@@ -138,8 +138,9 @@ main에는 이전 M0-06 coverage phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE)와
 - **GPX export 표기(결정만, 미구현):** 법적 판단 없이 보수적으로 GPX 메타데이터에 OSM 출처와 ODbL 1.0 URI를 넣는다.
 - **P8-coverage(기존 결정과 후속 변경):** 기존 사전등록 기준과 `failed` 판정은 역사 기록으로 보존한다.
   후속 결정에서 RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한 한강 다리, NEG-ISL-01의 지도에 있는
-  보행 허용 페리 경로를 인정하는 새 기준을 채택했다. 새 기준은 별도 사전등록·재실행·독립 검토 전까지
-  판정에 반영하지 않는다.
+  보행 허용 페리 경로를 인정하는 새 기준을 채택했다. 그 기준으로 엔진을 2회 재실행하고 별도 독립 채점에서
+  `adequate`(75.5/82)를 받았다. [실행 기록](research/m0-06b-coverage-execution-m2-01az.md)과
+  [채점 기록](research/m0-06b-coverage-review-grading-m2-01az.md)을 참조한다. 기존 `failed`는 바꾸지 않는다.
 
 ## 알려진 흔들리는 시험
 
@@ -178,7 +179,8 @@ main에는 이전 M0-06 coverage phase(M0-06b-cov, M2-01ay; Codex r2 APPROVE)와
   (공유용 확장 원과 비밀 오프셋 등)과 T22–T25가 통과해야 켤 수 있다. 계획 문장(map-implementation-plan.md:104, :187)을 개정했다.
 - 사용자 결정(2026-09-25): routing 지도 데이터를 서울 extract에서 한국 전체 extract로 바꿨다(M2-01ak 완료, graph
   `188b65effcc6ef5c`). M0-06b 증거 묶음은 [m0-06b-routing-evidence.md](research/m0-06b-routing-evidence.md)이며 독립 coverage 검토는
-  새 graph로 받았다. 기존 사전등록 기준의 P8-coverage `failed`는 보존하고, 후속 새 기준의 실행·검토는 미수행이다.
+  새 graph로 받았다. 기존 사전등록 기준의 P8-coverage `failed`는 보존한다. 후속 새 기준은
+  [실제 엔진 2회 재실행과 독립 채점](research/m0-06b-coverage-execution-m2-01az.md)을 완료해 별도 `adequate`를 받았다.
   운영 OIDC는 Google을 평가했고([평가](research/ext-oidc-google-evaluation.md): Google 단독은 prompt=login·새 auth_time·OP
   로그아웃을 못 해 탈락), 사용자가 Zitadel을 선택했다(2026-09-25). 인스턴스·등록·secret은 사용자가 준비했다.
   M0-06b는 자체 운영 GraphHopper 10.0과 OSM 한국 extract를 선택했고, 실기기 검증의 남은 항목은 위에 기록했다.
