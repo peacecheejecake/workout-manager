@@ -10,8 +10,9 @@
 ## 현재 Web MVP 범위
 
 - 활성 [작업 그래프](../task-graph.json)의 `G2`는 `M2-06`의 전체 Web 업무·보안·삭제·운영
-  수용을 요구한다. 공식 Garmin 권한·adapter·실제 공급자 출시 검증은 이 gate의 선행 조건이
-  아니다. 원래 공식 연동 포함 Web MVP의 완료를 주장하지 않는다.
+  내부 준비 판정이다. `G2-PUBLIC`은 여기에 `EXT-HOSTING`을 더 요구한다. 공식 Garmin
+  권한·adapter·실제 공급자 출시 검증은 두 gate의 선행 조건이 아니다. 원래 공식 연동 포함
+  Web MVP의 완료를 주장하지 않는다.
 - 완료된 `M1-06b-tmp`는 `python-garminconnect`의 문서화되지 않은 Connect 경로를 쓰는
   **비공식**, 소유자 한 명 전용, 기본 꺼짐 기능이다. 이후 구현·통합 시험은 이 adapter가
   제공하는 수집 interface와 합성 fixture를 사용할 수 있다. 공식 OAuth, 공식 권한,
@@ -41,7 +42,8 @@
 
 ## 남는 출시 구분
 
-`G2`가 나중에 통과하더라도 결과는 **공식 Garmin을 제외한 Web MVP**다. 비공식 연결을
+`G2`가 나중에 통과하더라도 결과는 **공식 Garmin을 제외한 Web MVP의 내부 준비 판정**이다.
+`G2-PUBLIC`에 필요한 `EXT-HOSTING`의 실제 배포 증거는 별도로 남는다. 비공식 연결을
 소유자 외 사용자에게 제공하거나 공식 자동 연동이라고 표시하는 별도 범위 변경은 이
 결정에 포함되지 않는다. 공개 배포의 HTTPS·TLS·secret manager·실제 OIDC 검증은
 `EXT-HOSTING`에 남으며, 이 문서가 그 외부 증거를 면제하지 않는다.

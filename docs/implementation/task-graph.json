@@ -1798,11 +1798,19 @@
     },
     {
       "id": "G2",
-      "title": "Web MVP 출시 gate",
+      "title": "Web MVP 내부 출시 준비 gate",
       "dependsOn": ["M2-06"],
       "kind": "gate",
       "status": "not_started",
-      "scope": "사용자 결정(2026-09-27): 공식 Garmin 연동 제외 Web MVP. M2-06의 Web 전체 업무·보안·운영 수용을 요구한다. 비공식 Garmin 연결은 소유자 한정·기본 꺼짐 선택 기능이며 그 fixture 결과를 실계정/공식 연동 증거로 승격하지 않는다. 공개 배포의 HTTPS·TLS·secret manager·실제 OIDC 검증은 EXT-HOSTING에 남고, 미실행 외부 증거를 통과로 표시하지 않는다."
+      "scope": "사용자 결정(2026-09-27): 공식 Garmin 연동 제외 Web MVP의 내부 출시 준비 판정. M2-06의 Web 전체 업무·보안·운영 수용을 요구한다. 비공식 Garmin 연결은 소유자 한정·기본 꺼짐 선택 기능이며 그 fixture 결과를 실계정/공식 연동 증거로 승격하지 않는다. G2 통과는 공개 배포 승인이나 EXT-HOSTING의 HTTPS·TLS·secret manager·배포 환경 OIDC 검증 완료를 뜻하지 않는다. 미실행 외부 증거를 통과로 표시하지 않는다."
+    },
+    {
+      "id": "G2-PUBLIC",
+      "title": "Web MVP 공개 출시 gate",
+      "dependsOn": ["G2", "EXT-HOSTING"],
+      "kind": "gate",
+      "status": "not_started",
+      "scope": "사용자 결정(2026-09-27): 호스팅을 내부 준비 판정 뒤로 미룬다. 공개 Web 출시는 G2의 제품 수용과 EXT-HOSTING의 공개 HTTPS/TLS, Zitadel 배포 redirect·logout·취소·만료 검증, NODE_ENV=production·__Host-/Secure cookie, secret manager, ODbL 고지 지도 산출물 재빌드 증거를 모두 요구한다. 미실행·partial 항목은 통과로 표시하지 않으며 공식 Garmin 연동은 별도 후속 범위다."
     },
     {
       "id": "M3-01",
@@ -1831,10 +1839,10 @@
     {
       "id": "G3",
       "title": "Native-inclusive 출시 gate",
-      "dependsOn": ["M3-03"],
+      "dependsOn": ["M3-03", "G2-PUBLIC"],
       "kind": "gate",
       "status": "not_started",
-      "scope": "Web 전체 범위 + 실제 HealthKit·native 검증"
+      "scope": "Web 공개 출시 조건(G2-PUBLIC) + 실제 HealthKit·native 검증"
     }
   ]
 }

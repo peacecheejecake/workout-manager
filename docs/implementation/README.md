@@ -131,11 +131,14 @@ M2-06·Native gate는 유지한다. 공식 Garmin은 2026-09-27 사용자 결정
 완료 조건은 모든 화면의 실제 업무, 수용 시험, 보안·삭제·backup restore·운영 검증이다.
 **현 Web MVP는 공식 Garmin을 제외한다.** 완료된 소유자 한정 비공식 adapter는 기본 꺼짐 선택 기능이며,
 실제 계정 수집이 검증되기 전에는 fixture 결과를 실연동 통과로 표시하지 않는다. 이는 공식 연동 포함
-기존 명세의 완료 판정이 아니다. 생리학적 타당성은 CRUD·계산 시험과 별도 gate다.
+기존 명세의 완료 판정이 아니다. `G2`는 내부 출시 준비 판정이고, 공개 Web 출시는
+`G2-PUBLIC`에서 `EXT-HOSTING`의 HTTPS 배포 증거까지 확인한다. 생리학적 타당성은
+CRUD·계산 시험과 별도 gate다.
 
 ### M3 · Native 제품화
 
 mobile-web 모듈 재사용, secure transport/versioned bridge, HealthKit collector의 anchor/tombstone/outbox/ack, foreground·background·IME·back·offline을 실기기에서 시험한다. WebKit 브라우저 테스트를 WKWebView/HealthKit 실기기 검증으로 대체하지 않는다. Native-inclusive 출시에는 M3도 필요하다.
+최종 Native 통합은 내부 `G2` 뒤에 진행할 수 있지만 공개 출시 `G3`에는 `G2-PUBLIC`도 필요하다.
 
 ## 4. 테스트·Prettier·CI 설정 명세
 

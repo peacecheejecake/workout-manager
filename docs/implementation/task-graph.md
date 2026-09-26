@@ -20,8 +20,8 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 
 EXT-OIDC의 localhost 실제 Zitadel 검증은 완료했다. 공개 HTTPS·TLS·secret manager 및 배포 환경의
 취소 경로 검증은 외부 gate EXT-HOSTING에 남는다. 앱의 back-channel logout 구현과 실제 공급자
-전파 시험은 별도 후속 task EXT-BACKCHANNEL이다. 두 노드 모두 미착수이며 localhost 결과를
-배포 증거로 간주하지 않는다.
+전파 시험은 별도 후속 task EXT-BACKCHANNEL이다. EXT-HOSTING은 미착수이고 EXT-BACKCHANNEL은
+진행 중이며 localhost 결과를 배포 증거로 간주하지 않는다.
 
 [M2-05 RAG·검토 자료·코치](progress/M2-05.md)도 완료했다. M2-04d가 남긴 색인·cache·인용
 실행기를 실제로 구현해 파생 cleanup manifest가 닫히고, retrieval은 검토·동의·공유·삭제
@@ -65,7 +65,7 @@ M1-05j는 훈련 후보의 순수 계약·diff/검증(j1), tenant 불변 원장�
 - `A → B`: B를 구현·통합하려면 A의 완료 계약을 충족해야 한다. 여러 화살표는 AND 조건이다.
 - 공식 Garmin 권한·다운로드·adapter·출시 검증은 활성 그래프에서 제외하고
   [후속 계획](research/garmin-official-deferred.md)에 원래 선행 조건과 수용 증거를 보존했다.
-- `G1/G2/G3`: 통합/출시 gate. `G2`는 공식 Garmin을 제외한 Web MVP의 gate다.
+- `G1/G2/G2-PUBLIC/G3`: 통합/출시 gate. `G2`는 공식 Garmin을 제외한 Web MVP의 내부 준비 판정이다. `G2-PUBLIC`은 `EXT-HOSTING` 실제 증거까지 요구하는 공개 출시 판정이다.
 - 기계 판독 원본은 [task-graph.json](task-graph.json)이다. 그래프/표와 JSON을 같은 변경에서 갱신한다.
 - M0-06은 `a 조사 / b UI·지도 spike / c native feasibility`다. 활성 그래프의 M0-07은 로컬 FIT 도구, M1-06은 운영·OAuth 기반과 완료된 소유자 한정 비공식 수집을 포함한다. 공식 작업은 후속 계획에 있다.
 - M1b/M1c/M2/M3의 하위 ID는 이번 실행 계획에서 추가했다. 기존 FUT/S/F/A 요구 ID를 대체하지 않는다.
@@ -480,7 +480,9 @@ flowchart TD
     task29d["M2-04d 접근·coach 경계"]
     task30["M2-05 RAG·검토 자료·코치"]
     task31["M2-06 전체 화면·내부 통합 검증"]
-    task33{{"G2 Web MVP 출시 gate"}}
+    task33{{"G2 Web MVP 내부 준비 gate"}}
+    hosting{{"EXT-HOSTING 공개 HTTPS 배포"}}
+    publicGate{{"G2-PUBLIC Web 공개 출시 gate"}}
     task18 --> task19
     task18 --> task20
     task19 --> task21
@@ -508,6 +510,8 @@ flowchart TD
     task30 --> task31
     garminTmp --> task31
     task31 --> task33
+    task33 --> publicGate
+    hosting --> publicGate
 ```
 
 ## M3: Native 병행과 최종 통합
@@ -516,7 +520,8 @@ flowchart TD
 flowchart TD
     task8["M0-06c Native feasibility"]
     task25["M1c-04 다영역 통합 승인"]
-    task33{{"G2 Web MVP 출시 gate"}}
+    task33{{"G2 Web MVP 내부 준비 gate"}}
+    publicGate{{"G2-PUBLIC Web 공개 출시 gate"}}
     task34["M3-01 Native shell·secure bridge"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
@@ -527,6 +532,7 @@ flowchart TD
     task35 --> task36
     task33 --> task36
     task36 --> task37
+    publicGate --> task37
 ```
 
 Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장과 병행할 수 있다. 이것은 [원래 M3 제품화 순서](README.md)를 없애는 것이 아니다. 최종 native 제품화·출시는 M2 전체 모듈과 Web gate를 합류시킨 뒤 진행한다. 기기·서명·권한이 없으면 M0-06c/실기기 시험은 미완료로 유지한다.
@@ -662,11 +668,12 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-04d 자료 접근·공유·coach 사용 경계 | M2-04b, M2-04c | ACL revision·명시 공유/철회·reviewed/coach 전환·index/cache/citation 삭제 manifest |
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
 | M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b, M1-06b-tmp | S01–S35·보안·운영·내부 수용 기준 대조; 비공식 수집의 선택 기능·fixture 회귀와 실계정 미검증 구분 |
-| G2 Web MVP 출시 gate | M2-06 | 공식 Garmin 제외; 외부 조건/효능 주장 검증 미완료는 해당 기능 출시 차단 |
+| G2 Web MVP 내부 준비 gate | M2-06 | 공식 Garmin 제외 내부 준비 판정; HTTPS 공개 배포 승인은 아님 |
+| G2-PUBLIC Web MVP 공개 출시 gate | G2, EXT-HOSTING | 실제 HTTPS/TLS·운영 OIDC·보안 쿠키·secret manager·지도 재빌드 증거가 있어야 공개 출시 |
 | M3-01 Native shell·secure bridge | M1c-04, M0-06c | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
 | M3-02 HealthKit collector | M3-01 | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
-| G3 Native-inclusive 출시 gate | M3-03 | Web 전체 범위 + 실제 HealthKit·native 검증 |
+| G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |
 
 ## 현실적인 병렬 작업 묶음
 

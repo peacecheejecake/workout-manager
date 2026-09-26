@@ -10,6 +10,11 @@
 개발 경로이고, 실제 Garmin 계정 실행은 `not_executed`다. 아래의 2026-09-25/26 결정
 기록은 역사로 보존하며, 현재 작업에는 이 새 결정을 적용한다.
 
+**최신 호스팅 범위 결정(2026-09-27):** `G2`는 내부 출시 준비 판정이다. 공개 Web 출시는
+새 `G2-PUBLIC` gate에서 `G2`와 `EXT-HOSTING`의 실제 HTTPS 배포 증거를 함께 요구한다.
+Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공개 Native 출시 `G3`도
+`G2-PUBLIC`을 요구한다. `EXT-HOSTING`은 `not_started`이고 배포 시험은 `not_executed`다.
+
 ## 사용자 결정과 작업 방식
 
 - 규칙은 [AGENTS.md](../../AGENTS.md)가 기본이다. Claude agent는 [CLAUDE.md](../../CLAUDE.md)의 override(Claude native orchestration)를
@@ -128,7 +133,7 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
    - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
    - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-4. **외부 gate**: EXT-HOSTING(호스팅 보류), M0-06c 실기기 실행,
+4. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건), M0-06c 실기기 실행,
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
 기준 스냅샷(2026-09-27): `phase/m2-01k`의 승인된 작업은 `0b183c8`까지 main에 포함됐다.
