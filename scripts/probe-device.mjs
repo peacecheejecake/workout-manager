@@ -338,6 +338,8 @@ export function probeProcessIds(lookup, installedAppLookup) {
   // The installed-app response is filtered by the exact probe bundle ID. Require
   // its full executable URL, never a generic App.app basename or suffix.
   const executable = `${apps[0].url}App`;
+  if (processes.some((value) => typeof value?.executable !== 'string'))
+    throw new Error('PROBE_PROCESS_IDENTITY_UNAVAILABLE');
   const matches = processes.filter((value) => value?.executable === executable);
   if (
     matches.some(

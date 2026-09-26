@@ -109,3 +109,9 @@ background wake 검증은 모두 **not_executed**이며 M0-06c 노드는 `in_pro
 - 기존 `terminate` 명령은 Xcode 27 프로세스 목록에 bundle ID가 없어 `PROBE_PROCESS_IDENTITY_UNAVAILABLE`로 안전하게 멈췄다. 설치 앱 조회의 정확한 bundle ID·실행 파일 URL과 프로세스의 전체 URL을 일치시키도록 driver를 수정했다. 수정 명령은 실제 probe 프로세스 1개만 종료했고 두 번째 호출은 대상 0개였다. 다른 `App.app` 이름의 프로세스를 고르지 않는 회귀 시험을 추가했다.
 
 Aside 업데이트는 `fetch failed`였으므로 native UI 증거는 `devicectl`·기기 캡처·사용자 관찰로 얻었다. sandbox의 첫 device 목록 조회는 CoreDeviceService timeout이었고, 접근 가능한 실행에서 재시도했다. 제품 native host 통합·실제 서버 동기화·실제 background wake는 여전히 별도 범위다. M0-06c는 `in_progress`를 유지한다.
+
+### 실기기 후속 변경의 1차 독립 검토
+
+Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e773ee28d` → phase `9f2adaa6006fed87a4254be323182a8dc323815e` 전체 diff를 검토해 **CHANGES_REQUESTED**를 냈다. P2: 프로세스 목록에 실행 파일 필드가 빠진 항목이 있어도 `terminate`가 대상 0개 성공으로 기록했다. 이전의 광범위한 `App.app` 종료 범위는 FIXED였지만, 신원 필드 누락 시 실패 조건은 NOT FIXED였다. 검토자는 실제 영수증을 열거나 실기기 실행을 재현하지 않았고 문서의 background wake·dirty Back 한계 표기는 적절하다고 확인했다.
+
+수정: 실행 파일이 문자열이 아닌 프로세스가 하나라도 있으면 `PROBE_PROCESS_IDENTITY_UNAVAILABLE`로 닫는다. 누락 항목만 있는 목록과 정상 probe 항목에 누락 항목이 섞인 목록을 회귀 시험에 추가했다. 집중 Vitest 6/6, ESLint, Prettier, 구문·diff 검사가 통과했다. 수정 명령을 iPhone에서 다시 실행해 정확히 probe 프로세스 1개만 종료했고 이후 앱을 다시 실행했다. 이는 구현자 수정이며 다음 독립 재검토의 FIXED 판정을 기다린다.
