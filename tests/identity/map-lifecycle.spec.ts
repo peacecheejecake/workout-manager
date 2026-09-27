@@ -646,6 +646,7 @@ for (const shell of shells) {
       expect(kinds(await heldSince(page, mark))).toEqual(
         expect.arrayContaining(['webgl-context', 'worker', 'worker-map-state']),
       );
+      await page.evaluate(() => localStorage.setItem('workout:private:fixture-track', 'Alice'));
 
       const other = await otherTab(page);
       await logout(other);
@@ -653,6 +654,15 @@ for (const shell of shells) {
       await expect(page.getByText('이 작업은 로그인이 필요합니다.')).toBeVisible();
       await expect(trackPanel(page)).toHaveCount(0);
       await expect.poll(() => leftovers(page, mark), { message: 'held after logout' }).toEqual([]);
+      // The tracked worker-map-state covers its source data, while the private key covers
+      // browser storage. A signed-out shell must retain neither Alice's path nor her cache.
+      await expect(mapRegion(page, '저장된 활동 경로')).toHaveCount(0);
+      expect(await page.evaluate(() => localStorage.getItem('workout:private:fixture-track'))).toBe(
+        null,
+      );
+      expect(await page.evaluate(() => localStorage.getItem('workout:private:account-scope'))).toBe(
+        null,
+      );
       if (heldTiles) {
         await expect.poll(() => heldTiles.stillWanted()).toEqual([]);
         await heldTiles.releaseAll();

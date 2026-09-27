@@ -2,12 +2,14 @@ import '@testing-library/jest-dom/vitest';
 import { useState } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import type { Activity } from '@workout/contracts/activity';
 import { ActivityBrowser, type ActivityBrowserProps } from '../src/activity-browser';
 import { readActivitySearch } from '../src/browser-search';
+import { storedMapPath, storedRevision, storedTrack } from './stored-track-fixtures';
 
 type Reply = Awaited<ReturnType<AuthenticatedTransport['request']>>;
 const values = {
@@ -102,6 +104,53 @@ function setup(
   };
 }
 describe('read-only activity browser', () => {
+  it('empties populated track metadata and geometry queries when the owner session unmounts', async () => {
+    const nativeClear = QueryClient.prototype.clear;
+    const cleared: Array<{ before: readonly (readonly unknown[])[]; after: number }> = [];
+    const clear = vi.spyOn(QueryClient.prototype, 'clear').mockImplementation(function (
+      this: QueryClient,
+    ) {
+      const before = this.getQueryCache()
+        .getAll()
+        .filter((query) => query.state.status === 'success')
+        .map((query) => query.queryKey);
+      nativeClear.call(this);
+      cleared.push({ before, after: this.getQueryCache().getAll().length });
+    });
+    try {
+      const { unmount } = setup(async (input) => {
+        if (input.path.endsWith('/track'))
+          return reply({ status: 'available', track: storedRevision() });
+        if (input.path.endsWith('variant=normalized')) return reply(storedTrack());
+        if (input.path.endsWith('variant=map_path')) return reply(storedMapPath());
+        return input.path.includes('?') ? list() : reply(context(activity));
+      }, `selected=${activity.id}&detailTab=route`);
+      expect(await screen.findByText('전체 5개 · 위치 있음 4개 · 구간 3개')).toBeVisible();
+      unmount();
+      const trackKeys = cleared.flatMap(({ before, after }) =>
+        after === 0
+          ? before.filter(
+              (key) => key.includes('stored-track') || key.includes('stored-track-artifacts'),
+            )
+          : [],
+      );
+      expect(trackKeys).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining(['users', 'alice', 'sessions', 'session-a', 'stored-track']),
+          expect.arrayContaining([
+            'users',
+            'alice',
+            'sessions',
+            'session-a',
+            'stored-track-artifacts',
+          ]),
+        ]),
+      );
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
   it('applies record state with other URL filters, resets paging and preserves off-page selection', async () => {
     const user = userEvent.setup();
     const { request, changed } = setup(async (input) => {

@@ -1690,6 +1690,15 @@
       "evidence": "docs/implementation/progress/M2-01k-p.md"
     },
     {
+      "id": "M2-01k-q",
+      "title": "명시 로그아웃의 지도·코스 비공개 상태 정리 검증",
+      "dependsOn": ["M2-01k-d", "M2-01k-p"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "P5-logout-clear의 지도·코스 부분: 미저장 코스 초안과 private browser storage가 있는 Alice 세션에서 명시 로그아웃한 뒤 course/track QueryClient cache, 지도 renderer·worker·source와 늦은 응답 재유입이 사라지는지 직접 단언한다. 가능하면 같은 증거를 계정 전환에서도 대조한다. 보호층 제거 변이가 새 단언을 실패시키고 원본이 두 shell에서 통과해야 한다. 제품 전체 private surface 판정과 운영 OIDC·실기기 gate는 별개로 남긴다.",
+      "evidence": "docs/implementation/progress/M2-01k-q.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [
@@ -1721,7 +1730,8 @@
         "M2-01k-m",
         "M2-01k-n",
         "M2-01k-o",
-        "M2-01k-p"
+        "M2-01k-p",
+        "M2-01k-q"
       ],
       "kind": "task",
       "status": "in_progress",

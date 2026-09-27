@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
@@ -181,6 +182,32 @@ function setup(overrides: (input: TransportRequest) => Reply | null = () => null
 }
 
 describe('course workbench', () => {
+  it('removes the owner-scoped course query cache when its session screen unmounts', async () => {
+    const nativeClear = QueryClient.prototype.clear;
+    const clearedKeys: unknown[][] = [];
+    const clear = vi.spyOn(QueryClient.prototype, 'clear').mockImplementation(function (
+      this: QueryClient,
+    ) {
+      const keys = this.getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey);
+      nativeClear.call(this);
+      if (this.getQueryCache().getAll().length === 0) clearedKeys.push(keys);
+    });
+    try {
+      const { unmount } = setup();
+      await screen.findByRole('button', { name: 'Seoul loop' });
+      unmount();
+      expect(clearedKeys).toContainEqual(
+        expect.arrayContaining([
+          ['users', 'athlete-1', 'sessions', 'session-1', 'courses', 'list'],
+        ]),
+      );
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
   it('lists private courses and offers no way to share one', async () => {
     setup();
     expect(await screen.findByRole('button', { name: 'Seoul loop' })).toBeInTheDocument();
