@@ -335,15 +335,16 @@ describe('coaching workspace user records', () => {
     fireEvent.compositionEnd(box);
     expect(f.posts).toHaveLength(0);
   });
-  it('drops populated cache and private drafts on Alice to Bob change and ignores late command completion', async () => {
+  it('keeps Bob clear when Alice save succeeds after account switch', async () => {
     const f = fixture();
-    let resolve!: (value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void;
+    let resolveAlice:
+      ((value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void) | undefined;
     const original = f.transport.request;
     const transport: AuthenticatedTransport = {
       request: (input) =>
         input.method === 'POST'
           ? new Promise((done) => {
-              resolve = done;
+              resolveAlice = done;
             })
           : original(input),
     };
@@ -355,6 +356,8 @@ describe('coaching workspace user records', () => {
       );
     await user.type(await ready(), 'Private draft');
     await user.type(screen.getByLabelText('근거 시간대'), 'Asia/Seoul');
+    await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
+    expect(resolveAlice).toBeDefined();
     mounted.rerender(
       <StrictMode>
         <Harness transport={transport} athleteId="bob" sessionId="session-b" />
@@ -365,11 +368,10 @@ describe('coaching workspace user records', () => {
     );
     expect(screen.getByLabelText('근거 시간대')).toHaveValue('');
     expect(screen.queryByText('Private draft')).not.toBeInTheDocument();
-    await user.type(screen.getByRole('textbox', { name: '사용자 메시지' }), 'Pending private');
-    await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
-    mounted.unmount();
+    await user.type(screen.getByRole('textbox', { name: '사용자 메시지' }), 'Bob draft');
+    await user.type(screen.getByLabelText('근거 시간대'), 'UTC');
     await act(async () =>
-      resolve({
+      resolveAlice?.({
         status: 200,
         traceId: null,
         body: {
@@ -379,12 +381,16 @@ describe('coaching workspace user records', () => {
             threadId,
             revision: 2,
             role: 'user',
-            content: 'Pending private',
+            content: 'Private draft',
             createdAt: instant,
           },
         },
       }),
     );
+    expect(screen.getByRole('textbox', { name: '사용자 메시지' })).toHaveValue('Bob draft');
+    expect(screen.getByLabelText('근거 시간대')).toHaveValue('UTC');
+    expect(screen.queryByText('Private draft')).not.toBeInTheDocument();
+    mounted.unmount();
     expect(screen.queryByRole('region', { name: '상담 기록' })).not.toBeInTheDocument();
   });
   it('does not show Alice cached conversations while Bob reads are pending', async () => {

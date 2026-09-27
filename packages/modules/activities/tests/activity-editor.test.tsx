@@ -243,6 +243,60 @@ it('does not preview or save on IME Enter and ignores a late response after acco
 
 it('clears a populated correction and its cached record on logout and Alice to Bob replacement', async () => {
   let releaseOldRead: ((value: Reply) => void) | undefined;
+  const privatePlan = {
+    head: {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      version: 1,
+      createdAt: values.startedAt,
+      draft: {
+        title: 'Alice private plan',
+        timezone: 'Asia/Seoul',
+        periods: ['season', 'wave', 'phase', 'block'].map((level, index, levels) => ({
+          id: level,
+          parentId: index === 0 ? null : levels[index - 1],
+          level,
+          title: level,
+          startDate: '2026-09-01',
+          endDateExclusive: '2026-10-01',
+          timezone: 'Asia/Seoul',
+          intent: '',
+          isPartial: false,
+        })),
+        sessions: [
+          {
+            id: 'alice-session',
+            blockId: 'block',
+            date: '2026-09-15',
+            localStartTime: null,
+            title: 'Alice private session',
+            sport: 'running',
+            durationSeconds: null,
+            distanceMeters: null,
+            targetRpe: null,
+            purpose: '',
+            notes: '',
+            priority: 'normal',
+            locks: { date: false, time: false, intensity: false },
+            steps: [],
+          },
+        ],
+      },
+    },
+    history: [],
+  };
+  const bobPlan = {
+    ...privatePlan,
+    head: {
+      ...privatePlan.head,
+      draft: {
+        ...privatePlan.head.draft,
+        title: 'Bob plan',
+        sessions: [
+          { ...privatePlan.head.draft.sessions[0], id: 'bob-session', title: 'Bob session' },
+        ],
+      },
+    },
+  };
   const { props, rerender, unmount } = setup(
     async (input) =>
       input.path.endsWith('/plans/current')
@@ -262,15 +316,20 @@ it('clears a populated correction and its cached record on logout and Alice to B
       {...props}
       athleteId="bob"
       sessionId="session-b"
-      transport={{ request: async () => new Promise(() => {}) }}
+      transport={{ request: async () => reply(bobPlan) }}
       target={{ mode: 'create' }}
     />,
   );
   expect(screen.getByLabelText('활동 제목')).toHaveValue('');
   expect(screen.getByLabelText('활동 메모')).toHaveValue('');
   expect(screen.queryByText('정정 기준 원본')).not.toBeInTheDocument();
-  await act(async () => releaseOldRead?.(reply({ head: null, history: [] })));
+  await screen.findByRole('option', { name: '2026-09-15 · Bob session' });
+  await act(async () => releaseOldRead?.(reply(privatePlan)));
   expect(screen.getByLabelText('활동 제목')).toHaveValue('');
+  expect(screen.getByRole('option', { name: '2026-09-15 · Bob session' })).toBeInTheDocument();
+  expect(
+    screen.queryByRole('option', { name: '2026-09-15 · Alice private session' }),
+  ).not.toBeInTheDocument();
   unmount();
   render(
     <ActivityEditor {...props} athleteId="bob" sessionId="session-b" target={{ mode: 'create' }} />,
