@@ -53,6 +53,108 @@ describe('native bridge client', () => {
     expect(exchange).toHaveBeenCalledTimes(1);
     const noPort = createNativeBridgeClient({ port: null, createId: () => 'req' });
     expect(await noPort.connect()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(await client.signIn()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(await client.session()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(await client.signOut()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+  });
+
+  it('accepts only the fixed nonsecret auth command results', async () => {
+    const requests: Array<{ method: string; payload: unknown }> = [];
+    const client = clientWith(async (request) => {
+      if (request.kind === 'hello') {
+        return {
+          kind: 'hello.result',
+          version: 2,
+          id: request.id,
+          capabilities: { ...capabilities, 'auth.transport': true },
+        };
+      }
+      requests.push({ method: request.method, payload: request.payload });
+      if (request.method === 'auth.signOut') {
+        return {
+          kind: 'command.result',
+          version: 2,
+          id: request.id,
+          method: request.method,
+          status: 'signed_out',
+        };
+      }
+      return {
+        kind: 'command.result',
+        version: 2,
+        id: request.id,
+        method: request.method,
+        session:
+          request.method === 'auth.signIn'
+            ? { state: 'signed_in', athleteId: 'athlete-a', expiresAt: '2026-09-27T12:00:00Z' }
+            : { state: 'signed_out' },
+      };
+    });
+    expect((await client.connect()).ok).toBe(true);
+    expect(await client.signIn()).toEqual({
+      ok: true,
+      value: { state: 'signed_in', athleteId: 'athlete-a', expiresAt: '2026-09-27T12:00:00Z' },
+    });
+    expect(await client.session()).toEqual({ ok: true, value: { state: 'signed_out' } });
+    expect(await client.signOut()).toEqual({ ok: true, value: undefined });
+    expect(requests).toEqual([
+      { method: 'auth.signIn', payload: {} },
+      { method: 'auth.session', payload: {} },
+      { method: 'auth.signOut', payload: {} },
+    ]);
+  });
+
+  it('rejects auth results with tokens, mismatched methods, or reply IDs', async () => {
+    for (const invalidReply of [
+      { method: 'auth.signIn', session: { state: 'signed_out' }, accessToken: 'secret' },
+      { method: 'auth.session', session: { state: 'signed_out' } },
+      { method: 'auth.signIn', session: { state: 'signed_out' }, id: 'other' },
+    ]) {
+      const client = clientWith(async (request) =>
+        request.kind === 'hello'
+          ? {
+              kind: 'hello.result',
+              version: 2,
+              id: request.id,
+              capabilities: { ...capabilities, 'auth.transport': true },
+            }
+          : { kind: 'command.result', version: 2, id: request.id, ...invalidReply },
+      );
+      expect((await client.connect()).ok).toBe(true);
+      expect(await client.signIn()).toEqual({ ok: false, code: 'INVALID_REPLY' });
+    }
+  });
+
+  it('supports a long system sign-in while retaining ordinary command timeout and cancellation', async () => {
+    vi.useFakeTimers();
+    const client = clientWith(async (request) =>
+      request.kind === 'hello'
+        ? {
+            kind: 'hello.result',
+            version: 2,
+            id: request.id,
+            capabilities: { ...capabilities, 'auth.transport': true },
+          }
+        : new Promise(() => undefined),
+    );
+    expect((await client.connect()).ok).toBe(true);
+    const signIn = client.signIn();
+    await vi.advanceTimersByTimeAsync(100);
+    let settled = false;
+    void signIn.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    const session = client.session();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await session).toEqual({ ok: false, code: 'TIMEOUT' });
+    const controller = new AbortController();
+    const cancelled = client.signOut(controller.signal);
+    controller.abort();
+    expect(await cancelled).toEqual({ ok: false, code: 'CANCELLED' });
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(await signIn).toEqual({ ok: false, code: 'TIMEOUT' });
   });
 
   it('does not let callers change the capability used for command admission', async () => {

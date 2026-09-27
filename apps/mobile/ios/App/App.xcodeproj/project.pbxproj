@@ -18,6 +18,7 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A30100012FE993A70072D4E8 /* LocalBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */; };
 		A30100032FE993A70072D4E8 /* WorkoutNativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */; };
+		A30100052FE993A70072D4E8 /* NativeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100062FE993A50072D4E8 /* NativeAuth.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +34,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBridgeViewController.swift; sourceTree = "<group>"; };
 		A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutNativeBridge.swift; sourceTree = "<group>"; };
+		A30100062FE993A50072D4E8 /* NativeAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAuth.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -71,6 +73,7 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */,
 				A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */,
+				A30100062FE993A50072D4E8 /* NativeAuth.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -168,6 +171,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A30100012FE993A70072D4E8 /* LocalBridgeViewController.swift in Sources */,
 				A30100032FE993A70072D4E8 /* WorkoutNativeBridge.swift in Sources */,
+				A30100052FE993A70072D4E8 /* NativeAuth.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

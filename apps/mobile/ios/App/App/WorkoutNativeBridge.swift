@@ -40,12 +40,13 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                 "capabilities": [
                     "app.openSettings": true,
                     "healthkit.read": false,
-                    "auth.transport": false
+                    "auth.transport": NativeAuth.isConfigured
                 ]
             ]])
 
         case "command":
-            guard request["method"] as? String == "app.openSettings" else {
+            guard let method = request["method"] as? String,
+                  ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut"].contains(method) else {
                 resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                 return
             }
@@ -53,6 +54,37 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                   let payload = request["payload"] as? [String: Any],
                   payload.isEmpty else {
                 resolveError(call, id: id, code: "INVALID_REQUEST")
+                return
+            }
+            if method != "app.openSettings" {
+                DispatchQueue.main.async {
+                    Task { @MainActor in
+                        do {
+                            let reply: [String: Any]
+                            switch method {
+                            case "auth.signIn":
+                                let session = try await NativeAuth.shared.signIn()
+                                reply = ["session": session]
+                            case "auth.session":
+                                reply = ["session": try NativeAuth.shared.currentSession()]
+                            case "auth.signOut":
+                                try await NativeAuth.shared.signOut()
+                                reply = ["status": "signed_out"]
+                            default:
+                                self.resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
+                                return
+                            }
+                            call.resolve(["reply": [
+                                "kind": "command.result",
+                                "version": self.protocolVersion,
+                                "id": id,
+                                "method": method
+                            ].merging(reply) { _, new in new }])
+                        } catch {
+                            self.resolveError(call, id: id, code: NativeAuth.bridgeCode(for: error))
+                        }
+                    }
+                }
                 return
             }
             guard let url = URL(string: UIApplication.openSettingsURLString) else {

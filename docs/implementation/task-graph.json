@@ -1889,9 +1889,18 @@
       "evidence": "docs/implementation/progress/M3-01c.md"
     },
     {
+      "id": "M3-01d",
+      "title": "iOS 시스템 로그인·Keychain 세션 경계",
+      "dependsOn": ["M3-01c"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "고정 HTTPS API/IdP origin이 앱 빌드에 명시되고 Keychain 접근이 가능할 때만 시스템 ASWebAuthenticationSession으로 native OIDC를 시작하고, device PKCE verifier·서버 교환·bearer를 native 안에서 처리해 Keychain에 보관한다. v2 bridge에는 auth.signIn/auth.session/auth.signOut의 비밀값 없는 결과만 노출한다. 설정이 없으면 기능은 unavailable이다. 로컬 컴파일·fail-closed simulator·모의 브라우저까지가 이 노드의 수용 범위다. 서명된 Keychain/제품 실기기·운영 IdP 인증은 not_executed이며 제품 API 업무 전송·원격 철회 표시·전체 모듈 조합·HealthKit은 후속 M3-01 범위다.",
+      "evidence": "docs/implementation/progress/M3-01d.md"
+    },
+    {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c"],
+      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"

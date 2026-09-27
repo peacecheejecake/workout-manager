@@ -5,7 +5,10 @@ import {
   type NativeBridgeCapabilities,
   type NativeBridgeErrorCode,
   type NativeBridgeRequest,
+  type NativeBridgeSession,
 } from '@workout/contracts/native-bridge';
+
+const signInTimeoutMs = 10 * 60_000;
 
 export interface NativeBridgePort {
   exchange(request: NativeBridgeRequest, signal: AbortSignal): Promise<unknown>;
@@ -34,6 +37,7 @@ export function createNativeBridgeClient({
   async function exchange(
     request: NativeBridgeRequest,
     signal?: AbortSignal,
+    requestTimeoutMs = timeoutMs,
   ): Promise<NativeBridgeClientResult<unknown>> {
     if (!port) return { ok: false, code: 'UNAVAILABLE' };
     if (signal?.aborted) return { ok: false, code: 'CANCELLED' };
@@ -48,7 +52,7 @@ export function createNativeBridgeClient({
       timer = setTimeout(() => {
         controller.abort();
         resolve({ ok: false, code: 'TIMEOUT' });
-      }, timeoutMs);
+      }, requestTimeoutMs);
       onAbort = () => {
         controller.abort();
         resolve({ ok: false, code: 'CANCELLED' });
@@ -126,5 +130,50 @@ export function createNativeBridgeClient({
     return { ok: true, value: undefined };
   }
 
-  return { connect, openSettings, getCapabilities: () => capabilities };
+  async function authSessionCommand(
+    method: 'auth.signIn' | 'auth.session',
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<NativeBridgeSession>> {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      { kind: 'command', version: nativeBridgeVersion, id: createId(), method, payload: {} },
+      signal,
+      method === 'auth.signIn' ? signInTimeoutMs : timeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== method || !('session' in reply)) {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: reply.session };
+  }
+
+  async function signOut(signal?: AbortSignal): Promise<NativeBridgeClientResult<void>> {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'auth.signOut',
+        payload: {},
+      },
+      signal,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== 'auth.signOut') {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: undefined };
+  }
+
+  return {
+    connect,
+    openSettings,
+    signIn: (signal?: AbortSignal) => authSessionCommand('auth.signIn', signal),
+    session: (signal?: AbortSignal) => authSessionCommand('auth.session', signal),
+    signOut,
+    getCapabilities: () => capabilities,
+  };
 }
