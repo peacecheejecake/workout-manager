@@ -1907,9 +1907,18 @@
       "evidence": "docs/implementation/progress/M3-01e.md"
     },
     {
+      "id": "M3-01f",
+      "title": "제품 iOS shell 키보드·Back·foreground 수명주기",
+      "dependsOn": ["M3-01e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "제품 Capacitor shell의 가로 한국어 입력 시 native 키보드가 포커스와 커서를 가리지 않게 한다. 계정과 임시 초안 화면 사이의 Back 버튼·왼쪽 가장자리 제스처에서 미저장 변경 확인(계속 편집/뒤로 이동)을 구현한다. foreground 복귀 때 native 세션을 다시 확인하고 일시적 연결 오류에는 초안을 보존하며 401·계정 변경에는 개인 범위를 비운다. 실제 제품 host의 로컬 수용 범위이며 M2 전체 화면 조합·모든 업무 API·서명된 실기기/운영 HTTPS 검증은 M3-03과 외부 gate에 남긴다.",
+      "evidence": "docs/implementation/progress/M3-01f.md"
+    },
+    {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d", "M3-01e"],
+      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d", "M3-01e", "M3-01f"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"

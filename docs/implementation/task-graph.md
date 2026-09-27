@@ -533,6 +533,7 @@ flowchart TD
     task34c["M3-01c native OIDC 교환·세션 서버 경계"]
     task34d["M3-01d iOS 시스템 로그인·Keychain 경계"]
     task34e["M3-01e native 인증 API Host 전송"]
+    task34f["M3-01f 제품 shell lifecycle"]
     oidc["EXT-OIDC localhost 로그인 검증"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
@@ -544,7 +545,8 @@ flowchart TD
     oidc --> task34c
     task34c --> task34d
     task34d --> task34e
-    task34e --> task34
+    task34e --> task34f
+    task34f --> task34
     task25 --> task34
     task8 --> task34
     task34 --> task35
@@ -699,7 +701,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-01c Native OIDC 일회성 교환·세션 서버 경계 | M3-01b, EXT-OIDC | 완료; 고정 redirect·device PKCE·일회성 code·browser/native 세션 격리. 구현된 Back-channel logout의 로컬 철회만 시험했으며 실제 공급자 전파 gate는 별개. 제품 iOS 인증·운영 HTTPS 검증은 후속 |
 | M3-01d iOS 시스템 로그인·Keychain 세션 경계 | M3-01c | 완료(로컬 범위); 고정 HTTPS API/IdP origin·Keychain 가용성, 시스템 인증 세션, native 보관·비밀값 없는 bridge 결과. 서명된 Keychain·운영 IdP·실기기 인증은 미실행, 제품 API 전송은 후속 |
 | M3-01e Native 인증 API Host 전송·철회 상태 반영 | M3-01d | 완료(로컬 범위); 고정 HTTPS origin·Keychain bearer의 session/AI 동의 읽기, 엄격한 bridge, 401 scope 무효화. 전체 제품 API·운영 HTTPS·실기기는 후속 |
-| M3-01 Native shell·secure bridge | M1c-04, M0-06c, M3-01a, M3-01b, M3-01c, M3-01d, M3-01e | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
+| M3-01f 제품 iOS shell 키보드·Back·foreground 수명주기 | M3-01e | 로컬 범위 완료; 제품 shell의 가로 입력 포커스, 미저장 Back 확인, foreground 세션 재확인. M2 전체 화면·실기기 최종 검증은 후속 |
+| M3-01 Native shell·secure bridge | M1c-04, M0-06c, M3-01a, M3-01b, M3-01c, M3-01d, M3-01e, M3-01f | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
 | M3-02 HealthKit collector | M3-01 | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |

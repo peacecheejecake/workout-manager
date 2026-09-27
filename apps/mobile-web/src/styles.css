@@ -44,3 +44,39 @@ a {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
+.native-note {
+  max-width: 42rem;
+}
+.native-note label,
+.native-note textarea {
+  display: block;
+}
+.native-note textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 8rem;
+  margin-block: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--ink);
+  border-radius: 0.5rem;
+  background: var(--canvas);
+  color: var(--ink);
+  resize: vertical;
+  scroll-margin-block: 4rem max(8rem, env(safe-area-inset-bottom, 0px));
+}
+.native-confirm {
+  position: fixed;
+  z-index: 10;
+  inset-inline: max(var(--page-padding), env(safe-area-inset-left, 0px));
+  bottom: max(var(--page-padding), env(safe-area-inset-bottom, 0px));
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: var(--space-3);
+  border: 2px solid var(--accent);
+  border-radius: 0.75rem;
+  background: var(--canvas);
+  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 20%);
+}
+.native-confirm button + button {
+  margin-inline-start: var(--space-2);
+}
