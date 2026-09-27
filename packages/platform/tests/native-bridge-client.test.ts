@@ -4,6 +4,7 @@ import { createNativeBridgeClient, type NativeBridgePort } from '../src/native-b
 const capabilities = {
   'app.openSettings': true,
   'healthkit.read': false,
+  'healthkit.workouts': false,
   'auth.transport': false,
 } as const;
 
@@ -22,15 +23,113 @@ afterEach(() => {
 });
 
 describe('native bridge client', () => {
+  it('does not request HealthKit access until called and keeps server consent distinct', async () => {
+    const methods: string[] = [];
+    const client = clientWith(async (request) => {
+      if (request.kind === 'hello')
+        return {
+          kind: 'hello.result',
+          version: 3,
+          id: request.id,
+          capabilities: { ...capabilities, 'auth.transport': true, 'healthkit.workouts': true },
+        };
+      methods.push(request.method);
+      if (request.method === 'healthkit.workouts.requestAccess')
+        return {
+          kind: 'command.result',
+          version: 3,
+          id: request.id,
+          method: request.method,
+          status: 'requested',
+        };
+      if (request.method === 'healthkit.workouts.status')
+        return {
+          kind: 'command.result',
+          version: 3,
+          id: request.id,
+          method: request.method,
+          status: { requestState: 'requested', pendingCount: 2, pauseReason: 'conflict' },
+        };
+      return {
+        kind: 'command.result',
+        version: 3,
+        id: request.id,
+        method: request.method,
+        status: 409,
+        code: 'CONSENT_CONFLICT',
+        body: null,
+      };
+    });
+    expect((await client.connect()).ok).toBe(true);
+    expect(methods).toEqual([]);
+    expect(await client.requestHealthKitWorkoutAccess()).toEqual({ ok: true, value: 'requested' });
+    expect(await client.healthKitWorkoutStatus()).toEqual({
+      ok: true,
+      value: {
+        requestState: 'requested',
+        pendingCount: 2,
+        pauseReason: 'conflict',
+      },
+    });
+    expect(
+      await client.writeHealthKitConsent({
+        granted: true,
+        expectedRevision: 1,
+        idempotencyKey: 'consent_123',
+      }),
+    ).toEqual({ ok: true, value: { status: 409, body: null } });
+    expect(methods).toEqual([
+      'healthkit.workouts.requestAccess',
+      'healthkit.workouts.status',
+      'api.healthkitConsent.write',
+    ]);
+  });
+
+  it('rejects HealthKit token leakage and disabled device support', async () => {
+    const unavailable = clientWith(async (request) => ({
+      kind: 'hello.result',
+      version: 3,
+      id: request.id,
+      capabilities: { ...capabilities, 'auth.transport': true },
+    }));
+    expect((await unavailable.connect()).ok).toBe(true);
+    expect(await unavailable.requestHealthKitWorkoutAccess()).toEqual({
+      ok: false,
+      code: 'UNAVAILABLE',
+    });
+    const leaking = clientWith(async (request) =>
+      request.kind === 'hello'
+        ? {
+            kind: 'hello.result',
+            version: 3,
+            id: request.id,
+            capabilities: { ...capabilities, 'auth.transport': true, 'healthkit.workouts': true },
+          }
+        : {
+            kind: 'command.result',
+            version: 3,
+            id: request.id,
+            method: request.method,
+            status: {
+              requestState: 'requested',
+              pendingCount: 0,
+              pauseReason: null,
+              anchor: 'secret',
+            },
+          },
+    );
+    expect((await leaking.connect()).ok).toBe(true);
+    expect(await leaking.healthKitWorkoutStatus()).toEqual({ ok: false, code: 'INVALID_REPLY' });
+  });
   it('handshakes and sends the sole allowed command with a distinct ID', async () => {
     const seen: string[] = [];
     const client = clientWith(async (request) => {
       seen.push(request.id);
       return request.kind === 'hello'
-        ? { kind: 'hello.result', version: 2, id: request.id, capabilities }
+        ? { kind: 'hello.result', version: 3, id: request.id, capabilities }
         : {
             kind: 'command.result',
-            version: 2,
+            version: 3,
             id: request.id,
             method: 'app.openSettings',
             status: 'opened',
@@ -44,7 +143,7 @@ describe('native bridge client', () => {
   it('does not send a command when disconnected or capability is unavailable', async () => {
     const exchange = vi.fn(async (request: { id: string }) => ({
       kind: 'hello.result',
-      version: 2,
+      version: 3,
       id: request.id,
       capabilities: { ...capabilities, 'app.openSettings': false },
     }));
@@ -67,7 +166,7 @@ describe('native bridge client', () => {
       if (request.kind === 'hello') {
         return {
           kind: 'hello.result',
-          version: 2,
+          version: 3,
           id: request.id,
           capabilities: { ...capabilities, 'auth.transport': true },
         };
@@ -76,7 +175,7 @@ describe('native bridge client', () => {
       if (request.method === 'auth.signOut') {
         return {
           kind: 'command.result',
-          version: 2,
+          version: 3,
           id: request.id,
           method: request.method,
           status: 'signed_out',
@@ -84,7 +183,7 @@ describe('native bridge client', () => {
       }
       return {
         kind: 'command.result',
-        version: 2,
+        version: 3,
         id: request.id,
         method: request.method,
         session:
@@ -117,11 +216,11 @@ describe('native bridge client', () => {
         request.kind === 'hello'
           ? {
               kind: 'hello.result',
-              version: 2,
+              version: 3,
               id: request.id,
               capabilities: { ...capabilities, 'auth.transport': true },
             }
-          : { kind: 'command.result', version: 2, id: request.id, ...invalidReply },
+          : { kind: 'command.result', version: 3, id: request.id, ...invalidReply },
       );
       expect((await client.connect()).ok).toBe(true);
       expect(await client.signIn()).toEqual({ ok: false, code: 'INVALID_REPLY' });
@@ -134,7 +233,7 @@ describe('native bridge client', () => {
       request.kind === 'hello'
         ? {
             kind: 'hello.result',
-            version: 2,
+            version: 3,
             id: request.id,
             capabilities: { ...capabilities, 'auth.transport': true },
           }
@@ -168,7 +267,7 @@ describe('native bridge client', () => {
       if (request.kind === 'hello') {
         return Promise.resolve({
           kind: 'hello.result',
-          version: 2,
+          version: 3,
           id: request.id,
           capabilities: { ...capabilities, 'auth.transport': true },
         });
@@ -186,7 +285,7 @@ describe('native bridge client', () => {
     expect(await signIn).toEqual({ ok: false, code: 'CANCELLED' });
     late.get('auth.signIn')?.({
       kind: 'command.result',
-      version: 2,
+      version: 3,
       id: 'req_2',
       method: 'auth.signIn',
       session: { state: 'signed_in', athleteId: 'athlete-a', expiresAt: '2026-09-27T12:00:00Z' },
@@ -199,7 +298,7 @@ describe('native bridge client', () => {
     expect(await signOut).toEqual({ ok: false, code: 'TIMEOUT' });
     late.get('auth.signOut')?.({
       kind: 'command.result',
-      version: 2,
+      version: 3,
       id: 'req_3',
       method: 'auth.signOut',
       status: 'signed_out',
@@ -218,7 +317,7 @@ describe('native bridge client', () => {
           if (request.kind === 'hello')
             return Promise.resolve({
               kind: 'hello.result',
-              version: 2,
+              version: 3,
               id: request.id,
               capabilities: { ...capabilities, 'auth.transport': true },
             });
@@ -239,7 +338,7 @@ describe('native bridge client', () => {
     await vi.advanceTimersByTimeAsync(101);
     resolveRead?.({
       kind: 'command.result',
-      version: 2,
+      version: 3,
       id: 'req_2',
       method: 'api.read',
       path: '/bff/v1/consents/ai',
@@ -271,13 +370,13 @@ describe('native bridge client', () => {
         request.kind === 'hello'
           ? {
               kind: 'hello.result',
-              version: 2,
+              version: 3,
               id: request.id,
               capabilities: { ...capabilities, 'auth.transport': true },
             }
           : {
               kind: 'command.result',
-              version: 2,
+              version: 3,
               id: request.id,
               method: 'api.read',
               ...replyFields,
@@ -294,7 +393,7 @@ describe('native bridge client', () => {
   it('does not let callers change the capability used for command admission', async () => {
     const exchange = vi.fn(async (request: { id: string }) => ({
       kind: 'hello.result',
-      version: 2,
+      version: 3,
       id: request.id,
       capabilities: { ...capabilities, 'app.openSettings': false },
     }));
@@ -309,7 +408,7 @@ describe('native bridge client', () => {
   });
 
   it('rejects old and future replies, invalid payloads, and mismatched IDs', async () => {
-    for (const version of [1, 3]) {
+    for (const version of [1, 2, 4]) {
       const client = clientWith(async (request) => ({
         kind: 'hello.result',
         version,
@@ -321,7 +420,7 @@ describe('native bridge client', () => {
     expect(
       await clientWith(async () => ({
         kind: 'hello.result',
-        version: 2,
+        version: 3,
         id: 'wrong',
         capabilities,
       })).connect(),
@@ -329,7 +428,7 @@ describe('native bridge client', () => {
     expect(
       await clientWith(async (request) => ({
         kind: 'hello.result',
-        version: 2,
+        version: 3,
         id: request.id,
         capabilities,
         token: 'secret',
@@ -338,7 +437,7 @@ describe('native bridge client', () => {
     expect(
       await clientWith(async (request) => ({
         kind: 'command.result',
-        version: 2,
+        version: 3,
         id: request.id,
         method: 'app.openSettings',
         status: 'opened',
@@ -356,8 +455,8 @@ describe('native bridge client', () => {
   it('passes a host unsupported-method error explicitly', async () => {
     const client = clientWith(async (request) =>
       request.kind === 'hello'
-        ? { kind: 'hello.result', version: 2, id: request.id, capabilities }
-        : { kind: 'error', version: 2, id: request.id, code: 'UNSUPPORTED_METHOD' },
+        ? { kind: 'hello.result', version: 3, id: request.id, capabilities }
+        : { kind: 'error', version: 3, id: request.id, code: 'UNSUPPORTED_METHOD' },
     );
     expect((await client.connect()).ok).toBe(true);
     expect(await client.openSettings()).toEqual({ ok: false, code: 'UNSUPPORTED_METHOD' });
@@ -394,7 +493,7 @@ describe('native bridge client', () => {
       }
       return Promise.resolve({
         kind: 'hello.result',
-        version: 2,
+        version: 3,
         id: request.id,
         capabilities: { ...capabilities, 'app.openSettings': false },
       });
@@ -405,7 +504,7 @@ describe('native bridge client', () => {
       ok: true,
       value: { ...capabilities, 'app.openSettings': false },
     });
-    finishFirst?.({ kind: 'hello.result', version: 2, id: 'req_1', capabilities });
+    finishFirst?.({ kind: 'hello.result', version: 3, id: 'req_1', capabilities });
     expect(await first).toEqual({ ok: false, code: 'CANCELLED' });
     expect(client.getCapabilities()).toEqual({ ...capabilities, 'app.openSettings': false });
   });

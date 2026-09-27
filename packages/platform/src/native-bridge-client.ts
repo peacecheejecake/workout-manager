@@ -7,6 +7,8 @@ import {
   type NativeBridgeRequest,
   type NativeBridgeReadPath,
   type NativeBridgeSession,
+  type NativeBridgeHealthKitConsentWrite,
+  type NativeBridgeHealthKitStatus,
 } from '@workout/contracts/native-bridge';
 
 const signInTimeoutMs = 10 * 60_000;
@@ -224,6 +226,64 @@ export function createNativeBridgeClient({
     return { ok: true, value: { status: reply.status, body: reply.body } };
   }
 
+  async function writeHealthKitConsent(
+    payload: NativeBridgeHealthKitConsentWrite,
+    signal?: AbortSignal,
+  ): Promise<
+    NativeBridgeClientResult<
+      | { status: 200; body: { kind: 'healthkit'; granted: boolean; revision: number } }
+      | { status: 401 | 409; body: null }
+    >
+  > {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'api.healthkitConsent.write',
+        payload,
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== 'api.healthkitConsent.write') {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    if (reply.status === 200) {
+      return { ok: true, value: { status: 200, body: reply.body } };
+    }
+    return { ok: true, value: { status: reply.status, body: null } };
+  }
+
+  async function workoutCommand(
+    method: 'healthkit.workouts.requestAccess' | 'healthkit.workouts.status',
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<'requested' | NativeBridgeHealthKitStatus>> {
+    if (!capabilities?.['healthkit.workouts'] || !capabilities['auth.transport']) {
+      return { ok: false, code: 'UNAVAILABLE' };
+    }
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method,
+        payload: {},
+      },
+      signal,
+      method === 'healthkit.workouts.requestAccess' ? 60_000 : networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== method || !('status' in reply)) {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: reply.status };
+  }
+
   return {
     connect,
     openSettings,
@@ -231,6 +291,11 @@ export function createNativeBridgeClient({
     session: (signal?: AbortSignal) => authSessionCommand('auth.session', signal),
     signOut,
     read,
+    writeHealthKitConsent,
+    requestHealthKitWorkoutAccess: (signal?: AbortSignal) =>
+      workoutCommand('healthkit.workouts.requestAccess', signal),
+    healthKitWorkoutStatus: (signal?: AbortSignal) =>
+      workoutCommand('healthkit.workouts.status', signal),
     getCapabilities: () => capabilities,
   };
 }

@@ -1,5 +1,7 @@
 import Capacitor
+import CoreFoundation
 import Foundation
+import HealthKit
 import UIKit
 
 @objc(WorkoutNativeBridge)
@@ -11,7 +13,7 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise)
     ]
 
-    private let protocolVersion = 2
+    private let protocolVersion = 3
     @MainActor private var activeTasks: [String: Task<Void, Never>] = [:]
     @MainActor private var pendingCancels = Set<String>()
 
@@ -68,13 +70,16 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                 "capabilities": [
                     "app.openSettings": true,
                     "healthkit.read": false,
+                    "healthkit.workouts": HKHealthStore.isHealthDataAvailable(),
                     "auth.transport": NativeAuth.isConfigured
                 ]
             ]])
 
         case "command":
             guard let method = request["method"] as? String,
-                  ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut", "api.read"].contains(method) else {
+                  ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut", "api.read",
+                   "api.healthkitConsent.write", "healthkit.workouts.requestAccess",
+                   "healthkit.workouts.status"].contains(method) else {
                 resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                 return
             }
@@ -86,7 +91,20 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
             if method == "api.read" {
                 guard Set(payload.keys) == Set(["path"]),
                       let path = payload["path"] as? String,
-                      ["/bff/v1/session", "/bff/v1/consents/ai"].contains(path) else {
+                      ["/bff/v1/session", "/bff/v1/consents/ai",
+                       "/bff/v1/consents/healthkit"].contains(path) else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
+            } else if method == "api.healthkitConsent.write" {
+                guard Set(payload.keys) == Set(["granted", "expectedRevision", "idempotencyKey"]),
+                      let grantedValue = payload["granted"],
+                      CFGetTypeID(grantedValue as CFTypeRef) == CFBooleanGetTypeID(),
+                      let expectedValue = payload["expectedRevision"],
+                      CFGetTypeID(expectedValue as CFTypeRef) == CFNumberGetTypeID(),
+                      let revision = expectedValue as? Int, (0...2_147_483_646).contains(revision),
+                      let key = payload["idempotencyKey"] as? String,
+                      key.range(of: "^[A-Za-z0-9_-]{8,128}$", options: .regularExpression) != nil else {
                     resolveError(call, id: id, code: "INVALID_REQUEST")
                     return
                 }
@@ -125,6 +143,37 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                                     return
                                 }
                                 reply = try await NativeAuth.shared.readAPI(path)
+                            case "api.healthkitConsent.write":
+                                guard let granted = payload["granted"] as? Bool,
+                                      let revision = payload["expectedRevision"] as? Int,
+                                      let key = payload["idempotencyKey"] as? String else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                let outcome = try await NativeAuth.shared.writeHealthKitConsent(
+                                    granted: granted, expectedRevision: revision, idempotencyKey: key)
+                                switch outcome {
+                                case .updated(let value, let revision):
+                                    if !value {
+                                        do { try HealthKitWorkoutCollector.shared.resetAfterCommittedWithdrawal() }
+                                        catch {
+                                            self.resolveError(call, id: id, code: "LOCAL_RESET_FAILED")
+                                            return
+                                        }
+                                    }
+                                    reply = ["status": 200, "body": [
+                                        "kind": "healthkit", "granted": value, "revision": revision
+                                    ]]
+                                case .authenticationRequired:
+                                    reply = ["status": 401, "body": NSNull()]
+                                case .conflict:
+                                    reply = ["status": 409, "code": "CONSENT_CONFLICT", "body": NSNull()]
+                                }
+                            case "healthkit.workouts.requestAccess":
+                                try await HealthKitWorkoutCollector.shared.requestReadAuthorizationFromProductAction()
+                                reply = ["status": "requested"]
+                            case "healthkit.workouts.status":
+                                reply = ["status": try await HealthKitWorkoutCollector.shared.statusForCurrentAccount()]
                             default:
                                 self.resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                                 return

@@ -5,14 +5,15 @@ import {
 } from '../src/capacitor-bridge-port.js';
 import { createNativeBridgeClient } from '../src/native-bridge-client.js';
 
-const request = { kind: 'hello', version: 2, id: 'hello_1' } as const;
+const request = { kind: 'hello', version: 3, id: 'hello_1' } as const;
 const reply = {
   kind: 'hello.result',
-  version: 2,
+  version: 3,
   id: 'hello_1',
   capabilities: {
     'app.openSettings': true,
     'healthkit.read': false,
+    'healthkit.workouts': false,
     'auth.transport': false,
   },
 };

@@ -14,6 +14,12 @@ enum HealthKitConsentState: Equatable {
     case authenticationRequired
 }
 
+enum HealthKitConsentWriteOutcome {
+    case updated(granted: Bool, revision: Int)
+    case authenticationRequired
+    case conflict
+}
+
 private enum NativeAuthFailure: Error {
     case unavailable
     case cancelled
@@ -370,13 +376,18 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         let (status, body) = try await get("/bff/v1/session", credential: credential,
                                            at: configuration)
         if status == 401 {
-            try clearCredential()
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
             return ["state": "signed_out"]
         }
         guard status == 200 else { throw NativeAuthFailure.unavailable }
         try validateSession(body, credential: credential)
-        if credential.expiresAt <= Date() {
-            try clearCredential()
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == credential.athleteId,
+              current.expiresAt > Date() else {
             return ["state": "signed_out"]
         }
         return credential.publicSession
@@ -384,7 +395,8 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
 
     func readAPI(_ path: String) async throws -> [String: Any] {
         guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
-        guard path == "/bff/v1/session" || path == "/bff/v1/consents/ai" else {
+        guard path == "/bff/v1/session" || path == "/bff/v1/consents/ai" ||
+                path == "/bff/v1/consents/healthkit" else {
             throw NativeAuthFailure.invalidReply
         }
         guard !busy else { throw NativeAuthFailure.unavailable }
@@ -399,7 +411,9 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         }
         let (status, data) = try await get(path, credential: credential, at: configuration)
         if status == 401 {
-            try clearCredential()
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
             return ["path": path, "status": 401, "body": NSNull()]
         }
         guard status == 200 else { throw NativeAuthFailure.unavailable }
@@ -407,11 +421,16 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         if path == "/bff/v1/session" {
             let athleteId = try validateSession(data, credential: credential)
             body = ["athleteId": athleteId]
-        } else {
+        } else if path == "/bff/v1/consents/ai" {
             body = try validateAIConsent(data)
+        } else {
+            body = try validateHealthKitConsent(data)
         }
-        if credential.expiresAt <= Date() {
-            try clearCredential()
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == credential.athleteId,
+              current.expiresAt > Date() else {
             return ["path": path, "status": 401, "body": NSNull()]
         }
         return ["path": path, "status": 200, "body": body]
@@ -508,6 +527,60 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
                              : .notGranted(revision: reply.revision)
     }
 
+    /** Fixed-path bearer write; no URL, token, or arbitrary body enters from WebView. */
+    func writeHealthKitConsent(granted: Bool, expectedRevision: Int,
+                               idempotencyKey: String) async throws -> HealthKitConsentWriteOutcome {
+        try Task.checkCancellation()
+        guard (0...2_147_483_646).contains(expectedRevision),
+              idempotencyKey.range(of: "^[A-Za-z0-9_-]{8,128}$", options: .regularExpression) != nil,
+              Self.isConfigured, let configuration else { throw NativeAuthFailure.invalidReply }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        busy = true
+        defer { busy = false }
+        guard let credential = try credentialStore.read() else { return .authenticationRequired }
+        if credential.expiresAt <= Date() {
+            try clearCredential()
+            return .authenticationRequired
+        }
+        var request = URLRequest(url: configuration.apiURL("/bff/v1/consents/healthkit"))
+        request.httpMethod = "PUT"
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "granted": granted, "expectedRevision": expectedRevision
+        ])
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        let (status, data) = try await BoundedNativeRequest().send(request)
+        if status == 401 {
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
+            return .authenticationRequired
+        }
+        // Decode an observed commit even after cancellation, so a withdrawal can
+        // clear the local collector before the bridge settles the cancelled call.
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == credential.athleteId,
+              current.expiresAt > Date() else { return .authenticationRequired }
+        if status == 409 {
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let error = object["error"] as? [String: Any],
+                  Set(error.keys) == ["code"], error["code"] as? String == "CONSENT_CONFLICT" else {
+                throw NativeAuthFailure.invalidReply
+            }
+            return .conflict
+        }
+        guard status == 200 else { throw NativeAuthFailure.unavailable }
+        let consent = try validateHealthKitConsent(data)
+        guard consent["granted"] as? Bool == granted,
+              let revision = consent["revision"] as? Int else { throw NativeAuthFailure.invalidReply }
+        return .updated(granted: granted, revision: revision)
+    }
+
     func signOut() async throws {
         try Task.checkCancellation()
         guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
@@ -575,7 +648,9 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         }
         guard reply.athleteId == credential.athleteId else {
             // Never expose a response for a different account under this local credential.
-            try clearCredential()
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
             throw NativeAuthFailure.invalidReply
         }
         return reply.athleteId
@@ -589,6 +664,16 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
             throw NativeAuthFailure.invalidReply
         }
         return ["kind": "ai", "granted": reply.granted, "revision": reply.revision]
+    }
+
+    private func validateHealthKitConsent(_ data: Data) throws -> [String: Any] {
+        try exactObject(data, keys: ["kind", "granted", "revision"])
+        guard let reply = try? JSONDecoder().decode(HealthKitConsentReadReply.self, from: data),
+              reply.kind == "healthkit", reply.revision >= 0,
+              reply.revision <= 9_007_199_254_740_991 else {
+            throw NativeAuthFailure.invalidReply
+        }
+        return ["kind": "healthkit", "granted": reply.granted, "revision": reply.revision]
     }
 
     private struct StartReply: Decodable { let location: String }

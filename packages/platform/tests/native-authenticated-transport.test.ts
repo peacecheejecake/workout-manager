@@ -13,17 +13,18 @@ function fixture(readReply: { status: 200 | 401; body: unknown }) {
       if (request.kind === 'hello')
         return {
           kind: 'hello.result',
-          version: 2,
+          version: 3,
           id: request.id,
           capabilities: {
             'app.openSettings': true,
             'healthkit.read': false,
+            'healthkit.workouts': false,
             'auth.transport': true,
           },
         };
       return {
         kind: 'command.result',
-        version: 2,
+        version: 3,
         id: request.id,
         method: 'api.read',
         path: request.method === 'api.read' ? request.payload.path : '/bff/v1/session',

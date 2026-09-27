@@ -54,6 +54,34 @@ final class HealthKitWorkoutCollector {
         scheduleCollection()
     }
 
+    /** Bounded owner-only status. No raw UUIDs, anchor, sample, token, or timestamps cross the bridge. */
+    func statusForCurrentAccount() async throws -> [String: Any] {
+        guard let accountId = try await signedInAccount(), let state = availableState() else {
+            throw HealthKitCollectionFailure.unavailable
+        }
+        _ = try state.activate(accountId: accountId)
+        let pending = try state.pendingBatches()
+        guard pending.count <= 256 else { throw HealthKitCollectionFailure.unavailable }
+        return [
+            "requestState": try state.collectionEnabled() ? "requested" : "not_requested",
+            "pendingCount": pending.count,
+            "pauseReason": pending.compactMap(\.pauseReason).first?.rawValue as Any? ?? NSNull()
+        ]
+    }
+
+    /** A committed server withdrawal is not reported as complete until local state is deleted. */
+    func resetAfterCommittedWithdrawal() throws {
+        generation += 1
+        activeAccountId = nil
+        wakePending = false
+        if let observer {
+            healthStore.stop(observer)
+            self.observer = nil
+        }
+        guard let state = availableState() else { throw HealthKitCollectionFailure.unavailable }
+        try state.reset()
+    }
+
     /// Call only after a visible product action and server-side HealthKit consent.
     /// HealthKit intentionally does not reveal whether read access was denied.
     func requestReadAuthorizationFromProductAction() async throws {
