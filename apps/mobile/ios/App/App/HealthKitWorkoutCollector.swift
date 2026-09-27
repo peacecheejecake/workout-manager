@@ -108,9 +108,11 @@ final class HealthKitWorkoutCollector {
         guard ownerGeneration == generation, activeAccountId == accountId else {
             throw HealthKitCollectionFailure.unavailable
         }
-        // This records an explicit request, not proof that read access was granted.
-        try state.enableCollection()
-        try state.markWakePending()
+        // The previous anchor may have been advanced by an empty response while
+        // read access was denied. A fresh snapshot is requested only by this
+        // product action, after any older outbox batches have been acknowledged.
+        // Request completion is not proof that read access was granted.
+        try state.requestReconciliation()
         registerObserverIfNeeded()
         scheduleCollection()
     }
@@ -173,6 +175,12 @@ final class HealthKitWorkoutCollector {
 
         registerObserverIfNeeded()
         guard await drainOutbox(accountId: accountId, state: state) else { return }
+        do {
+            _ = try state.beginReconciliationAfterOutboxDrain()
+        } catch {
+            // Do not query from a possibly stale cursor if the durable reset fails.
+            return
+        }
         let ownerGeneration = generation
         for _ in 0..<20 {
             do {

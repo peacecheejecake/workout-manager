@@ -27,7 +27,9 @@ struct HealthKitWorkoutStateHarness {
             let state = try HealthKitWorkoutState(databaseURL: database)
             installationId = try state.activate(accountId: account)
             try require(try state.collectionEnabled() == false, "collection off before explicit request")
-            try state.enableCollection()
+            try state.requestReconciliation()
+            try require(try state.beginReconciliationAfterOutboxDrain(),
+                        "initial request begins with a nil snapshot anchor")
             try state.markWakePending()
             try require(try state.wakePending(), "observer wake intent durable")
             let event = HealthKitWorkoutEvent.upsert(HealthKitWorkoutUpsert(
@@ -168,6 +170,126 @@ struct HealthKitWorkoutStateHarness {
         } catch HealthKitWorkoutStateError.outboxFull { }
         try require(try bounded.pendingBatches().count == 256, "outbox cap leaves existing batches intact")
 
-        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner purge, corruption, outbox cap")
+        let reconciliationDB = directory.appendingPathComponent("reconciliation.sqlite")
+        let previouslyVisible = UUID()
+        let replayBatchId = UUID()
+        let replayEvent = HealthKitWorkoutEvent.upsert(HealthKitWorkoutUpsert(
+            sampleId: previouslyVisible, sourceBundleId: "com.example.fixture", sourceVersion: nil,
+            activityType: 37, observedFrom: "2026-09-20T01:00:00Z", observedTo: "2026-09-20T01:30:00Z",
+            durationSeconds: 1800, distanceMeters: nil, energyKilocalories: nil))
+        var replayInstallation = UUID()
+        var replayBody = Data()
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
+            replayInstallation = try state.activate(accountId: account)
+            try state.stagePage(batchId: replayBatchId, events: [replayEvent],
+                                nextAnchor: HKQueryAnchor(fromValue: 1))
+            replayBody = try state.pendingBatches()[0].body
+            try state.requestReconciliation()
+            try require(try state.collectionEnabled(), "product retry records request history")
+            try require(try state.wakePending(), "product retry keeps durable wake")
+            try state.clearWakePending()
+            try require(try state.wakePending(),
+                        "in-flight empty page cannot erase a newer retry wake")
+            try require(try !state.beginReconciliationAfterOutboxDrain(),
+                        "offline outbox prevents anchor reset")
+            try require(try state.anchor() != nil && state.pendingBatches()[0].body == replayBody,
+                        "offline retry preserves cursor and exact request bytes")
+        }
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
+            try require(try state.activate(accountId: account) == replayInstallation,
+                        "retry survives process restart under the same installation")
+            try require(try !state.beginReconciliationAfterOutboxDrain(),
+                        "restart still waits for old ACK")
+            try require(try state.acknowledge(batchId: replayBatchId,
+                                              installationId: replayInstallation, acceptedCount: 1),
+                        "old batch gets its exact ACK")
+            try require(try state.beginReconciliationAfterOutboxDrain(),
+                        "ACK allows atomic cursor reset")
+            try require(try state.anchor() == nil && state.knownSample(sampleId: previouslyVisible) == nil,
+                        "requery begins at nil without treating missing UUID as deletion")
+            try require(try state.wakePending(), "reset keeps wake durable across crash")
+        }
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
+            _ = try state.activate(accountId: account)
+            try require(try state.anchor() == nil && state.wakePending(),
+                        "crash after reset resumes from nil anchor")
+            try state.stagePage(batchId: UUID(), events: [replayEvent],
+                                nextAnchor: HKQueryAnchor(fromValue: 2))
+            let replay = try state.pendingBatches()[0]
+            try require(replay.installationId == replayInstallation && replay.body != replayBody,
+                        "new snapshot stages a new immutable batch under the same installation")
+        }
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
+            _ = try state.activate(accountId: account)
+            let replay = try state.pendingBatches()[0]
+            try require(try state.anchor() != nil && replay.installationId == replayInstallation,
+                        "partial requery restarts from staged cursor with its outbox intact")
+            try require(try state.acknowledge(batchId: replay.batchId,
+                                              installationId: replayInstallation, acceptedCount: 1),
+                        "replayed visible UUID receives an independent ACK")
+            try state.advanceEmptyPage(nextAnchor: HKQueryAnchor(fromValue: 3))
+            try state.clearWakePending()
+            try require(try state.knownSample(sampleId: previouslyVisible) != nil,
+                        "empty page cannot synthesize a deletion")
+            try state.requestReconciliation()
+            try require(try state.beginReconciliationAfterOutboxDrain(),
+                        "explicit retry after earlier empty page resets the anchor")
+            try require(try state.anchor() == nil,
+                        "permission change retry cannot be trapped behind an empty-result anchor")
+            try state.stagePage(batchId: UUID(), events: [.delete(sampleId: previouslyVisible)],
+                                nextAnchor: HKQueryAnchor(fromValue: 4))
+            try require(try state.knownSample(sampleId: previouslyVisible) == nil,
+                        "only an explicit deleted UUID removes local mapping")
+        }
+
+        let pausedDB = directory.appendingPathComponent("paused-reconciliation.sqlite")
+        let paused = try HealthKitWorkoutState(databaseURL: pausedDB)
+        let pausedInstallation = try paused.activate(accountId: account)
+        let pausedBatchId = UUID()
+        try paused.stagePage(batchId: pausedBatchId, events: [replayEvent],
+                             nextAnchor: HKQueryAnchor(fromValue: 1))
+        try paused.pause(batchId: pausedBatchId, reason: .conflict)
+        try paused.requestReconciliation()
+        try require(try !paused.beginReconciliationAfterOutboxDrain() && paused.anchor() != nil,
+                    "paused batch blocks requery without discarding its anchor")
+        try require(try paused.pendingBatches()[0].pauseReason == .conflict &&
+                    paused.pendingBatches()[0].installationId == pausedInstallation,
+                    "paused original stays quarantined for investigation")
+        _ = try paused.activate(accountId: "athlete_two")
+        try require(try paused.anchor() == nil && paused.pendingBatches().isEmpty &&
+                    !paused.collectionEnabled() && !paused.wakePending() &&
+                    !paused.beginReconciliationAfterOutboxDrain(),
+                    "account switch clears old owner batches and retry intent")
+
+        let legacyDB = directory.appendingPathComponent("legacy-reconciliation.sqlite")
+        var legacyPointer: OpaquePointer?
+        guard sqlite3_open(legacyDB.path, &legacyPointer) == SQLITE_OK, let legacyPointer else {
+            throw HarnessFailure.failed("unable to create legacy state fixture")
+        }
+        guard sqlite3_exec(legacyPointer,
+                           "CREATE TABLE collection_control (singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), wake_pending INTEGER NOT NULL DEFAULT 0 CHECK(wake_pending IN (0,1)))",
+                           nil, nil, nil) == SQLITE_OK else {
+            sqlite3_close(legacyPointer)
+            throw HarnessFailure.failed("unable to create legacy control table")
+        }
+        sqlite3_close(legacyPointer)
+        let migrated = try HealthKitWorkoutState(databaseURL: legacyDB)
+        _ = try migrated.activate(accountId: account)
+        try migrated.requestReconciliation()
+        try require(try migrated.beginReconciliationAfterOutboxDrain() && migrated.anchor() == nil,
+                    "legacy control table gains durable reconciliation column")
+
+        let replacement = try HealthKitWorkoutState(
+            databaseURL: directory.appendingPathComponent("reinstalled-workouts.sqlite"))
+        try require(try replacement.activate(accountId: account) != replayInstallation,
+                    "new installation rotates its receipt scope")
+        try require(try replacement.anchor() == nil && !replacement.collectionEnabled(),
+                    "reinstall starts at nil but does not assume OS read permission")
+
+        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner purge, corruption, outbox cap, reinstall/reconciliation")
     }
 }

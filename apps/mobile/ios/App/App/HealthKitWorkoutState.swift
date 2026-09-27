@@ -120,7 +120,20 @@ final class HealthKitWorkoutState {
             try execute("CREATE TABLE IF NOT EXISTS cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), archive BLOB NOT NULL)")
             try execute("CREATE TABLE IF NOT EXISTS pending (sequence INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL UNIQUE, installation_id TEXT NOT NULL, event_count INTEGER NOT NULL CHECK(event_count BETWEEN 1 AND 100), body BLOB NOT NULL, body_sha256 BLOB NOT NULL, pause_reason TEXT CHECK(pause_reason IN ('forbidden','conflict','rejected')))")
             try execute("CREATE TABLE IF NOT EXISTS known_sample (sample_id TEXT PRIMARY KEY, source_bundle_id TEXT NOT NULL, source_version TEXT)")
-            try execute("CREATE TABLE IF NOT EXISTS collection_control (singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), wake_pending INTEGER NOT NULL DEFAULT 0 CHECK(wake_pending IN (0,1)))")
+            try execute("CREATE TABLE IF NOT EXISTS collection_control (singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), wake_pending INTEGER NOT NULL DEFAULT 0 CHECK(wake_pending IN (0,1)), reconcile_pending INTEGER NOT NULL DEFAULT 0 CHECK(reconcile_pending IN (0,1)))")
+            let hasReconcileColumn = try withStatement("PRAGMA table_info(collection_control)") { statement -> Bool in
+                var found = false
+                var status = sqlite3_step(statement)
+                while status == SQLITE_ROW {
+                    if try text(statement, column: 1) == "reconcile_pending" { found = true }
+                    status = sqlite3_step(statement)
+                }
+                guard status == SQLITE_DONE else { throw HealthKitWorkoutStateError.storageFailure }
+                return found
+            }
+            if !hasReconcileColumn {
+                try execute("ALTER TABLE collection_control ADD COLUMN reconcile_pending INTEGER NOT NULL DEFAULT 0 CHECK(reconcile_pending IN (0,1))")
+            }
             let check = try withStatement("PRAGMA quick_check") { statement -> String in
                 guard sqlite3_step(statement) == SQLITE_ROW else { throw HealthKitWorkoutStateError.corruptState }
                 return try text(statement, column: 0)
@@ -246,11 +259,37 @@ final class HealthKitWorkoutState {
         }
     }
 
-    func enableCollection() throws {
+    /** A product action requests a fresh snapshot; it is not proof of OS read access. */
+    func requestReconciliation() throws {
         let active = try verifyOwner()
         try transaction {
             try verifyStoredOwner(active)
-            try execute("INSERT INTO collection_control(singleton,enabled) VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET enabled=1")
+            try execute("INSERT INTO collection_control(singleton,enabled,wake_pending,reconcile_pending) VALUES(1,1,1,1) ON CONFLICT(singleton) DO UPDATE SET enabled=1,wake_pending=1,reconcile_pending=1")
+        }
+    }
+
+    /** Reset only after every older batch is ACKed; keep the intent durable until then. */
+    @discardableResult
+    func beginReconciliationAfterOutboxDrain() throws -> Bool {
+        let active = try verifyOwner()
+        return try transaction {
+            try verifyStoredOwner(active)
+            let pendingCount = try withStatement("SELECT COUNT(*) FROM pending") { statement -> Int in
+                guard try rowOrDone(statement) else { throw HealthKitWorkoutStateError.corruptState }
+                return Int(sqlite3_column_int(statement, 0))
+            }
+            guard pendingCount == 0 else { return false }
+            let requested = try withStatement("SELECT reconcile_pending FROM collection_control WHERE singleton=1") { statement -> Bool in
+                guard try rowOrDone(statement) else { return false }
+                let value = sqlite3_column_int(statement, 0)
+                guard value == 0 || value == 1 else { throw HealthKitWorkoutStateError.corruptState }
+                return value == 1
+            }
+            guard requested else { return false }
+            try execute("DELETE FROM cursor")
+            try execute("DELETE FROM known_sample")
+            try execute("UPDATE collection_control SET reconcile_pending=0,wake_pending=1 WHERE singleton=1")
+            return true
         }
     }
 
@@ -277,7 +316,7 @@ final class HealthKitWorkoutState {
         let active = try verifyOwner()
         try transaction {
             try verifyStoredOwner(active)
-            try execute("UPDATE collection_control SET wake_pending=0 WHERE singleton=1")
+            try execute("UPDATE collection_control SET wake_pending=CASE WHEN reconcile_pending=1 THEN 1 ELSE 0 END WHERE singleton=1")
         }
     }
 

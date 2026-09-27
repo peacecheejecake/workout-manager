@@ -1974,7 +1974,7 @@
       "title": "HealthKit 재설치·anchor 재조정과 권한 미확인 상태",
       "dependsOn": ["M3-02b", "M3-02d"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "새 설치와 명시적 권한 재확인에서는 기존 미전송 배치를 ACK까지 보존한 뒤 anchor를 안전하게 nil로 재설정해 유한 재조회·기존 UUID 멱등 대조를 수행한다. 앞선 거부된 읽기에서 빈 조회가 anchor를 전진했더라도 재확인에서 과거 운동을 다시 찾는다. 빈 조회나 요청 완료만으로 삭제·읽기 허용을 추정하지 않고 실제 삭제 UUID만 tombstone 처리한다. offline·부분 조회·계정 변경·유실된 미전송 삭제의 한계를 기록한다.",
       "evidence": "docs/implementation/progress/M3-02f.md"
     },

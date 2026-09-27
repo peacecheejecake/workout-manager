@@ -142,6 +142,43 @@ describe('M3-02a raw HealthKit ingestion', () => {
     expect(result.rows[0]?.['n']).toBe(1);
   });
 
+  it('deduplicates a sample redelivered after installation identity changes', async () => {
+    const athlete = randomUUID();
+    await grantConsent(athlete);
+    const repo = createHealthKitIngestionRepository(database);
+    const first = workout();
+    const sampleId = first.events[0]?.sampleId;
+    if (!sampleId) throw new Error('Expected workout fixture');
+    const reinstalled = {
+      ...first,
+      installationId: randomUUID(),
+      batchId: randomUUID(),
+    };
+    expect((await repo.ingestBatch(athlete, first)).acceptedCount).toBe(1);
+    expect((await repo.ingestBatch(athlete, reinstalled)).acceptedCount).toBe(1);
+    const result = await database.tenant(athlete, (tx) =>
+      tx.query(
+        `SELECT
+        (SELECT count(*)::int FROM healthkit_workout_sample WHERE sample_id=$1) AS samples,
+        (SELECT count(*)::int FROM healthkit_workout_lineage WHERE sample_id=$1) AS lineage,
+        (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE athlete_id=$2) AS receipts`,
+        [sampleId, athlete],
+      ),
+    );
+    expect(result.rows[0]).toEqual({ samples: 1, lineage: 1, receipts: 2 });
+
+    await repo.ingestBatch(athlete, {
+      schemaVersion: 1,
+      installationId: reinstalled.installationId,
+      batchId: randomUUID(),
+      events: [{ kind: 'delete', sampleId }],
+    });
+    await repo.ingestBatch(athlete, { ...first, batchId: randomUUID() });
+    expect(await createHealthKitProjectionRepository(database).listLineage(athlete, 100)).toEqual([
+      { sampleId, state: 'deleted' },
+    ]);
+  });
+
   it('preserves an explicit suppression across a later duplicate upsert', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
@@ -284,7 +321,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
       lineage_count: 0,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 26) throw new Error('Expected current export version');
+    if (exported.schemaVersion !== 27) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutBatchReceipts[0]).not.toHaveProperty('request_digest');
     await expect(repo.ingestBatch(athlete, batch)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
@@ -377,8 +414,8 @@ describe('M3-02a raw HealthKit ingestion', () => {
     await repo.ingestBatch(athlete, batch);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(26);
-    if (exported.schemaVersion !== 26) throw new Error('Expected current export version');
+    expect(exported.schemaVersion).toBe(27);
+    if (exported.schemaVersion !== 27) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutSamples).toHaveLength(1);
     expect(exported.data.healthKitWorkoutBatchReceipts).toHaveLength(1);
     expect(exported.data.healthKitWorkoutLineage).toEqual([
