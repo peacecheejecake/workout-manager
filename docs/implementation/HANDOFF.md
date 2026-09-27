@@ -15,6 +15,8 @@
 Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공개 Native 출시 `G3`도
 `G2-PUBLIC`을 요구한다. `EXT-HOSTING`은 `not_started`이고 배포 시험은 `not_executed`다.
 
+**최신 M0-06c 판정(2026-09-27):** 별도 서명 작성 앱의 합성 심박수 1건 저장 뒤, 종료된 probe의 새 background launch와 observer callback을 실기기에서 확인했다. [실행·정리 기록](progress/M0-06c-native-host-addendum.md#별도-서명-작성-앱으로-실제-wake-확인--2026-09-27)에 따라 M0-06c의 제한된 feasibility 범위는 `completed`다. 아래 초기 phase·실기기 기록의 `in_progress`와 `not_executed`는 해당 시점의 결과다. 미저장 Back 버튼별 기계 기록과 제품 native host 통합은 남아 있으며 제품 범위는 M3-01이다.
+
 ## 사용자 결정과 작업 방식
 
 - 규칙은 [AGENTS.md](../../AGENTS.md)가 기본이다. Claude agent는 [CLAUDE.md](../../CLAUDE.md)의 override(Claude native orchestration)를
@@ -37,17 +39,17 @@ Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공�
   `ATTRIBUTION.txt`(OSM copyright·ODbL 1.0 URI)를 쓰고, 누락·불일치면 빌드를 거부한다. 인증 없는 `/map-data-licence` 페이지와
   `GET /bff/v1/map-data/licence`. **지금 서빙 중인 타일(`ec81f3367889-mub8vb9q`)과 전국 graph(`92e0fa5f319a41df`)는 고지가 없어
   새 검사에 실패한다** — 사용자 결정: 호스팅(EXT-HOSTING) 때 재빌드. 전국 extract의 acquisition 기록도 그때 다시 받아 만든다.
-- [M0-06c](progress/M0-06c.md) 진행(in_progress): 유료 team `XVT9A9T7RP`로 서명한 probe 앱(`org.workoutmanager.feasibility.deviceprobe`)을
+- [M0-06c](progress/M0-06c.md) 당시 진행(in_progress; 현재 feasibility 완료): 유료 team `XVT9A9T7RP`로 서명한 probe 앱(`org.workoutmanager.feasibility.deviceprobe`)을
   실제 iPhone(iPhone16,2, iOS 27.0)에서 실행. 사람 조작 체크리스트 1–9 완료(HealthKit 쓰기 권한, 자기 source 빈 조회, IME, 스크롤,
-  가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **가로 화면에서 키보드가 입력란을 가린다**(결함 후보).
+  가로 safe-area, back, 개발 계정 전환, 백그라운드·잠금, cold relaunch). **당시 가로 화면에서 키보드가 입력란을 가렸다**(후속 수정 전 결함 후보).
   WKWebView가 한국어 입력에 composition 이벤트를 보내지 않았다(IME 로직 전제 점검 필요). 변경 후 단위·통합·빌드와
-  브라우저 검증은 [진행 기록](progress/M0-06c.md)에 따로 남겼다. 수정 후 실기기 재실행은 아직 없다.
+  브라우저 검증은 [진행 기록](progress/M0-06c.md)에 따로 남겼다. 이 시점에는 수정 후 실기기 재실행이 없었다.
 - 당시 task-graph는 M0-06b-odbl 완료, M0-06b-odbl-places 미시작이었다. Places 후속은 아래처럼 이후 완료했다.
   당시 EXT-G 유지 결정은 위 2026-09-27 결정으로 현재 범위에서 대체됐다.
 - Codex CLI `gpt-6-sol` high/read-only가 `main` 기준 `5a4dfb5c98d99e88344f920da3ab14558a762ac8`부터
   `phase/m0-06` HEAD `97aee9a84cb6abb237a57b728ec34b920a903d96`까지의 전체 diff를 최종 **APPROVE**했다.
   앞선 지적은 수정 커밋과 재검토로 닫았고, main을 해당 HEAD로 fast-forward했다. 실기기 재실행 및
-  합성 HealthKit 표본·background delivery 증거는 여전히 `not_executed`다.
+  당시 합성 HealthKit 표본·background delivery 증거는 `not_executed`였다.
 
 `phase/ext-oidc`(독립 재검토 APPROVE 후 main에 fast-forward 완료):
 
@@ -64,12 +66,12 @@ expire-sessions`), 값은 Git 제외 `.env`에서만 읽는다. 사용자 결정
 `phase/ext-backchannel`은 [별도 phase 기록](progress/EXT-BACKCHANNEL.md)의 전체 diff 검토에서
 APPROVE를 받고 main `7d54934`로 fast-forward했다. 실제 HTTPS 공급자 전파는 EXT-HOSTING까지 `not_executed`다.
 `phase/m0-06c`는 [native probe 전체 diff](progress/M0-06c-native-host-addendum.md)의 독립 검토에서
-APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 검증은 `not_executed`, 노드는 `in_progress`다.
+APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 당시 수정 앱의 실기기 검증은 `not_executed`, 노드는 `in_progress`였다.
 이후 연결된 iPhone에서 서명·설치, 표식 있는 합성 HealthKit 표본의 두 차례 생성·수집·삭제·정리,
 중단·재실행·재설치 복구와 background delivery 설정·해제를 실행했다. 세부 결과와 미확인 항목은
 [실기기 후속 기록](progress/M0-06c-native-host-addendum.md#연결된-iphone-실기기-후속-실행--2026-09-27)에 따로 기록했다.
 그 후 종료 대상 식별 수정과 실기기 기록은 새 main `d75fc94` 기준 phase `5ad1abd` 전체 독립 검토에서
-APPROVE를 받았다. 기록 갱신의 검토 refresh 후 main에 반영한다. 노드는 여전히 `in_progress`다.
+APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영했고, 노드는 `in_progress`였다.
 `phase/m2-01k`는 반응형 초안·지도 상태·차트↔지도 확대·계정 전환과 늦은 응답·S13 카드 노면·S14 공급자 분리 수용을
 보강했다. 매트릭스는 passed 91 · partial 14 · failed 1 · not_executed 4이며, 부모 노드는 `in_progress`다.
 이 phase 브랜치는 main `9ac6aa1` 대비 전체 독립 검토 1차 지적 둘을 `f12c021`로 고쳤다. 2차 검토는
@@ -127,20 +129,17 @@ APPROVE를 받았다. 기록 갱신의 검토 refresh 후 main에 반영한다. 
 
 ## 다음 작업 순서
 
-1. **M0-06c 실기기 후속**: 서명·설치, 표식 있는 합성 표본의 생성·수집·삭제·정리,
-   background delivery 설정·해제, 가로 입력 기록은 확보했다. 실제 background wake는 `not_executed`다.
-   미저장 Back 확인은 사용자 보고가 있으나 해당 결정의 probe 이벤트는 없어 기계 기록으로 확정하지 않는다.
-   device driver 수정은 phase 독립 검토에서 승인됐으며 문서 검토 refresh 후 main에 반영한다.
-   제품 native host 통합은 M3-01이다.
-2. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
+M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back 확인창의 버튼별 기계 기록은 없으며 제품 native host 통합은 M3-01이다.
+
+1. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
    제품 전체 행이라 partial이다. 실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
-3. **재개 중 받은 사용자 결정**:
+2. **재개 중 받은 사용자 결정**:
    - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
      표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
    - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
    - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
      한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-4. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건), M0-06c 실제 background wake,
+3. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건),
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
 
 기준 스냅샷(2026-09-27): `phase/m2-01k`의 승인된 작업은 `0b183c8`까지 main에 포함됐다.
@@ -166,7 +165,7 @@ APPROVE를 받았다. 기록 갱신의 검토 refresh 후 main에 반영한다. 
 - **실기기:** iPhone(iPhone16,2)이 연결·pair되었고 실기기 보류가 풀렸다. 서명은 유료 Apple Developer Program team `XVT9A9T7RP`(`TC7DXULXVQ`는 인증서 이름의 식별자로, team이 아니다).
   Xcode가 활성 developer dir이고 license를 수락했다.
 - **HealthKit 시험 자료(결정과 후속 실행):** 앱이 표식을 붙여 쓴 합성 표본만 쓰고 지우는 것을 허용했다. 기존 건강 자료는 수집·저장·내보내지
-  않았다. 연결된 iPhone에서 표식 있는 두 쌍의 합성 표본을 생성·삭제·정리했다. [별도 기록](progress/M0-06c-native-host-addendum.md)에 OS 호출과 한계를 남겼다.
+  않았다. 연결된 iPhone에서 표식 있는 두 쌍의 합성 표본을 생성·삭제·정리했고, 이후 별도 작성 앱의 표식 심박수 1건으로 실제 wake를 확인하고 삭제했다. [별도 기록](progress/M0-06c-native-host-addendum.md)에 OS 호출과 한계를 남겼다.
 - **호스팅·ODbL:** ODbL 이행을 먼저 하고(M0-06b-odbl 노드), 실제 호스팅은 보류한다.
 - **ODbL §4.6 스크립트 공개(결정만, 미구현):** 빌드 스크립트 본문을 서비스의 로그인 불필요 데이터 출처 페이지에서 내려받게 한다(별도 공개
   저장소 없음, manifest의 SHA-256과 같은 바이트).
@@ -201,9 +200,7 @@ APPROVE를 받았다. 기록 갱신의 검토 refresh 후 main에 반영한다. 
 
 - M0-06b: 한국 보행 경로 coverage·접근 제한 독립 검토, 자체 운영 engine/data 선택·검증,
   OS 한글 IME/물리 touch/성능·배포 조건.
-- M0-06c: 실기기 체크리스트 1–9와 합성 표본·outbox/anchor/ack·재설치·중단·재전송·background delivery 설정·해제는
-  후속 실행했다. 실제 background wake, 미저장 Back 분기의 기계 기록, 제품 native host 통합,
-  실제 인증 기반 계정 전환은 남았다.
+- M0-06c feasibility는 실제 background wake를 포함해 실기기에서 확인했다. 미저장 Back 분기의 버튼별 기계 기록은 없고 사용자 관찰만 있다. 제품 native host 통합과 실제 인증 기반 계정 전환은 M3-01 이후 범위에 남는다.
 - 공식 Garmin 권한과 허가된 실제 응답·자동 수집은 [후속 계획](research/garmin-official-deferred.md)에 남는다.
   로컬 FIT, OAuth fixture와 합성 데이터는 공식 연동 증거가 아니다.
 - 임시 Garmin 경로(사용자 결정 2026-09-25): 공식 권한을 기다리는 동안 `garminconnect`로 소유자 자신의 계정에서 앱 내
