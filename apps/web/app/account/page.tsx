@@ -15,7 +15,9 @@ export default async function AccountPage({
   const webPort = configuredPort(process.env.WORKOUT_IDENTITY_WEB_PORT);
   const garminPort = configuredPort(process.env.WORKOUT_IDENTITY_GARMIN_PORT);
   const localGarminFixturePorts =
-    webPort !== null && garminPort !== null ? { web: webPort, garmin: garminPort } : undefined;
+    webPort !== null || garminPort !== null
+      ? { web: webPort ?? 3100, garmin: garminPort ?? 4500 }
+      : undefined;
   return (
     <main className="wm-page">
       <h1>계정과 개인정보</h1>

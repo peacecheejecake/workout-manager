@@ -174,3 +174,9 @@ Codex CLI `gpt-6-sol` high/read-only가 main base `09cdcf1b3bd25751084c60eae2449
 - 수정 후 `pnpm lint`, `pnpm typecheck`(34/34), `pnpm build`(15/15), 전체 `pnpm test`(4,131 통과·7 건너뜀), 전체 `pnpm test:integration`(804 통과)을 다시 실행해 통과했다. 전체 identity E2E는 같은 대체 포트 묶음에서 순차로 **첫 회 301 통과·13 건너뜀·실패 0**, **두 번째 301 통과·13 건너뜀·실패 0**이었다. 각각 14.8분과 15.0분이 걸렸다.
 
 이 검사는 로컬 합성 인증·Garmin fixture와 브라우저만 다룬다. 앞서 기록한 실기기 HealthKit 관찰이나 미저장 Back 버튼별 기계 기록을 새로 수행한 근거가 아니다.
+
+### 현재 main 기준 1차 독립 검토 지적과 수정
+
+Codex CLI `gpt-6-sol` high/read-only는 main base `f04bda6870b8e3785918d59450b7a92e1560b254` → phase HEAD `50474737e0c264658e01433f744c9680a8dc5cea`의 44파일 전체 diff에 **CHANGES_REQUESTED**를 냈다. P2: 웹 포트 또는 Garmin 포트 **하나만** 환경변수로 변경하면 계정 shell이 둘 다 설정된 경우에만 새 포트 쌍을 전달해 정상 fixture 이동을 거부했다. 위 전체 E2E 두 회는 다섯 포트를 모두 바꿨으므로 이 경우를 검증하지 못했다. 과거 프로세스 신원 관련 지적은 현재 코드에서 FIXED로 확인됐고, 다른 이전 지적 중 NOT FIXED로 확인된 것은 없었다. 검토자는 실기기 원본 영수증이나 외부 HealthKit을 재현하지 않았다.
+
+구현자는 명시적으로 바뀐 포트에만 해당 값을 쓰고, 나머지는 각각 기존 `3100`·`4500`을 적용하도록 계정 shell을 수정했다. 수정 후 `WORKOUT_IDENTITY_GARMIN_PORT=4510`만 지정한 실제 Garmin 브라우저 4/4, `WORKOUT_IDENTITY_WEB_PORT=3110`만 지정한 실제 Garmin 브라우저 4/4가 각각 통과했다. 두 경우 모두 로컬 fixture의 네 연결·거절·계정 전환 시나리오를 실행했다. 생성물·포맷·린트, 전체 typecheck 34/34와 대체 API 포트 전체 build 15/15도 다시 통과했다. 이 FIXED 판정은 구현자 검증이며 최종 독립 재검토 결과가 아니다.
