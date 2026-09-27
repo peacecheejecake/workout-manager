@@ -203,8 +203,12 @@ User decision (2026-09-26): independent review runs per **phase**, not per task 
 - **Requirement-mandated reviews stay separate.** An independent review required by a requirement document or a node's
   acceptance criteria (e.g. the re-identification review of the M2-01k-o requirement §7) is still obtained as that
   node's acceptance condition, independent of the phase review.
-- Per-task verification (install, generated check, lint, typecheck, build, test, integration, drill when needed,
-  identity x2, format) still runs for every task.
+- Each task runs and records verification scoped to its changes. Run contract validation and consumer typechecks for
+  contract changes, transaction or integration tests for persistence changes, browser checks for changed UI flows,
+  and any task-specific drill or acceptance gate before marking the task verified.
+- After all runnable nodes in a phase are done, run the full install, generated check, lint, typecheck, build, test,
+  integration, identity x2, and format checks, plus applicable drills, on the phase branch before independent phase
+  review. Record failures, skips, and external `not_executed` conditions separately; do not count them as passes.
 
 ## Commits, PRs, and completion
 
