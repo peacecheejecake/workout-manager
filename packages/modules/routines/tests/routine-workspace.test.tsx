@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import {
@@ -108,6 +108,106 @@ function renderWorkspace(
 }
 
 describe('generic routine shell', () => {
+  it('discards a populated Alice library and unsaved blueprint when the session changes', async () => {
+    let releaseAlice:
+      | ((value: {
+          status: number;
+          body: { items: RoutineBlueprintRead[]; hasMore: boolean };
+          traceId: null;
+        }) => void)
+      | undefined;
+    const aliceSearch = new Promise<{
+      status: number;
+      body: { items: RoutineBlueprintRead[]; hasMore: boolean };
+      traceId: null;
+    }>((resolve) => {
+      releaseAlice = resolve;
+    });
+    const aliceRequest = vi.fn(async (input: TransportRequest) => {
+      if (input.path.startsWith('/bff/v1/routines?')) return aliceSearch;
+      if (input.path === '/bff/v1/routines')
+        return { status: 200, body: { items: [blueprint], hasMore: false }, traceId: null };
+      throw new Error(input.path);
+    });
+    const bobRequest = vi.fn(async (input: TransportRequest) => {
+      if (input.path === '/bff/v1/routines')
+        return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+      throw new Error(input.path);
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <RoutineWorkspace
+        athleteId="alice"
+        sessionId="alice-session"
+        transport={{ request: aliceRequest }}
+        route={{ kind: 'library' }}
+      />,
+    );
+    expect(await screen.findByRole('link', { name: '저녁 점검' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '새 루틴' }));
+    await user.type(screen.getByRole('textbox', { name: '제목' }), 'Alice private blueprint');
+    await user.type(screen.getByRole('searchbox', { name: '제목 검색' }), 'late');
+    await waitFor(() =>
+      expect(aliceRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '/bff/v1/routines?search=late' }),
+      ),
+    );
+
+    view.rerender(
+      <RoutineWorkspace
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={{ request: bobRequest }}
+        route={{ kind: 'library' }}
+      />,
+    );
+    releaseAlice?.({ status: 200, body: { items: [blueprint], hasMore: false }, traceId: null });
+    expect(await screen.findByText('저장된 루틴이 없습니다.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '저녁 점검' })).toBeNull();
+    expect(screen.queryByDisplayValue('Alice private blueprint')).toBeNull();
+    expect((screen.getByRole('searchbox', { name: '제목 검색' }) as HTMLInputElement).value).toBe(
+      '',
+    );
+    expect(bobRequest).toHaveBeenCalledWith(expect.objectContaining({ path: '/bff/v1/routines' }));
+  });
+
+  it('clears a populated run step draft on logout before another session opens the same run', async () => {
+    const request = vi.fn(async (input: TransportRequest) => {
+      if (input.path === `/bff/v1/routine-runs/${runId}`)
+        return { status: 200, body: runRead, traceId: null };
+      if (input.path === `/bff/v1/routine-versions/${versionId}`)
+        return { status: 200, body: blueprint.blueprint, traceId: null };
+      throw new Error(input.path);
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <RoutineWorkspace
+        athleteId="alice"
+        sessionId="alice-session"
+        transport={{ request }}
+        route={{ kind: 'run', runId }}
+      />,
+    );
+    const reason = await screen.findByRole('textbox', { name: '부분·중단 이유 (선택)' });
+    await user.type(reason, 'Alice private runner note');
+    expect((reason as HTMLInputElement).value).toBe('Alice private runner note');
+    view.rerender(
+      <RoutineWorkspace
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={{ request }}
+        route={{ kind: 'run', runId }}
+      />,
+    );
+    expect(
+      ((await screen.findByRole('textbox', { name: '부분·중단 이유 (선택)' })) as HTMLInputElement)
+        .value,
+    ).toBe('');
+    expect(screen.queryByDisplayValue('Alice private runner note')).toBeNull();
+    expect(
+      request.mock.calls.filter(([input]) => input.path === `/bff/v1/routine-runs/${runId}`),
+    ).toHaveLength(2);
+  });
   it('parses library, detail, edit, schedule and run routes without confusing supplementary templates', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     expect(parseRoutineRoute('/routines')).toEqual({ kind: 'library' });

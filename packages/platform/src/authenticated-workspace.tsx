@@ -385,10 +385,12 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
       if (document.visibilityState === 'visible') void refresh();
     };
     window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
     return () => {
       controller.abort();
       clearInterval(timer);
       window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, [generation]);
   useEffect(() => {
@@ -400,15 +402,9 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
     const athleteId = session?.athleteId;
     if (!athleteId) return;
     const onAccountSwitch = (event: StorageEvent) => {
-      if (
-        event.key !== PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY ||
-        !event.newValue ||
-        event.newValue === athleteId
-      )
-        return;
-      // The new account already cleared and rebound private storage in its own tab.
-      // Unmount this session immediately, including its drafts and in-flight queries,
-      // without erasing the new account's storage from the old tab.
+      if (event.key !== PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY || event.newValue === athleteId) return;
+      // Logout removes this key; an account switch replaces it with another owner.
+      // Both invalidate this tab's private children without clearing another tab's storage.
       setSession(null);
       setState('loading');
       setGeneration((value) => value + 1);

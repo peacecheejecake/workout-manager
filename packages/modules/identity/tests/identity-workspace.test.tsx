@@ -32,7 +32,86 @@ function operationsResponse() {
 const unofficialBase = '/bff/v1/integrations/garmin-unofficial/';
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   window.history.replaceState(null, '', '/');
+});
+
+const privateExport = {
+  schemaVersion: 2,
+  athleteId: session.athleteId,
+  exportedAt: '2026-09-16T00:00:00Z',
+  data: {
+    consents: [],
+    planSnapshots: [],
+    planHead: [],
+    planHistory: [],
+    activities: [],
+    activitySources: [],
+    sourceRevisions: [],
+    overlays: [],
+    overlayRevisions: [],
+    suppressions: [],
+    checkIns: [],
+    checkInRevisions: [],
+  },
+};
+function exportLogoutFetch(exportResponse: () => Promise<Response>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/session') return response(session);
+      if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/operations/export') return exportResponse();
+      if (path === '/bff/v1/auth/logout') return new Response(null, { status: 204 });
+      if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
+      if (path.startsWith('/bff/v1/integrations/garmin-unofficial/'))
+        return response({
+          configured: false,
+          state: 'not_connected',
+          permissions: [],
+          connectedAt: null,
+        });
+      if (init?.method === 'GET') return response(null, 404);
+      return response({ kind: 'ai', granted: true, revision: 2 });
+    }),
+  );
+}
+
+it('revokes a populated private account export Blob when confirmed logout removes account UI', async () => {
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:account-private');
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  exportLogoutFetch(async () => response(privateExport));
+  render(<IdentityWorkspace />);
+  await userEvent.click(await screen.findByRole('button', { name: '내 데이터 내보내기 준비' }));
+  expect(await screen.findByRole('link', { name: '내 데이터 JSON 다운로드' })).toHaveAttribute(
+    'href',
+    'blob:account-private',
+  );
+  expect(create).toHaveBeenCalledOnce();
+  await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+  await screen.findByRole('link', { name: 'OIDC로 로그인' });
+  expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:account-private');
+  expect(screen.queryByRole('link', { name: '내 데이터 JSON 다운로드' })).not.toBeInTheDocument();
+});
+
+it('aborts an in-flight account export at logout and ignores the old response', async () => {
+  const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:stale-private');
+  let finish: ((response: Response) => void) | undefined;
+  exportLogoutFetch(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<IdentityWorkspace />);
+  await userEvent.click(await screen.findByRole('button', { name: '내 데이터 내보내기 준비' }));
+  await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+  await screen.findByRole('link', { name: 'OIDC로 로그인' });
+  await act(async () => {
+    finish?.(response(privateExport));
+  });
+  expect(create).not.toHaveBeenCalled();
+  expect(screen.queryByRole('link', { name: '내 데이터 JSON 다운로드' })).not.toBeInTheDocument();
 });
 
 it('shows provider login on401 without exposing private controls', async () => {

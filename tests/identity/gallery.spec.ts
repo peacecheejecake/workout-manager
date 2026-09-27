@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { galleryMediaListSchema } from '../../packages/contracts/src/gallery';
 
 const pngBytes = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ]);
+// A complete 1x1 PNG: the legacy upload fixture above only covers server
+// signature checks and cannot establish that a browser has loaded an image.
+const displayablePngBytes = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WF0X7sAAAAASUVORK5CYII=',
+  'base64',
+);
 
 async function login(page: Page, name: 'Alice' | 'Bob') {
   await page.goto('/account');
@@ -177,3 +184,82 @@ test('refuses an upload whose bytes contradict the declared content type', async
   expect(mismatched.status()).toBe(422);
   expect(await mismatched.text()).not.toContain('private/v1/tenants');
 });
+
+for (const [shell, origin] of [
+  ['Next', 'http://127.0.0.1:3100'],
+  ['Vite', 'http://127.0.0.1:4200'],
+] as const) {
+  test(`${shell} clears visible private gallery media on explicit logout and Bob login`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await login(page, 'Alice');
+    await page.goto(`${origin}/gallery`);
+    await expect(page.getByRole('heading', { level: 1, name: '사진 · 동영상' })).toBeVisible();
+
+    // Capture the actual blob URL lifecycle in the still-open gallery tab. The
+    // account action happens in another tab so navigating to /account cannot
+    // itself satisfy the gallery cleanup assertion.
+    await page.evaluate(() => {
+      const revoked: string[] = [];
+      const original = URL.revokeObjectURL.bind(URL);
+      URL.revokeObjectURL = (url: string) => {
+        revoked.push(url);
+        original(url);
+      };
+      (window as Window & { __galleryRevoked?: string[] }).__galleryRevoked = revoked;
+    });
+    const caption = `Alice 비공개 갤러리 ${randomUUID()}`;
+    await page.getByLabel('설명 (선택)').fill(caption);
+    await page.getByLabel('파일').setInputFiles({
+      name: 'alice-private.png',
+      mimeType: 'image/png',
+      buffer: displayablePngBytes,
+    });
+    await page.getByRole('button', { name: '올리기' }).click();
+    const card = page
+      .getByRole('article')
+      .filter({ has: page.getByRole('link', { name: caption }) });
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    await card.scrollIntoViewIfNeeded();
+    const image = card.getByRole('img', { name: caption });
+    await expect(image).toBeVisible({ timeout: 30_000 });
+    const aliceUrl = await image.getAttribute('src');
+    assert.ok(aliceUrl && aliceUrl.startsWith('blob:'));
+
+    const account = await page.context().newPage();
+    try {
+      await account.goto('http://127.0.0.1:3100/account');
+      await account.getByRole('button', { name: '로그아웃', exact: true }).click();
+      await expect(account.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
+      await page.bringToFront();
+      // Headless bringToFront does not consistently dispatch a window focus event.
+      // Exercise the browser listener that a real tab activation would deliver.
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await expect(page.getByText('이 작업은 로그인이 필요합니다.')).toBeVisible();
+      await expect(image).toHaveCount(0);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (url) =>
+              (window as Window & { __galleryRevoked?: string[] }).__galleryRevoked?.includes(
+                url,
+              ) ?? false,
+            aliceUrl,
+          ),
+        )
+        .toBe(true);
+
+      await login(account, 'Bob');
+      await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await expect(page.getByText('아직 저장한 사진이나 동영상이 없습니다.')).toBeVisible();
+      expect(await page.getByText(caption).count()).toBe(0);
+      expect(await page.evaluate(() => document.body.textContent)).not.toContain(
+        'alice-private.png',
+      );
+    } finally {
+      await account.close();
+    }
+  });
+}

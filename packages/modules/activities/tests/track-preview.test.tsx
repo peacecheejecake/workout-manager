@@ -6,9 +6,12 @@ import type { MapAdapterFactory, MapAdapterHandle } from '@workout/geo-kit/map-a
 import type { MapBounds, MapPathFeatureCollection } from '@workout/geo-kit/map-path';
 import { LocalTrackPreview } from '../src/track-preview.js';
 import {
+  createWorkerTrackParser,
   TrackPreviewError,
   type TrackPreviewParser,
   type TrackPreviewRequest,
+  type PreviewWorkerLike,
+  type TrackPreviewWorkerRequest,
 } from '../src/track-preview-parser.js';
 import {
   gappedPreviewFile,
@@ -398,5 +401,38 @@ describe('local track preview screen', () => {
     );
     expect(screen.getByText('아직 파일을 선택하지 않았습니다.')).toBeInTheDocument();
     expect(screen.queryByText(/로컬 파일 미리보기 · 저장 안 함/)).not.toBeInTheDocument();
+  });
+  it('terminates the populated preview worker on logout and ignores its late reply', async () => {
+    const user = userEvent.setup();
+    const messages: Array<(event: { data: unknown }) => void> = [];
+    const sent: TrackPreviewWorkerRequest[] = [];
+    const terminate = vi.fn();
+    const worker: PreviewWorkerLike = {
+      postMessage: (message) => sent.push(message),
+      terminate,
+      addEventListener: (type, listener) => {
+        if (type === 'message') messages.push(listener as (event: { data: unknown }) => void);
+      },
+    };
+    const parser = createWorkerTrackParser({ createWorker: () => worker });
+    const view = render(<LocalTrackPreview {...session} parser={parser} />);
+    await user.upload(screen.getByTestId('track-preview-file'), file('private.gpx'));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(terminate).not.toHaveBeenCalled();
+    view.unmount();
+    expect(terminate).toHaveBeenCalledOnce();
+    await act(async () => {
+      for (const receive of messages)
+        receive({
+          data: {
+            kind: 'parsed',
+            requestId: requireItem(sent, 0).requestId,
+            file: normalPreviewFile(),
+          },
+        });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(/로컬 파일 미리보기 · 저장 안 함/)).not.toBeInTheDocument();
+    expect(terminate).toHaveBeenCalledOnce();
   });
 });

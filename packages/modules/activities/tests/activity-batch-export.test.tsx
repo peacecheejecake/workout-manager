@@ -181,6 +181,46 @@ describe('selected summary export confirmation', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(next.getState().locked).toBe(false);
   });
+  it('releases its selection lock and private Blob when explicit logout removes the account subtree', async () => {
+    const user = userEvent.setup();
+    const { unmount, store, revoke } = setup(vi.fn().mockResolvedValue(reply(activity)));
+    await user.click(await preview(user));
+    expect(store.getState().locked).toBe(true);
+    expect(screen.getByRole('link', { name: '선택 활동 JSON 다운로드' })).toBeVisible();
+    unmount();
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-export');
+    expect(store.getState().locked).toBe(false);
+  });
+  it('aborts an export read on logout and rejects its late answer without poisoning the next account', async () => {
+    const user = userEvent.setup();
+    let finish: (value: ReturnType<typeof reply>) => void = () => {};
+    const oldRequest = vi.fn<AuthenticatedTransport['request']>(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { unmount, store, create } = setup(oldRequest);
+    await user.click(screen.getByRole('button', { name: '선택 활동 내보내기 미리보기' }));
+    expect(store.getState().locked).toBe(true);
+    unmount();
+    expect(oldRequest.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(store.getState().locked).toBe(false);
+    await act(async () => finish(reply(activity)));
+    expect(create).not.toHaveBeenCalled();
+
+    const bobStore = createBatchSelectionStore();
+    bobStore.getState().selectPage([toBatchTarget(activity)]);
+    render(
+      <ActivityBatchExport
+        store={bobStore}
+        transport={{ request: vi.fn().mockResolvedValue(reply(activity)) }}
+        scope={['activities', 'bob', 'new-session']}
+      />,
+    );
+    expect(screen.getByRole('button', { name: '선택 활동 내보내기 미리보기' })).toBeEnabled();
+    expect(screen.queryByText('개인 메모 fixture')).not.toBeInTheDocument();
+  });
   it('blocks preview when another batch owns the selection lock', async () => {
     const request = vi.fn();
     const { store } = setup(request);

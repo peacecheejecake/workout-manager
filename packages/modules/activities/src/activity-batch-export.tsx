@@ -41,7 +41,8 @@ function Controller({
     [error, setError] = useState('');
   const ownedURL = useRef<string | null>(null),
     active = useRef(true),
-    request = useRef<AbortController | null>(null);
+    request = useRef<AbortController | null>(null),
+    ownsLock = useRef(false);
   const trigger = useRef<HTMLButtonElement>(null),
     heading = useRef<HTMLHeadingElement>(null),
     focusBack = useRef(false);
@@ -50,12 +51,16 @@ function Controller({
     return () => {
       active.current = false;
       request.current?.abort();
+      if (ownsLock.current) {
+        store.getState().setLocked(false);
+        ownsLock.current = false;
+      }
       if (ownedURL.current) {
         URL.revokeObjectURL(ownedURL.current);
         ownedURL.current = null;
       }
     };
-  }, []);
+  }, [store]);
   useLayoutEffect(() => {
     if (phase === 'idle' && focusBack.current) {
       focusBack.current = false;
@@ -75,7 +80,10 @@ function Controller({
     setUrl(null);
     setResults([]);
     setError('');
-    store.getState().setLocked(false);
+    if (ownsLock.current) {
+      store.getState().setLocked(false);
+      ownsLock.current = false;
+    }
     focusBack.current = true;
     setPhase('idle');
   }
@@ -85,6 +93,7 @@ function Controller({
     const controller = new AbortController();
     request.current = controller;
     current.setLocked(true);
+    ownsLock.current = true;
     setResults([]);
     setError('');
     setPhase('loading');

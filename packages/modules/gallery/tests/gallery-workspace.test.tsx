@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient } from '@tanstack/react-query';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import { GalleryWorkspace, type GalleryMediaTransfer } from '../src/gallery-workspace';
 
@@ -76,6 +77,95 @@ it('shows the loading state and then the stored media without exposing a storage
 it('shows an explicit empty state', async () => {
   renderWorkspace(listOnly(200, { items: [], total: 0 }));
   expect(await screen.findByText('아직 저장한 사진이나 동영상이 없습니다.')).toBeInTheDocument();
+});
+
+it('clears populated private gallery cache, blob URL and unsaved inputs on logout', async () => {
+  const originalClear = QueryClient.prototype.clear;
+  const cacheAtClear: number[] = [];
+  const clearedClients: QueryClient[] = [];
+  const clear = vi.spyOn(QueryClient.prototype, 'clear').mockImplementation(function (
+    this: QueryClient,
+  ) {
+    clearedClients.push(this);
+    cacheAtClear.push(
+      this.getQueryCache()
+        .getAll()
+        .filter((query) => query.state.data).length,
+    );
+    originalClear.call(this);
+  });
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  try {
+    const alice = renderWorkspace(listOnly(), {
+      upload: vi.fn(),
+      open: vi.fn(async () => 'blob:alice-gallery'),
+    });
+    expect(await screen.findByRole('img', { name: '결승선' })).toHaveAttribute(
+      'src',
+      'blob:alice-gallery',
+    );
+    fireEvent.change(screen.getByLabelText('설명 (선택)'), {
+      target: { value: 'Alice의 미저장 설명' },
+    });
+    expect(screen.getByLabelText('설명 (선택)')).toHaveValue('Alice의 미저장 설명');
+
+    // Explicit logout removes the authenticated subtree while its cache and
+    // media URL are populated, before another account creates a fresh one.
+    alice.unmount();
+    expect(cacheAtClear).toContain(1);
+    expect(clearedClients[0]?.getQueryCache().getAll()).toHaveLength(0);
+    expect(revoke).toHaveBeenCalledWith('blob:alice-gallery');
+
+    renderWorkspace(listOnly(200, { items: [], total: 0 }));
+    expect(await screen.findByText('아직 저장한 사진이나 동영상이 없습니다.')).toBeVisible();
+    expect(screen.getByLabelText('설명 (선택)')).toHaveValue('');
+  } finally {
+    clear.mockRestore();
+    revoke.mockRestore();
+  }
+});
+
+it('discards a late Alice media open on account switch while Bob media remains', async () => {
+  const pendingAlice = deferred<string>();
+  const bobItem = { ...item, id: '10000000-0000-4000-8000-000000000006', caption: 'Bob 사진' };
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  try {
+    const aliceTransport = listOnly();
+    const bobTransport = listOnly(200, { items: [bobItem], total: 1 });
+    const view = render(
+      <GalleryWorkspace
+        athleteId="alice"
+        sessionId="alice-session"
+        transport={aliceTransport}
+        mediaTransfer={{ upload: vi.fn(), open: vi.fn(() => pendingAlice.promise) }}
+      />,
+    );
+    await screen.findByRole('link', { name: '결승선' });
+    await waitFor(() => expect(screen.getByText('미디어 불러오는 중')).toBeInTheDocument());
+
+    view.rerender(
+      <GalleryWorkspace
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={bobTransport}
+        mediaTransfer={{ upload: vi.fn(), open: vi.fn(async () => 'blob:bob-gallery') }}
+      />,
+    );
+    expect(await screen.findByRole('img', { name: 'Bob 사진' })).toHaveAttribute(
+      'src',
+      'blob:bob-gallery',
+    );
+    await act(async () => pendingAlice.resolve('blob:late-alice-gallery'));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:late-alice-gallery'));
+    expect(screen.queryByText('결승선')).toBeNull();
+    expect(screen.getByRole('img', { name: 'Bob 사진' })).toHaveAttribute(
+      'src',
+      'blob:bob-gallery',
+    );
+    expect(revoke).not.toHaveBeenCalledWith('blob:bob-gallery');
+  } finally {
+    revoke.mockRestore();
+  }
 });
 
 it('recovers a repeated window from a head insertion without duplicating or skipping', async () => {

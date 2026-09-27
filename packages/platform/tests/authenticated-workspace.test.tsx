@@ -7,6 +7,7 @@ import {
   createSessionTransport,
   useAuthenticatedSession,
 } from '../src/authenticated-workspace.js';
+import { PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY } from '../src/private-browser-storage.js';
 const session = {
   athleteId: 'athlete-a',
   sessionId: 'session-a',
@@ -457,6 +458,121 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
     );
     expect(await screen.findByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+  });
+  it('unmounts a populated private child when another tab removes the account scope on logout', async () => {
+    const revalidation = pendingResponse();
+    fetchMock.mockResolvedValueOnce(json(session)).mockReturnValueOnce(revalidation.promise);
+    render(
+      <AuthenticatedWorkspace>
+        <PrivateWorkspace />
+      </AuthenticatedWorkspace>,
+    );
+    fireEvent.change(await screen.findByLabelText('Private draft'), {
+      target: { value: 'Alice private draft' },
+    });
+    expect(localStorage.getItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY)).toBe(session.athleteId);
+    localStorage.removeItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY,
+          oldValue: session.athleteId,
+          newValue: null,
+        }),
+      );
+    });
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('로그인 상태');
+    await act(async () => {
+      revalidation.resolve(json({ error: { code: 'UNAUTHENTICATED' } }, 401));
+      await revalidation.promise;
+    });
+    expect(await screen.findByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
+  });
+  it('revalidates a focused cross-origin tab and removes private children after logout 401', async () => {
+    const revalidation = pendingResponse();
+    fetchMock.mockResolvedValueOnce(json(session)).mockReturnValueOnce(revalidation.promise);
+    render(
+      <AuthenticatedWorkspace>
+        <PrivateWorkspace />
+      </AuthenticatedWorkspace>,
+    );
+    fireEvent.change(await screen.findByLabelText('Private draft'), {
+      target: { value: 'Alice private draft' },
+    });
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      revalidation.resolve(json({ error: { code: 'UNAUTHENTICATED' } }, 401));
+      await revalidation.promise;
+    });
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
+  });
+  it('keeps replacement account storage when another tab changes account scope', async () => {
+    const bob = { ...session, athleteId: 'athlete-b', sessionId: 'session-b' };
+    fetchMock.mockResolvedValueOnce(json(session)).mockResolvedValueOnce(json(bob));
+    render(
+      <AuthenticatedWorkspace>
+        <PrivateWorkspace />
+      </AuthenticatedWorkspace>,
+    );
+    fireEvent.change(await screen.findByLabelText('Private draft'), {
+      target: { value: 'Alice private draft' },
+    });
+    localStorage.setItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY, bob.athleteId);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY,
+          oldValue: session.athleteId,
+          newValue: bob.athleteId,
+        }),
+      );
+    });
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(await screen.findByText(bob.athleteId)).toBeInTheDocument();
+    expect(screen.getByLabelText('Private draft')).toHaveValue('');
+    expect(localStorage.getItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY)).toBe(bob.athleteId);
+  });
+  it('ignores an old session response arriving after another tab logs out', async () => {
+    const oldRevalidation = pendingResponse();
+    fetchMock
+      .mockResolvedValueOnce(json(session))
+      .mockReturnValueOnce(oldRevalidation.promise)
+      .mockResolvedValueOnce(json({ error: { code: 'UNAUTHENTICATED' } }, 401));
+    render(
+      <AuthenticatedWorkspace>
+        <PrivateWorkspace />
+      </AuthenticatedWorkspace>,
+    );
+    fireEvent.change(await screen.findByLabelText('Private draft'), {
+      target: { value: 'Alice private draft' },
+    });
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    localStorage.removeItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY,
+          oldValue: session.athleteId,
+          newValue: null,
+        }),
+      );
+    });
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
+    await act(async () => {
+      oldRevalidation.resolve(json(session));
+      await oldRevalidation.promise;
+    });
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
   });
   it('resets private child state when a same-user session changes on foreground', async () => {
     fetchMock.mockResolvedValueOnce(json(session));

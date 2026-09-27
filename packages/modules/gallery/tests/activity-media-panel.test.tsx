@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient } from '@tanstack/react-query';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import type { GalleryMediaItem } from '@workout/contracts/gallery';
 import { ActivityMediaPanel, type GalleryMediaTransfer } from '../src/activity-media-panel';
@@ -117,6 +118,58 @@ function renderPanel(transport: AuthenticatedTransport, transfer?: GalleryMediaT
     />,
   );
 }
+
+it('drops populated activity media cache and thumbnail when the authenticated panel logs out', async () => {
+  const finish = media('10000000-0000-4000-8000-000000000001', 'Alice 결승선', {
+    activityId,
+  });
+  const server = galleryServer([finish]);
+  const originalClear = QueryClient.prototype.clear;
+  const cacheAtClear: number[] = [];
+  const clearedClients: QueryClient[] = [];
+  const clear = vi.spyOn(QueryClient.prototype, 'clear').mockImplementation(function (
+    this: QueryClient,
+  ) {
+    clearedClients.push(this);
+    cacheAtClear.push(
+      this.getQueryCache()
+        .getAll()
+        .filter((query) => query.state.data).length,
+    );
+    originalClear.call(this);
+  });
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  try {
+    const view = renderPanel(server.transport, {
+      upload: vi.fn(),
+      open: vi.fn(async () => 'blob:alice-activity-media'),
+    });
+    expect(
+      await within(linkedRegion()).findByRole('img', { name: 'Alice 결승선' }),
+    ).toHaveAttribute('src', 'blob:alice-activity-media');
+    view.unmount();
+    expect(cacheAtClear).toContain(2);
+    expect(clearedClients[0]?.getQueryCache().getAll()).toHaveLength(0);
+    expect(revoke).toHaveBeenCalledWith('blob:alice-activity-media');
+
+    const bob = galleryServer([]);
+    render(
+      <ActivityMediaPanel
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={bob.transport}
+        activityId={activityId}
+      />,
+    );
+    expect(
+      await within(linkedRegion()).findByText('이 활동에 연결한 미디어가 없습니다.'),
+    ).toBeVisible();
+    expect(screen.queryByText('Alice 결승선')).toBeNull();
+  } finally {
+    clear.mockRestore();
+    revoke.mockRestore();
+  }
+});
 
 const linkedRegion = () => screen.getByRole('region', { name: '이 활동의 미디어' });
 const pickerRegion = () => screen.getByRole('region', { name: '갤러리에서 연결' });

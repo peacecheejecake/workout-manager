@@ -1699,6 +1699,15 @@
       "evidence": "docs/implementation/progress/M2-01k-q.md"
     },
     {
+      "id": "M2-01k-r",
+      "title": "제품 비공개 상태의 로그아웃·계정 전환 수명 검증",
+      "dependsOn": ["M2-01k-q"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "P5-logout-clear의 남은 제품 범위를 파일별 목록으로 대조한다. 갤러리 미디어 URL·늦은 open, 활동 preview worker·batch export URL, identity export URL, 영양·루틴의 미저장 초안과 owner/session QueryClient를 명시 로그아웃·계정 전환에서 직접 검증한다. 기존 지도·코스·오프라인 세트 증거와 합쳐 private cache·worker 결과·map source·draft·늦은 응답의 완전한 경계를 판정한다. 단언을 무력화하는 변이가 실패해야 하며 두 shell 브라우저와 관련 단위·통합 검사를 실행한다. 범위를 못 닫으면 P5 partial을 유지하고 외부 OIDC·실기기 증거와 구분한다.",
+      "evidence": "docs/implementation/progress/M2-01k-r.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [
@@ -1731,7 +1740,8 @@
         "M2-01k-n",
         "M2-01k-o",
         "M2-01k-p",
-        "M2-01k-q"
+        "M2-01k-q",
+        "M2-01k-r"
       ],
       "kind": "task",
       "status": "in_progress",

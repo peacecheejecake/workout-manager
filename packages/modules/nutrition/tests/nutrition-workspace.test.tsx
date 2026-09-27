@@ -107,6 +107,81 @@ function transportWith(reply: (input: TransportRequest) => unknown) {
 }
 
 describe('nutrition manual workspace', () => {
+  it('erases a populated private plan draft on logout and does not restore it for another session', async () => {
+    const transport = {
+      request: vi.fn(async () => {
+        throw new Error('No request expected');
+      }),
+    } satisfies AuthenticatedTransport;
+    const view = render(
+      <NutritionWorkspace
+        athleteId="alice"
+        sessionId="alice-session"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+      />,
+    );
+    const purpose = await screen.findByRole('textbox', { name: '계획 목적' });
+    await userEvent.type(purpose, 'Alice private nutrition draft');
+    expect((purpose as HTMLInputElement).value).toBe('Alice private nutrition draft');
+
+    view.rerender(
+      <NutritionWorkspace
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+      />,
+    );
+    expect(
+      ((await screen.findByRole('textbox', { name: '계획 목적' })) as HTMLInputElement).value,
+    ).toBe('');
+    expect(screen.queryByDisplayValue('Alice private nutrition draft')).toBeNull();
+    expect(transport.request).not.toHaveBeenCalled();
+  });
+
+  it('does not show a late Alice plan response after logout and Bob signs in', async () => {
+    let releaseAlice: ((value: unknown) => void) | undefined;
+    const alicePending = new Promise<unknown>((resolve) => {
+      releaseAlice = resolve;
+    });
+    const aliceTransport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.path !== `/bff/v1/nutrition/plans/${planId}`) throw new Error(input.path);
+        return transportReplySchema.parse({ status: 200, body: await alicePending, traceId: null });
+      },
+    };
+    const bobTransport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.path !== `/bff/v1/nutrition/plans/${planId}`) throw new Error(input.path);
+        return transportReplySchema.parse({
+          status: 200,
+          body: { ...planRead(), head: { ...planVersion(), purpose: 'Bob plan' } },
+          traceId: null,
+        });
+      },
+    };
+    const view = render(
+      <NutritionWorkspace
+        athleteId="alice"
+        sessionId="alice-session"
+        transport={aliceTransport}
+        route={{ kind: 'plan', planId }}
+      />,
+    );
+    await screen.findByText('영양 계획 불러오는 중');
+    view.rerender(
+      <NutritionWorkspace
+        athleteId="bob"
+        sessionId="bob-session"
+        transport={bobTransport}
+        route={{ kind: 'plan', planId }}
+      />,
+    );
+    releaseAlice?.({ ...planRead(), head: { ...planVersion(), purpose: 'Alice private plan' } });
+    expect(await screen.findByDisplayValue('Bob plan')).toBeTruthy();
+    expect(screen.queryByDisplayValue('Alice private plan')).toBeNull();
+  });
   it('does not create an actual when the user confirms a nutrition plan (V022-A11)', async () => {
     const navigate = vi.fn();
     const { transport, request } = transportWith((input) => {
