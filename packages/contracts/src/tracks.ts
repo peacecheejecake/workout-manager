@@ -56,6 +56,7 @@ export const hasUnsafeCharacter = (value: string): boolean => {
     if (
       code < 0x20 ||
       (code >= 0x7f && code <= 0x9f) ||
+      code === 0x061c ||
       code === 0x200e ||
       code === 0x200f ||
       (code >= 0x202a && code <= 0x202e) ||

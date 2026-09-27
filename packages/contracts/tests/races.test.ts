@@ -98,6 +98,7 @@ describe('M2-02a race and record boundaries', () => {
     expect(raceEventSchema.safeParse({ ...event, title: ' 대회' }).success).toBe(false);
     expect(raceEventSchema.safeParse({ ...event, title: '대회 ' }).success).toBe(false);
     expect(raceEventSchema.safeParse({ ...event, title: '대회\u202e' }).success).toBe(false);
+    expect(raceEventSchema.safeParse({ ...event, title: 'Race\u061c' }).success).toBe(false);
     expect(raceEventSchema.safeParse({ ...event, locationName: '서울\u0000' }).success).toBe(false);
     expect(
       raceEventSchema.safeParse({
@@ -112,6 +113,9 @@ describe('M2-02a race and record boundaries', () => {
       }).success,
     ).toBe(false);
     expect(raceResultSchema.safeParse({ ...result, weatherNote: '맑음\u202e' }).success).toBe(
+      false,
+    );
+    expect(raceResultSchema.safeParse({ ...result, weatherNote: 'clear\u061c' }).success).toBe(
       false,
     );
     expect(raceResultSchema.safeParse({ ...result, weatherNote: '맑음\n약한 바람' }).success).toBe(
