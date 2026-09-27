@@ -162,3 +162,15 @@ Codex CLI `gpt-6-sol` high/read-only가 main base `09cdcf1b3bd25751084c60eae2449
 사용자 요청으로 identity E2E의 웹·모바일·API·OIDC·Garmin fixture 포트를 각각 환경변수로 바꿀 수 있게 했다. 기본값 3100/4200/4300/4400/4500은 유지하고, 중복·범위 밖 포트는 시작 전에 거부한다. 브라우저 시험의 절대 주소와 provider redirect/CORS 주소도 같은 포트 설정을 사용한다. Next API 프록시가 빌드 결과에 포함되므로 바꾼 API origin으로 해당 작업 공간을 다시 빌드해야 한다.
 
 별도 phase 작업 공간에 main의 설치 의존성을 로컬 복사해 사용했다. `WORKOUT_IDENTITY_*_PORT=3110/4210/4310/4410/4510`, `API_ORIGIN=http://127.0.0.1:4310` 설정에서 Node 24.12.0 루트 TypeScript 검사, Playwright 시험 목록 110파일·314시험 로드, 전체 빌드 15/15, 실제 OIDC 브라우저 시험 **2/2 통과**를 확인했다. 기존 phase `pnpm install --frozen-lockfile` 실패는 해결된 것으로 간주하지 않는다. 전체 identity E2E **2회 실행은 아직 하지 않았다**.
+
+## 현재 main 통합 후 전체 검증 · 2026-09-28
+
+후속 코드 `856a32f`·`0217ee9`를 포함한 phase 브랜치에 main `f04bda6870b8e3785918d59450b7a92e1560b254`를 충돌 없이 통합했다. 이 절은 위 과거 실패와 `not_executed`를 소급 변경하지 않고, 새 브랜치 상태의 실행만 적는다.
+
+- Phase 공간의 `pnpm install --frozen-lockfile`은 npm registry DNS `ENOTFOUND`로 다시 완료되지 않았다. 같은 lockfile의 main 공간에 이미 설치된 의존성을 로컬 복사해 이후 검사를 실행했다. 이는 phase 공간의 frozen install 성공이 아니다.
+- `pnpm check:generated`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`(34/34), 대체 API 포트 `4310`으로 다시 빌드한 `pnpm build`(15/15), GraphHopper 집중 17/17이 통과했다.
+- 전체 `pnpm test`의 첫 시도는 제한된 샌드박스가 로컬 OIDC·API fixture 수신을 막아 중단했다. 수신 권한을 갖춘 두 번째 시도는 Python 브리지 경로 미설정으로 338파일 통과 뒤 1파일 실패했다. 실제 `WORKOUT_PYTHON` 경로를 지정한 최종 전체 실행은 **339파일·4,131시험 통과, 1파일·7시험 건너뜀**이었다. `pnpm test:integration`은 별도 임시 PostgreSQL에서 **81파일·804시험 통과**했다.
+- 대체 포트 첫 전체 `pnpm test:identity`는 **297 통과·13 건너뜀·4 실패**였다. 네 실패는 모두 Garmin 연결 화면이 기존 시험용 `3100 → 4500` 이동만 허용해 새 `3110 → 4510`을 거부한 것이었다. 제품의 공식 Garmin HTTPS 허용은 유지하고, 서버 shell이 전달한 명시적 로컬 포트 쌍만 인정하도록 수정했다. 해당 경계 단위 18/18과 실제 Garmin 브라우저 4/4가 통과했다.
+- 수정 후 `pnpm lint`, `pnpm typecheck`(34/34), `pnpm build`(15/15), 전체 `pnpm test`(4,131 통과·7 건너뜀), 전체 `pnpm test:integration`(804 통과)을 다시 실행해 통과했다. 전체 identity E2E는 같은 대체 포트 묶음에서 순차로 **첫 회 301 통과·13 건너뜀·실패 0**, **두 번째 301 통과·13 건너뜀·실패 0**이었다. 각각 14.8분과 15.0분이 걸렸다.
+
+이 검사는 로컬 합성 인증·Garmin fixture와 브라우저만 다룬다. 앞서 기록한 실기기 HealthKit 관찰이나 미저장 Back 버튼별 기계 기록을 새로 수행한 근거가 아니다.
