@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./races": {
+      "types": "./src/races.ts",
+      "default": "./dist/races.js"
+    },
     "./resources": {
       "types": "./src/resources.ts",
       "default": "./dist/resources.js"
