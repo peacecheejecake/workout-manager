@@ -1920,8 +1920,9 @@
       "title": "Native shell·secure bridge",
       "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d", "M3-01e", "M3-01f"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"
+      "status": "completed",
+      "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약. 완료 판정은 로컬 구현·검증 범위에 한정하며 서명된 iPhone, 운영 HTTPS 인증·세션·전체 M2 모듈 조합은 not_executed/후속 M3-03·EXT-HOSTING이다.",
+      "evidence": "docs/implementation/progress/M3-01.md"
     },
     {
       "id": "M3-02",
