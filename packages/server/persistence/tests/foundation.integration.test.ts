@@ -106,6 +106,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 59, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-02d: non-canonical HealthKit review lineage.
       { version: 60, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-02e: explicit supplementary binding to an existing Activity.
+      { version: 61, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

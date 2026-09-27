@@ -1117,3 +1117,52 @@ it('requires bounded non-canonical HealthKit lineage in v26 while preserving v25
     }).success,
   ).toBe(false);
 });
+
+it('preserves explicit HealthKit links in v27 without changing historical v26', () => {
+  const v26 = {
+    schemaVersion: 26,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {} as Record<string, unknown>,
+  };
+  const keys = accountExportSchema.options
+    .find((option) => option.shape.schemaVersion.value === 26)
+    ?.shape.data.keyof().options;
+  if (!keys) throw new Error('Expected a v26 schema');
+  for (const key of keys) v26.data[key] = [];
+  const previous = accountExportSchema.parse(v26);
+  const binding = {
+    sample_id: '11111111-1111-4111-8111-111111111111',
+    activity_id: '22222222-2222-4222-8222-222222222222',
+    target_revision: 3,
+    bound_at: '2026-09-28T00:00:00Z',
+  };
+  const current = accountExportSchema.parse({
+    ...previous,
+    schemaVersion: 27,
+    data: {
+      ...previous.data,
+      healthKitWorkoutLineage: [{ sample_id: binding.sample_id, state: 'linked_existing' }],
+      healthKitExistingBindings: [binding],
+    },
+  });
+  if (current.schemaVersion !== 27) throw new Error('Expected v27');
+  expect(current.data.healthKitExistingBindings).toEqual([binding]);
+  expect(previous.data).not.toHaveProperty('healthKitExistingBindings');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 27 }).success).toBe(false);
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: { ...current.data, healthKitExistingBindings: [{ ...binding, sample_digest: 'raw' }] },
+    }).success,
+  ).toBe(false);
+  expect(
+    accountExportSchema.safeParse({
+      ...previous,
+      data: {
+        ...previous.data,
+        healthKitWorkoutLineage: [{ sample_id: binding.sample_id, state: 'linked_existing' }],
+      },
+    }).success,
+  ).toBe(false);
+});

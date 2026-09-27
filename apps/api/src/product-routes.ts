@@ -38,6 +38,8 @@ import type { RecoveryRepository } from '@workout/server-persistence/recovery-co
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { HealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import { registerHealthKitIngestionRoutes } from './healthkit-ingestion-routes.js';
+import type { HealthKitBindingRepository } from '@workout/server-persistence/healthkit-binding';
+import { registerHealthKitBindingRoutes } from './healthkit-binding-routes.js';
 import type { CheckInRepository } from '@workout/server-persistence/check-ins';
 import { registerCheckInRoutes } from './check-in-routes.js';
 import type { DashboardRepository } from '@workout/server-persistence/dashboard';
@@ -100,6 +102,7 @@ export interface ProductRepositories {
   integratedFixtureV4?: IntegratedFixtureV4Repository;
   activities?: ActivityRepository;
   healthKitIngestion?: HealthKitIngestionRepository;
+  healthKitBinding?: HealthKitBindingRepository;
   activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
   dashboard?: DashboardRepository;
@@ -176,6 +179,8 @@ export function registerProductRoutes(
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.healthKitIngestion)
     registerHealthKitIngestionRoutes(routes, repositories.healthKitIngestion, principal);
+  if (repositories.healthKitBinding)
+    registerHealthKitBindingRoutes(routes, repositories.healthKitBinding, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);
   if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);

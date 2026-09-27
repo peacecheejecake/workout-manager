@@ -52,6 +52,7 @@
     "./garmin-unofficial": "./src/garmin-unofficial.ts",
     "./healthkit-ingestion": "./src/healthkit-ingestion.ts",
     "./healthkit-projection": "./src/healthkit-projection.ts",
+    "./healthkit-binding": "./src/healthkit-binding.ts",
     "./check-ins": "./src/check-ins.ts",
     "./dashboard": "./src/dashboard.ts",
     "./activity-context": "./src/activity-context.ts",

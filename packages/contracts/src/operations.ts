@@ -305,6 +305,30 @@ const accountExportV26Schema = accountExportV25Schema.extend({
       .max(1000),
   }),
 });
+/** v27 preserves explicit existing-Activity links without exporting raw sample digests. */
+const accountExportV27Schema = accountExportV26Schema.extend({
+  schemaVersion: z.literal(27),
+  data: accountExportV26Schema.shape.data.extend({
+    healthKitWorkoutLineage: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          state: z.enum(['pending_review', 'linked_existing', 'suppressed', 'deleted']),
+        }),
+      )
+      .max(1000),
+    healthKitExistingBindings: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          activity_id: z.uuid(),
+          target_revision: z.number().int().positive(),
+          bound_at: z.iso.datetime({ offset: true }),
+        }),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -332,6 +356,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV24Schema,
   accountExportV25Schema,
   accountExportV26Schema,
+  accountExportV27Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

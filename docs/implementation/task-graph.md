@@ -738,8 +738,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02b HealthKit 운동 native 증분 수집·영속 outbox | M3-02a | 로컬 수용 완료; workout-only anchored/observer, UUID 삭제 대응, anchor+outbox 원자 저장, 고정 HTTPS native bearer 전송·ACK. 서명된 실기기·화면·정본 연결은 후속 |
 | M3-02c HealthKit 고정 동의·권한·상태 bridge | M3-02b | 로컬 수용 완료; v3 strict bridge, 고정 동의 GET/PUT, 명시적 운동 읽기 요청과 제한된 계정 상태. 제품 화면·실기기는 후속 |
 | M3-02d HealthKit 원본의 집계 제외 검토 대기 투영 | M3-02a | 로컬 수용 완료; tenant UUID lineage와 검토 대기, 자동 fuzzy 병합·집계 없음. 명시적 resolution·화면은 후속 |
-| M3-02e HealthKit 검토 대기 운동의 기존 Activity 연결 | M3-02d | 대기; 사용자 선택·tenant/revision/동의·삭제 억제·멱등 거래로 기존 Activity에 보조 lineage만 연결, 기존 출처와 단일 집계 보존 |
-| M3-02f HealthKit 재설치·anchor 재조정과 권한 미확인 상태 | M3-02b, M3-02d | 대기; 미전송 배치 ACK 뒤 명시적 재확인에서 nil-anchor 재조회·기존 UUID 대조. 빈 조회로 삭제나 권한 허용을 추정하지 않음 |
+| M3-02e HealthKit 검토 대기 운동의 기존 Activity 연결 | M3-02d | 로컬 수용 완료; 사용자 선택·tenant/revision/동의·삭제 억제·멱등 거래로 기존 Activity에 보조 lineage만 연결, 기존 출처와 단일 집계 보존. 제품 선택 UI·실기기는 후속 |
+| M3-02f HealthKit 재설치·anchor 재조정과 권한 미확인 상태 | M3-02b, M3-02d | 진행 중; 미전송 배치 ACK 뒤 명시적 재확인에서 nil-anchor 재조회·기존 UUID 대조. 빈 조회로 삭제나 권한 허용을 추정하지 않음 |
 | M3-02g 제품 HealthKit 동의·동기화 UI와 공통 Activity 화면 | M3-02c, M3-02e, M3-02i | 대기; 명시적 요청·검토 대기·오류와 Web/mobile 공통 ActivityDetail |
 | M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i | 대기; 표식 있는 합성 표본의 수집·삭제·wake·재설치·계정 전환·공통 화면을 제품 기기에서 실행 |
 | M3-02i 명시적 HealthKit 독립 Activity 생성·삭제 수명주기 | M3-02e | 대기; 새 canonical 생성과 원본 삭제·동의 철회 때 파생 데이터까지 원자적 제거·억제 |

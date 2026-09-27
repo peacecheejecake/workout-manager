@@ -3,12 +3,12 @@ import type { Database } from './database.js';
 
 const lineageRowSchema = z.object({
   sample_id: z.uuid(),
-  state: z.enum(['pending_review', 'suppressed', 'deleted']),
+  state: z.enum(['pending_review', 'linked_existing', 'suppressed', 'deleted']),
 });
 
 export type HealthKitWorkoutLineage = {
   sampleId: string;
-  state: 'pending_review' | 'suppressed' | 'deleted';
+  state: 'pending_review' | 'linked_existing' | 'suppressed' | 'deleted';
 };
 
 /** Owner-scoped review queue facts; this is never a canonical Activity query. */

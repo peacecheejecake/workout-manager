@@ -654,7 +654,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 26) throw new Error('expected v26');
+    if (artifact.schemaVersion !== 27) throw new Error('expected v27');
     expect(artifact.data.courseShares).toHaveLength(1);
     expect(Object.keys(artifact.data.courseShares[0] ?? {}).sort()).toEqual(
       [
@@ -704,7 +704,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     const after = accountExportSchema.parse(
       (await instance.inject({ method: 'POST', url: '/bff/v1/operations/export', headers })).json(),
     );
-    if (after.schemaVersion !== 26) throw new Error('expected v26');
+    if (after.schemaVersion !== 27) throw new Error('expected v27');
     expect(after.data.courseDeletions).toEqual([
       { course_id: gone, deleted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
     ]);
@@ -1984,7 +1984,7 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 26) throw new Error('expected v26');
+    if (artifact.schemaVersion !== 27) throw new Error('expected v27');
     const [row] = await budgetOf(athleteId);
     expect(artifact.data.courseShareAreaBudgets).toEqual([
       {
