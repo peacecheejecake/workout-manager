@@ -121,3 +121,13 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 3차 Codex CLI `gpt-6-sol` high/read-only 검토는 main `a96bfdc1ea240fe616a762bbc22e265e773ee28d` → phase `03fc839be5c815be3fd2d787b9b39040b9b480f5` 전체 diff에 **APPROVE**했다. 앞선 누락·비문자열 필드와 빈 문자열·공백 값 지적을 모두 **FIXED**, 광범위한 `App.app` 종료 범위와 이전 Swift·Back·키보드 지적도 FIXED 유지로 판정했다. 검토자가 직접 확인한 것은 구문·diff 검사이며, 기기 실행 receipt는 개인정보 보호를 위해 열지 않았다. 그 검토 중 다른 작업의 승인된 Garmin·출시 범위 문서가 main `d75fc94`까지 반영됐다. 이 phase에는 HANDOFF 충돌을 두 변경 모두 보존해 해결하고 새 main을 통합했다. 새 main 기준 diff는 다시 독립 검토한다.
 
 새 main 기준 Codex CLI `gpt-6-sol` high/read-only 검토는 `d75fc94a34c549c6aa95b31dc32f202c8b009f6f` → `5ad1abd44b47faf484b5884e51313487b68ef8e7`의 4파일 전체 diff에 **APPROVE**했다. 이전 프로세스 신원 지적 모두 FIXED 유지, Swift HealthKit·키보드·Back 변경의 회귀 지적 없음, Garmin 이관과 `G2-PUBLIC` 보존을 확인했다. 검토자가 직접 수행한 것은 두 파일의 구문 검사와 diff check이고, 집중 시험·실기기 실행은 기록된 보고로 검토했다. 이 결과 기록을 더한 문서 변경은 별도 검토 refresh를 받는다. M0-06c는 실제 background wake와 dirty Back 기계 기록이 남아 `in_progress`다.
+
+## 실제 background wake 재시도 · 2026-09-27
+
+연결된 iPhone의 기존 서명 probe를 사용했다. 원본 영수증은 Git 제외 `verification-logs/m0-06c-device/pulled/`에 보관하고, 기기 식별자·HealthKit UUID·입력 내용은 기록하지 않는다.
+
+- `enableBackground`에서 심박수·운동 유형의 OS 호출이 각각 `ok`, 영속 상태가 `enabled=true`, `cleanupRequired=false`였다. `add`는 2001-01-01 UTC의 표식 있는 합성 심박수 61회/분과 걷기 운동을 각 1건 저장했다. own-source 추적 수는 각 1건이었고 observer callback은 이때 **active** 상태에서만 기록됐다.
+- 사용자가 Health 앱에서 출처가 WM Device Probe인 해당 심박수 1건을 삭제하고 Health 앱에 머물렀다. probe의 `didEnterBackground`는 04:58:25 UTC였다. 05:00:15, 05:01:24, 05:03:04 UTC에 기기 영수증을 가져왔으나 새 `launch`나 background `observerCallback`은 없었다. 05:03:35 UTC의 명시적 `devicectl launch collect` 뒤 `collectionRecovery`가 심박수 tombstone **1건**을 영속화했고 심박수 추적 수가 0건으로 바뀌었다. 삭제 변경은 확인됐지만 **OS에 의한 실제 background wake는 관측되지 않았다**. 명시적 launch를 wake 근거로 계산하지 않는다.
+- `cleanup`에서 background delivery 두 유형 해제가 각각 `ok`, 표식 운동 1건 삭제 호출 성공, 최종 표식 query 심박수·운동 **0/0**, 정리 대기 `false`를 확인했다. 로컬 대체 수신함 전송 후 outbox도 **0건**이다. 사용자 기존 건강 기록은 읽거나 내보내지 않았다.
+
+이번 재시도는 wake 조건을 실제로 시도했으나 수용 증거를 얻지 못했다. 원인은 OS 지연·삭제 알림 조건·probe 관측 한계 중 확정하지 않는다. `M0-06c`는 **in_progress**이고, 실제 background wake 수용과 미저장 Back 분기의 기계 기록은 여전히 미확보다. 과거 `not_executed`를 통과로 소급 변경하지 않는다.
