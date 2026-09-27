@@ -150,3 +150,9 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 ### 이번 phase 독립 검토
 
 Codex CLI `gpt-6-sol` high/read-only가 main base `09cdcf1b3bd25751084c60eae2449417cc2d201e` 대비 phase HEAD `34982ae4e5230d5cee7bf144f6d596ff90267737` 전체 diff를 **APPROVE**했다. 선행 검토의 문서 시점 혼동, HANDOFF의 wake 미실행 안내, 완료된 EXT-BACKCHANNEL·P8 결정을 다음 작업으로 제시한 지적은 모두 **FIXED**로 재확인됐고 새 차단 지적은 없다. 검토자가 직접 확인한 검사는 `node --check`, 그래프 JSON 파싱, `git diff --check`다. Git 제외 원본 기기 영수증은 열지 않았고 전체 workspace 설치·build·typecheck·test·integration·identity의 실패를 통과로 간주하지 않았다. 이 검토 기록 추가분은 별도 refresh 대상이다.
+
+## 전체 검사 후속 진단 · 2026-09-27
+
+이 항목은 위 시점의 설치·전체 검사 실패를 소급 변경하지 않고, 별도 실행 결과를 추가한다. 설치 의존성이 있는 main 작업 공간에서 Node 24.12.0으로 `pnpm check:generated`, `pnpm build`(15/15), `pnpm typecheck`(34/34, 캐시 33개), PostgreSQL을 사용한 `pnpm test:integration`(81파일·804시험)이 통과했다. `pnpm test`는 첫 전체 실행에서 339파일 중 334파일이 통과하고 5파일이 실패했다. 로컬 서버를 쓰는 실패 파일은 접근 가능한 환경의 집중 재실행에서 통과했다. 남은 GraphHopper 검사 지연은 Git 제외 검증 로그와 지도 빌드 작업 폴더를 파일 탐색에서 제외한 뒤 집중 17/17이 통과했다. Prettier·ESLint가 중첩 worktree와 검증 로그를 훑지 않도록 범위를 바로잡은 phase 작업 공간의 `pnpm format:check`와 `pnpm lint`도 통과했다. 이 수정 뒤 **전체 `pnpm test` 재실행은 아직 하지 않았다**.
+
+`pnpm test:identity`는 다른 phase의 개발 서버가 로컬 포트 3100·4200·4300을 사용 중이어서 시작 전 중단됐다. 다른 phase 서버로 시험하거나 서버를 종료하지 않았다. 따라서 요구된 2회 인증 시험은 **not_executed**이며, 포트가 해제된 뒤 별도로 실행해야 한다. 별도 phase 작업 공간의 `pnpm install --frozen-lockfile`은 여전히 registry 접근 제한 때문에 완료되지 않았고, 설치 성공으로 기록하지 않는다.

@@ -233,6 +233,7 @@ const SKIPPED_DIRECTORIES = new Set([
   '.claude',
   '.turbo',
   'coverage',
+  'verification-logs',
   'test-results',
   'playwright-report',
   '.venv',
@@ -243,7 +244,12 @@ const CODE_FILE = /\.(?:mjs|mts|cjs|cts|js|ts|tsx|jsx|sh|bash|zsh|py|yml|yaml)$/
 async function repositoryFiles(directory = repositoryRoot) {
   const found = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (SKIPPED_DIRECTORIES.has(entry.name) || entry.name.startsWith('worktree')) continue;
+    if (
+      SKIPPED_DIRECTORIES.has(entry.name) ||
+      entry.name.startsWith('worktree') ||
+      entry.name.startsWith('.geo-build-')
+    )
+      continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) found.push(...(await repositoryFiles(path)));
     else if (entry.isFile()) found.push(path);
