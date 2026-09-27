@@ -146,3 +146,7 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 이번 실행으로 M0-06c의 서명·권한·실기기 HealthKit·실제 background wake feasibility 범위는 검증됐다. 가로 한국어 입력과 Back 동작은 앞선 기기 계측·사용자 확인을 근거로 하되, **미저장 Back 확인창의 버튼별 기계 기록은 없다**. 사용자가 추가 반복을 원치 않아 이 한계를 명시하고 제품 native host의 정확한 Back 계약·통합은 M3-01로 넘긴다. 이전 시점의 `not_executed`는 소급 변경하지 않는다.
 
 검사: Swift 구문·`swift-format lint --strict`, 전체 `pnpm check:generated`·`format:check`·`lint`, 집중 Vitest **3파일·10시험**, 두 앱의 실기기 서명 빌드와 실제 wake/정리 실행이 통과했다. Phase 전체 `pnpm install --frozen-lockfile --offline`은 로컬 저장소에 Fastify tarball이 없어 실패했고, 온라인 재시도도 registry DNS `ENOTFOUND`였다. 이에 따라 전체 `build`는 package별 의존성 부재, `typecheck`는 `@workout/contracts/routing` 해석 실패, `test`·`test:integration`은 `zod` 부재로 실패했다. `test:identity` 2회도 웹 서버의 `zod` 부재로 시작 전 실패했다. 이 전체 검사들을 통과로 계산하지 않는다. 집중 시험·Swift 빌드·실기기 관측의 성공 범위와 분리한다.
+
+### 이번 phase 독립 검토
+
+Codex CLI `gpt-6-sol` high/read-only가 main base `09cdcf1b3bd25751084c60eae2449417cc2d201e` 대비 phase HEAD `34982ae4e5230d5cee7bf144f6d596ff90267737` 전체 diff를 **APPROVE**했다. 선행 검토의 문서 시점 혼동, HANDOFF의 wake 미실행 안내, 완료된 EXT-BACKCHANNEL·P8 결정을 다음 작업으로 제시한 지적은 모두 **FIXED**로 재확인됐고 새 차단 지적은 없다. 검토자가 직접 확인한 검사는 `node --check`, 그래프 JSON 파싱, `git diff --check`다. Git 제외 원본 기기 영수증은 열지 않았고 전체 workspace 설치·build·typecheck·test·integration·identity의 실패를 통과로 간주하지 않았다. 이 검토 기록 추가분은 별도 refresh 대상이다.
