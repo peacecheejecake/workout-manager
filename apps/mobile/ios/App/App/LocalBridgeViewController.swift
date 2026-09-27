@@ -28,7 +28,8 @@ private final class LocalFrameMessageHandler: NSObject, WKScriptMessageHandler {
               let body = message.body as? [String: Any],
               body["type"] as? String == "message",
               body["pluginId"] as? String == "WorkoutNativeBridge",
-              body["methodName"] as? String == "exchange" else { return }
+              let method = body["methodName"] as? String,
+              method == "exchange" || method == "cancel" else { return }
         original.userContentController(userContentController, didReceive: message)
     }
 }
