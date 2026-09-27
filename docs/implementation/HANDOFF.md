@@ -133,14 +133,10 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
 
 1. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
    제품 전체 행이라 partial이다. 실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
-2. **재개 중 받은 사용자 결정**:
-   - M0-06c: 가로 키보드 가림은 native host에서 처리한다. 저장되지 않은 변경이 있을 때 back은 확인 후 이동한다.
-     표식 있는 합성 HealthKit 표본 쓰기·삭제와 background delivery 실행을 허용한다. 제품 native host 통합은 M3-01에 둔다.
-   - EXT-OIDC: back-channel logout 후속 노드 `EXT-BACKCHANNEL`을 추가한다.
-   - P8-coverage: 과거 사전등록 기준의 `failed`를 보존한다. RUR-02 최소 거리 1,500m, BRG-01의 보행 가능한
-     한강 다리 인정, NEG-ISL-01의 지도에 있는 보행 허용 페리 경로 인정으로 새 기준을 만들고 별도 독립 검토를 받는다.
-3. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건),
+2. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건),
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
+
+재개 중 받은 결정 중 M0-06c의 native 키보드 처리·확인 후 Back·합성 HealthKit 표본 허용은 probe 후속 실행에 반영했다(제품 host는 M3-01). `EXT-BACKCHANNEL`은 노드 추가·구현·병합이 완료됐다. P8 새 기준의 엔진 재실행과 독립 채점도 완료했고 과거 사전등록 기준의 `failed`는 보존한다. 아래 사용자 결정 기록과 실행 기록을 따른다.
 
 기준 스냅샷(2026-09-27): `phase/m2-01k`의 승인된 작업은 `0b183c8`까지 main에 포함됐다.
 이후 결과는 재개 시 `git log -1`로 확인한다. push는 사용자 작업이다. `phase/m2-01`은 이미 main에 포함(삭제 가능).
