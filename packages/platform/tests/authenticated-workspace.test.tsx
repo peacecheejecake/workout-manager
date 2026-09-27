@@ -511,6 +511,40 @@ describe('AuthenticatedWorkspace private state lifetime', () => {
     expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
     expect(await screen.findByRole('link', { name: '계정에서 로그인' })).toBeInTheDocument();
   });
+  it('supersedes a pending Alice check on focus after a cross-origin Bob login', async () => {
+    const oldRevalidation = pendingResponse();
+    const bob = { ...session, athleteId: 'athlete-b', sessionId: 'session-b' };
+    fetchMock
+      .mockResolvedValueOnce(json(session))
+      .mockReturnValueOnce(oldRevalidation.promise)
+      .mockResolvedValueOnce(json(bob));
+    render(
+      <AuthenticatedWorkspace>
+        <PrivateWorkspace />
+      </AuthenticatedWorkspace>,
+    );
+    fireEvent.change(await screen.findByLabelText('Private draft'), {
+      target: { value: 'Alice private draft' },
+    });
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const oldSignal = fetchMock.mock.calls[1]?.[1]?.signal;
+    expect(oldSignal?.aborted).toBe(false);
+
+    // Another origin cannot deliver this tab's account-scope storage event.
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(oldSignal?.aborted).toBe(true);
+    expect(await screen.findByText(bob.athleteId)).toBeInTheDocument();
+    expect(screen.getByLabelText('Private draft')).toHaveValue('');
+    await act(async () => {
+      oldRevalidation.resolve(json(session));
+      await oldRevalidation.promise;
+    });
+    expect(screen.getByText(bob.athleteId)).toBeInTheDocument();
+    expect(screen.getByLabelText('Private draft')).toHaveValue('');
+    expect(localStorage.getItem(PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY)).toBe(bob.athleteId);
+  });
   it('keeps replacement account storage when another tab changes account scope', async () => {
     const bob = { ...session, athleteId: 'athlete-b', sessionId: 'session-b' };
     fetchMock.mockResolvedValueOnce(json(session)).mockResolvedValueOnce(json(bob));

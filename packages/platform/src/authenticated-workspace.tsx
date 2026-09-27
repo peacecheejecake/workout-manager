@@ -342,18 +342,23 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
     setGeneration((value) => value + 1);
   }, []);
   useEffect(() => {
-    const controller = new AbortController();
-    let pending = false;
-    async function refresh() {
-      if (pending) return;
-      pending = true;
+    let mounted = true;
+    let activeRequest: AbortController | null = null;
+    let requestSequence = 0;
+    async function refresh(force = false) {
+      if (activeRequest && !force) return;
+      activeRequest?.abort();
+      const controller = new AbortController();
+      activeRequest = controller;
+      const sequence = ++requestSequence;
+      const isCurrent = () => mounted && !controller.signal.aborted && sequence === requestSequence;
       try {
         const response = await fetch('/bff/v1/session', {
           credentials: 'same-origin',
           cache: 'no-store',
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (!isCurrent()) return;
         if (response.status === 401) {
           clearPrivateBrowserStorage();
           setSession(null);
@@ -362,7 +367,7 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         }
         if (!response.ok) throw new Error('SESSION_UNAVAILABLE');
         const next = sessionSchema.parse(await response.json());
-        if (controller.signal.aborted) return;
+        if (!isCurrent()) return;
         if (Date.parse(next.expiresAt) > Date.now()) {
           bindPrivateBrowserStorageAccount(next.athleteId);
           setSession(next);
@@ -372,22 +377,24 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         }
         setState('ready');
       } catch {
-        if (!controller.signal.aborted) {
+        if (isCurrent()) {
           setState('offline');
         }
       } finally {
-        pending = false;
+        if (activeRequest === controller) activeRequest = null;
       }
     }
     void refresh();
     const timer = setInterval(() => void refresh(), 60_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh();
+      if (document.visibilityState === 'visible') void refresh(true);
     };
     window.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     return () => {
-      controller.abort();
+      mounted = false;
+      activeRequest?.abort();
+      requestSequence += 1;
       clearInterval(timer);
       window.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
