@@ -19,6 +19,12 @@ const scene = readFileSync(
   ),
   'utf8',
 );
+const writer = readFileSync(
+  fileURLToPath(
+    new URL('../../../scripts/fixtures/device-writer/AppDelegate.swift', import.meta.url),
+  ),
+  'utf8',
+);
 
 it('scopes every HealthKit change observation and deletion to this probe’s tagged source', () => {
   assert.match(swift, /HKQuery\.predicateForObjects\(from: HKSource\.default\(\)\)/);
@@ -71,8 +77,19 @@ it('drains anchored pages before durable commit and acknowledges only durable wo
     swift,
     /if collected\["persisted"\] as\? Bool == true\s*\|\| collected\["retryQueued"\] as\? Bool == true\s*\{\s*completion\(\)/,
   );
-  assert.equal((swift.match(/completion\(\)/g) ?? []).length, 1);
+  assert.equal((swift.match(/completion\(\)/g) ?? []).length, 2);
   assert.match(swift, /observerRetryPending/);
+});
+
+it('limits the separate wake writer to synthetic heart-rate writes and own-source cleanup', () => {
+  assert.match(writer, /requestAuthorization\(toShare: \[heartRate\], read: \[\]\)/);
+  assert.match(writer, /Date\(timeIntervalSinceReferenceDate: 0\)/);
+  assert.match(writer, /metadata: \[markerKey: markerValue\]/);
+  assert.match(writer, /HKQuery\.predicateForObjects\(from: HKSource\.default\(\)\)/);
+  assert.match(writer, /deleteObjects\(of: heartRate, predicate: ownTagged\)/);
+  assert.doesNotMatch(writer, /HKSampleQuery|HKAnchoredObjectQuery/);
+  assert.match(swift, /HKObserverQuery\(sampleType: heartRate, predicate: writerPredicate\)/);
+  assert.match(swift, /ProbeLog\.shared\.record\("writerObserverCallback", fields\)/);
 });
 
 it('persists retry work and revisits it at launch and foreground', () => {

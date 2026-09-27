@@ -21,27 +21,41 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 const repository = dirname(dirname(fileURLToPath(import.meta.url)));
-const workspace = join(repository, 'verification-logs/m0-06c-device');
+const writer = process.env.WM_DEVICE_PROBE_ROLE === 'writer';
+if (process.env.WM_DEVICE_PROBE_ROLE && !writer) throw new Error('UNKNOWN_PROBE_ROLE');
+const workspace = join(
+  repository,
+  writer ? 'verification-logs/m0-06c-writer' : 'verification-logs/m0-06c-device',
+);
 const project = join(workspace, 'project');
 const derived = join(workspace, 'derived');
-const fixtures = join(repository, 'scripts/fixtures/device-probe');
-const bundleId = 'org.workoutmanager.feasibility.deviceprobe';
+const fixtures = join(
+  repository,
+  writer ? 'scripts/fixtures/device-writer' : 'scripts/fixtures/device-probe',
+);
+const bundleId = writer
+  ? 'org.workoutmanager.feasibility.wakewriter'
+  : 'org.workoutmanager.feasibility.deviceprobe';
 const appPath = join(derived, 'Build/Products/Debug-iphoneos/App.app');
 const signedBuildReceipt = join(workspace, 'signed-build-receipt.json');
-const steps = new Set([
-  'none',
-  'status',
-  'authorize',
-  'empty',
-  'add',
-  'collect',
-  'send',
-  'delete',
-  'cleanup',
-  'enableBackground',
-  'disableBackground',
-  'state',
-]);
+const steps = new Set(
+  writer
+    ? ['none', 'authorize', 'add', 'cleanup']
+    : [
+        'none',
+        'status',
+        'authorize',
+        'empty',
+        'add',
+        'collect',
+        'send',
+        'delete',
+        'cleanup',
+        'enableBackground',
+        'disableBackground',
+        'state',
+      ],
+);
 const crashes = new Set(['none', 'collectBeforePersist', 'sendBeforeAck']);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -107,9 +121,9 @@ export function signedBuildVerified(entry, team) {
     entry.signature?.authorityIsAppleDevelopment === true &&
     entry.signature?.identifier === bundleId &&
     entitlements?.['com.apple.developer.healthkit'] === true &&
-    entitlements?.['com.apple.developer.healthkit.background-delivery'] === true &&
+    (writer || entitlements?.['com.apple.developer.healthkit.background-delivery'] === true) &&
     entry.builtInfo?.bundleId === bundleId &&
-    entry.builtInfo?.healthUsageKeys?.includes('NSHealthShareUsageDescription') &&
+    (writer || entry.builtInfo?.healthUsageKeys?.includes('NSHealthShareUsageDescription')) &&
     entry.builtInfo?.healthUsageKeys?.includes('NSHealthUpdateUsageDescription'),
   );
 }
@@ -155,7 +169,7 @@ async function prepare() {
     join(project, 'capacitor.config.json'),
     JSON.stringify({
       appId: bundleId,
-      appName: 'WM Device Probe',
+      appName: writer ? 'WM Wake Writer' : 'WM Device Probe',
       webDir: 'www',
       loggingBehavior: 'none',
       server: { hostname: 'localhost', iosScheme: 'capacitor' },
@@ -178,16 +192,23 @@ async function prepare() {
     sources[name] = hash(await readFile(join(fixtures, name)));
   }
   const plist = join(app, 'Info.plist');
-  for (const [key, value] of [
-    [
-      'NSHealthShareUsageDescription',
-      '실기기 검증용 앱이 스스로 기록한 합성 심박수·운동 표본만 다시 읽어 조회·삭제·변경 추적을 확인합니다. 다른 건강 기록은 읽거나 내보내지 않습니다.',
-    ],
-    [
-      'NSHealthUpdateUsageDescription',
-      '실기기 검증용 합성 심박수 1건과 합성 운동 1건(2001-01-01 날짜, 검증 표식 포함)을 기록한 뒤 삭제합니다.',
-    ],
-  ]) {
+  for (const [key, value] of writer
+    ? [
+        [
+          'NSHealthUpdateUsageDescription',
+          '시험용 합성 심박수 1건(2001-01-01, 별도 표식)을 기록한 뒤 이 앱이 쓴 표본만 삭제합니다.',
+        ],
+      ]
+    : [
+        [
+          'NSHealthShareUsageDescription',
+          '실기기 검증용 앱이 스스로 기록한 합성 심박수·운동 표본만 다시 읽어 조회·삭제·변경 추적을 확인합니다. 다른 건강 기록은 읽거나 내보내지 않습니다.',
+        ],
+        [
+          'NSHealthUpdateUsageDescription',
+          '실기기 검증용 합성 심박수 1건과 합성 운동 1건(2001-01-01 날짜, 검증 표식 포함)을 기록한 뒤 삭제합니다.',
+        ],
+      ]) {
     const result = await run('plutil', ['-replace', key, '-string', value, plist]);
     if (!result.ok) throw new Error('INFO_PLIST_UPDATE_FAILED');
   }
@@ -490,7 +511,7 @@ async function main([command, ...rest]) {
         '--domain-identifier',
         bundleId,
         '--source',
-        'Documents/wm-device-probe',
+        writer ? 'Documents/wm-device-writer' : 'Documents/wm-device-probe',
         '--destination',
         destination,
       ]);

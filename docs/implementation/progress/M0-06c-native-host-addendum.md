@@ -133,3 +133,16 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 이번 재시도는 wake 조건을 실제로 시도했으나 수용 증거를 얻지 못했다. 원인은 OS 지연·삭제 알림 조건·probe 관측 한계 중 확정하지 않는다. `M0-06c`는 **in_progress**이고, 실제 background wake 수용과 미저장 Back 분기의 기계 기록은 여전히 미확보다. 과거 `not_executed`를 통과로 소급 변경하지 않는다.
 
 독립 Codex CLI `gpt-6-sol` high/read-only phase 검토는 `main` `692d9ab927faec5cae23b55ff97c572ef6cafad1` → `phase/m0-06c` `a5d65363868bdea48fae4a86c8788ef10f72c152` 전체 diff를 **APPROVE**했고 지적 사항은 없었다. 검토자는 문서·상태·개인정보 표시와 변경 파일을 대조했으며, Git 제외 원본 기기 영수증을 읽거나 OS wake를 독립 재현하지 않았다. 이 검토 기록을 추가한 최종 diff는 별도로 refresh 검토한다.
+
+## 별도 서명 작성 앱으로 실제 wake 확인 · 2026-09-27
+
+사용자가 별도 시험용 표본 작성 앱 경로를 선택했다. `WM Wake Writer`는 HealthKit 심박수 **쓰기 권한만** 요청하고 기존 표본 읽기 권한은 요청하지 않는다. 앱 자신의 출처와 `WMWakeWriter=M0-06c` 표식이 모두 맞는 표본만 삭제한다. probe에는 이 고유 표식만 감지하는 별도 심박수 observer를 추가했다. 이 observer는 callback 시각·앱 상태만 기록하고 작성 앱 표본을 조회하거나 내보내지 않는다. 앱 둘의 원본 영수증은 Git 제외 `verification-logs/m0-06c-device/` 및 `verification-logs/m0-06c-writer/`에 남겼다.
+
+- Xcode 27.0에서 probe와 writer의 iPhone용 서명 빌드가 각각 `BUILD SUCCEEDED`, error 0, codesign 검증 true였다. probe 서명에는 HealthKit/background delivery entitlement, writer 서명에는 HealthKit entitlement만 있었다. 각 bundle ID를 확인한 뒤 연결된 iPhone에 설치했다. 작성 앱의 권한 요청은 사용자 승인과 앱의 `requestCompleted=true`를 확인했다.
+- probe의 심박수·운동 background delivery OS 호출은 각각 `ok`, 영속 상태 `enabled=true`, 정리 대기 `false`였다. 05:28:28 UTC에 정확한 probe 프로세스 **1개**를 종료했다. writer는 05:28:42 UTC에 2001-01-01의 표식 있는 합성 심박수 **1건 저장 성공**을 기록했다. 이 사이와 다음 영수증 조회 사이에 probe를 명시적으로 실행하지 않았다.
+- probe는 05:28:57 UTC에 새 launch ID로 `appState=background`인 시작과 `writerObserverCallback`의 `appState=background`를 기록했다. 이는 별도 앱의 실제 표본 작성 뒤 OS가 probe를 깨운 **이 시험 범위의 실기기 증거**다. 앞선 Health 앱 삭제 자극에서 wake를 관측하지 못한 기록은 그대로 유지한다. 제품 앱의 장기 안정성이나 임의 HealthKit 변경의 전면 수용으로 확대하지 않는다.
+- writer의 정리 호출은 표식 있는 자체 표본 **1건 삭제 성공**, 반복 정리는 **0건**이었다. probe의 정리는 심박수·운동 background delivery 해제가 각각 `ok`, 자체 표식 query 잔여 **0/0**, 정리 대기 `false`였다. writer 앱은 영수증을 가져온 뒤 기기에서 제거했다. 원래 있던 건강 기록은 조회하거나 내보내지 않았다.
+
+이번 실행으로 M0-06c의 서명·권한·실기기 HealthKit·실제 background wake feasibility 범위는 검증됐다. 가로 한국어 입력과 Back 동작은 앞선 기기 계측·사용자 확인을 근거로 하되, **미저장 Back 확인창의 버튼별 기계 기록은 없다**. 사용자가 추가 반복을 원치 않아 이 한계를 명시하고 제품 native host의 정확한 Back 계약·통합은 M3-01로 넘긴다. 이전 시점의 `not_executed`는 소급 변경하지 않는다.
+
+검사: Swift 구문·`swift-format lint --strict`, 전체 `pnpm check:generated`·`format:check`·`lint`, 집중 Vitest **3파일·10시험**, 두 앱의 실기기 서명 빌드와 실제 wake/정리 실행이 통과했다. Phase 전체 `pnpm install --frozen-lockfile --offline`은 로컬 저장소에 Fastify tarball이 없어 실패했고, 온라인 재시도도 registry DNS `ENOTFOUND`였다. 이에 따라 전체 `build`는 package별 의존성 부재, `typecheck`는 `@workout/contracts/routing` 해석 실패, `test`·`test:integration`은 `zod` 부재로 실패했다. `test:identity` 2회도 웹 서버의 `zod` 부재로 시작 전 실패했다. 이 전체 검사들을 통과로 계산하지 않는다. 집중 시험·Swift 빌드·실기기 관측의 성공 범위와 분리한다.

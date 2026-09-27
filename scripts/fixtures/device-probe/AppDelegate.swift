@@ -10,6 +10,8 @@ import UIKit
 let probeTag = "M0-06c"
 let probeTagKey = "WMSyntheticProbe"
 let probeRunKey = "WMProbeRunID"
+let wakeWriterTagKey = "WMWakeWriter"
+let wakeWriterTag = "M0-06c"
 
 /// Append-only JSON-lines evidence log in the app's Documents container.
 final class ProbeLog {
@@ -672,6 +674,21 @@ final class HealthProbe {
       store.execute(query)
       observers.append(query)
     }
+    // A separate signed fixture writes only this unique synthetic marker. This observer
+    // records the OS callback without querying or exporting the other app's sample.
+    let writerPredicate = HKQuery.predicateForObjects(
+      withMetadataKey: wakeWriterTagKey, allowedValues: [wakeWriterTag])
+    let writerQuery = HKObserverQuery(sampleType: heartRate, predicate: writerPredicate) {
+      _, completion, error in
+      DispatchQueue.main.async {
+        var fields: [String: Any] = ["type": self.heartRate.identifier, "appState": appStateName()]
+        if let error { fields.merge(describe(error)) { $1 } }
+        ProbeLog.shared.record("writerObserverCallback", fields)
+        completion()
+      }
+    }
+    store.execute(writerQuery)
+    observers.append(writerQuery)
     ProbeLog.shared.record("observersRegistered", ["types": sampleTypes.map { $0.identifier }])
   }
 
