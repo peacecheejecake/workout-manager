@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./native-bridge": {
+      "types": "./src/native-bridge.ts",
+      "default": "./dist/native-bridge.js"
+    },
     "./races": {
       "types": "./src/races.ts",
       "default": "./dist/races.js"

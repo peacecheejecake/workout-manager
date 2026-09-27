@@ -10,6 +10,7 @@ export default defineConfig({
           include: [
             'packages/tooling/tests/**/*.test.{ts,mjs}',
             'packages/api-client/tests/**/*.test.ts',
+            'packages/platform/tests/**/*.test.ts',
             'apps/api/tests/**/*.test.ts',
             'packages/server/identity/tests/**/*.test.ts',
             'packages/server/coaching/tests/**/*.test.ts',
