@@ -472,6 +472,7 @@ flowchart TD
     selectionBase["M1-04au 상세 선택"] --> mape
     mapk --> task26
     task27["M2-02 대회·기록"]
+    task27a["M2-02a 대회·결과 계약"]
     task28["M2-03 갤러리·media"]
     task29["M2-04 자료 생명주기"]
     task29a["M2-04a private text·reader"]
@@ -495,6 +496,10 @@ flowchart TD
     task24 --> task25
     task25 --> task26
     task7 --> task26
+    mapf --> task27a
+    trackBase --> task27a
+    task25 --> task27a
+    task27a --> task27
     task26 --> task27
     task25 --> task28
     task25 --> task29a
@@ -663,7 +668,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01k-q 로그아웃 지도·코스 정리 | M2-01k-d, M2-01k-p | 완료; 명시 로그아웃에서 비공개 cache·초안·지도 자원·늦은 응답 제거를 직접 검증. 제품 전체 행은 별도 판정 |
 | M2-01k-r 제품 비공개 상태 수명 | M2-01k-q | 완료; 갤러리·수출·영양·루틴의 로그아웃/계정 전환 수명 검증, 공통 탭 로그아웃 수정. P5 전체는 partial 유지 |
 | M2-01k-s 나머지 제품 상태 수명 | M2-01k-r | 완료; 활동 편집·계획·코칭·웰빙·대시보드·회복·자료의 채워진 상태와 늦은 응답을 로그아웃·계정 전환에서 직접 검증. P5 전체는 partial 유지 |
-| M2-02 대회·기록 | M2-01 | competitions; 코스 참조·결과 |
+| M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
+| M2-02 대회·기록 | M2-01, M2-02a | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |
 | M2-04a private text 자료·버전 고정 reader | M1c-04 | 완료; private direct text·불변 version/문단 locator·삭제 tombstone·계정 lifecycle·두 shell |

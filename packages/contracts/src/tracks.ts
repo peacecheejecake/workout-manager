@@ -50,12 +50,13 @@ const heartRate = z.number().int().min(0).max(255).nullable();
 const nonNegativeMetric = z.number().finite().nonnegative().max(1_000_000_000).nullable();
 const elevationMeters = z.number().finite().min(-12_000).max(12_000).nullable();
 /** Control, C1 and bidirectional-override code points, checked without a control regex. */
-const hasUnsafeCharacter = (value: string): boolean => {
+export const hasUnsafeCharacter = (value: string): boolean => {
   for (const character of value) {
     const code = character.codePointAt(0) ?? 0;
     if (
       code < 0x20 ||
       (code >= 0x7f && code <= 0x9f) ||
+      code === 0x061c ||
       code === 0x200e ||
       code === 0x200f ||
       (code >= 0x202a && code <= 0x202e) ||

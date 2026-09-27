@@ -1759,9 +1759,18 @@
       "scope": "S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback"
     },
     {
+      "id": "M2-02a",
+      "title": "대회·결과 런타임 계약 경계",
+      "dependsOn": ["M2-01f", "M1-04x", "M1c-04"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S15/S16·V2-F20의 계약 기초: RaceEvent 계획 데이터, RaceResult 실제 대회 기록, TrainingBest 실제 훈련 기록을 strict runtime schema와 명시적 출처·단위·시각·고정 Course revision 참조로 분리한다. device 추정 split은 공식 대회 PB 후보로 자동 승격하지 않는다. 이 노드는 DB/API/화면/PB 집계/날짜 변경 영향 preview·승인을 완료하지 않으며, 부모 M2-02의 M2-01 선행 조건을 유지한다.",
+      "evidence": "docs/implementation/progress/M2-02a.md"
+    },
+    {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01"],
+      "dependsOn": ["M2-01", "M2-02a"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
