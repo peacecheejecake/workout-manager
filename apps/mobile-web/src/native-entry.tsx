@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createCapacitorBridgePort } from '@workout/platform/capacitor-bridge-port';
 import { createNativeBridgeClient } from '@workout/platform/native-bridge-client';
+import { createNativeAuthenticatedTransport } from '@workout/platform/native-authenticated-transport';
+import {
+  bindPrivateBrowserStorageAccount,
+  clearPrivateBrowserStorage,
+} from '@workout/platform/private-browser-storage';
+import { nativeBridgeAiConsentSchema } from '@workout/contracts/native-bridge';
 import type { NativeBridgeErrorCode, NativeBridgeSession } from '@workout/contracts/native-bridge';
 
 const bridge = createNativeBridgeClient({
@@ -19,12 +25,71 @@ type AuthState =
   | { state: 'error'; code: NativeBridgeErrorCode }
   | NativeBridgeSession;
 
+type ConsentState =
+  | { state: 'unavailable' }
+  | { state: 'loading'; athleteId: string }
+  | { state: 'ready'; athleteId: string; granted: boolean; revision: number }
+  | { state: 'error'; athleteId: string; code: 'UNAVAILABLE' | 'INVALID_REPLY' };
+
 function NativeLanding() {
   const [bridgeState, setBridgeState] = useState<BridgeState>({ kind: 'connecting' });
   const [authState, setAuthState] = useState<AuthState>({ state: 'checking' });
   const [authPending, setAuthPending] = useState<'signIn' | 'signOut' | null>(null);
   const [authError, setAuthError] = useState<NativeBridgeErrorCode | null>(null);
   const [settingsResult, setSettingsResult] = useState<string | null>(null);
+  const [consentState, setConsentState] = useState<ConsentState>({ state: 'unavailable' });
+  const [consentRefresh, setConsentRefresh] = useState(0);
+  const activeConsent = useRef<AbortController | null>(null);
+
+  const athleteId = authState.state === 'signed_in' ? authState.athleteId : null;
+  const visibleConsentState =
+    athleteId !== null && 'athleteId' in consentState && consentState.athleteId === athleteId
+      ? consentState
+      : ({ state: 'loading' } as const);
+
+  useEffect(() => {
+    if (athleteId === null) return;
+    bindPrivateBrowserStorageAccount(athleteId);
+    const controller = new AbortController();
+    activeConsent.current = controller;
+    const transport = createNativeAuthenticatedTransport(bridge, () => {
+      if (controller.signal.aborted) return;
+      clearPrivateBrowserStorage();
+      setConsentState({ state: 'unavailable' });
+      setAuthState({ state: 'signed_out' });
+    });
+    void transport
+      .request({
+        path: '/bff/v1/consents/ai',
+        method: 'GET',
+        body: null,
+        idempotencyKey: null,
+        signal: controller.signal,
+      })
+      .then((reply) => {
+        if (controller.signal.aborted) return;
+        if (reply.status === 401) return;
+        const parsed = nativeBridgeAiConsentSchema.safeParse(reply.body);
+        setConsentState(
+          reply.status === 200 && parsed.success
+            ? {
+                state: 'ready',
+                athleteId,
+                granted: parsed.data.granted,
+                revision: parsed.data.revision,
+              }
+            : { state: 'error', athleteId, code: 'INVALID_REPLY' },
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setConsentState({ state: 'error', athleteId, code: 'UNAVAILABLE' });
+      });
+    return () => {
+      controller.abort();
+      if (activeConsent.current === controller) activeConsent.current = null;
+    };
+  }, [athleteId, consentRefresh]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,11 +105,16 @@ function NativeLanding() {
           : { kind: 'unavailable', code: result.code },
       );
       if (!result.ok || !result.value['auth.transport']) {
+        clearPrivateBrowserStorage();
         setAuthState({ state: 'unavailable' });
         return;
       }
       void bridge.session(controller.signal).then((sessionResult) => {
         if (controller.signal.aborted) return;
+        if (sessionResult.ok && sessionResult.value.state === 'signed_out') {
+          clearPrivateBrowserStorage();
+          setConsentState({ state: 'unavailable' });
+        }
         setAuthState(
           sessionResult.ok ? sessionResult.value : { state: 'error', code: sessionResult.code },
         );
@@ -65,6 +135,10 @@ function NativeLanding() {
     setAuthError(null);
     setAuthState({ state: 'checking' });
     const result = await bridge.session();
+    if (result.ok && result.value.state === 'signed_out') {
+      clearPrivateBrowserStorage();
+      setConsentState({ state: 'unavailable' });
+    }
     setAuthState(result.ok ? result.value : { state: 'error', code: result.code });
   }
 
@@ -73,20 +147,32 @@ function NativeLanding() {
     setAuthError(null);
     try {
       const result = await bridge.signIn();
-      if (result.ok) setAuthState(result.value);
-      else setAuthError(result.code);
+      if (result.ok) {
+        if (result.value.state === 'signed_out') {
+          clearPrivateBrowserStorage();
+          setConsentState({ state: 'unavailable' });
+        }
+        setAuthState(result.value);
+      } else setAuthError(result.code);
     } finally {
       setAuthPending(null);
     }
   }
 
   async function signOut() {
+    activeConsent.current?.abort();
+    setConsentState({ state: 'unavailable' });
     setAuthPending('signOut');
     setAuthError(null);
     try {
       const result = await bridge.signOut();
-      if (result.ok) setAuthState({ state: 'signed_out' });
-      else setAuthError(result.code);
+      if (result.ok) {
+        clearPrivateBrowserStorage();
+        setAuthState({ state: 'signed_out' });
+      } else {
+        setAuthError(result.code);
+        setConsentRefresh((value) => value + 1);
+      }
     } finally {
       setAuthPending(null);
     }
@@ -127,6 +213,32 @@ function NativeLanding() {
             {authState.state === 'signed_in' ? (
               <>
                 <p role="status">로그인했습니다.</p>
+                <section aria-labelledby="native-ai-consent-heading">
+                  <h3 id="native-ai-consent-heading">AI 데이터 동의</h3>
+                  {visibleConsentState.state === 'loading' ? (
+                    <p role="status">동의 상태를 확인하고 있습니다.</p>
+                  ) : null}
+                  {visibleConsentState.state === 'ready' ? (
+                    <p role="status">
+                      {visibleConsentState.granted ? '동의함' : '동의하지 않음'} · 개정{' '}
+                      {visibleConsentState.revision}
+                    </p>
+                  ) : null}
+                  {visibleConsentState.state === 'error' ? (
+                    <div role="alert">
+                      동의 상태를 확인할 수 없습니다. ({visibleConsentState.code}){' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConsentState({ state: 'loading', athleteId: authState.athleteId });
+                          setConsentRefresh((value) => value + 1);
+                        }}
+                      >
+                        다시 확인
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
                 <button
                   type="button"
                   disabled={authPending !== null}

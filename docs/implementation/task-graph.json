@@ -1898,9 +1898,18 @@
       "evidence": "docs/implementation/progress/M3-01d.md"
     },
     {
+      "id": "M3-01e",
+      "title": "Native 인증 API Host 전송·철회 상태 반영",
+      "dependsOn": ["M3-01d"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "고정 HTTPS API origin과 Keychain bearer로 GET /bff/v1/session 및 GET /bff/v1/consents/ai만 native URLSession에서 전송한다. v2 bridge는 정확한 method/path·빈 body·응답 형태를 검증하고 토큰·임의 URL을 WebView에 주지 않는다. 401·back-channel 철회는 native credential과 WebView 계정 scope를 무효화한다. AuthenticatedTransport의 이 두 읽기 경로와 실제 계정 동의 화면을 연결한다. 전체 제품 업무 API·쓰기·파일/지도 전송, 운영 HTTPS/실기기 성공은 후속이며 미실행 증거를 통과로 바꾸지 않는다.",
+      "evidence": "docs/implementation/progress/M3-01e.md"
+    },
+    {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d"],
+      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c", "M3-01d", "M3-01e"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"

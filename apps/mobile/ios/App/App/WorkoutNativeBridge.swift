@@ -46,13 +46,23 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
 
         case "command":
             guard let method = request["method"] as? String,
-                  ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut"].contains(method) else {
+                  ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut", "api.read"].contains(method) else {
                 resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                 return
             }
             guard Set(request.keys) == Set(["kind", "version", "id", "method", "payload"]),
-                  let payload = request["payload"] as? [String: Any],
-                  payload.isEmpty else {
+                  let payload = request["payload"] as? [String: Any] else {
+                resolveError(call, id: id, code: "INVALID_REQUEST")
+                return
+            }
+            if method == "api.read" {
+                guard Set(payload.keys) == Set(["path"]),
+                      let path = payload["path"] as? String,
+                      ["/bff/v1/session", "/bff/v1/consents/ai"].contains(path) else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
+            } else if !payload.isEmpty {
                 resolveError(call, id: id, code: "INVALID_REQUEST")
                 return
             }
@@ -66,10 +76,16 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                                 let session = try await NativeAuth.shared.signIn()
                                 reply = ["session": session]
                             case "auth.session":
-                                reply = ["session": try NativeAuth.shared.currentSession()]
+                                reply = ["session": try await NativeAuth.shared.currentSession()]
                             case "auth.signOut":
                                 try await NativeAuth.shared.signOut()
                                 reply = ["status": "signed_out"]
+                            case "api.read":
+                                guard let path = payload["path"] as? String else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                reply = try await NativeAuth.shared.readAPI(path)
                             default:
                                 self.resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                                 return

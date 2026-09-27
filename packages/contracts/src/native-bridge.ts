@@ -20,34 +20,54 @@ const nativeBridgeCommandMethodSchema = z.enum([
   'auth.signIn',
   'auth.session',
   'auth.signOut',
+  'api.read',
 ]);
+
+export const nativeBridgeReadPathSchema = z.enum(['/bff/v1/session', '/bff/v1/consents/ai']);
+
+const athleteIdSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9_-]+$/);
+export const nativeBridgeApiSessionSchema = z.strictObject({ athleteId: athleteIdSchema });
+export const nativeBridgeAiConsentSchema = z.strictObject({
+  kind: z.literal('ai'),
+  granted: z.boolean(),
+  revision: z.number().int().nonnegative().safe(),
+});
 
 export const nativeBridgeSessionSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('signed_out') }),
   z.strictObject({
     state: z.literal('signed_in'),
-    athleteId: z
-      .string()
-      .min(1)
-      .max(200)
-      .regex(/^[A-Za-z0-9_-]+$/),
+    athleteId: athleteIdSchema,
     expiresAt: z.iso.datetime({ offset: true }),
   }),
 ]);
 
-export const nativeBridgeRequestSchema = z.discriminatedUnion('kind', [
+export const nativeBridgeRequestSchema = z.union([
   z.strictObject({
     kind: z.literal('hello'),
     version: z.literal(nativeBridgeVersion),
     id: requestIdSchema,
   }),
-  z.strictObject({
-    kind: z.literal('command'),
-    version: z.literal(nativeBridgeVersion),
-    id: requestIdSchema,
-    method: nativeBridgeCommandMethodSchema,
-    payload: z.strictObject({}),
-  }),
+  z.union([
+    z.strictObject({
+      kind: z.literal('command'),
+      version: z.literal(nativeBridgeVersion),
+      id: requestIdSchema,
+      method: z.enum(['app.openSettings', 'auth.signIn', 'auth.session', 'auth.signOut']),
+      payload: z.strictObject({}),
+    }),
+    z.strictObject({
+      kind: z.literal('command'),
+      version: z.literal(nativeBridgeVersion),
+      id: requestIdSchema,
+      method: z.literal('api.read'),
+      payload: z.strictObject({ path: nativeBridgeReadPathSchema }),
+    }),
+  ]),
 ]);
 
 export const nativeBridgeErrorCodeSchema = z.enum([
@@ -67,7 +87,7 @@ export const nativeBridgeReplySchema = z.union([
     id: requestIdSchema,
     capabilities: nativeBridgeCapabilitiesSchema,
   }),
-  z.discriminatedUnion('method', [
+  z.union([
     z.strictObject({
       kind: z.literal('command.result'),
       version: z.literal(nativeBridgeVersion),
@@ -89,6 +109,35 @@ export const nativeBridgeReplySchema = z.union([
       method: z.literal('auth.signOut'),
       status: z.literal('signed_out'),
     }),
+    z.union([
+      z.strictObject({
+        kind: z.literal('command.result'),
+        version: z.literal(nativeBridgeVersion),
+        id: requestIdSchema,
+        method: z.literal('api.read'),
+        path: z.literal('/bff/v1/session'),
+        status: z.literal(200),
+        body: nativeBridgeApiSessionSchema,
+      }),
+      z.strictObject({
+        kind: z.literal('command.result'),
+        version: z.literal(nativeBridgeVersion),
+        id: requestIdSchema,
+        method: z.literal('api.read'),
+        path: z.literal('/bff/v1/consents/ai'),
+        status: z.literal(200),
+        body: nativeBridgeAiConsentSchema,
+      }),
+      z.strictObject({
+        kind: z.literal('command.result'),
+        version: z.literal(nativeBridgeVersion),
+        id: requestIdSchema,
+        method: z.literal('api.read'),
+        path: nativeBridgeReadPathSchema,
+        status: z.literal(401),
+        body: z.null(),
+      }),
+    ]),
   ]),
   z.strictObject({
     kind: z.literal('error'),
@@ -103,6 +152,7 @@ export type NativeBridgeReply = z.infer<typeof nativeBridgeReplySchema>;
 export type NativeBridgeCapabilities = z.infer<typeof nativeBridgeCapabilitiesSchema>;
 export type NativeBridgeErrorCode = z.infer<typeof nativeBridgeErrorCodeSchema>;
 export type NativeBridgeSession = z.infer<typeof nativeBridgeSessionSchema>;
+export type NativeBridgeReadPath = z.infer<typeof nativeBridgeReadPathSchema>;
 
 export type NativeBridgeRequestValidation =
   | { ok: true; request: NativeBridgeRequest }

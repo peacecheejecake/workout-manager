@@ -17,6 +17,7 @@
   "exports": {
     "./capacitor-bridge-port": "./src/capacitor-bridge-port.ts",
     "./native-bridge-client": "./src/native-bridge-client.ts",
+    "./native-authenticated-transport": "./src/native-authenticated-transport.ts",
     "./provider": "./src/provider.tsx",
     "./workspace-store": "./src/workspace-store.ts",
     "./fixture-host": "./src/fixture-host.ts",

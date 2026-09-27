@@ -166,4 +166,81 @@ describe('native bridge v2 boundary', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('permits only two fixed read paths and canonical nonsecret responses', () => {
+    for (const path of ['/bff/v1/session', '/bff/v1/consents/ai']) {
+      expect(
+        nativeBridgeRequestSchema.safeParse({
+          kind: 'command',
+          version: 2,
+          id: 'read_1',
+          method: 'api.read',
+          payload: { path },
+        }).success,
+      ).toBe(true);
+      expect(
+        nativeBridgeReplySchema.safeParse({
+          kind: 'command.result',
+          version: 2,
+          id: 'read_1',
+          method: 'api.read',
+          path,
+          status: 401,
+          body: null,
+        }).success,
+      ).toBe(true);
+    }
+    for (const payload of [
+      { path: '/bff/v1/auth/logout' },
+      { path: '/bff/v1/session?athleteId=other' },
+      { path: '/bff/v1/session', method: 'POST' },
+      { path: '/bff/v1/session', body: {} },
+      { path: '/bff/v1/session', token: 'secret' },
+    ]) {
+      expect(
+        nativeBridgeRequestSchema.safeParse({
+          kind: 'command',
+          version: 2,
+          id: 'read_1',
+          method: 'api.read',
+          payload,
+        }).success,
+      ).toBe(false);
+    }
+    for (const [path, body] of [
+      ['/bff/v1/session', { athleteId: 'athlete-a' }],
+      ['/bff/v1/consents/ai', { kind: 'ai', granted: false, revision: 0 }],
+    ] as const) {
+      expect(
+        nativeBridgeReplySchema.safeParse({
+          kind: 'command.result',
+          version: 2,
+          id: 'read_1',
+          method: 'api.read',
+          path,
+          status: 200,
+          body,
+        }).success,
+      ).toBe(true);
+    }
+    for (const [path, status, body] of [
+      ['/bff/v1/session', 200, { athleteId: 'athlete-a', accessToken: 'secret' }],
+      ['/bff/v1/consents/ai', 200, { kind: 'ai', granted: true, revision: -1 }],
+      ['/bff/v1/consents/ai', 200, { athleteId: 'athlete-a' }],
+      ['/bff/v1/session', 401, { athleteId: 'athlete-a' }],
+      ['/bff/v1/session', 500, null],
+    ] as const) {
+      expect(
+        nativeBridgeReplySchema.safeParse({
+          kind: 'command.result',
+          version: 2,
+          id: 'read_1',
+          method: 'api.read',
+          path,
+          status,
+          body,
+        }).success,
+      ).toBe(false);
+    }
+  });
 });

@@ -5,10 +5,12 @@ import {
   type NativeBridgeCapabilities,
   type NativeBridgeErrorCode,
   type NativeBridgeRequest,
+  type NativeBridgeReadPath,
   type NativeBridgeSession,
 } from '@workout/contracts/native-bridge';
 
 const signInTimeoutMs = 10 * 60_000;
+const defaultNetworkTimeoutMs = 35_000;
 
 export interface NativeBridgePort {
   exchange(request: NativeBridgeRequest, signal: AbortSignal): Promise<unknown>;
@@ -21,15 +23,24 @@ export interface NativeBridgeClientOptions {
   port: NativeBridgePort | null;
   createId: () => string;
   timeoutMs?: number;
+  networkTimeoutMs?: number;
 }
 
 export function createNativeBridgeClient({
   port,
   createId,
   timeoutMs = 5000,
+  networkTimeoutMs = defaultNetworkTimeoutMs,
 }: NativeBridgeClientOptions) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
     throw new RangeError('Expected a timeout between 1 and 60000 ms');
+  }
+  if (
+    !Number.isSafeInteger(networkTimeoutMs) ||
+    networkTimeoutMs < 1 ||
+    networkTimeoutMs > 60_000
+  ) {
+    throw new RangeError('Expected a network timeout between 1 and 60000 ms');
   }
   let capabilities: NativeBridgeCapabilities | null = null;
   let connectionGeneration = 0;
@@ -138,7 +149,7 @@ export function createNativeBridgeClient({
     const result = await exchange(
       { kind: 'command', version: nativeBridgeVersion, id: createId(), method, payload: {} },
       signal,
-      method === 'auth.signIn' ? signInTimeoutMs : timeoutMs,
+      method === 'auth.signIn' ? signInTimeoutMs : networkTimeoutMs,
     );
     if (!result.ok) return result;
     const reply = nativeBridgeReplySchema.parse(result.value);
@@ -159,6 +170,7 @@ export function createNativeBridgeClient({
         payload: {},
       },
       signal,
+      networkTimeoutMs,
     );
     if (!result.ok) return result;
     const reply = nativeBridgeReplySchema.parse(result.value);
@@ -168,12 +180,37 @@ export function createNativeBridgeClient({
     return { ok: true, value: undefined };
   }
 
+  async function read(
+    path: NativeBridgeReadPath,
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<{ status: 200 | 401; body: unknown }>> {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'api.read',
+        payload: { path },
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== 'api.read' || reply.path !== path) {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: { status: reply.status, body: reply.body } };
+  }
+
   return {
     connect,
     openSettings,
     signIn: (signal?: AbortSignal) => authSessionCommand('auth.signIn', signal),
     session: (signal?: AbortSignal) => authSessionCommand('auth.session', signal),
     signOut,
+    read,
     getCapabilities: () => capabilities,
   };
 }

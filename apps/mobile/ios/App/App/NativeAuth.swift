@@ -267,15 +267,64 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         return credential.publicSession
     }
 
-    func currentSession() throws -> [String: String] {
-        guard Self.isConfigured else { throw NativeAuthFailure.unavailable }
+    func currentSession() async throws -> [String: String] {
+        guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
         guard !busy else { throw NativeAuthFailure.unavailable }
+        busy = true
+        defer { busy = false }
         guard let credential = try credentialStore.read() else { return ["state": "signed_out"] }
         if credential.expiresAt <= Date() {
             try credentialStore.delete()
             return ["state": "signed_out"]
         }
+        let (status, body) = try await get("/bff/v1/session", credential: credential,
+                                           at: configuration)
+        if status == 401 {
+            try credentialStore.delete()
+            return ["state": "signed_out"]
+        }
+        guard status == 200 else { throw NativeAuthFailure.unavailable }
+        try validateSession(body, credential: credential)
+        if credential.expiresAt <= Date() {
+            try credentialStore.delete()
+            return ["state": "signed_out"]
+        }
         return credential.publicSession
+    }
+
+    func readAPI(_ path: String) async throws -> [String: Any] {
+        guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
+        guard path == "/bff/v1/session" || path == "/bff/v1/consents/ai" else {
+            throw NativeAuthFailure.invalidReply
+        }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        busy = true
+        defer { busy = false }
+        guard let credential = try credentialStore.read() else {
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        if credential.expiresAt <= Date() {
+            try credentialStore.delete()
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        let (status, data) = try await get(path, credential: credential, at: configuration)
+        if status == 401 {
+            try credentialStore.delete()
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        guard status == 200 else { throw NativeAuthFailure.unavailable }
+        let body: [String: Any]
+        if path == "/bff/v1/session" {
+            let athleteId = try validateSession(data, credential: credential)
+            body = ["athleteId": athleteId]
+        } else {
+            body = try validateAIConsent(data)
+        }
+        if credential.expiresAt <= Date() {
+            try credentialStore.delete()
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        return ["path": path, "status": 200, "body": body]
     }
 
     func signOut() async throws {
@@ -304,6 +353,53 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         guard (status == 204 && body.isEmpty) || status == 401 else {
             throw NativeAuthFailure.unavailable
         }
+    }
+
+    private func get(_ path: String, credential: NativeCredential,
+                     at configuration: NativeAuthConfiguration) async throws -> (Int, Data) {
+        var request = URLRequest(url: configuration.apiURL(path))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        return try await BoundedNativeRequest().send(request)
+    }
+
+    private struct SessionReadReply: Decodable { let athleteId: String }
+    private struct AIConsentReadReply: Decodable {
+        let kind: String
+        let granted: Bool
+        let revision: Int
+    }
+
+    private func exactObject(_ data: Data, keys: Set<String>) throws {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == keys else { throw NativeAuthFailure.invalidReply }
+    }
+
+    @discardableResult
+    private func validateSession(_ data: Data, credential: NativeCredential) throws -> String {
+        try exactObject(data, keys: ["athleteId"])
+        guard let reply = try? JSONDecoder().decode(SessionReadReply.self, from: data),
+              reply.athleteId.range(of: "^[A-Za-z0-9_-]{1,200}$", options: .regularExpression) != nil else {
+            throw NativeAuthFailure.invalidReply
+        }
+        guard reply.athleteId == credential.athleteId else {
+            // Never expose a response for a different account under this local credential.
+            try credentialStore.delete()
+            throw NativeAuthFailure.invalidReply
+        }
+        return reply.athleteId
+    }
+
+    private func validateAIConsent(_ data: Data) throws -> [String: Any] {
+        try exactObject(data, keys: ["kind", "granted", "revision"])
+        guard let reply = try? JSONDecoder().decode(AIConsentReadReply.self, from: data),
+              reply.kind == "ai", reply.revision >= 0,
+              reply.revision <= 9_007_199_254_740_991 else {
+            throw NativeAuthFailure.invalidReply
+        }
+        return ["kind": "ai", "granted": reply.granted, "revision": reply.revision]
     }
 
     private struct StartReply: Decodable { let location: String }

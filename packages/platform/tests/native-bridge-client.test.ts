@@ -13,6 +13,7 @@ function clientWith(exchange: NativeBridgePort['exchange']) {
     port: { exchange },
     createId: () => `req_${++number}`,
     timeoutMs: 100,
+    networkTimeoutMs: 100,
   });
 }
 
@@ -155,6 +156,87 @@ describe('native bridge client', () => {
     expect(await cancelled).toEqual({ ok: false, code: 'CANCELLED' });
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(await signIn).toEqual({ ok: false, code: 'TIMEOUT' });
+  });
+
+  it('accepts only matching fixed read replies and keeps network calls alive beyond hello timeout', async () => {
+    vi.useFakeTimers();
+    let resolveRead: ((value: unknown) => void) | undefined;
+    const client = createNativeBridgeClient({
+      port: {
+        exchange(request) {
+          if (request.kind === 'hello')
+            return Promise.resolve({
+              kind: 'hello.result',
+              version: 2,
+              id: request.id,
+              capabilities: { ...capabilities, 'auth.transport': true },
+            });
+          return new Promise((resolve) => {
+            resolveRead = resolve;
+          });
+        },
+      },
+      createId: (() => {
+        let n = 0;
+        return () => `req_${++n}`;
+      })(),
+      timeoutMs: 100,
+      networkTimeoutMs: 35_000,
+    });
+    expect((await client.connect()).ok).toBe(true);
+    const read = client.read('/bff/v1/consents/ai');
+    await vi.advanceTimersByTimeAsync(101);
+    resolveRead?.({
+      kind: 'command.result',
+      version: 2,
+      id: 'req_2',
+      method: 'api.read',
+      path: '/bff/v1/consents/ai',
+      status: 200,
+      body: { kind: 'ai', granted: false, revision: 2 },
+    });
+    expect(await read).toEqual({
+      ok: true,
+      value: {
+        status: 200,
+        body: { kind: 'ai', granted: false, revision: 2 },
+      },
+    });
+  });
+
+  it('rejects mismatched paths and credential fields in read replies', async () => {
+    for (const replyFields of [
+      { path: '/bff/v1/session', status: 200, body: { athleteId: 'a' } },
+      {
+        path: '/bff/v1/consents/ai',
+        status: 200,
+        body: { kind: 'ai', granted: true, revision: 1 },
+        token: 'secret',
+      },
+      { path: '/bff/v1/consents/ai', status: 401, body: { error: 'UNAUTHENTICATED' } },
+    ]) {
+      const client = clientWith(async (request) =>
+        request.kind === 'hello'
+          ? {
+              kind: 'hello.result',
+              version: 2,
+              id: request.id,
+              capabilities: { ...capabilities, 'auth.transport': true },
+            }
+          : {
+              kind: 'command.result',
+              version: 2,
+              id: request.id,
+              method: 'api.read',
+              ...replyFields,
+            },
+      );
+      expect((await client.connect()).ok).toBe(true);
+      expect(await client.read('/bff/v1/consents/ai')).toEqual({
+        ok: false,
+        code: 'INVALID_REPLY',
+      });
+    }
   });
 
   it('does not let callers change the capability used for command admission', async () => {
