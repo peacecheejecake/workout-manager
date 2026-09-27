@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { Button } from '@workout/ui-foundation/button';
 import type { BatchSelectionStore, BatchTarget } from './batch-selection';
+import { sourceLabels } from './browser-records';
 import { runActivityBatchDelete, type BatchResult } from './batch-delete-command';
 import styles from './activity-batch-delete.module.css';
 
@@ -176,14 +177,13 @@ function Controller({ store, transport, scope, onDeleted }: ActivityBatchDeleteP
           </p>
           <p>
             이 앱에서 활동을 숨기고 같은 출처의 재수집을 막습니다. 제공자 원본은 삭제하지 않습니다.
-            원본과 변경 이력은 보관되며 전체 계정 데이터 삭제와 다릅니다.
+            전체 계정 데이터 삭제와는 별개입니다.
           </p>
           <ul className={styles.targets}>
             {frozen.map((target) => (
               <li key={target.id}>
-                {target.title} · 출처{' '}
-                {{ fit: 'FIT', fixture: '테스트 자료', manual: '수동 기록' }[target.sourceKind]} ·
-                확인한 수정 번호 {target.revision} · 활동 ID {target.id}
+                {target.title} · 출처 {sourceLabels[target.sourceKind]} · 확인한 수정 번호{' '}
+                {target.revision} · 활동 ID {target.id}
               </li>
             ))}
           </ul>

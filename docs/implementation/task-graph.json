@@ -1999,8 +1999,9 @@
       "title": "명시적 HealthKit 독립 Activity 생성·삭제 수명주기",
       "dependsOn": ["M3-02e"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "사용자가 독립 운동으로 선택한 active workout에만 HealthKit 대표 source와 canonical Activity를 원자적으로 만든다. 운동 유형·시간·단위는 검증된 원본만 쓰고 없는 값·제목·심박·경로를 만들지 않는다. 원본 삭제 또는 동의 철회 시 HealthKit 소유 canonical과 파생·인용·export 값을 같은 경계에서 제거하거나 억제하며 Garmin/수동 Activity는 보존한다. 멱등·동시 결정·계정 격리·합계 중복 없음은 실제 DB에서 검증한다."
+      "status": "completed",
+      "scope": "사용자가 독립 운동으로 선택한 active workout에만 HealthKit 대표 source와 canonical Activity를 원자적으로 만든다. 운동 유형·시간·단위는 검증된 원본만 쓰고 없는 값·제목·심박·경로를 만들지 않는다. 원본 삭제 또는 동의 철회 시 HealthKit 소유 canonical과 파생·인용·export 값을 같은 경계에서 제거하거나 억제하며 Garmin/수동 Activity는 보존한다. 멱등·동시 결정·계정 격리·합계 중복 없음은 실제 DB에서 검증한다.",
+      "evidence": "docs/implementation/progress/M3-02i.md"
     },
     {
       "id": "M3-02",

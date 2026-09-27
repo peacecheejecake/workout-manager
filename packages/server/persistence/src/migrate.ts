@@ -67,6 +67,7 @@ const migrationFiles = [
   '059_healthkit_ingestion.sql',
   '060_healthkit_review_lineage.sql',
   '061_healthkit_existing_binding.sql',
+  '062_healthkit_canonical_activity.sql',
 ] as const;
 
 /**
@@ -244,10 +245,15 @@ export async function grantHealthKitIngestion(
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_locked() TO "${runtimeRole}"`,
     );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.create_healthkit_canonical(uuid,text) TO "${runtimeRole}"`,
+    );
     await pool.query(`GRANT SELECT,INSERT,UPDATE ON healthkit_workout_sample TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_batch_receipt TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT ON healthkit_workout_lineage TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_existing_binding TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }

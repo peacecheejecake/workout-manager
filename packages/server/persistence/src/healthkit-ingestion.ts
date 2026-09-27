@@ -44,6 +44,10 @@ export function createHealthKitIngestionRepository(
       const batch = healthKitIngestionBatchSchema.parse(input);
       const requestDigest = digest(batch);
       return database.tenant(athleteId, async (tx) => {
+        // Canonical deletion and evidence cleanup take the tenant command lock.
+        // Keep that lock before consent so a HealthKit delete cannot invert the
+        // binding/create/withdrawal lock order.
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
         // The row lock serializes with consent withdrawal's UPDATE/DELETE trigger. A
         // committed ACK can never leave raw data behind after a committed withdrawal.
         const consent = await tx.query(

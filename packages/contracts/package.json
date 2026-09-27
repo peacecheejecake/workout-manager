@@ -9,6 +9,10 @@
       "types": "./src/healthkit-binding.ts",
       "default": "./dist/healthkit-binding.js"
     },
+    "./healthkit-activity": {
+      "types": "./src/healthkit-activity.ts",
+      "default": "./dist/healthkit-activity.js"
+    },
     "./healthkit-ingestion": {
       "types": "./src/healthkit-ingestion.ts",
       "default": "./dist/healthkit-ingestion.js"

@@ -53,6 +53,7 @@
     "./healthkit-ingestion": "./src/healthkit-ingestion.ts",
     "./healthkit-projection": "./src/healthkit-projection.ts",
     "./healthkit-binding": "./src/healthkit-binding.ts",
+    "./healthkit-activity": "./src/healthkit-activity.ts",
     "./check-ins": "./src/check-ins.ts",
     "./dashboard": "./src/dashboard.ts",
     "./activity-context": "./src/activity-context.ts",

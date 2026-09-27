@@ -209,7 +209,9 @@ export function ActualActivities({
                               ? '수동 기록'
                               : activity.source.kind === 'fit'
                                 ? 'FIT'
-                                : '테스트 자료'}{' '}
+                                : activity.source.kind === 'healthkit'
+                                  ? 'Apple 건강 운동'
+                                  : '테스트 자료'}{' '}
                           </p>
                           <p>
                             {link

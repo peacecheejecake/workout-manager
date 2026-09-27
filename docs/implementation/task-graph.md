@@ -742,7 +742,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02f HealthKit 재설치·anchor 재조정과 권한 미확인 상태 | M3-02b, M3-02d | 로컬 수용 완료; 미전송 배치 ACK 뒤 명시적 재확인에서 nil-anchor 재조회·기존 UUID 대조. 빈 조회로 삭제나 권한 허용을 추정하지 않음. 실기기 재설치·wake는 후속 |
 | M3-02g 제품 HealthKit 동의·동기화 UI와 공통 Activity 화면 | M3-02c, M3-02e, M3-02i | 대기; 명시적 요청·검토 대기·오류와 Web/mobile 공통 ActivityDetail |
 | M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i | 대기; 표식 있는 합성 표본의 수집·삭제·wake·재설치·계정 전환·공통 화면을 제품 기기에서 실행 |
-| M3-02i 명시적 HealthKit 독립 Activity 생성·삭제 수명주기 | M3-02e | 대기; 새 canonical 생성과 원본 삭제·동의 철회 때 파생 데이터까지 원자적 제거·억제 |
+| M3-02i 명시적 HealthKit 독립 Activity 생성·삭제 수명주기 | M3-02e | 로컬 수용 완료; 검토된 원본만 새 canonical로 만들고 삭제·철회·복원 재생에서 억제. 서명된 실기기는 M3-02h |
 | M3-02 HealthKit collector | M3-01, M3-02a–M3-02i | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |

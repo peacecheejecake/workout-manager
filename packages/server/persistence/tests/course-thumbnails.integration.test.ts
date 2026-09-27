@@ -1491,8 +1491,8 @@ describe('M2-01l stored course thumbnails', () => {
     const { athlete, course } = await athleteWithCourse('Exported course');
     const rendered = await renderedFor(course.course.courseId);
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(27);
-    if (artifact.schemaVersion !== 27) throw new Error('expected the current export version');
+    expect(artifact.schemaVersion).toBe(28);
+    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
     const exported = artifact.data.courseThumbnails;
     expect(exported).toHaveLength(1);
     const row = exported[0] as Record<string, unknown>;
@@ -1513,12 +1513,12 @@ describe('M2-01l stored course thumbnails', () => {
     await renderedFor(owner.course.course.courseId);
     const stranger = randomUUID();
     const artifact = await operations.exportAccount(stranger);
-    if (artifact.schemaVersion !== 27) throw new Error('expected the current export version');
+    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
     // The property comes from row level security plus the projection's own
     // `WHERE athlete_id=$1`; nothing but this pins it.
     expect(artifact.data.courseThumbnails).toEqual([]);
     const owned = await operations.exportAccount(owner.athlete);
-    if (owned.schemaVersion !== 27) throw new Error('expected the current export version');
+    if (owned.schemaVersion !== 28) throw new Error('expected the current export version');
     expect(owned.data.courseThumbnails).toHaveLength(1);
   });
 
@@ -1538,7 +1538,7 @@ describe('M2-01l stored course thumbnails', () => {
       `edit-${randomUUID()}`,
     );
     const artifact = await operations.exportAccount(athlete);
-    if (artifact.schemaVersion !== 27) throw new Error('expected the current export version');
+    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
     expect(artifact.data.courseThumbnails).toEqual([]);
   });
 });
@@ -1986,7 +1986,7 @@ describe('M2-01m thumbnail object reconciliation', () => {
     const rendered = await renderedFor(course.course.courseId);
     expect(await watchedRef(rendered.storageRef)).toMatchObject({ athlete_id: athlete });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(27);
+    expect(artifact.schemaVersion).toBe(28);
     expect(JSON.stringify(artifact)).not.toContain(rendered.storageRef);
     expect(JSON.stringify(artifact)).not.toContain('settled_at');
   });

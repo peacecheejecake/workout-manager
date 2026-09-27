@@ -24,6 +24,21 @@ describe('M1-03 source and activity wire contracts', () => {
   it('preserves unknown, zero and source measurement definitions', () => {
     expect(importActivitySchema.parse(input).activity).toEqual(input.activity);
   });
+  it('reads HealthKit-owned activities without accepting forged HealthKit imports', () => {
+    const source = { ...input.source, kind: 'healthkit' };
+    expect(
+      activitySchema.parse({
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        revision: 1,
+        source,
+        original: input.activity,
+        effective: input.activity,
+        overlay: {},
+      }).source.kind,
+    ).toBe('healthkit');
+    expect(importActivitySchema.safeParse({ ...input, source }).success).toBe(false);
+    expect(activityListQuerySchema.parse({ source: 'healthkit' }).source).toBe('healthkit');
+  });
   it.each([-1, Infinity, NaN])('rejects invalid metrics %s', (distanceMeters) => {
     expect(
       importActivitySchema.safeParse({ ...input, activity: { ...input.activity, distanceMeters } })

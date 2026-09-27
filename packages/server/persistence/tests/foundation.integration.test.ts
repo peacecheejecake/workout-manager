@@ -108,6 +108,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 60, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-02e: explicit supplementary binding to an existing Activity.
       { version: 61, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-02i: explicit HealthKit-owned canonical Activity lifecycle.
+      { version: 62, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

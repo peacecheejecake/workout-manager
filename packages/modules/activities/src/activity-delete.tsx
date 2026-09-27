@@ -4,6 +4,7 @@ import type { Activity } from '@workout/contracts/activity';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import { activityDeletionImpactSchema } from '@workout/contracts/courses';
 import { Button } from '@workout/ui-foundation/button';
+import { sourceLabels } from './browser-records';
 import styles from './activity-browser.module.css';
 interface Command {
   id: string;
@@ -177,12 +178,7 @@ export function ActivityDelete({
               id: current.id,
               revision: current.revision,
               title: current.effective.title ?? '제목 미확인',
-              source:
-                current.source.kind === 'manual'
-                  ? '수동 기록'
-                  : current.source.kind === 'fit'
-                    ? 'FIT'
-                    : '테스트 자료',
+              source: sourceLabels[current.source.kind],
             });
           }}
         >
@@ -196,7 +192,7 @@ export function ActivityDelete({
           </p>
           <p>
             이 앱에서 활동을 숨기고 같은 출처의 재수집을 막습니다. 제공자 원본은 삭제하지 않습니다.
-            원본과 변경 이력은 보관되며 전체 계정 데이터 삭제와 다릅니다.
+            전체 계정 데이터 삭제와는 별개입니다.
           </p>
           <DeletionImpact
             outcome={confirmedImpact}

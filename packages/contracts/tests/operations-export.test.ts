@@ -1166,3 +1166,34 @@ it('preserves explicit HealthKit links in v27 without changing historical v26', 
     }).success,
   ).toBe(false);
 });
+
+it('exports a created HealthKit activity in v28 while retaining v27 compatibility', () => {
+  const v27 = {
+    schemaVersion: 27,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {} as Record<string, unknown>,
+  };
+  const keys = accountExportSchema.options
+    .find((option) => option.shape.schemaVersion.value === 27)
+    ?.shape.data.keyof().options;
+  if (!keys) throw new Error('Expected a v27 schema');
+  for (const key of keys) v27.data[key] = [];
+  const previous = accountExportSchema.parse(v27);
+  const lineage = [
+    { sample_id: '11111111-1111-4111-8111-111111111111', state: 'created_activity' },
+  ];
+  const current = accountExportSchema.parse({
+    ...previous,
+    schemaVersion: 28,
+    data: { ...previous.data, healthKitWorkoutLineage: lineage },
+  });
+  if (current.schemaVersion !== 28) throw new Error('Expected v28');
+  expect(current.data.healthKitWorkoutLineage).toEqual(lineage);
+  expect(
+    accountExportSchema.safeParse({
+      ...previous,
+      data: { ...previous.data, healthKitWorkoutLineage: lineage },
+    }).success,
+  ).toBe(false);
+});

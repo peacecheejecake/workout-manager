@@ -12,7 +12,12 @@ export const kindLabels = {
   other: '기타',
   unknown: '종목 미확인',
 };
-export const sourceLabels = { fit: 'FIT', fixture: '테스트 자료', manual: '수동 기록' };
+export const sourceLabels = {
+  fit: 'FIT',
+  fixture: '테스트 자료',
+  manual: '수동 기록',
+  healthkit: 'Apple 건강 운동',
+};
 const durationLabels = {
   timer: '타이머 시간',
   elapsed: '경과 시간',

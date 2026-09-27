@@ -39,7 +39,13 @@ const sampleSchema = z.object({
     .string()
     .regex(/^[a-f0-9]{64}$/)
     .nullable(),
-  lineage_state: z.enum(['pending_review', 'linked_existing', 'suppressed', 'deleted']),
+  lineage_state: z.enum([
+    'pending_review',
+    'linked_existing',
+    'created_activity',
+    'suppressed',
+    'deleted',
+  ]),
 });
 const targetSchema = z.object({
   revision: z.number().int().positive(),
@@ -94,7 +100,10 @@ export function createHealthKitBindingRepository(database: Database): HealthKitB
           throw new HealthKitBindingError('SAMPLE_UNAVAILABLE');
         if (sample.payload_digest !== command.expectedSampleDigest)
           throw new HealthKitBindingError('DIGEST_CONFLICT');
-        if (sample.lineage_state === 'linked_existing')
+        if (
+          sample.lineage_state === 'linked_existing' ||
+          sample.lineage_state === 'created_activity'
+        )
           throw new HealthKitBindingError('ALREADY_LINKED');
         if (sample.lineage_state !== 'pending_review')
           throw new HealthKitBindingError('SAMPLE_UNAVAILABLE');

@@ -33,7 +33,7 @@ export const activityValuesSchema = z.strictObject({
   distanceMeters: boundedMetric,
 });
 export const activitySourceSchema = z.strictObject({
-  kind: z.enum(['fit', 'fixture', 'manual']),
+  kind: z.enum(['fit', 'fixture', 'manual', 'healthkit']),
   sourceId: z
     .string()
     .min(1)

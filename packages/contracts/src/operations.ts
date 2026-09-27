@@ -329,6 +329,26 @@ const accountExportV27Schema = accountExportV26Schema.extend({
       .max(1000),
   }),
 });
+/** v28 distinguishes an explicitly created HealthKit-primary Activity from a supplement. */
+const accountExportV28Schema = accountExportV27Schema.extend({
+  schemaVersion: z.literal(28),
+  data: accountExportV27Schema.shape.data.extend({
+    healthKitWorkoutLineage: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          state: z.enum([
+            'pending_review',
+            'linked_existing',
+            'created_activity',
+            'suppressed',
+            'deleted',
+          ]),
+        }),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -357,6 +377,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV25Schema,
   accountExportV26Schema,
   accountExportV27Schema,
+  accountExportV28Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

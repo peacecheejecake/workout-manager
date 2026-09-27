@@ -178,8 +178,8 @@ describe('M3-02e explicit existing Activity binding', () => {
     });
     expect((await createActivityRepository(database).summary(fixture.athleteId)).count).toBe(1);
     const exported = await createOperationsRepository(database).exportAccount(fixture.athleteId);
-    expect(exported.schemaVersion).toBe(27);
-    if (exported.schemaVersion !== 27) throw new Error('Expected current account export');
+    expect(exported.schemaVersion).toBe(28);
+    if (exported.schemaVersion !== 28) throw new Error('Expected current account export');
     expect(exported.data.healthKitExistingBindings).toHaveLength(2);
   });
 
