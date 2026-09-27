@@ -17,7 +17,9 @@ function clientWith(exchange: NativeBridgePort['exchange']) {
   });
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('native bridge client', () => {
   it('handshakes and sends the sole allowed command with a distinct ID', async () => {
@@ -156,6 +158,55 @@ describe('native bridge client', () => {
     expect(await cancelled).toEqual({ ok: false, code: 'CANCELLED' });
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(await signIn).toEqual({ ok: false, code: 'TIMEOUT' });
+    vi.useRealTimers();
+  });
+
+  it('does not accept late sign-in or sign-out replies after cancellation or timeout', async () => {
+    vi.useFakeTimers();
+    const late = new Map<string, (value: unknown) => void>();
+    const client = clientWith((request) => {
+      if (request.kind === 'hello') {
+        return Promise.resolve({
+          kind: 'hello.result',
+          version: 2,
+          id: request.id,
+          capabilities: { ...capabilities, 'auth.transport': true },
+        });
+      }
+      return new Promise((resolve) => {
+        late.set(request.method, resolve);
+      });
+    });
+    expect((await client.connect()).ok).toBe(true);
+
+    const controller = new AbortController();
+    const signIn = client.signIn(controller.signal);
+    await Promise.resolve();
+    controller.abort();
+    expect(await signIn).toEqual({ ok: false, code: 'CANCELLED' });
+    late.get('auth.signIn')?.({
+      kind: 'command.result',
+      version: 2,
+      id: 'req_2',
+      method: 'auth.signIn',
+      session: { state: 'signed_in', athleteId: 'athlete-a', expiresAt: '2026-09-27T12:00:00Z' },
+    });
+    await Promise.resolve();
+
+    const signOut = client.signOut();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await signOut).toEqual({ ok: false, code: 'TIMEOUT' });
+    late.get('auth.signOut')?.({
+      kind: 'command.result',
+      version: 2,
+      id: 'req_3',
+      method: 'auth.signOut',
+      status: 'signed_out',
+    });
+    await Promise.resolve();
+    expect(client.getCapabilities()).toEqual({ ...capabilities, 'auth.transport': true });
+    vi.useRealTimers();
   });
 
   it('accepts only matching fixed read replies and keeps network calls alive beyond hello timeout', async () => {
@@ -202,6 +253,7 @@ describe('native bridge client', () => {
         body: { kind: 'ai', granted: false, revision: 2 },
       },
     });
+    vi.useRealTimers();
   });
 
   it('rejects mismatched paths and credential fields in read replies', async () => {
@@ -322,6 +374,7 @@ describe('native bridge client', () => {
     const cancelled = client.connect(controller.signal);
     controller.abort();
     expect(await cancelled).toEqual({ ok: false, code: 'CANCELLED' });
+    vi.useRealTimers();
   });
 
   it('maps thrown port failures to unavailable', async () => {

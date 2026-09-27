@@ -169,6 +169,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
         if (controller.signal.aborted || generation !== sessionGeneration.current) return;
         if (result.ok) {
           acceptSession(result.value);
+          setAuthError(null);
           setSessionCheck('idle');
         } else {
           // An uncertain network result does not revoke a known session or discard an unsaved draft.
@@ -346,7 +347,12 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
       if (generation !== sessionGeneration.current) return;
       if (result.ok) {
         acceptSession(result.value);
-      } else setAuthError(result.code);
+      } else {
+        setAuthError(result.code);
+        if (result.code === 'TIMEOUT' || result.code === 'CANCELLED') {
+          await refreshSession({ foreground: true });
+        }
+      }
     } finally {
       setAuthPending(null);
     }
@@ -367,6 +373,9 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
       } else {
         setAuthError(result.code);
         setConsentRefresh((value) => value + 1);
+        if (result.code === 'TIMEOUT' || result.code === 'CANCELLED') {
+          await refreshSession({ foreground: true });
+        }
       }
     } finally {
       setAuthPending(null);

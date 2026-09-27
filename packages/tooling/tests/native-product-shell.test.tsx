@@ -138,6 +138,35 @@ describe('iOS native product shell draft and lifecycle', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('임시 메모는 유지됩니다');
   });
 
+  it('reconciles a timed-out sign-in with the native session before showing account state', async () => {
+    mocks.session.mockResolvedValueOnce({ ok: true, value: { state: 'signed_out' } });
+    render(<NativeLanding client={client} />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: '시스템 로그인' });
+    mocks.signIn.mockResolvedValueOnce({ ok: false, code: 'TIMEOUT' });
+    mocks.session.mockResolvedValueOnce(signedIn());
+
+    await user.click(screen.getByRole('button', { name: '시스템 로그인' }));
+
+    await screen.findByRole('button', { name: '작업 메모 (임시) 열기' });
+    expect(mocks.session).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/TIMEOUT/)).toBeNull();
+  });
+
+  it('reconciles a timed-out sign-out before retaining a signed-in account', async () => {
+    render(<NativeLanding client={client} />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: '작업 메모 (임시) 열기' });
+    mocks.signOut.mockResolvedValueOnce({ ok: false, code: 'TIMEOUT' });
+    mocks.session.mockResolvedValueOnce({ ok: true, value: { state: 'signed_out' } });
+
+    await user.click(screen.getByRole('button', { name: '로그아웃' }));
+
+    await screen.findByRole('button', { name: '시스템 로그인' });
+    expect(mocks.session).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/TIMEOUT/)).toBeNull();
+  });
+
   it('clears the old account draft when foreground session belongs to a new account', async () => {
     await openNote();
     mocks.session.mockResolvedValueOnce(signedIn('bob'));

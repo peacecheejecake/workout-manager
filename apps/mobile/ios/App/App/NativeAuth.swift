@@ -136,21 +136,43 @@ private final class BoundedNativeRequest: NSObject, URLSessionDataDelegate {
     private var response: HTTPURLResponse?
     private var completion: ((Result<(Int, Data), Error>) -> Void)?
     private var session: URLSession?
+    private let cancellationLock = NSLock()
+    private var requestTask: URLSessionDataTask?
+    private var cancellationRequested = false
 
     func send(_ request: URLRequest) async throws -> (Int, Data) {
-        try await withCheckedThrowingContinuation { continuation in
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.httpShouldSetCookies = false
-            configuration.httpCookieAcceptPolicy = .never
-            configuration.httpCookieStorage = nil
-            configuration.urlCache = nil
-            configuration.timeoutIntervalForRequest = 15
-            configuration.timeoutIntervalForResource = 30
-            completion = { result in continuation.resume(with: result) }
-            let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-            self.session = session
-            session.dataTask(with: request).resume()
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.httpShouldSetCookies = false
+                configuration.httpCookieAcceptPolicy = .never
+                configuration.httpCookieStorage = nil
+                configuration.urlCache = nil
+                configuration.timeoutIntervalForRequest = 15
+                configuration.timeoutIntervalForResource = 30
+                completion = { result in continuation.resume(with: result) }
+                let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+                self.session = session
+                let task = session.dataTask(with: request)
+                cancellationLock.lock()
+                requestTask = task
+                let cancelled = cancellationRequested
+                cancellationLock.unlock()
+                task.resume()
+                if cancelled { task.cancel() }
+            }
+        } onCancel: {
+            self.cancel()
         }
+    }
+
+    private func cancel() {
+        cancellationLock.lock()
+        cancellationRequested = true
+        let task = requestTask
+        cancellationLock.unlock()
+        task?.cancel()
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
@@ -181,11 +203,23 @@ private final class BoundedNativeRequest: NSObject, URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        cancellationLock.lock()
+        let cancelled = cancellationRequested
+        requestTask = nil
+        cancellationLock.unlock()
         let result: Result<(Int, Data), Error>
-        if error != nil || response == nil {
-            result = .failure(NativeAuthFailure.unavailable)
+        if error == nil, let response {
+            // Keep a completed response available to the caller even if cancellation
+            // arrived between receiving the response and this callback.
+            result = .success((response.statusCode, body))
+        } else if cancelled, let response {
+            // A complete JSON response can still be decoded by the caller and
+            // an observed logout status can clear local credentials.
+            result = .success((response.statusCode, body))
+        } else if cancelled {
+            result = .failure(NativeAuthFailure.cancelled)
         } else {
-            result = .success((response?.statusCode ?? 0, body))
+            result = .failure(NativeAuthFailure.unavailable)
         }
         completion?(result)
         completion = nil
@@ -196,6 +230,10 @@ private final class BoundedNativeRequest: NSObject, URLSessionDataDelegate {
 
 @MainActor
 final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProviding {
+    struct SignInOutcome {
+        let session: [String: String]
+        let sessionID: String
+    }
     static let shared = NativeAuth()
     nonisolated static var isConfigured: Bool {
         guard NativeAuthConfiguration() != nil else { return false }
@@ -214,7 +252,8 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
     }
 
-    func signIn() async throws -> [String: String] {
+    func signIn() async throws -> SignInOutcome {
+        try Task.checkCancellation()
         guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
         guard !busy else { throw NativeAuthFailure.unavailable }
         busy = true
@@ -236,20 +275,26 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         let start: StartReply = try await post(
             configuration.apiURL("/bff/v1/auth/native/start"),
             body: ["codeChallenge": challenge])
+        try Task.checkCancellation()
         guard let location = URL(string: start.location), configuration.acceptsIdP(location) else {
             throw NativeAuthFailure.invalidReply
         }
         let callback = try await authorize(location)
+        try Task.checkCancellation()
         let code = try Self.callbackCode(callback)
         let exchanged: ExchangeReply = try await post(
             configuration.apiURL("/bff/v1/auth/native/exchange"),
             body: ["code": code, "codeVerifier": verifier])
-        guard exchanged.tokenType == "Bearer",
-              exchanged.accessToken.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil,
+        let validBearer = exchanged.accessToken.range(
+            of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil
+        guard exchanged.tokenType == "Bearer", validBearer,
               exchanged.athleteId.range(of: "^[A-Za-z0-9_-]{1,200}$", options: .regularExpression) != nil,
               !exchanged.sessionId.isEmpty,
               let expiry = Self.parseExpiry(exchanged.expiresAt),
               expiry > Date(), expiry <= Date().addingTimeInterval(28_800) else {
+            if validBearer {
+                await revokeAfterCancellation(exchanged.accessToken, at: configuration)
+            }
             throw NativeAuthFailure.invalidReply
         }
         let credential = NativeCredential(accessToken: exchanged.accessToken,
@@ -258,13 +303,41 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
                                           expiresAt: expiry,
                                           apiOrigin: configuration.apiOrigin.absoluteString)
         do {
+            try Task.checkCancellation()
+        } catch {
+            await revokeAfterCancellation(exchanged.accessToken, at: configuration)
+            throw NativeAuthFailure.cancelled
+        }
+        do {
             try credentialStore.save(credential)
         } catch {
             // A successful exchange must not strand an active bearer when persistence fails.
-            try? await revoke(exchanged.accessToken, at: configuration)
+            await revokeAfterCancellation(exchanged.accessToken, at: configuration)
             throw NativeAuthFailure.unavailable
         }
-        return credential.publicSession
+        do {
+            try Task.checkCancellation()
+        } catch {
+            try? credentialStore.delete()
+            await revokeAfterCancellation(exchanged.accessToken, at: configuration)
+            throw NativeAuthFailure.cancelled
+        }
+        return SignInOutcome(session: credential.publicSession, sessionID: credential.sessionId)
+    }
+
+    func cancelCompletedSignIn(sessionID: String) async {
+        guard let configuration,
+              let credential = try? credentialStore.read(),
+              credential.sessionId == sessionID else { return }
+        try? credentialStore.delete()
+        await revokeAfterCancellation(credential.accessToken, at: configuration)
+    }
+
+    private func revokeAfterCancellation(_ bearer: String,
+                                         at configuration: NativeAuthConfiguration) async {
+        // This cleanup must outlive cancellation of the bridge request.
+        let cleanup = Task { @MainActor in try? await self.revoke(bearer, at: configuration) }
+        await cleanup.value
     }
 
     func currentSession() async throws -> [String: String] {
@@ -328,6 +401,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
     }
 
     func signOut() async throws {
+        try Task.checkCancellation()
         guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
         guard !busy else { throw NativeAuthFailure.unavailable }
         busy = true
@@ -338,7 +412,9 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
             return
         }
         try await revoke(credential.accessToken, at: configuration)
+        // A completed server revoke wins over a concurrent client timeout.
         try credentialStore.delete()
+        try Task.checkCancellation()
     }
 
     private func revoke(_ bearer: String, at configuration: NativeAuthConfiguration) async throws {
@@ -427,25 +503,33 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
     }
 
     private func authorize(_ location: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            authenticationContinuation = continuation
-            let session = ASWebAuthenticationSession(url: location,
-                                                     callbackURLScheme: "org.workoutmanager.app") { callback, error in
-                Task { @MainActor in
-                    if let callback {
-                        self.completeAuthorization(.success(callback))
-                    } else if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
-                        self.completeAuthorization(.failure(NativeAuthFailure.cancelled))
-                    } else {
-                        self.completeAuthorization(.failure(NativeAuthFailure.unavailable))
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                authenticationContinuation = continuation
+                let session = ASWebAuthenticationSession(url: location,
+                                                         callbackURLScheme: "org.workoutmanager.app") { callback, error in
+                    Task { @MainActor in
+                        if let callback {
+                            self.completeAuthorization(.success(callback))
+                        } else if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+                            self.completeAuthorization(.failure(NativeAuthFailure.cancelled))
+                        } else {
+                            self.completeAuthorization(.failure(NativeAuthFailure.unavailable))
+                        }
                     }
                 }
+                session.presentationContextProvider = self
+                session.prefersEphemeralWebBrowserSession = true
+                authenticationSession = session
+                if !session.start() {
+                    completeAuthorization(.failure(NativeAuthFailure.unavailable))
+                }
             }
-            session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = true
-            authenticationSession = session
-            if !session.start() {
-                completeAuthorization(.failure(NativeAuthFailure.unavailable))
+        } onCancel: {
+            Task { @MainActor in
+                self.authenticationSession?.cancel()
+                self.completeAuthorization(.failure(NativeAuthFailure.cancelled))
             }
         }
     }
@@ -488,6 +572,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
 
 extension NativeAuth {
     static func bridgeCode(for error: Error) -> String {
-        (error as? NativeAuthFailure)?.bridgeCode ?? "UNAVAILABLE"
+        if error is CancellationError { return "CANCELLED" }
+        return (error as? NativeAuthFailure)?.bridgeCode ?? "UNAVAILABLE"
     }
 }

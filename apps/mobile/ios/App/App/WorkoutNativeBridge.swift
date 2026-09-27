@@ -7,16 +7,44 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
     let identifier = "WorkoutNativeBridge"
     let jsName = "WorkoutNativeBridge"
     let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "exchange", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "exchange", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise)
     ]
 
     private let protocolVersion = 2
+    @MainActor private var activeTasks: [String: Task<Void, Never>] = [:]
+    @MainActor private var pendingCancels = Set<String>()
+
+    @objc func cancel(_ call: CAPPluginCall) {
+        guard Set(call.options.keys) == Set(["id"]),
+              let id = call.getString("id"), Self.validID(id) else {
+            call.reject("Invalid bridge request", "INVALID_REQUEST")
+            return
+        }
+        Task { @MainActor in
+            if let task = self.activeTasks[id] {
+                task.cancel()
+                await task.value
+            } else {
+                // The sideband call can reach the main actor before exchange registers.
+                // Keep only a bounded number of short-lived request IDs.
+                if self.pendingCancels.count >= 256 { self.pendingCancels.removeFirst() }
+                self.pendingCancels.insert(id)
+            }
+            call.resolve(["status": "cancelled"])
+        }
+    }
+
+    private static func validID(_ id: String) -> Bool {
+        id.utf16.count <= 128 &&
+            id.range(of: "^[A-Za-z0-9_-]{1,128}$", options: .regularExpression) != nil
+    }
+
     @objc func exchange(_ call: CAPPluginCall) {
         guard Set(call.options.keys) == Set(["request"]),
               let request = call.getObject("request"),
               let id = request["id"] as? String,
-              id.utf16.count <= 128,
-              id.range(of: "^[A-Za-z0-9_-]{1,128}$", options: .regularExpression) != nil else {
+              Self.validID(id) else {
             call.reject("Invalid bridge request", "INVALID_REQUEST")
             return
         }
@@ -67,14 +95,25 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                 return
             }
             if method != "app.openSettings" {
-                DispatchQueue.main.async {
-                    Task { @MainActor in
+                Task { @MainActor in
+                    if self.pendingCancels.remove(id) != nil {
+                        self.resolveError(call, id: id, code: "CANCELLED")
+                        return
+                    }
+                    guard self.activeTasks[id] == nil else {
+                        self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                        return
+                    }
+                    let task = Task { @MainActor in
+                        defer { self.activeTasks.removeValue(forKey: id) }
                         do {
                             let reply: [String: Any]
+                            var completedSignInSessionID: String?
                             switch method {
                             case "auth.signIn":
-                                let session = try await NativeAuth.shared.signIn()
-                                reply = ["session": session]
+                                let result = try await NativeAuth.shared.signIn()
+                                completedSignInSessionID = result.sessionID
+                                reply = ["session": result.session]
                             case "auth.session":
                                 reply = ["session": try await NativeAuth.shared.currentSession()]
                             case "auth.signOut":
@@ -90,6 +129,14 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                                 self.resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                                 return
                             }
+                            do {
+                                try Task.checkCancellation()
+                            } catch {
+                                if let completedSignInSessionID {
+                                    await NativeAuth.shared.cancelCompletedSignIn(sessionID: completedSignInSessionID)
+                                }
+                                throw error
+                            }
                             call.resolve(["reply": [
                                 "kind": "command.result",
                                 "version": self.protocolVersion,
@@ -100,6 +147,7 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                             self.resolveError(call, id: id, code: NativeAuth.bridgeCode(for: error))
                         }
                     }
+                    self.activeTasks[id] = task
                 }
                 return
             }

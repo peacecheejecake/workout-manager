@@ -11,9 +11,12 @@ import {
 
 const signInTimeoutMs = 10 * 60_000;
 const defaultNetworkTimeoutMs = 35_000;
+const cancellationSettleTimeoutMs = 1200;
 
 export interface NativeBridgePort {
   exchange(request: NativeBridgeRequest, signal: AbortSignal): Promise<unknown>;
+  /** Exchange settles after native cancellation acknowledgement when the signal aborts. */
+  cancellationSettlesExchangeOnAbort?: true;
 }
 
 export type NativeBridgeClientResult<T> =
@@ -59,12 +62,15 @@ export function createNativeBridgeClient({
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort: (() => void) | undefined;
+    let stopCode: 'TIMEOUT' | 'CANCELLED' | undefined;
     const stopped = new Promise<NativeBridgeClientResult<unknown>>((resolve) => {
       timer = setTimeout(() => {
+        stopCode = 'TIMEOUT';
         controller.abort();
         resolve({ ok: false, code: 'TIMEOUT' });
       }, requestTimeoutMs);
       onAbort = () => {
+        stopCode = 'CANCELLED';
         controller.abort();
         resolve({ ok: false, code: 'CANCELLED' });
       };
@@ -72,18 +78,32 @@ export function createNativeBridgeClient({
     });
 
     try {
-      const reply = await Promise.race([
-        Promise.resolve()
-          .then(() => {
-            if (controller.signal.aborted) throw new Error('Request stopped before dispatch');
-            return port.exchange(request, controller.signal);
-          })
-          .then(
-            (value): NativeBridgeClientResult<unknown> => ({ ok: true, value }),
-            (): NativeBridgeClientResult<unknown> => ({ ok: false, code: 'UNAVAILABLE' }),
-          ),
-        stopped,
-      ]);
+      const portReply = Promise.resolve()
+        .then(() => {
+          if (controller.signal.aborted) throw new Error('Request stopped before dispatch');
+          return port.exchange(request, controller.signal);
+        })
+        .then(
+          (value): NativeBridgeClientResult<unknown> => ({ ok: true, value }),
+          (): NativeBridgeClientResult<unknown> => ({ ok: false, code: 'UNAVAILABLE' }),
+        );
+      const reply = await Promise.race([portReply, stopped]);
+      if (stopCode) {
+        if (port.cancellationSettlesExchangeOnAbort) {
+          let settleTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              portReply,
+              new Promise<void>((resolve) => {
+                settleTimer = setTimeout(resolve, cancellationSettleTimeoutMs);
+              }),
+            ]);
+          } finally {
+            if (settleTimer !== undefined) clearTimeout(settleTimer);
+          }
+        }
+        return { ok: false, code: stopCode };
+      }
       if (!reply.ok) return reply;
       if (
         typeof reply.value === 'object' &&
