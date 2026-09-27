@@ -1681,6 +1681,15 @@
       "evidence": "docs/implementation/progress/M2-01ax.md"
     },
     {
+      "id": "M2-01k-p",
+      "title": "지도 제스처 탈출·UI 컴포넌트 종합 검증",
+      "dependsOn": ["M2-01k-c1", "M2-01k-d", "M2-01k-o"],
+      "kind": "task",
+      "status": "done",
+      "scope": "P5-gesture-escape: 두 shell의 실제 지도 위 일반 wheel 뒤 페이지 스크롤과 Tab/Shift+Tab 포커스 탈출을 단언하고 설정 제거 변이로 비공허성을 확인한다. Chromium 모의 입력은 물리 touch·OS IME 증거가 아니다. P8-ui-component: 계획 §8의 파일 교체/취소, stale 응답, 차트 선택, 초안 유지, 계정 전환, WebGL 실패, 키보드/목록 대안을 현재 트리의 시험에 항목별 매핑하고 집중 단위·두 shell 브라우저 실행을 한 판에서 기록한다. 남은 범위를 행별로 판정하고 역사적 failed·외부 not_executed는 보존한다.",
+      "evidence": "docs/implementation/progress/M2-01k-p.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [
@@ -1711,7 +1720,8 @@
         "M2-01k-l",
         "M2-01k-m",
         "M2-01k-n",
-        "M2-01k-o"
+        "M2-01k-o",
+        "M2-01k-p"
       ],
       "kind": "task",
       "status": "in_progress",
