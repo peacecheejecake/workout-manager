@@ -648,7 +648,7 @@
       "change": "P5-gesture-escape not_executed -> passed and P8-ui-component partial -> passed; counts passed 91 -> 93, partial 14 -> 13, not_executed 4 -> 3; failed remains 1.",
       "executed": [
         "tests/identity/map-gesture-escape.spec.ts: Next/Vite 2/2 passed after the focusability assertion was strengthened; cooperativeGestures=false mutation rebuilt in both shells and failed both scroll assertions; source restored, rebuilt, and Next/Vite 2/2 passed again",
-        "P8 current-tree: five component files / 97 tests passed and ten identity browser files / 69 tests passed in one run with local fixture Alice",
+        "P8 current-tree: five component files / 97 tests passed and nine active identity browser files / 69 tests passed in one run with local fixture Alice (one additional opt-in path registered no tests)",
         "Aside REPL could not connect to its daemon (fetch failed); direct Chrome logged into the local Alice fixture and observed page scroll over the Next course map; Playwright Chromium covered both shells",
         "Node 24 install, generated check, full lint/format, typecheck 34/34 (cache), mutation and restored build each 15/15, full unit 339 files / 4,104 passed, isolated PostgreSQL integration 81 files / 804 passed, full identity x2 each 297 passed and 11 conditional skipped"
       ],
@@ -3561,10 +3561,10 @@
       "verdict": "passed",
       "evidence": [
         "pnpm test (3,207)",
-        "M2-01k-p: 5 focused component files / 97 tests passed; 10 identity browser files / 69 tests passed in one current-tree run",
+        "M2-01k-p: 5 focused component files / 97 tests passed; 9 active identity browser files / 69 tests passed in one current-tree run (one opt-in path registered 0)",
         "docs/implementation/progress/M2-01k-p.md: seven-condition mapping and limits"
       ],
-      "reason": "The quoted seven UI/component conditions are each mapped to direct behavior assertions in the current tree and executed together: file replacement/cancel, stale response, chart selection, draft retention, account switch, WebGL failure, and keyboard/list alternative. Five component files passed 97/97 and ten identity browser files passed 69/69 with local fixture Alice in Next/Vite; supporting mutations for stale responses, account isolation, WebGL, and editors are retained in their nodes. This verdict covers the stated UI/component checklist, not the separate product-wide P5-logout-clear, physical touch/OS IME, provider, or hosting gates.",
+      "reason": "The quoted seven UI/component conditions are each mapped to direct behavior assertions in the current tree and executed together: file replacement/cancel, stale response, chart selection, draft retention, account switch, WebGL failure, and keyboard/list alternative. Five component files passed 97/97 and nine active identity browser files passed 69/69 with local fixture Alice in Next/Vite; supporting mutations for stale responses, account isolation, WebGL, and editors are retained in their nodes. This verdict covers the stated UI/component checklist, not the separate product-wide P5-logout-clear, physical touch/OS IME, provider, or hosting gates.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
