@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./healthkit-ingestion": {
+      "types": "./src/healthkit-ingestion.ts",
+      "default": "./dist/healthkit-ingestion.js"
+    },
     "./native-bridge": {
       "types": "./src/native-bridge.ts",
       "default": "./dist/native-bridge.js"

@@ -21,6 +21,7 @@ import { createStretchingRepository } from '@workout/server-persistence/stretchi
 import { createRoutineRepository } from '@workout/server-persistence/routine-core';
 import { createRecoveryRepository } from '@workout/server-persistence/recovery-core';
 import { createActivityRepository } from '@workout/server-persistence/activities';
+import { createHealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
@@ -312,6 +313,7 @@ export async function createConfiguredApi(
           }
         : {}),
       activities,
+      healthKitIngestion: createHealthKitIngestionRepository(database),
       ...(garminUnofficial === undefined ? {} : { garminUnofficial }),
       garminCollectionProvenance: garminUnofficialStore,
       activityContext: createActivityContextRepository(database),

@@ -12,9 +12,9 @@ import { accountExportSchema, type AccountExport } from '../../packages/contract
  *
  * This is not a "whatever the server said" check: an unexpected version still fails.
  */
-export const currentAccountExportVersion = 24;
+export const currentAccountExportVersion = 25;
 
-export type CurrentAccountExport = Extract<AccountExport, { schemaVersion: 24 }>;
+export type CurrentAccountExport = Extract<AccountExport, { schemaVersion: 25 }>;
 
 /**
  * Parse an export body against the contract and assert it is the current version, then

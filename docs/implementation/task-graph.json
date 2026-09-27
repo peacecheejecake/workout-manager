@@ -1925,9 +1925,18 @@
       "evidence": "docs/implementation/progress/M3-01.md"
     },
     {
+      "id": "M3-02a",
+      "title": "HealthKit 운동 배치 수신·멱등 ACK 경계",
+      "dependsOn": ["M3-01"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "운동 표본 UUID·출처·원 단위·시각을 제한된 런타임 계약으로 받고, native bearer와 HealthKit 동의·tenant 소유권을 확인해 배치 receipt와 표본 head/tombstone을 원자적으로 저장한다. 동일 배치 재전송은 원 ACK, 다른 내용은 충돌, 삭제 뒤 늦은 upsert는 비부활이다. 이 노드는 raw 수신 경계만 완료하며 canonical 연결·Garmin 중복 해소·native 수집·서명된 실기기는 후속이다.",
+      "evidence": "docs/implementation/progress/M3-02a.md"
+    },
+    {
       "id": "M3-02",
       "title": "HealthKit collector",
-      "dependsOn": ["M3-01"],
+      "dependsOn": ["M3-01", "M3-02a"],
       "kind": "task",
       "status": "not_started",
       "scope": "native collector; anchor/tombstone/outbox/ack·실기기"

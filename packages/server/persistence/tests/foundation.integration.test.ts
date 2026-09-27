@@ -102,6 +102,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 57, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-01c: native one-time exchange and session kind isolation.
       { version: 58, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-02a: HealthKit workout batch receipt and sample heads.
+      { version: 59, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

@@ -190,7 +190,7 @@ it('exports coaching records only while evidence and AI consent remain available
     connection.release();
   }
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+  if (before.schemaVersion !== 25) throw new Error('Expected coaching export v25');
   expect(before.data.coachingRuns).toEqual([
     expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
   ]);
@@ -215,7 +215,7 @@ it('exports coaching records only while evidence and AI consent remain available
     }),
   ]);
   const otherExport = await operations.exportAccount(other);
-  if (otherExport.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+  if (otherExport.schemaVersion !== 25) throw new Error('Expected coaching export v25');
   expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
   expect(otherExport.data.coachingCandidates).toEqual([]);
   const blocker = await admin.connect();
@@ -241,7 +241,7 @@ it('exports coaching records only while evidence and AI consent remain available
   const withdrawn = await exportAfterWithdrawal;
   if (!withdrawn) throw new Error('Expected concurrent export');
   const withdrawnArtifact = accountExportSchema.parse(withdrawn);
-  if (withdrawnArtifact.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+  if (withdrawnArtifact.schemaVersion !== 25) throw new Error('Expected coaching export v25');
   expect(withdrawnArtifact.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
   ]);
@@ -286,7 +286,7 @@ it('exports coaching records only while evidence and AI consent remain available
     legacy.release();
   }
   const guarded = await operations.exportAccount(athlete);
-  if (guarded.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+  if (guarded.schemaVersion !== 25) throw new Error('Expected coaching export v25');
   expect(guarded.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({
       id: outputId,
@@ -376,7 +376,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(24);
+    expect(before.schemaVersion).toBe(25);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);
@@ -780,7 +780,7 @@ it('exports pending create URL ingestion history before a resource row exists', 
   );
 
   const exported = await operations.exportAccount(athlete);
-  if (exported.schemaVersion !== 24) throw new Error('Expected the current account export schema.');
+  if (exported.schemaVersion !== 25) throw new Error('Expected the current account export schema.');
   expect(exported.data.resourceUrlIngestions.map((item) => item.state).sort()).toEqual([
     'cancelled',
     'failed',
@@ -888,7 +888,7 @@ it('removes every URL-derived collection from export after the resource is soft 
   }
 
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 24) throw new Error('Expected the current account export schema.');
+  if (before.schemaVersion !== 25) throw new Error('Expected the current account export schema.');
   expect(before.data.resourceUrlIngestions).toHaveLength(1);
   expect(before.data.resourceUrlAttempts).toHaveLength(1);
   expect(before.data.resourceUrlFetchHops).toHaveLength(1);
@@ -905,7 +905,7 @@ it('removes every URL-derived collection from export after the resource is soft 
     [athlete, resourceId],
   );
   const deleted = await operations.exportAccount(athlete);
-  if (deleted.schemaVersion !== 24) throw new Error('Expected the current account export schema.');
+  if (deleted.schemaVersion !== 25) throw new Error('Expected the current account export schema.');
   expect(deleted.data.resources).toEqual([]);
   expect(deleted.data.resourceVersions).toEqual([]);
   expect(deleted.data.resourceUrlIngestions).toEqual([]);

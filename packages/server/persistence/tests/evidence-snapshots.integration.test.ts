@@ -261,8 +261,8 @@ it('purges dependent activity/checkin evidence and old receipts permanently, the
   });
   expect(await repo.read(athlete, third.id)).not.toHaveProperty('body');
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(24);
-  if (exported.schemaVersion !== 24) throw new Error('Expected current export');
+  expect(exported.schemaVersion).toBe(25);
+  if (exported.schemaVersion !== 25) throw new Error('Expected current export');
   expect(exported.data.evidenceSnapshots).toHaveLength(3);
   expect(JSON.stringify(exported.data.evidenceSnapshots)).not.toContain('Private');
   await expect(

@@ -1033,3 +1033,42 @@ it('reads v24 with the lifetime link budgets, and keeps v23 strict against them'
   expect(accountExportSchema.safeParse({ ...current, schemaVersion: 23 }).success).toBe(false);
   expect(previous.data).not.toHaveProperty('courseShareAreaBudgets');
 });
+
+it('requires raw HealthKit sample state and batch receipts in v25 while preserving v24', () => {
+  const v24 = {
+    schemaVersion: 24,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {} as Record<string, unknown>,
+  };
+  const keys = accountExportSchema.options
+    .find((option) => option.shape.schemaVersion.value === 24)
+    ?.shape.data.keyof().options;
+  if (!keys) throw new Error('Expected a v24 schema');
+  for (const key of keys) v24.data[key] = [];
+  const previous = accountExportSchema.parse(v24);
+  const current = accountExportSchema.parse({
+    ...previous,
+    schemaVersion: 25,
+    data: {
+      ...previous.data,
+      healthKitWorkoutSamples: [
+        { sample_id: 'synthetic-sample', state: 'deleted', deleted_at: '2026-09-28T00:00:00Z' },
+      ],
+      healthKitWorkoutBatchReceipts: [
+        { batch_id: 'synthetic-batch', accepted_count: 1, purged_at: null },
+      ],
+    },
+  });
+  if (current.schemaVersion !== 25) throw new Error('Expected v25');
+  expect(current.data.healthKitWorkoutSamples).toHaveLength(1);
+  expect(current.data.healthKitWorkoutBatchReceipts).toHaveLength(1);
+  for (const missing of ['healthKitWorkoutSamples', 'healthKitWorkoutBatchReceipts'] as const) {
+    expect(
+      accountExportSchema.safeParse({ ...current, data: { ...current.data, [missing]: undefined } })
+        .success,
+    ).toBe(false);
+  }
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 24 }).success).toBe(false);
+  expect(previous.data).not.toHaveProperty('healthKitWorkoutSamples');
+});

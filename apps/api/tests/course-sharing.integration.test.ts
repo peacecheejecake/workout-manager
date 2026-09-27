@@ -654,7 +654,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 24) throw new Error('expected v24');
+    if (artifact.schemaVersion !== 25) throw new Error('expected v25');
     expect(artifact.data.courseShares).toHaveLength(1);
     expect(Object.keys(artifact.data.courseShares[0] ?? {}).sort()).toEqual(
       [
@@ -704,7 +704,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     const after = accountExportSchema.parse(
       (await instance.inject({ method: 'POST', url: '/bff/v1/operations/export', headers })).json(),
     );
-    if (after.schemaVersion !== 24) throw new Error('expected v24');
+    if (after.schemaVersion !== 25) throw new Error('expected v25');
     expect(after.data.courseDeletions).toEqual([
       { course_id: gone, deleted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
     ]);
@@ -1190,7 +1190,8 @@ describe('B. the view-only link', () => {
       'course_privacy_zone',
     ])
       expect(await countRows(table, erased.athleteId), table).toBe(0);
-    // The chain is 054's link (M2-01as) wrapping this node's, wrapping 049's, wrapping 048's:
+    // The chain is 059's HealthKit link wrapping 054's link (M2-01as), this node's,
+    // 049's, and 048's:
     // each outermost link takes
     // the account lock and then the command lock before any row (77206 → 0 → rows).
     const chain: string[] = [];
@@ -1202,7 +1203,7 @@ describe('B. the view-only link', () => {
       const source = found.rows[0]?.source ?? '';
       chain.push(name);
       const next = /RETURN public\.(erase_account_before_[a-z_]+)\(\$1\)/.exec(source)?.[1];
-      if (chain.length <= 4) {
+      if (chain.length <= 5) {
         const accountLock = source.indexOf('hashtextextended($1,77206)');
         const commandLock = source.indexOf('hashtextextended($1,0)');
         const firstDelete = source.indexOf('DELETE');
@@ -1213,8 +1214,9 @@ describe('B. the view-only link', () => {
       if (!next || chain.length > 60) break;
       name = next;
     }
-    expect(chain.slice(0, 5)).toEqual([
+    expect(chain.slice(0, 6)).toEqual([
       'erase_account',
+      'erase_account_before_healthkit_ingestion',
       'erase_account_before_course_share_budget',
       'erase_account_before_course_sharing',
       'erase_account_before_course_deletion',
@@ -1982,7 +1984,7 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 24) throw new Error('expected v24');
+    if (artifact.schemaVersion !== 25) throw new Error('expected v25');
     const [row] = await budgetOf(athleteId);
     expect(artifact.data.courseShareAreaBudgets).toEqual([
       {

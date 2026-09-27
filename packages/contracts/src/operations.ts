@@ -283,6 +283,14 @@ const accountExportV24Schema = accountExportV23Schema.extend({
     courseShareAreaBudgets: rows,
   }),
 });
+/** v25 carries raw HealthKit workout state, deletion tombstones and batch receipts (M3-02a). */
+const accountExportV25Schema = accountExportV24Schema.extend({
+  schemaVersion: z.literal(25),
+  data: accountExportV24Schema.shape.data.extend({
+    healthKitWorkoutSamples: rows,
+    healthKitWorkoutBatchReceipts: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -308,6 +316,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV22Schema,
   accountExportV23Schema,
   accountExportV24Schema,
+  accountExportV25Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

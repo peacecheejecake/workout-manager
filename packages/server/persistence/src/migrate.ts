@@ -64,6 +64,7 @@ const migrationFiles = [
   '056_course_share_legacy_route_notice.sql',
   '057_oidc_backchannel.sql',
   '058_native_oidc.sql',
+  '059_healthkit_ingestion.sql',
 ] as const;
 
 /**
@@ -230,6 +231,24 @@ export async function grantGarminUnofficial(
   }
 }
 
+/** The API can accept owner-scoped raw HealthKit workouts and inspect consent. */
+export async function grantHealthKitIngestion(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, max: 1 });
+  try {
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_locked() TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT,UPDATE ON healthkit_workout_sample TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_batch_receipt TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
 /** Dedicated cleanup role receives function-only, bounded queue access. */
 export async function grantGarminWorker(
   connectionString: string,
@@ -337,6 +356,9 @@ export async function grantOperations(
     // Each place's lifetime link budget (M2-01as, export v24). Read only: only
     // `claim_course_share_budget` writes it.
     await pool.query(`GRANT SELECT ON course_share_area_budget TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT ON healthkit_workout_sample,healthkit_workout_batch_receipt TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
