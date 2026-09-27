@@ -1880,9 +1880,18 @@
       "evidence": "docs/implementation/progress/M3-01b.md"
     },
     {
+      "id": "M3-01c",
+      "title": "Native OIDC 일회성 교환·세션 서버 경계",
+      "dependsOn": ["M3-01b", "EXT-OIDC"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "고정 native redirect 설정 아래 OIDC 완료를 짧은 수명의 일회성 code와 device PKCE 검증·원자 소비에 연결하고 native bearer session을 browser cookie session과 분리한다. 구현된 Back-channel logout·계정 삭제 경계가 양쪽 세션을 철회하는지 로컬에서 시험한다. EXT-BACKCHANNEL의 실제 공급자 전파 gate는 독립적으로 in_progress이며 이 노드 선행 조건이나 완료 증거로 승격하지 않는다. localhost IdP fixture·실제 PostgreSQL 검증까지만 이 노드 수용이며 iOS Keychain/ASWebAuthenticationSession/고정 HTTPS transport·운영 redirect/실기기 인증은 후속 M3-01 범위다.",
+      "evidence": "docs/implementation/progress/M3-01c.md"
+    },
+    {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b"],
+      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b", "M3-01c"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"

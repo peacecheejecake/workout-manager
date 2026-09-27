@@ -88,6 +88,8 @@ const environmentSchema = z.object({
   // M2-01w. Both default on; see docs/implementation/oidc-setup.md for when to turn off.
   OIDC_VERIFY_REAUTHENTICATION: z.enum(['true', 'false']).default('true'),
   OIDC_PROVIDER_LOGOUT: z.enum(['true', 'false']).default('true'),
+  // Explicitly configured only after the app has registered this exact callback scheme.
+  NATIVE_AUTH_REDIRECT_URI: z.literal('org.workoutmanager.app://auth/callback').optional(),
   COACHING_FIXTURE_ENABLED: z.enum(['true', 'false']).default('false'),
   COACHING_FIXTURE_ID: z.string().optional(),
   // M2-01k-c2. The deployed build, logged as `version` on every line. A bounded token so
@@ -233,6 +235,9 @@ export async function createConfiguredApi(
       provider,
       publicOrigin: env.PUBLIC_ORIGIN,
       allowInsecureLocalhost,
+      ...(env.NATIVE_AUTH_REDIRECT_URI === undefined
+        ? {}
+        : { native: { store, redirectUri: env.NATIVE_AUTH_REDIRECT_URI } }),
     });
     const backchannelLogout = createBackchannelLogoutService({ provider, store });
     const activities = createActivityRepository(database);

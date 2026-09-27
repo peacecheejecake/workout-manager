@@ -95,6 +95,13 @@ class BoundaryError extends Error {
 }
 
 const emptyQuerySchema = z.strictObject({});
+const nativeStartSchema = z.strictObject({
+  codeChallenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+});
+const nativeExchangeSchema = z.strictObject({
+  code: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  codeVerifier: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+});
 const kindParamsSchema = z.strictObject({ kind: consentKindSchema });
 const idempotencyKeySchema = z
   .string()
@@ -298,6 +305,25 @@ export function createApi(options: ApiOptions): FastifyInstance {
   }
   if (options.identity !== undefined) {
     const identity = options.identity;
+    if (identity.native !== undefined) {
+      const native = identity.native;
+      app.post('/bff/v1/auth/native/start', async (request, reply) => {
+        parseInput(emptyQuerySchema, request.query);
+        if (request.headers.cookie !== undefined || request.headers.authorization !== undefined)
+          throw new BoundaryError(400, 'INVALID_REQUEST');
+        return reply
+          .header('cache-control', 'no-store')
+          .send(await native.beginLogin(parseInput(nativeStartSchema, request.body)));
+      });
+      app.post('/bff/v1/auth/native/exchange', async (request, reply) => {
+        parseInput(emptyQuerySchema, request.query);
+        if (request.headers.cookie !== undefined || request.headers.authorization !== undefined)
+          throw new BoundaryError(400, 'INVALID_REQUEST');
+        return reply
+          .header('cache-control', 'no-store')
+          .send(await native.exchangeCode(parseInput(nativeExchangeSchema, request.body)));
+      });
+    }
     app.get('/bff/v1/auth/login', async (request, reply) => {
       parseInput(emptyQuerySchema, request.query);
       let result: Awaited<ReturnType<IdentityService['beginLogin']>>;
@@ -311,6 +337,20 @@ export function createApi(options: ApiOptions): FastifyInstance {
       return reply.header('set-cookie', result.cookie).redirect(result.location);
     });
     app.get('/bff/v1/auth/callback', async (request, reply) => {
+      if (identity.native !== undefined) {
+        try {
+          const native = await identity.native.completeLogin(request.url);
+          if (native !== null)
+            return reply
+              .header('cache-control', 'no-store')
+              .header('referrer-policy', 'no-referrer')
+              .redirect(native.location);
+        } catch {
+          // The native lookup is unavailable. It cannot establish whether the state belongs
+          // to a native attempt, so fail closed rather than trying the browser path.
+          return reply.redirect('/account?login_error=unavailable');
+        }
+      }
       let result: Awaited<ReturnType<IdentityService['completeLogin']>>;
       try {
         result = await identity.completeLogin(request.url, request.headers.cookie);
@@ -396,6 +436,10 @@ export function createApi(options: ApiOptions): FastifyInstance {
         const identity = options.identity;
         routes.post('/auth/logout', async (request, reply) => {
           if (request.body !== undefined) throw new BoundaryError(400, 'INVALID_REQUEST');
+          if (principal(request).method === 'bearer') {
+            await identity.logoutNative(request.headers.authorization);
+            return reply.code(204).send();
+          }
           const cookies = await identity.logout(request.headers.cookie);
           // The app sign-out is complete here. When the provider offers RP-initiated logout
           // the screen continues there, so the provider's own session can end as well; this

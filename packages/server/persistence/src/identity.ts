@@ -29,6 +29,32 @@ const sessionSchema = identitySchema.extend({
   csrf_token: z.string().min(32).max(256),
   expires_at: z.date(),
 });
+const nativeChallengeSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const nativeAttemptSchema = z.strictObject({
+  stateHash: hashSchema,
+  nonce: attemptSchema.shape.nonce,
+  verifier: attemptSchema.shape.verifier,
+  codeChallenge: nativeChallengeSchema,
+  expiresAt: z.date(),
+});
+const nativeCodeSchema = z.strictObject({
+  codeHash: hashSchema,
+  codeChallenge: nativeChallengeSchema,
+  issuer: sessionInputSchema.shape.issuer,
+  subject: sessionInputSchema.shape.subject,
+  providerSessionId: sessionInputSchema.shape.providerSessionId,
+  loginStartedAt: z.date(),
+  expiresAt: z.date(),
+  now: z.date(),
+});
+const nativeExchangeSchema = z.strictObject({
+  codeHash: hashSchema,
+  codeChallenge: nativeChallengeSchema,
+  tokenHash: hashSchema,
+  csrfToken: sessionInputSchema.shape.csrfToken,
+  expiresAt: z.date(),
+  now: z.date(),
+});
 export type LoginAttemptInput = z.infer<typeof attemptSchema>;
 export type SessionInput = z.infer<typeof sessionInputSchema>;
 export interface IdentityRepository {
@@ -42,7 +68,19 @@ export interface IdentityRepository {
   findSession(
     tokenHash: string,
     now: Date,
+    kind?: 'browser' | 'native',
   ): Promise<{ athleteId: string; sessionId: string; csrfToken: string; expiresAt: Date } | null>;
+  createNativeAttempt(input: z.infer<typeof nativeAttemptSchema>): Promise<void>;
+  consumeNativeAttempt(
+    stateHash: string,
+    now: Date,
+  ): Promise<{ nonce: string; verifier: string; codeChallenge: string; createdAt: Date } | null>;
+  createNativeCode(input: z.infer<typeof nativeCodeSchema>): Promise<void>;
+  exchangeNativeCode(input: z.infer<typeof nativeExchangeSchema>): Promise<{
+    athleteId: string;
+    sessionId: string;
+    expiresAt: Date;
+  } | null>;
   revokeSession(tokenHash: string): Promise<void>;
   revokeProviderSessions(input: {
     issuer: string;
@@ -136,12 +174,14 @@ export function createIdentityRepository(options: {
       const identity = identitySchema.parse(result.rows[0]);
       return { athleteId: identity.athlete_id, sessionId: identity.session_id };
     },
-    async findSession(tokenHash, now) {
+    async findSession(tokenHash, now, kind = 'browser') {
       hashSchema.parse(tokenHash);
       z.date().parse(now);
-      const result = await query('SELECT * FROM public.auth_find_session($1, $2)', [
+      z.enum(['browser', 'native']).parse(kind);
+      const result = await query('SELECT * FROM public.auth_find_session_v2($1, $2, $3)', [
         tokenHash,
         now,
+        kind,
       ]);
       if (result.rows.length === 0) return null;
       const session = sessionSchema.parse(result.rows[0]);
@@ -149,6 +189,74 @@ export function createIdentityRepository(options: {
         athleteId: session.athlete_id,
         sessionId: session.session_id,
         csrfToken: session.csrf_token,
+        expiresAt: session.expires_at,
+      };
+    },
+    async createNativeAttempt(input) {
+      const value = nativeAttemptSchema.parse(input);
+      await query('SELECT public.auth_create_native_attempt($1, $2, $3, $4, $5)', [
+        value.stateHash,
+        value.nonce,
+        value.verifier,
+        value.codeChallenge,
+        value.expiresAt,
+      ]);
+    },
+    async consumeNativeAttempt(stateHash, now) {
+      hashSchema.parse(stateHash);
+      z.date().parse(now);
+      const result = await query('SELECT * FROM public.auth_consume_native_attempt($1, $2)', [
+        stateHash,
+        now,
+      ]);
+      return result.rows.length === 0
+        ? null
+        : z
+            .object({
+              nonce: attemptSchema.shape.nonce,
+              verifier: attemptSchema.shape.verifier,
+              code_challenge: nativeChallengeSchema,
+              created_at: z.date(),
+            })
+            .transform((value) => ({
+              nonce: value.nonce,
+              verifier: value.verifier,
+              codeChallenge: value.code_challenge,
+              createdAt: value.created_at,
+            }))
+            .parse(result.rows[0]);
+    },
+    async createNativeCode(input) {
+      const value = nativeCodeSchema.parse(input);
+      await query('SELECT public.auth_create_native_code($1, $2, $3, $4, $5, $6, $7, $8)', [
+        value.codeHash,
+        value.codeChallenge,
+        value.issuer,
+        value.subject,
+        value.providerSessionId ?? null,
+        value.loginStartedAt,
+        value.expiresAt,
+        value.now,
+      ]);
+    },
+    async exchangeNativeCode(input) {
+      const value = nativeExchangeSchema.parse(input);
+      const result = await query(
+        'SELECT * FROM public.auth_exchange_native_code($1, $2, $3, $4, $5, $6)',
+        [
+          value.codeHash,
+          value.codeChallenge,
+          value.tokenHash,
+          value.csrfToken,
+          value.expiresAt,
+          value.now,
+        ],
+      );
+      if (result.rows.length === 0) return null;
+      const session = identitySchema.extend({ expires_at: z.date() }).parse(result.rows[0]);
+      return {
+        athleteId: session.athlete_id,
+        sessionId: session.session_id,
         expiresAt: session.expires_at,
       };
     },

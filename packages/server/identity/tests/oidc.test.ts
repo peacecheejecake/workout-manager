@@ -3,7 +3,11 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createOidcProvider, type OidcEvent } from '../src/oidc.js';
-import { ProviderUnavailableError } from '../src/service.js';
+import {
+  createIdentityService,
+  ProviderUnavailableError,
+  type NativeIdentityStore,
+} from '../src/service.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -178,6 +182,10 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
     setProviderSessionId(value: string) {
       providerSessionId = value;
     },
+    captureAuthorization(url: URL) {
+      expectedChallenge = url.searchParams.get('code_challenge') ?? '';
+      nonce = url.searchParams.get('nonce') ?? '';
+    },
     provider,
     checks,
     authorize,
@@ -191,6 +199,116 @@ async function providerFixture(fixtureOptions: FixtureOptions = {}) {
 }
 
 describe('standard OIDC adapter using a real local signed provider protocol', () => {
+  it('completes native code exchange through real discovery, PKCE, and signed ID Token verification', async () => {
+    const fixture = await providerFixture({ lazy: true });
+    fixture.setAuthTime('fresh');
+    fixture.setProviderSessionId('op-native-session');
+    const deviceVerifier = randomBytes(32).toString('base64url');
+    const deviceChallenge = createHash('sha256').update(deviceVerifier).digest('base64url');
+    const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+    let attempt: Parameters<NativeIdentityStore['createNativeAttempt']>[0] | undefined;
+    let exchangeCode: Parameters<NativeIdentityStore['createNativeCode']>[0] | undefined;
+    let sessionHash: string | undefined;
+    const store: NativeIdentityStore = {
+      async createAttempt() {},
+      async consumeAttempt() {
+        return null;
+      },
+      async createSession() {
+        throw new Error('Browser session must not be used');
+      },
+      async findSession(tokenHash, _now, kind) {
+        return tokenHash === sessionHash && kind === 'native'
+          ? {
+              athleteId: 'athlete-a',
+              sessionId: 'native-a',
+              csrfToken: 'c'.repeat(43),
+              expiresAt: new Date(Date.now() + 28_800_000),
+            }
+          : null;
+      },
+      async revokeSession() {},
+      async createNativeAttempt(input) {
+        attempt = input;
+      },
+      async consumeNativeAttempt(stateHash, now) {
+        const value = attempt;
+        if (value === undefined || value.stateHash !== stateHash || value.expiresAt <= now)
+          return null;
+        attempt = undefined;
+        return {
+          nonce: value.nonce,
+          verifier: value.verifier,
+          codeChallenge: value.codeChallenge,
+          createdAt: new Date(value.expiresAt.getTime() - 600_000),
+        };
+      },
+      async createNativeCode(input) {
+        exchangeCode = input;
+      },
+      async exchangeNativeCode(input) {
+        const value = exchangeCode;
+        if (
+          value === undefined ||
+          value.codeHash !== input.codeHash ||
+          value.codeChallenge !== input.codeChallenge ||
+          value.expiresAt <= input.now
+        )
+          return null;
+        exchangeCode = undefined;
+        sessionHash = input.tokenHash;
+        return { athleteId: 'athlete-a', sessionId: 'native-a', expiresAt: input.expiresAt };
+      },
+    };
+    const identity = createIdentityService({
+      store,
+      provider: fixture.provider,
+      publicOrigin: 'http://127.0.0.1:4301',
+      allowInsecureLocalhost: true,
+      native: { store, redirectUri: 'org.workoutmanager.app://auth/callback' },
+    });
+    const start = await identity.native?.beginLogin({ codeChallenge: deviceChallenge });
+    if (start === undefined) throw new Error('Native auth disabled');
+    const authorize = new URL(start.location);
+    fixture.captureAuthorization(authorize);
+    expect(authorize.searchParams.get('prompt')).toBe('login');
+    expect(authorize.searchParams.get('max_age')).toBe('0');
+    expect(authorize.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(authorize.searchParams.get('code_challenge')).toBe(
+      createHash('sha256')
+        .update(attempt?.verifier ?? '')
+        .digest('base64url'),
+    );
+    expect(attempt?.codeChallenge).toBe(deviceChallenge);
+    const state = authorize.searchParams.get('state');
+    if (state === null) throw new Error('Missing provider state');
+    const callback = await identity.native?.completeLogin(
+      `/bff/v1/auth/callback?code=valid-code&state=${state}`,
+    );
+    const appCallback = new URL(callback?.location ?? 'about:blank');
+    expect(appCallback.protocol).toBe('org.workoutmanager.app:');
+    expect(appCallback.searchParams.size).toBe(1);
+    const code = appCallback.searchParams.get('code');
+    if (code === null) throw new Error('Missing one-time app code');
+    expect(exchangeCode).toMatchObject({
+      codeHash: digest(code),
+      codeChallenge: deviceChallenge,
+      issuer: fixture.issuer,
+      subject: 'athlete-subject',
+      providerSessionId: 'op-native-session',
+    });
+    const exchanged = await identity.native?.exchangeCode({ code, codeVerifier: deviceVerifier });
+    expect(exchanged?.tokenType).toBe('Bearer');
+    expect(
+      await identity.authenticate({ authorization: `Bearer ${exchanged?.accessToken}` }),
+    ).toMatchObject({
+      method: 'bearer',
+      athleteId: 'athlete-a',
+      sessionId: 'native-a',
+    });
+    expect(appCallback.href).not.toContain(exchanged?.accessToken ?? 'invalid');
+  });
+
   it('refuses a login without sid when the provider advertises sid-only back-channel logout', async () => {
     const fixture = await providerFixture({ backchannelSessionSupported: true });
     await expect(fixture.provider.exchange(fixture.callback, fixture.checks)).rejects.toThrow(

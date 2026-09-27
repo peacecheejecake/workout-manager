@@ -24,17 +24,28 @@ Back-Channel Logout을 켤 때는 HTTPS callback
 
 API 실행 환경:
 
-| 변수                                    | 값                                                    |
-| --------------------------------------- | ----------------------------------------------------- |
-| `DATABASE_URL`                          | 아래 제한된 runtime role의 PostgreSQL URL             |
-| `PUBLIC_ORIGIN`                         | 경로·query·credentials 없는 브라우저 HTTPS origin     |
-| `OIDC_ISSUER`                           | 공급자 HTTPS issuer                                   |
-| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | 공급자가 발급한 confidential client 값                |
-| `NODE_ENV`                              | `production` (기본값)                                 |
-| `PORT`                                  | API loopback 포트, 기본 4300                          |
-| `ALLOW_INSECURE_LOCALHOST`              | 기본 false; development/test loopback 시험에서만 true |
-| `OIDC_VERIFY_REAUTHENTICATION`          | 기본 true. 아래 "재인증 증명" 참고                    |
-| `OIDC_PROVIDER_LOGOUT`                  | 기본 true. 아래 "공급자 로그아웃" 참고                |
+| 변수                                    | 값                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                          | 아래 제한된 runtime role의 PostgreSQL URL                                                        |
+| `PUBLIC_ORIGIN`                         | 경로·query·credentials 없는 브라우저 HTTPS origin                                                |
+| `OIDC_ISSUER`                           | 공급자 HTTPS issuer                                                                              |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | 공급자가 발급한 confidential client 값                                                           |
+| `NODE_ENV`                              | `production` (기본값)                                                                            |
+| `PORT`                                  | API loopback 포트, 기본 4300                                                                     |
+| `ALLOW_INSECURE_LOCALHOST`              | 기본 false; development/test loopback 시험에서만 true                                            |
+| `OIDC_VERIFY_REAUTHENTICATION`          | 기본 true. 아래 "재인증 증명" 참고                                                               |
+| `OIDC_PROVIDER_LOGOUT`                  | 기본 true. 아래 "공급자 로그아웃" 참고                                                           |
+| `NATIVE_AUTH_REDIRECT_URI`              | 기본 미설정. `org.workoutmanager.app://auth/callback`만 허용하며 설정 시 native 인증 경로를 연다 |
+
+M3-01c의 native 인증은 기존 공급자 redirect `/bff/v1/auth/callback`을 공유한다. 앱은
+`POST /bff/v1/auth/native/start`에 기기 PKCE challenge만 보내고, 응답의 `location`을
+시스템 인증 세션에서 연다. 서버 callback은 고정 앱 URI에 짧은 수명의 일회성 code만 붙이며
+bearer나 verifier를 URL에 넣지 않는다. 앱이 보관한 verifier와 code를
+`POST /bff/v1/auth/native/exchange`에 보내면 native 전용 bearer 세션을 발급한다.
+Migration 058은 세션 종류를 저장하고 두 종류의 토큰 교차 사용을 거부한다. 배포 시 기존 API를
+drain한 뒤 migration과 `grantIdentityFunctions`를 적용한다. 구버전 세션 조회 함수는 제거되어
+혼합 버전 서버는 인증을 실패 처리한다. iOS 앱의 URL scheme·Keychain·고정 HTTPS 전송과 실제
+기기/운영 IdP 검증은 M3-01 후속 및 EXT-HOSTING 조건으로 남는다.
 
 API는 기동 시 공급자를 기다리지 않는다([M2-01w](progress/M2-01w.md)). discovery는 첫 로그인(또는
 기동 직후의 백그라운드 시도)에서 하고, 실패하면 5초 뒤 다음 요청에서 다시 시도한다. 공급자에 닿지

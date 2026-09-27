@@ -530,13 +530,17 @@ flowchart TD
     task34["M3-01 Native shell·secure bridge"]
     task34a["M3-01a bridge 계약·웹 어댑터"]
     task34b["M3-01b 제품 iOS shell·제한 bridge"]
+    task34c["M3-01c native OIDC 교환·세션 서버 경계"]
+    oidc["EXT-OIDC localhost 로그인 검증"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
     task37{{"G3 Native-inclusive 출시 gate"}}
     task25 --> task34a
     task8 --> task34a
     task34a --> task34b
-    task34b --> task34
+    task34b --> task34c
+    oidc --> task34c
+    task34c --> task34
     task25 --> task34
     task8 --> task34
     task34 --> task35
@@ -688,7 +692,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | G2-PUBLIC Web MVP 공개 출시 gate | G2, EXT-HOSTING | 실제 HTTPS/TLS·운영 OIDC·보안 쿠키·secret manager·지도 재빌드 증거가 있어야 공개 출시 |
 | M3-01a Native bridge 계약·웹 어댑터 경계 | M1c-04, M0-06c | 완료; versioned handshake·capability·허용 명령·응답 ID·timeout/cancel. 제품 iOS shell은 부모 단계 |
 | M3-01b 제품 Capacitor iOS shell·제한 bridge | M3-01a | 완료; 번들 Vite 산출물·v2 hello/app.openSettings Swift plugin·외부 navigation 격리. Native 인증·HealthKit·제품 실기기 수용은 부모 단계 |
-| M3-01 Native shell·secure bridge | M1c-04, M0-06c, M3-01a, M3-01b | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
+| M3-01c Native OIDC 일회성 교환·세션 서버 경계 | M3-01b, EXT-OIDC | 완료; 고정 redirect·device PKCE·일회성 code·browser/native 세션 격리. 구현된 Back-channel logout의 로컬 철회만 시험했으며 실제 공급자 전파 gate는 별개. 제품 iOS 인증·운영 HTTPS 검증은 후속 |
+| M3-01 Native shell·secure bridge | M1c-04, M0-06c, M3-01a, M3-01b, M3-01c | mobile/mobile-web/platform native; 고정 public module/bridge 계약 |
 | M3-02 HealthKit collector | M3-01 | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |

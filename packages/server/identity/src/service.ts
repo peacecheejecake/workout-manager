@@ -27,8 +27,43 @@ export interface IdentityStore {
   findSession(
     tokenHash: string,
     now: Date,
+    kind: 'browser' | 'native',
   ): Promise<{ athleteId: string; sessionId: string; csrfToken: string; expiresAt: Date } | null>;
   revokeSession(tokenHash: string): Promise<void>;
+}
+
+/** Native login state and the code exchange are consumed by database functions, not process memory. */
+export interface NativeIdentityStore extends IdentityStore {
+  createNativeAttempt(input: {
+    stateHash: string;
+    nonce: string;
+    verifier: string;
+    codeChallenge: string;
+    expiresAt: Date;
+  }): Promise<void>;
+  consumeNativeAttempt(
+    stateHash: string,
+    now: Date,
+  ): Promise<{ nonce: string; verifier: string; codeChallenge: string; createdAt: Date } | null>;
+  createNativeCode(input: {
+    codeHash: string;
+    codeChallenge: string;
+    issuer: string;
+    subject: string;
+    providerSessionId?: string;
+    loginStartedAt: Date;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<void>;
+  /** Atomically consumes the code, checks its challenge and creates a native-only session. */
+  exchangeNativeCode(input: {
+    codeHash: string;
+    codeChallenge: string;
+    tokenHash: string;
+    csrfToken: string;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<{ athleteId: string; sessionId: string; expiresAt: Date } | null>;
 }
 
 export interface OidcProvider {
@@ -84,6 +119,8 @@ const reauthenticationNonce = 'reauth.';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const token = () => randomBytes(32).toString('base64url');
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const codeChallenge = (verifier: string) =>
+  createHash('sha256').update(verifier).digest('base64url');
 
 /** Reject ambiguous duplicate cookies rather than selecting a proxy/parser-dependent value. */
 function readCookie(header: string | undefined, name: string): string | null {
@@ -111,6 +148,8 @@ export interface IdentityOptions {
   store: IdentityStore;
   provider: OidcProvider;
   publicOrigin: string;
+  /** Omitted by default. Only the exact registered iOS callback URI enables native routes. */
+  native?: { store: NativeIdentityStore; redirectUri: string };
   /** Explicit local development only; both this origin and the OIDC adapter enforce loopback. */
   allowInsecureLocalhost?: boolean;
   now?: () => Date;
@@ -136,8 +175,136 @@ export function createIdentityService(options: IdentityOptions) {
     `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure ? '; Secure' : ''}`;
 
   const signedOutMarker = () => cookie(signedOutName, token(), 2_592_000);
+  if (
+    options.native !== undefined &&
+    options.native.redirectUri !== 'org.workoutmanager.app://auth/callback'
+  )
+    throw new Error('Invalid native auth redirect');
+  const nativeRedirect = options.native?.redirectUri;
+  const nativeStore = options.native?.store;
+
+  const native =
+    nativeRedirect === undefined || nativeStore === undefined
+      ? undefined
+      : {
+          async beginLogin(input: { codeChallenge: string }) {
+            if (!tokenPattern.test(input.codeChallenge)) throw new IdentityError('LOGIN_REJECTED');
+            const state = token();
+            const nonce = token();
+            const verifier = token();
+            let location: string;
+            try {
+              location = await options.provider.authorizationUrl({
+                state,
+                nonce,
+                verifier,
+                reauthenticate: true,
+              });
+            } catch {
+              throw new IdentityError('IDENTITY_UNAVAILABLE');
+            }
+            try {
+              await nativeStore.createNativeAttempt({
+                stateHash: hash(state),
+                nonce,
+                verifier,
+                codeChallenge: input.codeChallenge,
+                expiresAt: new Date(now().getTime() + 600_000),
+              });
+            } catch {
+              throw new IdentityError('IDENTITY_UNAVAILABLE');
+            }
+            return { location };
+          },
+          /** Returns null only when this state was not a native attempt. */
+          async completeLogin(requestUrl: string): Promise<{ location: string } | null> {
+            const url = new URL(requestUrl, origin);
+            const state = url.searchParams.get('state');
+            if (
+              url.origin !== origin.origin ||
+              url.pathname !== '/bff/v1/auth/callback' ||
+              state === null ||
+              !tokenPattern.test(state) ||
+              [...url.searchParams.keys()].some((key) => url.searchParams.getAll(key).length !== 1)
+            )
+              return null;
+            const attempt = await nativeStore.consumeNativeAttempt(hash(state), now());
+            if (attempt === null) return null;
+            const destination = new URL(nativeRedirect);
+            const error = url.searchParams.get('error');
+            if (error !== null) {
+              destination.searchParams.set(
+                'error',
+                error === 'access_denied' ? 'cancelled' : 'failed',
+              );
+              return { location: destination.href };
+            }
+            let identity: { issuer: string; subject: string; providerSessionId?: string };
+            try {
+              identity = await options.provider.exchange(url, {
+                state,
+                nonce: attempt.nonce,
+                verifier: attempt.verifier,
+                reauthenticate: true,
+              });
+            } catch (reason) {
+              destination.searchParams.set(
+                'error',
+                reason instanceof ProviderUnavailableError ? 'unavailable' : 'failed',
+              );
+              return { location: destination.href };
+            }
+            const code = token();
+            try {
+              await nativeStore.createNativeCode({
+                codeHash: hash(code),
+                codeChallenge: attempt.codeChallenge,
+                ...identity,
+                loginStartedAt: attempt.createdAt,
+                expiresAt: new Date(now().getTime() + 120_000),
+                now: now(),
+              });
+            } catch {
+              destination.searchParams.set('error', 'unavailable');
+              return { location: destination.href };
+            }
+            destination.searchParams.set('code', code);
+            return { location: destination.href };
+          },
+          async exchangeCode(input: { code: string; codeVerifier: string }) {
+            if (!tokenPattern.test(input.code) || !tokenPattern.test(input.codeVerifier))
+              throw new IdentityError('LOGIN_REJECTED');
+            const bearer = token();
+            let result: Awaited<ReturnType<NativeIdentityStore['exchangeNativeCode']>>;
+            try {
+              result = await nativeStore.exchangeNativeCode({
+                codeHash: hash(input.code),
+                codeChallenge: codeChallenge(input.codeVerifier),
+                tokenHash: hash(bearer),
+                csrfToken: token(),
+                expiresAt: new Date(now().getTime() + 28_800_000),
+                now: now(),
+              });
+            } catch (error) {
+              throw new IdentityError(
+                error instanceof Error && error.message === 'LOGIN_REVOKED'
+                  ? 'LOGIN_REJECTED'
+                  : 'IDENTITY_UNAVAILABLE',
+              );
+            }
+            if (result === null) throw new IdentityError('LOGIN_REJECTED');
+            return {
+              accessToken: bearer,
+              tokenType: 'Bearer' as const,
+              athleteId: result.athleteId,
+              sessionId: result.sessionId,
+              expiresAt: result.expiresAt.toISOString(),
+            };
+          },
+        };
 
   return {
+    native,
     /**
      * A sign-in from a browser that is already signed in (an account switch) or that signed
      * out of this app asks the provider to authenticate again. A first sign-in keeps the
@@ -230,10 +397,23 @@ export function createIdentityService(options: IdentityOptions) {
       };
     },
     async authenticate(credentials: { cookie?: string; authorization?: string }) {
-      if (credentials.authorization !== undefined) return null;
+      if (credentials.authorization !== undefined) {
+        if (credentials.cookie !== undefined || native === undefined) return null;
+        const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(credentials.authorization);
+        const bearer = match?.[1];
+        if (bearer === undefined) return null;
+        const session = await options.store.findSession(hash(bearer), now(), 'native');
+        return session === null
+          ? null
+          : {
+              athleteId: session.athleteId,
+              sessionId: session.sessionId,
+              method: 'bearer' as const,
+            };
+      }
       const value = readCookie(credentials.cookie, sessionName);
       if (value === null) return null;
-      const session = await options.store.findSession(hash(value), now());
+      const session = await options.store.findSession(hash(value), now(), 'browser');
       return session === null
         ? null
         : { ...session, expiresAt: session.expiresAt.toISOString(), method: 'cookie' as const };
@@ -242,6 +422,13 @@ export function createIdentityService(options: IdentityOptions) {
       const value = readCookie(header, sessionName);
       if (value !== null) await options.store.revokeSession(hash(value));
       return [cookie(sessionName, '', 0), cookie(attemptName, '', 0), signedOutMarker()];
+    },
+    async logoutNative(authorization?: string) {
+      if (native === undefined) throw new IdentityError('LOGIN_REJECTED');
+      const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization ?? '');
+      const bearer = match?.[1];
+      if (bearer === undefined) throw new IdentityError('LOGIN_REJECTED');
+      await options.store.revokeSession(hash(bearer));
     },
     /**
      * Where to send the browser after an app sign-out so the provider can end its own

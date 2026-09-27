@@ -100,6 +100,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 56, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // EXT-BACKCHANNEL: provider session identity and replay-safe logout.
       { version: 57, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-01c: native one-time exchange and session kind isolation.
+      { version: 58, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {
