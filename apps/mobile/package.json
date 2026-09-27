@@ -1,0 +1,16 @@
+{
+  "name": "@workout/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "sync:ios": "cap sync ios",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2"
+  }
+}

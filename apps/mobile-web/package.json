@@ -10,6 +10,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4200 --strictPort"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "@workout/platform": "workspace:*",

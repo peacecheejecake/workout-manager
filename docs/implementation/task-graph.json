@@ -1871,9 +1871,18 @@
       "evidence": "docs/implementation/progress/M3-01a.md"
     },
     {
+      "id": "M3-01b",
+      "title": "제품 Capacitor iOS shell·제한 bridge",
+      "dependsOn": ["M3-01a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "번들 mobile-web 산출물을 쓰는 제품 Capacitor iOS shell과 v2 hello/app.openSettings Swift plugin을 연결한다. privileged WebView의 main-frame·origin·외부 navigation을 제한하고 앱 내에서 인증 기능 unavailable을 명시한다. HealthKit 수집, 토큰, native 인증 transport, 제품 실기기 Back/IME/foreground 수용은 후속 M3-01 범위다.",
+      "evidence": "docs/implementation/progress/M3-01b.md"
+    },
+    {
       "id": "M3-01",
       "title": "Native shell·secure bridge",
-      "dependsOn": ["M1c-04", "M0-06c", "M3-01a"],
+      "dependsOn": ["M1c-04", "M0-06c", "M3-01a", "M3-01b"],
       "kind": "task",
       "status": "not_started",
       "scope": "mobile/mobile-web/platform native; 고정 public module/bridge 계약"

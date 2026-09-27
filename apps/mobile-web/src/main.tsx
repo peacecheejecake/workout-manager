@@ -1,4 +1,5 @@
 import { lazy, Suspense, StrictMode } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { createRoot } from 'react-dom/client';
 import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-candidates';
 import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
@@ -70,6 +71,8 @@ const MapDataLicencePage = lazy(() =>
     default: module.MapDataLicenceView,
   })),
 );
+// A bundled iOS page must never mount browser routes or issue same-origin API requests.
+const nativeOrigin = Capacitor.isNativePlatform() || location.protocol === 'capacitor:';
 const mapDataLicenceScreen =
   location.pathname === '/map-data-licence' || location.pathname === '/map-data-licence/';
 // M2-01k-o: the recipient's screen of a view-only link. Before anything renders, the page
@@ -77,7 +80,7 @@ const mapDataLicenceScreen =
 // to send those as headers. The token stays in the fragment until "코스 보기".
 const sharedCourseScreen =
   location.pathname === '/shared/course' || location.pathname === '/shared/course/';
-if (sharedCourseScreen)
+if (!nativeOrigin && sharedCourseScreen)
   for (const [name, content] of [
     ['referrer', 'no-referrer'],
     ['robots', 'noindex, nofollow, noarchive'],
@@ -92,7 +95,11 @@ if (sharedCourseScreen)
 // checked here: the screen answers for a malformed, missing or someone else's activity alike.
 // `track-preview`, `import` and `new` are sibling pages in the Next shell, not activity ids.
 const activityAliasPath = location.pathname.match(/^\/activities\/([^/]+)\/?$/)?.[1];
-if (activityAliasPath && !['track-preview', 'import', 'new'].includes(activityAliasPath)) {
+if (
+  !nativeOrigin &&
+  activityAliasPath &&
+  !['track-preview', 'import', 'new'].includes(activityAliasPath)
+) {
   let id = activityAliasPath;
   try {
     id = decodeURIComponent(activityAliasPath);
@@ -125,7 +132,7 @@ const courseEditId = courseEditPath
   : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
-createRoot(root).render(
+const browserTree = (
   <StrictMode>
     <main className="wm-page mobile-shell">
       {sharedCourseScreen ? (
@@ -297,5 +304,10 @@ createRoot(root).render(
         </>
       )}
     </main>
-  </StrictMode>,
+  </StrictMode>
 );
+if (nativeOrigin) {
+  void import('./native-entry');
+} else {
+  createRoot(root).render(browserTree);
+}

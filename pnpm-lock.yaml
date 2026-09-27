@@ -136,8 +136,24 @@ importers:
         specifier: 4.23.13
         version: 4.23.13
 
+  apps/mobile:
+    dependencies:
+      '@capacitor/core':
+        specifier: 8.5.2
+        version: 8.5.2
+      '@capacitor/ios':
+        specifier: 8.5.2
+        version: 8.5.2(@capacitor/core@8.5.2)
+    devDependencies:
+      '@capacitor/cli':
+        specifier: 8.5.2
+        version: 8.5.2
+
   apps/mobile-web:
     dependencies:
+      '@capacitor/core':
+        specifier: 8.5.2
+        version: 8.5.2
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -653,6 +669,9 @@ importers:
 
   packages/platform:
     dependencies:
+      '@capacitor/core':
+        specifier: 8.5.2
+        version: 8.5.2
       '@tanstack/react-query':
         specifier: 5.102.8
         version: 5.102.8(react@19.3.0)

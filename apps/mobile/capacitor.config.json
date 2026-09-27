@@ -1,0 +1,10 @@
+{
+  "appId": "org.workoutmanager.app",
+  "appName": "Workout Manager",
+  "webDir": "../mobile-web/dist",
+  "loggingBehavior": "none",
+  "server": {
+    "hostname": "localhost",
+    "iosScheme": "capacitor"
+  }
+}

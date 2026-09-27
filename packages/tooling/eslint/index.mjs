@@ -12,6 +12,7 @@ export function createConfig(root) {
       ignores: [
         '**/node_modules/**',
         '**/dist/**',
+        'apps/mobile/ios/App/App/public/**',
         '**/.next/**',
         '**/.turbo/**',
         '**/coverage/**',
