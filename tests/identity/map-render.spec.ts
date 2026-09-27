@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -40,8 +41,8 @@ import {
  * login on 3100 is the same session on 4200. That is how the identity harness reaches it.
  */
 const shells = [
-  { name: 'Next', origin: 'http://127.0.0.1:3100' },
-  { name: 'Vite', origin: 'http://127.0.0.1:4200' },
+  { name: 'Next', origin: identityWebOrigin },
+  { name: 'Vite', origin: identityMobileOrigin },
 ] as const;
 
 async function login(page: Page) {

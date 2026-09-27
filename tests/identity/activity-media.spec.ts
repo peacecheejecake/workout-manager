@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -23,11 +24,11 @@ import {
  * shows it and the very thumbnail and original addresses the tab used answer 404.
  */
 async function login(page: Page, name: 'Alice' | 'Bob') {
-  await page.goto('http://127.0.0.1:3100/account');
+  await page.goto(`${identityWebOrigin}/account`);
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: `Sign in as ${name}` }).click();
   await expect(page.getByRole('button', { name: '로그아웃', exact: true })).toBeVisible();
-  const response = await page.request.get('http://127.0.0.1:3100/bff/v1/session');
+  const response = await page.request.get(`${identityWebOrigin}/bff/v1/session`);
   expect(response.status()).toBe(200);
   const session: unknown = await response.json();
   assert.ok(
@@ -39,7 +40,7 @@ async function login(page: Page, name: 'Alice' | 'Bob') {
       typeof session.csrfToken === 'string',
   );
   return {
-    origin: 'http://127.0.0.1:3100',
+    origin: identityWebOrigin,
     'x-workout-session-id': session.sessionId,
     'x-csrf-token': session.csrfToken,
   };
@@ -61,7 +62,7 @@ test.afterEach(async ({ page }) => {
   const entry = cleanup.get(page);
   if (!entry) return;
   cleanup.delete(page);
-  const api = 'http://127.0.0.1:3100/bff/v1';
+  const api = `${identityWebOrigin}/bff/v1`;
   if (entry.mediaItemId) {
     const read = await page.request.get(`${api}/gallery/media/${entry.mediaItemId}`, {
       headers: entry.headers,
@@ -105,7 +106,7 @@ async function importActivity(page: Page, headers: Headers, title: string) {
     },
   });
   const { idempotencyKey, ...body } = command;
-  const response = await page.request.post('http://127.0.0.1:3100/bff/v1/activity-imports', {
+  const response = await page.request.post(`${identityWebOrigin}/bff/v1/activity-imports`, {
     headers: { ...headers, 'idempotency-key': idempotencyKey },
     data: body,
   });
@@ -116,7 +117,7 @@ async function importActivity(page: Page, headers: Headers, title: string) {
 
 /** Real gallery media: reserve, stream the bytes, finalize; then the same for its preview. */
 async function uploadGalleryMedia(page: Page, headers: Headers, caption: string) {
-  const api = 'http://127.0.0.1:3100/bff/v1/gallery/media';
+  const api = `${identityWebOrigin}/bff/v1/gallery/media`;
   const send = async (uploadId: string, fileName: string, bytes: Buffer) => {
     const put = await page.request.put(`${api}/uploads/${uploadId}/content`, {
       headers: {
@@ -156,7 +157,7 @@ async function uploadGalleryMedia(page: Page, headers: Headers, caption: string)
 
 async function readLink(page: Page, headers: Headers, mediaItemId: string) {
   const response = await page.request.get(
-    `http://127.0.0.1:3100/bff/v1/gallery/media/${mediaItemId}`,
+    `${identityWebOrigin}/bff/v1/gallery/media/${mediaItemId}`,
     { headers },
   );
   expect(response.status()).toBe(200);
@@ -166,8 +167,8 @@ async function readLink(page: Page, headers: Headers, mediaItemId: string) {
 }
 
 const shells = [
-  ['Next', 'http://127.0.0.1:3100'],
-  ['Vite', 'http://127.0.0.1:4200'],
+  ['Next', identityWebOrigin],
+  ['Vite', identityMobileOrigin],
 ] as const;
 
 for (const [shell, origin] of shells) {
@@ -238,7 +239,7 @@ for (const [shell, origin] of shells) {
     await expect
       .poll(() => thumbnailBodies.some((body) => body.equals(previewBytes)), { timeout: 10_000 })
       .toBe(true);
-    const served = await page.request.get(`http://127.0.0.1:3100${thumbnailPath}`, { headers });
+    const served = await page.request.get(`${identityWebOrigin}${thumbnailPath}`, { headers });
     expect(served.status()).toBe(200);
     expect(served.headers()['cache-control']).toBe('private, no-store');
     expect(Buffer.from(await served.body()).equals(previewBytes)).toBe(true);
@@ -264,7 +265,7 @@ for (const [shell, origin] of shells) {
     const saved = await download.path();
     expect((await readFile(saved)).equals(originalBytes)).toBe(true);
     // Bob: every address of Alice's media is 404, and her activity's media tab is not his.
-    const bobContext = await browser.newContext({ baseURL: 'http://127.0.0.1:3100' });
+    const bobContext = await browser.newContext({ baseURL: identityWebOrigin });
     try {
       // Without any session the original address serves nothing.
       const anonymous = await bobContext.request.get(originalPath);
@@ -339,12 +340,12 @@ for (const [shell, origin] of shells) {
     await expect(panel.getByText(caption)).toHaveCount(0);
     await expect(panel.getByRole('img')).toHaveCount(0);
     for (const path of [thumbnailPath, originalPath]) {
-      const again = await page.request.get(`http://127.0.0.1:3100${path}`, { headers });
+      const again = await page.request.get(`${identityWebOrigin}${path}`, { headers });
       expect(again.status()).toBe(404);
       expect(await again.text()).not.toContain('private/v1/tenants');
     }
     const afterDelete = await page.request.get(
-      `http://127.0.0.1:3100/bff/v1/gallery/media/${item.id}`,
+      `${identityWebOrigin}/bff/v1/gallery/media/${item.id}`,
       { headers },
     );
     expect(afterDelete.status()).toBe(404);

@@ -1,9 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
-import { identityApiPort } from './scripts/fixtures/identity-api-port';
+import {
+  identityApiOrigin,
+  identityApiPort,
+  identityMobileOrigin,
+  identityMobilePort,
+  identityWebOrigin,
+  identityWebPort,
+} from './scripts/fixtures/identity-ports';
 import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-capture';
+
+const repositoryDirectory = dirname(fileURLToPath(import.meta.url));
 
 /**
  * The self-hosted basemap deployment, when one has been built on this machine.
@@ -15,7 +25,7 @@ import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-cap
 const basemapDirectory =
   // M0-06b-odbl: a scratch deployment (BASEMAP_WORK_ROOT build) can be served instead of the
   // shared one, to see the licence page against a deployment that carries its disclosure.
-  process.env['IDENTITY_E2E_BASEMAP_DIST_DIR'] ?? join(import.meta.dirname, '.geo-build/dist');
+  process.env['IDENTITY_E2E_BASEMAP_DIST_DIR'] ?? join(repositoryDirectory, '.geo-build/dist');
 const basemapEnv = existsSync(join(basemapDirectory, 'current.json'))
   ? { BASEMAP_DIST_DIR: basemapDirectory }
   : {};
@@ -27,7 +37,7 @@ const basemapEnv = existsSync(join(basemapDirectory, 'current.json'))
  * screens support and say out loud.
  */
 const geoDataDirectory =
-  process.env['IDENTITY_E2E_GEO_DATA_DIR'] ?? join(import.meta.dirname, '.geo-build/geo-data');
+  process.env['IDENTITY_E2E_GEO_DATA_DIR'] ?? join(repositoryDirectory, '.geo-build/geo-data');
 const geoDataEnv = existsSync(join(geoDataDirectory, 'places.json'))
   ? { GEO_DATA_DIR: geoDataDirectory }
   : {};
@@ -58,7 +68,7 @@ const shellLogs =
     : {};
 if (diagnostics) {
   process.env.IDENTITY_E2E_DIAGNOSTICS_DIR ??= join(
-    import.meta.dirname,
+    repositoryDirectory,
     'playwright-report/identity-diagnostics',
     process.env.IDENTITY_E2E_RUN_ID,
   );
@@ -78,7 +88,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: 'http://127.0.0.1:3100',
+    baseURL: identityWebOrigin,
     // A trace keeps the session cookie, CSRF token, session id and OIDC code/state/nonce
     // unredacted, and CI failure artifacts of this public repository are downloadable by
     // anyone signed in. CI records no trace; its failures upload the redacted diagnostics and
@@ -98,19 +108,22 @@ export default defineConfig({
       gracefulShutdown: { signal: 'SIGTERM', timeout: 10000 },
     },
     {
-      command: 'pnpm --filter @workout/web start',
-      url: 'http://127.0.0.1:3100',
+      command: `pnpm --filter @workout/web exec next start --hostname 127.0.0.1 --port ${identityWebPort}`,
+      url: identityWebOrigin,
       reuseExistingServer: false,
-      env: basemapEnv,
+      env: { ...basemapEnv, API_ORIGIN: identityApiOrigin },
       ...shellLogs,
     },
     {
-      command: 'API_ORIGIN=http://127.0.0.1:4300 pnpm --filter @workout/mobile-web preview',
-      url: 'http://127.0.0.1:4200',
+      command: `pnpm --filter @workout/mobile-web exec vite preview --host 127.0.0.1 --port ${identityMobilePort} --strictPort`,
+      url: identityMobileOrigin,
       reuseExistingServer: false,
       // This shell has no server of its own; during preview the background assets come
       // from the origin that already serves them.
-      env: Object.keys(basemapEnv).length > 0 ? { BASEMAP_ORIGIN: 'http://127.0.0.1:3100' } : {},
+      env: {
+        API_ORIGIN: identityApiOrigin,
+        ...(Object.keys(basemapEnv).length > 0 ? { BASEMAP_ORIGIN: identityWebOrigin } : {}),
+      },
       ...shellLogs,
     },
   ],

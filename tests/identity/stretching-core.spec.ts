@@ -1,3 +1,4 @@
+import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { activitySchema, manualActivityResultSchema } from '../../packages/contracts/src/activity';
@@ -207,7 +208,7 @@ test('S34 keeps side-specific holds and precise correction times under one Activ
 
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto(
-    `http://127.0.0.1:4200/stretching/exercises/${exercise.definition.exerciseId}?activityId=${activityId}`,
+    `${identityMobileOrigin}/stretching/exercises/${exercise.definition.exerciseId}?activityId=${activityId}`,
   );
   await expect(page.getByRole('region', { name: '스트레칭 작업 공간' })).toContainText(
     exerciseName,

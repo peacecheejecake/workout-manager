@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -33,7 +34,7 @@ test.afterEach(async ({ page }) => {
   const headers = cleanup.get(page);
   if (!headers) return;
   cleanup.delete(page);
-  const erased = await page.request.delete('http://127.0.0.1:3100/bff/v1/operations/account', {
+  const erased = await page.request.delete(`${identityWebOrigin}/bff/v1/operations/account`, {
     headers,
     data: { confirmation: 'DELETE MY ACCOUNT' },
     timeout: 5000,
@@ -234,7 +235,7 @@ test('integrated Planner shows approved plans and one canonical actual per ledge
       true,
     );
   }
-  await page.goto(`http://127.0.0.1:4200${plannerUrl}`);
+  await page.goto(`${identityMobileOrigin}${plannerUrl}`);
   const mobilePanel = page.getByRole('region', { name: '통합 Planner' });
   await expect(mobilePanel).toContainText(`Planned meal ${marker}`);
   await expect(mobilePanel).toContainText('실제 Activity 1건 (세트 상세 연결 1건)');

@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { expect, test, type Page } from '@playwright/test';
 import { unofficialAccounts, unofficialOwner } from '../../scripts/fixtures/garmin-unofficial';
@@ -14,8 +15,8 @@ import { unofficialAccounts, unofficialOwner } from '../../scripts/fixtures/garm
 test.describe.configure({ mode: 'serial' });
 
 const shells = {
-  Next: 'http://127.0.0.1:3100',
-  Vite: 'http://127.0.0.1:4200',
+  Next: identityWebOrigin,
+  Vite: identityMobileOrigin,
 } as const;
 const statusPath = '/bff/v1/integrations/garmin-unofficial/status';
 

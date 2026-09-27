@@ -1,3 +1,4 @@
+import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -581,7 +582,7 @@ test('reviews a fixture run and approves a selected change through the product U
   await expect(review.getByRole('link', { name: '부모 후보 검토' })).toBeVisible();
   const childPath = new URL(page.url()).pathname;
   await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto(`http://127.0.0.1:4200${childPath}`);
+  await page.goto(`${identityMobileOrigin}${childPath}`);
   await expect(review.getByRole('region', { name: '변경 전후 일정' })).toBeVisible();
   await expect(review.getByRole('region', { name: '후보 검증 결과' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
@@ -603,7 +604,7 @@ test('reviews a fixture run and approves a selected change through the product U
   expect(head?.version).toBe(fixture.plan.version + 1);
   expect(head?.draft.sessions[0]?.durationSeconds).toBe(2100);
   await review.getByRole('link', { name: '저장된 계획 보기' }).click();
-  await expect(page).toHaveURL('http://127.0.0.1:4200/planner');
+  await expect(page).toHaveURL(`${identityMobileOrigin}/planner`);
   await expect(page.getByRole('region', { name: '훈련 계획' })).toContainText(
     `현재 버전: ${fixture.plan.version + 1} · Synthetic coaching run plan`,
   );

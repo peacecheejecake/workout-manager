@@ -1,3 +1,4 @@
+import { identityOidcOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { certifiedOidcContextPath } from '../../scripts/fixtures/certified-oidc-context';
@@ -15,7 +16,7 @@ test.skip(
   'Runs only with IDENTITY_E2E_OIDC=certified (the harness must host the certified OP).',
 );
 
-const opOrigin = 'http://127.0.0.1:4400';
+const opOrigin = identityOidcOrigin;
 function passwords(): Record<'alice' | 'bob', string> {
   return (
     JSON.parse(readFileSync(certifiedOidcContextPath, 'utf8')) as {
@@ -123,7 +124,7 @@ test('real OP: a first sign-in keeps single sign-on; a session-less sign-out and
   await context.clearCookies();
   await context.addCookies(withoutSession);
   const stale = await page.request.post('/bff/v1/auth/logout', {
-    headers: { origin: 'http://127.0.0.1:3100' },
+    headers: { origin: identityWebOrigin },
   });
   expect(stale.status()).toBe(401);
   expect((await context.cookies()).some((cookie) => cookie.name === 'workout_signed_out')).toBe(
@@ -141,7 +142,7 @@ test('real OP: a first sign-in keeps single sign-on; a session-less sign-out and
     page.getByRole('heading', { name: 'Certified identity provider sign-in' }),
   ).toBeVisible();
   const callback = page.waitForResponse((response) =>
-    response.url().startsWith('http://127.0.0.1:3100/bff/v1/auth/callback'),
+    response.url().startsWith(`${identityWebOrigin}/bff/v1/auth/callback`),
   );
   await page.getByRole('button', { name: 'Cancel' }).click();
   const rejected = await callback;

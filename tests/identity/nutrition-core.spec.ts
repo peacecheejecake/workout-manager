@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -54,7 +55,7 @@ test.afterEach(async ({ page }) => {
   const headers = cleanup.get(page);
   if (!headers) return;
   cleanup.delete(page);
-  const erased = await page.request.delete('http://127.0.0.1:3100/bff/v1/operations/account', {
+  const erased = await page.request.delete(`${identityWebOrigin}/bff/v1/operations/account`, {
     headers,
     data: { confirmation: 'DELETE MY ACCOUNT' },
     timeout: 5000,
@@ -191,11 +192,11 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
   await page.reload();
   await expect(page.getByRole('region', { name: '영양 작업 공간' })).toContainText('0 kcal');
 
-  await page.goto(`http://127.0.0.1:4200/nutrition?date=${day}`);
+  await page.goto(`${identityMobileOrigin}/nutrition?date=${day}`);
   await expect(page.getByRole('region', { name: '영양 작업 공간' })).toContainText(
     'Synthetic snack with unknown nutrients',
   );
-  await page.goto(`http://127.0.0.1:3100/nutrition?date=${day}`);
+  await page.goto(`${identityWebOrigin}/nutrition?date=${day}`);
   const deleted = await page.request.delete(`/bff/v1/nutrition/intakes/${id}`, {
     headers: { ...headers, 'idempotency-key': randomUUID() },
     data: { confirmed: true, expectedRevision: 2, reason: 'user_requested' },

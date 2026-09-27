@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -41,30 +42,30 @@ import {
  * route layer, where a request is seen before it can fail.
  */
 const shells = [
-  { name: 'Next', origin: 'http://127.0.0.1:3100' },
-  { name: 'Vite', origin: 'http://127.0.0.1:4200' },
+  { name: 'Next', origin: identityWebOrigin },
+  { name: 'Vite', origin: identityMobileOrigin },
 ] as const;
 
 const start = Date.parse('2026-03-01T00:00:00Z');
 const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
 
 async function login(page: Page, subject: 'Alice' | 'Bob' = 'Alice') {
-  await page.goto('http://127.0.0.1:3100/account');
+  await page.goto(`${identityWebOrigin}/account`);
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: `Sign in as ${subject}` }).click();
   await expect(page.getByRole('button', { name: '로그아웃', exact: true })).toBeVisible();
-  const response = await page.request.get('http://127.0.0.1:3100/bff/v1/session');
+  const response = await page.request.get(`${identityWebOrigin}/bff/v1/session`);
   expect(response.status()).toBe(200);
   const session = (await response.json()) as { sessionId: string; csrfToken: string };
   return {
-    origin: 'http://127.0.0.1:3100',
+    origin: identityWebOrigin,
     'x-workout-session-id': session.sessionId,
     'x-csrf-token': session.csrfToken,
   };
 }
 
 async function logout(page: Page) {
-  await page.goto('http://127.0.0.1:3100/account');
+  await page.goto(`${identityWebOrigin}/account`);
   // Sign-out is an async request from this page; wait for it to land.
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
   await expect(page.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
@@ -124,14 +125,14 @@ async function storeTrack(page: Page, headers: Record<string, string>): Promise<
     },
   });
   const { idempotencyKey, ...body } = command;
-  const imported = await page.request.post('http://127.0.0.1:3100/bff/v1/activity-imports', {
+  const imported = await page.request.post(`${identityWebOrigin}/bff/v1/activity-imports`, {
     headers: { ...headers, 'idempotency-key': idempotencyKey },
     data: body,
   });
   expect(imported.status()).toBe(200);
   const result = activityImportResultSchema.parse(await imported.json());
   const reserved = await page.request.post(
-    `http://127.0.0.1:3100/bff/v1/activities/${result.activityId}/track-uploads`,
+    `${identityWebOrigin}/bff/v1/activities/${result.activityId}/track-uploads`,
     {
       headers: { ...headers, 'idempotency-key': randomUUID() },
       data: { expectedActivityRevision: result.revision, recordedTrackIndex: 0 },
@@ -156,7 +157,7 @@ async function storeTrack(page: Page, headers: Record<string, string>): Promise<
     ]),
   );
   const uploaded = await page.request.put(
-    `http://127.0.0.1:3100/bff/v1/activity-track-uploads/${reservation.uploadId}/content`,
+    `${identityWebOrigin}/bff/v1/activity-track-uploads/${reservation.uploadId}/content`,
     {
       headers: {
         ...headers,
@@ -168,7 +169,7 @@ async function storeTrack(page: Page, headers: Record<string, string>): Promise<
   );
   expect(uploaded.status()).toBe(200);
   const finalized = await page.request.post(
-    `http://127.0.0.1:3100/bff/v1/activity-track-uploads/${reservation.uploadId}/finalize`,
+    `${identityWebOrigin}/bff/v1/activity-track-uploads/${reservation.uploadId}/finalize`,
     { headers: { ...headers, 'idempotency-key': randomUUID() } },
   );
   expect(finalized.status()).toBe(200);
@@ -191,7 +192,7 @@ async function bareActivity(page: Page, headers: Record<string, string>): Promis
     },
   });
   const { idempotencyKey, ...body } = command;
-  const imported = await page.request.post('http://127.0.0.1:3100/bff/v1/activity-imports', {
+  const imported = await page.request.post(`${identityWebOrigin}/bff/v1/activity-imports`, {
     headers: { ...headers, 'idempotency-key': idempotencyKey },
     data: body,
   });
@@ -210,7 +211,7 @@ async function importCourse(page: Page, headers: Record<string, string>, name: s
     `<rte><name>${name}</name>` +
     points.map(([lon, lat]) => `<rtept lat="${lat}" lon="${lon}" />`).join('') +
     `</rte></gpx>\n`;
-  const response = await page.request.post('http://127.0.0.1:3100/bff/v1/courses/imports', {
+  const response = await page.request.post(`${identityWebOrigin}/bff/v1/courses/imports`, {
     headers: { ...headers, 'idempotency-key': randomUUID() },
     data: {
       name,
@@ -246,9 +247,7 @@ const trackMap = (page: Page) => mapRegion(trackPanel(page), '저장된 활동 �
 const tiles = /\/map\/basemap\/[^/]+\/tiles\//;
 
 async function basemapDeployed(page: Page): Promise<boolean> {
-  return (
-    (await page.request.get('http://127.0.0.1:3100/map/basemap/current.json')).status() === 200
-  );
+  return (await page.request.get(`${identityWebOrigin}/map/basemap/current.json`)).status() === 200;
 }
 
 /**
@@ -596,7 +595,7 @@ for (const shell of shells) {
           async () =>
             (
               (await (
-                await page.request.get(`http://127.0.0.1:3100/bff/v1/courses/${courseId}`, {
+                await page.request.get(`${identityWebOrigin}/bff/v1/courses/${courseId}`, {
                   headers,
                 })
               ).json()) as { thumbnail: { status: string } }

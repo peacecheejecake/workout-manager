@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -205,11 +206,11 @@ test('reviews and atomically applies one server-owned four-domain candidate on w
   await expect(review).toContainText('영양');
   await expect(review).toContainText('회복');
   await expect(review).toContainText('루틴 일정');
-  await page.goto(`http://127.0.0.1:4200/integrated-proposals/${candidate.id}`);
+  await page.goto(`${identityMobileOrigin}/integrated-proposals/${candidate.id}`);
   await expect(page.getByRole('region', { name: '네 도메인 통합 후보 검토' })).toContainText(
     '네 도메인 변경',
   );
-  await page.goto(`http://127.0.0.1:3100/integrated-proposals/${candidate.id}`);
+  await page.goto(`${identityWebOrigin}/integrated-proposals/${candidate.id}`);
   review = page.getByRole('region', { name: '네 도메인 통합 후보 검토' });
   const approve = review.getByRole('button', { name: '네 도메인 변경 승인' });
   await expect(approve).toBeDisabled();

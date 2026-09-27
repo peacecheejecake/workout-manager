@@ -160,6 +160,20 @@ pnpm test:identity  # 독립 임시 PostgreSQL + 로컬 OIDC + Fastify + product
 pnpm dev:api        # 실제 공급자/DB 환경변수 구성 후
 ```
 
+다른 identity E2E 실행과 포트가 겹치면 다섯 포트를 한 실행에 함께 지정할 수 있습니다. 기본값은 순서대로
+3100/4200/4300/4400/4500입니다. 각 실행은 자체 PostgreSQL을 사용하며, 이미 열린 서버를 재사용하지 않습니다.
+Next의 API 프록시 목적지는 빌드에도 반영되므로 포트를 바꾼 작업 공간에서 다시 빌드하세요.
+
+```bash
+export WORKOUT_IDENTITY_WEB_PORT=3110
+export WORKOUT_IDENTITY_MOBILE_PORT=4210
+export WORKOUT_IDENTITY_API_PORT=4310
+export WORKOUT_IDENTITY_OIDC_PORT=4410
+export WORKOUT_IDENTITY_GARMIN_PORT=4510
+API_ORIGIN=http://127.0.0.1:4310 pnpm build
+pnpm test:identity
+```
+
 ### Identity E2E diagnostics
 
 재현되지 않는 브라우저 정지를 추적할 때 켭니다. CI의 identity job은 항상 켭니다(trace 대신 실패 증거로 씀, 아래).

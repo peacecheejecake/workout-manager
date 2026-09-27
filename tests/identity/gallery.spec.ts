@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -186,8 +187,8 @@ test('refuses an upload whose bytes contradict the declared content type', async
 });
 
 for (const [shell, origin] of [
-  ['Next', 'http://127.0.0.1:3100'],
-  ['Vite', 'http://127.0.0.1:4200'],
+  ['Next', identityWebOrigin],
+  ['Vite', identityMobileOrigin],
 ] as const) {
   test(`${shell} clears visible private gallery media on explicit logout and Bob login`, async ({
     page,
@@ -229,7 +230,7 @@ for (const [shell, origin] of [
 
     const account = await page.context().newPage();
     try {
-      await account.goto('http://127.0.0.1:3100/account');
+      await account.goto(`${identityWebOrigin}/account`);
       await account.getByRole('button', { name: '로그아웃', exact: true }).click();
       await expect(account.getByRole('link', { name: 'OIDC로 로그인' })).toBeVisible();
       await page.bringToFront();

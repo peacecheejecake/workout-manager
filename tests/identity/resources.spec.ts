@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -84,7 +85,7 @@ test('creates, versions, pins and deletes a private text resource', async ({ pag
   await expect(page).toHaveURL(new RegExp(`version=${firstVersionId}$`));
   await expect(page.getByRole('listitem').filter({ hasText: '첫 원문 문단입니다.' })).toBeVisible();
 
-  await page.goto(`http://127.0.0.1:4200/resources/${resourceId}?version=${firstVersionId}`);
+  await page.goto(`${identityMobileOrigin}/resources/${resourceId}?version=${firstVersionId}`);
   await expect(
     page.getByText('원문 버전 1 · 파싱 완료 · 검색 색인 안 됨 · 코치 사용 안 함'),
   ).toBeVisible();
@@ -95,12 +96,12 @@ test('creates, versions, pins and deletes a private text resource', async ({ pag
   await page.setViewportSize({ width: 1280, height: 800 });
 
   const currentResponse = await page.request.get(
-    `http://127.0.0.1:3100/bff/v1/resources/${resourceId}`,
+    `${identityWebOrigin}/bff/v1/resources/${resourceId}`,
     { headers },
   );
   const current = privateTextResourceReadResultSchema.parse(await currentResponse.json());
   assert.equal(current.status, 'available');
-  await page.goto(`http://127.0.0.1:3100/resources/${resourceId}`);
+  await page.goto(`${identityWebOrigin}/resources/${resourceId}`);
   await page.getByLabel('삭제 결과를 확인했습니다').check();
   await page.getByRole('button', { name: '자료 삭제' }).click();
   await expect(page).toHaveURL(/\/resources$/);

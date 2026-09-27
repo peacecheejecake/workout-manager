@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -52,7 +53,7 @@ test.afterEach(async ({ page }) => {
   if (!headers) return;
   cleanup.delete(page);
   // The isolated OIDC/PostgreSQL harness provisions this synthetic account only.
-  const erased = await page.request.delete('http://127.0.0.1:3100/bff/v1/operations/account', {
+  const erased = await page.request.delete(`${identityWebOrigin}/bff/v1/operations/account`, {
     headers,
     data: { confirmation: 'DELETE MY ACCOUNT' },
     timeout: 5000,
@@ -321,7 +322,9 @@ test('versioned exercise and routine feed one Activity execution with confirmed 
   expect(timerPauseResponse.status()).toBe(200);
   const pausedTimer = restTimerStateSchema.parse(await timerPauseResponse.json());
   expect(pausedTimer).toMatchObject({ timerId: startedTimer.timerId, status: 'paused' });
-  await page.goto(`http://127.0.0.1:4200/supplementary/sessions/${execution.executionId}/perform`);
+  await page.goto(
+    `${identityMobileOrigin}/supplementary/sessions/${execution.executionId}/perform`,
+  );
   await expect(workspace).toContainText('paused');
   await expect(workspace).toContainText('performed · 8회');
   expect((await listActuals()).total).toBe(1);
@@ -350,7 +353,7 @@ test('versioned exercise and routine feed one Activity execution with confirmed 
     activityBefore,
   );
 
-  const exportResponse = await page.request.post('http://127.0.0.1:3100/bff/v1/operations/export', {
+  const exportResponse = await page.request.post(`${identityWebOrigin}/bff/v1/operations/export`, {
     headers,
   });
   expect(exportResponse.status()).toBe(200);

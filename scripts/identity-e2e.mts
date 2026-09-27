@@ -1,3 +1,9 @@
+import {
+  identityGarminPort,
+  identityMobileOrigin,
+  identityOidcPort,
+  identityWebOrigin,
+} from './fixtures/identity-ports.ts';
 import { createCoachingConstraintRepository } from '../packages/server/persistence/src/coaching-constraints.ts';
 import { createCoreEvidenceSnapshotRepository } from '../packages/server/persistence/src/evidence-snapshots.ts';
 import { createCoachingThreadRepository } from '../packages/server/persistence/src/coaching-threads.ts';
@@ -371,7 +377,7 @@ try {
   const identity = createIdentityService({
     store,
     provider,
-    publicOrigin: 'http://127.0.0.1:3100',
+    publicOrigin: identityWebOrigin,
     allowInsecureLocalhost: true,
   });
   const garminProvider = createGarminProvider({
@@ -606,12 +612,12 @@ try {
     ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
     checkIns: createCheckInRepository(database),
     dashboard: createDashboardRepository(database),
-    allowedOrigins: ['http://127.0.0.1:3100', 'http://127.0.0.1:4200'],
+    allowedOrigins: [identityWebOrigin, identityMobileOrigin],
   });
   closers.push(() => api.close());
   await api.listen({ host: '127.0.0.1', port: identityApiPort });
   console.log(
-    `Identity E2E ready: API ${identityApiPort}, OIDC fixture 4400, Garmin fixture 4500, private PostgreSQL.`,
+    `Identity E2E ready: API ${identityApiPort}, OIDC fixture ${identityOidcPort}, Garmin fixture ${identityGarminPort}, private PostgreSQL.`,
   );
 } catch (error) {
   await close();

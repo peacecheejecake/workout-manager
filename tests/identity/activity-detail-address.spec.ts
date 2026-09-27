@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -98,8 +99,8 @@ async function importActivity(page: Page, title: string) {
 }
 
 const shells = [
-  ['Next', 'http://127.0.0.1:3100'],
-  ['Vite', 'http://127.0.0.1:4200'],
+  ['Next', identityWebOrigin],
+  ['Vite', identityMobileOrigin],
 ] as const;
 
 /** Each spec tab value, the tab label it must select, and a region only that tab shows. */
@@ -197,7 +198,7 @@ for (const [shell, origin] of shells) {
     expect(detailRequests).toEqual([]);
 
     // Bob: Alice's activity through the alias reads exactly like an activity that does not exist.
-    const bobContext = await browser.newContext({ baseURL: 'http://127.0.0.1:3100' });
+    const bobContext = await browser.newContext({ baseURL: identityWebOrigin });
     try {
       const bob = await bobContext.newPage();
       await login(bob, 'Bob');

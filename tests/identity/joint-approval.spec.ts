@@ -1,3 +1,4 @@
+import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -187,7 +188,7 @@ test('reviews and applies one server-created training and nutrition candidate on
     await get(`/bff/v1/nutrition/plans/${nutrition.planId}`),
   );
   expect(nutritionAfter.head?.version).toBe(nutrition.version + 1);
-  await page.goto(`http://127.0.0.1:4200/joint-proposals/${candidate.id}`);
+  await page.goto(`${identityMobileOrigin}/joint-proposals/${candidate.id}`);
   await expect(page.getByRole('region', { name: '훈련·영양 공동 후보 검토' })).toContainText(
     '훈련과 영양 변경',
   );
