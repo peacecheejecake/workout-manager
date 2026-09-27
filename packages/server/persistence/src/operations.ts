@@ -533,6 +533,7 @@ const collections = [
     'installation_id,batch_id,accepted_count,received_at,purged_at',
     'received_at,installation_id,batch_id',
   ],
+  ['healthKitWorkoutLineage', 'healthkit_workout_lineage', 'sample_id,state', 'sample_id'],
   [
     'checkIns',
     'check_in',
@@ -567,7 +568,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 25,
+          schemaVersion: 26,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
 import { createDatabase, type Database } from '../src/database.js';
 import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitProjectionRepository } from '../src/healthkit-projection.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
 
@@ -105,9 +106,15 @@ describe('M3-02a raw HealthKit ingestion', () => {
       tx.query(`SELECT
         (SELECT count(*)::int FROM healthkit_workout_sample) AS raw_count,
         (SELECT count(*)::int FROM healthkit_workout_batch_receipt) AS receipt_count,
-        (SELECT count(*)::int FROM activity_canonical) AS canonical_count`),
+        (SELECT count(*)::int FROM activity_canonical) AS canonical_count,
+        (SELECT count(*)::int FROM healthkit_workout_lineage WHERE state='pending_review') AS pending_count`),
     );
-    expect(state.rows[0]).toEqual({ raw_count: 1, receipt_count: 1, canonical_count: 0 });
+    expect(state.rows[0]).toEqual({
+      raw_count: 1,
+      receipt_count: 1,
+      canonical_count: 0,
+      pending_count: 1,
+    });
   });
 
   it('returns the original ACK for concurrent identical batches, and rejects changed payloads', async () => {
@@ -135,6 +142,84 @@ describe('M3-02a raw HealthKit ingestion', () => {
     expect(result.rows[0]?.['n']).toBe(1);
   });
 
+  it('preserves an explicit suppression across a later duplicate upsert', async () => {
+    const athlete = randomUUID();
+    await grantConsent(athlete);
+    const repo = createHealthKitIngestionRepository(database);
+    const batch = workout();
+    const sampleId = batch.events[0]?.sampleId;
+    if (!sampleId) throw new Error('Expected workout fixture');
+    await repo.ingestBatch(athlete, batch);
+    await admin.query(
+      "UPDATE healthkit_workout_lineage SET state='suppressed' WHERE athlete_id=$1 AND sample_id=$2",
+      [athlete, sampleId],
+    );
+    await repo.ingestBatch(athlete, { ...batch, batchId: randomUUID() });
+    expect(await createHealthKitProjectionRepository(database).listLineage(athlete, 100)).toEqual([
+      { sampleId, state: 'suppressed' },
+    ]);
+    const result = await database.tenant(athlete, (tx) =>
+      tx.query('SELECT count(*)::int AS n FROM activity_canonical'),
+    );
+    expect(result.rows[0]?.['n']).toBe(0);
+  });
+
+  it('grants review lineage reads only to the runtime role', async () => {
+    const athlete = randomUUID();
+    await grantConsent(athlete);
+    const batch = workout();
+    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch);
+    const permissions = await database.tenant(athlete, (tx) =>
+      tx.query(`SELECT
+        has_table_privilege(current_user,'healthkit_workout_lineage','SELECT') AS can_read,
+        has_table_privilege(current_user,'healthkit_workout_lineage','INSERT') AS can_insert,
+        has_table_privilege(current_user,'healthkit_workout_lineage','UPDATE') AS can_update,
+        has_table_privilege(current_user,'healthkit_workout_lineage','DELETE') AS can_delete`),
+    );
+    expect(permissions.rows[0]).toEqual({
+      can_read: true,
+      can_insert: false,
+      can_update: false,
+      can_delete: false,
+    });
+    const foreign = await database.tenant(randomUUID(), (tx) =>
+      tx.query('SELECT sample_id,state FROM healthkit_workout_lineage'),
+    );
+    expect(foreign.rows).toEqual([]);
+  });
+
+  it('rolls back raw rows and ACK when the same-transaction projection fails', async () => {
+    const athlete = randomUUID();
+    await grantConsent(athlete);
+    const repo = createHealthKitIngestionRepository(database);
+    const batch = workout();
+    const sampleId = batch.events[0]?.sampleId;
+    if (!sampleId) throw new Error('Expected workout fixture');
+    const checkName = `hk_projection_reject_${sampleId.replaceAll('-', '')}`;
+    try {
+      await admin.query(
+        `ALTER TABLE healthkit_workout_lineage ADD CONSTRAINT ${checkName}
+         CHECK (sample_id <> '${sampleId}'::uuid)`,
+      );
+      await expect(repo.ingestBatch(athlete, batch)).rejects.toThrow();
+      const failed = await database.tenant(athlete, (tx) =>
+        tx.query(
+          `SELECT
+          (SELECT count(*)::int FROM healthkit_workout_sample WHERE sample_id=$1) AS raw_count,
+          (SELECT count(*)::int FROM healthkit_workout_lineage WHERE sample_id=$1) AS lineage_count,
+          (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE batch_id=$2) AS receipt_count`,
+          [sampleId, batch.batchId],
+        ),
+      );
+      expect(failed.rows[0]).toEqual({ raw_count: 0, lineage_count: 0, receipt_count: 0 });
+    } finally {
+      await admin.query(
+        `ALTER TABLE healthkit_workout_lineage DROP CONSTRAINT IF EXISTS ${checkName}`,
+      );
+    }
+    expect((await repo.ingestBatch(athlete, batch)).acceptedCount).toBe(1);
+  });
+
   it('makes deletion irreversible for the HealthKit UUID and isolates tenants', async () => {
     const athlete = randomUUID();
     const other = randomUUID();
@@ -158,10 +243,14 @@ describe('M3-02a raw HealthKit ingestion', () => {
     );
     expect(first.rows[0]).toMatchObject({ state: 'deleted', source_bundle_id: null });
     expect(first.rows[0]?.['deleted_at']).toBeInstanceOf(Date);
+    expect(await createHealthKitProjectionRepository(database).listLineage(athlete, 100)).toEqual([
+      { sampleId, state: 'deleted' },
+    ]);
     const invisible = await database.tenant(other, (tx) =>
       tx.query('SELECT count(*)::int AS n FROM healthkit_workout_sample'),
     );
     expect(invisible.rows[0]?.['n']).toBe(0);
+    expect(await createHealthKitProjectionRepository(database).listLineage(other, 100)).toEqual([]);
     await expect(
       database.tenant(other, (tx) =>
         tx.query('SELECT state FROM healthkit_workout_sample WHERE athlete_id=$1', [athlete]),
@@ -185,11 +274,17 @@ describe('M3-02a raw HealthKit ingestion', () => {
       tx.query(`SELECT
         (SELECT count(*)::int FROM healthkit_workout_sample) AS raw_count,
         (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE purged_at IS NOT NULL) AS purged_count,
-        (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE request_digest IS NOT NULL) AS digest_count`),
+        (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE request_digest IS NOT NULL) AS digest_count,
+        (SELECT count(*)::int FROM healthkit_workout_lineage) AS lineage_count`),
     );
-    expect(purged.rows[0]).toEqual({ raw_count: 0, purged_count: 1, digest_count: 0 });
+    expect(purged.rows[0]).toEqual({
+      raw_count: 0,
+      purged_count: 1,
+      digest_count: 0,
+      lineage_count: 0,
+    });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 25) throw new Error('Expected current export version');
+    if (exported.schemaVersion !== 26) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutBatchReceipts[0]).not.toHaveProperty('request_digest');
     await expect(repo.ingestBatch(athlete, batch)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
@@ -282,17 +377,21 @@ describe('M3-02a raw HealthKit ingestion', () => {
     await repo.ingestBatch(athlete, batch);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(25);
-    if (exported.schemaVersion !== 25) throw new Error('Expected current export version');
+    expect(exported.schemaVersion).toBe(26);
+    if (exported.schemaVersion !== 26) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutSamples).toHaveLength(1);
     expect(exported.data.healthKitWorkoutBatchReceipts).toHaveLength(1);
+    expect(exported.data.healthKitWorkoutLineage).toEqual([
+      { sample_id: batch.events[0]?.sampleId, state: 'pending_review' },
+    ]);
     await operations.eraseAccount(athlete);
     const remaining = await admin.query(
       `SELECT
         (SELECT count(*)::int FROM healthkit_workout_sample WHERE athlete_id=$1) AS raw_count,
+        (SELECT count(*)::int FROM healthkit_workout_lineage WHERE athlete_id=$1) AS lineage_count,
         (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE athlete_id=$1) AS receipt_count`,
       [athlete],
     );
-    expect(remaining.rows[0]).toEqual({ raw_count: 0, receipt_count: 0 });
+    expect(remaining.rows[0]).toEqual({ raw_count: 0, lineage_count: 0, receipt_count: 0 });
   });
 });

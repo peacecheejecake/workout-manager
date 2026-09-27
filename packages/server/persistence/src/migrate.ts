@@ -65,6 +65,7 @@ const migrationFiles = [
   '057_oidc_backchannel.sql',
   '058_native_oidc.sql',
   '059_healthkit_ingestion.sql',
+  '060_healthkit_review_lineage.sql',
 ] as const;
 
 /**
@@ -244,6 +245,7 @@ export async function grantHealthKitIngestion(
     );
     await pool.query(`GRANT SELECT,INSERT,UPDATE ON healthkit_workout_sample TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_batch_receipt TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON healthkit_workout_lineage TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }
@@ -357,7 +359,7 @@ export async function grantOperations(
     // `claim_course_share_budget` writes it.
     await pool.query(`GRANT SELECT ON course_share_area_budget TO "${runtimeRole}"`);
     await pool.query(
-      `GRANT SELECT ON healthkit_workout_sample,healthkit_workout_batch_receipt TO "${runtimeRole}"`,
+      `GRANT SELECT ON healthkit_workout_sample,healthkit_workout_batch_receipt,healthkit_workout_lineage TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,

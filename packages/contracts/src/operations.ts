@@ -291,6 +291,20 @@ const accountExportV25Schema = accountExportV24Schema.extend({
     healthKitWorkoutBatchReceipts: rows,
   }),
 });
+/** v26 records the non-canonical HealthKit workout review lineage (M3-02d). */
+const accountExportV26Schema = accountExportV25Schema.extend({
+  schemaVersion: z.literal(26),
+  data: accountExportV25Schema.shape.data.extend({
+    healthKitWorkoutLineage: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          state: z.enum(['pending_review', 'suppressed', 'deleted']),
+        }),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -317,6 +331,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV23Schema,
   accountExportV24Schema,
   accountExportV25Schema,
+  accountExportV26Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

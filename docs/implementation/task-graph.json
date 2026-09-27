@@ -1943,9 +1943,78 @@
       "evidence": "docs/implementation/progress/M3-02b.md"
     },
     {
+      "id": "M3-02c",
+      "title": "HealthKit 고정 동의·권한·상태 bridge",
+      "dependsOn": ["M3-02b"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "native bridge v3에서 기존 v2와 버전 불일치는 fail closed로 처리한다. WebView에 토큰·원본·UUID·anchor를 넘기지 않고 HealthKit 동의의 고정 GET/PUT, 명시적 제품 액션의 운동 읽기 요청, 계정 범위의 제한된 수집 상태만 노출한다. 동의 철회·401·409·계정 변경·취소를 검증하고 OS 요청 성공을 읽기 허용으로 표시하지 않는다. 제품 화면과 서명된 실기기는 후속이다.",
+      "evidence": "docs/implementation/progress/M3-02c.md"
+    },
+    {
+      "id": "M3-02d",
+      "title": "HealthKit 원본의 집계 제외 검토 대기 투영",
+      "dependsOn": ["M3-02a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "원본 workout upsert/delete를 tenant 격리된 단일 UUID lineage와 검토 대기 상태에 결정적으로 투영한다. Garmin과 시각·거리 유사성만으로 자동 병합하거나 새 canonical Activity를 만들지 않는다. raw ACK와 투영 실패의 재시도 경계를 명확히 하고 동의 철회·삭제·재전송·동시성에서 유출과 이중 집계를 막는다. 명시적 연결/새 활동 생성, 재설치 재조정, 공통 화면은 후속이다.",
+      "evidence": "docs/implementation/progress/M3-02d.md"
+    },
+    {
+      "id": "M3-02e",
+      "title": "HealthKit 검토 대기 운동의 기존 Activity 연결",
+      "dependsOn": ["M3-02d"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자가 선택한 HealthKit UUID를 기존 Garmin/수동 Activity에 보조 lineage로만 연결한다. tenant 소유권·revision·동의·원본 생존·삭제 억제·멱등성을 거래 안에서 검증하고 기존 대표 source/head/original/overlay를 보존해 집계가 하나만 남게 한다. 유사 시각·거리로 자동 연결하지 않고 철회·원본 삭제 시 보조 연결만 제거한다. 새 HealthKit 소유 Activity 생성은 M3-02i다."
+    },
+    {
+      "id": "M3-02f",
+      "title": "HealthKit 재설치·anchor 재조정과 권한 미확인 상태",
+      "dependsOn": ["M3-02b", "M3-02d"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "새 설치와 명시적 권한 재확인에서는 기존 미전송 배치를 ACK까지 보존한 뒤 anchor를 안전하게 nil로 재설정해 유한 재조회·기존 UUID 멱등 대조를 수행한다. 앞선 거부된 읽기에서 빈 조회가 anchor를 전진했더라도 재확인에서 과거 운동을 다시 찾는다. 빈 조회나 요청 완료만으로 삭제·읽기 허용을 추정하지 않고 실제 삭제 UUID만 tombstone 처리한다. offline·부분 조회·계정 변경·유실된 미전송 삭제의 한계를 기록한다."
+    },
+    {
+      "id": "M3-02g",
+      "title": "제품 HealthKit 동의·동기화 UI와 공통 Activity 화면",
+      "dependsOn": ["M3-02c", "M3-02e", "M3-02i"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "제품 화면의 명시적 동의·운동 읽기 요청 액션, 제한된 동기화·오류·검토 대기 상태, 사용자가 선택하는 Activity 연결/생성을 구현한다. 읽기 권한 허용 또는 표본 부재를 단정하지 않고, 선택된 운동은 Web·mobile의 같은 ActivityDetail에서 원천·삭제 상태를 보인다. 브라우저·접근성 검증은 별도로 기록한다."
+    },
+    {
+      "id": "M3-02h",
+      "title": "서명된 iPhone HealthKit 전체 경로 검증",
+      "dependsOn": ["M3-02b", "M3-02c", "M3-02e", "M3-02f", "M3-02g", "M3-02i"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. 서명·기기·서버가 없으면 not_executed를 유지한다."
+    },
+    {
+      "id": "M3-02i",
+      "title": "명시적 HealthKit 독립 Activity 생성·삭제 수명주기",
+      "dependsOn": ["M3-02e"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자가 독립 운동으로 선택한 active workout에만 HealthKit 대표 source와 canonical Activity를 원자적으로 만든다. 운동 유형·시간·단위는 검증된 원본만 쓰고 없는 값·제목·심박·경로를 만들지 않는다. 원본 삭제 또는 동의 철회 시 HealthKit 소유 canonical과 파생·인용·export 값을 같은 경계에서 제거하거나 억제하며 Garmin/수동 Activity는 보존한다. 멱등·동시 결정·계정 격리·합계 중복 없음은 실제 DB에서 검증한다."
+    },
+    {
       "id": "M3-02",
       "title": "HealthKit collector",
-      "dependsOn": ["M3-01", "M3-02a", "M3-02b"],
+      "dependsOn": [
+        "M3-01",
+        "M3-02a",
+        "M3-02b",
+        "M3-02c",
+        "M3-02d",
+        "M3-02e",
+        "M3-02f",
+        "M3-02g",
+        "M3-02h",
+        "M3-02i"
+      ],
       "kind": "task",
       "status": "not_started",
       "scope": "native collector; anchor/tombstone/outbox/ack·실기기"

@@ -1072,3 +1072,48 @@ it('requires raw HealthKit sample state and batch receipts in v25 while preservi
   expect(accountExportSchema.safeParse({ ...current, schemaVersion: 24 }).success).toBe(false);
   expect(previous.data).not.toHaveProperty('healthKitWorkoutSamples');
 });
+
+it('requires bounded non-canonical HealthKit lineage in v26 while preserving v25', () => {
+  const v25 = {
+    schemaVersion: 25,
+    athleteId: legacy.athleteId,
+    exportedAt: legacy.exportedAt,
+    data: {} as Record<string, unknown>,
+  };
+  const keys = accountExportSchema.options
+    .find((option) => option.shape.schemaVersion.value === 25)
+    ?.shape.data.keyof().options;
+  if (!keys) throw new Error('Expected a v25 schema');
+  for (const key of keys) v25.data[key] = [];
+  const previous = accountExportSchema.parse(v25);
+  const lineage = [
+    {
+      sample_id: '11111111-1111-4111-8111-111111111111',
+      state: 'pending_review',
+    },
+  ];
+  const current = accountExportSchema.parse({
+    ...previous,
+    schemaVersion: 26,
+    data: { ...previous.data, healthKitWorkoutLineage: lineage },
+  });
+  if (current.schemaVersion !== 26) throw new Error('Expected v26');
+  expect(current.data.healthKitWorkoutLineage).toEqual(lineage);
+  expect(previous.data).not.toHaveProperty('healthKitWorkoutLineage');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 26 }).success).toBe(false);
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: { ...current.data, healthKitWorkoutLineage: [{ ...lineage[0], state: 'canonical' }] },
+    }).success,
+  ).toBe(false);
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: {
+        ...current.data,
+        healthKitWorkoutLineage: [{ ...lineage[0], raw_payload: 'private' }],
+      },
+    }).success,
+  ).toBe(false);
+});

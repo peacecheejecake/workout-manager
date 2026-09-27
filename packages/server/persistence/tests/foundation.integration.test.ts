@@ -104,6 +104,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 58, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-02a: HealthKit workout batch receipt and sample heads.
       { version: 59, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-02d: non-canonical HealthKit review lineage.
+      { version: 60, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {
