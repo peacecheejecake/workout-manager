@@ -131,3 +131,5 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 - `cleanup`에서 background delivery 두 유형 해제가 각각 `ok`, 표식 운동 1건 삭제 호출 성공, 최종 표식 query 심박수·운동 **0/0**, 정리 대기 `false`를 확인했다. 로컬 대체 수신함 전송 후 outbox도 **0건**이다. 사용자 기존 건강 기록은 읽거나 내보내지 않았다.
 
 이번 재시도는 wake 조건을 실제로 시도했으나 수용 증거를 얻지 못했다. 원인은 OS 지연·삭제 알림 조건·probe 관측 한계 중 확정하지 않는다. `M0-06c`는 **in_progress**이고, 실제 background wake 수용과 미저장 Back 분기의 기계 기록은 여전히 미확보다. 과거 `not_executed`를 통과로 소급 변경하지 않는다.
+
+독립 Codex CLI `gpt-6-sol` high/read-only phase 검토는 `main` `692d9ab927faec5cae23b55ff97c572ef6cafad1` → `phase/m0-06c` `a5d65363868bdea48fae4a86c8788ef10f72c152` 전체 diff를 **APPROVE**했고 지적 사항은 없었다. 검토자는 문서·상태·개인정보 표시와 변경 파일을 대조했으며, Git 제외 원본 기기 영수증을 읽거나 OS wake를 독립 재현하지 않았다. 이 검토 기록을 추가한 최종 diff는 별도로 refresh 검토한다.
