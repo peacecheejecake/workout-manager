@@ -68,6 +68,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 이후 연결된 iPhone에서 서명·설치, 표식 있는 합성 HealthKit 표본의 두 차례 생성·수집·삭제·정리,
 중단·재실행·재설치 복구와 background delivery 설정·해제를 실행했다. 세부 결과와 미확인 항목은
 [실기기 후속 기록](progress/M0-06c-native-host-addendum.md#연결된-iphone-실기기-후속-실행--2026-09-27)에 따로 기록했다.
+그 후 종료 대상 식별 수정과 실기기 기록은 새 main `d75fc94` 기준 phase `5ad1abd` 전체 독립 검토에서
+APPROVE를 받았다. 기록 갱신의 검토 refresh 후 main에 반영한다. 노드는 여전히 `in_progress`다.
 `phase/m2-01k`는 반응형 초안·지도 상태·차트↔지도 확대·계정 전환과 늦은 응답·S13 카드 노면·S14 공급자 분리 수용을
 보강했다. 매트릭스는 passed 91 · partial 14 · failed 1 · not_executed 4이며, 부모 노드는 `in_progress`다.
 이 phase 브랜치는 main `9ac6aa1` 대비 전체 독립 검토 1차 지적 둘을 `f12c021`로 고쳤다. 2차 검토는
@@ -128,7 +130,8 @@ APPROVE를 받아 main `9ac6aa1`로 fast-forward했다. 수정 앱의 실기기 
 1. **M0-06c 실기기 후속**: 서명·설치, 표식 있는 합성 표본의 생성·수집·삭제·정리,
    background delivery 설정·해제, 가로 입력 기록은 확보했다. 실제 background wake는 `not_executed`다.
    미저장 Back 확인은 사용자 보고가 있으나 해당 결정의 probe 이벤트는 없어 기계 기록으로 확정하지 않는다.
-   새 device driver 수정은 phase 독립 검토 후 main에 반영한다. 제품 native host 통합은 M3-01이다.
+   device driver 수정은 phase 독립 검토에서 승인됐으며 문서 검토 refresh 후 main에 반영한다.
+   제품 native host 통합은 M3-01이다.
 2. **M2-01k 남은 gate**: `P5-logout-clear`와 `P8-ui-component`는 직접 계정 전환·늦은 course/track 응답 증거에도
    제품 전체 행이라 partial이다. 실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
 3. **재개 중 받은 사용자 결정**:
