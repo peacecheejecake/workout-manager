@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   activityImportResultSchema,
@@ -62,7 +63,10 @@ const fitBytes = Buffer.from(
   ]),
 );
 
-const elevationFile = join(import.meta.dirname, '../../.geo-build/geo-data/elevation.json');
+const elevationFile = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../.geo-build/geo-data/elevation.json',
+);
 
 function metres(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)}km` : `${Math.round(value)}m`;

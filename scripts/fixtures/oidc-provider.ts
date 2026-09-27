@@ -1,8 +1,9 @@
+import { identityOidcOrigin, identityOidcPort, identityWebOrigin } from './identity-ports.js';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
-const issuer = 'http://127.0.0.1:4400';
-const redirectUri = 'http://127.0.0.1:3100/bff/v1/auth/callback';
+const issuer = identityOidcOrigin;
+const redirectUri = `${identityWebOrigin}/bff/v1/auth/callback`;
 export const fixtureOidc = {
   issuer,
   clientId: 'workout-e2e',
@@ -170,7 +171,7 @@ export async function startFixtureOidc() {
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(4400, '127.0.0.1', resolve);
+    server.listen(identityOidcPort, '127.0.0.1', resolve);
   });
   return {
     async close() {

@@ -238,6 +238,25 @@ describe('authorization navigation boundary', () => {
     expect(() =>
       validateGarminAuthorizationUrl('http://127.0.0.1:4500/authorize', 'https://workout.example'),
     ).toThrow();
+    expect(
+      validateGarminAuthorizationUrl(
+        'http://127.0.0.1:4510/authorize?state=fixture',
+        'http://127.0.0.1:3110',
+        { web: 3110, garmin: 4510 },
+      ),
+    ).toContain(':4510/authorize');
+    expect(() =>
+      validateGarminAuthorizationUrl('http://127.0.0.1:4510/authorize', 'http://127.0.0.1:3100', {
+        web: 3110,
+        garmin: 4510,
+      }),
+    ).toThrow();
+    expect(() =>
+      validateGarminAuthorizationUrl('http://127.0.0.1:4510/authorize', 'https://workout.example', {
+        web: 3110,
+        garmin: 4510,
+      }),
+    ).toThrow();
   });
   it.each([
     'https://connect.garmin.com.evil.example/oauth2Confirm',

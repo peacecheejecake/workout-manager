@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, type Locator, type Page } from '@playwright/test';
@@ -15,8 +16,8 @@ import {
 export type Headers = Record<string, string>;
 
 export const shells = [
-  { name: 'Next', origin: 'http://127.0.0.1:3100' },
-  { name: 'Vite', origin: 'http://127.0.0.1:4200' },
+  { name: 'Next', origin: identityWebOrigin },
+  { name: 'Vite', origin: identityMobileOrigin },
 ] as const;
 
 export async function login(page: Page, name: 'Alice' | 'Bob' = 'Alice'): Promise<Headers> {

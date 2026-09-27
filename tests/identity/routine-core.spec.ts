@@ -1,3 +1,4 @@
+import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -29,7 +30,7 @@ test.afterEach(async ({ page }) => {
   const headers = cleanup.get(page);
   if (!headers) return;
   cleanup.delete(page);
-  const erased = await page.request.delete('http://127.0.0.1:3100/bff/v1/operations/account', {
+  const erased = await page.request.delete(`${identityWebOrigin}/bff/v1/operations/account`, {
     headers,
     data: { confirmation: 'DELETE MY ACCOUNT' },
     timeout: 5000,

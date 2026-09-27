@@ -1,11 +1,12 @@
+import { identityGarminOrigin, identityGarminPort, identityWebOrigin } from './identity-ports.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
-const origin = 'http://127.0.0.1:4500';
+const origin = identityGarminOrigin;
 export const fixtureGarmin = {
   clientId: 'workout-garmin-fixture',
   clientSecret: 'local-garmin-fixture-only',
-  redirectUri: 'http://127.0.0.1:3100/bff/v1/integrations/garmin/callback',
+  redirectUri: `${identityWebOrigin}/bff/v1/integrations/garmin/callback`,
   origin,
 };
 interface Attempt {
@@ -144,7 +145,7 @@ export async function startFixtureGarmin() {
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(4500, '127.0.0.1', resolve);
+    server.listen(identityGarminPort, '127.0.0.1', resolve);
   });
   return {
     async close() {

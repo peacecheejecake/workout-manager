@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -223,8 +224,8 @@ async function highlightedLaps(panel: Locator): Promise<string[]> {
 }
 
 const shells = [
-  { name: 'Next', origin: 'http://127.0.0.1:3100' },
-  { name: 'Vite', origin: 'http://127.0.0.1:4200' },
+  { name: 'Next', origin: identityWebOrigin },
+  { name: 'Vite', origin: identityMobileOrigin },
 ] as const;
 
 function numericBounds(raw: string | null): number[] {

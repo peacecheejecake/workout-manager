@@ -1,3 +1,4 @@
+import { identityOidcPort, identityWebOrigin } from './identity-ports.js';
 import { generateKeyPairSync, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import Provider from 'oidc-provider';
@@ -62,9 +63,9 @@ const digest = (value: string) => createHash('sha256').update(value).digest();
 export async function startCertifiedOidc(
   options: CertifiedOidcOptions = {},
 ): Promise<CertifiedOidc> {
-  const port = options.port ?? 4400;
+  const port = options.port ?? identityOidcPort;
   const issuer = `http://127.0.0.1:${port}`;
-  const redirectUri = 'http://127.0.0.1:3100/bff/v1/auth/callback';
+  const redirectUri = `${identityWebOrigin}/bff/v1/auth/callback`;
   const clientId = 'workout-e2e';
   // Includes characters that RFC 6749 §2.3.1 requires to be form-encoded inside HTTP Basic,
   // so a client that sends the raw secret is caught by a real server rather than tolerated.
@@ -79,7 +80,7 @@ export async function startCertifiedOidc(
         client_id: clientId,
         client_secret: clientSecret,
         redirect_uris: [redirectUri],
-        post_logout_redirect_uris: ['http://127.0.0.1:3100/account'],
+        post_logout_redirect_uris: [`${identityWebOrigin}/account`],
         grant_types: ['authorization_code'],
         response_types: ['code'],
         token_endpoint_auth_method: 'client_secret_basic',

@@ -15,6 +15,7 @@ export interface GarminPanelProps {
   onSignedOut(): void;
   onSessionChanged(): void;
   navigateToAuthorization?(url: string): void;
+  localFixturePorts?: { web: number; garmin: number } | undefined;
 }
 const sessionChangedSchema = z.object({ error: z.object({ code: z.literal('SESSION_CHANGED') }) });
 export const garminStateLabels: Record<GarminStatus['state'], string> = {
@@ -26,13 +27,20 @@ export const garminStateLabels: Record<GarminStatus['state'], string> = {
 };
 
 /** Allow only the official authorization page, with a narrowly scoped local E2E provider. */
-export function validateGarminAuthorizationUrl(value: string, currentOrigin: string): string {
+export function validateGarminAuthorizationUrl(
+  value: string,
+  currentOrigin: string,
+  localFixturePorts: { web: number; garmin: number } = { web: 3100, garmin: 4500 },
+): string {
   const url = new URL(value);
   if (url.username || url.password || url.hash) throw new Error('INVALID_GARMIN_AUTHORIZATION_URL');
   const official = url.origin === 'https://connect.garmin.com' && url.pathname === '/oauth2Confirm';
+  const validPort = (port: number) => Number.isInteger(port) && port >= 1024 && port <= 65535;
   const fixture =
-    currentOrigin === 'http://127.0.0.1:3100' &&
-    url.origin === 'http://127.0.0.1:4500' &&
+    validPort(localFixturePorts.web) &&
+    validPort(localFixturePorts.garmin) &&
+    currentOrigin === `http://127.0.0.1:${localFixturePorts.web}` &&
+    url.origin === `http://127.0.0.1:${localFixturePorts.garmin}` &&
     url.pathname === '/authorize';
   if (!official && !fixture) throw new Error('INVALID_GARMIN_AUTHORIZATION_URL');
   return url.href;
@@ -52,6 +60,7 @@ function GarminLifetime({
   onSignedOut,
   onSessionChanged,
   navigateToAuthorization = navigate,
+  localFixturePorts,
 }: GarminPanelProps) {
   const headingId = useId();
   const client = useQueryClient();
@@ -166,6 +175,7 @@ function GarminLifetime({
       const authorizationUrl = validateGarminAuthorizationUrl(
         result.authorizationUrl,
         window.location.origin,
+        localFixturePorts,
       );
       requireActive(controller.signal);
       navigateToAuthorization(authorizationUrl);

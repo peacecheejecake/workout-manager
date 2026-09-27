@@ -1,3 +1,4 @@
+import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import {
@@ -15,7 +16,7 @@ test('OIDC scoped check-in API persists null and zero, corrects revisions, expor
   await page.getByRole('link', { name: 'Sign in as Alice' }).click();
   const session = await (await page.request.get('/bff/v1/session')).json();
   const headers = {
-    origin: 'http://127.0.0.1:3100',
+    origin: identityWebOrigin,
     'x-workout-session-id': session.sessionId,
     'x-csrf-token': session.csrfToken,
     'idempotency-key': randomUUID(),

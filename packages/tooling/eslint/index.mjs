@@ -18,6 +18,8 @@ export function createConfig(root) {
         '**/coverage/**',
         '**/playwright-report/**',
         '**/test-results/**',
+        '.claude/worktrees/**',
+        'verification-logs/**',
         // Opt-in self-hosted map build workspace (tiles, graphs, bundled harness output).
         '**/.geo-build/**',
         '**/.geo-build-*/**',

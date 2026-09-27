@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -173,7 +174,7 @@ test('re-reads a stored track after a full load, draws it and round-trips select
   page.on('console', (message) => consoleMessages.push(message.text()));
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:3100' && url.protocol !== 'data:')
+    if (url.origin !== identityWebOrigin && url.protocol !== 'data:')
       foreignRequests.push(request.url());
   });
   const headers = await login(page);
@@ -449,7 +450,7 @@ test('another account never sees the stored track', async ({ page }) => {
 test('shows the stored track in the Vite shell too', async ({ page }) => {
   const headers = await login(page);
   const activityId = await storeTrack(page, headers);
-  await page.goto(`http://127.0.0.1:4200${routeAddress(activityId)}`);
+  await page.goto(`${identityMobileOrigin}${routeAddress(activityId)}`);
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
   await expect(panel).toContainText('전체 6개 · 위치 있음 5개 · 구간 3개');
   await expectLineDrawn(mapRegion(panel, '저장된 활동 경로'));

@@ -150,3 +150,37 @@ Codex CLI `gpt-6-sol` high/read-only가 main `a96bfdc1ea240fe616a762bbc22e265e77
 ### 이번 phase 독립 검토
 
 Codex CLI `gpt-6-sol` high/read-only가 main base `09cdcf1b3bd25751084c60eae2449417cc2d201e` 대비 phase HEAD `34982ae4e5230d5cee7bf144f6d596ff90267737` 전체 diff를 **APPROVE**했다. 선행 검토의 문서 시점 혼동, HANDOFF의 wake 미실행 안내, 완료된 EXT-BACKCHANNEL·P8 결정을 다음 작업으로 제시한 지적은 모두 **FIXED**로 재확인됐고 새 차단 지적은 없다. 검토자가 직접 확인한 검사는 `node --check`, 그래프 JSON 파싱, `git diff --check`다. Git 제외 원본 기기 영수증은 열지 않았고 전체 workspace 설치·build·typecheck·test·integration·identity의 실패를 통과로 간주하지 않았다. 이 검토 기록 추가분은 별도 refresh 대상이다.
+
+## 전체 검사 후속 진단 · 2026-09-27
+
+이 항목은 위 시점의 설치·전체 검사 실패를 소급 변경하지 않고, 별도 실행 결과를 추가한다. 설치 의존성이 있는 main 작업 공간에서 Node 24.12.0으로 `pnpm check:generated`, `pnpm build`(15/15), `pnpm typecheck`(34/34, 캐시 33개), PostgreSQL을 사용한 `pnpm test:integration`(81파일·804시험)이 통과했다. `pnpm test`는 첫 전체 실행에서 339파일 중 334파일이 통과하고 5파일이 실패했다. 로컬 서버를 쓰는 실패 파일은 접근 가능한 환경의 집중 재실행에서 통과했다. 남은 GraphHopper 검사 지연은 Git 제외 검증 로그와 지도 빌드 작업 폴더를 파일 탐색에서 제외한 뒤 집중 17/17이 통과했다. Prettier·ESLint가 중첩 worktree와 검증 로그를 훑지 않도록 범위를 바로잡은 phase 작업 공간의 `pnpm format:check`와 `pnpm lint`도 통과했다. 이 수정 뒤 **전체 `pnpm test` 재실행은 아직 하지 않았다**.
+
+`pnpm test:identity`는 다른 phase의 개발 서버가 로컬 포트 3100·4200·4300을 사용 중이어서 시작 전 중단됐다. 다른 phase 서버로 시험하거나 서버를 종료하지 않았다. 따라서 요구된 2회 인증 시험은 **not_executed**이며, 포트가 해제된 뒤 별도로 실행해야 한다. 별도 phase 작업 공간의 `pnpm install --frozen-lockfile`은 여전히 registry 접근 제한 때문에 완료되지 않았고, 설치 성공으로 기록하지 않는다.
+
+### Identity E2E 대체 포트 후속
+
+사용자 요청으로 identity E2E의 웹·모바일·API·OIDC·Garmin fixture 포트를 각각 환경변수로 바꿀 수 있게 했다. 기본값 3100/4200/4300/4400/4500은 유지하고, 중복·범위 밖 포트는 시작 전에 거부한다. 브라우저 시험의 절대 주소와 provider redirect/CORS 주소도 같은 포트 설정을 사용한다. Next API 프록시가 빌드 결과에 포함되므로 바꾼 API origin으로 해당 작업 공간을 다시 빌드해야 한다.
+
+별도 phase 작업 공간에 main의 설치 의존성을 로컬 복사해 사용했다. `WORKOUT_IDENTITY_*_PORT=3110/4210/4310/4410/4510`, `API_ORIGIN=http://127.0.0.1:4310` 설정에서 Node 24.12.0 루트 TypeScript 검사, Playwright 시험 목록 110파일·314시험 로드, 전체 빌드 15/15, 실제 OIDC 브라우저 시험 **2/2 통과**를 확인했다. 기존 phase `pnpm install --frozen-lockfile` 실패는 해결된 것으로 간주하지 않는다. 전체 identity E2E **2회 실행은 아직 하지 않았다**.
+
+## 현재 main 통합 후 전체 검증 · 2026-09-28
+
+후속 코드 `856a32f`·`0217ee9`를 포함한 phase 브랜치에 main `f04bda6870b8e3785918d59450b7a92e1560b254`를 충돌 없이 통합했다. 이 절은 위 과거 실패와 `not_executed`를 소급 변경하지 않고, 새 브랜치 상태의 실행만 적는다.
+
+- Phase 공간의 `pnpm install --frozen-lockfile`은 npm registry DNS `ENOTFOUND`로 다시 완료되지 않았다. 같은 lockfile의 main 공간에 이미 설치된 의존성을 로컬 복사해 이후 검사를 실행했다. 이는 phase 공간의 frozen install 성공이 아니다.
+- `pnpm check:generated`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`(34/34), 대체 API 포트 `4310`으로 다시 빌드한 `pnpm build`(15/15), GraphHopper 집중 17/17이 통과했다.
+- 전체 `pnpm test`의 첫 시도는 제한된 샌드박스가 로컬 OIDC·API fixture 수신을 막아 중단했다. 수신 권한을 갖춘 두 번째 시도는 Python 브리지 경로 미설정으로 338파일 통과 뒤 1파일 실패했다. 실제 `WORKOUT_PYTHON` 경로를 지정한 최종 전체 실행은 **339파일·4,131시험 통과, 1파일·7시험 건너뜀**이었다. `pnpm test:integration`은 별도 임시 PostgreSQL에서 **81파일·804시험 통과**했다.
+- 대체 포트 첫 전체 `pnpm test:identity`는 **297 통과·13 건너뜀·4 실패**였다. 네 실패는 모두 Garmin 연결 화면이 기존 시험용 `3100 → 4500` 이동만 허용해 새 `3110 → 4510`을 거부한 것이었다. 제품의 공식 Garmin HTTPS 허용은 유지하고, 서버 shell이 전달한 명시적 로컬 포트 쌍만 인정하도록 수정했다. 해당 경계 단위 18/18과 실제 Garmin 브라우저 4/4가 통과했다.
+- 수정 후 `pnpm lint`, `pnpm typecheck`(34/34), `pnpm build`(15/15), 전체 `pnpm test`(4,131 통과·7 건너뜀), 전체 `pnpm test:integration`(804 통과)을 다시 실행해 통과했다. 전체 identity E2E는 같은 대체 포트 묶음에서 순차로 **첫 회 301 통과·13 건너뜀·실패 0**, **두 번째 301 통과·13 건너뜀·실패 0**이었다. 각각 14.8분과 15.0분이 걸렸다.
+
+이 검사는 로컬 합성 인증·Garmin fixture와 브라우저만 다룬다. 앞서 기록한 실기기 HealthKit 관찰이나 미저장 Back 버튼별 기계 기록을 새로 수행한 근거가 아니다.
+
+### 현재 main 기준 1차 독립 검토 지적과 수정
+
+Codex CLI `gpt-6-sol` high/read-only는 main base `f04bda6870b8e3785918d59450b7a92e1560b254` → phase HEAD `50474737e0c264658e01433f744c9680a8dc5cea`의 44파일 전체 diff에 **CHANGES_REQUESTED**를 냈다. P2: 웹 포트 또는 Garmin 포트 **하나만** 환경변수로 변경하면 계정 shell이 둘 다 설정된 경우에만 새 포트 쌍을 전달해 정상 fixture 이동을 거부했다. 위 전체 E2E 두 회는 다섯 포트를 모두 바꿨으므로 이 경우를 검증하지 못했다. 과거 프로세스 신원 관련 지적은 현재 코드에서 FIXED로 확인됐고, 다른 이전 지적 중 NOT FIXED로 확인된 것은 없었다. 검토자는 실기기 원본 영수증이나 외부 HealthKit을 재현하지 않았다.
+
+구현자는 명시적으로 바뀐 포트에만 해당 값을 쓰고, 나머지는 각각 기존 `3100`·`4500`을 적용하도록 계정 shell을 수정했다. 수정 후 `WORKOUT_IDENTITY_GARMIN_PORT=4510`만 지정한 실제 Garmin 브라우저 4/4, `WORKOUT_IDENTITY_WEB_PORT=3110`만 지정한 실제 Garmin 브라우저 4/4가 각각 통과했다. 두 경우 모두 로컬 fixture의 네 연결·거절·계정 전환 시나리오를 실행했다. 생성물·포맷·린트, 전체 typecheck 34/34와 대체 API 포트 전체 build 15/15도 다시 통과했다. 이 FIXED 판정은 구현자 검증이며 최종 독립 재검토 결과가 아니다.
+
+### 현재 main 기준 독립 재검토 판정
+
+Codex CLI `gpt-6-sol` high/read-only는 같은 main base `f04bda6870b8e3785918d59450b7a92e1560b254` → phase HEAD `50a180805ec719949cc6299db8cd066b2965580e`의 **전체 44파일 diff를 APPROVE**했다. 위 P2는 각 포트의 독립 기본값 적용 코드와 두 단독 변경 브라우저 실행을 근거로 **FIXED**로 판정했고, 새 지적과 현재 NOT FIXED로 확인된 이전 phase 지적은 없다. 검토자가 직접 확인한 것은 해시·작업 트리·diff check와 포트 기본값·대체값·잘못된 입력 거부다. 제공된 전체 시험을 독립 재실행하거나 비공개 실기기 영수증을 열지는 않았고, frozen install의 DNS 실패를 성공으로 바꾸지 않았다. 이 결과 기록 추가분은 별도 검토 refresh 대상이다.

@@ -1,3 +1,4 @@
+import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -307,7 +308,7 @@ test('starts a course on an empty map and edits it by address, from the list alo
 
 test('starts and edits a course in the Vite shell too', async ({ page }) => {
   const alice = await login(page, 'Alice');
-  const vite = 'http://127.0.0.1:4200';
+  const vite = identityMobileOrigin;
   const name = `Vite 빈 지도 코스 ${randomUUID().slice(0, 8)}`;
   const { courseId, preview } = await createOnEmptyMap(page, alice, vite, name);
   const workbench = page.getByRole('region', { name: '내 코스' });

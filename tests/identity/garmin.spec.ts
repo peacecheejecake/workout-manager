@@ -1,3 +1,4 @@
+import { identityGarminOrigin } from '../../scripts/fixtures/identity-ports';
 import { expect, test, type Page } from '@playwright/test';
 
 interface Session {
@@ -36,7 +37,7 @@ async function status(page: Page) {
 async function begin(page: Page) {
   await page.getByRole('button', { name: 'Garmin 공식 계정 연결', exact: true }).click();
   await expect(page.getByRole('heading', { name: '로컬 Garmin OAuth 검증' })).toBeVisible();
-  expect(new URL(page.url()).origin).toBe('http://127.0.0.1:4500');
+  expect(new URL(page.url()).origin).toBe(identityGarminOrigin);
 }
 
 // These journeys use the real app/API/database and a synthetic OAuth server, not live Garmin.

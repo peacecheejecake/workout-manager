@@ -1,11 +1,12 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 // M2-01k-s: local fixture OIDC, both product shells, same-origin BFF and isolated PostgreSQL.
 // Vite has no dashboard or wellbeing route yet; those are checked in the Next shell only.
 const shells = [
-  { name: 'Next', origin: 'http://127.0.0.1:3100', hasDashboardAndWellbeing: true },
-  { name: 'Vite', origin: 'http://127.0.0.1:4200', hasDashboardAndWellbeing: false },
+  { name: 'Next', origin: identityWebOrigin, hasDashboardAndWellbeing: true },
+  { name: 'Vite', origin: identityMobileOrigin, hasDashboardAndWellbeing: false },
 ] as const;
 
 async function login(page: Page, name: 'Alice' | 'Bob', origin: string) {

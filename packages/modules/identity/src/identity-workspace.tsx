@@ -70,11 +70,13 @@ interface WorkspaceProps {
   loginError?: unknown;
   /** Continue to the identity provider's own sign-out (RP-initiated logout). */
   navigateToProviderLogout?(url: string): void;
+  localGarminFixturePorts?: { web: number; garmin: number } | undefined;
 }
 
 export function IdentityWorkspace({
   loginError: rawLoginError,
   navigateToProviderLogout = navigate,
+  localGarminFixturePorts,
 }: WorkspaceProps = {}) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } }),
@@ -95,14 +97,19 @@ export function IdentityWorkspace({
           {loginErrors[loginError]}
         </p>
       )}
-      <SessionBoundary navigateToProviderLogout={navigateToProviderLogout} />
+      <SessionBoundary
+        navigateToProviderLogout={navigateToProviderLogout}
+        localGarminFixturePorts={localGarminFixturePorts}
+      />
     </QueryClientProvider>
   );
 }
 
 function SessionBoundary({
   navigateToProviderLogout,
-}: Required<Pick<WorkspaceProps, 'navigateToProviderLogout'>>) {
+  localGarminFixturePorts,
+}: Required<Pick<WorkspaceProps, 'navigateToProviderLogout'>> &
+  Pick<WorkspaceProps, 'localGarminFixturePorts'>) {
   const client = useQueryClient();
   const session = useQuery({
     queryKey: ['identity', 'current-session'],
@@ -157,6 +164,7 @@ function SessionBoundary({
         client.setQueryData(['identity', 'current-session'], null);
       }}
       navigateToProviderLogout={navigateToProviderLogout}
+      localGarminFixturePorts={localGarminFixturePorts}
     />
   );
 }
@@ -166,6 +174,7 @@ interface AccountProps {
   onSignedOut: () => void;
   onSessionChanged: () => void;
   navigateToProviderLogout: (url: string) => void;
+  localGarminFixturePorts?: { web: number; garmin: number } | undefined;
 }
 function AccountLifetime(props: AccountProps) {
   const [client] = useState(
@@ -184,6 +193,7 @@ function Account({
   onSignedOut,
   onSessionChanged,
   navigateToProviderLogout,
+  localGarminFixturePorts,
 }: AccountProps) {
   async function requireSameSession(response: Response) {
     if (response.status === 401) {
@@ -344,6 +354,7 @@ function Account({
         session={session}
         onSignedOut={onSignedOut}
         onSessionChanged={onSessionChanged}
+        localFixturePorts={localGarminFixturePorts}
       />
       <GarminUnofficialPanel
         session={session}

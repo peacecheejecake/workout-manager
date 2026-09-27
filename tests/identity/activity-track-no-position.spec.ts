@@ -1,3 +1,4 @@
+import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -129,8 +130,8 @@ async function storeIndoorTrack(page: Page, headers: Record<string, string>) {
 }
 
 const shells = [
-  ['Next', 'http://127.0.0.1:3100'],
-  ['Vite', 'http://127.0.0.1:4200'],
+  ['Next', identityWebOrigin],
+  ['Vite', identityMobileOrigin],
 ] as const;
 
 for (const [shell, origin] of shells) {

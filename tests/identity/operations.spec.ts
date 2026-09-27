@@ -1,3 +1,4 @@
+import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -14,7 +15,7 @@ test('exports scoped data then erases the account, revokes other tabs and starts
   const headers = {
     'x-workout-session-id': before.sessionId,
     'x-csrf-token': before.csrfToken,
-    origin: 'http://127.0.0.1:3100',
+    origin: identityWebOrigin,
     'idempotency-key': randomUUID(),
   };
   const imported = await page.request.post('/bff/v1/activity-imports', {
