@@ -24,5 +24,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         (window?.rootViewController as? LocalBridgeViewController)?.notifySceneDidBecomeActive()
+        Task { @MainActor in HealthKitWorkoutCollector.shared.sceneDidBecomeActive() }
     }
 }

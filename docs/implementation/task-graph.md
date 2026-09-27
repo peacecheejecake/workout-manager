@@ -536,6 +536,7 @@ flowchart TD
     task34f["M3-01f 제품 shell lifecycle"]
     oidc["EXT-OIDC localhost 로그인 검증"]
     task35a["M3-02a HealthKit 운동 배치 수신"]
+    task35b["M3-02b HealthKit 운동 native 수집·outbox"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
     task37{{"G3 Native-inclusive 출시 gate"}}
@@ -552,6 +553,8 @@ flowchart TD
     task8 --> task34
     task34 --> task35a
     task35a --> task35
+    task35a --> task35b
+    task35b --> task35
     task34 --> task35
     task35 --> task36
     task33 --> task36
@@ -707,7 +710,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-01f 제품 iOS shell 키보드·Back·foreground 수명주기 | M3-01e | 로컬 범위 완료; 제품 shell의 가로 입력 포커스, 미저장 Back 확인, foreground 세션 재확인. M2 전체 화면·실기기 최종 검증은 후속 |
 | M3-01 Native shell·secure bridge | M1c-04, M0-06c, M3-01a, M3-01b, M3-01c, M3-01d, M3-01e, M3-01f | 로컬 범위 완료; 고정 public module/bridge 계약. 서명된 iPhone·운영 HTTPS·M2 전체 화면 조합은 후속 |
 | M3-02a HealthKit 운동 배치 수신·멱등 ACK 경계 | M3-01 | 로컬 수용 완료; bounded workout raw batch, bearer·동의·tenant, 영속 receipt/tombstone. canonical·native·실기기는 후속 |
-| M3-02 HealthKit collector | M3-01, M3-02a | native collector; anchor/tombstone/outbox/ack·실기기 |
+| M3-02b HealthKit 운동 native 증분 수집·영속 outbox | M3-02a | 로컬 수용 완료; workout-only anchored/observer, UUID 삭제 대응, anchor+outbox 원자 저장, 고정 HTTPS native bearer 전송·ACK. 서명된 실기기·화면·정본 연결은 후속 |
+| M3-02 HealthKit collector | M3-01, M3-02a, M3-02b | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |
 

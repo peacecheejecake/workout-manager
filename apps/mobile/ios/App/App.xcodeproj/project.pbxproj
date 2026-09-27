@@ -19,6 +19,9 @@
 		A30100012FE993A70072D4E8 /* LocalBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */; };
 		A30100032FE993A70072D4E8 /* WorkoutNativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */; };
 		A30100052FE993A70072D4E8 /* NativeAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30100062FE993A50072D4E8 /* NativeAuth.swift */; };
+		A30200012FE993A70072D4E8 /* HealthKitWorkoutCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200022FE993A50072D4E8 /* HealthKitWorkoutCollector.swift */; };
+		A30200032FE993A70072D4E8 /* HealthKitWorkoutState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200042FE993A50072D4E8 /* HealthKitWorkoutState.swift */; };
+		A30200052FE993A70072D4E8 /* HealthKitWorkoutUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200062FE993A50072D4E8 /* HealthKitWorkoutUploader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +38,10 @@
 		A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBridgeViewController.swift; sourceTree = "<group>"; };
 		A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutNativeBridge.swift; sourceTree = "<group>"; };
 		A30100062FE993A50072D4E8 /* NativeAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAuth.swift; sourceTree = "<group>"; };
+		A30200022FE993A50072D4E8 /* HealthKitWorkoutCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutCollector.swift; sourceTree = "<group>"; };
+		A30200042FE993A50072D4E8 /* HealthKitWorkoutState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutState.swift; sourceTree = "<group>"; };
+		A30200062FE993A50072D4E8 /* HealthKitWorkoutUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutUploader.swift; sourceTree = "<group>"; };
+		A30200072FE993A50072D4E8 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -74,6 +81,10 @@
 				A30100022FE993A50072D4E8 /* LocalBridgeViewController.swift */,
 				A30100042FE993A50072D4E8 /* WorkoutNativeBridge.swift */,
 				A30100062FE993A50072D4E8 /* NativeAuth.swift */,
+				A30200022FE993A50072D4E8 /* HealthKitWorkoutCollector.swift */,
+				A30200042FE993A50072D4E8 /* HealthKitWorkoutState.swift */,
+				A30200062FE993A50072D4E8 /* HealthKitWorkoutUploader.swift */,
+				A30200072FE993A50072D4E8 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -122,6 +133,11 @@
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -172,6 +188,9 @@
 				A30100012FE993A70072D4E8 /* LocalBridgeViewController.swift in Sources */,
 				A30100032FE993A70072D4E8 /* WorkoutNativeBridge.swift in Sources */,
 				A30100052FE993A70072D4E8 /* NativeAuth.swift in Sources */,
+				A30200012FE993A70072D4E8 /* HealthKitWorkoutCollector.swift in Sources */,
+				A30200032FE993A70072D4E8 /* HealthKitWorkoutState.swift in Sources */,
+				A30200052FE993A70072D4E8 /* HealthKitWorkoutUploader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,6 +330,7 @@
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
@@ -333,6 +353,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;

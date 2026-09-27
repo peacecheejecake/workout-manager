@@ -4,6 +4,16 @@ import Foundation
 import Security
 import UIKit
 
+extension Notification.Name {
+    static let nativeAuthCredentialInvalidated = Notification.Name("org.workoutmanager.nativeAuthCredentialInvalidated")
+}
+
+enum HealthKitConsentState: Equatable {
+    case granted(revision: Int)
+    case notGranted(revision: Int)
+    case authenticationRequired
+}
+
 private enum NativeAuthFailure: Error {
     case unavailable
     case cancelled
@@ -98,6 +108,7 @@ private struct NativeCredentialStore {
         if credential.apiOrigin != apiOrigin {
             // A build pointed at another API must never reuse this bearer or show its user.
             try delete()
+            NotificationCenter.default.post(name: .nativeAuthCredentialInvalidated, object: nil)
             return nil
         }
         return credential
@@ -247,6 +258,12 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
     private var authenticationContinuation: CheckedContinuation<URL, Error>?
     private var busy = false
 
+    private func clearCredential() throws {
+        try credentialStore.delete()
+        // No token, athlete ID, or health data crosses this local signal.
+        NotificationCenter.default.post(name: .nativeAuthCredentialInvalidated, object: nil)
+    }
+
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
@@ -260,7 +277,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         defer { busy = false }
         if let existing = try credentialStore.read() {
             if existing.expiresAt > Date() { throw NativeAuthFailure.unavailable }
-            try credentialStore.delete()
+            try clearCredential()
         }
 
         var random = [UInt8](repeating: 0, count: 32)
@@ -318,7 +335,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         do {
             try Task.checkCancellation()
         } catch {
-            try? credentialStore.delete()
+            try? clearCredential()
             await revokeAfterCancellation(exchanged.accessToken, at: configuration)
             throw NativeAuthFailure.cancelled
         }
@@ -329,7 +346,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         guard let configuration,
               let credential = try? credentialStore.read(),
               credential.sessionId == sessionID else { return }
-        try? credentialStore.delete()
+        try? clearCredential()
         await revokeAfterCancellation(credential.accessToken, at: configuration)
     }
 
@@ -347,19 +364,19 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         defer { busy = false }
         guard let credential = try credentialStore.read() else { return ["state": "signed_out"] }
         if credential.expiresAt <= Date() {
-            try credentialStore.delete()
+            try clearCredential()
             return ["state": "signed_out"]
         }
         let (status, body) = try await get("/bff/v1/session", credential: credential,
                                            at: configuration)
         if status == 401 {
-            try credentialStore.delete()
+            try clearCredential()
             return ["state": "signed_out"]
         }
         guard status == 200 else { throw NativeAuthFailure.unavailable }
         try validateSession(body, credential: credential)
         if credential.expiresAt <= Date() {
-            try credentialStore.delete()
+            try clearCredential()
             return ["state": "signed_out"]
         }
         return credential.publicSession
@@ -377,12 +394,12 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
             return ["path": path, "status": 401, "body": NSNull()]
         }
         if credential.expiresAt <= Date() {
-            try credentialStore.delete()
+            try clearCredential()
             return ["path": path, "status": 401, "body": NSNull()]
         }
         let (status, data) = try await get(path, credential: credential, at: configuration)
         if status == 401 {
-            try credentialStore.delete()
+            try clearCredential()
             return ["path": path, "status": 401, "body": NSNull()]
         }
         guard status == 200 else { throw NativeAuthFailure.unavailable }
@@ -394,10 +411,101 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
             body = try validateAIConsent(data)
         }
         if credential.expiresAt <= Date() {
-            try credentialStore.delete()
+            try clearCredential()
             return ["path": path, "status": 401, "body": NSNull()]
         }
         return ["path": path, "status": 200, "body": body]
+    }
+
+    func uploadHealthKitWorkoutBatch(body: Data, ownerAthleteId: String,
+                                     installationId: UUID, batchId: UUID,
+                                     eventCount: Int) async throws -> HealthKitWorkoutUploadOutcome {
+        try Task.checkCancellation()
+        guard HealthKitWorkoutUploader.acceptsBody(body, installationId: installationId,
+                                                    batchId: batchId, eventCount: eventCount) else {
+            return .rejected
+        }
+        guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
+        // A queued batch is bound to the athlete who owned it when it was collected.
+        // Never send it under a later login, even if the installation remains the same.
+        guard let credential = try credentialStore.read() else {
+            return .authenticationRequired
+        }
+        if credential.expiresAt <= Date() {
+            try clearCredential()
+            return .authenticationRequired
+        }
+        guard credential.athleteId == ownerAthleteId else { return .authenticationRequired }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        var request = URLRequest(url: configuration.apiURL(HealthKitWorkoutUploader.path))
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        let (status, response) = try await BoundedNativeRequest().send(request)
+        if status == 401 {
+            // Do not erase a replacement login if logout/sign-in crossed this request.
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken {
+                try clearCredential()
+            }
+            return .authenticationRequired
+        }
+        try Task.checkCancellation()
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == ownerAthleteId,
+              current.expiresAt > Date() else {
+            // The server may have accepted the original request; retain the batch and
+            // replay its stable ID under the original owner only after re-authentication.
+            return .authenticationRequired
+        }
+        return try HealthKitWorkoutUploader.outcome(status: status, body: response,
+                                                     installationId: installationId,
+                                                     batchId: batchId, eventCount: eventCount)
+    }
+
+    func healthKitConsent() async throws -> HealthKitConsentState {
+        try Task.checkCancellation()
+        guard Self.isConfigured, let configuration else { throw NativeAuthFailure.unavailable }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        guard let credential = try credentialStore.read() else {
+            return .authenticationRequired
+        }
+        if credential.expiresAt <= Date() {
+            try clearCredential()
+            return .authenticationRequired
+        }
+        let (status, data) = try await get("/bff/v1/consents/healthkit", credential: credential,
+                                           at: configuration)
+        if status == 401 {
+            if let current = try credentialStore.read(),
+               current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken {
+                try clearCredential()
+            }
+            return .authenticationRequired
+        }
+        try Task.checkCancellation()
+        guard status == 200 else { throw NativeAuthFailure.unavailable }
+        try exactObject(data, keys: ["kind", "granted", "revision"])
+        guard let reply = try? JSONDecoder().decode(HealthKitConsentReadReply.self, from: data),
+              reply.kind == "healthkit", reply.revision >= 0,
+              reply.revision <= 9_007_199_254_740_991 else {
+            throw NativeAuthFailure.invalidReply
+        }
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.expiresAt > Date() else {
+            return .authenticationRequired
+        }
+        return reply.granted ? .granted(revision: reply.revision)
+                             : .notGranted(revision: reply.revision)
     }
 
     func signOut() async throws {
@@ -408,12 +516,12 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         defer { busy = false }
         guard let credential = try credentialStore.read() else { return }
         if credential.expiresAt <= Date() {
-            try credentialStore.delete()
+            try clearCredential()
             return
         }
         try await revoke(credential.accessToken, at: configuration)
         // A completed server revoke wins over a concurrent client timeout.
-        try credentialStore.delete()
+        try clearCredential()
         try Task.checkCancellation()
     }
 
@@ -447,6 +555,11 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         let granted: Bool
         let revision: Int
     }
+    private struct HealthKitConsentReadReply: Decodable {
+        let kind: String
+        let granted: Bool
+        let revision: Int
+    }
 
     private func exactObject(_ data: Data, keys: Set<String>) throws {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -462,7 +575,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         }
         guard reply.athleteId == credential.athleteId else {
             // Never expose a response for a different account under this local credential.
-            try credentialStore.delete()
+            try clearCredential()
             throw NativeAuthFailure.invalidReply
         }
         return reply.athleteId

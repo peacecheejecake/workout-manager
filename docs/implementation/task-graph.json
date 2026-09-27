@@ -1934,9 +1934,18 @@
       "evidence": "docs/implementation/progress/M3-02a.md"
     },
     {
+      "id": "M3-02b",
+      "title": "HealthKit 운동 native 증분 수집·영속 outbox",
+      "dependsOn": ["M3-02a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "제품 iOS에서 HKWorkout 100건 단위 anchored 조회·삭제 UUID 대응표·observer/foreground 재시도와 anchor+고정 batchId/body outbox 원자 저장을 구현한다. Keychain native bearer로 고정 HTTPS 운동 배치 경로에 전송하고 정확한 ACK 뒤에만 outbox를 제거한다. 동의 철회·logout/account switch·401/403/409는 유출·무한 재시도를 막는다. 이 노드는 로컬 구현·시뮬레이터 검증 범위이며 서명된 실기기, 화면·정본 연결은 후속이다.",
+      "evidence": "docs/implementation/progress/M3-02b.md"
+    },
+    {
       "id": "M3-02",
       "title": "HealthKit collector",
-      "dependsOn": ["M3-01", "M3-02a"],
+      "dependsOn": ["M3-01", "M3-02a", "M3-02b"],
       "kind": "task",
       "status": "not_started",
       "scope": "native collector; anchor/tombstone/outbox/ack·실기기"
