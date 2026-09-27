@@ -1,5 +1,6 @@
+import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import {
@@ -293,6 +294,83 @@ it('shows version-pinned paragraphs and clears private results on account switch
   await screen.findByText('저장한 자료가 없습니다.');
   expect(screen.queryByText('첫 문단입니다.')).toBeNull();
   expect(screen.queryByText(resource.title)).toBeNull();
+});
+
+it('drops a populated text draft on logout and rejects an old 200 after another account mounts', async () => {
+  let finishOldList:
+    ((value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void) | undefined;
+  const aliceRequest = vi.fn<AuthenticatedTransport['request']>(async (input) => {
+    if (input.path.startsWith('/bff/v1/resources?')) {
+      return new Promise((resolve) => {
+        finishOldList = resolve;
+      });
+    }
+    throw new Error(`Unexpected request: ${input.path}`);
+  });
+  const bobRequest = vi.fn<AuthenticatedTransport['request']>(async () =>
+    transportReplySchema.parse({ status: 200, body: { items: [], total: 0 }, traceId: null }),
+  );
+  const view = render(
+    <ResourceWorkspace
+      athleteId="alice"
+      sessionId="alice-session"
+      transport={{ request: aliceRequest }}
+    />,
+  );
+  const aliceForm = screen.getByRole('form', { name: '텍스트 자료 만들기' });
+  expect(finishOldList).toBeDefined();
+  fireEvent.change(within(aliceForm).getByLabelText('제목'), { target: { value: 'Alice 제목' } });
+  fireEvent.change(within(aliceForm).getByLabelText('원문'), {
+    target: { value: 'Alice 비밀 원문' },
+  });
+  expect(within(aliceForm).getByLabelText('원문')).toHaveValue('Alice 비밀 원문');
+  view.rerender(<></>);
+  expect(screen.queryByText('Alice 비밀 원문')).toBeNull();
+  view.rerender(
+    <ResourceWorkspace
+      athleteId="bob"
+      sessionId="bob-session"
+      transport={{ request: bobRequest }}
+    />,
+  );
+  expect(await screen.findByText('저장한 자료가 없습니다.')).toBeTruthy();
+  const bobForm = screen.getByRole('form', { name: '텍스트 자료 만들기' });
+  expect(within(bobForm).getByLabelText('제목')).toHaveValue('');
+  expect(within(bobForm).getByLabelText('원문')).toHaveValue('');
+  await act(async () => {
+    finishOldList?.(
+      transportReplySchema.parse({
+        status: 200,
+        body: { items: [resource], total: 1 },
+        traceId: null,
+      }),
+    );
+  });
+  expect(screen.queryByText(resource.title)).toBeNull();
+  expect(bobRequest).toHaveBeenCalledTimes(1);
+});
+
+it('resets a populated URL draft on direct account replacement', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async () =>
+    transportReplySchema.parse({ status: 200, body: { items: [], total: 0 }, traceId: null }),
+  );
+  const view = render(
+    <ResourceWorkspace athleteId="alice" sessionId="alice-session" transport={{ request }} />,
+  );
+  const aliceForm = screen.getByRole('form', { name: 'URL 자료 가져오기' });
+  fireEvent.change(within(aliceForm).getByLabelText('제목'), {
+    target: { value: 'Alice URL 제목' },
+  });
+  fireEvent.change(within(aliceForm).getByLabelText('자료 URL'), {
+    target: { value: 'https://example.com/private' },
+  });
+  expect(within(aliceForm).getByLabelText('자료 URL')).toHaveValue('https://example.com/private');
+  view.rerender(
+    <ResourceWorkspace athleteId="bob" sessionId="bob-session" transport={{ request }} />,
+  );
+  const bobForm = screen.getByRole('form', { name: 'URL 자료 가져오기' });
+  expect(within(bobForm).getByLabelText('제목')).toHaveValue('');
+  expect(within(bobForm).getByLabelText('자료 URL')).toHaveValue('');
 });
 
 it('reuses an uncertain request key, then replaces a terminal failed upload intent', async () => {

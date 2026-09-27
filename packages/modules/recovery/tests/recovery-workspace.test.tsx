@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -237,6 +238,66 @@ it('shows unreviewed method provenance, corrects only the action revision, and c
   );
   await screen.findByText('확인된 행동 기록이 없습니다.');
   expect(screen.queryByText('개인 휴식 방법')).toBeNull();
+});
+
+it('clears a populated method draft and prior query result on logout before another user mounts', async () => {
+  const aliceRequest = vi.fn<AuthenticatedTransport['request']>(async () => ({
+    status: 200,
+    body: {
+      methods: [
+        {
+          schemaVersion: 1,
+          methodId: '20000000-0000-4000-8000-000000000001',
+          versionId: '20000000-0000-4000-8000-000000000001',
+          version: 1,
+          title: 'Alice 저장된 방법',
+          category: 'rest',
+          intendedUse: 'private',
+          applicability: [],
+          cautions: [],
+          sourceDescription: 'Alice',
+          evidenceLimitations: 'unreviewed',
+          reviewState: 'unreviewed',
+          reviewedAt: null,
+          source: 'user_recorded',
+          createdAt: '2026-09-18T10:00:00.000Z',
+        },
+      ],
+      strategies: [],
+      actions: [],
+      observations: [],
+      planRefs: [],
+      reassessment: [],
+    },
+    traceId: null,
+  }));
+  const bobRequest = vi.fn<AuthenticatedTransport['request']>(async () => ({
+    status: 200,
+    body: {
+      methods: [],
+      strategies: [],
+      actions: [],
+      observations: [],
+      planRefs: [],
+      reassessment: [],
+    },
+    traceId: null,
+  }));
+  const view = render(
+    <RecoveryWorkspace athleteId="alice" sessionId="first" transport={{ request: aliceRequest }} />,
+  );
+  await screen.findByRole('heading', { level: 3, name: 'Alice 저장된 방법' });
+  fireEvent.change(screen.getByLabelText('방법 이름'), { target: { value: 'Alice 개인 방법' } });
+  expect(screen.getByLabelText('방법 이름')).toHaveValue('Alice 개인 방법');
+  view.rerender(<></>);
+  view.rerender(
+    <RecoveryWorkspace athleteId="bob" sessionId="second" transport={{ request: bobRequest }} />,
+  );
+  await screen.findByText('확인된 행동 기록이 없습니다.');
+  expect(screen.getByLabelText('방법 이름')).toHaveValue('');
+  expect(screen.queryByText('Alice 개인 방법')).toBeNull();
+  expect(screen.queryByText('Alice 저장된 방법')).toBeNull();
+  expect(bobRequest).toHaveBeenCalledTimes(1);
 });
 
 function actionFixtures() {

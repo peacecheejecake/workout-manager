@@ -283,6 +283,23 @@ describe('dashboard actual read model', () => {
     expect(screen.queryByText('2026-03-09T12:00:00Z')).not.toBeInTheDocument();
     expect(screen.getByText('2026-03-09T13:00:00Z')).toBeVisible();
   });
+  it('clears a populated dashboard read on logout before a new session mounts', async () => {
+    const { rerender, props, tree } = setup(async () => reply(model()));
+    expect(await screen.findByText('2026-03-09T12:00:00Z')).toBeVisible();
+    rerender(<></>);
+    rerender(
+      tree({
+        ...props,
+        athleteId: 'bob',
+        sessionId: 'session-bob',
+        transport: {
+          request: async () => reply({ ...model(), observedAt: '2026-03-09T13:00:00Z' }),
+        },
+      }),
+    );
+    expect(await screen.findByText('2026-03-09T13:00:00Z')).toBeVisible();
+    expect(screen.queryByText('2026-03-09T12:00:00Z')).not.toBeInTheDocument();
+  });
   it('shows resolved plan timezone and links a check-in by ID rather than the projected date', async () => {
     const value = model();
     value.period = { ...value.period, timezone: 'Asia/Seoul', timezoneSource: 'plan' };

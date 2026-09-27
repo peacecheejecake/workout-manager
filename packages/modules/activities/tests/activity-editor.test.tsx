@@ -241,6 +241,43 @@ it('does not preview or save on IME Enter and ignores a late response after acco
   expect(request.mock.calls.filter(([input]) => input.method === 'POST')).toHaveLength(1);
 });
 
+it('clears a populated correction and its cached record on logout and Alice to Bob replacement', async () => {
+  let releaseOldRead: ((value: Reply) => void) | undefined;
+  const { props, rerender, unmount } = setup(
+    async (input) =>
+      input.path.endsWith('/plans/current')
+        ? new Promise((resolve) => {
+            releaseOldRead = resolve;
+          })
+        : reply(record),
+    true,
+  );
+  const user = userEvent.setup();
+  await screen.findByRole('region', { name: '정정 기준 원본' });
+  expect(releaseOldRead).toBeDefined();
+  await user.type(screen.getByLabelText('활동 메모'), ' Alice private');
+  // The plan read can still return a successful response after the owner leaves.
+  rerender(
+    <ActivityEditor
+      {...props}
+      athleteId="bob"
+      sessionId="session-b"
+      transport={{ request: async () => new Promise(() => {}) }}
+      target={{ mode: 'create' }}
+    />,
+  );
+  expect(screen.getByLabelText('활동 제목')).toHaveValue('');
+  expect(screen.getByLabelText('활동 메모')).toHaveValue('');
+  expect(screen.queryByText('정정 기준 원본')).not.toBeInTheDocument();
+  await act(async () => releaseOldRead?.(reply({ head: null, history: [] })));
+  expect(screen.getByLabelText('활동 제목')).toHaveValue('');
+  unmount();
+  render(
+    <ActivityEditor {...props} athleteId="bob" sessionId="session-b" target={{ mode: 'create' }} />,
+  );
+  expect(screen.queryByText('Alice private')).not.toBeInTheDocument();
+});
+
 it('selects a session from a validated plan snapshot and submits its exact version link', async () => {
   const version = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const plan = {

@@ -219,16 +219,56 @@ describe('planning lifetime and manual confirmation', () => {
     expect(preview().getByRole('button', { name: '확인하고 계획 버전 저장' })).toBeDisabled();
     expect(transport.spy.mock.calls.filter(([r]) => r.method === 'PUT')).toHaveLength(1);
   });
-  it('drops private draft and cached plan immediately on session replacement', async () => {
+  it('drops a populated private draft and cached plan on Alice to Bob replacement and logout', async () => {
     const user = userEvent.setup();
     const transport = host();
     const { rerender } = render(<StatefulHost {...base} transport={transport} />);
     await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
     await user.type(draftEditor().getByRole('textbox', { name: '계획 제목' }), ' private');
     const nextTransport: AuthenticatedTransport = { request: () => new Promise(() => {}) };
-    rerender(<StatefulHost {...base} sessionId="session-b" transport={nextTransport} />);
+    rerender(
+      <StatefulHost
+        {...base}
+        athleteId="athlete-b"
+        sessionId="session-b"
+        transport={nextTransport}
+      />,
+    );
     expect(screen.queryByRole('textbox', { name: '계획 제목' })).not.toBeInTheDocument();
     expect(screen.queryByText(/현재 버전:/)).not.toBeInTheDocument();
+    rerender(<></>);
+    rerender(
+      <StatefulHost
+        {...base}
+        athleteId="athlete-b"
+        sessionId="session-b"
+        transport={nextTransport}
+      />,
+    );
+    expect(screen.queryByText('봄 시즌 private')).not.toBeInTheDocument();
+  });
+  it('does not display Alice plan when her successful read arrives after Bob takes over', async () => {
+    type TransportResponse = Awaited<ReturnType<AuthenticatedTransport['request']>>;
+    let releaseAlice: ((value: TransportResponse) => void) | undefined;
+    const alice: AuthenticatedTransport = {
+      request: async (request) =>
+        request.path === '/bff/v1/plans/current'
+          ? new Promise<TransportResponse>((resolve) => {
+              releaseAlice = resolve;
+            })
+          : transportReplySchema.parse(reply({ items: [], total: 0 })),
+    };
+    const bob: AuthenticatedTransport = { request: () => new Promise(() => {}) };
+    const { rerender } = render(<StatefulHost {...base} transport={alice} />);
+    await waitFor(() => expect(releaseAlice).toBeDefined());
+    rerender(
+      <StatefulHost {...base} athleteId="athlete-b" sessionId="session-b" transport={bob} />,
+    );
+    await act(async () => {
+      releaseAlice?.(transportReplySchema.parse(reply({ head: snapshot, history: [] })));
+    });
+    expect(screen.queryByText('봄 시즌')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '계획 초안 편집' })).not.toBeInTheDocument();
   });
   it('undoes edits and retains zero versus unknown values in fields and projection', async () => {
     const user = userEvent.setup();

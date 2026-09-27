@@ -195,17 +195,19 @@ function Harness({
   transport,
   initial = `thread=${threadId}`,
   sessionId = 'session-a',
+  athleteId = 'athlete',
 }: {
   transport: AuthenticatedTransport;
   initial?: string;
   sessionId?: string;
+  athleteId?: string;
 }) {
   const [search, setSearch] = useState(initial);
   return (
     <>
       <output aria-label="Address">{search}</output>
       <CoachingWorkspace
-        athleteId="athlete"
+        athleteId={athleteId}
         sessionId={sessionId}
         transport={transport}
         search={search}
@@ -333,7 +335,7 @@ describe('coaching workspace user records', () => {
     fireEvent.compositionEnd(box);
     expect(f.posts).toHaveLength(0);
   });
-  it('drops private drafts on session change and ignores late command completion after unmount under StrictMode', async () => {
+  it('drops populated cache and private drafts on Alice to Bob change and ignores late command completion', async () => {
     const f = fixture();
     let resolve!: (value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void;
     const original = f.transport.request;
@@ -355,13 +357,14 @@ describe('coaching workspace user records', () => {
     await user.type(screen.getByLabelText('근거 시간대'), 'Asia/Seoul');
     mounted.rerender(
       <StrictMode>
-        <Harness transport={transport} sessionId="session-b" />
+        <Harness transport={transport} athleteId="bob" sessionId="session-b" />
       </StrictMode>,
     );
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: '사용자 메시지' })).toHaveValue(''),
     );
     expect(screen.getByLabelText('근거 시간대')).toHaveValue('');
+    expect(screen.queryByText('Private draft')).not.toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: '사용자 메시지' }), 'Pending private');
     await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
     mounted.unmount();
@@ -383,6 +386,16 @@ describe('coaching workspace user records', () => {
       }),
     );
     expect(screen.queryByRole('region', { name: '상담 기록' })).not.toBeInTheDocument();
+  });
+  it('does not show Alice cached conversations while Bob reads are pending', async () => {
+    const alice = fixture();
+    const bob: AuthenticatedTransport = { request: () => new Promise(() => {}) };
+    const { rerender } = render(<Harness transport={alice.transport} />);
+    await ready();
+    expect(screen.getByRole('button', { name: 'First conversation' })).toBeInTheDocument();
+    rerender(<Harness transport={bob} athleteId="bob" sessionId="session-b" />);
+    expect(screen.queryByRole('button', { name: 'First conversation' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Stored message 1')).not.toBeInTheDocument();
   });
 });
 

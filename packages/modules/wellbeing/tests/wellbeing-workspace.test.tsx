@@ -286,4 +286,26 @@ describe('check-in workspace', () => {
     expect(screen.queryByText('저장이 확인되었습니다.')).not.toBeInTheDocument();
     expect(screen.getByLabelText('체크인 메모')).toHaveValue('');
   });
+  it('drops a loaded private list and unsaved note on logout before a new account loads', async () => {
+    const { rerender, props, tree } = setup(async (input) =>
+      input.path.includes('?') ? list([record]) : reply(record),
+    );
+    expect(await screen.findByText('원래 메모')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('체크인 메모'), 'Alice 초안');
+    expect(screen.getByLabelText('체크인 메모')).toHaveValue('Alice 초안');
+    rerender(<></>);
+    rerender(
+      tree({
+        ...props,
+        athleteId: 'bob',
+        sessionId: 'session-bob',
+        transport: { request: async () => list() },
+      }),
+    );
+    expect(
+      (await screen.findAllByText('이 기간에 기록한 체크인이 없습니다.')).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText('체크인 메모')).toHaveValue('');
+    expect(screen.queryByText('원래 메모')).not.toBeInTheDocument();
+  });
 });
