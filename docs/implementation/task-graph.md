@@ -472,6 +472,7 @@ flowchart TD
     selectionBase["M1-04au 상세 선택"] --> mape
     mapk --> task26
     task27["M2-02 대회·기록"]
+    task27a["M2-02a 대회·결과 계약"]
     task28["M2-03 갤러리·media"]
     task29["M2-04 자료 생명주기"]
     task29a["M2-04a private text·reader"]
@@ -495,6 +496,10 @@ flowchart TD
     task24 --> task25
     task25 --> task26
     task7 --> task26
+    mapf --> task27a
+    trackBase --> task27a
+    task25 --> task27a
+    task27a --> task27
     task26 --> task27
     task25 --> task28
     task25 --> task29a

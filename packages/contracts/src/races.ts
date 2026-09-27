@@ -7,10 +7,24 @@ import {
   revisionSchema,
   timeZoneSchema,
 } from './primitives.js';
+import { hasUnsafeCharacter, trackTextSchema } from './tracks.js';
 
 /** M2-02a contract only. Ownership and verification are enforced by the future server API. */
 const uuid = z.uuid().transform((value) => value.toLowerCase());
-const label = z.string().trim().min(1).max(200);
+/** Reject unsafe display text and surrounding whitespace instead of silently changing input. */
+const label = z
+  .string()
+  .min(1)
+  .max(200)
+  .pipe(trackTextSchema)
+  .refine((value) => value === value.trim(), 'Surrounding whitespace is not allowed');
+const weatherNote = z
+  .string()
+  .max(2000)
+  .refine(
+    (value) => !hasUnsafeCharacter(value.replaceAll('\n', '')) && !/[<>]/u.test(value),
+    'Unsafe display characters are not allowed',
+  );
 const metres = z.number().finite().positive().max(10_000_000);
 const seconds = z.number().finite().nonnegative().max(604_800);
 const officialUrl = z.url({ protocol: /^https$/ }).refine((value) => value.length <= 2048);
@@ -78,7 +92,7 @@ export const raceResultSchema = z.strictObject({
   officialDistanceMeters: metres.nullable(),
   deviceDistanceMeters: metres.nullable(),
   linkedActivityId: uuid.nullable(),
-  weatherNote: z.string().max(2000).nullable(),
+  weatherNote: weatherNote.nullable(),
 });
 export type RaceResult = z.infer<typeof raceResultSchema>;
 

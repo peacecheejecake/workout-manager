@@ -94,6 +94,32 @@ describe('M2-02a race and record boundaries', () => {
     ).toBe(true);
   });
 
+  it('rejects misleading display text without silently trimming it', () => {
+    expect(raceEventSchema.safeParse({ ...event, title: ' 대회' }).success).toBe(false);
+    expect(raceEventSchema.safeParse({ ...event, title: '대회 ' }).success).toBe(false);
+    expect(raceEventSchema.safeParse({ ...event, title: '대회\u202e' }).success).toBe(false);
+    expect(raceEventSchema.safeParse({ ...event, locationName: '서울\u0000' }).success).toBe(false);
+    expect(
+      raceEventSchema.safeParse({
+        ...event,
+        distance: { kind: 'custom', label: '<10km>', nominalMeters: 10000 },
+      }).success,
+    ).toBe(false);
+    expect(
+      raceResultSchema.safeParse({
+        ...result,
+        source: { ...result.source, authority: 'Official\u202e' },
+      }).success,
+    ).toBe(false);
+    expect(raceResultSchema.safeParse({ ...result, weatherNote: '맑음\u202e' }).success).toBe(
+      false,
+    );
+    expect(raceResultSchema.safeParse({ ...result, weatherNote: '맑음\n약한 바람' }).success).toBe(
+      true,
+    );
+    expect(raceEventSchema.parse({ ...event, title: '가을 10km' }).title).toBe('가을 10km');
+  });
+
   it('preserves unknown and zero rather than filling a planned or actual value', () => {
     const unknownEvent = raceEventSchema.parse({
       ...event,
