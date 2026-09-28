@@ -243,3 +243,10 @@ lint·format 검사를 통과하지 못하던 파일들이다.
 - 4, 10(화면), 11은 EXT-HOSTING에서 확인한다.
 - `scripts/ext-oidc-local/`는 현재 checkout을 기준으로 실행하며 별도 checkout의 `.env`는
   `WORKOUT_OIDC_ENV_FILE`로 지정할 수 있다. 이 경로 수정은 기존 실제 브라우저 증거의 재실행이 아니다.
+
+## 2026-09-28 로컬 모의 만료 추가 확인
+
+- 사용자의 로그인 완료 보고 뒤, 로컬 Zitadel 스택의 서버 DB에서 동일 계정의 앱 세션 **1건이 live=true**임을 확인했다. Chrome의 `http://localhost:3100/dashboard`에서도 인증된 대시보드가 로드됐다.
+- `stack.sh expire-sessions`가 그 **1건**의 `expires_at`을 지난 시각으로 옮겼다. 서버 DB에서 같은 세션이 `live=false`로 바뀐 것을 확인했다. Chrome 대시보드의 `최신 상태 다시 확인` 뒤 비공개 내용이 사라지고 **“이 작업은 로그인이 필요합니다. 계정에서 로그인”**이 표시됐다. 따라서 기존 체크리스트 10의 **모의 만료 후 UI 절반**을 이번 별도 실행에서 확인했다. 실제 8시간 경과를 기다린 시험(11)은 아니다.
+- `log-check`는 이 시점의 API 로그 121줄에서 client ID·secret, 인증 query 값, 토큰, 쿠키 값, Authorization 헤더가 없다고 보고했다. 별도 격리 E2E의 대체 포트 설정 실수로 실제 Zitadel 로그인 화면에 들어간 시도가 있었으므로, 뒤에 남은 login attempt 2건이나 실패 로그 2건을 사용자의 재로그인 증거로 해석하지 않는다. **모의 만료 뒤 재로그인 성공은 아직 확인하지 않았다.**
+- EXT-BACKCHANNEL 앱 구현과 phase 검토는 이후 main에 반영됐으며, 실제 Zitadel에서 앱으로의 로그아웃 전파는 HTTPS 호스팅 전까지 `not_executed`다. 같은 계정 재인증의 별도 사용자 확인(4), 실제 8시간 만료(11), 운영 HTTPS 검증은 계속 남는다.
