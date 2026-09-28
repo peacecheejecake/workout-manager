@@ -89,7 +89,7 @@
       "dependsOn": ["EXT-OIDC"],
       "kind": "external",
       "status": "in_progress",
-      "scope": "외부 조건(EXT-OIDC에서 분리; 사용자 결정 2026-09-29: AWS에서 호스팅 진행, 리전·예산·도메인은 미정): 공개 HTTPS 도메인과 TLS ingress, Zitadel에 https redirect(/bff/v1/auth/callback)·post-logout(/account) 등록, NODE_ENV=production과 __Host-/Secure cookie, OIDC 값의 secret manager 전달, 배포 환경에서 로그인·계정 전환·로그아웃·만료 확인(EXT-OIDC 체크리스트 4·7의 앱 cancelled 경로·10 UI·11 포함). Zitadel Back은 access_denied를 보내지 않았으므로 취소 경로는 실제 공급자에서 접근 가능한 별도 취소 수단 또는 명시적인 공급자 오류 응답으로 확인하고, 불가능하면 미검증으로 남긴다. 배포 전 ODbL 고지가 있는 타일·장소/고도 배포와 전국 graph로 재빌드(M0-06b-odbl, 사용자 결정: 호스팅 때 재빌드). 공개 페이지의 스크립트 링크마다 활성 manifest SHA-256과 실제 응답 바이트를 확인하고, Vite 호스트가 /map/basemap/**를 직접 서빙하면 Next 동적 route와 동등한 활성 배포·해시 제한 또는 보호된 proxy를 적용한다.",
+      "scope": "외부 조건(EXT-OIDC에서 분리; 사용자 결정 2026-09-29: AWS 서울 리전에서 월 10만 원 상한으로 호스팅 진행, 도메인은 미정): 공개 HTTPS 도메인과 TLS ingress, Zitadel에 https redirect(/bff/v1/auth/callback)·post-logout(/account) 등록, NODE_ENV=production과 __Host-/Secure cookie, OIDC 값의 secret manager 전달, 배포 환경에서 로그인·계정 전환·로그아웃·만료 확인(EXT-OIDC 체크리스트 4·7의 앱 cancelled 경로·10 UI·11 포함). Zitadel Back은 access_denied를 보내지 않았으므로 취소 경로는 실제 공급자에서 접근 가능한 별도 취소 수단 또는 명시적인 공급자 오류 응답으로 확인하고, 불가능하면 미검증으로 남긴다. 배포 전 ODbL 고지가 있는 타일·장소/고도 배포와 전국 graph로 재빌드(M0-06b-odbl, 사용자 결정: 호스팅 때 재빌드). 공개 페이지의 스크립트 링크마다 활성 manifest SHA-256과 실제 응답 바이트를 확인하고, Vite 호스트가 /map/basemap/**를 직접 서빙하면 Next 동적 route와 동등한 활성 배포·해시 제한 또는 보호된 proxy를 적용한다.",
       "evidence": "docs/implementation/progress/EXT-HOSTING.md"
     },
     {
