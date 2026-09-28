@@ -1,0 +1,189 @@
+name: workout-manager
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: unless-stopped
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/app.env
+    environment:
+      NODE_ENV: production
+      PUBLIC_ORIGIN: https://workout.red-10-proto.xyz
+      API_ORIGIN: http://127.0.0.1:4300
+      PORT: '4300'
+      PRIVATE_RESOURCE_STORAGE_ROOT: /var/lib/workout/private
+      BASEMAP_DIST_DIR: /opt/workout/basemap
+      ROUTING_ENGINE_URL: http://127.0.0.1:8991
+      ROUTING_GRAPH_DIRECTORY: /opt/workout/routing/foot
+      ROUTING_ENGINE_ARTIFACT: /opt/workout/routing/graphhopper-web.jar
+      ROUTING_PROFILE_CONFIG: /opt/workout/routing/config-serving.yml
+      WORKOUT_RELEASE: ${WORKOUT_RELEASE:?Set an immutable release identifier}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/private
+        target: /var/lib/workout/private
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/basemap
+        target: /opt/workout/basemap
+        read_only: true
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/routing
+        target: /opt/workout/routing
+        read_only: true
+    networks:
+      workout_internal: {}
+      existing_caddy:
+        aliases:
+          - wm-hosting-app
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  postgres:
+    image: postgres:17.6-bookworm
+    restart: unless-stopped
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/postgres.env
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/postgres
+        target: /var/lib/postgresql/data
+    networks:
+      - workout_internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d workout']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  db_setup:
+    profiles: [setup]
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: 'no'
+    command: ['node', '--import', 'tsx', '/app/deploy/lightsail/bootstrap-db.mjs']
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/setup.env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - workout_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  graphhopper:
+    build:
+      context: ../..
+      dockerfile: deploy/lightsail/graphhopper.Dockerfile
+    image: workout-manager/graphhopper:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: unless-stopped
+    # The reviewed serving profile binds only to loopback. Share app's network namespace so
+    # neither the route nor admin connector can be reached from Caddy or the Docker host.
+    network_mode: service:app
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/routing
+        target: /opt/workout/routing
+    command:
+      - node
+      - /app/scripts/geo/graphhopper-launch.mjs
+      - --jar
+      - /opt/workout/routing/graphhopper-web.jar
+      - --config
+      - /opt/workout/routing/config-serving.yml
+      - --extract
+      - /opt/workout/routing/source.osm.pbf
+      - --graph
+      - /opt/workout/routing/foot
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  resource_cleanup:
+    profiles: [maintenance]
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: 'no'
+    command: ['node', '--import', 'tsx', '/app/apps/worker/src/resource-cleanup.ts']
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/resource-cleanup.env
+    environment:
+      NODE_ENV: production
+      RESOURCE_STORAGE_ROOT: /var/lib/workout/private
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/private
+        target: /var/lib/workout/private
+    networks:
+      - workout_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  course_thumbnails:
+    profiles: [maintenance]
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: 'no'
+    command: ['node', '--import', 'tsx', '/app/apps/worker/src/course-thumbnail.ts']
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/course-thumbnails.env
+    environment:
+      NODE_ENV: production
+      RESOURCE_STORAGE_ROOT: /var/lib/workout/private
+      WORKOUT_RELEASE: ${WORKOUT_RELEASE:?Set an immutable release identifier}
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/private
+        target: /var/lib/workout/private
+    networks:
+      - workout_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  url_ingestion:
+    profiles: [maintenance]
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: 'no'
+    command: ['node', '--import', 'tsx', '/app/apps/worker/src/url-ingestion.ts']
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/url-ingestion.env
+    environment:
+      NODE_ENV: production
+      RESOURCE_STORAGE_ROOT: /var/lib/workout/private
+    volumes:
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/private
+        target: /var/lib/workout/private
+    networks:
+      - workout_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  workout_internal:
+    internal: true
+  existing_caddy:
+    external: true
+    name: infra_default

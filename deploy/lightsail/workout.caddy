@@ -1,0 +1,6 @@
+# Add this site block to the existing pfm-agent Caddyfile; retain its apex site block.
+# The `infra_default` network resolves this service name only to the workout app.
+workout.red-10-proto.xyz {
+    encode zstd gzip
+    reverse_proxy wm-hosting-app:3100
+}
