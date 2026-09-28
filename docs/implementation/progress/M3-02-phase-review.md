@@ -47,3 +47,11 @@
 - 합본의 실제 PostgreSQL 시험은 844/844, 전체 단위·컴포넌트 4236 통과·7건 건너뜀, generated/Prettier/ESLint/TypeScript 34/34/build 15/15, 서명 없는 iOS Simulator 빌드를 통과했다. 첫 합본 타입·빌드는 API 테스트 fixture에 새 필드가 없어 실패했고 해당 세 fixture를 고친 후 전체 타입·빌드가 통과했다. 모바일 자산을 iOS 프로젝트에 다시 동기화했고 두 `index.html`의 SHA-256이 같다. 첫 전체 identity E2E는 302 통과·2 실패·13건 건너뜀으로 끝났다. 실패는 대시보드와 기간 요약의 정확한 객체 비교가 새 `healthkit: 0` 필드를 기대하지 않은 시험 데이터 문제였으며, 두 기대값을 고친 뒤 집중 3/3, 전체 재실행 두 번 각각 304 통과·13건 건너뜀(14.6분, 14.5분)을 확인했다. 제품 코드는 첫 실패 뒤 바꾸지 않았다.
 - Aside CLI 업데이트는 `fetch failed`; Chrome CUA 상태 조회에는 Mac 잠금 오류가 있었고 합성 HealthKit 응답을 넣은 화면 검사에는 Playwright Chromium을 사용했다. 합성 응답을 실제 대시보드·기간 요약·세션 실적·활동 맥락 컴포넌트에 넣어 390×844 viewport에서 각각 `HealthKit 1개` 표시와 page error 없음(0건)을 확인했다. 이는 제품 로그인이나 서명된 iPhone 실행 증거가 아니다. M3-02h는 `not_executed`다.
 - 새 phase HEAD의 독립 읽기 전용 전체 검토가 승인하기 전까지 `main` 병합은 보류한다.
+
+## 네 번째 검토 · APPROVE
+
+- `main` 및 merge base `2463f83922468818f9be9c9225cefd678681b247`, phase HEAD `2bbf81dac8949aea1b5938fbbeeaa84038ebbc8a`의 변경 파일 141개를 별도 Codex CLI `gpt-6-sol` high, read-only sandbox가 전체 검토했다. 작업 트리는 깨끗했고 `git diff --check`가 통과했다.
+- 판정: **APPROVE**. P1 #1 receipt 삭제, #2 계정 전환 outbox 소실, #3 동의 epoch의 오프라인 409, #4 iPhone 검토·명시적 결정·상세 경로 부재, #5 HealthKit 정본의 네 조회 집계 누락은 각각 현재 코드에서 **FIXED**로 판정됐다. 별도 자체 감사의 HealthKit 소유 Activity GPX/FIT 경로 업로드도 migration 065와 실제 DB 시험으로 수정 확인했다. 새 차단 지적은 없었다.
+- 검토자는 제출된 PostgreSQL 844/844, 단위·컴포넌트 4236 통과·7건 건너뜀, 정적 검사·빌드·Swift·브라우저 및 identity E2E 두 실행의 기록을 대조했다. 이 읽기 전용 검토에서 검사 명령을 재실행하지는 않았다.
+- 이 승인은 M3-02h의 서명된 제품 iPhone 전체 경로 실행을 포함하지 않는다. M3-02h는 `not_executed` 외부 gate이며 M3-02 부모도 완료로 바꾸지 않는다.
+- 이 기록을 추가한 새 phase HEAD는 diff identity가 바뀌므로 최종 읽기 전용 검토 refresh 후에만 `main`으로 fast-forward한다.
