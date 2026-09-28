@@ -49,6 +49,18 @@ describe('stored track contract', () => {
     expect(activityTrackRevisionSchema.safeParse({ ...revision, samples: [] }).success).toBe(false);
   });
 
+  it('keeps a HealthKit Activity owner distinct from a user-uploaded GPX recording', () => {
+    const healthKitOwned = activityTrackRevisionSchema.parse({
+      ...revision,
+      sourceKind: 'healthkit',
+      recordedSourceKind: 'gpx-trk',
+      file: { ...revision.file, format: 'gpx' },
+    });
+    expect(healthKitOwned.sourceKind).toBe('healthkit');
+    expect(healthKitOwned.recordedSourceKind).toBe('gpx-trk');
+    expect(healthKitOwned.file.format).toBe('gpx');
+  });
+
   it('requires exactly the two server-built derivatives', () => {
     for (const derivatives of [
       [],

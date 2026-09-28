@@ -70,6 +70,7 @@ const migrationFiles = [
   '062_healthkit_canonical_activity.sql',
   '063_healthkit_receipt_replay.sql',
   '064_healthkit_consent_epoch.sql',
+  '065_healthkit_activity_track.sql',
 ] as const;
 
 /**

@@ -22,7 +22,7 @@ export const emptyActual = (): DashboardActual => ({
     moving: emptyMetric(),
     unknown: emptyMetric(),
   },
-  sources: { fit: 0, fixture: 0, manual: 0 },
+  sources: { fit: 0, fixture: 0, manual: 0, healthkit: 0 },
   overlayCount: 0,
 });
 type TargetMetric = NonNullable<DashboardPlanned['targets']>['distanceMeters'];
@@ -87,6 +87,7 @@ export function summarizeDays(days: DashboardDay[]): DashboardWindow {
     result.actual.sources.fit += day.actual.sources.fit;
     result.actual.sources.fixture += day.actual.sources.fixture;
     result.actual.sources.manual += day.actual.sources.manual;
+    result.actual.sources.healthkit += day.actual.sources.healthkit;
     result.actual.overlayCount += day.actual.overlayCount;
     result.planned.count += day.planned.count;
     addMetric(result.planned.distanceMeters, day.planned.distanceMeters);

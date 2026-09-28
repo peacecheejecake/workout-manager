@@ -15,7 +15,7 @@ export interface PeriodSummaryRepository {
 }
 const metricSql = (column: string, condition = 'true') =>
   `jsonb_build_object('value',sum(${column}) FILTER(WHERE ${condition}),'knownCount',count(${column}) FILTER(WHERE ${condition}),'missingCount',count(*) FILTER(WHERE ${condition} AND ${column} IS NULL))`;
-const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metricSql('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
+const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metricSql('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metricSql('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual'),'healthkit',count(*) FILTER(WHERE kind='healthkit')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
 // All interpolated fragments are fixed SQL; identifiers and periods from requests stay parameters.
 const sql = `WITH plan AS MATERIALIZED (SELECT id,version,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2),
  period AS MATERIALIZED (SELECT value AS item FROM plan CROSS JOIN LATERAL jsonb_array_elements(draft->'periods') WHERE value->>'id'=$3),

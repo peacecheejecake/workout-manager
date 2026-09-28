@@ -24,7 +24,7 @@ function session(value: number | null = 0, missingCount = 0): SessionActual {
         moving: empty(),
         unknown: empty(),
       },
-      sources: { fit: count, fixture: 0, manual: 0 },
+      sources: { fit: count, fixture: 0, manual: 0, healthkit: 0 },
       overlayCount: 0,
     },
   };
@@ -100,7 +100,7 @@ describe('session actuals boundary', () => {
       { ...value.actual, distanceMeters: { value: null, knownCount: 1, missingCount: 0 } },
       { ...value.actual, distanceMeters: { value: 0, knownCount: 2, missingCount: 0 } },
       { ...value.actual, durationSeconds: { ...value.actual.durationSeconds, timer: empty() } },
-      { ...value.actual, sources: { fit: 2, fixture: 0, manual: 0 } },
+      { ...value.actual, sources: { fit: 2, fixture: 0, manual: 0, healthkit: 0 } },
       { ...value.actual, overlayCount: 2 },
     ];
     for (const actual of malformed)

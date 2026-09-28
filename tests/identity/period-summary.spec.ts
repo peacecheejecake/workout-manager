@@ -263,7 +263,7 @@ test('saved period summary covers every activity across DST boundaries and keeps
         moving: { value: 30, knownCount: 1, missingCount: 0 },
         unknown: { value: null, knownCount: 0, missingCount: 1 },
       },
-      sources: { manual: 24, fit: 0, fixture: 0 },
+      sources: { manual: 24, fit: 0, fixture: 0, healthkit: 0 },
       overlayCount: 0,
     },
   });

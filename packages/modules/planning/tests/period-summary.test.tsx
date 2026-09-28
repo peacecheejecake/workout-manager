@@ -50,7 +50,7 @@ const data: PeriodSummary = {
         moving: missing,
         unknown: missing,
       },
-      sources: { fit: 1, fixture: 0, manual: 0 },
+      sources: { fit: 0, fixture: 0, manual: 0, healthkit: 1 },
       overlayCount: 0,
     },
   },
@@ -89,6 +89,7 @@ describe('saved period summary', () => {
     setup({ request });
     const actual = await screen.findByRole('region', { name: '기간 실제 합계' });
     expect(within(actual).getByText('거리: 0 m · 알려진 1개 · 미정 0개')).toBeVisible();
+    expect(actual).toHaveTextContent('HealthKit 1개');
     expect(
       within(screen.getByRole('region', { name: '기간 계획 합계' })).getByText(
         '거리: 미정 · 알려진 0개 · 미정 0개',

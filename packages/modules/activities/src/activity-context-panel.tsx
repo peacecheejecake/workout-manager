@@ -149,7 +149,8 @@ export function ActivityContextPanel({
             <p>
               출처: FIT {plan.blockActual.sources.fit}개 · 테스트 자료{' '}
               {plan.blockActual.sources.fixture}개 · 수동 기록 {plan.blockActual.sources.manual}개 ·
-              사용자 정정 {plan.blockActual.overlayCount}개
+              HealthKit {plan.blockActual.sources.healthkit}개 · 사용자 정정{' '}
+              {plan.blockActual.overlayCount}개
             </p>
             <p>
               수집 완전성은 미확인입니다. 알려진 값만 합산하며 누락을 0으로 채우지 않습니다. 위

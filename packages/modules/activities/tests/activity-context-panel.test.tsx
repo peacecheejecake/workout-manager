@@ -82,7 +82,7 @@ function linked() {
           moving: metric,
           unknown: metric,
         },
-        sources: { fit: 0, fixture: 0, manual: 1 },
+        sources: { fit: 0, fixture: 0, manual: 1, healthkit: 0 },
         overlayCount: 1,
       },
       distanceComparison: { actual: 0, planned: 0, delta: 0, status: 'available' },
@@ -142,6 +142,7 @@ it('shows a known zero difference and separate duration definitions without clai
   const totals = screen.getByRole('region', { name: '연결 Block의 관측 부분 합계' });
   expect(totals).toHaveTextContent('0m · 알려진 1개 · 미확인 0개');
   expect(totals).toHaveTextContent('수동 기록 1개');
+  expect(totals).toHaveTextContent('HealthKit 0개');
   expect(within(totals).getAllByText('미확인 · 알려진 0개 · 미확인 0개')).toHaveLength(3);
   expect(screen.getByRole('link', { name: '현재 계획의 해당 날짜 보기' })).toHaveAttribute(
     'href',

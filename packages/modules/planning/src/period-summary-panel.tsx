@@ -195,7 +195,8 @@ function Summary({
               <p>
                 출처: FIT {data.actual.totals.sources.fit}개 · 테스트 자료{' '}
                 {data.actual.totals.sources.fixture}개 · 수동 입력{' '}
-                {data.actual.totals.sources.manual}개 · 사용자 정정{' '}
+                {data.actual.totals.sources.manual}개 · HealthKit{' '}
+                {data.actual.totals.sources.healthkit}개 · 사용자 정정{' '}
                 {data.actual.totals.overlayCount}개
               </p>
             </>

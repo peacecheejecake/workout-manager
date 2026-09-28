@@ -17,7 +17,7 @@ export interface SessionActualsRepository {
 function metric(column: string, condition = 'true') {
   return `jsonb_build_object('value',sum(${column}) FILTER(WHERE ${condition}),'knownCount',count(${column}) FILTER(WHERE ${condition}),'missingCount',count(*) FILTER(WHERE ${condition} AND ${column} IS NULL))`;
 }
-const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metric('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metric('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
+const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metric('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metric('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual'),'healthkit',count(*) FILTER(WHERE kind='healthkit')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
 // One statement keeps immutable targets, mutable activity overlays, head and revision metadata coherent.
 const sql = `WITH plan AS MATERIALIZED (SELECT id,version,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2::uuid),
  records AS MATERIALIZED (${selectActivity}),

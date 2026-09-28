@@ -18,7 +18,7 @@ const actual = {
   count: 0,
   distanceMeters: missing,
   durationSeconds: { timer: missing, elapsed: missing, moving: missing, unknown: missing },
-  sources: { fit: 0, fixture: 0, manual: 0 },
+  sources: { fit: 0, fixture: 0, manual: 0, healthkit: 0 },
   overlayCount: 0,
 };
 const planned = { count: 0, distanceMeters: missing, durationSeconds: missing };
@@ -129,6 +129,9 @@ describe('dashboard actual read model', () => {
     expect(
       within(screen.getByRole('region', { name: '현재 기간' })).getByText('실제 수행 · 0개'),
     ).toBeVisible();
+    expect(
+      within(screen.getByRole('region', { name: '현재 기간' })).getByText(/HealthKit 0개/),
+    ).toBeVisible();
     expect(current).toBeVisible();
     expect(screen.getByRole('link', { name: '2026-03-08 계획' })).toHaveAttribute(
       'href',
@@ -158,7 +161,7 @@ describe('dashboard actual read model', () => {
         ...actual.durationSeconds,
         unknown: { value: null, knownCount: 0, missingCount: 1 },
       },
-      sources: { fit: 1, fixture: 0, manual: 0 },
+      sources: { fit: 1, fixture: 0, manual: 0, healthkit: 0 },
     };
     const distance = { ...zero, distanceMeters: { value: 1500, knownCount: 1, missingCount: 0 } };
     value.days = value.days.map((day, index) => ({

@@ -11,7 +11,7 @@ export interface ActivityContextRepository {
 function metric(column: string, condition = 'true') {
   return `jsonb_build_object('value',sum(${column}) FILTER(WHERE ${condition}),'knownCount',count(${column}) FILTER(WHERE ${condition}),'missingCount',count(*) FILTER(WHERE ${condition} AND ${column} IS NULL))`;
 }
-const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metric('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metric('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
+const aggregate = `jsonb_build_object('count',count(*),'distanceMeters',${metric('distance')},'durationSeconds',jsonb_build_object(${durationKinds.map((kind) => `'${kind}',${metric('duration', `duration_kind='${kind}'`)}`).join(',')}),'sources',jsonb_build_object('fit',count(*) FILTER(WHERE kind='fit'),'fixture',count(*) FILTER(WHERE kind='fixture'),'manual',count(*) FILTER(WHERE kind='manual'),'healthkit',count(*) FILTER(WHERE kind='healthkit')),'overlayCount',count(*) FILTER(WHERE overlaid))`;
 const sql = `WITH records AS MATERIALIZED (${selectActivity}),target AS MATERIALIZED (SELECT * FROM records WHERE id=$2::uuid),
  plan AS MATERIALIZED (SELECT s.id,s.version,s.draft FROM target t JOIN plan_snapshot s ON s.athlete_id=$1 AND s.id::text=lower(t.overlay#>>'{userReport,planLink,planVersionId}')),
  linked_session AS (SELECT value AS session FROM plan CROSS JOIN LATERAL jsonb_array_elements(draft->'sessions') WHERE value->>'id'=(SELECT overlay#>>'{userReport,planLink,sessionId}' FROM target)),

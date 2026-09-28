@@ -57,7 +57,7 @@ function fixture(): PeriodSummary {
           moving: unknown,
           unknown,
         },
-        sources: { manual: 1, fit: 0, fixture: 0 },
+        sources: { manual: 1, fit: 0, fixture: 0, healthkit: 0 },
         overlayCount: 0,
       },
     },

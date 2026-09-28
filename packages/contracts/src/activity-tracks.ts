@@ -96,13 +96,15 @@ export const trackCorrespondenceDigestSchema = z.strictObject({
 export type TrackCorrespondenceDigest = z.infer<typeof trackCorrespondenceDigestSchema>;
 
 /**
- * One stored revision. Aggregate counts and distances are copied from the server's own
- * parse; they are never taken from a client and never recomputed from display geometry.
+ * One stored revision. `sourceKind` identifies the canonical Activity owner; a HealthKit
+ * Activity may have an explicitly uploaded FIT/GPX track without claiming HealthKit supplied
+ * GPS. `recordedSourceKind` and `file.format` identify that separate recording. Aggregate
+ * counts and distances come from the server's parse, never from client claims or display geometry.
  */
 export const activityTrackRevisionSchema = z.strictObject({
   trackId: uuid,
   activityId: uuid,
-  sourceKind: z.enum(['fit', 'fixture', 'manual']),
+  sourceKind: z.enum(['fit', 'fixture', 'manual', 'healthkit']),
   sourceId: z.string().min(1).max(200),
   sourceRevision: z.number().int().min(1).max(2147483646),
   trackRevision: z.number().int().min(1).max(2147483646),

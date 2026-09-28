@@ -48,7 +48,8 @@ function WindowMetrics({
       </dl>
       <p>
         출처: FIT {value.actual.sources.fit}개 · 테스트 자료 {value.actual.sources.fixture}개 · 수동
-        기록 {value.actual.sources.manual}개 · 사용자 정정 {value.actual.overlayCount}개
+        기록 {value.actual.sources.manual}개 · HealthKit {value.actual.sources.healthkit}개 · 사용자
+        정정 {value.actual.overlayCount}개
       </p>
       <p>
         <a href={actualHref}>{label} 실제 활동 보기</a>

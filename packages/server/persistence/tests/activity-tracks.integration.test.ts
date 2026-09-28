@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
+import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
 import { createLocalFilesystemObjectStorage } from '@workout/server-media/local-filesystem';
 import {
   createActivityTrackFinalObjectKey,
@@ -23,8 +24,11 @@ import {
   type ActivityTrackRepository,
 } from '../src/activity-tracks.js';
 import { createDatabase, type Database } from '../src/database.js';
+import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
+import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
 import {
   grantActivityTracks,
+  grantHealthKitIngestion,
   grantOperations,
   grantResourceObjectCleanupWorker,
   migrate,
@@ -55,6 +59,7 @@ beforeAll(async () => {
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await grantOperations(adminUrl, 'workout_runtime');
   await grantActivityTracks(adminUrl, 'workout_runtime');
+  await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(`CREATE ROLE "${workerRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
   await admin.query(`GRANT USAGE ON SCHEMA public TO "${workerRole}"`);
   await grantResourceObjectCleanupWorker(adminUrl, workerRole);
@@ -244,6 +249,101 @@ async function publishObject(storage: ObjectStorage, finalKey: string, content: 
 }
 
 describe('M2-01c private track storage', () => {
+  it('stores an explicit GPX recording for a HealthKit-owned Activity without changing its owner', async () => {
+    const athlete = randomUUID();
+    const sampleId = randomUUID();
+    const consentClient = await admin.connect();
+    try {
+      await consentClient.query('BEGIN');
+      await consentClient.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+      await consentClient.query(
+        "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+        [athlete],
+      );
+      await consentClient.query('COMMIT');
+    } catch (error) {
+      await consentClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      consentClient.release();
+    }
+    const batch: HealthKitIngestionBatch = {
+      schemaVersion: 1,
+      installationId: randomUUID(),
+      batchId: randomUUID(),
+      events: [
+        {
+          kind: 'upsert',
+          sampleId,
+          sourceBundleId: 'com.apple.health',
+          sourceVersion: null,
+          activityType: 37,
+          observedFrom: '2026-09-20T06:00:00+09:00',
+          observedTo: '2026-09-20T06:35:00+09:00',
+          durationSeconds: 2100,
+          distanceMeters: 5000,
+          energyKilocalories: null,
+        },
+      ],
+    };
+    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1);
+    const sample = await database.tenant(athlete, (tx) =>
+      tx.query('SELECT payload_digest FROM healthkit_workout_sample WHERE sample_id=$1', [
+        sampleId,
+      ]),
+    );
+    const digest = String(sample.rows[0]?.['payload_digest']);
+    const created = await createHealthKitActivityRepository(database).createActivity(athlete, {
+      sampleId,
+      expectedSampleDigest: digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    });
+
+    await expect(
+      tracks.reserve(
+        randomUUID(),
+        created.activityId,
+        {
+          expectedActivityRevision: created.activityRevision,
+          recordedTrackIndex: 0,
+        },
+        `track-${randomUUID()}`,
+      ),
+    ).rejects.toBeInstanceOf(ActivityTrackNotFoundError);
+    await expect(
+      tracks.reserve(
+        athlete,
+        created.activityId,
+        {
+          expectedActivityRevision: created.activityRevision + 1,
+          recordedTrackIndex: 0,
+        },
+        `track-${randomUUID()}`,
+      ),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+
+    const stored = await storeTrack(athlete, created.activityId, created.activityRevision);
+    expect(stored.result?.status).toBe('available');
+    const track = await tracks.read(athlete, created.activityId);
+    if (track.status !== 'available') throw new Error('Expected stored track');
+    expect(track.track.sourceKind).toBe('healthkit');
+    expect(track.track.sourceId).toBe(sampleId);
+    expect(track.track.recordedSourceKind).toBe('gpx-trk');
+    expect(track.track.file.format).toBe('gpx');
+    const owner = await database.tenant(athlete, (tx) =>
+      tx.query(
+        'SELECT kind,source_id FROM activity_source_head WHERE athlete_id=$1 AND activity_id=$2',
+        [athlete, created.activityId],
+      ),
+    );
+    expect(owner.rows[0]).toMatchObject({ kind: 'healthkit', source_id: sampleId });
+    expect(await tracks.read(randomUUID(), created.activityId)).toEqual({
+      status: 'unavailable',
+      activityId: created.activityId,
+    });
+  });
+
   it('stores one track per activity and exposes only server-derived facts', async () => {
     const athlete = randomUUID();
     const imported = await activities.importActivity(athlete, importInput());

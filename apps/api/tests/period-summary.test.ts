@@ -146,7 +146,7 @@ it('returns a validated summary without mutating the plan', async () => {
         count: 0,
         distanceMeters: missing,
         durationSeconds: { timer: missing, elapsed: missing, moving: missing, unknown: missing },
-        sources: { fit: 0, fixture: 0, manual: 0 },
+        sources: { fit: 0, fixture: 0, manual: 0, healthkit: 0 },
         overlayCount: 0,
       },
     },

@@ -6,11 +6,20 @@ import { beforeAll, afterAll, it, expect } from 'vitest';
 import type { PlanDraft } from '@workout/contracts/planning';
 import type { ActivityImport } from '@workout/contracts/activity';
 import { createDatabase, type Database } from '../src/database.js';
-import { migrate, grantOperations, grantCheckIns } from '../src/migrate.js';
+import {
+  migrate,
+  grantOperations,
+  grantCheckIns,
+  grantHealthKitIngestion,
+} from '../src/migrate.js';
 import { createDashboardRepository } from '../src/dashboard.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createCheckInRepository } from '../src/check-ins.js';
 import { createPlanningRepository } from '../src/planning.js';
+import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
+import { createSessionActualsRepository } from '../src/session-actuals.js';
+import { createActivityContextRepository } from '../src/activity-context.js';
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
@@ -20,6 +29,7 @@ beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
   await grantCheckIns(adminUrl, 'workout_runtime');
+  await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON plan_head,plan_snapshot,plan_history,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt,command_receipt,outbox TO workout_runtime',
   );
@@ -66,7 +76,7 @@ it('counts manual actuals once and projects corrected or cleared start times wit
     report: { sessionRpe: 0, note: null, planLink: null },
   });
   const initial = await dashboard.read(athlete, query);
-  expect(initial.current.actual.sources).toEqual({ fit: 0, fixture: 0, manual: 1 });
+  expect(initial.current.actual.sources).toEqual({ fit: 0, fixture: 0, manual: 1, healthkit: 0 });
   expect(initial.current.actual.distanceMeters).toEqual({
     value: 0,
     knownCount: 1,
@@ -142,6 +152,124 @@ async function savePlan(athlete: string, value = draft()) {
     draft: value,
   });
 }
+it('counts one HealthKit canonical Activity across daily, period, session and context reads with tenant isolation', async () => {
+  const athlete = randomUUID();
+  const otherAthlete = randomUUID();
+  const sampleId = randomUUID();
+  const consentClient = await admin.connect();
+  try {
+    await consentClient.query('BEGIN');
+    await consentClient.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await consentClient.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      [athlete],
+    );
+    await consentClient.query('COMMIT');
+  } catch (error) {
+    await consentClient.query('ROLLBACK');
+    throw error;
+  } finally {
+    consentClient.release();
+  }
+  await createHealthKitIngestionRepository(database).ingestBatch(
+    athlete,
+    {
+      schemaVersion: 1,
+      installationId: randomUUID(),
+      batchId: randomUUID(),
+      events: [
+        {
+          kind: 'upsert',
+          sampleId,
+          sourceBundleId: 'com.apple.health',
+          sourceVersion: null,
+          activityType: 37,
+          observedFrom: '2024-03-10T12:00:00Z',
+          observedTo: '2024-03-10T12:30:00Z',
+          durationSeconds: 1800,
+          distanceMeters: 5000,
+          energyKilocalories: null,
+        },
+      ],
+    },
+    1,
+  );
+  const digest = await database.tenant(athlete, async (tx) => {
+    const result = await tx.query(
+      'SELECT payload_digest FROM healthkit_workout_sample WHERE sample_id=$1',
+      [sampleId],
+    );
+    return String(result.rows[0]?.['payload_digest']);
+  });
+  const created = await createHealthKitActivityRepository(database).createActivity(athlete, {
+    sampleId,
+    expectedSampleDigest: digest,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  const saved = await savePlan(athlete);
+  const activities = createActivityRepository(database);
+  await activities.updateOverlay(athlete, created.activityId, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    reason: 'Link observed workout to planned session',
+    report: {
+      sessionRpe: null,
+      note: null,
+      planLink: { planVersionId: saved.id, sessionId: 'session-0' },
+    },
+  });
+
+  const dashboard = await createDashboardRepository(database).read(athlete, query);
+  expect(dashboard.days[2]?.actual.sources).toEqual({
+    fit: 0,
+    fixture: 0,
+    manual: 0,
+    healthkit: 1,
+  });
+  expect(dashboard.current.actual).toMatchObject({
+    count: 1,
+    sources: { healthkit: 1 },
+    distanceMeters: { value: 5000, knownCount: 1 },
+    durationSeconds: { unknown: { value: 1800, knownCount: 1 } },
+    overlayCount: 1,
+  });
+  const period = await createPeriodSummaryRepository(database).read(athlete, {
+    planVersionId: saved.id,
+    periodId: 'block',
+  });
+  expect(period?.actual).toMatchObject({
+    status: 'available',
+    totals: { count: 1, sources: { healthkit: 1 }, distanceMeters: { value: 5000 } },
+  });
+  const session = await createSessionActualsRepository(database).read(athlete, {
+    planVersionId: saved.id,
+  });
+  expect(session?.sessions[0]?.actual).toMatchObject({ count: 1, sources: { healthkit: 1 } });
+  const context = await createActivityContextRepository(database).read(athlete, created.activityId);
+  expect(context?.planContext).toMatchObject({
+    status: 'linked',
+    blockActual: { count: 1, sources: { healthkit: 1 } },
+  });
+
+  expect(
+    (await createDashboardRepository(database).read(otherAthlete, query)).current.actual.count,
+  ).toBe(0);
+  expect(
+    await createPeriodSummaryRepository(database).read(otherAthlete, {
+      planVersionId: saved.id,
+      periodId: 'block',
+    }),
+  ).toBeNull();
+  expect(
+    await createSessionActualsRepository(database).read(otherAthlete, {
+      planVersionId: saved.id,
+    }),
+  ).toBeNull();
+  expect(
+    await createActivityContextRepository(database).read(otherAthlete, created.activityId),
+  ).toBeNull();
+});
 async function checkin(athlete: string, observedAt: string, note = 'self report') {
   return createCheckInRepository(database).createCheckIn(athlete, {
     idempotencyKey: randomUUID(),
@@ -222,7 +350,7 @@ it('groups DST by local calendar date and preserves zero/null and separate durat
     knownCount: 1,
     missingCount: 0,
   });
-  expect(model.current.actual.sources).toEqual({ fit: 1, fixture: 2, manual: 0 });
+  expect(model.current.actual.sources).toEqual({ fit: 1, fixture: 2, manual: 0, healthkit: 0 });
   expect(model.previous.actual.distanceMeters.value).toBe(50);
   expect(model.unplacedActivityCount).toBe(1);
   expect(model.dataRevision.activities).toEqual({ count: 6, revisionSum: '6' });

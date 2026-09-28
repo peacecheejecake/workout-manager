@@ -93,6 +93,21 @@ describe('dashboard calendar and measurement contracts', () => {
       dashboardActualSchema.parse({ ...actual, sources: { fit: 0, fixture: 0 } }).sources.manual,
     ).toBe(0);
     expect(
+      dashboardActualSchema.parse({ ...actual, sources: { fit: 0, fixture: 0 } }).sources.healthkit,
+    ).toBe(0);
+    expect(
+      dashboardActualSchema.safeParse({
+        ...actual,
+        count: 1,
+        distanceMeters: { value: null, knownCount: 0, missingCount: 1 },
+        durationSeconds: {
+          ...actual.durationSeconds,
+          unknown: { value: null, knownCount: 0, missingCount: 1 },
+        },
+        sources: { fit: 0, fixture: 0, manual: 0, healthkit: 1 },
+      }).success,
+    ).toBe(true);
+    expect(
       dashboardActualSchema.safeParse({ ...actual, sources: { fit: 0, fixture: 0, manual: 1 } })
         .success,
     ).toBe(false);

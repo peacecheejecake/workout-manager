@@ -30,3 +30,20 @@
 - 합본 검증: 전체 단위·컴포넌트 4235 통과·7건 건너뜀, PostgreSQL 통합 842/842, 브라우저 smoke E2E 4/4, generated/Prettier/ESLint/TypeScript 34/34/build 15/15, Swift harness와 SDK 타입 검사, 서명 없는 iOS Simulator 빌드 통과. 최종 iOS `public/index.html`은 mobile-web build와 SHA-256이 같다. 첫 포맷 검사에서 `native-bridge.ts` 서식 차이를 찾아 수정한 뒤 전체 포맷 재검사가 통과했다. 지도·고도 자료 경로를 지정한 전체 identity E2E 두 실행은 각각 304 통과·13건 건너뜀(14.3분, 14.4분)이었다.
 - 모바일 UI 검사에서 Aside 설치 업데이트는 `fetch failed`, Chrome은 native 모의 진입을 제공하지 못해 Playwright mobile Chromium을 사용했다. 이 browser mock과 서명 없는 Simulator 빌드는 M3-02h의 서명된 제품 iPhone 실행을 대체하지 않는다. M3-02h는 계속 `not_executed`다.
 - 위 평가는 자체 점검이며, 새 phase HEAD의 독립 읽기 전용 전체 검토가 승인하기 전까지 `main` 병합은 보류한다.
+
+## 세 번째 검토 · BLOCK
+
+- `main` 기준 `2463f83922468818f9be9c9225cefd678681b247`, phase HEAD `a1e90d6bfa6fc6c17b7c287aa3b010f90aaac90b`의 113개 변경 파일을 별도 Codex CLI `gpt-6-sol` high, read-only sandbox가 검토했다. merge base가 기준 `main`과 같고 작업 트리는 깨끗했다.
+- 이전 P1 #1 receipt 삭제, #2 계정 전환 outbox 소실, #3 동의 철회·재동의 후 오프라인 queue 정지, #4 제품 iPhone의 검토·결정·상세 경로 부재는 현재 코드에서 각각 **FIXED**로 판정됐다.
+- 새 P1 #5 **NOT FIXED**: HealthKit 소유 정본 Activity가 대시보드, 기간 요약, 세션 실제 기록, 활동 계획 맥락의 `fit/fixture/manual` 전용 출처별 집계에서 빠져 총건수와 출처 합계가 달라진다. 대시보드 응답 파싱이 실패할 수 있으므로 계약·SQL·일별 합산·표시와 실제 DB 회귀 시험을 함께 수정해야 한다.
+- 서명된 제품 iPhone 실행 M3-02h는 `not_executed` 외부 gate로 남는다. 새 P1과 전체 phase 재검토가 끝나기 전까지 `main`에 병합하지 않는다.
+
+별도 읽기 전용 source-kind 감사에서는 HealthKit 소유 Activity에 사용자가 범용 FIT/GPX track upload를 예약할 때 `activity_track_upload_intent.source_kind`의 기존 `fit/fixture/manual` CHECK에 걸리는 경로도 확인했다. 이 발견은 세 번째 phase 검토의 지적 항목이 아니라 후속 자체 감사 결과로 기록하며, 활동 소유 출처와 업로드한 경로의 기록 출처를 구분한 수정과 실제 DB 시험에 포함한다.
+
+## 세 번째 검토 지적·자체 감사 수정 · 재검토 대기
+
+- 새 P1 #5 **FIXED in current content**: `dashboardActualSchema`에 `sources.healthkit`을 더하고 총건수 검증·기존 응답 기본값을 조정했다. dashboard, period-summary, session-actuals, activity-context SQL과 일별 합산, 대시보드·기간·세션·활동 맥락 표시가 HealthKit 정본을 센다. 실제 PostgreSQL에서는 HealthKit 표본 수집→명시적 정본 생성→계획 링크 뒤 네 조회 모델, 일별·기간 합산, 타 계정 격리를 검증했다.
+- 자체 감사의 track upload 실패도 **FIXED in current content**: migration 065는 track/head/revision/upload intent의 활동 소유 출처 제약에 `healthkit`을 추가한다. 업로드 기록은 `recorded_source_kind`와 `format`으로 따로 남는다. 실제 PostgreSQL에서 HealthKit 정본에 사용자가 GPX 경로를 올리는 예약·준비·최종화와 타 계정·오래된 revision 거부를 검증했다.
+- 합본의 실제 PostgreSQL 시험은 844/844, 전체 단위·컴포넌트 4236 통과·7건 건너뜀, generated/Prettier/ESLint/TypeScript 34/34/build 15/15, 서명 없는 iOS Simulator 빌드를 통과했다. 첫 합본 타입·빌드는 API 테스트 fixture에 새 필드가 없어 실패했고 해당 세 fixture를 고친 후 전체 타입·빌드가 통과했다. 모바일 자산을 iOS 프로젝트에 다시 동기화했고 두 `index.html`의 SHA-256이 같다. 첫 전체 identity E2E는 302 통과·2 실패·13건 건너뜀으로 끝났다. 실패는 대시보드와 기간 요약의 정확한 객체 비교가 새 `healthkit: 0` 필드를 기대하지 않은 시험 데이터 문제였으며, 두 기대값을 고친 뒤 집중 3/3, 전체 재실행 두 번 각각 304 통과·13건 건너뜀(14.6분, 14.5분)을 확인했다. 제품 코드는 첫 실패 뒤 바꾸지 않았다.
+- Aside CLI 업데이트는 `fetch failed`; Chrome CUA 상태 조회에는 Mac 잠금 오류가 있었고 합성 HealthKit 응답을 넣은 화면 검사에는 Playwright Chromium을 사용했다. 합성 응답을 실제 대시보드·기간 요약·세션 실적·활동 맥락 컴포넌트에 넣어 390×844 viewport에서 각각 `HealthKit 1개` 표시와 page error 없음(0건)을 확인했다. 이는 제품 로그인이나 서명된 iPhone 실행 증거가 아니다. M3-02h는 `not_executed`다.
+- 새 phase HEAD의 독립 읽기 전용 전체 검토가 승인하기 전까지 `main` 병합은 보류한다.

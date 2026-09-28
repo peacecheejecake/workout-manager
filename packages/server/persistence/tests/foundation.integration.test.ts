@@ -114,6 +114,7 @@ describe('real PostgreSQL foundation', () => {
       { version: 63, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-02 phase review: bind workout uploads to the current consent revision.
       { version: 64, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { version: 65, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

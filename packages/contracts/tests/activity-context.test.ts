@@ -88,7 +88,7 @@ function linked(): ActivityContext {
           moving: empty,
           unknown: empty,
         },
-        sources: { fit: 0, fixture: 0, manual: 1 },
+        sources: { fit: 0, fixture: 0, manual: 1, healthkit: 0 },
         overlayCount: 0,
       },
       distanceComparison: { actual: 0, planned: 1000, delta: -1000, status: 'available' },

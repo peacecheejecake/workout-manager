@@ -140,7 +140,7 @@ export interface ActivityTrackUploadContext {
   readonly uploadId: string;
   readonly activityId: string;
   readonly trackId: string;
-  readonly sourceKind: 'fit' | 'fixture' | 'manual';
+  readonly sourceKind: 'fit' | 'fixture' | 'manual' | 'healthkit';
   readonly sourceId: string;
   readonly sourceRevision: number;
   readonly trackRevision: number;
@@ -191,7 +191,7 @@ const intentRowSchema = z.object({
   upload_id: uuid,
   activity_id: uuid,
   track_id: uuid,
-  source_kind: z.enum(['fit', 'fixture', 'manual']),
+  source_kind: z.enum(['fit', 'fixture', 'manual', 'healthkit']),
   source_id: z.string().min(1).max(200),
   source_revision: z.number().int().positive(),
   expected_activity_revision: z.number().int().positive(),
@@ -369,7 +369,7 @@ function toRevision(row: Record<string, unknown>) {
       activity_id: uuid,
       track_id: uuid,
       track_revision: z.number().int().positive(),
-      source_kind: z.enum(['fit', 'fixture', 'manual']),
+      source_kind: z.enum(['fit', 'fixture', 'manual', 'healthkit']),
       source_id: z.string(),
       source_revision: z.number().int().positive(),
       recorded_source_kind: z.enum(['fit-session', 'gpx-trk']),

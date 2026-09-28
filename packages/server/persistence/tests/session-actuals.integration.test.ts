@@ -177,7 +177,7 @@ it('includes explicit links outside dates or without start, preserves null/zero 
           moving: { value: null, knownCount: 0, missingCount: 0 },
           unknown: { value: null, knownCount: 0, missingCount: 0 },
         },
-        sources: { manual: 2, fixture: 1, fit: 0 },
+        sources: { manual: 2, fixture: 1, fit: 0, healthkit: 0 },
         overlayCount: 1,
       },
     },

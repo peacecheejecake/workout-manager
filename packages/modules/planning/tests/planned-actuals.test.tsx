@@ -25,7 +25,7 @@ const read = sessionActualsSchema.parse({
           moving: empty,
           unknown: { value: null, knownCount: 0, missingCount: 1 },
         },
-        sources: { manual: 2, fit: 1, fixture: 0 },
+        sources: { manual: 2, fit: 0, fixture: 0, healthkit: 1 },
         overlayCount: 1,
       },
     },
@@ -42,6 +42,7 @@ describe('planned actual cells', () => {
       <PlannedActualCell state={ready} sessionId="run" column="actual" />,
     );
     expect(screen.getByText('연결된 활동 3개')).toBeVisible();
+    expect(screen.getByText(/HealthKit 1개/)).toBeVisible();
     expect(screen.getByText(/거리 1,000 m · 부분 합계/)).toBeVisible();
     expect(screen.getByText(/타이머 시간 \(timer\): 0 초/)).toBeVisible();
     expect(screen.getByText(/경과 시간 \(elapsed\): 100 초/)).toBeVisible();

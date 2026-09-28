@@ -49,6 +49,10 @@ export function PlannedActualCell({
     <>
       <p>연결된 활동 {actual.count}개</p>
       <p>
+        출처: FIT {actual.sources.fit}개 · 테스트 자료 {actual.sources.fixture}개 · 수동 기록{' '}
+        {actual.sources.manual}개 · HealthKit {actual.sources.healthkit}개
+      </p>
+      <p>
         거리 {distance.value === null ? '미보고' : `${quantity(distance.value)} m`}
         {distance.knownCount > 0 && distance.missingCount > 0 ? ' · 부분 합계' : ''} · 알려진{' '}
         {distance.knownCount}개 · 미보고 {distance.missingCount}개
