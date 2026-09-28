@@ -235,7 +235,7 @@ lint·format 검사를 통과하지 못하던 파일들이다.
   바꾸고 공백 경로에서 하위 Node 프로세스 실행이 되는 회귀 시험을 추가했다. 집중 시험 2/2,
   touched ESLint·Prettier·diff check가 통과했다. 실제 Zitadel 스택 재기동 증거로 취급하지 않는다.
 
-## 열린 항목
+## 2026-09-26 당시 열린 항목
 
 - EXT-HOSTING: 위 이동 항목 전부. Zitadel Back이 앱의 `cancelled` 경로를 실행하지 않은 항목(7)도
   이 gate에 배정했다. 실제 공급자에서 실행 가능한 취소 수단이 없다면 미검증으로 남긴다.
