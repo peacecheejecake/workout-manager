@@ -60,6 +60,10 @@ final class HealthKitWorkoutCollector {
             throw HealthKitCollectionFailure.unavailable
         }
         _ = try state.activate(accountId: accountId)
+        if activeAccountId != accountId {
+            generation += 1
+            activeAccountId = accountId
+        }
         let pending = try state.pendingBatches()
         guard pending.count <= 256 else { throw HealthKitCollectionFailure.unavailable }
         return [
@@ -125,7 +129,7 @@ final class HealthKitWorkoutCollector {
             healthStore.stop(observer)
             self.observer = nil
         }
-        try? state?.reset()
+        state?.deactivate()
     }
 
     private func scheduleCollection() {
@@ -162,7 +166,12 @@ final class HealthKitWorkoutCollector {
             guard activeAccountId == accountId else { return }
             switch consent {
             case .granted: break
-            case .notGranted, .authenticationRequired:
+            case .notGranted:
+                // Server-side withdrawal makes this account's queued health data invalid.
+                try state.reset()
+                invalidateOwner()
+                return
+            case .authenticationRequired:
                 invalidateOwner()
                 return
             }
@@ -353,7 +362,11 @@ final class HealthKitWorkoutCollector {
                     guard try state.acknowledge(batchId: batch.batchId,
                                                 installationId: batch.installationId,
                                                 acceptedCount: batch.eventCount) else { return false }
-                case .authenticationRequired, .consentRequired:
+                case .authenticationRequired:
+                    invalidateOwner()
+                    return false
+                case .consentRequired:
+                    try state.reset()
                     invalidateOwner()
                     return false
                 case .forbidden:

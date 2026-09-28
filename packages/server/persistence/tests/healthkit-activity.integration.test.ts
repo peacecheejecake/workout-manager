@@ -346,11 +346,82 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       raw_active: 0,
       raw_tombstone: 1,
       other_active: 1,
-      purged_receipts: 2,
+      purged_receipts: 0,
     });
     const exported = await createOperationsRepository(database).exportAccount(fixture.athleteId);
     expect(JSON.stringify(exported)).not.toContain(fixture.expectedSampleDigest);
     expect(JSON.stringify(exported)).not.toContain('secret health note');
+  });
+
+  it('replays a lost ingestion ACK after local deletion and accepts later batches without resurrection', async () => {
+    const fixture = await prepared();
+    const ingestion = createHealthKitIngestionRepository(database);
+    const unrelated = workout();
+    const foreign = await prepared();
+    const unrelatedAck = await ingestion.ingestBatch(fixture.athleteId, unrelated);
+    const created = await createHealthKitActivityRepository(database).createActivity(
+      fixture.athleteId,
+      command(fixture),
+    );
+    await ownerTenant(fixture.athleteId, (client) =>
+      client.query(
+        'UPDATE activity_canonical SET deleted=true,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
+        [fixture.athleteId, created.activityId],
+      ),
+    );
+
+    // The first ACK was lost on the device. It retries the exact persisted batch,
+    // then drains the queue by delivering the next batch with the same installation.
+    expect(await ingestion.ingestBatch(fixture.athleteId, fixture.batch)).toEqual({
+      schemaVersion: 1,
+      installationId: fixture.batch.installationId,
+      batchId: fixture.batch.batchId,
+      acceptedCount: 1,
+    });
+    expect(await ingestion.ingestBatch(fixture.athleteId, unrelated)).toEqual(unrelatedAck);
+    await expect(
+      ingestion.ingestBatch(fixture.athleteId, {
+        ...fixture.batch,
+        events: [{ kind: 'delete', sampleId: fixture.sampleId }],
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    const next = workout();
+    const deletedUpsert = fixture.batch.events[0];
+    const nextUpsert = next.events[0];
+    if (!deletedUpsert || !nextUpsert) throw new Error('Expected upsert events');
+    const nextBatch = {
+      ...next,
+      installationId: fixture.batch.installationId,
+      events: [deletedUpsert, nextUpsert],
+    } satisfies HealthKitIngestionBatch;
+    expect((await ingestion.ingestBatch(fixture.athleteId, nextBatch)).acceptedCount).toBe(2);
+
+    const state = await database.tenant(fixture.athleteId, (tx) =>
+      tx.query(
+        `SELECT
+         (SELECT state FROM healthkit_workout_sample WHERE sample_id=$1) AS deleted_raw_state,
+         (SELECT payload_digest FROM healthkit_workout_sample WHERE sample_id=$1) AS deleted_raw_digest,
+         (SELECT state FROM healthkit_workout_lineage WHERE sample_id=$1) AS deleted_lineage,
+         (SELECT count(*)::int FROM activity_canonical WHERE NOT deleted) AS visible_activities,
+         (SELECT count(*)::int FROM healthkit_workout_batch_receipt WHERE request_digest IS NOT NULL AND purged_at IS NULL) AS live_receipts,
+         (SELECT count(*)::int FROM healthkit_workout_sample WHERE sample_id=$2 AND state='active') AS next_active`,
+        [fixture.sampleId, next.events[0]?.sampleId],
+      ),
+    );
+    expect(state.rows[0]).toEqual({
+      deleted_raw_state: 'deleted',
+      deleted_raw_digest: null,
+      deleted_lineage: 'suppressed',
+      visible_activities: 0,
+      live_receipts: 3,
+      next_active: 1,
+    });
+    // A different owner can still replay their own receipt; no tenant-wide
+    // receipt update crossed RLS or the trigger's athlete predicate.
+    expect(await ingestion.ingestBatch(foreign.athleteId, foreign.batch)).toMatchObject({
+      batchId: foreign.batch.batchId,
+      acceptedCount: 1,
+    });
   });
 
   it('withdrawal removes raw and redacts canonical/export; account erasure removes barriers', async () => {
@@ -467,7 +538,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       lineage: 'suppressed',
       activity_deleted: true,
       suppression: 1,
-      purged_receipts: 1,
+      purged_receipts: 0,
     });
     await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
       ...fixture.batch,

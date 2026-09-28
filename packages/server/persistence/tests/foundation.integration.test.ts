@@ -110,6 +110,8 @@ describe('real PostgreSQL foundation', () => {
       { version: 61, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       // M3-02i: explicit HealthKit-owned canonical Activity lifecycle.
       { version: 62, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      // M3-02 phase review: local Activity deletion retains ingestion ACK receipts.
+      { version: 63, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {

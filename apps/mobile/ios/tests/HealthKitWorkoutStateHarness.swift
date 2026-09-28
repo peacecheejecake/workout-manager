@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HealthKit
 import SQLite3
@@ -116,28 +117,53 @@ struct HealthKitWorkoutStateHarness {
                         "delete removes known UUID mapping")
             let changedId = try restarted.activate(accountId: "athlete_two")
             try require(changedId != installationId, "owner switch rotates installation")
-            try require(try restarted.pendingBatches().isEmpty, "owner switch purges outbox")
-            try require(try restarted.anchor() == nil, "owner switch purges anchor")
-            try require(try restarted.knownSample(sampleId: sampleId) == nil, "owner switch purges mapping")
-            try require(try restarted.collectionEnabled() == false, "owner switch purges explicit flag")
-            try require(try restarted.wakePending() == false, "owner switch purges wake intent")
+            try require(try restarted.pendingBatches().isEmpty, "other owner cannot see outbox")
+            try require(try restarted.anchor() == nil, "other owner cannot see anchor")
+            try require(try restarted.knownSample(sampleId: sampleId) == nil, "other owner cannot see mapping")
+            try require(try restarted.collectionEnabled() == false, "other owner cannot see explicit flag")
+            try require(try restarted.wakePending() == false, "other owner cannot see wake intent")
+            do {
+                _ = try restarted.acknowledge(batchId: batchId, installationId: installationId,
+                                               acceptedCount: 1)
+                throw HarnessFailure.failed("other owner ACKed old installation")
+            } catch HealthKitWorkoutStateError.acknowledgementMismatch { }
+            restarted.deactivate()
+            do {
+                _ = try restarted.pendingBatches()
+                throw HarnessFailure.failed("logout kept active owner")
+            } catch HealthKitWorkoutStateError.inactive { }
+            try require(try restarted.activate(accountId: account) == installationId,
+                        "same owner resumes original installation after logout")
+            try require(try restarted.pendingBatches().count == 2,
+                        "same owner resumes paused and deletion batches")
+            try require(try restarted.anchor() != nil && restarted.collectionEnabled(),
+                        "same owner resumes cursor and request intent")
+            _ = try restarted.activate(accountId: "athlete_two")
             try restarted.reset()
             do {
                 _ = try restarted.pendingBatches()
                 throw HarnessFailure.failed("reset left active owner")
             } catch HealthKitWorkoutStateError.inactive { }
+            try require(try restarted.activate(accountId: account) == installationId &&
+                        restarted.pendingBatches().count == 2,
+                        "other owner's local reset cannot erase retained batches")
         }
 
+        let corruptionDatabase = directory.appendingPathComponent("corruption.sqlite")
         let corruptionBatchId = UUID()
         var corruptionInstallationId = UUID()
         do {
-            let state = try HealthKitWorkoutState(databaseURL: database)
+            let state = try HealthKitWorkoutState(databaseURL: corruptionDatabase)
             corruptionInstallationId = try state.activate(accountId: account)
             try state.stagePage(batchId: corruptionBatchId, events: [.delete(sampleId: sampleId)],
                                 nextAnchor: HKQueryAnchor(fromValue: 4))
         }
         var raw: OpaquePointer?
-        guard sqlite3_open(database.path, &raw) == SQLITE_OK, let raw else {
+        let accountDigest = SHA256.hash(data: Data(account.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        let accountDatabase = corruptionDatabase.deletingLastPathComponent()
+            .appendingPathComponent("corruption-account-\(accountDigest).sqlite")
+        guard sqlite3_open(accountDatabase.path, &raw) == SQLITE_OK, let raw else {
             throw HarnessFailure.failed("unable to open corruption fixture")
         }
         guard sqlite3_exec(raw, "UPDATE pending SET body=x'00'", nil, nil, nil) == SQLITE_OK else {
@@ -145,7 +171,7 @@ struct HealthKitWorkoutStateHarness {
             throw HarnessFailure.failed("unable to write corruption fixture")
         }
         sqlite3_close(raw)
-        let corrupt = try HealthKitWorkoutState(databaseURL: database)
+        let corrupt = try HealthKitWorkoutState(databaseURL: corruptionDatabase)
         _ = try corrupt.activate(accountId: account)
         do {
             _ = try corrupt.pendingBatches()
@@ -263,7 +289,86 @@ struct HealthKitWorkoutStateHarness {
         try require(try paused.anchor() == nil && paused.pendingBatches().isEmpty &&
                     !paused.collectionEnabled() && !paused.wakePending() &&
                     !paused.beginReconciliationAfterOutboxDrain(),
-                    "account switch clears old owner batches and retry intent")
+                    "other account sees none of prior owner's retry state")
+        try require(try paused.activate(accountId: account) == pausedInstallation &&
+                    paused.pendingBatches()[0].pauseReason == .conflict &&
+                    paused.anchor() != nil && paused.collectionEnabled(),
+                    "prior owner's quarantined batch and retry intent survive account switch")
+
+        let deletionDB = directory.appendingPathComponent("offline-deletion.sqlite")
+        let deletionBatchId = UUID()
+        let deletedId = UUID()
+        var deletionInstallation = UUID()
+        var deletionBody = Data()
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: deletionDB)
+            deletionInstallation = try state.activate(accountId: account)
+            try state.requestReconciliation()
+            try state.stagePage(batchId: deletionBatchId, events: [.delete(sampleId: deletedId)],
+                                nextAnchor: HKQueryAnchor(fromValue: 1))
+            deletionBody = try state.pendingBatches()[0].body
+            state.deactivate() // Offline logout must not discard an unsent deletion.
+            try require(try state.activate(accountId: "athlete_two") != deletionInstallation &&
+                        state.pendingBatches().isEmpty,
+                        "second account cannot send first account's queued deletion")
+            let secondBatch = UUID()
+            try state.stagePage(batchId: secondBatch, events: [.delete(sampleId: UUID())],
+                                nextAnchor: HKQueryAnchor(fromValue: 1))
+            try require(try state.pendingBatches().count == 1 &&
+                        state.pendingBatches()[0].body != deletionBody,
+                        "second account stages only its own request body")
+        }
+        do {
+            let restarted = try HealthKitWorkoutState(databaseURL: deletionDB)
+            let secondInstallation = try restarted.activate(accountId: "athlete_two")
+            try require(try restarted.pendingBatches().count == 1,
+                        "second account's outbox survives process restart")
+            try require(try restarted.activate(accountId: account) == deletionInstallation,
+                        "return to original owner retains installation receipt scope")
+            let pending = try restarted.pendingBatches()
+            try require(pending.count == 1 && pending[0].batchId == deletionBatchId &&
+                        pending[0].body == deletionBody && pending[0].installationId == deletionInstallation,
+                        "offline deletion retries exact original bytes under its owner")
+            do {
+                _ = try restarted.acknowledge(batchId: deletionBatchId,
+                                               installationId: secondInstallation, acceptedCount: 1)
+                throw HarnessFailure.failed("wrong owner's installation ACKed deletion")
+            } catch HealthKitWorkoutStateError.acknowledgementMismatch { }
+            try require(try restarted.acknowledge(batchId: deletionBatchId,
+                                                  installationId: deletionInstallation, acceptedCount: 1),
+                        "correct owner ACK removes queued deletion")
+            try require(try restarted.pendingBatches().isEmpty,
+                        "ACK only clears original owner's deletion")
+            _ = try restarted.activate(accountId: "athlete_two")
+            try require(try restarted.pendingBatches().count == 1,
+                        "original owner's ACK cannot remove other owner's batch")
+        }
+
+        // An app upgraded from the singleton store must retain its old receipt scope.
+        let oldBase = directory.appendingPathComponent("legacy-owner.sqlite")
+        let oldBatch = UUID()
+        var oldInstallation = UUID()
+        var oldBody = Data()
+        do {
+            let newLayout = try HealthKitWorkoutState(databaseURL: oldBase)
+            oldInstallation = try newLayout.activate(accountId: account)
+            try newLayout.stagePage(batchId: oldBatch, events: [.delete(sampleId: UUID())],
+                                    nextAnchor: HKQueryAnchor(fromValue: 1))
+            oldBody = try newLayout.pendingBatches()[0].body
+        }
+        let oldAccountFile = oldBase.deletingLastPathComponent()
+            .appendingPathComponent("legacy-owner-account-\(accountDigest).sqlite")
+        try FileManager.default.removeItem(at: oldBase)
+        try FileManager.default.moveItem(at: oldAccountFile, to: oldBase)
+        let upgraded = try HealthKitWorkoutState(databaseURL: oldBase)
+        try require(try upgraded.activate(accountId: account) == oldInstallation &&
+                    upgraded.pendingBatches()[0].body == oldBody,
+                    "upgrade reads the pre-partition owner and exact queued deletion")
+        _ = try upgraded.activate(accountId: "athlete_two")
+        try require(try upgraded.pendingBatches().isEmpty &&
+                    upgraded.activate(accountId: account) == oldInstallation &&
+                    upgraded.pendingBatches()[0].body == oldBody,
+                    "upgrade switch preserves legacy owner's pending deletion")
 
         let legacyDB = directory.appendingPathComponent("legacy-reconciliation.sqlite")
         var legacyPointer: OpaquePointer?
@@ -290,6 +395,6 @@ struct HealthKitWorkoutStateHarness {
         try require(try replacement.anchor() == nil && !replacement.collectionEnabled(),
                     "reinstall starts at nil but does not assume OS read permission")
 
-        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner purge, corruption, outbox cap, reinstall/reconciliation")
+        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner isolation, offline deletion retry, corruption, outbox cap, reinstall/reconciliation")
     }
 }

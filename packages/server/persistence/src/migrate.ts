@@ -68,6 +68,7 @@ const migrationFiles = [
   '060_healthkit_review_lineage.sql',
   '061_healthkit_existing_binding.sql',
   '062_healthkit_canonical_activity.sql',
+  '063_healthkit_receipt_replay.sql',
 ] as const;
 
 /**

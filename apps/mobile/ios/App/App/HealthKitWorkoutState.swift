@@ -84,33 +84,54 @@ struct HealthKitKnownSample {
     let sourceVersion: String?
 }
 
-/** A single installation's HealthKit cursor and immutable upload outbox. Call on the main actor. */
+/** Owner-scoped HealthKit cursors and immutable upload outboxes. Call on the main actor. */
 @MainActor
 final class HealthKitWorkoutState {
-    private let db: OpaquePointer
+    private var db: OpaquePointer
+    private let databaseURL: URL
+    private var currentDatabaseURL: URL
+    private var legacyOwnerAccountId: String?
     private var owner: (accountId: String, installationId: UUID)?
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     init(databaseURL: URL) throws {
         guard databaseURL.isFileURL else { throw HealthKitWorkoutStateError.invalidInput }
+        self.databaseURL = databaseURL
+        currentDatabaseURL = databaseURL
         try FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         #if os(iOS)
         try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
                                               ofItemAtPath: databaseURL.deletingLastPathComponent().path)
         #endif
+        db = try Self.openDatabase(at: databaseURL)
+        do {
+            try configureDatabase(at: databaseURL)
+            legacyOwnerAccountId = try storedOwner()?.accountId
+            if legacyOwnerAccountId == nil, try hasPrivateRows() {
+                throw HealthKitWorkoutStateError.corruptState
+            }
+        } catch {
+            sqlite3_close(db)
+            throw error
+        }
+    }
+
+    private static func openDatabase(at url: URL) throws -> OpaquePointer {
         var pointer: OpaquePointer?
-        guard sqlite3_open_v2(databaseURL.path, &pointer,
+        guard sqlite3_open_v2(url.path, &pointer,
                               SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
               let pointer else {
             if let pointer { sqlite3_close(pointer) }
             throw HealthKitWorkoutStateError.storageFailure
         }
-        db = pointer
-        do {
+        return pointer
+    }
+
+    private func configureDatabase(at url: URL) throws {
             #if os(iOS)
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-                                                  ofItemAtPath: databaseURL.path)
+                                                  ofItemAtPath: url.path)
             #endif
             try execute("PRAGMA journal_mode=DELETE")
             try execute("PRAGMA synchronous=FULL")
@@ -139,26 +160,51 @@ final class HealthKitWorkoutState {
                 return try text(statement, column: 0)
             }
             guard check == "ok" else { throw HealthKitWorkoutStateError.corruptState }
-        } catch {
-            sqlite3_close(pointer)
-            throw error
-        }
     }
 
     deinit { sqlite3_close(db) }
 
-    /** Switching account or installation deletes all prior private state before binding the new owner. */
+    /** Each account has its own protected store; switching never binds old batches to new credentials. */
     @discardableResult
     func activate(accountId: String) throws -> UUID {
         guard Self.validAccount(accountId) else { throw HealthKitWorkoutStateError.invalidInput }
+        let targetURL: URL
+        if legacyOwnerAccountId == accountId {
+            targetURL = databaseURL
+        } else {
+            let digest = SHA256.hash(data: Data(accountId.utf8))
+                .map { String(format: "%02x", $0) }.joined()
+            targetURL = databaseURL.deletingLastPathComponent()
+                .appendingPathComponent("\(databaseURL.deletingPathExtension().lastPathComponent)-account-\(digest).sqlite")
+        }
+        if targetURL != currentDatabaseURL {
+            let replacement = try Self.openDatabase(at: targetURL)
+            let previous = db
+            db = replacement
+            do {
+                try configureDatabase(at: targetURL)
+                let existing = try storedOwner()
+                guard existing == nil || existing?.accountId == accountId else {
+                    throw HealthKitWorkoutStateError.corruptState
+                }
+                if existing == nil, try hasPrivateRows() {
+                    throw HealthKitWorkoutStateError.corruptState
+                }
+            } catch {
+                db = previous
+                sqlite3_close(replacement)
+                owner = nil
+                throw error
+            }
+            sqlite3_close(previous)
+            currentDatabaseURL = targetURL
+            owner = nil
+        }
         let installationId = try transaction { () -> UUID in
             let prior = try storedOwner()
-            if prior?.accountId != accountId {
-                if prior == nil {
-                    guard try !hasPrivateRows() else { throw HealthKitWorkoutStateError.corruptState }
-                }
+            if prior == nil {
+                guard try !hasPrivateRows() else { throw HealthKitWorkoutStateError.corruptState }
                 let installationId = UUID()
-                try purgeRows()
                 try withStatement("INSERT INTO owner(singleton,account_id,installation_id) VALUES(1,?,?)") { statement in
                     try bind(accountId, at: 1, in: statement)
                     try bind(Self.key(installationId), at: 2, in: statement)
@@ -167,6 +213,7 @@ final class HealthKitWorkoutState {
                 return installationId
             }
             guard let prior else { throw HealthKitWorkoutStateError.corruptState }
+            guard prior.accountId == accountId else { throw HealthKitWorkoutStateError.corruptState }
             return prior.installationId
         }
         owner = (accountId, installationId)
@@ -418,9 +465,14 @@ final class HealthKitWorkoutState {
         }
     }
 
-    /** Call on logout, consent withdrawal, or explicit local-health-data deletion. */
+    /** Call only for committed consent withdrawal or explicit local-health-data deletion. */
     func reset() throws {
         try transaction { try purgeRows() }
+        owner = nil
+    }
+
+    /** Logout drops the in-memory owner binding; a later same-owner login can deliver its outbox. */
+    func deactivate() {
         owner = nil
     }
 
