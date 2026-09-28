@@ -187,10 +187,12 @@ User decision (2026-09-26): independent review runs per **phase**, not per task 
 - **Phase branch.** Commit each verified task to the phase branch `phase/<prefix>` (e.g. `phase/m2-01`). Unreviewed
   code never enters `main`. After the phase review approves, fast-forward `main` to the phase branch. Fix findings with
   new commits on the same branch and request re-review. Pushing is the user's action.
-- **Reviewer: Codex CLI.** Run `codex exec` (or `codex exec review --base <main commit>`) with
-  `-c model="gpt-6-sol" -c model_reasoning_effort="high"` in a **read-only sandbox**. The reviewer does not edit,
-  stage, commit, or change the working tree, and the root does not touch that tree during review. The reviewed diff is
-  the whole phase branch against `main`; state the base commit and the phase branch HEAD (or a tag pinning it).
+- **Reviewer in the Codex app: context-less subagent.** Spawn a fresh subagent with `fork_turns="none"`,
+  `model="gpt-6-sol"`, and `reasoning_effort="high"` for a read-only review. Outside the Codex app, run
+  `codex exec` (or `codex exec review --base <main commit>`) with `-c model="gpt-6-sol"` and
+  `-c model_reasoning_effort="high"` in a read-only sandbox. The reviewer does not edit, stage, commit, or change
+  the working tree, and the root does not touch that tree during review. The reviewed diff is the whole phase branch
+  against `main`; state the base commit and the phase branch HEAD (or a tag pinning it).
 - Give the reviewer scope, design references, actual changed/untracked files, and validation results. Review must
   cover contracts, domain invariants, security/ownership, style/boundaries, regression risk, and tests.
 - Wait for completed review and read its findings. A start, timeout, or no output is not review completion. If Codex
