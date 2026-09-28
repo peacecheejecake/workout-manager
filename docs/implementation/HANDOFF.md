@@ -13,7 +13,9 @@
 **최신 호스팅 범위 결정(2026-09-27):** `G2`는 내부 출시 준비 판정이다. 공개 Web 출시는
 새 `G2-PUBLIC` gate에서 `G2`와 `EXT-HOSTING`의 실제 HTTPS 배포 증거를 함께 요구한다.
 Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공개 Native 출시 `G3`도
-`G2-PUBLIC`을 요구한다. `EXT-HOSTING`은 `not_started`이고 배포 시험은 `not_executed`다.
+`G2-PUBLIC`을 요구한다. 2026-09-29 사용자는 호스팅 진행과 AWS 사용을 결정했다. 리전·예산·
+도메인 및 CLI 로그인은 아직 정해지지 않았고, [EXT-HOSTING](progress/EXT-HOSTING.md)은
+`in_progress`이나 실제 배포 시험은 `not_executed`다.
 
 **최신 M0-06c 판정(2026-09-27):** 별도 서명 작성 앱의 합성 심박수 1건 저장 뒤, 종료된 probe의 새 background launch와 observer callback을 실기기에서 확인했다. [실행·정리 기록](progress/M0-06c-native-host-addendum.md#별도-서명-작성-앱으로-실제-wake-확인--2026-09-27)에 따라 M0-06c의 제한된 feasibility 범위는 `completed`다. 아래 초기 phase·실기기 기록의 `in_progress`와 `not_executed`는 해당 시점의 결과다. 미저장 Back 버튼별 기계 기록과 제품 native host 통합은 남아 있으며 제품 범위는 M3-01이다.
 
@@ -135,8 +137,8 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
    비공개 상태 수명을 로컬 검증했다. 실제 OS focus·운영 OIDC·실기기 증거가 없어 `P5-logout-clear`는
    제품 전체 행에서 partial이다. `P8-ui-component`는 후속 M2-01k-p 검증으로 passed가 됐다.
    실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
-2. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건),
-   M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
+2. **외부 gate**: EXT-HOSTING(AWS 배포 준비 중; 리전·예산·계정 로그인 결정 대기,
+   G2-PUBLIC 선행 조건), M0-06b의 실기기 성능·ODbL 공개 배포 확인.
 3. **ODbL 배포 gate**: M0-06b-odbl-scripts(공개 페이지의 빌드 스크립트 본문)와
    M0-06b-odbl-gpx(코스 GPX 출처 표기)의 로컬 구현·검증은 완료했다. 실제 공개 배포 증거는 EXT-HOSTING에 남는다.
 

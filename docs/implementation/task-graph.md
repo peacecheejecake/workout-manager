@@ -25,8 +25,8 @@ Vite 호스트의 직접 정적 서빙에도 활성 배포 제한이 적용되�
 
 EXT-OIDC의 localhost 실제 Zitadel 검증은 완료했다. 공개 HTTPS·TLS·secret manager 및 배포 환경의
 취소 경로 검증은 외부 gate EXT-HOSTING에 남는다. 앱의 back-channel logout 구현과 실제 공급자
-전파 시험은 별도 후속 task EXT-BACKCHANNEL이다. EXT-HOSTING은 미착수이고 EXT-BACKCHANNEL은
-진행 중이며 localhost 결과를 배포 증거로 간주하지 않는다.
+전파 시험은 별도 후속 task EXT-BACKCHANNEL이다. EXT-HOSTING은 [AWS 배포 준비](progress/EXT-HOSTING.md)를
+시작했고 EXT-BACKCHANNEL도 진행 중이다. localhost 결과를 배포 증거로 간주하지 않는다.
 
 [M2-05 RAG·검토 자료·코치](progress/M2-05.md)도 완료했다. M2-04d가 남긴 색인·cache·인용
 실행기를 실제로 구현해 파생 cleanup manifest가 닫히고, retrieval은 검토·동의·공유·삭제

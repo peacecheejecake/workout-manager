@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
-    "build": "tsc --project tsconfig.json --noEmit",
-    "dev": "tsx src/start.ts"
+    "build": "tsc --project tsconfig.json --noEmit && node ../../deploy/build-api.mjs",
+    "dev": "tsx src/start.ts",
+    "start": "node dist/start.mjs"
   },
   "dependencies": {
     "fastify": "5.12.4",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "pg": "8.23.0",
     "@types/pg": "8.23.1",
+    "esbuild": "0.28.2",
     "tsx": "4.23.13"
   }
 }
