@@ -15,7 +15,10 @@
 Native 최종 통합 `M3-03`은 내부 `G2` 뒤에 진행할 수 있지만, 공개 Native 출시 `G3`도
 `G2-PUBLIC`을 요구한다. 2026-09-29 사용자는 호스팅 진행과 AWS 서울 리전·월 10만 원 상한을 결정했다.
 CLI 로그인·AWS Organizations·서울 단일 리전 Identity Center·관리자 권한 할당·USD 60 예산 경고까지
-확인했다. 비루트 관리자 포털 로그인·WebAuthn MFA 1개·CLI SSO 역할도 확인했다. 도메인 정보는 대기 중이며, [EXT-HOSTING](progress/EXT-HOSTING.md)은
+확인했다. 비루트 관리자 포털 로그인·WebAuthn MFA 1개·CLI SSO 역할도 확인했다. 사용자는
+`workout.red-10-proto.xyz`를 선택했다. `Ubuntu-1`·`Node-js-1`의 새 스냅샷이 `available`인 것을 확인한 뒤 두 인스턴스를 삭제해,
+현재 Lightsail에는 기존 도메인 서버 `Ubuntu-2` 한 대만 남는다. 재가동 후 기존 HTTPS 사이트의 응답을 확인했고, 이 서버의 이관 전 스냅샷은 생성 중이다.
+가비아 DNS 접근과 운영 기간은 결정 대기 중이며, [EXT-HOSTING](progress/EXT-HOSTING.md)은
 `in_progress`이나 실제 배포 시험은 `not_executed`다.
 
 **최신 M0-06c 판정(2026-09-27):** 별도 서명 작성 앱의 합성 심박수 1건 저장 뒤, 종료된 probe의 새 background launch와 observer callback을 실기기에서 확인했다. [실행·정리 기록](progress/M0-06c-native-host-addendum.md#별도-서명-작성-앱으로-실제-wake-확인--2026-09-27)에 따라 M0-06c의 제한된 feasibility 범위는 `completed`다. 아래 초기 phase·실기기 기록의 `in_progress`와 `not_executed`는 해당 시점의 결과다. 미저장 Back 버튼별 기계 기록과 제품 native host 통합은 남아 있으며 제품 범위는 M3-01이다.
@@ -138,7 +141,7 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
    비공개 상태 수명을 로컬 검증했다. 실제 OS focus·운영 OIDC·실기기 증거가 없어 `P5-logout-clear`는
    제품 전체 행에서 partial이다. `P8-ui-component`는 후속 M2-01k-p 검증으로 passed가 됐다.
    실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
-2. **외부 gate**: EXT-HOSTING(AWS 배포 준비 중; 도메인·비용 검증 대기,
+2. **외부 gate**: EXT-HOSTING(AWS 배포 준비 중; 가비아 DNS 접근·운영 기간·비용 검증 대기,
    G2-PUBLIC 선행 조건), M0-06b의 실기기 성능·ODbL 공개 배포 확인.
 3. **ODbL 배포 gate**: M0-06b-odbl-scripts(공개 페이지의 빌드 스크립트 본문)와
    M0-06b-odbl-gpx(코스 GPX 출처 표기)의 로컬 구현·검증은 완료했다. 실제 공개 배포 증거는 EXT-HOSTING에 남는다.
