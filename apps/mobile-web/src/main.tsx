@@ -5,6 +5,7 @@ import { trainingCandidateStatusV1Schema } from '@workout/contracts/coaching-can
 import { jointCandidateV3Schema } from '@workout/contracts/joint-coaching';
 import { integratedCandidateV4Schema } from '@workout/contracts/integrated-coaching';
 import { availableCourseHeadSchema } from '@workout/contracts/courses';
+import { activitySchema } from '@workout/contracts/activity';
 import { DemoWorkspace } from '@workout/modules-activities/demo-workspace';
 import { activityDetailAliasTarget } from '@workout/modules-activities/detail-address';
 import './styles.css';
@@ -58,6 +59,15 @@ const GalleryPage = lazy(() =>
 );
 const ActivitiesPage = lazy(() =>
   import('./activities-page').then((module) => ({ default: module.ActivitiesPage })),
+);
+const DashboardPage = lazy(() =>
+  import('./dashboard-page').then((module) => ({ default: module.DashboardPage })),
+);
+const WellbeingPage = lazy(() =>
+  import('./wellbeing-page').then((module) => ({ default: module.WellbeingPage })),
+);
+const ActivityEditorPage = lazy(() =>
+  import('./activity-editor-page').then((module) => ({ default: module.ActivityEditorPage })),
 );
 const CoursePage = lazy(() =>
   import('./course-page').then((module) => ({ default: module.CoursePage })),
@@ -130,6 +140,10 @@ const courseEditPath = location.pathname.match(/^\/courses\/([^/]+)\/edit\/?$/)?
 const courseEditId = courseEditPath
   ? availableCourseHeadSchema.shape.courseId.safeParse(courseEditPath)
   : null;
+const activityEditPath = location.pathname.match(/^\/activities\/([^/]+)\/edit\/?$/)?.[1];
+const activityEditId = activityEditPath
+  ? activitySchema.shape.id.safeParse(activityEditPath)
+  : null;
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 const browserTree = (
@@ -179,6 +193,26 @@ const browserTree = (
           </nav>
           <TrackPreviewPage />
         </Suspense>
+      ) : location.pathname === '/activities/new' || location.pathname === '/activities/new/' ? (
+        <Suspense fallback={<p role="status">수동 활동 입력 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/activities">활동</a> · <a href="/dashboard">대시보드</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <h1>수동 활동 입력</h1>
+          <ActivityEditorPage target={{ mode: 'create' }} />
+        </Suspense>
+      ) : activityEditId?.success ? (
+        <Suspense fallback={<p role="status">활동 정정 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/activities">활동</a> · <a href="/dashboard">대시보드</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <h1>활동 정정</h1>
+          <ActivityEditorPage target={{ mode: 'edit', activityId: activityEditId.data }} />
+        </Suspense>
+      ) : activityEditPath ? (
+        <p role="alert">활동 주소가 올바르지 않습니다.</p>
       ) : location.pathname === '/courses' ? (
         <Suspense fallback={<p role="status">코스 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
@@ -207,10 +241,27 @@ const browserTree = (
       ) : location.pathname === '/activities' ? (
         <Suspense fallback={<p role="status">활동 목록 준비 중</p>}>
           <nav aria-label="주요 화면">
+            <a href="/activities/new">수동 활동 입력</a> ·{' '}
             <a href="/activities/track-preview">기록 파일 미리보기</a> · <a href="/courses">코스</a>{' '}
             · <a href="/planner">훈련 계획</a> · <a href="/account">계정</a>
           </nav>
           <ActivitiesPage />
+        </Suspense>
+      ) : location.pathname === '/dashboard' ? (
+        <Suspense fallback={<p role="status">대시보드 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/activities">활동</a> · <a href="/planner">훈련 계획</a> ·{' '}
+            <a href="/wellbeing">체크인</a> · <a href="/account">계정</a>
+          </nav>
+          <DashboardPage />
+        </Suspense>
+      ) : location.pathname === '/wellbeing' ? (
+        <Suspense fallback={<p role="status">체크인 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/dashboard">대시보드</a> · <a href="/recovery">회복 전략</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <WellbeingPage />
         </Suspense>
       ) : location.pathname === '/gallery' || location.pathname.startsWith('/gallery/') ? (
         <Suspense fallback={<p role="status">갤러리 화면 준비 중</p>}>

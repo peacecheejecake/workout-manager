@@ -27,6 +27,8 @@
     "@workout/modules-recovery": "workspace:*",
     "@workout/modules-gallery": "workspace:*",
     "@workout/modules-resources": "workspace:*",
-    "@workout/modules-courses": "workspace:*"
+    "@workout/modules-courses": "workspace:*",
+    "@workout/modules-dashboard": "workspace:*",
+    "@workout/modules-wellbeing": "workspace:*"
   }
 }

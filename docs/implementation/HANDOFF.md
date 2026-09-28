@@ -131,13 +131,14 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back 확인창의 버튼별 기계 기록은 없으며 제품 native host 통합은 M3-01이다.
 
-1. **M2-01k 남은 gate**: `P5-logout-clear`는 직접 계정 전환·늦은 course/track 응답 증거에도
-   제품 전체 행이라 partial이다. `P8-ui-component`는 후속 M2-01k-p 검증으로 passed가 됐다.
+1. **M2-01k 남은 gate**: `M2-01k-t`에서 Vite의 대시보드·웰빙·활동 편집 경로와 두 shell의
+   비공개 상태 수명을 로컬 검증했다. 실제 OS focus·운영 OIDC·실기기 증거가 없어 `P5-logout-clear`는
+   제품 전체 행에서 partial이다. `P8-ui-component`는 후속 M2-01k-p 검증으로 passed가 됐다.
    실제 호스팅·실기기 증거는 별도 gate로 남기고, 공식 Garmin은 후속 계획으로 이관했다.
 2. **외부 gate**: EXT-HOSTING(호스팅 보류; G2-PUBLIC 선행 조건),
    M0-06b의 실기기 성능·ODbL 배포 아티팩트 재빌드.
-3. **ODbL 결정된 후속 구현**: M0-06b-odbl-scripts(공개 페이지의 빌드 스크립트 본문)와
-   M0-06b-odbl-gpx(코스 GPX 출처 표기)의 로컬 구현·검증을 완료했다. 실제 공개 배포 증거는 EXT-HOSTING에 남는다.
+3. **ODbL 배포 gate**: M0-06b-odbl-scripts(공개 페이지의 빌드 스크립트 본문)와
+   M0-06b-odbl-gpx(코스 GPX 출처 표기)의 로컬 구현·검증은 완료했다. 실제 공개 배포 증거는 EXT-HOSTING에 남는다.
 
 재개 중 받은 결정 중 M0-06c의 native 키보드 처리·확인 후 Back·합성 HealthKit 표본 허용은 probe 후속 실행에 반영했다(제품 host는 M3-01). `EXT-BACKCHANNEL`은 노드 추가·구현·병합이 완료됐다. P8 새 기준의 엔진 재실행과 독립 채점도 완료했고 과거 사전등록 기준의 `failed`는 보존한다. 아래 사용자 결정 기록과 실행 기록을 따른다.
 

@@ -729,11 +729,12 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01h 경유지 편집 | M2-01f, M2-01g | 미착수; S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장 |
 | M2-01i 목표 거리 후보 | M2-01h | 미착수; loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택 |
 | M2-01j S13/S14 잔여 기능 | M2-01f, M2-01h | 미착수; GPX import·즐겨찾기·썸네일·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조 |
-| M2-01k 지도·코스 통합 수용 | M2-01i, M2-01j, M2-01k-s 및 기존 완료 하위 노드 | 진행 중; S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback |
+| M2-01k 지도·코스 통합 수용 | M2-01i, M2-01j, M2-01k-t 및 기존 완료 하위 노드 | 진행 중; S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback |
 | M2-01k-p 제스처·UI 종합 검증 | M2-01k-c1, M2-01k-d, M2-01k-o | 완료; 두 shell 지도 스크롤·포커스 탈출과 P8 UI 7항목 현재 트리 종합 검증. 물리 touch·OS IME와 구별 |
 | M2-01k-q 로그아웃 지도·코스 정리 | M2-01k-d, M2-01k-p | 완료; 명시 로그아웃에서 비공개 cache·초안·지도 자원·늦은 응답 제거를 직접 검증. 제품 전체 행은 별도 판정 |
 | M2-01k-r 제품 비공개 상태 수명 | M2-01k-q | 완료; 갤러리·수출·영양·루틴의 로그아웃/계정 전환 수명 검증, 공통 탭 로그아웃 수정. P5 전체는 partial 유지 |
 | M2-01k-s 나머지 제품 상태 수명 | M2-01k-r | 완료; 활동 편집·계획·코칭·웰빙·대시보드·회복·자료의 채워진 상태와 늦은 응답을 로그아웃·계정 전환에서 직접 검증. P5 전체는 partial 유지 |
+| M2-01k-t 두 shell의 비공개 화면·계정 전환 수명 | M2-01k-s | 완료; Vite의 dashboard·wellbeing·활동 편집 경로와 양쪽 shell의 비공개 상태·계정 전환을 검증. OS focus·실제 OIDC·실기기는 별도 gate |
 | M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
 | M2-02 대회·기록 | M2-01, M2-02a | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |

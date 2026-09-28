@@ -2,11 +2,10 @@ import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
-// M2-01k-s: local fixture OIDC, both product shells, same-origin BFF and isolated PostgreSQL.
-// Vite has no dashboard or wellbeing route yet; those are checked in the Next shell only.
+// M2-01k-s/t: local fixture OIDC, both product shells, same-origin BFF and isolated PostgreSQL.
 const shells = [
-  { name: 'Next', origin: identityWebOrigin, hasDashboardAndWellbeing: true },
-  { name: 'Vite', origin: identityMobileOrigin, hasDashboardAndWellbeing: false },
+  { name: 'Next', origin: identityWebOrigin },
+  { name: 'Vite', origin: identityMobileOrigin },
 ] as const;
 
 async function login(page: Page, name: 'Alice' | 'Bob', origin: string) {
@@ -33,6 +32,23 @@ async function login(page: Page, name: 'Alice' | 'Bob', origin: string) {
 }
 
 for (const shell of shells) {
+  test(`${shell.name}: activity editor routes open create and reject an invalid edit id`, async ({
+    page,
+  }) => {
+    await login(page, 'Alice', shell.origin);
+    await page.goto(`${shell.origin}/activities/new`);
+    await expect(page.getByRole('heading', { name: '수동 활동 입력', level: 1 })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '활동 제목' })).toBeVisible();
+
+    const response = await page.goto(`${shell.origin}/activities/not-a-valid-id/edit`);
+    if (shell.name === 'Next') {
+      expect(response?.status()).toBe(404);
+    } else {
+      await expect(page.getByRole('alert')).toHaveText('활동 주소가 올바르지 않습니다.');
+    }
+    await expect(page.getByRole('textbox', { name: '활동 제목' })).toHaveCount(0);
+  });
+
   test(`${shell.name}: product private screens leave the old tabs on logout and Bob switch`, async ({
     page,
     context,
@@ -116,15 +132,13 @@ for (const shell of shells) {
     const resourcePath = new URL(page.url()).pathname;
     await expect(page.locator('body')).toContainText(`${marker} body`);
 
-    if (shell.hasDashboardAndWellbeing) {
-      await page.goto(`${shell.origin}/wellbeing`);
-      const form = page.getByRole('region', { name: '체크인 작성' });
-      await form.getByLabel('관측 시각 (시간차 포함 ISO)').fill(new Date().toISOString());
-      await form.getByLabel('관측 시간대').fill('UTC');
-      await form.getByLabel('체크인 메모').fill(`${marker} check-in`);
-      await form.getByRole('button', { name: '체크인 저장' }).click();
-      await expect(page.locator('body')).toContainText(`${marker} check-in`);
-    }
+    await page.goto(`${shell.origin}/wellbeing`);
+    const checkInForm = page.getByRole('region', { name: '체크인 작성' });
+    await checkInForm.getByLabel('관측 시각 (시간차 포함 ISO)').fill(new Date().toISOString());
+    await checkInForm.getByLabel('관측 시간대').fill('UTC');
+    await checkInForm.getByLabel('체크인 메모').fill(`${marker} check-in`);
+    await checkInForm.getByRole('button', { name: '체크인 저장' }).click();
+    await expect(page.locator('body')).toContainText(`${marker} check-in`);
 
     await page.goto(`${shell.origin}/recovery`);
     const methodForm = page
@@ -135,19 +149,12 @@ for (const shell of shells) {
     await expect(page.getByRole('heading', { name: `${marker} recovery method` })).toBeVisible();
 
     const routes = [
-      shell.hasDashboardAndWellbeing
-        ? {
-            name: 'activity editing',
-            path: `/activities/${activity.activityId}/edit`,
-            surface: { role: 'textbox', name: '활동 제목' } as const,
-            privateValue: `${marker} activity`,
-          }
-        : {
-            name: 'activity detail',
-            path: `/activities?${new URLSearchParams({ selected: activity.activityId, source: 'manual' })}`,
-            surface: { role: 'region', name: '선택한 활동 상세' } as const,
-            privateText: `${marker} activity`,
-          },
+      {
+        name: 'activity editing',
+        path: `/activities/${activity.activityId}/edit`,
+        surface: { role: 'textbox', name: '활동 제목' } as const,
+        privateValue: `${marker} activity`,
+      },
       {
         name: 'planning',
         path: '/planner',
@@ -172,22 +179,18 @@ for (const shell of shells) {
         surface: { role: 'region', name: '개인 자료 작업 공간' } as const,
         privateText: `${marker} body`,
       },
-      ...(shell.hasDashboardAndWellbeing
-        ? ([
-            {
-              name: 'wellbeing',
-              path: '/wellbeing',
-              surface: { role: 'region', name: '체크인 작성' } as const,
-              privateText: `${marker} check-in`,
-            },
-            {
-              name: 'dashboard',
-              path: '/dashboard',
-              surface: { role: 'heading', name: '오늘과 최근 기록' } as const,
-              privateText: `${marker} check-in`,
-            },
-          ] as const)
-        : []),
+      {
+        name: 'wellbeing',
+        path: '/wellbeing',
+        surface: { role: 'region', name: '체크인 작성' } as const,
+        privateText: `${marker} check-in`,
+      },
+      {
+        name: 'dashboard',
+        path: '/dashboard',
+        surface: { role: 'heading', name: '오늘과 최근 기록' } as const,
+        privateText: `${marker} plan`,
+      },
     ];
     const openTabs: {
       page: Page;
@@ -201,6 +204,10 @@ for (const shell of shells) {
       if ('privateValue' in route) await expect(surface).toHaveValue(route.privateValue);
       if ('privateText' in route)
         await expect(tab.locator('body')).toContainText(route.privateText);
+      if (route.name === 'activity editing') {
+        await surface.fill(`${marker} unsaved editor draft`);
+        await expect(surface).toHaveValue(`${marker} unsaved editor draft`);
+      }
       openTabs.push({ page: tab, surface: route.surface });
     }
 
@@ -212,9 +219,8 @@ for (const shell of shells) {
 
     for (const tab of openTabs) {
       await tab.page.bringToFront();
-      // The browser's OS visibility delivery is not reliable under headless Playwright.
-      // This explicitly exercises the product's foreground revalidation path.
-      await tab.page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+      // The local Chromium run exercises same-origin storage events and tab activation.
+      // It does not establish OS/WebView foreground delivery on a physical device.
       await expect(tab.page.getByText('이 작업은 로그인이 필요합니다.')).toBeVisible();
       await expect(
         tab.page.getByRole(tab.surface.role, { name: tab.surface.name, exact: true }),
@@ -226,7 +232,9 @@ for (const shell of shells) {
     expect(bob.athleteId).not.toBe(alice.athleteId);
     for (const tab of openTabs) {
       await tab.page.bringToFront();
-      await tab.page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+      // Headless Chromium does not consistently deliver the OS focus event here.
+      // This covers the product's focus revalidation handler, not real device delivery.
+      await tab.page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await expect(tab.page.locator('body')).not.toContainText(marker);
       expect(
         await tab.page

@@ -1742,6 +1742,15 @@
       "evidence": "docs/implementation/progress/M2-01k-s.md"
     },
     {
+      "id": "M2-01k-t",
+      "title": "두 shell의 비공개 화면·계정 전환 수명 검증",
+      "dependsOn": ["M2-01k-s"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "P5-logout-clear의 남은 로컬 제품 범위: Vite에 dashboard·wellbeing·활동 생성/편집을 공통 모듈로 연결하고 두 shell에서 채워진 비공개 상태의 명시 로그아웃·Alice→Bob 계정 전환·늦은 응답 차단을 검증한다. OS focus, 실제 OIDC 공급자, 실기기 증거는 실행한 범위만 별도 기록하고 미실행을 통과로 바꾸지 않는다.",
+      "evidence": "docs/implementation/progress/M2-01k-t.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [
@@ -1776,7 +1785,8 @@
         "M2-01k-p",
         "M2-01k-q",
         "M2-01k-r",
-        "M2-01k-s"
+        "M2-01k-s",
+        "M2-01k-t"
       ],
       "kind": "task",
       "status": "in_progress",
