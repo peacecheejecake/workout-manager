@@ -2027,8 +2027,8 @@
       "title": "서명된 iPhone HealthKit 전체 경로 검증",
       "dependsOn": ["M3-02b", "M3-02c", "M3-02e", "M3-02f", "M3-02g", "M3-02i"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. 서명·기기·서버가 없으면 not_executed를 유지한다.",
+      "status": "in_progress",
+      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. Debug 표본 검증 코드와 실기기 증거를 분리하며, HTTPS 서버·로그인·실기기 실행이 없으면 해당 수용 행은 not_executed를 유지한다.",
       "evidence": "docs/implementation/progress/M3-02h.md"
     },
     {
