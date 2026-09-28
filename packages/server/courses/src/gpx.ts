@@ -6,6 +6,11 @@ import {
   type CoursePosition,
   type CourseWaypoint,
 } from '@workout/contracts/courses';
+import {
+  odblLicenceUrl,
+  osmAttribution,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 
 /**
  * GPX export of one course.
@@ -22,7 +27,8 @@ import {
  * element is written at all rather than a zero.
  *
  * What the document may say about itself is an allowlist (M2-01k-o, R6/A-1): `metadata`
- * holds the course name and nothing else, and only when the owner chose to include names.
+ * always holds the OSM/ODbL notice and holds the course name only when the owner chose
+ * to include names.
  * There is no description, no time, no extension, no course id and no revision number — a
  * GPX file is handed on, and each of those would tie the file to an account, a moment or
  * another file. `creator` is a neutral value that does not name this product.
@@ -49,7 +55,7 @@ export interface CourseGpxInput {
   readonly name: string;
   /**
    * Whether the course name and the waypoint names are written (D6). Off writes neither a
-   * `metadata` element nor any `name` element: the line and the waypoint roles only.
+   * `name` element: the line, waypoint roles and required data attribution remain.
    */
   readonly includeNames: boolean;
   readonly coordinates: readonly CoursePosition[];
@@ -66,7 +72,7 @@ export interface CourseGpxInput {
  *
  * There is no storage reference, no athlete id, no activity id, no course id, no revision
  * and no time in the document: a file carries the line, the waypoint roles and — only when
- * the owner kept them — the names.
+ * the owner kept them — the names. The OSM/ODbL notice is independent of that choice.
  */
 export function writeCourseGpx(input: CourseGpxInput): string {
   const name = courseNameSchema.parse(input.name);
@@ -77,11 +83,15 @@ export function writeCourseGpx(input: CourseGpxInput): string {
     `<gpx version="1.1" creator="${escapeXml(courseGpxCreator)}"` +
       ' xmlns="http://www.topografix.com/GPX/1/1">',
   ];
-  if (input.includeNames) {
-    lines.push('  <metadata>');
-    lines.push(`    <name>${escapeXml(name)}</name>`);
-    lines.push('  </metadata>');
-  }
+  lines.push('  <metadata>');
+  if (input.includeNames) lines.push(`    <name>${escapeXml(name)}</name>`);
+  lines.push('    <copyright author="OpenStreetMap contributors">');
+  lines.push(`      <license>${escapeXml(odblLicenceUrl)}</license>`);
+  lines.push('    </copyright>');
+  lines.push(`    <link href="${escapeXml(osmCopyrightUrl)}">`);
+  lines.push(`      <text>${escapeXml(osmAttribution)}</text>`);
+  lines.push('    </link>');
+  lines.push('  </metadata>');
   for (const waypoint of waypoints) {
     lines.push(`  <wpt ${coordinateAttributes(waypoint.position, digits)}>`);
     // No name is written for a waypoint that has none. A synthesised one ("<course>

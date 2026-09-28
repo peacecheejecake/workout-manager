@@ -175,7 +175,7 @@
       "title": "코스 GPX 내보내기 OSM·ODbL 표기",
       "dependsOn": ["M0-06b-odbl", "M2-01k-o"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "2026-09-26 사용자 결정의 후속 구현. 개인 코스 GPX 내보내기의 metadata에 OSM 출처와 ODbL 1.0 URI를 넣는다. 파생 여부가 불확실하면 모든 코스 GPX에 표기한다. 기존 위치·이름 공개 확인과 최소 개인정보 메타데이터 경계를 유지하고, 다운로드/API/파서 회귀와 표기 제거 변이를 검증한다.",
       "evidence": "docs/implementation/progress/M0-06b-odbl-gpx.md"
     },

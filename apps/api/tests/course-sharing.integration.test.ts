@@ -17,6 +17,12 @@ import {
 } from '@workout/contracts/course-sharing';
 import { accountExportSchema } from '@workout/contracts/operations';
 import type { CourseGeneration, CoursePosition, CourseWaypoint } from '@workout/contracts/courses';
+import {
+  carriesOdblNotice,
+  odblLicenceUrl,
+  osmAttribution,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import {
   drawShareOffset,
@@ -628,11 +634,17 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     );
     const nameless = await confirmedExport(instance, headers, courseId, { includeNames: false });
     expect(nameless.response.body).not.toContain('<name>');
-    expect(nameless.response.body).not.toContain('<metadata>');
+    expect(nameless.response.body).toContain('<metadata>');
     expect(nameless.response.headers['content-disposition']).toBe(
       "attachment; filename*=UTF-8''course.gpx",
     );
     for (const { response } of [named, nameless]) {
+      const metadata = response.body.match(/<metadata>([\s\S]*?)<\/metadata>/)?.[1];
+      expect(metadata).toBeDefined();
+      expect(carriesOdblNotice(metadata ?? '')).toBe(true);
+      expect(metadata).toContain(`<license>${odblLicenceUrl}</license>`);
+      expect(metadata).toContain(`<link href="${osmCopyrightUrl}">`);
+      expect(metadata).toContain(`<text>${osmAttribution}</text>`);
       expect(response.body).not.toContain(courseId);
       expect(response.body).not.toContain('<desc>');
       expect(response.body).not.toContain('<time>');

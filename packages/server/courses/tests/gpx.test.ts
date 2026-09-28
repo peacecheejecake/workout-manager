@@ -1,4 +1,10 @@
 import { courseGpxCreator, type CourseWaypoint } from '@workout/contracts/courses';
+import {
+  carriesOdblNotice,
+  odblLicenceUrl,
+  osmAttribution,
+  osmCopyrightUrl,
+} from '@workout/contracts/map-data-licence';
 import { createParseBudget, defaultTrackParseLimits, parseGpx } from '@workout/track-parsing';
 import { describe, expect, it } from 'vitest';
 
@@ -27,7 +33,7 @@ const parsed = (text = document) =>
   parseGpx(text, defaultTrackParseLimits, createParseBudget(defaultTrackParseLimits));
 
 /**
- * The GPX element/attribute allowlist (M2-01k-o T8, R6): `gpx/metadata/name?`,
+ * The GPX element/attribute allowlist (M2-01k-o T8, R6; M0-06b-odbl-gpx): `gpx/metadata/(name?,copyright,link)`,
  * `wpt[@lat,@lon]/(name?,type)`, `rte/(name?,rtept[@lat,@lon])`. Anything else fails.
  */
 function allowlistViolations(text: string): string[] {
@@ -36,6 +42,10 @@ function allowlistViolations(text: string): string[] {
     ['gpx', ['version', 'creator', 'xmlns']],
     ['metadata', []],
     ['name', []],
+    ['copyright', ['author']],
+    ['license', []],
+    ['link', ['href']],
+    ['text', []],
     ['wpt', ['lat', 'lon']],
     ['type', []],
     ['rte', []],
@@ -43,6 +53,10 @@ function allowlistViolations(text: string): string[] {
   ]);
   const parents = new Map<string, readonly string[]>([
     ['metadata', ['gpx']],
+    ['copyright', ['metadata']],
+    ['license', ['copyright']],
+    ['link', ['metadata']],
+    ['text', ['link']],
     ['wpt', ['gpx']],
     ['rte', ['gpx']],
     ['rtept', ['rte']],
@@ -106,6 +120,18 @@ describe('course GPX export', () => {
     expect(writeCourseGpx({ ...input })).toBe(document);
   });
 
+  it('carries the OSM attribution and ODbL URI in metadata, including without names', () => {
+    for (const text of [document, writeCourseGpx({ ...input, includeNames: false })]) {
+      const metadata = text.match(/<metadata>([\s\S]*?)<\/metadata>/)?.[1];
+      expect(metadata).toBeDefined();
+      expect(carriesOdblNotice(metadata ?? '')).toBe(true);
+      expect(metadata).toContain(`<license>${odblLicenceUrl}</license>`);
+      expect(metadata).toContain(`<link href="${osmCopyrightUrl}">`);
+      expect(metadata).toContain(`<text>${osmAttribution}</text>`);
+      expect(parsed(text).routes[0]?.points.map((point) => point.position)).toEqual(coordinates);
+    }
+  });
+
   // M2-01k-o, finding (b) and A-1/R-3/R-6: the file says nothing about itself beyond the
   // allowlist — no description, no time, no id, no revision, no product name.
   it('carries only the allowlisted elements, and no description, time or identity', () => {
@@ -138,7 +164,7 @@ describe('course GPX export', () => {
     expect(document.match(/<name>/g)).toHaveLength(3);
     const nameless = writeCourseGpx({ ...input, includeNames: false });
     expect(nameless).not.toContain('<name>');
-    expect(nameless).not.toContain('<metadata>');
+    expect(nameless).toContain('<metadata>');
     expect(nameless).not.toContain('Seoul');
     expect(nameless).not.toContain('광화문');
     expect(parsed(nameless).routes[0]?.points).toHaveLength(3);
