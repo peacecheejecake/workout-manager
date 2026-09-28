@@ -50,6 +50,8 @@ function Activities({
       basemap={basemap}
       mapWorkerUrl="/dist/maplibre/maplibre-gl-worker.mjs"
       importHref="/activities/import"
+      createHref="/activities/new"
+      editHref={(id) => `/activities/${encodeURIComponent(id)}/edit`}
       renderMediaTab={(activityId) => (
         <ActivityMediaPanel
           athleteId={session.athleteId}

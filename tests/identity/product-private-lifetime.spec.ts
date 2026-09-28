@@ -78,6 +78,16 @@ for (const shell of shells) {
     expect(activityResponse.status()).toBe(200);
     const activity = (await activityResponse.json()) as { activityId: string };
 
+    await page.goto(`${shell.origin}/activities`);
+    await page.getByRole('button', { name: `${marker} activity` }).click();
+    const correction = page.getByRole('link', { name: '이 활동 정정' });
+    await expect(correction).toHaveAttribute('href', `/activities/${activity.activityId}/edit`);
+    await correction.click();
+    await expect(page).toHaveURL(`${shell.origin}/activities/${activity.activityId}/edit`);
+    await expect(page.getByRole('textbox', { name: '활동 제목' })).toHaveValue(
+      `${marker} activity`,
+    );
+
     // A saved plan makes the planner and consultation routes show account-owned data.
     const currentResponse = await page.request.get(`${apiOrigin}/bff/v1/plans/current`, {
       headers: alice.headers,
