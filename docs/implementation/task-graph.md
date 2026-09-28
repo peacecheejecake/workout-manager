@@ -20,6 +20,8 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 M0-06b ODbL의 결정된 후속 작업인 공개 페이지의 빌드 스크립트 본문 다운로드와
 코스 GPX 출처 표기를 각각 `M0-06b-odbl-scripts`, `M0-06b-odbl-gpx`로 완료했다.
 로컬 구현 검증과 실제 호스팅·배포 산출물 재빌드 증거를 구분한다.
+`EXT-HOSTING`은 공개 원문의 활성 manifest 해시와 실제 응답 바이트를 확인하고,
+Vite 호스트의 직접 정적 서빙에도 활성 배포 제한이 적용되는지 검증한다.
 
 EXT-OIDC의 localhost 실제 Zitadel 검증은 완료했다. 공개 HTTPS·TLS·secret manager 및 배포 환경의
 취소 경로 검증은 외부 gate EXT-HOSTING에 남는다. 앱의 back-channel logout 구현과 실제 공급자
