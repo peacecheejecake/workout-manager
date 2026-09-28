@@ -368,6 +368,12 @@ export async function createConfiguredApi(
       },
       courseSharing,
       geoDatasetsLicence,
+      mapDataScriptArtifacts: {
+        ...(routing === null ? {} : { routing: () => routing.deployments.activeScriptArtifact }),
+        ...(routingEnvironment['GEO_DATA_DIR'] === undefined
+          ? {}
+          : { geoDatasets: String(routingEnvironment['GEO_DATA_DIR']) }),
+      },
       ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
       ...(routing === null
         ? {}

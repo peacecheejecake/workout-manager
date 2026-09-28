@@ -154,6 +154,7 @@ function routingSettings(environment: Readonly<Record<string, unknown>>): Routin
 /** One verified deployment, bound to its own engine, ready to serve. */
 interface ServingDeployment {
   readonly graphBuildId: string;
+  readonly graphDirectory: string;
   /** Origin of the engine this deployment talks to; blue and green must differ. */
   readonly engineOrigin: string;
   readonly adapter: GraphHopperRoutingAdapter;
@@ -245,6 +246,14 @@ export class RoutingDeploymentSwitch {
   /** The public ODbL disclosure of the graph serving routes right now (M0-06b-odbl). */
   get activeDisclosure(): RoutingDataDisclosure {
     return this.#active.disclosure;
+  }
+
+  get activeScriptArtifact(): {
+    readonly directory: string;
+    readonly disclosure: RoutingDataDisclosure;
+  } {
+    const active = this.#active;
+    return { directory: active.graphDirectory, disclosure: active.disclosure };
   }
 
   get activeGraphBuildId(): string {
@@ -353,6 +362,7 @@ export async function createConfiguredWalkingRoutes(
     });
     return {
       graphBuildId: deployment.graphBuildId,
+      graphDirectory: deployment.graphDirectory,
       engineOrigin: endpoint.resolve('/info').origin,
       adapter,
       service: new WalkingRouteService({ adapter, admission, clock }),

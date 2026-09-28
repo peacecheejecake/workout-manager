@@ -17,8 +17,8 @@ M1c-01~03의 수동 core와 [제한된 운영 런타임 권한 코드](progress/
 삭제 실행기는 당시 없어 derived cleanup manifest가 열려 있었으며 아래 M2-05에서 구현했다.
 지도 coverage·Native 실기기의 독립 gate는 유지한다. 공식 Garmin 작업은
 [2026-09-27 후속 계획](research/garmin-official-deferred.md)에 이관했다.
-M0-06b ODbL의 결정된 후속 작업은 공개 페이지의 빌드 스크립트 본문 다운로드와
-코스 GPX 출처 표기로 분리했다(`M0-06b-odbl-scripts`, `M0-06b-odbl-gpx`).
+M0-06b ODbL의 결정된 후속 작업인 공개 페이지의 빌드 스크립트 본문 다운로드와
+코스 GPX 출처 표기를 각각 `M0-06b-odbl-scripts`, `M0-06b-odbl-gpx`로 완료했다.
 로컬 구현 검증과 실제 호스팅·배포 산출물 재빌드 증거를 구분한다.
 
 EXT-OIDC의 localhost 실제 Zitadel 검증은 완료했다. 공개 HTTPS·TLS·secret manager 및 배포 환경의
@@ -79,8 +79,8 @@ ODbL의 결정된 후속 작업과 M0-06b 수용 의존성은 다음과 같다. 
 ```mermaid
 flowchart LR
     odbl["M0-06b-odbl 완료"] --> places["M0-06b-odbl-places 완료"]
-    places --> scripts["M0-06b-odbl-scripts 공개 스크립트"]
-    odbl --> gpx["M0-06b-odbl-gpx GPX 출처"]
+    places --> scripts["M0-06b-odbl-scripts 완료"]
+    odbl --> gpx["M0-06b-odbl-gpx 완료"]
     coursePrivacy["M2-01k-o 완료"] --> gpx
     scripts --> mapSpike["M0-06b 수용"]
     gpx --> mapSpike

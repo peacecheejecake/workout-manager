@@ -29,6 +29,8 @@ export const mapDataLicenceReadPath = '/bff/v1/map-data/licence';
 /** The background deployment pointer and its disclosure file, public static assets. */
 export const basemapPointerPath = '/map/basemap/current.json';
 export const basemapDisclosureFile = 'odbl-disclosure.json';
+/** Indexed files contain the exact bytes pinned by each active disclosure. */
+export const mapDataScriptReadPath = '/bff/v1/map-data/licence/scripts';
 
 /** True when `text` names both the OSM copyright page and the ODbL 1.0 licence URI. */
 export function carriesOdblNotice(text: string): boolean {
@@ -133,6 +135,7 @@ export const routingDerivationSchema = z.strictObject({
     .nullable(),
   /** How many ways the graph lists as time-conditional; `null` when it lists none at all. */
   timeConditionalWays: z.number().int().nonnegative().nullable(),
+  scripts: z.record(z.string().regex(/^scripts\/[A-Za-z0-9/_.-]{1,120}$/), sha256Schema).optional(),
 });
 export type RoutingDerivation = z.infer<typeof routingDerivationSchema>;
 

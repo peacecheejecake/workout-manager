@@ -10,7 +10,9 @@
  * request here is a 404. The build itself is `scripts/build-basemap.mjs`, which writes an
  * immutable `dist/<deploymentId>/` directory; this handler serves that directory.
  */
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { basemapDataDisclosureSchema } from '@workout/contracts/map-data-licence';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 export const dynamic = 'force-dynamic';
@@ -49,6 +51,35 @@ export async function GET(
   // extension allowlist and the containment check below decide the rest.
   if (!Array.isArray(path) || path.length === 0 || !path.every(safeSegment))
     return new Response(null, { status: 404 });
+  const scriptRequest = path.length === 3 && path[1] === 'odbl-scripts';
+  let expectedScriptHash: string | null = null;
+  if (scriptRequest) {
+    const deploymentId = path[0];
+    if (deploymentId === undefined) return new Response(null, { status: 404 });
+    const indexMatch = /^(0|[1-9][0-9]{0,2})\.txt$/.exec(path[2] ?? '');
+    if (indexMatch === null) return new Response(null, { status: 404 });
+    try {
+      const pointer: unknown = JSON.parse(await readFile(join(distRoot, 'current.json'), 'utf8'));
+      if (
+        pointer === null ||
+        typeof pointer !== 'object' ||
+        !('deploymentId' in pointer) ||
+        pointer.deploymentId !== path[0]
+      )
+        return new Response(null, { status: 404 });
+      const disclosure = basemapDataDisclosureSchema.parse(
+        JSON.parse(await readFile(join(distRoot, deploymentId, 'odbl-disclosure.json'), 'utf8')),
+      );
+      if (disclosure.deploymentId !== path[0]) return new Response(null, { status: 404 });
+      const scripts = Object.entries(disclosure.alterationMethod.scripts).sort(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      );
+      expectedScriptHash = scripts[Number(indexMatch[1])]?.[1] ?? null;
+      if (expectedScriptHash === null) return new Response(null, { status: 404 });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  }
   const target = normalize(join(distRoot, ...path));
   // Belt and braces: even with every segment checked, the resolved path must still be
   // inside the deployment root before a byte is read.
@@ -59,9 +90,22 @@ export async function GET(
   if (contentType === undefined) return new Response(null, { status: 404 });
   let body: Buffer;
   try {
+    if (scriptRequest) {
+      const canonicalRoot = await realpath(distRoot);
+      const canonicalTarget = await realpath(target);
+      if (!canonicalTarget.startsWith(canonicalRoot + sep) || !(await lstat(target)).isFile())
+        return new Response(null, { status: 404 });
+    }
     const stats = await stat(target);
     if (!stats.isFile()) return new Response(null, { status: 404 });
+    if (scriptRequest && stats.size > 1024 * 1024) return new Response(null, { status: 404 });
     body = await readFile(target);
+    if (
+      scriptRequest &&
+      (body.byteLength > 1024 * 1024 ||
+        createHash('sha256').update(body).digest('hex') !== expectedScriptHash)
+    )
+      return new Response(null, { status: 404 });
   } catch {
     return new Response(null, { status: 404 });
   }
@@ -72,7 +116,7 @@ export async function GET(
   const pointer = path.length === 1;
   const headers = new Headers({
     'content-type': contentType,
-    'cache-control': pointer ? 'no-store' : 'public, max-age=604800, immutable',
+    'cache-control': pointer || scriptRequest ? 'no-store' : 'public, max-age=604800, immutable',
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
   });

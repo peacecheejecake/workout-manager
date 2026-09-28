@@ -63,6 +63,7 @@ export const derivationFileSchema = z.strictObject({
     })
     .optional(),
   timeConditionalWays: z.number().int().nonnegative().optional(),
+  scripts: z.record(z.string().regex(/^scripts\/[A-Za-z0-9/_.-]{1,120}$/), sha256Schema).optional(),
   /** Recorded from M0-06b-odbl on: where the extract came from, as its acquisition recorded it. */
   source: extractAcquisitionSchema.optional(),
 });
@@ -90,6 +91,7 @@ export function derivationFromFile(file: DerivationFile): RoutingDerivation {
             keptHeaderOptions: [...barriers.keptHeaderOptions],
           },
     timeConditionalWays: file.timeConditionalWays ?? null,
+    ...(file.scripts === undefined ? {} : { scripts: file.scripts }),
   };
 }
 
@@ -130,6 +132,9 @@ export function renderRoutingAttribution(
     recorded?.timeConditionalWays === null || recorded === null
       ? '- time-conditional way list: none'
       : `- time-conditional way list: ${recorded.timeConditionalWays} ways (edge-facts), warnings only, no rerouting`,
+    ...Object.entries(derivation?.scripts ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, sha256]) => `- script ${path} SHA-256 ${sha256}`),
     `- import: ${facts.engine} ${facts.engineVersion} (artifact SHA-256 ${facts.engineArtifactSha256}), profile ${facts.profileId} "${facts.profileName}" (configuration SHA-256 ${facts.profileConfigSha256}), imported ${facts.graphImportedAt}`,
     `- graph content hash and build id: ${ROUTING_GRAPH_MANIFEST_FILE} in this directory`,
     `Public page: ${mapDataLicencePagePath}`,

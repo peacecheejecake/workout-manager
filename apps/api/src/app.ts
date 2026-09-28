@@ -79,6 +79,13 @@ export interface ApiOptions extends ProductRepositories {
   mapDataDisclosure?: () => RoutingDataDisclosure;
   /** The loaded place/elevation artifacts' public licence status, fixed for this process. */
   geoDatasetsLicence?: GeoDatasetsLicenceState;
+  mapDataScriptArtifacts?: {
+    readonly routing?: () => {
+      readonly directory: string;
+      readonly disclosure: RoutingDataDisclosure;
+    };
+    readonly geoDatasets?: string;
+  };
   close?: () => Promise<void>;
 }
 
@@ -272,7 +279,12 @@ export function createApi(options: ApiOptions): FastifyInstance {
     options.sharedCourseReader,
   );
   // M0-06b-odbl: the public ODbL §4.6 disclosure, also outside the authenticated plugin.
-  registerMapDataLicenceRead(app, options.mapDataDisclosure, options.geoDatasetsLicence);
+  registerMapDataLicenceRead(
+    app,
+    options.mapDataDisclosure,
+    options.geoDatasetsLicence,
+    options.mapDataScriptArtifacts,
+  );
   if (options.backchannelLogout !== undefined) {
     const backchannel = options.backchannelLogout;
     app.register(async (routes) => {

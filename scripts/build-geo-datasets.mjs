@@ -30,6 +30,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { publishOdblScripts } from './geo/publish-odbl-scripts.mjs';
 
 import {
   allowedSource,
@@ -521,6 +522,7 @@ async function main() {
     `${JSON.stringify(disclosure, null, 2)}\n`,
   );
   await writeFile(join(stageDirectory, GEO_DATA_ATTRIBUTION_FILE), attribution);
+  await publishOdblScripts(repositoryRoot, stageDirectory, disclosure.alterationMethod.scripts);
   // Intermediates are not part of the dataset directory the server reads.
   for (const name of [
     'places.osm.pbf',

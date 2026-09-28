@@ -30,6 +30,7 @@ import {
   sha256File,
 } from './geo/sources.mjs';
 import { drawCircle, encodePng } from './geo/png.mjs';
+import { publishOdblScripts } from './geo/publish-odbl-scripts.mjs';
 import { assertSelfHostedStyle, createBasemapStyle, fontStack } from './geo/style.mjs';
 import {
   DISCLOSURE_FILE,
@@ -692,6 +693,7 @@ async function main() {
   });
   await writeFile(join(stagingRoot, DISCLOSURE_FILE), `${JSON.stringify(disclosure, null, 2)}\n`);
   await writeFile(join(stagingRoot, 'ATTRIBUTION.txt'), renderBasemapAttribution(disclosure));
+  await publishOdblScripts(repositoryRoot, stagingRoot, disclosure.alterationMethod.scripts);
 
   // Verify the staged build before anything deployed is touched.
   await verifyStagedBuild(stagingRoot, pyramid.tileCount);

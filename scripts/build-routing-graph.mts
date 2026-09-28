@@ -26,6 +26,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { publishOdblScripts } from './geo/publish-odbl-scripts.mjs';
 
 import {
   extractAcquisitionSchema,
@@ -708,6 +709,18 @@ export async function importRoutingGraph(options: {
       derivation.timeConditionalWays = list.wayIds.length;
     }
     derivation.source = extractAcquisitionSchema.parse(options.source);
+    const scripts: Record<string, string> = Object.fromEntries(
+      await Promise.all(
+        [
+          'scripts/build-routing-graph.mts',
+          'scripts/geo/MilitaryPerimeterBarriers.java',
+          'scripts/geo/graphhopper-foot-serving.yml',
+          'scripts/geo/graphhopper-launch.mjs',
+        ].map(async (path) => [path, await sha256File(join(repositoryRoot, path))]),
+      ),
+    );
+    derivation.scripts = scripts;
+    await publishOdblScripts(repositoryRoot, options.graphDirectory, scripts);
     await mkdir(join(options.graphDirectory, EDGE_FACTS_DIRECTORY), { recursive: true });
     await writeFile(
       join(options.graphDirectory, EDGE_FACTS_DIRECTORY, DERIVATION_FILE),

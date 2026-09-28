@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 import {
   mapDataLicenceReadPath,
+  mapDataScriptReadPath,
+  mapDataLicence,
   mapDataLicenceResponseSchema,
   type GeoDatasetsLicenceState,
 } from '@workout/contracts/map-data-licence';
@@ -21,6 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApi } from '../src/app.js';
 import { createConfiguredWalkingRoutes } from '../src/routing-deployment.js';
+import { registerMapDataLicenceRead } from '../src/map-data-licence-routes.js';
+import Fastify from 'fastify';
 
 /**
  * `GET /bff/v1/map-data/licence` (M0-06b-odbl): the ODbL §4.6 disclosure of the graph the API
@@ -123,6 +127,66 @@ function app(
 }
 
 describe('the public map-data licence read', () => {
+  it('serves only the active graph script with its manifest hash', async () => {
+    const bytes = Buffer.from('graph import script');
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const graph = join(directory, 'graph-script');
+    await mkdir(join(graph, 'odbl-scripts'), { recursive: true });
+    await writeFile(join(graph, 'odbl-scripts/0.txt'), bytes);
+    const graphBuildId = 'a'.repeat(16);
+    const disclosed = {
+      schemaVersion: 1 as const,
+      kind: 'routing-graph' as const,
+      licence: mapDataLicence,
+      graph: {
+        graphBuildId,
+        graphContentSha256: 'b'.repeat(64),
+        graphImportedAt: '2026-09-21T14:09:12.000Z',
+        roadDataAt: '2026-09-18T23:00:00.000Z',
+      },
+      engine: {
+        engine: 'graphhopper' as const,
+        engineVersion: '10.0',
+        engineArtifactSha256: 'c'.repeat(64),
+      },
+      profile: {
+        profileId: 'foot-v1' as const,
+        profileName: 'foot',
+        profileConfigSha256: 'd'.repeat(64),
+      },
+      extract: { sha256: 'e'.repeat(64), region: 'Seoul', byteLength: 10, acquisition: null },
+      derivation: {
+        osmium: null,
+        militaryPerimeterBarriers: null,
+        timeConditionalWays: null,
+        scripts: { 'scripts/build-routing-graph.mts': digest },
+      },
+      artifactNotice: 'verified' as const,
+    };
+    const instance = Fastify();
+    let active = disclosed;
+    registerMapDataLicenceRead(
+      instance,
+      () => active,
+      { kind: 'none' },
+      { routing: () => ({ directory: graph, disclosure: active }) },
+    );
+    const url = `${mapDataScriptReadPath}/routing/${graphBuildId}/0`;
+    expect((await instance.inject({ method: 'GET', url })).body).toBe(bytes.toString());
+    expect(
+      (
+        await instance.inject({
+          method: 'GET',
+          url: `${mapDataScriptReadPath}/routing/${'f'.repeat(16)}/0`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    await writeFile(join(graph, 'odbl-scripts/0.txt'), 'changed');
+    expect((await instance.inject({ method: 'GET', url })).statusCode).toBe(404);
+    active = { ...disclosed, graph: { ...disclosed.graph, graphBuildId: 'f'.repeat(16) } };
+    expect((await instance.inject({ method: 'GET', url })).statusCode).toBe(404);
+    await instance.close();
+  });
   it('reports loaded legacy place/elevation datasets without a disclosure', async () => {
     const geoDatasetsLicence: GeoDatasetsLicenceState = {
       kind: 'undisclosed',

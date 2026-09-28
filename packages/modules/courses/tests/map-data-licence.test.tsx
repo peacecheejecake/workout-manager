@@ -91,6 +91,7 @@ const routing: RoutingDataDisclosure = {
       keptHeaderOptions: [],
     },
     timeConditionalWays: 77,
+    scripts: { 'scripts/build-routing-graph.mts': sha('2') },
   },
   artifactNotice: 'missing',
 };
@@ -225,6 +226,18 @@ describe('the public map-data licence page', () => {
     );
     expect(screen.getByTestId('map-data-routing-notice-state')).toHaveTextContent(
       '라이선스 고지 파일이 없습니다',
+    );
+    expect(screen.getByRole('link', { name: 'scripts/build-basemap.mjs' })).toHaveAttribute(
+      'href',
+      `/map/basemap/${basemap.deploymentId}/odbl-scripts/0.txt`,
+    );
+    expect(screen.getByRole('link', { name: 'scripts/build-geo-datasets.mjs' })).toHaveAttribute(
+      'href',
+      '/bff/v1/map-data/licence/scripts/geo/0123456789ab-beef0123cafe/0',
+    );
+    expect(screen.getByRole('link', { name: 'scripts/build-routing-graph.mts' })).toHaveAttribute(
+      'href',
+      '/bff/v1/map-data/licence/scripts/routing/92e0fa5f319a41df/0',
     );
     for (const [, init] of fetch.mock.calls) {
       expect(init?.credentials).toBe('omit');

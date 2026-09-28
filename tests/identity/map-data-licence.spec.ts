@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { shells } from './course-editor-support';
 
 /**
@@ -44,6 +45,90 @@ async function servedGraph(request: APIRequestContext, origin: string) {
 }
 
 for (const shell of shells) {
+  test(`${shell.name}: anonymous script link downloads the disclosed bytes`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ baseURL: shell.origin });
+    const page = await context.newPage();
+    const bytes = Buffer.from('osmium tags-filter -R w/highway\n');
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const deploymentId = 'abc123abc123-public';
+    await page.route('**/map/basemap/current.json', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ deploymentId }),
+      }),
+    );
+    await page.route(`**/map/basemap/${deploymentId}/odbl-disclosure.json`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schemaVersion: 1,
+          kind: 'basemap-tiles',
+          licence: {
+            name: 'ODbL-1.0',
+            url: odbl,
+            copyrightUrl: copyright,
+            attribution: '© OpenStreetMap contributors',
+          },
+          buildId: 'abc123abc123',
+          deploymentId,
+          region: 'Fixture',
+          source: {
+            sha256: 'a'.repeat(64),
+            bytes: 10,
+            acquisition: {
+              sourceId: 'fixture',
+              url: 'https://example.test/source.pbf',
+              lastModified: null,
+              etag: null,
+              recordedBy: 'none',
+            },
+          },
+          alterationMethod: {
+            description: 'Fixture filter',
+            layerFilters: [{ layer: 'roads', expressions: ['w/highway'] }],
+            osmiumExportFormat: 'geojsonseq',
+            tippecanoeArguments: ['--minimum-zoom', '9'],
+            minzoom: 9,
+            maxzoom: 15,
+            glyphRanges: [],
+            scripts: { 'scripts/build-basemap.mjs': digest },
+          },
+          toolVersions: { osmium: null, tippecanoe: null, node: 'v24.12.0' },
+        }),
+      }),
+    );
+    await page.route('**/bff/v1/map-data/licence', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ schemaVersion: 1, routing: null, geoDatasets: { kind: 'none' } }),
+      }),
+    );
+    await page.route(`**/map/basemap/${deploymentId}/odbl-scripts/0.txt`, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/plain', body: bytes }),
+    );
+    await page.goto('/map-data-licence');
+    const link = page.getByRole('link', { name: 'scripts/build-basemap.mjs' });
+    await expect(link).toHaveAttribute('href', `/map/basemap/${deploymentId}/odbl-scripts/0.txt`);
+    await expect(link).toHaveAttribute('download', '');
+    const href = await link.getAttribute('href');
+    if (href === null) throw new Error('script link has no address');
+    const downloaded = Buffer.from(
+      await page.evaluate(async (href) => {
+        const response = await fetch(href, { credentials: 'omit' });
+        if (!response.ok) throw new Error(`download response ${response.status}`);
+        return [...new Uint8Array(await response.arrayBuffer())];
+      }, href),
+    );
+    expect(downloaded).toEqual(bytes);
+    expect(createHash('sha256').update(downloaded).digest('hex')).toBe(digest);
+    expect(await context.cookies()).toEqual([]);
+    await context.close();
+  });
   test(`${shell.name}: the licence page opens with no sign-in and names what is served`, async ({
     browser,
   }) => {
@@ -78,6 +163,10 @@ for (const shell of shells) {
       await expect(page.getByTestId('map-data-deployment')).toHaveText(basemap.deploymentId);
       await expect(tiles).toContainText('osmium tags-filter');
       await expect(tiles).toContainText('tippecanoe');
+      await expect(tiles.getByRole('link', { name: 'scripts/build-basemap.mjs' })).toHaveAttribute(
+        'href',
+        new RegExp(`/map/basemap/${basemap.deploymentId}/odbl-scripts/[0-9]+\\.txt$`),
+      );
     }
 
     const geo = page.getByTestId('map-data-geo-datasets');

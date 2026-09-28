@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   odblLicenceUrl,
+  mapDataScriptReadPath,
   osmAttribution,
   osmCopyrightUrl,
   type BasemapDataDisclosure,
@@ -145,7 +146,10 @@ function GeoDatasetsDisclosureView({ disclosure }: { readonly disclosure: GeoDat
         ))}
       </ul>
       <p>고도값 연결 최대 거리: {method.maxElevationSourceDistanceMeters}m.</p>
-      <ScriptHashes scripts={method.scripts} />
+      <ScriptHashes
+        scripts={method.scripts}
+        basePath={`${mapDataScriptReadPath}/geo/${disclosure.datasets.placesDatasetId}-${disclosure.datasets.elevationDatasetId}`}
+      />
     </>
   );
 }
@@ -216,7 +220,10 @@ function BasemapDisclosure({ disclosure }: { readonly disclosure: BasemapDataDis
           zoom {method.minzoom}–{method.maxzoom}, glyph 구간 {method.glyphRanges.join(', ')}
         </li>
       </ol>
-      <ScriptHashes scripts={method.scripts} />
+      <ScriptHashes
+        scripts={method.scripts}
+        basePath={`/map/basemap/${disclosure.deploymentId}/odbl-scripts`}
+      />
     </>
   );
 }
@@ -307,19 +314,39 @@ function RoutingDisclosure({ disclosure }: { readonly disclosure: RoutingDataDis
           </li>
         </ol>
       )}
+      {derivation?.scripts === undefined ? null : (
+        <ScriptHashes
+          scripts={derivation.scripts}
+          basePath={`${mapDataScriptReadPath}/routing/${graph.graphBuildId}`}
+        />
+      )}
     </>
   );
 }
 
-function ScriptHashes({ scripts }: { readonly scripts: Readonly<Record<string, string>> }) {
-  const entries = Object.entries(scripts).sort(([left], [right]) => left.localeCompare(right));
+function ScriptHashes({
+  scripts,
+  basePath,
+}: {
+  readonly scripts: Readonly<Record<string, string>>;
+  readonly basePath: string;
+}) {
+  const entries = Object.entries(scripts).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
   return (
     <>
       <h3>빌드 스크립트</h3>
       <ul>
-        {entries.map(([path, sha256]) => (
+        {entries.map(([path, sha256], index) => (
           <li key={path}>
-            {path} · SHA-256 <code>{sha256}</code>
+            <a
+              href={`${basePath}/${index}${basePath.startsWith('/map/basemap/') ? '.txt' : ''}`}
+              download
+            >
+              {path}
+            </a>{' '}
+            · SHA-256 <code>{sha256}</code>
           </li>
         ))}
       </ul>

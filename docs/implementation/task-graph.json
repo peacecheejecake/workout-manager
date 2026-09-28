@@ -166,7 +166,7 @@
       "title": "ODbL 변경 스크립트 본문 공개",
       "dependsOn": ["M0-06b-odbl", "M0-06b-odbl-places"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "2026-09-26 사용자 결정의 후속 구현. 데이터 출처 공개 페이지에서 로그인 없이 배경·장소·고도·routing graph와 군사 경계 파생에 사용한 빌드 스크립트 본문을 다운로드할 수 있게 한다. 별도 공개 저장소는 쓰지 않는다. 활성 배포 manifest가 기록한 SHA-256의 정확한 바이트만 서빙하고, 파일 변경·누락·다른 배포 신원·경로 탈출은 실패로 처리한다. 실제 공개 호스팅과 서빙 산출물 재빌드는 EXT-HOSTING에 남긴다.",
       "evidence": "docs/implementation/progress/M0-06b-odbl-scripts.md"
     },
