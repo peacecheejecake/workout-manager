@@ -782,6 +782,44 @@ it('rejects adjacent nutrition namespaces', async () => {
 });
 
 it.each([
+  ['GET', '/bff/v1/healthkit/workout-review?limit=50'],
+  ['POST', '/bff/v1/healthkit/workout-activities'],
+  ['POST', '/bff/v1/healthkit/workout-bindings'],
+] as const)('binds HealthKit review %s %s to the active session', async (method, path) => {
+  fetchMock.mockResolvedValue(json({ accepted: true }));
+  await createSessionTransport(session, vi.fn()).request({
+    method,
+    path,
+    body: method === 'GET' ? null : { confirmed: true },
+    idempotencyKey: method === 'GET' ? null : 'healthkit-key',
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({
+      credentials: 'same-origin',
+      headers: expect.objectContaining({
+        'x-workout-session-id': session.sessionId,
+        ...(method === 'GET'
+          ? {}
+          : { 'x-csrf-token': session.csrfToken, 'idempotency-key': 'healthkit-key' }),
+      }),
+    }),
+  );
+});
+
+it('rejects adjacent HealthKit namespaces', async () => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method: 'POST',
+      path: '/bff/v1/healthkit/workout-activities-admin',
+      body: {},
+      idempotencyKey: 'private',
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it.each([
   ['GET', '/bff/v1/routines'],
   ['POST', '/bff/v1/routines'],
   ['GET', '/bff/v1/routine-versions/version'],

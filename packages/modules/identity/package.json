@@ -14,6 +14,7 @@
     "@tanstack/react-query": "5.102.8"
   },
   "exports": {
-    "./identity-workspace": "./src/identity-workspace.tsx"
+    "./identity-workspace": "./src/identity-workspace.tsx",
+    "./healthkit-panel": "./src/healthkit-panel.tsx"
   }
 }

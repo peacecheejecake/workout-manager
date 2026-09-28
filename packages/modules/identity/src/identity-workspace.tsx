@@ -16,6 +16,7 @@ import {
 import { OperationsPanel } from './operations-panel';
 import { GarminPanel } from './garmin-panel';
 import { GarminUnofficialEraseNotice, GarminUnofficialPanel } from './garmin-unofficial-panel';
+import { HealthKitPanel } from './healthkit-panel';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),
@@ -361,6 +362,7 @@ function Account({
         onSignedOut={onSignedOut}
         onSessionChanged={onSessionChanged}
       />
+      <HealthKitPanel account={{ athleteId: session.athleteId, scopeId: session.sessionId }} />
       <OperationsPanel
         session={session}
         onSignedOut={onSignedOut}

@@ -1983,8 +1983,9 @@
       "title": "제품 HealthKit 동의·동기화 UI와 공통 Activity 화면",
       "dependsOn": ["M3-02c", "M3-02e", "M3-02i"],
       "kind": "task",
-      "status": "not_started",
-      "scope": "제품 화면의 명시적 동의·운동 읽기 요청 액션, 제한된 동기화·오류·검토 대기 상태, 사용자가 선택하는 Activity 연결/생성을 구현한다. 읽기 권한 허용 또는 표본 부재를 단정하지 않고, 선택된 운동은 Web·mobile의 같은 ActivityDetail에서 원천·삭제 상태를 보인다. 브라우저·접근성 검증은 별도로 기록한다."
+      "status": "completed",
+      "scope": "제품 화면의 명시적 동의·운동 읽기 요청 액션, 제한된 동기화·오류·검토 대기 상태, 사용자가 선택하는 Activity 연결/생성을 구현한다. 읽기 권한 허용 또는 표본 부재를 단정하지 않고, 선택된 운동은 Web·mobile의 같은 ActivityDetail에서 원천·삭제 상태를 보인다. 브라우저·접근성 검증은 별도로 기록한다.",
+      "evidence": "docs/implementation/progress/M3-02g.md"
     },
     {
       "id": "M3-02h",

@@ -35,6 +35,7 @@ import { ActivityWorkbench } from './activity-workbench';
 import { ActivityDetailTabs } from './activity-detail-tabs';
 import { DetailSelectionProvider } from './detail-selection-provider';
 import { detailsMatchActivity } from './detail-projection';
+import { HealthKitReviewPanel } from './healthkit-review-panel';
 
 /**
  * The stored-track panel pulls in the map kit, so it is a lazy leaf created once at module
@@ -239,6 +240,24 @@ function Workspace({
           <a href={createHref}>수동 활동 입력</a>
         </p>
       ) : null}
+      <HealthKitReviewPanel
+        transport={transport}
+        scope={prefix}
+        selectedActivity={pairReady && pairMatches ? detail.data.activity : null}
+        onActivityChosen={(activityId) =>
+          change({
+            selected: activityId,
+            search: null,
+            kind: null,
+            source: null,
+            quality: null,
+            from: null,
+            toExclusive: null,
+            timezone: null,
+            offset: null,
+          })
+        }
+      />
       <BrowserBlockFilter
         transport={transport}
         scope={prefix}

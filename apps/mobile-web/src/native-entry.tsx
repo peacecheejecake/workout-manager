@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createCapacitorBridgePort } from '@workout/platform/capacitor-bridge-port';
 import { createNativeBridgeClient } from '@workout/platform/native-bridge-client';
@@ -9,6 +9,7 @@ import {
 } from '@workout/platform/private-browser-storage';
 import { nativeBridgeAiConsentSchema } from '@workout/contracts/native-bridge';
 import type { NativeBridgeErrorCode, NativeBridgeSession } from '@workout/contracts/native-bridge';
+import { HealthKitPanel } from '@workout/modules-identity/healthkit-panel';
 
 const bridge = createNativeBridgeClient({
   port: createCapacitorBridgePort(),
@@ -44,6 +45,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
   const [consentState, setConsentState] = useState<ConsentState>({ state: 'unavailable' });
   const [consentRefresh, setConsentRefresh] = useState(0);
   const [screen, setScreen] = useState<NativeScreen>('account');
+  const [accountScopeId, setAccountScopeId] = useState(() => crypto.randomUUID());
   const [note, setNote] = useState('');
   const [confirmBack, setConfirmBack] = useState(false);
   const [sessionCheck, setSessionCheck] = useState<'idle' | 'checking' | 'error'>('idle');
@@ -82,6 +84,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     clearPrivateBrowserStorage();
     accountId.current = null;
     historyScope.current = crypto.randomUUID();
+    setAccountScopeId(crypto.randomUUID());
     const previousState = history.state;
     history.replaceState(
       {
@@ -191,6 +194,17 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     setSessionCheck('idle');
   }, []);
 
+  const handleNativeUnauthorized = useCallback(() => {
+    cancelSessionCheck();
+    clearIdentity();
+    setAuthState({ state: 'signed_out' });
+  }, [cancelSessionCheck, clearIdentity]);
+  const nativeTransport = useMemo(
+    // The panel checks its own account scope before reacting to 401.
+    () => createNativeAuthenticatedTransport(client, () => {}),
+    [client],
+  );
+
   const athleteId = authState.state === 'signed_in' ? authState.athleteId : null;
   const visibleConsentState =
     athleteId !== null && 'athleteId' in consentState && consentState.athleteId === athleteId
@@ -202,13 +216,11 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     bindPrivateBrowserStorageAccount(athleteId);
     const controller = new AbortController();
     activeConsent.current = controller;
-    const transport = createNativeAuthenticatedTransport(client, () => {
+    const consentTransport = createNativeAuthenticatedTransport(client, () => {
       if (controller.signal.aborted) return;
-      cancelSessionCheck();
-      clearIdentity();
-      setAuthState({ state: 'signed_out' });
+      handleNativeUnauthorized();
     });
-    void transport
+    void consentTransport
       .request({
         path: '/bff/v1/consents/ai',
         method: 'GET',
@@ -239,7 +251,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
       controller.abort();
       if (activeConsent.current === controller) activeConsent.current = null;
     };
-  }, [athleteId, consentRefresh, cancelSessionCheck, clearIdentity, client]);
+  }, [athleteId, consentRefresh, client, handleNativeUnauthorized]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -515,6 +527,12 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
                     </div>
                   ) : null}
                 </section>
+                <HealthKitPanel
+                  account={{ athleteId: authState.athleteId, scopeId: accountScopeId }}
+                  transport={nativeTransport}
+                  bridge={client}
+                  onUnauthorized={handleNativeUnauthorized}
+                />
                 <button
                   type="button"
                   disabled={authPending !== null}
@@ -525,7 +543,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
               </>
             ) : null}
             {authError ? <p role="alert">계정 작업을 마치지 못했습니다. ({authError})</p> : null}
-            <p>제품 화면의 인증된 기능과 건강 데이터 연결은 아직 사용할 수 없습니다.</p>
+            <p>다른 제품 화면의 native 통합은 후속 작업에서 연결합니다.</p>
           </>
         ) : (
           <p role="status">앱 내 로그인과 건강 데이터 연결은 아직 사용할 수 없습니다.</p>

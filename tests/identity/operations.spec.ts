@@ -35,7 +35,14 @@ test('exports scoped data then erases the account, revokes other tabs and starts
   });
   expect(imported.status()).toBe(200);
   await page.reload();
-  await expect(page.getByText('Garmin: 연결되지 않음 · HealthKit: 연결되지 않음')).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: '운영 상태와 내 데이터' }).getByText('Garmin: 연결되지 않음'),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('region', { name: 'Apple 건강' })
+      .getByText('HealthKit 운동 연동은 iPhone 앱에서 사용할 수 있습니다.'),
+  ).toBeVisible();
   const deleteButton = page.getByRole('button', { name: '확인하고 앱 계정 삭제' });
   await expect(deleteButton).toBeDisabled();
   await page.getByRole('button', { name: '내 데이터 내보내기 준비' }).click();

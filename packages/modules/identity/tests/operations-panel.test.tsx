@@ -87,10 +87,8 @@ describe('account operations controls', () => {
         <OperationsPanel session={session} onSignedOut={() => {}} onSessionChanged={() => {}} />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText('Garmin: 연결됨 · HealthKit: 연결되지 않음')).toBeVisible();
-    expect(
-      screen.queryByText('Garmin: 연결되지 않음 · HealthKit: 연결되지 않음'),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Garmin: 연결됨')).toBeVisible();
+    expect(screen.queryByText('Garmin: 연결되지 않음')).not.toBeInTheDocument();
   });
   it('does not export or delete on render and requires exact deletion confirmation', async () => {
     const user = userEvent.setup();

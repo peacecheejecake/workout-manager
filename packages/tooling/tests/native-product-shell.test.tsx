@@ -49,10 +49,17 @@ describe('iOS native product shell draft and lifecycle', () => {
     mocks.session.mockReset().mockResolvedValue(signedIn());
     mocks.signIn.mockReset().mockResolvedValue(signedIn());
     mocks.signOut.mockReset().mockResolvedValue({ ok: true, value: undefined });
-    mocks.read.mockReset().mockResolvedValue({
+    mocks.read.mockReset().mockImplementation(async (path: string) => ({
       ok: true,
-      value: { status: 200, body: { kind: 'ai', granted: false, revision: 1 } },
-    });
+      value: {
+        status: 200,
+        body: {
+          kind: path === '/bff/v1/consents/healthkit' ? 'healthkit' : 'ai',
+          granted: false,
+          revision: 1,
+        },
+      },
+    }));
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -73,6 +80,13 @@ describe('iOS native product shell draft and lifecycle', () => {
     expect(history.back).toHaveBeenCalled();
     expect(screen.queryByRole('textbox', { name: '작업 메모' })).toBeNull();
     expect(await screen.findByRole('button', { name: '작업 메모 (임시) 열기' })).toBeVisible();
+  });
+
+  it('shows separate native HealthKit consent without claiming iPhone read permission', async () => {
+    render(<NativeLanding client={client} />);
+    expect(await screen.findByText('앱 동의: 허용되지 않음')).toBeVisible();
+    expect(screen.getByText('iPhone 운동 읽기 허용 여부: 알 수 없음')).toBeVisible();
+    expect(mocks.read).toHaveBeenCalledWith('/bff/v1/consents/healthkit', expect.any(AbortSignal));
   });
 
   it('routes native edge and browser history Back through the same confirmation', async () => {
@@ -110,7 +124,9 @@ describe('iOS native product shell draft and lifecycle', () => {
     const { input } = await openNote();
     mocks.session.mockResolvedValueOnce({ ok: false, code: 'UNAVAILABLE' });
     await act(async () => window.dispatchEvent(new Event('workout:native-foreground')));
-    expect(await screen.findByRole('alert')).toHaveTextContent('임시 메모는 유지됩니다');
+    expect(
+      await screen.findByText('계정 상태를 확인할 수 없습니다. 임시 메모는 유지됩니다.'),
+    ).toHaveAttribute('role', 'alert');
     expect(input).toHaveValue('임시 메모');
     mocks.session.mockResolvedValueOnce({ ok: true, value: { state: 'signed_out' } });
     await act(async () => window.dispatchEvent(new Event('workout:native-foreground')));
@@ -135,7 +151,9 @@ describe('iOS native product shell draft and lifecycle', () => {
 
     mocks.session.mockResolvedValueOnce({ ok: false, code: 'UNAVAILABLE' });
     await act(async () => window.dispatchEvent(new Event('workout:native-foreground')));
-    expect(await screen.findByRole('alert')).toHaveTextContent('임시 메모는 유지됩니다');
+    expect(
+      await screen.findByText('계정 상태를 확인할 수 없습니다. 임시 메모는 유지됩니다.'),
+    ).toHaveAttribute('role', 'alert');
   });
 
   it('reconciles a timed-out sign-in with the native session before showing account state', async () => {

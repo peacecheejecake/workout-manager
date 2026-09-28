@@ -214,9 +214,7 @@ function OperationsLifetime({
           ) : null}
           {status.data && !status.isError && !status.isFetching ? (
             <div>
-              <p>
-                Garmin: {garminStateLabels[status.data.providers.garmin]} · HealthKit: 연결되지 않음
-              </p>
+              <p>Garmin: {garminStateLabels[status.data.providers.garmin]}</p>
               <p>
                 앱 내부 처리: 대기 {status.data.outbox.pending}건 · 처리 중{' '}
                 {status.data.outbox.leased}건 · 재시도 {status.data.outbox.retrying}건 · 완료{' '}

@@ -13,6 +13,10 @@
       "types": "./src/healthkit-activity.ts",
       "default": "./dist/healthkit-activity.js"
     },
+    "./healthkit-review": {
+      "types": "./src/healthkit-review.ts",
+      "default": "./dist/healthkit-review.js"
+    },
     "./healthkit-ingestion": {
       "types": "./src/healthkit-ingestion.ts",
       "default": "./dist/healthkit-ingestion.js"
