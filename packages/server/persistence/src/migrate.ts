@@ -69,6 +69,7 @@ const migrationFiles = [
   '061_healthkit_existing_binding.sql',
   '062_healthkit_canonical_activity.sql',
   '063_healthkit_receipt_replay.sql',
+  '064_healthkit_consent_epoch.sql',
 ] as const;
 
 /**
@@ -245,6 +246,9 @@ export async function grantHealthKitIngestion(
   try {
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_locked() TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_revision_locked() TO "${runtimeRole}"`,
     );
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.create_healthkit_canonical(uuid,text) TO "${runtimeRole}"`,

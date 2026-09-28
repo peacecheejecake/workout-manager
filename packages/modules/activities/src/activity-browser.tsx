@@ -63,13 +63,14 @@ class TrackPanelBoundary extends Component<{ children: ReactNode }, { failed: bo
 }
 
 export interface ActivityBrowserProps {
+  surface?: 'full' | 'native-review';
   athleteId: string;
   sessionId: string;
   transport: AuthenticatedTransport;
   search: string;
   onSearchChange(query: string): void;
   initialTimezone: string;
-  importHref: string;
+  importHref?: string;
   createHref?: string;
   linkedBlockHref?: (versionId: string, blockId: string) => string;
   planDayHref?: (date: string) => string;
@@ -119,6 +120,7 @@ const sortLabels = {
   id_asc: '식별자순',
 };
 function Workspace({
+  surface = 'full',
   athleteId,
   sessionId,
   transport,
@@ -232,9 +234,12 @@ function Workspace({
   return (
     <section className={styles.workspace} aria-labelledby={headingId}>
       <h2 id={headingId}>활동 검색과 조회</h2>
-      <p>
-        활동의 원본과 정정 반영 내용을 조회합니다. <a href={importHref}>FIT 가져오기·정정</a>
-      </p>
+      <p>활동의 원본과 정정 반영 내용을 조회합니다.</p>
+      {importHref ? (
+        <p>
+          <a href={importHref}>FIT 가져오기·정정</a>
+        </p>
+      ) : null}
       {createHref ? (
         <p>
           <a href={createHref}>수동 활동 입력</a>
@@ -258,12 +263,14 @@ function Workspace({
           })
         }
       />
-      <BrowserBlockFilter
-        transport={transport}
-        scope={prefix}
-        search={search}
-        onSearchChange={onSearchChange}
-      />
+      {surface === 'full' ? (
+        <BrowserBlockFilter
+          transport={transport}
+          scope={prefix}
+          search={search}
+          onSearchChange={onSearchChange}
+        />
+      ) : null}
       <form
         key={filterKey}
         className={styles.filters}
@@ -410,50 +417,55 @@ function Workspace({
           활동 목록 다시 확인
         </Button>
       </div>
-      <section aria-label="활동 일괄 선택">
-        <p>
-          일괄 선택 {batchTargets.length}개 / 최대 {batchSelectionLimit}개
-        </p>
-        <p>
-          현재 페이지 선택은 지금 보이는 기록만 추가합니다. 필터나 페이지를 바꿔도 이전 선택은
-          유지됩니다.
-        </p>
-        <div className={styles.actions}>
-          <Button
-            variant="secondary"
-            disabled={
-              batchLocked ||
-              parsed.invalid ||
-              !list.isSuccess ||
-              list.isFetching ||
-              !list.data?.items.length
-            }
-            onClick={() => {
-              if (list.data) batchStore.getState().selectPage(list.data.items.map(toBatchTarget));
+      {surface === 'full' ? (
+        <>
+          <section aria-label="활동 일괄 선택">
+            <p>
+              일괄 선택 {batchTargets.length}개 / 최대 {batchSelectionLimit}개
+            </p>
+            <p>
+              현재 페이지 선택은 지금 보이는 기록만 추가합니다. 필터나 페이지를 바꿔도 이전 선택은
+              유지됩니다.
+            </p>
+            <div className={styles.actions}>
+              <Button
+                variant="secondary"
+                disabled={
+                  batchLocked ||
+                  parsed.invalid ||
+                  !list.isSuccess ||
+                  list.isFetching ||
+                  !list.data?.items.length
+                }
+                onClick={() => {
+                  if (list.data)
+                    batchStore.getState().selectPage(list.data.items.map(toBatchTarget));
+                }}
+              >
+                현재 페이지 선택
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={batchLocked || batchTargets.length === 0}
+                onClick={() => batchStore.getState().clear()}
+              >
+                일괄 선택 해제
+              </Button>
+            </div>
+          </section>
+          <ActivityBatchTags store={batchStore} transport={transport} scope={prefix} />
+          <ActivityBatchLink store={batchStore} transport={transport} scope={prefix} />
+          <ActivityBatchExport store={batchStore} transport={transport} scope={prefix} />
+          <ActivityBatchDelete
+            store={batchStore}
+            transport={transport}
+            scope={prefix}
+            onDeleted={(ids) => {
+              if (parsed.selected && ids.includes(parsed.selected)) change({ selected: null });
             }}
-          >
-            현재 페이지 선택
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={batchLocked || batchTargets.length === 0}
-            onClick={() => batchStore.getState().clear()}
-          >
-            일괄 선택 해제
-          </Button>
-        </div>
-      </section>
-      <ActivityBatchTags store={batchStore} transport={transport} scope={prefix} />
-      <ActivityBatchLink store={batchStore} transport={transport} scope={prefix} />
-      <ActivityBatchExport store={batchStore} transport={transport} scope={prefix} />
-      <ActivityBatchDelete
-        store={batchStore}
-        transport={transport}
-        scope={prefix}
-        onDeleted={(ids) => {
-          if (parsed.selected && ids.includes(parsed.selected)) change({ selected: null });
-        }}
-      />
+          />
+        </>
+      ) : null}
       {parsed.invalid ? (
         <div role="alert">
           <p>
@@ -534,11 +546,16 @@ function Workspace({
                   view={parsed.view ?? 'cards'}
                   selected={parsed.selected}
                   onSelect={(selected) => change({ selected })}
-                  batch={{
-                    targets: batchTargets,
-                    locked: batchLocked,
-                    onToggle: (activity) => batchStore.getState().toggle(toBatchTarget(activity)),
-                  }}
+                  {...(surface === 'full'
+                    ? {
+                        batch: {
+                          targets: batchTargets,
+                          locked: batchLocked,
+                          onToggle: (activity) =>
+                            batchStore.getState().toggle(toBatchTarget(activity)),
+                        },
+                      }
+                    : {})}
                 />
               )}
               <div className={styles.actions}>
@@ -602,12 +619,14 @@ function Workspace({
                     </p>
                     <p>출처 식별자: {detail.data.activity.source.sourceId}</p>
                     <p>원본 내용 해시: {detail.data.activity.source.contentHash}</p>
-                    <CollectionProvenance
-                      athleteId={athleteId}
-                      sessionId={sessionId}
-                      activityId={detail.data.activity.id}
-                      transport={transport}
-                    />
+                    {surface === 'full' ? (
+                      <CollectionProvenance
+                        athleteId={athleteId}
+                        sessionId={sessionId}
+                        activityId={detail.data.activity.id}
+                        transport={transport}
+                      />
+                    ) : null}
                     <p>
                       요약 관측 시각:{' '}
                       <time dateTime={detail.data.observedAt}>{detail.data.observedAt}</time>
@@ -645,12 +664,25 @@ function Workspace({
                 <ActivityDetailTabs
                   value={parsed.detailTab}
                   onChange={(detailTab) => change({ detailTab })}
-                  unavailable={renderMediaTab ? {} : mediaTabUnavailable}
+                  unavailable={
+                    surface === 'native-review'
+                      ? {
+                          route: 'iPhone 검토 화면에서 사용할 수 없습니다.',
+                          impact: 'iPhone 검토 화면에서 사용할 수 없습니다.',
+                          media: mediaTabUnavailable.media,
+                        }
+                      : renderMediaTab
+                        ? {}
+                        : mediaTabUnavailable
+                  }
                 >
                   {parsed.detailTab === 'overview' && detail.isSuccess && !detail.isFetching ? (
                     <BrowserDetail activity={detail.data.activity} />
                   ) : null}
-                  {parsed.detailTab === 'route' && detail.isSuccess && !detail.isFetching ? (
+                  {surface === 'full' &&
+                  parsed.detailTab === 'route' &&
+                  detail.isSuccess &&
+                  !detail.isFetching ? (
                     <TrackPanelBoundary>
                       <Suspense fallback={<p role="status">경로 화면을 불러오는 중입니다.</p>}>
                         <ActivityTrackPanel
@@ -675,7 +707,10 @@ function Workspace({
                   {parsed.detailTab === 'media' && renderMediaTab && detail.isSuccess
                     ? renderMediaTab(detail.data.activity.id)
                     : null}
-                  {parsed.detailTab === 'impact' && detail.isSuccess && !detail.isFetching ? (
+                  {surface === 'full' &&
+                  parsed.detailTab === 'impact' &&
+                  detail.isSuccess &&
+                  !detail.isFetching ? (
                     <ActivityImpactPanel
                       context={detail.data}
                       transport={transport}
@@ -733,20 +768,22 @@ function Workspace({
           ) : null}
         </>
       )}
-      <ActivityDelete
-        current={
-          !parsed.invalid && parsed.selected && detail.isSuccess && !detail.isFetching
-            ? detail.data.activity
-            : null
-        }
-        selected={parsed.selected}
-        transport={transport}
-        scope={prefix}
-        onDeleted={(id) => {
-          batchStore.getState().remove([id]);
-          if (parsed.selected === id) change({ selected: null });
-        }}
-      />
+      {surface === 'full' ? (
+        <ActivityDelete
+          current={
+            !parsed.invalid && parsed.selected && detail.isSuccess && !detail.isFetching
+              ? detail.data.activity
+              : null
+          }
+          selected={parsed.selected}
+          transport={transport}
+          scope={prefix}
+          onDeleted={(id) => {
+            batchStore.getState().remove([id]);
+            if (parsed.selected === id) change({ selected: null });
+          }}
+        />
+      ) : null}
     </section>
   );
 }

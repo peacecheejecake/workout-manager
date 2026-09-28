@@ -65,12 +65,12 @@ it('accepts a bounded workout batch only for the authenticated bearer owner', as
   const response = await app.inject({
     method: 'POST',
     url: '/bff/v1/healthkit/workout-batches',
-    headers: { authorization: 'Bearer native-token' },
+    headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
     payload: batch,
   });
   expect(response.statusCode).toBe(200);
   expect(response.json()).toEqual(ack);
-  expect(ingestBatch).toHaveBeenCalledWith(athleteId, batch);
+  expect(ingestBatch).toHaveBeenCalledWith(athleteId, batch, 1);
 });
 
 it('rejects cookie and unauthenticated writes before reaching storage', async () => {
@@ -104,8 +104,25 @@ it('rejects extra fields and duplicate sample IDs before reaching storage', asyn
     const response = await app.inject({
       method: 'POST',
       url: '/bff/v1/healthkit/workout-batches',
-      headers: { authorization: 'Bearer native-token' },
+      headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
       payload,
+    });
+    expect(response.statusCode).toBe(400);
+  }
+  expect(ingestBatch).not.toHaveBeenCalled();
+});
+
+it('requires one bounded consent revision header before storage', async () => {
+  const { app, ingestBatch } = setup();
+  for (const revision of [undefined, '0', '-1', '1.0', '2147483648', '01']) {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/healthkit/workout-batches',
+      headers: {
+        authorization: 'Bearer native-token',
+        ...(revision === undefined ? {} : { 'x-healthkit-consent-revision': revision }),
+      },
+      payload: batch,
     });
     expect(response.statusCode).toBe(400);
   }
@@ -116,13 +133,14 @@ it('maps consent withdrawal and reused batch identity to stable errors', async (
   const { app, ingestBatch } = setup();
   for (const [code, status] of [
     ['CONSENT_REQUIRED', 403],
+    ['CONSENT_EPOCH_EXPIRED', 409],
     ['IDEMPOTENCY_CONFLICT', 409],
   ] as const) {
     ingestBatch.mockRejectedValueOnce(new HealthKitIngestionError(code));
     const response = await app.inject({
       method: 'POST',
       url: '/bff/v1/healthkit/workout-batches',
-      headers: { authorization: 'Bearer native-token' },
+      headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
       payload: batch,
     });
     expect(response.statusCode).toBe(status);

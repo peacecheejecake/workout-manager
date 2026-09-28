@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import {
   healthKitIngestionAckSchema,
   healthKitIngestionBatchSchema,
@@ -20,9 +21,18 @@ export function registerHealthKitIngestionRoutes(
     const owner = principal(request);
     if (owner.method !== 'bearer') throw new ProductRequestError(403, 'BEARER_REQUIRED');
     const batch = input(healthKitIngestionBatchSchema, request.body);
+    const revisionHeader = request.headers['x-healthkit-consent-revision'];
+    const consentRevision = input(
+      z
+        .string()
+        .regex(/^[1-9][0-9]{0,9}$/)
+        .transform(Number)
+        .pipe(z.number().int().max(2_147_483_647)),
+      revisionHeader,
+    );
     try {
       return healthKitIngestionAckSchema.parse(
-        await repository.ingestBatch(owner.athleteId, batch),
+        await repository.ingestBatch(owner.athleteId, batch, consentRevision),
       );
     } catch (error) {
       if (error instanceof HealthKitIngestionError) {

@@ -365,4 +365,61 @@ describe('native bridge v3 boundary', () => {
       ).toBe(false);
     }
   });
+
+  it('bounds native activity reads and explicit HealthKit decisions', () => {
+    const command = { kind: 'command', version: 3, id: 'activity_1' };
+    for (const path of [
+      '/bff/v1/healthkit/workout-review?limit=50',
+      '/bff/v1/activities?limit=20&offset=0&sort=started_desc',
+      '/bff/v1/activities/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/context',
+      '/bff/v1/activities/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/details',
+    ])
+      expect(
+        nativeBridgeRequestSchema.safeParse({
+          ...command,
+          method: 'api.activity.read',
+          payload: { path },
+        }).success,
+      ).toBe(true);
+    for (const path of [
+      '/bff/v1/activities?athleteId=bob',
+      '/bff/v1/activities?limit=20&limit=30',
+      '/bff/v1/activities/../../auth/logout',
+      '/bff/v1/healthkit/workout-review?limit=100',
+    ])
+      expect(
+        nativeBridgeRequestSchema.safeParse({
+          ...command,
+          method: 'api.activity.read',
+          payload: { path },
+        }).success,
+      ).toBe(false);
+    const body = {
+      sampleId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      expectedSampleDigest: 'a'.repeat(64),
+      confirmed: true,
+      idempotencyKey: 'decision_123',
+    };
+    expect(
+      nativeBridgeRequestSchema.safeParse({
+        ...command,
+        method: 'api.healthkitDecision.write',
+        payload: { kind: 'create', body },
+      }).success,
+    ).toBe(true);
+    expect(
+      nativeBridgeRequestSchema.safeParse({
+        ...command,
+        method: 'api.healthkitDecision.write',
+        payload: { kind: 'create', body: { ...body, confirmed: false } },
+      }).success,
+    ).toBe(false);
+    expect(
+      nativeBridgeRequestSchema.safeParse({
+        ...command,
+        method: 'api.healthkitDecision.write',
+        payload: { kind: 'link', body },
+      }).success,
+    ).toBe(false);
+  });
 });

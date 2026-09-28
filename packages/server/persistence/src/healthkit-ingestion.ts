@@ -8,13 +8,19 @@ import {
 import type { Database } from './database.js';
 
 export class HealthKitIngestionError extends Error {
-  constructor(readonly code: 'CONSENT_REQUIRED' | 'IDEMPOTENCY_CONFLICT') {
+  constructor(
+    readonly code: 'CONSENT_REQUIRED' | 'CONSENT_EPOCH_EXPIRED' | 'IDEMPOTENCY_CONFLICT',
+  ) {
     super(code);
   }
 }
 
 export interface HealthKitIngestionRepository {
-  ingestBatch(athleteId: string, input: HealthKitIngestionBatch): Promise<HealthKitIngestionAck>;
+  ingestBatch(
+    athleteId: string,
+    input: HealthKitIngestionBatch,
+    consentRevision: number,
+  ): Promise<HealthKitIngestionAck>;
 }
 
 function canonicalJson(value: unknown): string {
@@ -40,8 +46,14 @@ export function createHealthKitIngestionRepository(
   database: Database,
 ): HealthKitIngestionRepository {
   return {
-    ingestBatch(athleteId, input) {
+    ingestBatch(athleteId, input, consentRevision) {
       const batch = healthKitIngestionBatchSchema.parse(input);
+      if (
+        !Number.isSafeInteger(consentRevision) ||
+        consentRevision < 1 ||
+        consentRevision > 2_147_483_647
+      )
+        throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
       const requestDigest = digest(batch);
       return database.tenant(athleteId, async (tx) => {
         // Canonical deletion and evidence cleanup take the tenant command lock.
@@ -51,10 +63,12 @@ export function createHealthKitIngestionRepository(
         // The row lock serializes with consent withdrawal's UPDATE/DELETE trigger. A
         // committed ACK can never leave raw data behind after a committed withdrawal.
         const consent = await tx.query(
-          'SELECT public.healthkit_ingestion_consent_locked() AS granted',
+          'SELECT public.healthkit_ingestion_consent_revision_locked() AS revision',
         );
-        if (consent.rows[0]?.['granted'] !== true)
+        if (consent.rows[0]?.['revision'] == null)
           throw new HealthKitIngestionError('CONSENT_REQUIRED');
+        if (consent.rows[0]?.['revision'] !== consentRevision)
+          throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
 
         const inserted = await tx.query(
           `INSERT INTO healthkit_workout_batch_receipt
@@ -72,11 +86,9 @@ export function createHealthKitIngestionRepository(
           );
           const receipt = existing.rows[0];
           // A purged receipt is a replay barrier: re-consent requires a new native batch.
-          if (
-            !receipt ||
-            receipt['purged_at'] !== null ||
-            receipt['request_digest'] !== requestDigest
-          )
+          if (receipt && receipt['purged_at'] !== null)
+            throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
+          if (!receipt || receipt['request_digest'] !== requestDigest)
             throw new HealthKitIngestionError('IDEMPOTENCY_CONFLICT');
           return healthKitIngestionAckSchema.parse({
             schemaVersion: 1,

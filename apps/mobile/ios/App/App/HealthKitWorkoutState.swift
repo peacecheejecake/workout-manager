@@ -67,6 +67,7 @@ struct HealthKitPendingBatch {
     let installationId: UUID
     let body: Data
     let eventCount: Int
+    let consentRevision: Int?
     let pauseReason: HealthKitBatchPauseReason?
 
     var isPaused: Bool { pauseReason != nil }
@@ -137,7 +138,20 @@ final class HealthKitWorkoutState {
             try execute("PRAGMA synchronous=FULL")
             try execute("PRAGMA secure_delete=ON")
             try execute("PRAGMA foreign_keys=ON")
-            try execute("CREATE TABLE IF NOT EXISTS owner (singleton INTEGER PRIMARY KEY CHECK(singleton=1), account_id TEXT NOT NULL, installation_id TEXT NOT NULL)")
+            try execute("CREATE TABLE IF NOT EXISTS owner (singleton INTEGER PRIMARY KEY CHECK(singleton=1), account_id TEXT NOT NULL, installation_id TEXT NOT NULL, consent_revision INTEGER CHECK(consent_revision BETWEEN 1 AND 2147483647))")
+            let hasConsentRevision = try withStatement("PRAGMA table_info(owner)") { statement -> Bool in
+                var found = false
+                var status = sqlite3_step(statement)
+                while status == SQLITE_ROW {
+                    if try text(statement, column: 1) == "consent_revision" { found = true }
+                    status = sqlite3_step(statement)
+                }
+                guard status == SQLITE_DONE else { throw HealthKitWorkoutStateError.storageFailure }
+                return found
+            }
+            if !hasConsentRevision {
+                try execute("ALTER TABLE owner ADD COLUMN consent_revision INTEGER CHECK(consent_revision BETWEEN 1 AND 2147483647)")
+            }
             try execute("CREATE TABLE IF NOT EXISTS cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), archive BLOB NOT NULL)")
             try execute("CREATE TABLE IF NOT EXISTS pending (sequence INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL UNIQUE, installation_id TEXT NOT NULL, event_count INTEGER NOT NULL CHECK(event_count BETWEEN 1 AND 100), body BLOB NOT NULL, body_sha256 BLOB NOT NULL, pause_reason TEXT CHECK(pause_reason IN ('forbidden','conflict','rejected')))")
             try execute("CREATE TABLE IF NOT EXISTS known_sample (sample_id TEXT PRIMARY KEY, source_bundle_id TEXT NOT NULL, source_version TEXT)")
@@ -232,9 +246,54 @@ final class HealthKitWorkoutState {
         }
     }
 
+    /** A changed server consent epoch invalidates all staged source data and its cursor atomically. */
+    @discardableResult
+    func applyConsentRevision(_ revision: Int, forceReset: Bool = false) throws -> Bool {
+        let active = try verifyOwner()
+        guard (1...2_147_483_647).contains(revision) else { throw HealthKitWorkoutStateError.invalidInput }
+        let rotated = try transaction { () -> UUID? in
+            try verifyStoredOwner(active)
+            let previous = try withStatement("SELECT consent_revision FROM owner WHERE singleton=1") { statement -> Int? in
+                guard try rowOrDone(statement) else { throw HealthKitWorkoutStateError.corruptState }
+                return sqlite3_column_type(statement, 0) == SQLITE_NULL ? nil : Int(sqlite3_column_int(statement, 0))
+            }
+            if previous == revision && !forceReset { return nil }
+            let hasOldData = try hasPrivateRows()
+            if forceReset || previous != nil || hasOldData {
+                try execute("DELETE FROM pending")
+                try execute("DELETE FROM known_sample")
+                try execute("DELETE FROM cursor")
+                try execute("UPDATE collection_control SET wake_pending=1,reconcile_pending=CASE WHEN enabled=1 THEN 1 ELSE 0 END")
+                let replacement = UUID()
+                try withStatement("UPDATE owner SET installation_id=?,consent_revision=? WHERE singleton=1") { statement in
+                    try bind(Self.key(replacement), at: 1, in: statement)
+                    sqlite3_bind_int(statement, 2, Int32(revision))
+                    try stepDone(statement)
+                }
+                return replacement
+            }
+            try withStatement("UPDATE owner SET consent_revision=? WHERE singleton=1") { statement in
+                sqlite3_bind_int(statement, 1, Int32(revision))
+                try stepDone(statement)
+            }
+            return nil
+        }
+        if let rotated { owner = (active.accountId, rotated) }
+        return rotated != nil
+    }
+
+    func consentRevision() throws -> Int? {
+        _ = try verifyOwner()
+        return try withStatement("SELECT consent_revision FROM owner WHERE singleton=1") { statement in
+            guard try rowOrDone(statement) else { throw HealthKitWorkoutStateError.corruptState }
+            return sqlite3_column_type(statement, 0) == SQLITE_NULL ? nil : Int(sqlite3_column_int(statement, 0))
+        }
+    }
+
     /** Stages the next cursor with the immutable batch. Never advances a cursor without durable work. */
     func stagePage(batchId: UUID, events: [HealthKitWorkoutEvent], nextAnchor: HKQueryAnchor) throws {
         let active = try verifyOwner()
+        guard try consentRevision() != nil else { throw HealthKitWorkoutStateError.invalidInput }
         guard (1...100).contains(events.count), Set(events.map(\.sampleId)).count == events.count else {
             throw HealthKitWorkoutStateError.invalidInput
         }
@@ -369,6 +428,7 @@ final class HealthKitWorkoutState {
 
     func pendingBatches() throws -> [HealthKitPendingBatch] {
         let active = try verifyOwner()
+        let revision = try consentRevision()
         return try withStatement("SELECT batch_id,installation_id,event_count,body,body_sha256,pause_reason FROM pending ORDER BY sequence") { statement in
             var result: [HealthKitPendingBatch] = []
             var status = sqlite3_step(statement)
@@ -393,7 +453,8 @@ final class HealthKitWorkoutState {
                     throw HealthKitWorkoutStateError.corruptState
                 }
                 result.append(HealthKitPendingBatch(batchId: batch, installationId: installation,
-                                                     body: body, eventCount: count, pauseReason: pauseReason))
+                                                     body: body, eventCount: count, consentRevision: revision,
+                                                     pauseReason: pauseReason))
                 status = sqlite3_step(statement)
             }
             guard status == SQLITE_DONE else {

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 import { createCapacitorBridgePort } from '@workout/platform/capacitor-bridge-port';
 import { createNativeBridgeClient } from '@workout/platform/native-bridge-client';
@@ -10,6 +19,10 @@ import {
 import { nativeBridgeAiConsentSchema } from '@workout/contracts/native-bridge';
 import type { NativeBridgeErrorCode, NativeBridgeSession } from '@workout/contracts/native-bridge';
 import { HealthKitPanel } from '@workout/modules-identity/healthkit-panel';
+
+const NativeActivities = lazy(() =>
+  import('./native-activities').then((module) => ({ default: module.NativeActivities })),
+);
 
 const bridge = createNativeBridgeClient({
   port: createCapacitorBridgePort(),
@@ -32,7 +45,7 @@ type ConsentState =
   | { state: 'ready'; athleteId: string; granted: boolean; revision: number }
   | { state: 'error'; athleteId: string; code: 'UNAVAILABLE' | 'INVALID_REPLY' };
 
-type NativeScreen = 'account' | 'note';
+type NativeScreen = 'account' | 'note' | 'activities';
 const nativeScreenHistoryKey = 'workoutNativeScreen';
 const nativeScopeHistoryKey = 'workoutNativeScope';
 
@@ -46,6 +59,7 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
   const [consentRefresh, setConsentRefresh] = useState(0);
   const [screen, setScreen] = useState<NativeScreen>('account');
   const [accountScopeId, setAccountScopeId] = useState(() => crypto.randomUUID());
+  const activeAccountScope = useRef(accountScopeId);
   const [note, setNote] = useState('');
   const [confirmBack, setConfirmBack] = useState(false);
   const [sessionCheck, setSessionCheck] = useState<'idle' | 'checking' | 'error'>('idle');
@@ -69,6 +83,13 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     };
   }
 
+  function activityHistoryState() {
+    return {
+      [nativeScreenHistoryKey]: 'activities',
+      [nativeScopeHistoryKey]: historyScope.current,
+    };
+  }
+
   const updateScreen = useCallback((next: NativeScreen) => {
     screenRef.current = next;
     setScreen(next);
@@ -84,7 +105,9 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     clearPrivateBrowserStorage();
     accountId.current = null;
     historyScope.current = crypto.randomUUID();
-    setAccountScopeId(crypto.randomUUID());
+    const nextAccountScope = crypto.randomUUID();
+    activeAccountScope.current = nextAccountScope;
+    setAccountScopeId(nextAccountScope);
     const previousState = history.state;
     history.replaceState(
       {
@@ -130,7 +153,20 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
       history.back();
   }
 
+  function navigateActivitiesBack() {
+    updateScreen('account');
+    if (
+      history.state?.[nativeScreenHistoryKey] === 'activities' &&
+      history.state?.[nativeScopeHistoryKey] === historyScope.current
+    )
+      history.back();
+  }
+
   function requestBack() {
+    if (screenRef.current === 'activities') {
+      navigateActivitiesBack();
+      return;
+    }
     if (screenRef.current !== 'note' || confirmRef.current || composing.current) return;
     if (noteRef.current.length > 0) {
       noteInput.current?.blur();
@@ -200,12 +236,26 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
     setAuthState({ state: 'signed_out' });
   }, [cancelSessionCheck, clearIdentity]);
   const nativeTransport = useMemo(
-    // The panel checks its own account scope before reacting to 401.
     () => createNativeAuthenticatedTransport(client, () => {}),
     [client],
   );
-
   const athleteId = authState.state === 'signed_in' ? authState.athleteId : null;
+  const activityTransport = useMemo(() => {
+    const scopedAthleteId = athleteId;
+    const scopedAccountScope = accountScopeId;
+    return {
+      request: async (input: Parameters<typeof nativeTransport.request>[0]) => {
+        const reply = await nativeTransport.request(input);
+        if (
+          reply.status === 401 &&
+          activeAccountScope.current === scopedAccountScope &&
+          accountId.current === scopedAthleteId
+        )
+          handleNativeUnauthorized();
+        return reply;
+      },
+    };
+  }, [nativeTransport, handleNativeUnauthorized, athleteId, accountScopeId]);
   const visibleConsentState =
     athleteId !== null && 'athleteId' in consentState && consentState.athleteId === athleteId
       ? consentState
@@ -284,6 +334,13 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
   useEffect(() => {
     const onNativeBack = () => requestBack();
     const onPopState = (event: PopStateEvent) => {
+      const currentActivityEntry =
+        event.state?.[nativeScreenHistoryKey] === 'activities' &&
+        event.state?.[nativeScopeHistoryKey] === historyScope.current;
+      if (screenRef.current === 'activities') {
+        if (!currentActivityEntry) updateScreen('account');
+        return;
+      }
       const currentNoteEntry =
         event.state?.[nativeScreenHistoryKey] === 'note' &&
         event.state?.[nativeScopeHistoryKey] === historyScope.current;
@@ -298,10 +355,15 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
         }
         return;
       }
-      if (currentNoteEntry && accountId.current !== null) {
+      if (currentActivityEntry && accountId.current !== null) {
+        updateScreen('activities');
+      } else if (currentNoteEntry && accountId.current !== null) {
         updateScreen('note');
         requestAnimationFrame(() => noteInput.current?.focus());
-      } else if (event.state?.[nativeScreenHistoryKey] === 'note') {
+      } else if (
+        event.state?.[nativeScreenHistoryKey] === 'note' ||
+        event.state?.[nativeScreenHistoryKey] === 'activities'
+      ) {
         // A prior account's forward entry must never reopen its draft screen.
         history.replaceState(
           {
@@ -456,6 +518,16 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
           ) : null}
         </section>
       ) : null}
+      {screen === 'activities' && authState.state === 'signed_in' ? (
+        <Suspense fallback={<p role="status">활동 화면 준비 중</p>}>
+          <NativeActivities
+            athleteId={authState.athleteId}
+            sessionId={accountScopeId}
+            transport={activityTransport}
+            onBack={navigateActivitiesBack}
+          />
+        </Suspense>
+      ) : null}
       <section
         hidden={screen !== 'account'}
         aria-labelledby="native-auth-heading"
@@ -533,6 +605,15 @@ export function NativeLanding({ client = bridge }: { client?: typeof bridge }) {
                   bridge={client}
                   onUnauthorized={handleNativeUnauthorized}
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    history.pushState(activityHistoryState(), '');
+                    updateScreen('activities');
+                  }}
+                >
+                  Apple 건강 운동 검토와 활동 열기
+                </button>
                 <button
                   type="button"
                   disabled={authPending !== null}

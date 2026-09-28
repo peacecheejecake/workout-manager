@@ -86,4 +86,134 @@ describe('native authenticated transport', () => {
     ).toEqual({ status: 401, body: null, traceId: null });
     expect(unauthorized).toHaveBeenCalledOnce();
   });
+
+  it('carries only reviewed HealthKit decisions and activity reads through native bearer requests', async () => {
+    const sent: unknown[] = [];
+    let id = 0;
+    const bridge = createNativeBridgeClient({
+      createId: () => `request_${++id}`,
+      port: {
+        async exchange(request) {
+          sent.push(request);
+          if (request.kind === 'hello')
+            return {
+              kind: 'hello.result',
+              version: 3,
+              id: request.id,
+              capabilities: {
+                'app.openSettings': true,
+                'healthkit.read': false,
+                'healthkit.workouts': true,
+                'auth.transport': true,
+              },
+            };
+          if (request.method === 'api.activity.read')
+            return {
+              kind: 'command.result',
+              version: 3,
+              id: request.id,
+              method: request.method,
+              path: request.payload.path,
+              status: 200,
+              body: { items: [] },
+            };
+          if (request.method === 'api.healthkitDecision.write')
+            return {
+              kind: 'command.result',
+              version: 3,
+              id: request.id,
+              method: request.method,
+              status: 201,
+              body: {
+                sampleId: request.payload.body.sampleId,
+                activityId: '11111111-1111-4111-8111-111111111111',
+                activityRevision: 1,
+                state: 'created_activity',
+              },
+            };
+          throw new Error('Unexpected native method');
+        },
+      },
+    });
+    expect((await bridge.connect()).ok).toBe(true);
+    const transport = createNativeAuthenticatedTransport(bridge, vi.fn());
+    const query = '/bff/v1/activities?limit=20&offset=0&sort=started_desc';
+    expect(
+      (await transport.request({ path: query, method: 'GET', body: null, idempotencyKey: null }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await transport.request({
+          path: '/bff/v1/healthkit/workout-review?limit=50',
+          method: 'GET',
+          body: null,
+          idempotencyKey: null,
+        })
+      ).status,
+    ).toBe(200);
+    const decision = {
+      sampleId: '22222222-2222-4222-8222-222222222222',
+      expectedSampleDigest: 'a'.repeat(64),
+      confirmed: true,
+      idempotencyKey: 'decision_123',
+    };
+    expect(
+      (
+        await transport.request({
+          path: '/bff/v1/healthkit/workout-activities',
+          method: 'POST',
+          body: decision,
+          idempotencyKey: decision.idempotencyKey,
+        })
+      ).status,
+    ).toBe(201);
+    expect(sent[3]).toMatchObject({
+      method: 'api.healthkitDecision.write',
+      payload: { kind: 'create', body: decision },
+    });
+    const link = {
+      ...decision,
+      targetActivityId: '11111111-1111-4111-8111-111111111111',
+      expectedActivityRevision: 2,
+    };
+    expect(
+      (
+        await transport.request({
+          path: '/bff/v1/healthkit/workout-bindings',
+          method: 'POST',
+          body: link,
+          idempotencyKey: link.idempotencyKey,
+        })
+      ).status,
+    ).toBe(201);
+    expect(sent[4]).toMatchObject({
+      method: 'api.healthkitDecision.write',
+      payload: { kind: 'link', body: link },
+    });
+    for (const request of [
+      { path: '/bff/v1/activities?athleteId=bob', method: 'GET', body: null, idempotencyKey: null },
+      {
+        path: '/bff/v1/activities?limit=20&limit=30',
+        method: 'GET',
+        body: null,
+        idempotencyKey: null,
+      },
+      {
+        path: '/bff/v1/healthkit/workout-activities',
+        method: 'POST',
+        body: decision,
+        idempotencyKey: 'another_key',
+      },
+      {
+        path: '/bff/v1/healthkit/workout-activities',
+        method: 'POST',
+        body: { ...decision, confirmed: false },
+        idempotencyKey: decision.idempotencyKey,
+      },
+    ] as const)
+      await expect(transport.request(request)).rejects.toThrow(TypeError);
+    expect(sent).toHaveLength(5);
+    expect(JSON.stringify(sent)).not.toMatch(/accessToken|Bearer|refreshToken/);
+  });
 });

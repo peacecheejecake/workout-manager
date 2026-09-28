@@ -78,6 +78,7 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
         case "command":
             guard let method = request["method"] as? String,
                   ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut", "api.read",
+                   "api.activity.read", "api.healthkitDecision.write",
                    "api.healthkitConsent.write", "healthkit.workouts.requestAccess",
                    "healthkit.workouts.status"].contains(method) else {
                 resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
@@ -93,6 +94,19 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                       let path = payload["path"] as? String,
                       ["/bff/v1/session", "/bff/v1/consents/ai",
                        "/bff/v1/consents/healthkit"].contains(path) else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
+            } else if method == "api.activity.read" {
+                guard Set(payload.keys) == Set(["path"]), let path = payload["path"] as? String,
+                      path.utf8.count <= 1024 else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
+            } else if method == "api.healthkitDecision.write" {
+                guard Set(payload.keys) == Set(["kind", "body"]),
+                      let kind = payload["kind"] as? String, ["create", "link"].contains(kind),
+                      payload["body"] is [String: Any] else {
                     resolveError(call, id: id, code: "INVALID_REQUEST")
                     return
                 }
@@ -143,6 +157,20 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                                     return
                                 }
                                 reply = try await NativeAuth.shared.readAPI(path)
+                            case "api.activity.read":
+                                guard let path = payload["path"] as? String else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                reply = try await NativeAuth.shared.readActivityAPI(path)
+                            case "api.healthkitDecision.write":
+                                guard let kind = payload["kind"] as? String,
+                                      let body = payload["body"] as? [String: Any] else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                reply = try await NativeAuth.shared.writeHealthKitDecision(kind: kind,
+                                                                                           body: body)
                             case "api.healthkitConsent.write":
                                 guard let granted = payload["granted"] as? Bool,
                                       let revision = payload["expectedRevision"] as? Int,

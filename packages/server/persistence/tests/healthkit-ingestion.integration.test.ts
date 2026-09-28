@@ -69,6 +69,9 @@ describe('M3-02a raw HealthKit ingestion', () => {
       await client.query(
         `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_locked() TO ${role}`,
       );
+      await client.query(
+        `GRANT EXECUTE ON FUNCTION public.healthkit_ingestion_consent_revision_locked() TO ${role}`,
+      );
       await client.query(`SET LOCAL ROLE ${role}`);
       await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       const own = await client.query(
@@ -76,11 +79,19 @@ describe('M3-02a raw HealthKit ingestion', () => {
                 has_table_privilege(current_user,'consent','SELECT') AS can_read_consent`,
       );
       expect(own.rows[0]).toEqual({ granted: true, can_read_consent: false });
+      const ownRevision = await client.query(
+        'SELECT public.healthkit_ingestion_consent_revision_locked() AS revision',
+      );
+      expect(ownRevision.rows[0]).toEqual({ revision: 1 });
       await client.query("SELECT set_config('app.athlete_id',$1,true)", [randomUUID()]);
       const absent = await client.query(
         'SELECT public.healthkit_ingestion_consent_locked() AS granted',
       );
       expect(absent.rows[0]?.['granted']).toBeNull();
+      const absentRevision = await client.query(
+        'SELECT public.healthkit_ingestion_consent_revision_locked() AS revision',
+      );
+      expect(absentRevision.rows[0]?.['revision']).toBeNull();
     } finally {
       await client.query('ROLLBACK');
       client.release();
@@ -91,11 +102,11 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const athlete = randomUUID();
     const repo = createHealthKitIngestionRepository(database);
     const batch = workout();
-    await expect(repo.ingestBatch(athlete, batch)).rejects.toMatchObject({
+    await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
     });
     await grantConsent(athlete);
-    const ack = await repo.ingestBatch(athlete, batch);
+    const ack = await repo.ingestBatch(athlete, batch, 1);
     expect(ack).toEqual({
       schemaVersion: 1,
       installationId: batch.installationId,
@@ -125,16 +136,20 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const firstEvent = batch.events[0];
     if (firstEvent?.kind !== 'upsert') throw new Error('Expected workout fixture');
     const [first, second] = await Promise.all([
-      repo.ingestBatch(athlete, batch),
-      repo.ingestBatch(athlete, batch),
+      repo.ingestBatch(athlete, batch, 1),
+      repo.ingestBatch(athlete, batch, 1),
     ]);
     expect(first).toEqual(second);
-    expect(await repo.ingestBatch(athlete, batch)).toEqual(first);
+    expect(await repo.ingestBatch(athlete, batch, 1)).toEqual(first);
     await expect(
-      repo.ingestBatch(athlete, {
-        ...batch,
-        events: [{ ...firstEvent, distanceMeters: 6000 }],
-      }),
+      repo.ingestBatch(
+        athlete,
+        {
+          ...batch,
+          events: [{ ...firstEvent, distanceMeters: 6000 }],
+        },
+        1,
+      ),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     const result = await database.tenant(athlete, (tx) =>
       tx.query('SELECT count(*)::int AS n FROM healthkit_workout_sample'),
@@ -154,8 +169,8 @@ describe('M3-02a raw HealthKit ingestion', () => {
       installationId: randomUUID(),
       batchId: randomUUID(),
     };
-    expect((await repo.ingestBatch(athlete, first)).acceptedCount).toBe(1);
-    expect((await repo.ingestBatch(athlete, reinstalled)).acceptedCount).toBe(1);
+    expect((await repo.ingestBatch(athlete, first, 1)).acceptedCount).toBe(1);
+    expect((await repo.ingestBatch(athlete, reinstalled, 1)).acceptedCount).toBe(1);
     const result = await database.tenant(athlete, (tx) =>
       tx.query(
         `SELECT
@@ -167,13 +182,17 @@ describe('M3-02a raw HealthKit ingestion', () => {
     );
     expect(result.rows[0]).toEqual({ samples: 1, lineage: 1, receipts: 2 });
 
-    await repo.ingestBatch(athlete, {
-      schemaVersion: 1,
-      installationId: reinstalled.installationId,
-      batchId: randomUUID(),
-      events: [{ kind: 'delete', sampleId }],
-    });
-    await repo.ingestBatch(athlete, { ...first, batchId: randomUUID() });
+    await repo.ingestBatch(
+      athlete,
+      {
+        schemaVersion: 1,
+        installationId: reinstalled.installationId,
+        batchId: randomUUID(),
+        events: [{ kind: 'delete', sampleId }],
+      },
+      1,
+    );
+    await repo.ingestBatch(athlete, { ...first, batchId: randomUUID() }, 1);
     expect(await createHealthKitProjectionRepository(database).listLineage(athlete, 100)).toEqual([
       { sampleId, state: 'deleted' },
     ]);
@@ -186,12 +205,12 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const batch = workout();
     const sampleId = batch.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
-    await repo.ingestBatch(athlete, batch);
+    await repo.ingestBatch(athlete, batch, 1);
     await admin.query(
       "UPDATE healthkit_workout_lineage SET state='suppressed' WHERE athlete_id=$1 AND sample_id=$2",
       [athlete, sampleId],
     );
-    await repo.ingestBatch(athlete, { ...batch, batchId: randomUUID() });
+    await repo.ingestBatch(athlete, { ...batch, batchId: randomUUID() }, 1);
     expect(await createHealthKitProjectionRepository(database).listLineage(athlete, 100)).toEqual([
       { sampleId, state: 'suppressed' },
     ]);
@@ -205,7 +224,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
     const batch = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch);
+    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1);
     const permissions = await database.tenant(athlete, (tx) =>
       tx.query(`SELECT
         has_table_privilege(current_user,'healthkit_workout_lineage','SELECT') AS can_read,
@@ -238,7 +257,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
         `ALTER TABLE healthkit_workout_lineage ADD CONSTRAINT ${checkName}
          CHECK (sample_id <> '${sampleId}'::uuid)`,
       );
-      await expect(repo.ingestBatch(athlete, batch)).rejects.toThrow();
+      await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toThrow();
       const failed = await database.tenant(athlete, (tx) =>
         tx.query(
           `SELECT
@@ -254,7 +273,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
         `ALTER TABLE healthkit_workout_lineage DROP CONSTRAINT IF EXISTS ${checkName}`,
       );
     }
-    expect((await repo.ingestBatch(athlete, batch)).acceptedCount).toBe(1);
+    expect((await repo.ingestBatch(athlete, batch, 1)).acceptedCount).toBe(1);
   });
 
   it('makes deletion irreversible for the HealthKit UUID and isolates tenants', async () => {
@@ -266,15 +285,15 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const original = workout();
     const sampleId = original.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
-    await repo.ingestBatch(athlete, original);
+    await repo.ingestBatch(athlete, original, 1);
     const deletion: HealthKitIngestionBatch = {
       schemaVersion: 1,
       installationId: original.installationId,
       batchId: randomUUID(),
       events: [{ kind: 'delete', sampleId }],
     };
-    await repo.ingestBatch(athlete, deletion);
-    await repo.ingestBatch(athlete, { ...original, batchId: randomUUID() });
+    await repo.ingestBatch(athlete, deletion, 1);
+    await repo.ingestBatch(athlete, { ...original, batchId: randomUUID() }, 1);
     const first = await database.tenant(athlete, (tx) =>
       tx.query('SELECT state,source_bundle_id,deleted_at FROM healthkit_workout_sample'),
     );
@@ -300,7 +319,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     await grantConsent(athlete);
     const repo = createHealthKitIngestionRepository(database);
     const batch = workout();
-    await repo.ingestBatch(athlete, batch);
+    await repo.ingestBatch(athlete, batch, 1);
     await database.tenant(athlete, (tx) =>
       tx.query(
         "UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='healthkit'",
@@ -323,7 +342,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const exported = await createOperationsRepository(database).exportAccount(athlete);
     if (exported.schemaVersion !== 28) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutBatchReceipts[0]).not.toHaveProperty('request_digest');
-    await expect(repo.ingestBatch(athlete, batch)).rejects.toMatchObject({
+    await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
     });
     await database.tenant(athlete, (tx) =>
@@ -332,9 +351,52 @@ describe('M3-02a raw HealthKit ingestion', () => {
         [athlete],
       ),
     );
-    await expect(repo.ingestBatch(athlete, batch)).rejects.toMatchObject({
-      code: 'IDEMPOTENCY_CONFLICT',
+    await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
+      code: 'CONSENT_EPOCH_EXPIRED',
     });
+  });
+
+  it('rejects an offline pre-withdrawal batch and accepts only a fresh post-consent scope', async () => {
+    const athlete = randomUUID();
+    await grantConsent(athlete);
+    const repo = createHealthKitIngestionRepository(database);
+    const offline = workout();
+    const oldSampleId = offline.events[0]?.sampleId;
+    await database.tenant(athlete, (tx) =>
+      tx.query(
+        "UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='healthkit'",
+        [athlete],
+      ),
+    );
+    await database.tenant(athlete, (tx) =>
+      tx.query(
+        "UPDATE consent SET granted=true,revision=3 WHERE athlete_id=$1 AND kind='healthkit'",
+        [athlete],
+      ),
+    );
+    await expect(repo.ingestBatch(athlete, offline, 1)).rejects.toMatchObject({
+      code: 'CONSENT_EPOCH_EXPIRED',
+    });
+    const fresh = workout();
+    const freshSampleId = fresh.events[0]?.sampleId;
+    if (!freshSampleId) throw new Error('Expected fresh workout fixture');
+    await expect(repo.ingestBatch(athlete, fresh, 3)).resolves.toMatchObject({
+      acceptedCount: 1,
+    });
+    const rows = await database.tenant(athlete, (tx) =>
+      tx.query('SELECT sample_id,installation_id FROM healthkit_workout_sample'),
+    );
+    expect(rows.rows).toEqual([
+      { sample_id: freshSampleId, installation_id: fresh.installationId },
+    ]);
+    expect(rows.rows[0]?.['sample_id']).not.toBe(oldSampleId);
+    await expect(
+      repo.ingestBatch(
+        athlete,
+        { ...fresh, events: [{ kind: 'delete', sampleId: freshSampleId }] },
+        3,
+      ),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
   });
 
   it('serializes an in-flight ingest with consent withdrawal and purges after the ingest commits', async () => {
@@ -356,7 +418,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
             ...tx,
             query: async (sql, values) => {
               const result = await tx.query(sql, values);
-              if (sql.includes('SELECT public.healthkit_ingestion_consent_locked()')) {
+              if (sql.includes('SELECT public.healthkit_ingestion_consent_revision_locked()')) {
                 signalLocked();
                 await release;
               }
@@ -368,6 +430,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const ingest = createHealthKitIngestionRepository(gatedDatabase).ingestBatch(
       athlete,
       workout(),
+      1,
     );
     await locked;
     const withdrawal = database.tenant(athlete, (tx) =>
@@ -411,7 +474,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     await grantConsent(athlete);
     const repo = createHealthKitIngestionRepository(database);
     const batch = workout();
-    await repo.ingestBatch(athlete, batch);
+    await repo.ingestBatch(athlete, batch, 1);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athlete);
     expect(exported.schemaVersion).toBe(28);

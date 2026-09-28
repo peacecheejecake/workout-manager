@@ -83,7 +83,7 @@ function workout(sampleId = randomUUID(), activityType = 37): HealthKitIngestion
 async function prepared(athleteId = randomUUID(), activityType = 37) {
   await grantConsent(athleteId);
   const batch = workout(randomUUID(), activityType);
-  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch);
+  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch, 1);
   const sampleId = batch.events[0]?.sampleId;
   if (!sampleId) throw new Error('Expected workout fixture');
   const digest = await database.tenant(athleteId, (tx) =>
@@ -256,12 +256,16 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
         [fixture.athleteId, randomUUID(), 'a'.repeat(64), otherId],
       );
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      schemaVersion: 1,
-      installationId: randomUUID(),
-      batchId: randomUUID(),
-      events: [{ kind: 'delete', sampleId: fixture.sampleId }],
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        schemaVersion: 1,
+        installationId: randomUUID(),
+        batchId: randomUUID(),
+        events: [{ kind: 'delete', sampleId: fixture.sampleId }],
+      },
+      1,
+    );
     const state = await database.tenant(fixture.athleteId, (tx) =>
       tx.query(
         `SELECT
@@ -306,17 +310,21 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     await expect(repo.createActivity(fixture.athleteId, request)).rejects.toMatchObject({
       code: 'IDEMPOTENCY_CONFLICT',
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      ...fixture.batch,
-      batchId: randomUUID(),
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        ...fixture.batch,
+        batchId: randomUUID(),
+      },
+      1,
+    );
     expect((await createActivityRepository(database).summary(fixture.athleteId)).count).toBe(1);
   });
 
   it('redacts on local Activity deletion before the raw source is removed', async () => {
     const fixture = await prepared();
     const other = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, other);
+    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, other, 1);
     const otherSampleId = other.events[0]?.sampleId;
     if (!otherSampleId) throw new Error('Expected second sample');
     const created = await createHealthKitActivityRepository(database).createActivity(
@@ -358,7 +366,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     const ingestion = createHealthKitIngestionRepository(database);
     const unrelated = workout();
     const foreign = await prepared();
-    const unrelatedAck = await ingestion.ingestBatch(fixture.athleteId, unrelated);
+    const unrelatedAck = await ingestion.ingestBatch(fixture.athleteId, unrelated, 1);
     const created = await createHealthKitActivityRepository(database).createActivity(
       fixture.athleteId,
       command(fixture),
@@ -372,18 +380,22 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
 
     // The first ACK was lost on the device. It retries the exact persisted batch,
     // then drains the queue by delivering the next batch with the same installation.
-    expect(await ingestion.ingestBatch(fixture.athleteId, fixture.batch)).toEqual({
+    expect(await ingestion.ingestBatch(fixture.athleteId, fixture.batch, 1)).toEqual({
       schemaVersion: 1,
       installationId: fixture.batch.installationId,
       batchId: fixture.batch.batchId,
       acceptedCount: 1,
     });
-    expect(await ingestion.ingestBatch(fixture.athleteId, unrelated)).toEqual(unrelatedAck);
+    expect(await ingestion.ingestBatch(fixture.athleteId, unrelated, 1)).toEqual(unrelatedAck);
     await expect(
-      ingestion.ingestBatch(fixture.athleteId, {
-        ...fixture.batch,
-        events: [{ kind: 'delete', sampleId: fixture.sampleId }],
-      }),
+      ingestion.ingestBatch(
+        fixture.athleteId,
+        {
+          ...fixture.batch,
+          events: [{ kind: 'delete', sampleId: fixture.sampleId }],
+        },
+        1,
+      ),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     const next = workout();
     const deletedUpsert = fixture.batch.events[0];
@@ -394,7 +406,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       installationId: fixture.batch.installationId,
       events: [deletedUpsert, nextUpsert],
     } satisfies HealthKitIngestionBatch;
-    expect((await ingestion.ingestBatch(fixture.athleteId, nextBatch)).acceptedCount).toBe(2);
+    expect((await ingestion.ingestBatch(fixture.athleteId, nextBatch, 1)).acceptedCount).toBe(2);
 
     const state = await database.tenant(fixture.athleteId, (tx) =>
       tx.query(
@@ -418,7 +430,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     });
     // A different owner can still replay their own receipt; no tenant-wide
     // receipt update crossed RLS or the trigger's athlete predicate.
-    expect(await ingestion.ingestBatch(foreign.athleteId, foreign.batch)).toMatchObject({
+    expect(await ingestion.ingestBatch(foreign.athleteId, foreign.batch, 1)).toMatchObject({
       batchId: foreign.batch.batchId,
       acceptedCount: 1,
     });
@@ -469,12 +481,16 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       const creation = repository.createActivity(fixture.athleteId, command(fixture));
       const deletion =
         removal === 'sample'
-          ? createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-              schemaVersion: 1,
-              installationId: randomUUID(),
-              batchId: randomUUID(),
-              events: [{ kind: 'delete', sampleId: fixture.sampleId }],
-            })
+          ? createHealthKitIngestionRepository(database).ingestBatch(
+              fixture.athleteId,
+              {
+                schemaVersion: 1,
+                installationId: randomUUID(),
+                batchId: randomUUID(),
+                events: [{ kind: 'delete', sampleId: fixture.sampleId }],
+              },
+              1,
+            )
           : ownerTenant(fixture.athleteId, async (client) => {
               await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
                 fixture.athleteId,
@@ -540,16 +556,21 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       suppression: 1,
       purged_receipts: 0,
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      ...fixture.batch,
-      installationId: randomUUID(),
-      batchId: randomUUID(),
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        ...fixture.batch,
+        installationId: randomUUID(),
+        batchId: randomUUID(),
+      },
+      1,
+    );
     const absentSampleId = randomUUID();
     expect((await replay(absentSampleId, randomUUID())).rows[0]).toEqual({ replayed: true });
     await createHealthKitIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       workout(absentSampleId),
+      1,
     );
     const late = await database.tenant(fixture.athleteId, (tx) =>
       tx.query(`SELECT state,payload_digest FROM healthkit_workout_sample WHERE sample_id=$1`, [

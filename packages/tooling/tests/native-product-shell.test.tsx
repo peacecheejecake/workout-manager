@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
   read: vi.fn(),
+  readActivity: vi.fn(),
+  writeHealthKitDecision: vi.fn(),
 }));
 
 import { NativeLanding } from '../../../apps/mobile-web/src/native-entry';
@@ -19,6 +21,8 @@ const client = {
   signIn: mocks.signIn,
   signOut: mocks.signOut,
   read: mocks.read,
+  readActivity: mocks.readActivity,
+  writeHealthKitDecision: mocks.writeHealthKitDecision,
   getCapabilities: () => ({ 'auth.transport': true }),
   openSettings: async () => ({ ok: true, value: undefined }),
 } as unknown as NonNullable<ComponentProps<typeof NativeLanding>['client']>;
@@ -60,6 +64,8 @@ describe('iOS native product shell draft and lifecycle', () => {
         },
       },
     }));
+    mocks.readActivity.mockReset();
+    mocks.writeHealthKitDecision.mockReset();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -87,6 +93,215 @@ describe('iOS native product shell draft and lifecycle', () => {
     expect(await screen.findByText('앱 동의: 허용되지 않음')).toBeVisible();
     expect(screen.getByText('iPhone 운동 읽기 허용 여부: 알 수 없음')).toBeVisible();
     expect(mocks.read).toHaveBeenCalledWith('/bff/v1/consents/healthkit', expect.any(AbortSignal));
+  });
+
+  it('opens the owner-authenticated native review, confirms creation, and reads common ActivityDetail', async () => {
+    const sampleId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const activityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const values = {
+      title: 'iPhone 달리기',
+      kind: 'running',
+      startedAt: '2026-09-28T06:00:00Z',
+      timezone: null,
+      durationSeconds: 2100,
+      durationKind: 'elapsed',
+      distanceMeters: 0,
+    };
+    const activity = {
+      id: activityId,
+      revision: 1,
+      source: { kind: 'healthkit', sourceId: sampleId, revision: 1, contentHash: 'a'.repeat(64) },
+      original: values,
+      effective: values,
+      overlay: {},
+    };
+    mocks.readActivity.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: {
+        status: 200,
+        body: path.startsWith('/bff/v1/healthkit/workout-review')
+          ? {
+              items: [
+                {
+                  sampleId,
+                  expectedSampleDigest: 'a'.repeat(64),
+                  kind: 'running',
+                  observedFrom: '2026-09-28T06:00:00Z',
+                  observedTo: '2026-09-28T06:35:00Z',
+                  durationSeconds: 2100,
+                  distanceMeters: 0,
+                },
+              ],
+            }
+          : path.endsWith('/context')
+            ? {
+                definitionVersion: 'activity-context-v1',
+                observedAt: '2026-09-28T07:00:00Z',
+                activity,
+                activityDataRevision: { count: 1, revisionSum: '1' },
+                planContext: { status: 'unlinked' },
+              }
+            : path.endsWith('/details')
+              ? {
+                  activityId,
+                  activityRevision: 1,
+                  source: activity.source,
+                  details: null,
+                }
+              : { items: [activity], total: 1 },
+      },
+    }));
+    mocks.writeHealthKitDecision.mockImplementation(async () => ({
+      ok: true,
+      value: {
+        status: 200,
+        body: { sampleId, activityId, activityRevision: 1, state: 'created_activity' },
+      },
+    }));
+    render(<NativeLanding client={client} />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'Apple 건강 운동 검토와 활동 열기' }),
+    );
+    expect(await screen.findByRole('heading', { name: '활동 검색과 조회' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '검토할 운동 확인' }));
+    await user.click(await screen.findByRole('radio', { name: /달리기.*거리 0m/ }));
+    await user.click(
+      screen.getByRole('checkbox', { name: '선택한 원본과 처리 방법을 확인했습니다.' }),
+    );
+    await user.click(screen.getByRole('button', { name: '새 활동 기록 확정' }));
+    expect(await screen.findByRole('heading', { name: '선택한 활동 상세' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'iPhone 달리기' })).toBeVisible();
+    expect(mocks.writeHealthKitDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'create',
+        body: expect.objectContaining({
+          sampleId,
+          confirmed: true,
+        }),
+      }),
+      undefined,
+    );
+    expect(mocks.readActivity).toHaveBeenCalledWith(
+      `/bff/v1/activities/${activityId}/context`,
+      expect.any(AbortSignal),
+    );
+    expect(screen.queryByRole('button', { name: '선택한 활동 삭제' })).toBeNull();
+  });
+
+  it('links a reviewed sample only to the selected live FIT activity', async () => {
+    const sampleId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const activityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const values = {
+      title: '기존 FIT 달리기',
+      kind: 'running',
+      startedAt: '2026-09-28T06:00:00Z',
+      timezone: null,
+      durationSeconds: 2100,
+      durationKind: 'elapsed',
+      distanceMeters: 0,
+    };
+    const activity = {
+      id: activityId,
+      revision: 2,
+      source: { kind: 'fit', sourceId: 'fit-one', revision: 1, contentHash: 'b'.repeat(64) },
+      original: values,
+      effective: values,
+      overlay: {},
+    };
+    mocks.readActivity.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: {
+        status: 200,
+        body: path.includes('workout-review')
+          ? {
+              items: [
+                {
+                  sampleId,
+                  expectedSampleDigest: 'a'.repeat(64),
+                  kind: 'running',
+                  observedFrom: '2026-09-28T06:00:00Z',
+                  observedTo: '2026-09-28T06:35:00Z',
+                  durationSeconds: 2100,
+                  distanceMeters: 0,
+                },
+              ],
+            }
+          : path.endsWith('/context')
+            ? {
+                definitionVersion: 'activity-context-v1',
+                observedAt: '2026-09-28T07:00:00Z',
+                activity,
+                activityDataRevision: { count: 1, revisionSum: '2' },
+                planContext: { status: 'unlinked' },
+              }
+            : path.endsWith('/details')
+              ? {
+                  activityId,
+                  activityRevision: 2,
+                  source: activity.source,
+                  details: null,
+                }
+              : { items: [activity], total: 1 },
+      },
+    }));
+    mocks.writeHealthKitDecision.mockImplementation(async () => ({
+      ok: true,
+      value: {
+        status: 200,
+        body: { sampleId, activityId, activityRevision: 2, state: 'linked_existing' },
+      },
+    }));
+    render(<NativeLanding client={client} />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'Apple 건강 운동 검토와 활동 열기' }),
+    );
+    await user.click(await screen.findByRole('button', { name: '기존 FIT 달리기' }));
+    expect(await screen.findByRole('heading', { name: '선택한 활동 상세' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '검토할 운동 확인' }));
+    await user.click(await screen.findByRole('radio', { name: /달리기.*거리 0m/ }));
+    await user.click(screen.getByRole('radio', { name: '기존 활동에 보조 출처로 연결' }));
+    await user.click(
+      screen.getByRole('checkbox', { name: '선택한 원본과 처리 방법을 확인했습니다.' }),
+    );
+    await user.click(screen.getByRole('button', { name: '기존 활동 연결 확정' }));
+    await waitFor(() =>
+      expect(mocks.writeHealthKitDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'link',
+          body: expect.objectContaining({
+            sampleId,
+            targetActivityId: activityId,
+            expectedActivityRevision: 2,
+            confirmed: true,
+          }),
+        }),
+        undefined,
+      ),
+    );
+  });
+
+  it('does not let an old activity read invalidate a replacement account', async () => {
+    let finishOldRead: ((value: unknown) => void) | null = null;
+    mocks.readActivity.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishOldRead = resolve;
+        }),
+    );
+    render(<NativeLanding client={client} />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'Apple 건강 운동 검토와 활동 열기' }),
+    );
+    await waitFor(() => expect(mocks.readActivity).toHaveBeenCalled());
+    mocks.session.mockResolvedValueOnce(signedIn('bob'));
+    await act(async () => window.dispatchEvent(new Event('workout:native-foreground')));
+    await waitFor(() => expect(localStorage.getItem('workout:private:account-scope')).toBe('bob'));
+    await act(async () => finishOldRead?.({ ok: true, value: { status: 401, body: null } }));
+    expect(screen.getByRole('button', { name: 'Apple 건강 운동 검토와 활동 열기' })).toBeVisible();
+    expect(localStorage.getItem('workout:private:account-scope')).toBe('bob');
   });
 
   it('routes native edge and browser history Back through the same confirmation', async () => {

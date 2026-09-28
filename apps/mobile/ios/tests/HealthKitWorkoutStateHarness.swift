@@ -27,6 +27,7 @@ struct HealthKitWorkoutStateHarness {
         do {
             let state = try HealthKitWorkoutState(databaseURL: database)
             installationId = try state.activate(accountId: account)
+            try state.applyConsentRevision(1)
             try require(try state.collectionEnabled() == false, "collection off before explicit request")
             try state.requestReconciliation()
             try require(try state.beginReconciliationAfterOutboxDrain(),
@@ -155,6 +156,7 @@ struct HealthKitWorkoutStateHarness {
         do {
             let state = try HealthKitWorkoutState(databaseURL: corruptionDatabase)
             corruptionInstallationId = try state.activate(accountId: account)
+            try state.applyConsentRevision(1)
             try state.stagePage(batchId: corruptionBatchId, events: [.delete(sampleId: sampleId)],
                                 nextAnchor: HKQueryAnchor(fromValue: 4))
         }
@@ -185,6 +187,7 @@ struct HealthKitWorkoutStateHarness {
 
         let bounded = try HealthKitWorkoutState(databaseURL: directory.appendingPathComponent("bounded.sqlite"))
         _ = try bounded.activate(accountId: account)
+        try bounded.applyConsentRevision(1)
         for index in 0..<256 {
             try bounded.stagePage(batchId: UUID(), events: [.delete(sampleId: UUID())],
                                   nextAnchor: HKQueryAnchor(fromValue: index + 1))
@@ -208,6 +211,7 @@ struct HealthKitWorkoutStateHarness {
         do {
             let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
             replayInstallation = try state.activate(accountId: account)
+            try state.applyConsentRevision(1)
             try state.stagePage(batchId: replayBatchId, events: [replayEvent],
                                 nextAnchor: HKQueryAnchor(fromValue: 1))
             replayBody = try state.pendingBatches()[0].body
@@ -275,6 +279,7 @@ struct HealthKitWorkoutStateHarness {
         let pausedDB = directory.appendingPathComponent("paused-reconciliation.sqlite")
         let paused = try HealthKitWorkoutState(databaseURL: pausedDB)
         let pausedInstallation = try paused.activate(accountId: account)
+        try paused.applyConsentRevision(1)
         let pausedBatchId = UUID()
         try paused.stagePage(batchId: pausedBatchId, events: [replayEvent],
                              nextAnchor: HKQueryAnchor(fromValue: 1))
@@ -303,6 +308,7 @@ struct HealthKitWorkoutStateHarness {
         do {
             let state = try HealthKitWorkoutState(databaseURL: deletionDB)
             deletionInstallation = try state.activate(accountId: account)
+            try state.applyConsentRevision(1)
             try state.requestReconciliation()
             try state.stagePage(batchId: deletionBatchId, events: [.delete(sampleId: deletedId)],
                                 nextAnchor: HKQueryAnchor(fromValue: 1))
@@ -312,6 +318,7 @@ struct HealthKitWorkoutStateHarness {
                         state.pendingBatches().isEmpty,
                         "second account cannot send first account's queued deletion")
             let secondBatch = UUID()
+            try state.applyConsentRevision(1)
             try state.stagePage(batchId: secondBatch, events: [.delete(sampleId: UUID())],
                                 nextAnchor: HKQueryAnchor(fromValue: 1))
             try require(try state.pendingBatches().count == 1 &&
@@ -352,6 +359,7 @@ struct HealthKitWorkoutStateHarness {
         do {
             let newLayout = try HealthKitWorkoutState(databaseURL: oldBase)
             oldInstallation = try newLayout.activate(accountId: account)
+            try newLayout.applyConsentRevision(1)
             try newLayout.stagePage(batchId: oldBatch, events: [.delete(sampleId: UUID())],
                                     nextAnchor: HKQueryAnchor(fromValue: 1))
             oldBody = try newLayout.pendingBatches()[0].body
@@ -395,6 +403,51 @@ struct HealthKitWorkoutStateHarness {
         try require(try replacement.anchor() == nil && !replacement.collectionEnabled(),
                     "reinstall starts at nil but does not assume OS read permission")
 
-        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner isolation, offline deletion retry, corruption, outbox cap, reinstall/reconciliation")
+        let epochDB = directory.appendingPathComponent("offline-consent-epoch.sqlite")
+        let offlineBatchId = UUID()
+        let offlineSampleId = UUID()
+        var firstEpochInstallation = UUID()
+        var offlineBody = Data()
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: epochDB)
+            firstEpochInstallation = try state.activate(accountId: account)
+            try state.applyConsentRevision(1)
+            try state.requestReconciliation()
+            try state.stagePage(batchId: offlineBatchId, events: [.delete(sampleId: offlineSampleId)],
+                                nextAnchor: HKQueryAnchor(fromValue: 1))
+            offlineBody = try state.pendingBatches()[0].body
+            try state.pause(batchId: offlineBatchId, reason: .conflict)
+            state.deactivate()
+            _ = try state.activate(accountId: "athlete_two")
+            try require(try state.pendingBatches().isEmpty,
+                        "second account cannot observe first consent epoch queue")
+        }
+        do {
+            let state = try HealthKitWorkoutState(databaseURL: epochDB)
+            try require(try state.activate(accountId: account) == firstEpochInstallation &&
+                        state.pendingBatches()[0].body == offlineBody,
+                        "offline epoch queue survives logout and restart before consent is checked")
+            try require(try state.applyConsentRevision(3),
+                        "re-consent rotates the stale installation")
+            try require(try state.pendingBatches().isEmpty && state.anchor() == nil &&
+                        state.knownSample(sampleId: offlineSampleId) == nil &&
+                        state.collectionEnabled(),
+                        "stale paused batch and cursor are erased while explicit collection stays enabled")
+            try require(try state.beginReconciliationAfterOutboxDrain(),
+                        "new epoch requests a nil-anchor snapshot only after stale queue removal")
+            try state.stagePage(batchId: UUID(), events: [.delete(sampleId: UUID())],
+                                nextAnchor: HKQueryAnchor(fromValue: 2))
+            let fresh = try state.pendingBatches()[0]
+            try require(fresh.installationId != firstEpochInstallation && fresh.consentRevision == 3 &&
+                        fresh.body != offlineBody && fresh.batchId != offlineBatchId,
+                        "fresh epoch uses a new installation, revision, and immutable body")
+            try require(try !state.applyConsentRevision(3) && state.pendingBatches().count == 1,
+                        "same revision retains retriable batch")
+            try require(try state.applyConsentRevision(3, forceReset: true) &&
+                        state.pendingBatches().isEmpty,
+                        "server-confirmed expired epoch recovers even if GET still reports same revision")
+        }
+
+        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner isolation, offline deletion retry, consent epoch rotation, corruption, outbox cap, reinstall/reconciliation")
     }
 }

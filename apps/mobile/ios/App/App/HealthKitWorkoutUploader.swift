@@ -4,6 +4,7 @@ enum HealthKitWorkoutUploadOutcome: Equatable {
     case accepted
     case authenticationRequired
     case consentRequired
+    case consentEpochExpired
     case forbidden
     case conflict
     case rejected
@@ -63,6 +64,11 @@ enum HealthKitWorkoutUploader {
             }
             return .consentRequired
         case 409:
+            if let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let error = object["error"] as? [String: Any],
+               error["code"] as? String == "CONSENT_EPOCH_EXPIRED" {
+                return .consentEpochExpired
+            }
             return .conflict
         case 400...499 where status != 408 && status != 429:
             return .rejected

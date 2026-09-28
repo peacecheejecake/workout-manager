@@ -63,25 +63,29 @@ async function ingest(
   const sampleId = options.sampleId ?? randomUUID();
   const observedFrom = options.at ?? '2026-09-20T00:00:00Z';
   const observedTo = new Date(Date.parse(observedFrom) + 60 * 60 * 1000).toISOString();
-  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, {
-    schemaVersion: 1,
-    installationId: randomUUID(),
-    batchId: randomUUID(),
-    events: [
-      {
-        kind: 'upsert',
-        sampleId,
-        sourceBundleId: 'com.apple.health',
-        sourceVersion: '1',
-        activityType: options.activityType ?? 37,
-        observedFrom,
-        observedTo,
-        durationSeconds: 1800,
-        distanceMeters: options.distanceMeters ?? null,
-        energyKilocalories: 400,
-      },
-    ],
-  });
+  await createHealthKitIngestionRepository(database).ingestBatch(
+    athleteId,
+    {
+      schemaVersion: 1,
+      installationId: randomUUID(),
+      batchId: randomUUID(),
+      events: [
+        {
+          kind: 'upsert',
+          sampleId,
+          sourceBundleId: 'com.apple.health',
+          sourceVersion: '1',
+          activityType: options.activityType ?? 37,
+          observedFrom,
+          observedTo,
+          durationSeconds: 1800,
+          distanceMeters: options.distanceMeters ?? null,
+          energyKilocalories: 400,
+        },
+      ],
+    },
+    1,
+  );
   return sampleId;
 }
 
@@ -150,12 +154,16 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
         ),
       );
     }
-    await createHealthKitIngestionRepository(database).ingestBatch(athleteId, {
-      schemaVersion: 1,
-      installationId: randomUUID(),
-      batchId: randomUUID(),
-      events: [{ kind: 'delete', sampleId: deleted }],
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      athleteId,
+      {
+        schemaVersion: 1,
+        installationId: randomUUID(),
+        batchId: randomUUID(),
+        events: [{ kind: 'delete', sampleId: deleted }],
+      },
+      1,
+    );
     const items = (
       await createHealthKitProjectionRepository(database).listPendingWorkouts(athleteId, 100)
     ).items;

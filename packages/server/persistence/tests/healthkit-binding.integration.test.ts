@@ -117,7 +117,7 @@ async function prepared(athleteId = randomUUID()) {
   await grantConsent(athleteId);
   const target = await createTarget(athleteId);
   const batch = workout();
-  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch);
+  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch, 1);
   const sampleId = batch.events[0]?.sampleId;
   if (!sampleId) throw new Error('Expected sample');
   const expectedSampleDigest = await sampleDigest(athleteId, sampleId);
@@ -147,7 +147,11 @@ describe('M3-02e explicit existing Activity binding', () => {
       state: 'linked_existing',
     });
     const otherBatch = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, otherBatch);
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      otherBatch,
+      1,
+    );
     const otherSampleId = otherBatch.events[0]?.sampleId;
     if (!otherSampleId) throw new Error('Expected second sample');
     await repo.bindExisting(fixture.athleteId, {
@@ -286,16 +290,24 @@ describe('M3-02e explicit existing Activity binding', () => {
     const fixture = await prepared();
     const repo = createHealthKitBindingRepository(database);
     await repo.bindExisting(fixture.athleteId, command(fixture));
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      schemaVersion: 1,
-      installationId: fixture.batch.installationId,
-      batchId: randomUUID(),
-      events: [{ kind: 'delete', sampleId: fixture.sampleId }],
-    });
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      ...fixture.batch,
-      batchId: randomUUID(),
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        schemaVersion: 1,
+        installationId: fixture.batch.installationId,
+        batchId: randomUUID(),
+        events: [{ kind: 'delete', sampleId: fixture.sampleId }],
+      },
+      1,
+    );
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        ...fixture.batch,
+        batchId: randomUUID(),
+      },
+      1,
+    );
     const result = await database.tenant(fixture.athleteId, (tx) =>
       tx.query(
         `SELECT
@@ -334,10 +346,14 @@ describe('M3-02e explicit existing Activity binding', () => {
       ),
     );
     expect(result.rows[0]).toEqual({ binding_count: 0, lineage_state: 'suppressed' });
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, {
-      ...fixture.batch,
-      batchId: randomUUID(),
-    });
+    await createHealthKitIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      {
+        ...fixture.batch,
+        batchId: randomUUID(),
+      },
+      1,
+    );
     await expect(
       createHealthKitBindingRepository(database).bindExisting(
         fixture.athleteId,

@@ -58,6 +58,11 @@ struct HealthKitWorkoutUploaderHarness {
                                                          installationId: installationId,
                                                          batchId: batchId, eventCount: 1) == .conflict,
                     "conflict")
+        let expired = try JSONSerialization.data(withJSONObject: ["error": ["code": "CONSENT_EPOCH_EXPIRED"]])
+        try require(try HealthKitWorkoutUploader.outcome(status: 409, body: expired,
+                                                         installationId: installationId,
+                                                         batchId: batchId, eventCount: 1) == .consentEpochExpired,
+                    "only explicit consent epoch error permits queue reset")
         try require(try HealthKitWorkoutUploader.outcome(status: 400, body: Data(),
                                                          installationId: installationId,
                                                          batchId: batchId, eventCount: 1) == .rejected,

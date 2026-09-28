@@ -148,7 +148,11 @@ private struct NativeCredentialStore {
 
 /** A separate session per request enforces no cookies, no redirects and a hard 16 KiB response cap. */
 private final class BoundedNativeRequest: NSObject, URLSessionDataDelegate {
-    private let limit = 16_384
+    private let limit: Int
+    init(limit: Int = 16_384) {
+        self.limit = limit
+        super.init()
+    }
     private var body = Data()
     private var response: HTTPURLResponse?
     private var completion: ((Result<(Int, Data), Error>) -> Void)?
@@ -436,11 +440,125 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         return ["path": path, "status": 200, "body": body]
     }
 
+    private func productReadPath(_ path: String) -> Bool {
+        if path == "/bff/v1/healthkit/workout-review?limit=50" { return true }
+        if path.range(of: "^/bff/v1/activities/[0-9a-fA-F-]{36}/(context|details)$",
+                      options: .regularExpression) != nil {
+            return UUID(uuidString: String(path.split(separator: "/")[3])) != nil
+        }
+        guard path.hasPrefix("/bff/v1/activities?"), path.utf8.count <= 1024,
+              let components = URLComponents(string: path),
+              components.path == "/bff/v1/activities", components.fragment == nil,
+              let items = components.queryItems, !items.isEmpty,
+              components.percentEncodedQuery == String(path.dropFirst("/bff/v1/activities?".count)) else {
+            return false
+        }
+        let allowed: Set<String> = ["limit", "offset", "sort", "search", "tag", "from",
+                                    "toExclusive", "timezone", "kind", "source", "quality",
+                                    "linkedPlanVersionId", "linkedBlockId"]
+        return items.allSatisfy { allowed.contains($0.name) && $0.value != nil } &&
+            Set(items.map(\.name)).count == items.count
+    }
+
+    /** Bearer access is restricted to reviewed activity paths and the current credential. */
+    func readActivityAPI(_ path: String) async throws -> [String: Any] {
+        guard Self.isConfigured, let configuration, productReadPath(path) else {
+            throw NativeAuthFailure.invalidReply
+        }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        busy = true
+        defer { busy = false }
+        guard let credential = try credentialStore.read() else {
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        if credential.expiresAt <= Date() {
+            try clearCredential()
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        let (status, data) = try await get(path, credential: credential, at: configuration,
+                                           limit: 524_288)
+        if status == 401 {
+            if let current = try credentialStore.read(), current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == credential.athleteId,
+              current.expiresAt > Date() else {
+            return ["path": path, "status": 401, "body": NSNull()]
+        }
+        if [403, 404].contains(status) { return ["path": path, "status": status, "body": NSNull()] }
+        guard status == 200, let body = try? JSONSerialization.jsonObject(with: data),
+              body is [String: Any] else { throw NativeAuthFailure.invalidReply }
+        return ["path": path, "status": 200, "body": body]
+    }
+
+    func writeHealthKitDecision(kind: String, body: [String: Any]) async throws -> [String: Any] {
+        guard Self.isConfigured, let configuration,
+              let path = ["create": "/bff/v1/healthkit/workout-activities",
+                          "link": "/bff/v1/healthkit/workout-bindings"][kind],
+              let sampleId = body["sampleId"] as? String, UUID(uuidString: sampleId) != nil,
+              let digest = body["expectedSampleDigest"] as? String,
+              digest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+              let key = body["idempotencyKey"] as? String,
+              key.range(of: "^[A-Za-z0-9_-]{8,128}$", options: .regularExpression) != nil,
+              let confirmed = body["confirmed"],
+              CFGetTypeID(confirmed as CFTypeRef) == CFBooleanGetTypeID(),
+              confirmed as? Bool == true else { throw NativeAuthFailure.invalidReply }
+        if kind == "create" {
+            guard Set(body.keys) == ["sampleId", "expectedSampleDigest", "confirmed", "idempotencyKey"] else {
+                throw NativeAuthFailure.invalidReply
+            }
+        } else {
+            guard Set(body.keys) == ["sampleId", "targetActivityId", "expectedActivityRevision",
+                                     "expectedSampleDigest", "confirmed", "idempotencyKey"],
+                  let target = body["targetActivityId"] as? String, UUID(uuidString: target) != nil,
+                  let revision = body["expectedActivityRevision"] as? Int,
+                  (1...2_147_483_646).contains(revision) else { throw NativeAuthFailure.invalidReply }
+        }
+        guard !busy else { throw NativeAuthFailure.unavailable }
+        busy = true
+        defer { busy = false }
+        guard let credential = try credentialStore.read() else {
+            return ["status": 401, "body": NSNull()]
+        }
+        if credential.expiresAt <= Date() {
+            try clearCredential()
+            return ["status": 401, "body": NSNull()]
+        }
+        var request = URLRequest(url: configuration.apiURL(path))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(key, forHTTPHeaderField: "Idempotency-Key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        let (status, data) = try await BoundedNativeRequest().send(request)
+        if status == 401 {
+            if let current = try credentialStore.read(), current.sessionId == credential.sessionId,
+               current.accessToken == credential.accessToken { try clearCredential() }
+            return ["status": 401, "body": NSNull()]
+        }
+        guard let current = try credentialStore.read(),
+              current.sessionId == credential.sessionId,
+              current.accessToken == credential.accessToken,
+              current.athleteId == credential.athleteId,
+              current.expiresAt > Date() else { return ["status": 401, "body": NSNull()] }
+        if [403, 404, 409].contains(status) { return ["status": status, "body": NSNull()] }
+        guard [200, 201].contains(status), let result = try? JSONSerialization.jsonObject(with: data),
+              result is [String: Any] else { throw NativeAuthFailure.invalidReply }
+        return ["status": status, "body": result]
+    }
+
     func uploadHealthKitWorkoutBatch(body: Data, ownerAthleteId: String,
                                      installationId: UUID, batchId: UUID,
-                                     eventCount: Int) async throws -> HealthKitWorkoutUploadOutcome {
+                                     eventCount: Int, consentRevision: Int) async throws -> HealthKitWorkoutUploadOutcome {
         try Task.checkCancellation()
-        guard HealthKitWorkoutUploader.acceptsBody(body, installationId: installationId,
+        guard (0...2_147_483_646).contains(consentRevision),
+              HealthKitWorkoutUploader.acceptsBody(body, installationId: installationId,
                                                     batchId: batchId, eventCount: eventCount) else {
             return .rejected
         }
@@ -462,6 +580,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(String(consentRevision), forHTTPHeaderField: "X-HealthKit-Consent-Revision")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         let (status, response) = try await BoundedNativeRequest().send(request)
         if status == 401 {
@@ -613,13 +732,14 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
     }
 
     private func get(_ path: String, credential: NativeCredential,
-                     at configuration: NativeAuthConfiguration) async throws -> (Int, Data) {
+                     at configuration: NativeAuthConfiguration,
+                     limit: Int = 16_384) async throws -> (Int, Data) {
         var request = URLRequest(url: configuration.apiURL(path))
         request.httpMethod = "GET"
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
-        return try await BoundedNativeRequest().send(request)
+        return try await BoundedNativeRequest(limit: limit).send(request)
     }
 
     private struct SessionReadReply: Decodable { let athleteId: String }

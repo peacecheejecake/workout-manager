@@ -93,7 +93,7 @@ final class HealthKitWorkoutCollector {
             throw HealthKitCollectionFailure.unavailable
         }
         guard let accountId = try await signedInAccount(),
-              case .granted = try await NativeAuth.shared.healthKitConsent() else {
+              case .granted(let revision) = try await NativeAuth.shared.healthKitConsent() else {
             throw HealthKitCollectionFailure.unavailable
         }
         _ = try state.activate(accountId: accountId)
@@ -101,6 +101,7 @@ final class HealthKitWorkoutCollector {
             generation += 1
             activeAccountId = accountId
         }
+        if try state.applyConsentRevision(revision) { generation += 1 }
         let ownerGeneration = generation
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             healthStore.requestAuthorization(toShare: [], read: [workoutType]) { success, error in
@@ -165,7 +166,8 @@ final class HealthKitWorkoutCollector {
             let consent = try await NativeAuth.shared.healthKitConsent()
             guard activeAccountId == accountId else { return }
             switch consent {
-            case .granted: break
+            case .granted(let revision):
+                if try state.applyConsentRevision(revision) { generation += 1 }
             case .notGranted:
                 // Server-side withdrawal makes this account's queued health data invalid.
                 try state.reset()
@@ -350,12 +352,14 @@ final class HealthKitWorkoutCollector {
                 // A permanent server rejection is held for explicit investigation.
                 // Keep later batches behind it so replay order cannot change.
                 guard !batch.isPaused else { return false }
+                guard let consentRevision = batch.consentRevision else { return false }
                 let outcome = try await NativeAuth.shared.uploadHealthKitWorkoutBatch(
                     body: batch.body,
                     ownerAthleteId: accountId,
                     installationId: batch.installationId,
                     batchId: batch.batchId,
-                    eventCount: batch.eventCount)
+                    eventCount: batch.eventCount,
+                    consentRevision: consentRevision)
                 guard activeAccountId == accountId else { return false }
                 switch outcome {
                 case .accepted:
@@ -368,6 +372,22 @@ final class HealthKitWorkoutCollector {
                 case .consentRequired:
                     try state.reset()
                     invalidateOwner()
+                    return false
+                case .consentEpochExpired:
+                    // Only this server-owned error can discard old epoch data. Generic
+                    // idempotency conflicts remain quarantined for investigation.
+                    switch try await NativeAuth.shared.healthKitConsent() {
+                    case .granted(let currentRevision):
+                        guard activeAccountId == accountId else { return false }
+                        _ = try state.applyConsentRevision(currentRevision, forceReset: true)
+                        generation += 1
+                        scheduleCollection()
+                    case .notGranted:
+                        try state.reset()
+                        invalidateOwner()
+                    case .authenticationRequired:
+                        invalidateOwner()
+                    }
                     return false
                 case .forbidden:
                     try state.pause(batchId: batch.batchId, reason: .forbidden)

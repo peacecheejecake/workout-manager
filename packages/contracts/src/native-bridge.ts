@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { activityListQuerySchema } from './activity.js';
+import { healthKitBindExistingSchema } from './healthkit-binding.js';
+import { healthKitCreateActivitySchema } from './healthkit-activity.js';
 
 /** v3 is deliberately incompatible with earlier native hosts. */
 export const nativeBridgeVersion = 3 as const;
@@ -34,6 +37,8 @@ const nativeBridgeCommandMethodSchema = z.enum([
   'auth.session',
   'auth.signOut',
   'api.read',
+  'api.activity.read',
+  'api.healthkitDecision.write',
   'api.healthkitConsent.write',
   'healthkit.workouts.requestAccess',
   'healthkit.workouts.status',
@@ -43,6 +48,30 @@ export const nativeBridgeReadPathSchema = z.enum([
   '/bff/v1/session',
   '/bff/v1/consents/ai',
   '/bff/v1/consents/healthkit',
+]);
+/** A narrow product read surface, parsed again by the native host before bearer use. */
+export const nativeBridgeActivityReadPathSchema = z
+  .string()
+  .max(1024)
+  .refine((path) => {
+    if (path === '/bff/v1/healthkit/workout-review?limit=50') return true;
+    if (/^\/bff\/v1\/activities\/[a-f\d-]{36}\/(?:context|details)$/.test(path))
+      return z.uuid().safeParse(path.split('/')[4]).success;
+    if (!path.startsWith('/bff/v1/activities?')) return false;
+    const query = path.slice('/bff/v1/activities?'.length);
+    const params = new URLSearchParams(query);
+    if (params.size === 0 || params.toString() !== query) return false;
+    const input: Record<string, string> = {};
+    let duplicated = false;
+    params.forEach((value, key) => {
+      if (key in input) duplicated = true;
+      input[key] = value;
+    });
+    return !duplicated && activityListQuerySchema.safeParse(input).success;
+  });
+export const nativeBridgeHealthKitDecisionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('create'), body: healthKitCreateActivitySchema }),
+  z.strictObject({ kind: z.literal('link'), body: healthKitBindExistingSchema }),
 ]);
 export const nativeBridgeApiSessionSchema = z.strictObject({ athleteId: athleteIdSchema });
 export const nativeBridgeAiConsentSchema = z.strictObject({
@@ -108,6 +137,16 @@ export const nativeBridgeRequestSchema = z.union([
     ...requestBase,
     method: z.literal('api.read'),
     payload: z.strictObject({ path: nativeBridgeReadPathSchema }),
+  }),
+  z.strictObject({
+    ...requestBase,
+    method: z.literal('api.activity.read'),
+    payload: z.strictObject({ path: nativeBridgeActivityReadPathSchema }),
+  }),
+  z.strictObject({
+    ...requestBase,
+    method: z.literal('api.healthkitDecision.write'),
+    payload: nativeBridgeHealthKitDecisionSchema,
   }),
   z.strictObject({
     ...requestBase,
@@ -179,6 +218,32 @@ export const nativeBridgeReplySchema = z.union([
   }),
   z.strictObject({
     ...replyBase,
+    method: z.literal('api.activity.read'),
+    path: nativeBridgeActivityReadPathSchema,
+    status: z.literal(200),
+    body: z.json(),
+  }),
+  z.strictObject({
+    ...replyBase,
+    method: z.literal('api.activity.read'),
+    path: nativeBridgeActivityReadPathSchema,
+    status: z.union([z.literal(401), z.literal(403), z.literal(404)]),
+    body: z.null(),
+  }),
+  z.strictObject({
+    ...replyBase,
+    method: z.literal('api.healthkitDecision.write'),
+    status: z.union([z.literal(200), z.literal(201)]),
+    body: z.json(),
+  }),
+  z.strictObject({
+    ...replyBase,
+    method: z.literal('api.healthkitDecision.write'),
+    status: z.union([z.literal(401), z.literal(403), z.literal(404), z.literal(409)]),
+    body: z.null(),
+  }),
+  z.strictObject({
+    ...replyBase,
     method: z.literal('api.healthkitConsent.write'),
     status: z.literal(200),
     body: nativeBridgeHealthKitConsentSchema,
@@ -220,6 +285,8 @@ export type NativeBridgeCapabilities = z.infer<typeof nativeBridgeCapabilitiesSc
 export type NativeBridgeErrorCode = z.infer<typeof nativeBridgeErrorCodeSchema>;
 export type NativeBridgeSession = z.infer<typeof nativeBridgeSessionSchema>;
 export type NativeBridgeReadPath = z.infer<typeof nativeBridgeReadPathSchema>;
+export type NativeBridgeActivityReadPath = z.infer<typeof nativeBridgeActivityReadPathSchema>;
+export type NativeBridgeHealthKitDecision = z.infer<typeof nativeBridgeHealthKitDecisionSchema>;
 export type NativeBridgeHealthKitStatus = z.infer<typeof nativeBridgeHealthKitStatusSchema>;
 export type NativeBridgeHealthKitConsentWrite = z.infer<
   typeof nativeBridgeHealthKitConsentWriteSchema

@@ -6,6 +6,8 @@ import {
   type NativeBridgeErrorCode,
   type NativeBridgeRequest,
   type NativeBridgeReadPath,
+  type NativeBridgeActivityReadPath,
+  type NativeBridgeHealthKitDecision,
   type NativeBridgeSession,
   type NativeBridgeHealthKitConsentWrite,
   type NativeBridgeHealthKitStatus,
@@ -226,6 +228,58 @@ export function createNativeBridgeClient({
     return { ok: true, value: { status: reply.status, body: reply.body } };
   }
 
+  async function readActivity(
+    path: NativeBridgeActivityReadPath,
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<{ status: 200 | 401 | 403 | 404; body: unknown }>> {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'api.activity.read',
+        payload: { path },
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (
+      reply.kind !== 'command.result' ||
+      reply.method !== 'api.activity.read' ||
+      reply.path !== path
+    )
+      return { ok: false, code: 'INVALID_REPLY' };
+    return { ok: true, value: { status: reply.status, body: reply.body } };
+  }
+
+  async function writeHealthKitDecision(
+    payload: NativeBridgeHealthKitDecision,
+    signal?: AbortSignal,
+  ): Promise<
+    NativeBridgeClientResult<{ status: 200 | 201 | 401 | 403 | 404 | 409; body: unknown }>
+  > {
+    if (!capabilities?.['auth.transport']) return { ok: false, code: 'UNAVAILABLE' };
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'api.healthkitDecision.write',
+        payload,
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== 'api.healthkitDecision.write')
+      return { ok: false, code: 'INVALID_REPLY' };
+    return { ok: true, value: { status: reply.status, body: reply.body } };
+  }
+
   async function writeHealthKitConsent(
     payload: NativeBridgeHealthKitConsentWrite,
     signal?: AbortSignal,
@@ -291,6 +345,8 @@ export function createNativeBridgeClient({
     session: (signal?: AbortSignal) => authSessionCommand('auth.session', signal),
     signOut,
     read,
+    readActivity,
+    writeHealthKitDecision,
     writeHealthKitConsent,
     requestHealthKitWorkoutAccess: (signal?: AbortSignal) =>
       workoutCommand('healthkit.workouts.requestAccess', signal),
