@@ -80,3 +80,9 @@
 - 전체 단위·컴포넌트 첫 실행은 샌드박스의 로컬 시험 서버 바인딩 제한으로 35 실패·4,207 통과·7 건너뜀이다. 접근 가능한 환경에서 같은 HEAD를 재실행해 **4,242 통과·7 건너뜀**을 확인했다. 실제 PostgreSQL 통합 시험은 **844/844 통과**했다.
 - identity E2E는 별도 웹/API/OIDC/Garmin 포트와 기존 로컬 지도·고도 자산을 사용했다. 첫 전체 실행은 모바일도 별도 포트 53111로 지정했으나, `native-shell.spec.ts` 한 건이 `127.0.0.1:4200`을 고정 사용해 **307 통과·13 건너뜀·1 실패**(15.0분)였다. 이는 실행 구성 불일치이며 통과로 소급하지 않는다. 모바일 포트를 4200으로 바꾼 집중 시험은 1/1 통과했다. `pnpm test:identity -- native-shell.spec.ts` 시도는 CLI 인자가 필터로 적용되지 않아 전체 실행을 시작했으므로 43번째 부근에서 중단했고 통과 증거로 사용하지 않는다. 올바른 구성의 전체 재실행 두 회는 각각 **308 통과·13 건너뜀·실패 0**(14.9분, 15.0분)이었다. 두 회 모두 고정 포트 시험이 통과했다.
 - 이 HEAD의 Swift 상태 전이 harness, iOS SDK 타입 검사, 서명 없는 Simulator 빌드 결과는 위 P2 보완 기록과 `M3-02h.md`의 2026-09-30 기록을 확인했다. 이번 단계 전체 게이트에서 이 세 명령을 별도 재실행하지 않았다. 서명된 새 iPhone 빌드·설치·제품 로그인·실제 HTTPS와 HealthKit 읽기/쓰기/삭제·background wake·offline ACK 및 M3-02h 전체 수용은 계속 **not_executed**다. M3-02 부모를 완료로 바꾸지 않으며, 이 검증 기록 커밋까지 포함한 새 phase HEAD의 독립 읽기 전용 전체 diff 재검토가 필요하다.
+
+## 여섯 번째 검토 · APPROVE
+
+- Codex 앱의 새 context-less `gpt-6-sol` high subagent가 base `main` `ac99e3749c643ecc4d9cd78cd0b05353ae511430` → `phase/m3-02` HEAD `73e472de3b4e6537fba457ec2d43a896b373f4c5` 전체 diff를 읽기 전용으로 검토했다. 변경 파일은 11개, 미추적 파일은 0개, 작업 트리는 깨끗했고 `git diff --check`가 통과했다. 판정은 **APPROVE**, 새 차단 지적은 없었다.
+- 다섯 번째 검토의 P2는 **FIXED**로 확인됐다. 삭제 확정 뒤에도 명시적 읽기 재요청이 같은 표본의 anchor를 초기화하고, 비어 있는 filtered page는 cursor를 전진시키지 않으며, 현재 조회에서 tombstone을 실제 관측해야 삭제 확인을 보고한다. 이전 P1 #1–#5도 현재 코드에서 모두 **FIXED 유지**로 확인됐다.
+- 검토자는 제출된 전체 게이트와 Swift 시험·타입 검사·서명 없는 빌드 기록을 대조했으며 명령을 재실행하지 않았다. UUID 범위의 `HKDeletedObject`가 실제 iPhone에서 반환되는지, 새 서명 빌드·제품 로그인·공개 HTTPS·합성 HealthKit 표본 수명주기·background wake·offline ACK는 **not_executed**인 M3-02h 외부 gate로 남는다. 이 승인으로 M3-02h나 부모 M3-02를 완료 처리하지 않는다. 이 판정 기록을 추가한 새 HEAD는 diff identity가 바뀌므로 `main` 병합 전에 읽기 전용 검토 refresh가 필요하다.
