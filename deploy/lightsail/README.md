@@ -307,6 +307,23 @@ that changes state but returns failure, checker failure, and collector failure.
 No host timer, wrapper, or recurring backup is installed. Deletion-ledger
 completeness and replay remain independent acceptance gates.
 
+`backup/remote-store.mjs` is an opt-in, uninstalled S3 transport for a local
+bundle that `collect.mjs` has already published. It requires a root-owned mode
+0600 JSON config with `schemaVersion: 1`, `bucket`, `prefix`, and the 12-digit
+`expectedBucketOwner`; commands are `upload <absolute-config> <absolute-bundle>`
+and `download <absolute-config> <bundle-id> <new-absolute-destination>`. The
+bucket must have versioning enabled. Upload verifies the bundle's exact file
+set and SHA-256 manifest, uses S3 SSE-S3, downloads each pinned object version
+to check its bytes, and conditionally publishes `completion.json` last. A
+repeated upload verifies all recorded remote versions; download starts from an
+empty destination and rejects missing or changed bytes. Individual files over
+4 GiB are rejected. This transport has synthetic success, interruption,
+corruption, conflict, and retry tests; no S3 bucket, IAM policy, retention,
+Object Lock, live upload, independent signature, or recovery run has been
+verified. The completion record fixes `ledgerCompleteness` to `not_verified`:
+it is a transfer receipt, never permission to restore or reopen the app. The
+post-backup deletion ledger and its complete tail remain separate gates.
+
 The checker can miss a writer created between Docker inventory, DB query, and
 the collector's next call. In particular, `collect.mjs` enumerates private
 files before its first checker invocation and there is a gap between its last
