@@ -172,6 +172,53 @@ prints its environment or Compose configuration.
 
 ## Database recovery prerequisite
 
+### Backup collector preparation (inactive)
+
+`backup/collect.mjs` is an opt-in local collector, not an installed schedule or
+retention policy. Its `collect` command requires a root-owned mode 0600 file
+containing a PostgreSQL URL, a root-owned mode 0700 output directory, a dedicated
+private directory, and a root-owned mode 0700 executable `--fence-check`. The
+operator must first stop **all** Workout database and private-object writers,
+including the app, workers, uploads, and any separate maintenance process. The
+checker must prove that this write fence remains active and exit nonzero if it
+does not; the collector runs it before the dump, before each private-file copy,
+and after the copy. A checker that merely returns zero is not evidence of a
+fence. The collector cannot establish a consistent recovery point without this
+external operational control. Do not use it against the live host until the
+fence procedure, disk capacity, and recovery input are reviewed.
+
+The collector rejects symlinks and nonregular private entries, overlapping
+source/output paths, low available disk, unsafe ownership or modes, changed
+source bytes, and failed `pg_dump`/`pg_restore --list`. It writes into a mode
+0700 partial directory, stores the archive, copied private files, and manifest
+at mode 0600, then publishes the directory by rename only after all checks pass.
+It removes a failed partial directory. This checks capture bytes; it does not
+make database and file writes atomic by itself. The database URL is passed to
+PostgreSQL through environment variables rather than command arguments; output
+contains only fixed status codes and the new bundle name.
+
+`verify --bundle ... --post-backup-ledger-dir ...` checks archive readability and
+all recorded bytes, and requires a **separately captured** post-backup deletion
+ledger directory. That directory needs mode 0700, mode 0600 ledger files, and
+`ledger-manifest.json` with `schemaVersion: 1`,
+`source: "independent-post-backup-deletion-ledger"`, `backupCapturedAt` equal to
+the bundle capture time, `replayThrough` at or after that time, and sorted
+`files` entries containing relative `path`, `sha256`, and `bytes`. Verification
+checks supplied bytes and coverage timestamps only; it does **not** prove that
+the ledger is complete or that replay succeeded. An empty ledger must still be
+independently produced and attested. Restored runtime access remains prohibited
+until the relevant erasure, deletion, consent, and suppression ledgers are
+replayed and checked. No live collector run, retention/pruning, off-host copy,
+RPO/RTO measure, or independent operational ledger capture has been accepted.
+
+`node --test deploy/lightsail/backup/collect.test.mjs` covers publishing and
+failure paths with synthetic private files and PostgreSQL command stubs.
+`WORKOUT_BACKUP_REAL_PG=1 node --test deploy/lightsail/backup/collect.test.mjs`
+also creates and removes a disposable PostgreSQL 14 cluster, then checks a real
+archive and deliberate corruption. The recorded local run passed. This does not
+exercise the deployed PostgreSQL 17.6 Compose topology or live operational
+fence, and is not authorization to collect a production backup.
+
 A `pg_dump -Fc` backup contains the Workout database but not cluster roles.
 Before restoring into a fresh cluster, create `workout_owner` as a restricted
 role: several RLS policies name it explicitly. The isolated schema drill used
