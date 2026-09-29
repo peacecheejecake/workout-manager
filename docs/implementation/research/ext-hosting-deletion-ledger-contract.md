@@ -1,0 +1,64 @@
+# EXT-HOSTING · 독립 삭제 원장 계약 초안
+
+상태: **설계만 작성, 구현·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
+
+## 현재 경계와 근거
+
+- [백업 창](../../../deploy/lightsail/backup/backup-window.mjs)은 고정된 app·GraphHopper를 멈추고 [collector](../../../deploy/lightsail/backup/collect.mjs)를 실행한 뒤 재시작한다. collector는 로컬 dump·private 파일·SHA-256 manifest를 게시한다. `capturedAt`은 게시 직전 시각이며 DB snapshot의 commit 기준점은 아니다. 독립 원장 생성·호스트 밖 반출·재생은 없다.
+- collector의 `verify`는 별도 제공된 `ledger-manifest.json`의 `backupCapturedAt`, `replayThrough`, 파일 크기·해시를 검사한다. 이 값은 원장 내용, 커버리지, 실제 DB 거래 순서 또는 재생 완료의 증명이 아니다. [호스팅 안내](../../../deploy/lightsail/README.md#backup-collector-preparation-inactive)도 운영 수집·반출·독립 원장·복구를 미실행으로 기록한다.
+- [합성 복구 드릴](../../../scripts/backup-restore-drill.mts)은 dump 뒤 JSON 원장을 따로 받아 완전 복원 뒤 접근 전 거래에서 말소→제약→근거 회수·AI 동의→활동 억제→코스 삭제 등을 재생한다. 이는 재생 순서와 일부 실패 동작의 로컬 시험이다. [Lightsail 합성 드릴](../../../deploy/lightsail/synthetic-restore-drill.sh)은 고정 합성 tenant 하나의 말소만 재생한다. 둘 다 운영 원장 전달이나 원본 소실 시 최신성의 증거는 아니다.
+- [운영 절차](../operations-runbook.md)는 독립 보관한 최신 말소·활동·코스·근거/동의·제약 원장, 복원 전 접근 차단, 세션/credential 무효화 및 객체 정리를 요구한다. 일부 원장은 계정 말소가 원본 DB의 tenant 행을 지우므로 **말소 전 사건**을 별도로 보존해야 한다.
+
+## 확인한 삭제·억제 대상
+
+| 대상                  | 현재 원본 기록과 복구 위험                                                                                                                                                                                          | 확인한 경로                                                                                                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 계정 말소             | `tenant_erasure`가 남지만 이전 dump에는 없을 수 있고, identity·도메인 행·객체를 지워야 한다.                                                                                                                        | [migration 005](../../../packages/server/persistence/migrations/005_operations.sql), [계정 명령](../../../packages/server/persistence/src/operations.ts)                                                                                                                                           |
+| Activity/원본 억제    | `activity_canonical.deleted`와 `activity_suppression`; dump 뒤 생성·삭제된 source는 복원본에 head도 없다. source 종류·ID·revision·hash와 삭제 revision이 필요하다.                                                  | [활동 삭제](../../../packages/server/persistence/src/activities.ts), [복원 함수](../../../packages/server/persistence/migrations/063_healthkit_receipt_replay.sql), [운영 절차](../operations-runbook.md#활동-삭제-원장-재적용과-객체-purge-m2-01y)                                                |
+| Course 삭제           | 행은 물리 삭제되고 `course_deletion`이 남지만 계정 말소 시 해당 tenant 행이 삭제된다. 코스·그림·공유 링크/객체의 재생이 필요하다.                                                                                   | [migration 049](../../../packages/server/persistence/migrations/049_course_deletion_ledger.sql), [운영 절차](../operations-runbook.md#코스-삭제-원장-재적용-m2-01ao)                                                                                                                               |
+| AI 동의·근거 회수     | AI 동의의 현재 `exists`/`absent`와 근거의 `purged_reason`가 필요하다. 철회 뒤 재동의하면 현재 `granted=true`만으로 과거 본문을 다시 노출할 수 있다.                                                                 | [동의 명령](../../../packages/server/persistence/src/repositories.ts), [근거 purge trigger](../../../packages/server/persistence/migrations/013_evidence_snapshots.sql), [합성 원장 parser](../../../scripts/backup-restore-drill.mts)                                                             |
+| HealthKit 동의·source | 철회가 raw workout을 물리 삭제하고 receipt digest를 지운다. 원본 tombstone/lineage와 동의 revision을 묶는다. 철회→재동의의 최종 `granted=true`만 복원하면 오래된 raw가 되살 수 있다.                                | [migration 059](../../../packages/server/persistence/migrations/059_healthkit_ingestion.sql), [migration 062](../../../packages/server/persistence/migrations/062_healthkit_canonical_activity.sql), [epoch lock](../../../packages/server/persistence/migrations/064_healthkit_consent_epoch.sql) |
+| 검토 자료·갤러리 삭제 | `resource.deleted_at`/`gallery_media_item.deleted_at`와 cleanup은 삭제 거래의 결과다. dump 뒤 삭제하면 dump의 본문·객체·공유 상태가 살아 있다.                                                                      | [자료 삭제](../../../packages/server/persistence/src/resources.ts), [갤러리 삭제](../../../packages/server/persistence/src/gallery-media.ts)                                                                                                                                                       |
+| AI 철회의 자료 권한   | 철회 trigger가 `resource.include_for_coach=false` 및 정리 큐를 기록한다. 재동의 뒤 최종 consent만으로 이전 dump의 `include_for_coach=true`를 안전하게 재생할 수 없다.                                               | [migration 030](../../../packages/server/persistence/migrations/030_resource_access_sharing.sql)                                                                                                                                                                                                   |
+| 사용자 제약·체크인    | 제약은 최신 head/삭제 tombstone과 본문 교체가 필요하고, 체크인 삭제는 값을 비운 tombstone을 쓴다. 기존 합성 제약 원장에는 본문이 있어 보호가 필요하다. 체크인 및 관련 파생물의 운영 재생 범위는 추가 조사 대상이다. | [제약 복구](../../../scripts/coaching-constraint-restore.mts), [체크인 삭제](../../../packages/server/persistence/src/check-ins.ts)                                                                                                                                                                |
+
+**미확정 범위:** resource/gallery 공유 철회, 개별 CheckIn 삭제의 완전한 파생물, HealthKit raw-only 삭제, Garmin consent/credential 철회, 코스 공유 epoch·평생 구역 예산, 자료/미디어 객체·검색 색인·인용, 기타 물리 삭제와 후속 migration을 전수 조사해야 한다. [운영 절차](../operations-runbook.md)의 credential cleanup 및 share epoch 절차도 복구 계약에 포함된다. 이 범위가 닫히기 전에는 “모든 삭제 도메인 보호 완료”라고 판정하지 않는다. 기존 합성 AI 원장 parser의 1,000개 행 상한은 운영 규모 계약이 아니다.
+
+## 최소 원장 v1 계약
+
+v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 필드가 없거나 알 수 없는 필드/종류가 있으면 복구를 중단한다. 사건 ID는 중복 제거용이고 commit 위치는 **전달 연속성** 검증용으로 구분한다.
+
+| `kind`                                | 필수 복구 사실                                                                                                                               |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenant_erased`                       | tenant ID, 말소 시각; 앞선 같은 tenant 사건과 겹쳐도 말소가 우선                                                                             |
+| `activity_deleted`                    | tenant·activity ID, 삭제 revision, source kind/ID, source revision·content hash; dump에 없는 source의 값 없는 tombstone과 suppression 재구성 |
+| `course_deleted`                      | tenant·course ID·삭제 시각; 없는 코스에도 terminal suppression과 객체 prefix purge                                                           |
+| `consent_transition`                  | tenant·kind, 이전/새 revision, `exists`/`absent` 및 granted 상태, 철회 epoch; 철회 이력을 최종 재동의와 분리                                 |
+| `evidence_purged`                     | tenant·snapshot ID, `source_deleted`/`consent_withdrawn`; 본문 없음                                                                          |
+| `resource_deleted`, `gallery_deleted` | tenant·대상 ID, 삭제 access revision·시각, 해당 객체/파생물 cleanup 범위; dump에 없는 대상도 재수집/재사용 억제                              |
+
+제약 본문·head, AI/HealthKit의 최종 동의 상태, 코스 공유 예산처럼 **현재 상태**가 필요한 자료는 위 사건과 별도의 versioned snapshot 원장이다. 개별 CheckIn·HealthKit raw-only 삭제와 미확정 범위의 정확한 사건 종류·필드는 도메인 조사 후 v1에 추가해야 한다. 그 전에는 해당 쓰기가 가능한 배포의 복원을 허용하지 않는다.
+
+1. **거래 사건.** 모든 적용 대상의 파괴적 결정과 같은 PostgreSQL 거래에 불변 `restore_suppression_event`를 쓴다. 사건에는 `schemaVersion`, 무작위 `eventId`, cluster 식별자, tenant ID, 제한된 `kind`, 대상 ID, 필요한 source 식별자·revision/consent epoch·삭제 사유만 둔다. 건강 본문, 좌표, token, prompt, signed URL은 넣지 않는다. 계정 말소가 이 사건을 지우지 않으며, 복구 대상인 모든 백업의 보존 기간 동안 남긴다. 단순 timestamp나 DB sequence 값은 commit 순서 또는 누락 없는 전달의 증거가 아니다. WAL 논리 디코딩의 commit 위치 등 검증 가능한 **commit 순서 기준**을 사용한다. 실패·rollback된 명령은 확정 사건으로 전달하지 않는다.
+2. **백업 기준점.** 쓰기를 실제로 막은 백업 창에서 전용 DB system identifier, dump/객체 manifest 해시, migration/원장 schemaVersion, 마지막으로 포함된 commit 위치를 기록한다. 현재 collector의 `capturedAt`은 표시 시각으로만 둔다. 기준점 전 사건은 dump의 상태로 포함됐는지 확인하고, 이후 사건은 원장에서 재생한다. 원장 도입 전에 이미 삭제됐고 복구 가능한 백업에 흔적이 없는 항목은 추정하지 않는다. 그런 백업은 접근 재개에 사용하지 않거나 별도 검증·사용자 확인 절차를 정의한다.
+3. **독립 반출과 커버리지.** 호스트 밖의 암호화된 제한 접근 저장소에 append-only 세그먼트와 서명/인증된 manifest를 보낸다. 각 세그먼트는 이전 해시, 처음/끝 commit 위치, event 수·종류별 수, 바이트 해시, schemaVersion을 묶고 원격 내구성 확인 뒤에만 `acknowledgedThrough`를 올린다. 백업 ID와 클러스터 ID, 백업 owner 집합, 각 도메인별 적용 범위와 명시적 빈 결과를 포함한다. 원장 생성을 다른 시점의 단순 SELECT 여러 개에 맡기지 않는다. 집계/상태 원장이 필요한 도메인(제약, AI/HealthKit 동의, 공유 예산)은 동일 snapshot의 owner coverage와 `exists`/`absent`를 명시하고 사건 구간과 이어 붙인다. 원본 소실 후 `acknowledgedThrough` 이후의 commit이 없었다는 독립 증거가 없으면 tail이 완전하다고 간주하지 않는다. 비동기 반출만으로 이 증거를 만들 수 없으며, 동기 외부 내구성 경로를 마련하거나 복원 접근을 차단한다.
+4. **복구.** 외부 복구 자격으로 원장과 백업을 읽고 해시·서명·cluster/backup ID·schemaVersion·commit 연속성·owner coverage를 확인한다. 런타임·worker·공개 네트워크는 계속 차단한다. dump의 data와 post-data, 소유권 정책·grant 복구가 끝난 뒤 하나의 복구 거래에서 tenant 말소를 먼저 적용한다. 이어 철회 이력의 purge를 **최종 동의 상태보다 먼저** 실행하고, 활동/source·코스·자료·갤러리·근거/제약 등 사건을 tenant별로 검사·재생한다. 복원 행이 다른 tenant의 대상이거나 현재 상태가 원장보다 앞서거나 모순되면 전체 거래를 중단한다. 존재하지 않는 대상도 명시된 suppression·객체 purge로 처리하거나 거절하며 조용히 건너뛰지 않는다. 세션·로그인 시도와 이전 credential을 무효화하고 공유 epoch·cleanup 절차를 마친 후, 사건 수와 결과 수, 보존 대상 불변성, RLS/접근 거부, 객체/파생물 정리를 확인하고서만 접근을 연다.
+5. **재시도·보존.** eventId와 `(tenant,kind,target,revision/epoch)`의 충돌 규칙으로 같은 원장 재생은 동일 결과를 반환한다. 부분 다운로드·부분 업로드는 게시하지 않고, 완료 파일을 원격 확인 후 원자적으로 게시한다. 복구가 중단되면 접근 차단 상태를 유지하며 거래 rollback 또는 idempotent 재실행한다. 원장과 백업은 함께 만료하고, 더 오래 살아 있는 백업의 복구에 필요한 사건을 먼저 지우지 않는다. 복구 관리자만 원장 내용을 읽고, 감사 로그에는 해시·건수·기준점만 남긴다.
+
+## 접근 재개를 거절할 조건
+
+- 백업/원장이 없거나 서로 다른 cluster·backup·schemaVersion을 가리킴; 기준점 또는 commit 구간이 빠짐·겹쳐 모순됨; `acknowledgedThrough` 뒤 가능한 commit tail을 독립적으로 배제하지 못함.
+- 원격 사본의 해시·서명·바이트 수 오류, 누락·중복·순서 오류, owner/도메인 coverage 누락, 빈 원장의 독립 증명 부재, 원본 DB 내부 파일만 있는 경우.
+- 미분류 파괴적 쓰기 경로, 지원하지 않는 사건 종류/버전, 원장 도입 이전에 삭제된 course 같은 복구 불가능 항목, 합성 parser 상한을 넘는 운영 자료.
+- tenant/대상/source 소유 불일치, revision 역행, consent epoch 충돌, 철회 뒤 재동의 이력 누락, 객체·검색·인용 정리 실패, 세션/credential/share epoch 무효화 실패.
+- 복원 완료 전 writer 또는 공개 요청이 접근 가능하거나, 백업 창의 수동 writer·재기동을 막는 fence가 증명되지 않음.
+
+## 수용 시험 계획 (모두 not_executed)
+
+1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. dump 기준점 전/후·동시 commit·원장 순서/중복/누락을 검사한다. 임의 `replayThrough` 시각·해시만으로 접근이 열리지 않아야 한다.
+2. 계정 A 말소와 A의 앞선 활동·코스 삭제를 겹치게 하고, 계정 B는 보존한다. dump 뒤 생성 후 삭제한 활동/source·코스, resource/gallery 삭제, 제약·체크인 삭제와 객체/검색 파생물 재생을 검사한다. 외래 tenant ID 또는 같은 대상의 모순 사건은 전체 복구를 rollback한다.
+3. AI 철회→재동의, HealthKit 철회→재동의와 consent revision/epoch 변경을 백업 뒤 실행한다. 복원된 과거 AI 근거·코치 출력·자료 `include_for_coach`와 HealthKit raw·lineage·receipt가 다시 노출되지 않아야 하며, 새 동의의 별도 새 자료는 보존한다. HealthKit UUID의 지연 재전송도 억제한다.
+4. 수집 중 프로세스 종료, SIGKILL, DB/호스트 장애, 원격 업로드 일부 성공·ack 전/후 중단, 복구 중단 뒤 재실행을 주입한다. 중복 사건은 무해하고 누락·불명확한 tail은 차단된다. 다른 tenant·보존 객체는 그대로여야 한다.
+5. 호스트 디스크와 원본 DB가 사라진 조건에서 **호스트 밖** 백업·원장만으로 복원한다. 원격 사본 변조·오래된 manifest·마지막 세그먼트 소실을 각각 거절한다. 확인된 전체 구간에서만 차단 상태의 앱·worker·RLS·실제 객체 purge를 검사한 뒤 접근을 연다. 실제 RPO/RTO와 재시작 후 상태를 별도 기록한다.
+
+이 문서는 구현 결정의 입력이다. 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.
