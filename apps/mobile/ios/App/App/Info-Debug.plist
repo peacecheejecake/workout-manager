@@ -32,9 +32,9 @@
 		</dict>
 	</array>
 	<key>WMNativeAPIOrigin</key>
-	<string></string>
+	<string>$(WM_NATIVE_API_ORIGIN)</string>
 	<key>WMNativeIdPOrigin</key>
-	<string></string>
+	<string>$(WM_NATIVE_IDP_ORIGIN)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
