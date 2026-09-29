@@ -49,6 +49,17 @@ external Caddy network also contains a service named `postgres`. The Workout app
 joins both networks; an unqualified `postgres` host may resolve to the existing
 site's database. Never point a Workout URL at that shared name.
 
+Only `url_ingestion` joins `workout_egress`, a dedicated non-internal bridge
+network that provides outbound DNS and HTTPS for approved URL sources. It also
+stays on `workout_internal` to reach `wm-postgres` and uses the same private
+object bind mount as the app and cleanup workers. The other workers do not need
+outbound access; `url_ingestion` does not join the existing site's Caddy network.
+No Workout service publishes a host port through this network. The bridge is
+an egress path, not a network-level host allowlist: keep
+`RESOURCE_URL_ALLOWED_HOSTS` restricted to approved exact hostnames and retain
+the worker's URL, redirect, DNS, and address checks. Verify outbound reachability
+from the one-shot container on the actual host before enabling ingestion.
+
 The one-shot `db_setup` service creates or limits the five non-bootstrap roles,
 transfers the dedicated database/schema to `workout_owner`, applies the checked
 migrations, and grants the API and workers only their existing bounded surfaces.
@@ -97,6 +108,15 @@ the Caddy site and DNS record. Run the one-shot `maintenance` services through
 dedicated role after role grants are verified. They are not recurring schedulers;
 set up bounded scheduling separately. The fixture coaching worker is
 intentionally absent from production.
+
+For `url_ingestion`, first confirm that Compose resolves both networks and the
+private bind mount, then run a single approved, non-sensitive URL job and inspect
+its ledger state and stored object through the application. A successful `config`
+check proves only the Compose model; an `empty` one-shot result proves only that
+no job was leased. Neither proves external DNS/TLS reachability, the fetch and
+parse phases, persistence, retries, or deletion suppression. Repeat one-shot
+invocations to finish a two-phase job, and record those checks separately before
+setting a recurring schedule. Keep service logs free of fetched URLs and content.
 
 The existing apex site and static IP are already on the 8 GiB shared host.
 This Compose project does not remap the IP or change DNS. Adding the workout

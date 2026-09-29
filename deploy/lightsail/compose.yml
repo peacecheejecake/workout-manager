@@ -183,6 +183,7 @@ services:
         target: /var/lib/workout/private
     networks:
       - workout_internal
+      - workout_egress
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -191,6 +192,8 @@ services:
 networks:
   workout_internal:
     internal: true
+  workout_egress:
+    driver: bridge
   existing_caddy:
     external: true
     name: infra_default
