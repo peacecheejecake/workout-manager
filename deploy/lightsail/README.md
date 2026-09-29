@@ -189,8 +189,9 @@ startup, restart, data integrity, and private-object recovery. The restricted
 owner restore, subsequent `db_setup` role/grant setup, and app health on that
 restored database passed in an isolated drill with temporary credentials and a
 dummy IdP. A later synthetic Docker drill also passed restored app health after
-restarting its isolated PostgreSQL container and an empty-queue cleanup worker
-invocation. Real IdP login, nonempty worker operations, and deployed
+restarting its isolated PostgreSQL container, a nonempty abandoned-object cleanup
+queue, and erased-tenant prefix purge. Real IdP login, application-originated
+worker operations, and deployed
 data/private-object recovery remain unexecuted. Keep backups root-only and
 never point the recovery test at the live database.
 
@@ -212,9 +213,11 @@ image and PostgreSQL 17.6 in two new internal Docker networks. It creates a
 synthetic database archive and private file, restores as `workout_owner`, runs
 `db_setup`, replays a fixed synthetic post-backup tenant erasure before app
 startup, then checks app health and object bytes after a database restart. It
-also runs the cleanup worker against an empty queue. The script removes its
+checks the restricted runtime's erasure gate and runs the cleanup worker against
+a due abandoned-object queue and an erased tenant's rowless file; a second run
+checks the empty queue and unchanged retained control file. The script removes its
 containers, networks, volumes, archive, and file in an exit trap. Run it only
 on a host where that image is already available, after checking for sufficient
 temporary capacity. The [recorded host run](../../docs/implementation/research/lightsail-synthetic-restore-20260930.json)
-does not establish production backup, independent ledger, nonempty cleanup,
+does not establish production backup, independent ledger capture/replay, application-originated cleanup,
 real authentication, public HTTPS, or RPO/RTO behavior.

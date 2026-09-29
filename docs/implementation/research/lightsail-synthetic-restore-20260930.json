@@ -28,6 +28,53 @@
         "empty_queue_worker_one_shot"
       ],
       "checkCount": 8
+    },
+    {
+      "outcome": "failed",
+      "at": "source_fixture_admin_sql",
+      "reason": "An implicit Unix-socket psql connection was unavailable during temporary PostgreSQL startup; changed isolated administrator commands to explicit loopback TCP.",
+      "cleanupVerified": true
+    },
+    {
+      "outcome": "failed",
+      "at": "restored_runtime_erasure_gate",
+      "reason": "A Node eval from /app could not resolve the workspace package name; changed the check to import its in-image source path.",
+      "cleanupVerified": true
+    },
+    {
+      "outcome": "failed",
+      "at": "temporary_postgres_startup",
+      "reason": "pg_isready observed the official image's transient bootstrap server before the final postmaster was ready; readiness now requires PID 1 to be postgres as well as pg_isready.",
+      "cleanupVerified": true
+    },
+    {
+      "outcome": "passed",
+      "executedAt": "2026-09-29T17:08:00Z",
+      "sourceCommit": "e2e2b9f74d9ebcf77c2803c4e338e20d52663c8f",
+      "checks": [
+        "synthetic_dump_readable",
+        "synthetic_private_archive_restored",
+        "post_backup_erasure_captured",
+        "owner_restore_and_setup",
+        "erasure_replayed_before_runtime_rls",
+        "restored_runtime_rejects_erased_tenant",
+        "restored_app_http_and_database_health",
+        "restored_private_object_exact_bytes",
+        "restored_database_restart_app_health_erasure_and_object",
+        "nonempty_queue_and_erased_tenant_prefix_purged_control_retained",
+        "second_worker_run_idempotent_and_empty"
+      ],
+      "checkCount": 11,
+      "assertions": {
+        "abandonedObjectQueueCompleted": true,
+        "abandonedObjectFileAbsent": true,
+        "erasedTenantPrefixPurgePassed": true,
+        "erasedTenantObjectsPurgedAtLeast": 1,
+        "erasedTenantFileAbsent": true,
+        "retainedControlSha256Unchanged": true,
+        "secondWorkerQueueEmpty": true,
+        "secondWorkerTenantPurgeNotDue": true
+      }
     }
   ],
   "cleanup": {
@@ -70,8 +117,8 @@
   "limitations": [
     "The source database, erased tenant, retained tenant, and private file were synthetic; the production backup collection and production data recovery were not tested.",
     "The fixed tenant erasure was replayed manually before the restored app started; an operational external ledger capture and replay service was not tested.",
-    "The private object was copied exactly but no application upload, export, retrieval, deletion, or object purge was tested.",
-    "The resource cleanup worker ran against an empty queue; no nonempty cleanup or deletion suppression job was tested.",
+    "The private object archive copy and worker deletion were synthetic; no application upload, export, retrieval, or user-requested resource deletion was tested.",
+    "A synthetic abandoned-object queue and erased-tenant prefix purge were processed, but fixture rows and files were created directly rather than through the application lifecycle.",
     "The app used fake .invalid origins and credentials; real OIDC, public HTTPS, Caddy and browser flows were not tested.",
     "This exercise used two temporary Docker networks rather than full Compose stacks and did not measure RPO or RTO."
   ]
