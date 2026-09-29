@@ -180,12 +180,102 @@ containing a PostgreSQL URL, a root-owned mode 0700 output directory, a dedicate
 private directory, and a root-owned mode 0700 executable `--fence-check`. The
 operator must first stop **all** Workout database and private-object writers,
 including the app, workers, uploads, and any separate maintenance process. The
-checker must prove that this write fence remains active and exit nonzero if it
-does not; the collector runs it before the dump, before each private-file copy,
+checker must reject any visible loss of the externally held write fence; the
+collector runs it before the dump, before each private-file copy,
 and after the copy. A checker that merely returns zero is not evidence of a
 fence. The collector cannot establish a consistent recovery point without this
 external operational control. Do not use it against the live host until the
 fence procedure, disk capacity, and recovery input are reviewed.
+
+`backup/check-fence.mjs` is an **offline-prepared, uninstalled** host-side
+checker for that external command slot. It makes a point-in-time, fail-closed
+assessment; it does not establish or hold a write fence. Before even considering
+an operational run, an operator must establish a bounded maintenance window,
+stop/disable both Workout maintenance timers if installed, wait for their
+one-shot services and all manually started Workout jobs to finish, and hold
+exclusive `/run/lock/workout-manager/maintenance.lock` and
+`/run/lock/workout-manager/backup.lock` locks throughout collection. Stop the
+Workout `graphhopper` and `app` services while leaving its dedicated `postgres`
+service running. Block deployment, manual `db_setup`, worker, upload, and other
+Workout writer entry points for the entire window. The existing `infra` Compose
+project, apex Caddy block, apex database, and `infra_default` network must stay
+running and untouched. The Workout hostname may be unavailable during this
+window; that is separate from the apex site.
+
+The checker requires a root-owned mode 0600 JSON file named by the absolute
+`WORKOUT_BACKUP_FENCE_CONFIG` environment variable and a root-owned mode 0700
+copy of the checker. Its config schemaVersion is 1 and pins project
+`workout-manager`, the deployment's exact Compose path
+`/srv/workout-manager/source/deploy/lightsail/compose.yml`, private path
+`/srv/workout-manager/data/private`, PostgreSQL path
+`/srv/workout-manager/data/postgres`, the Compose file SHA-256, network
+`workout-manager_workout_internal`, the dedicated
+PostgreSQL cluster system identifier, and full current Docker IDs for `app`,
+`postgres`, and `graphhopper`. The IDs and system identifier are observations
+to record through a controlled read-only host inspection, not constants to
+guess or reuse after replacement. The checker rejects changed Compose bytes,
+symlink paths, missing/unsafe lock or config files, active/enabled timers,
+locks that it can acquire, missing/replaced/extra Workout containers, a foreign
+container attached to the Workout internal network or data paths, running app
+or GraphHopper, an unhealthy Workout DB or wrong mounts/project labels, a wrong
+database/cluster identifier, any other PostgreSQL client session, and command
+failures. It prints only `BACKUP_FENCE_CHECKED` or `BACKUP_FENCE_FAILED`.
+
+The root-only config has this shape; replace every placeholder from the
+verified deployment state before a controlled trial:
+
+```json
+{
+  "schemaVersion": 1,
+  "project": "workout-manager",
+  "network": "workout-manager_workout_internal",
+  "composeFile": "/srv/workout-manager/source/deploy/lightsail/compose.yml",
+  "composeSha256": "<64 lowercase hex characters>",
+  "privateDir": "/srv/workout-manager/data/private",
+  "postgresDir": "/srv/workout-manager/data/postgres",
+  "postgresSystemIdentifier": "<dedicated cluster system identifier>",
+  "containers": {
+    "app": "<64 lowercase hex characters>",
+    "postgres": "<64 lowercase hex characters>",
+    "graphhopper": "<64 lowercase hex characters>"
+  }
+}
+```
+
+The checker must run on the Docker host: it reads systemd and host locks and
+inspects all containers. The current collector also runs its own `pg_dump` on
+the host, but `wm-postgres` is a Docker-internal alias and PostgreSQL publishes
+no host port. **Do not run the live collector using this checker as-is.** A
+separate, narrowly mounted backup client using PostgreSQL 17-compatible tools
+and the Workout internal network, or another reviewed no-public-port transport,
+is needed. Do not mount the Docker socket into the backup client. The host
+checker needs a controlled way to pass status to that client without turning a
+single successful check into a long-lived permit. The backup role must be
+restricted to the dedicated Workout database and proven to dump every RLS
+table. Full archive restore is still necessary; `pg_restore --list` only reads
+the archive catalog.
+
+The checker can miss a writer created between Docker inventory, DB query, and
+the collector's next call. In particular, `collect.mjs` enumerates private
+files before its first checker invocation and there is a gap between its last
+check and publication. Merely calling the checker before and after copies does
+not close those races. All writer entry points must honor an independently held
+host fence for the entire operation, and a real restart/concurrent writer drill
+must fail safely before production collection. Confirm that the chosen
+PostgreSQL connection points to this cluster; the collector currently checks
+URL syntax, not cluster identity. Measure disk headroom for both private bytes
+and the database archive; its current estimate covers private bytes and 64 MiB
+only. Its subprocess timeout is 120 seconds, which may not suit real data.
+
+Offline checks: `node --test deploy/lightsail/backup/check-fence.test.mjs` covers
+synthetic success and writer restart, wrong project/path/DB, active client,
+timer/lock, foreign container, and Docker failure rejection. This does not
+prove any live writer is fenced. Operational use additionally needs independent
+post-backup deletion/erasure/consent/suppression ledger capture and replay,
+off-host protected copies, retention, and an isolated PostgreSQL 17 restore
+with the app, private objects, workers, restart, and RLS checks before runtime
+access. An empty ledger needs independent attestation; the collector's `verify`
+checks its supplied bytes, not completeness or replay.
 
 The collector rejects symlinks and nonregular private entries, overlapping
 source/output paths, low available disk, unsafe ownership or modes, changed
