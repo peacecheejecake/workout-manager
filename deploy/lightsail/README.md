@@ -266,10 +266,29 @@ does not mount the Docker socket in another container or create a backup
 container.
 
 This is still **offline preparation**, not an operational backup procedure.
-The checker and collector need a wrapper that owns both host locks for the
-entire capture and prevents every manual/deployment writer from restarting;
-the checker only samples state. The exact `postgres` local-socket authentication
-and Docker streaming path have not been exercised on the server. The host's
+The opt-in `backup/backup-window.mjs` host wrapper now takes both root-only
+`flock` locks for the whole stop → capture → restore sequence. It requires an
+already disabled or absent pair of Workout maintenance timers, the pinned
+config, root-owned mode 0700 installed checker/transport/collector/wrapper, and
+a root-owned mode 0700 `/srv/workout-manager/backups` directory. It checks the
+exact IDs, Compose labels, mounts, and health before touching containers. It
+stops only the pinned Workout `graphhopper` then `app` containers with
+`docker stop`; after the checker and collector complete, it starts only containers
+that it stopped, in `app` then `graphhopper` order. It does not call Compose
+`up`/`down`, create replacement containers, change Caddy, or touch `infra`.
+Failures before stopping leave the services alone. After a stop attempt it
+tries to restore that same pinned ID even if the stop command reported failure.
+The app's health and public response after restart still require an operator
+check. Signal interruption (especially SIGKILL), host loss, or a replaced
+container can prevent automatic restoration and require controlled manual
+recovery.
+
+The wrapper is not a complete write fence: manual `docker exec`, deployment
+commands, host processes, and unregistered writers can ignore its advisory
+locks. Those entry points need an operational exclusion rule and a concurrent
+writer/restart drill before live use. The checker still samples state. The
+exact `postgres` local-socket authentication and Docker streaming path have
+not been exercised on the server. The host's
 `pg_restore` version must be suitable before using the collector's later
 `verify` command; the transport's capture-time PostgreSQL 17 validation does
 not supply a host PostgreSQL 17 binary for that later step. A full isolated
@@ -280,6 +299,13 @@ role. Its 30-minute subprocess limit and available disk must be checked against
 real data before scheduling. Actual production collection, backup retention,
 off-host copy, independent deletion ledger capture/replay, and recovery remain
 **not_executed**.
+
+The window wrapper has synthetic tests at
+`node --test deploy/lightsail/backup/backup-window.test.mjs` for exact stop/start
+order, initially stopped services, locks/timers/project failures, a Docker stop
+that changes state but returns failure, checker failure, and collector failure.
+No host timer, wrapper, or recurring backup is installed. Deletion-ledger
+completeness and replay remain independent acceptance gates.
 
 The checker can miss a writer created between Docker inventory, DB query, and
 the collector's next call. In particular, `collect.mjs` enumerates private

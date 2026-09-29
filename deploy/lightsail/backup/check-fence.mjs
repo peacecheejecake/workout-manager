@@ -136,7 +136,7 @@ function inspectContainers(config, containers) {
   if (seen.size !== SERVICES.length) reject();
 }
 
-function checkTimers(runner) {
+export function checkTimers(runner) {
   for (const timer of TIMERS) {
     const output = command(runner, 'systemctl', [
       'show',
@@ -162,7 +162,7 @@ function checkTimers(runner) {
   }
 }
 
-function checkLocks(runner) {
+export function checkLocks(runner) {
   for (const lock of LOCKS) {
     const result = runner('flock', ['--nonblock', '--conflict-exit-code', '75', lock, 'true']);
     if (result.error || result.status !== 75) reject();

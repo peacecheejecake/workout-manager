@@ -1,0 +1,14 @@
+# Temporary public HTTPS site while the product reverse proxy and backup gates remain open.
+# Add this block beside the existing apex block; do not replace the apex site.
+workout.red-10-proto.xyz {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+	}
+
+	respond "Workout Manager setup in progress" 503
+}
