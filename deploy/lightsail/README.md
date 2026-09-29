@@ -119,6 +119,7 @@ Test the complete procedure in a separate PostgreSQL cluster and network with
 no connection to the live Compose project. Create a database owned by
 `workout_owner`, restore into it while connected as that restricted role
 without `--create`, then test `db_setup`, runtime and worker grants, RLS, app
-startup, restart, data integrity, and private-object recovery. This sequence
-is a proposed procedure until its own isolated drill succeeds. Keep backups
-root-only and never point the recovery test at the live database.
+startup, restart, data integrity, and private-object recovery. The restricted
+owner restore stage passed in an isolated drill; the subsequent setup and app
+stages remain unexecuted. Keep backups root-only and never point the recovery
+test at the live database.
