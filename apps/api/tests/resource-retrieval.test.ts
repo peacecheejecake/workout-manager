@@ -151,6 +151,30 @@ describe('resource retrieval API boundary', () => {
     expect(repository.retrieve).not.toHaveBeenCalled();
   });
 
+  it('accepts the six-excerpt edge and rejects a body over the route limit', async () => {
+    const { app, repository } = setup();
+    const edge = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/retrieval/queries',
+      headers,
+      payload: { schemaVersion: 1, query: '회복', limit: 6 },
+    });
+    expect(edge.statusCode).toBe(200);
+    expect(repository.retrieve).toHaveBeenCalledWith('owner', {
+      schemaVersion: 1,
+      query: '회복',
+      limit: 6,
+    });
+    const oversized = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/retrieval/queries',
+      headers,
+      payload: { schemaVersion: 1, query: '회복', padding: 'x'.repeat(4096) },
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(repository.retrieve).toHaveBeenCalledTimes(1);
+  });
+
   it('returns the stored grounding with withdrawn citations marked unavailable', async () => {
     const { app, repository } = setup();
     const response = await app.inject({
