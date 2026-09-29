@@ -71,3 +71,12 @@
 - 독립 `gpt-6-sol` high/read-only 전체 phase 검토는 base `main` `ac99e37` → HEAD `66a689f`에서 **BLOCK** 판정을 냈다. P2: HealthKit 운동 읽기를 OS에서 거부한 상태의 빈 anchored 조회가 삭제 API 성공 뒤 anchor를 전진시킬 수 있고, 삭제 확정 상태의 명시적 권한 재시도도 그 anchor를 초기화하지 않아 이후 허용된 tombstone을 놓칠 수 있다.
 - P2 **FIXED in current content, 독립 재검토 대기**: 명시적 읽기 재시도는 삭제 확정 여부와 관계없이 같은 UUID 범위의 anchor를 nil로 돌린다. 비어 있는 조회는 cursor를 전진시키지 않으며, 현재 조회에서 실제 tombstone을 관측해야만 삭제 이벤트 확인을 보고한다. 계정·UUID·source·표식의 조회/삭제 격리는 유지한다. Swift harness의 거부 → 삭제 → 허용 → 재시도 상태 전이 통과, iOS SDK 타입 검사와 서명 없는 Simulator 빌드 통과. 첫 sandbox 빌드는 CoreSimulatorService·캐시 권한 문제로 중단됐고 접근 가능한 환경에서 재실행이 통과했다.
 - 새 HEAD의 전체 install/generated/lint/typecheck/build/test/integration/identity 2회/format gate는 이 보완 뒤 아직 재실행하지 않았다. 실기기 HealthKit 동작과 M3-02h 전체 수용도 **not_executed**다. 새 전체 검토가 완료되기 전까지 `main` 병합은 보류한다.
+
+## 2026-09-30 · P2 보완 HEAD 단계 전체 재검증 · 독립 재검토 대기
+
+- 기준 `main`은 `ac99e3749c643ecc4d9cd78cd0b05353ae511430`, 검증한 phase HEAD는 `e8f53b82415fb06629753601b94fc4779265b3c4`였다. 시작 작업 트리는 깨끗했다. 이 검증 중 제품 코드는 수정하지 않았다.
+- Node 24.12.0·pnpm 10.34.5에서 고정 잠금 설치의 첫 시도는 샌드박스 DNS 제한(`ENOTFOUND registry.npmjs.org`)과 비대화형 modules 제거 보호로 실패했다. `CI=true`를 준 접근 가능한 환경의 동일 `pnpm install --frozen-lockfile` 재실행은 통과했다. pnpm은 `msw` build script를 무시한다는 기존 경고를 냈다.
+- `pnpm check:generated`, `pnpm lint`, `pnpm format:check`, `git diff --check` 통과. `pnpm typecheck`는 34/34, `pnpm build`는 15/15 통과했다. 두 Turbo 결과는 전부 공유 캐시였으며, 별도 identity API origin을 지정한 `@workout/web` 직접 빌드도 통과했고 출력의 route manifest에 그 origin이 들어 있었다.
+- 전체 단위·컴포넌트 첫 실행은 샌드박스의 로컬 시험 서버 바인딩 제한으로 35 실패·4,207 통과·7 건너뜀이다. 접근 가능한 환경에서 같은 HEAD를 재실행해 **4,242 통과·7 건너뜀**을 확인했다. 실제 PostgreSQL 통합 시험은 **844/844 통과**했다.
+- identity E2E는 별도 웹/API/OIDC/Garmin 포트와 기존 로컬 지도·고도 자산을 사용했다. 첫 전체 실행은 모바일도 별도 포트 53111로 지정했으나, `native-shell.spec.ts` 한 건이 `127.0.0.1:4200`을 고정 사용해 **307 통과·13 건너뜀·1 실패**(15.0분)였다. 이는 실행 구성 불일치이며 통과로 소급하지 않는다. 모바일 포트를 4200으로 바꾼 집중 시험은 1/1 통과했다. `pnpm test:identity -- native-shell.spec.ts` 시도는 CLI 인자가 필터로 적용되지 않아 전체 실행을 시작했으므로 43번째 부근에서 중단했고 통과 증거로 사용하지 않는다. 올바른 구성의 전체 재실행 두 회는 각각 **308 통과·13 건너뜀·실패 0**(14.9분, 15.0분)이었다. 두 회 모두 고정 포트 시험이 통과했다.
+- 이 HEAD의 Swift 상태 전이 harness, iOS SDK 타입 검사, 서명 없는 Simulator 빌드 결과는 위 P2 보완 기록과 `M3-02h.md`의 2026-09-30 기록을 확인했다. 이번 단계 전체 게이트에서 이 세 명령을 별도 재실행하지 않았다. 서명된 새 iPhone 빌드·설치·제품 로그인·실제 HTTPS와 HealthKit 읽기/쓰기/삭제·background wake·offline ACK 및 M3-02h 전체 수용은 계속 **not_executed**다. M3-02 부모를 완료로 바꾸지 않으며, 이 검증 기록 커밋까지 포함한 새 phase HEAD의 독립 읽기 전용 전체 diff 재검토가 필요하다.
