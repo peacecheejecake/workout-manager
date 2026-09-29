@@ -15,7 +15,7 @@ import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 /**
  * M2-01au: the `*_definer` policies (047, 049, 050, 051, the queue-state migration and — M2-01av —
- * the tenant-work index) name the role that applied them. When ownership moves — `REASSIGN OWNED`, or a `--no-owner`
+ * the tenant-work index and 066's suppression event) name the role that applied them. When ownership moves — `REASSIGN OWNED`, or a `--no-owner`
  * restore by another role — the new owner's definer functions have no policy: on an owner
  * that is neither superuser nor BYPASSRLS, erasure fails with 42501 and the workers see
  * nothing. `retarget_definer_policies()`, run by the new owner, points every one of them at it
@@ -40,6 +40,7 @@ const definerPolicies = [
   'object_scope_purge:object_scope_purge_definer',
   'resource_derived_cleanup:resource_derived_cleanup_definer',
   'resource_object_cleanup:resource_object_cleanup_definer',
+  'restore_suppression_event:restore_suppression_event_definer',
   'routing_admission:routing_admission_definer',
   'tenant_object_purge:tenant_object_purge_definer',
   'tenant_work_index:tenant_work_index_definer',
@@ -115,6 +116,15 @@ async function retargetAs(role: string): Promise<number> {
   }
 }
 
+async function erasureEventCount(tenant: string): Promise<number> {
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+       WHERE athlete_id=$1 AND kind='tenant_erased'`,
+    [tenant],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -165,7 +175,9 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await policyTargets()).toEqual(
       definerPolicies.map((entry) => `${entry}:${firstOwner}:ALL:true:true`),
     );
-    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    const tenant = randomUUID();
+    await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
+    expect(await erasureEventCount(tenant)).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -177,7 +189,9 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await policyTargets()).toEqual(
       definerPolicies.map((entry) => `${entry}:${firstOwner}:ALL:true:true`),
     );
-    await expect(operations.eraseAccount(randomUUID())).rejects.toMatchObject({ code: '42501' });
+    const tenant = randomUUID();
+    await expect(operations.eraseAccount(tenant)).rejects.toMatchObject({ code: '42501' });
+    expect(await erasureEventCount(tenant)).toBe(0);
     expect(await workerFinishesADeletion()).toBe(false);
     // A write to a table the index follows is refused too: its trigger cannot write the index.
     await expect(workerPrunesAnExpiredCacheEntry()).rejects.toMatchObject({ code: '42501' });
@@ -193,7 +207,8 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await policyTargets()).toEqual(
       definerPolicies.map((entry) => `${entry}:${nextOwner}:ALL:true:true`),
     );
-    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
+    expect(await erasureEventCount(tenant)).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -219,7 +234,9 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await policyTargets()).toEqual(
       definerPolicies.map((entry) => `${entry}:${nextOwner}:ALL:true:true`),
     );
-    await expect(operations.eraseAccount(randomUUID())).resolves.toEqual({ erased: true });
+    const tenant = randomUUID();
+    await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
+    expect(await erasureEventCount(tenant)).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
