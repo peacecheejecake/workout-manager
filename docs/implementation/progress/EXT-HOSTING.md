@@ -45,6 +45,8 @@
 
 ## 남은 외부 수용
 
+- 2026-09-29 재개 확인: `main` `ac99e37`을 phase 브랜치에 병합한 `68c59d5`에서 충돌이 없었고, 병합 diff 검사와 task graph·요구 매트릭스 JSON 파싱이 통과했다. 이후 읽기 전용 조회에서 `workout.red-10-proto.xyz`의 공개 A 레코드는 여전히 없었다. AWS 비루트 SSO 세션은 계정 `681892421656`의 관리자 역할이었고, Lightsail은 `workout-shared-8gb-20260929` 한 대만 실행 중이었다. 기존 apex HTTPS는 최종 200·TLS 검증 0, 월 USD 60 Budget 조회의 실제 지출은 USD 25.468·예측은 USD 26.978이었다. 이 수치는 조회 시점의 집계이며 월 지출 상한 보증이 아니다. 공개 Workout HTTPS·IdP 등록·실제 로그인은 계속 **not_executed**다.
+
 1. 현재 단일 Lightsail 서버의 실제 비용·스냅샷 저장량과 월 예산을 계속 확인한다. 전용 PostgreSQL과 비공개 파일 저장소의 재시작 후 지속성, 전체 운영 복구, worker 실행과 삭제 억제를 검증한다. 위 격리 복원 드릴은 제품 기동까지의 복구 증거가 아니다.
 2. 가비아 DNS에 `workout` 주소를 연결하고 검증된 Caddy 후보를 활성화해 공개 HTTPS를 확인한다. 공개 `/map-data-licence`와 script 응답 바이트를 활성 manifest SHA-256에 다시 대조한다. 내부 응답 검사는 공개 응답 검사를 대신하지 않는다.
 3. Zitadel에 HTTPS redirect·post-logout·back-channel URL을 등록한다. `NODE_ENV=production`, secure `__Host-` cookie, secret manager 전달과 배포 환경의 로그인·계정 전환·로그아웃·취소·만료·back-channel 전파를 각각 확인한다. 실제 공급자에서 접근 불가능한 취소 경로는 미검증으로 남긴다.
