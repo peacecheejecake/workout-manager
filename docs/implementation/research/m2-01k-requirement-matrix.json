@@ -3590,7 +3590,7 @@
     },
     {
       "id": "P8-self-ops",
-      "source": "docs/implementation/map-implementation-plan.md:199",
+      "source": "docs/implementation/map-implementation-plan.md:207",
       "quote": "| 자체 운영 | 외부 runtime 요청 없음, CSP/worker·asset license·대표 장기 track의 시간/메모리/GPU 측정, graph 갱신/rollback·과부하 |",
       "verdict": "partial",
       "evidence": ["probe-routing-operational, probe-course-performance"],
@@ -3619,7 +3619,7 @@
     },
     {
       "id": "P8-coverage",
-      "source": "docs/implementation/map-implementation-plan.md:200",
+      "source": "docs/implementation/map-implementation-plan.md:208",
       "quote": "| 보행 coverage | graph 신원 고정, 사전 기대 결과와 독립 검토자, 도심/횡단보도/다리/계단/공원/접근시간·음성 대조; HTTP 200만으로 통과 금지 |",
       "verdict": "failed",
       "evidence": [
