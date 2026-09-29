@@ -12,7 +12,7 @@ Create a deployment directory under `/srv/workout-manager` and keep all secrets
 outside Git. The source tree can be owned by the deployment user and its parent
 must allow the required traversal; the secrets directory alone must be root-owned
 and mode 0700. The path passed as `WORKOUT_DATA_DIR` needs
-separate `postgres`, `private`, `routing`, and `basemap` directories. `private` is a
+separate `postgres`, `private`, `routing`, `basemap`, and `geo-data` directories. `private` is a
 dedicated persistent mount, readable and writable by the app's container user
 (UID 1000); it is not the existing site's storage. PostgreSQL's data directory
 must be writable by its container user. Do not prepare either directory with
@@ -70,6 +70,9 @@ because its store can need a lock file; keep the source build immutable elsewher
 compare the deployed files and active disclosure after startup. The basemap
 directory is a copy of the local build's `dist` directory: it contains
 `current.json` next to `ebe407d9dcbe-muldszzf/`, not only the latter folder.
+The `geo-data` directory contains the real extract build's `places.json`,
+`elevation.json`, `odbl-disclosure.json`, `ATTRIBUTION.txt`, and `odbl-scripts/`.
+The app mounts it read-only and treats a missing or stale disclosure as unavailable.
 
 ## Start and inspect
 

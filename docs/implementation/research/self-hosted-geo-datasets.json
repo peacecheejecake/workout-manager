@@ -1,5 +1,5 @@
 {
-  "executedAt": "2026-09-22T17:04:48.758Z",
+  "executedAt": "2026-09-29T12:38:49.538Z",
   "node": "v24.12.0",
   "osmiumVersion": "osmium version 1.19.1",
   "source": {
@@ -18,12 +18,12 @@
     {
       "step": "places",
       "command": "osmium tags-filter -R n/place n/leisure=park,pitch,sports_centre,stadium,garden n/amenity=school,university,hospital,library,community_centre n/railway=station n/public_transport=station n/tourism=attraction,museum | osmium export",
-      "durationMs": 194
+      "durationMs": 197
     },
     {
       "step": "elevation",
       "command": "osmium tags-filter -R n/ele | osmium export",
-      "durationMs": 117
+      "durationMs": 123
     }
   ],
   "places": {
@@ -31,19 +31,111 @@
     "matchedFeatures": 4849,
     "withoutUsableName": 117,
     "stored": 4732,
-    "bytes": 733187
+    "bytes": 733285
   },
   "elevation": {
     "datasetId": "2fa973c2e348",
     "matchedFeatures": 826,
     "unparsableValues": 5,
     "stored": 821,
-    "bytes": 49410,
+    "bytes": 49508,
     "maxSourceDistanceMeters": 150,
     "note": "OSM ele tags, not a digital elevation model. Sparse by nature; unknown is the normal answer."
   },
   "outputDirectory": ".geo-build/geo-data",
   "previousRuns": [
+    {
+      "executedAt": "2026-09-29T12:35:10.483Z",
+      "node": "v20.10.0",
+      "osmiumVersion": "osmium version 1.19.1",
+      "source": {
+        "id": "osm-extract-seoul",
+        "license": "ODbL-1.0",
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "bytes": 51884841,
+        "reusedFromDisk": true
+      },
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bbox": [126.734, 37.413, 127.269, 37.715]
+      },
+      "steps": [
+        {
+          "step": "places",
+          "command": "osmium tags-filter -R n/place n/leisure=park,pitch,sports_centre,stadium,garden n/amenity=school,university,hospital,library,community_centre n/railway=station n/public_transport=station n/tourism=attraction,museum | osmium export",
+          "durationMs": 198
+        },
+        {
+          "step": "elevation",
+          "command": "osmium tags-filter -R n/ele | osmium export",
+          "durationMs": 123
+        }
+      ],
+      "places": {
+        "datasetId": "0ac86c4c1802",
+        "matchedFeatures": 4849,
+        "withoutUsableName": 117,
+        "stored": 4732,
+        "bytes": 733285
+      },
+      "elevation": {
+        "datasetId": "2fa973c2e348",
+        "matchedFeatures": 826,
+        "unparsableValues": 5,
+        "stored": 821,
+        "bytes": 49508,
+        "maxSourceDistanceMeters": 150,
+        "note": "OSM ele tags, not a digital elevation model. Sparse by nature; unknown is the normal answer."
+      },
+      "outputDirectory": ".geo-build/geo-data"
+    },
+    {
+      "executedAt": "2026-09-22T17:04:48.758Z",
+      "node": "v24.12.0",
+      "osmiumVersion": "osmium version 1.19.1",
+      "source": {
+        "id": "osm-extract-seoul",
+        "license": "ODbL-1.0",
+        "sha256": "7e13e2adf1025f9a85fa0ecc052c142e51473ba5ab894f01797b1a83f06e0eea",
+        "bytes": 51884841,
+        "reusedFromDisk": true
+      },
+      "region": {
+        "id": "seoul-bbbike",
+        "name": "Seoul (BBBike city extract)",
+        "bbox": [126.734, 37.413, 127.269, 37.715]
+      },
+      "steps": [
+        {
+          "step": "places",
+          "command": "osmium tags-filter -R n/place n/leisure=park,pitch,sports_centre,stadium,garden n/amenity=school,university,hospital,library,community_centre n/railway=station n/public_transport=station n/tourism=attraction,museum | osmium export",
+          "durationMs": 194
+        },
+        {
+          "step": "elevation",
+          "command": "osmium tags-filter -R n/ele | osmium export",
+          "durationMs": 117
+        }
+      ],
+      "places": {
+        "datasetId": "0ac86c4c1802",
+        "matchedFeatures": 4849,
+        "withoutUsableName": 117,
+        "stored": 4732,
+        "bytes": 733187
+      },
+      "elevation": {
+        "datasetId": "2fa973c2e348",
+        "matchedFeatures": 826,
+        "unparsableValues": 5,
+        "stored": 821,
+        "bytes": 49410,
+        "maxSourceDistanceMeters": 150,
+        "note": "OSM ele tags, not a digital elevation model. Sparse by nature; unknown is the normal answer."
+      },
+      "outputDirectory": ".geo-build/geo-data"
+    },
     {
       "executedAt": "2026-09-22T15:18:24.966Z",
       "node": "v24.12.0",

@@ -16,6 +16,7 @@ services:
       PORT: '4300'
       PRIVATE_RESOURCE_STORAGE_ROOT: /var/lib/workout/private
       BASEMAP_DIST_DIR: /opt/workout/basemap
+      GEO_DATA_DIR: /opt/workout/geo-data
       ROUTING_ENGINE_URL: http://127.0.0.1:8991
       ROUTING_GRAPH_DIRECTORY: /opt/workout/routing/foot
       ROUTING_ENGINE_ARTIFACT: /opt/workout/routing/graphhopper-web.jar
@@ -31,6 +32,10 @@ services:
       - type: bind
         source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/basemap
         target: /opt/workout/basemap
+        read_only: true
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/geo-data
+        target: /opt/workout/geo-data
         read_only: true
       - type: bind
         source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/routing

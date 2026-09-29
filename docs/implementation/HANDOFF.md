@@ -25,7 +25,9 @@ Lightsail 인스턴스는 새 서버 한 대만 남는다. 가비아 `workout` D
 저장했다. 서버 전달은 처음 자동 승인 검토에서 거절됐으나, 사용자의 정확한 목적지 명시 승인 후 root 전용
 `app.env`에 전달했다. 앱을 비공개로 기동해 API·웹·DB 통합 health와 전국 graph의 합성 경로를 확인했다.
 두 Docker 네트워크의 `postgres` 이름 충돌은 전용 `wm-postgres` 별칭으로 고쳤다. 기존 사이트의 공개 HTTPS는 계속
-`200`이었다. `workout` DNS·Zitadel HTTPS 등록·공개 로그인·전체 제품 검증은 `not_executed`다.
+`200`이었다. 실제 서울 OSM 추출물에서 장소·고도 자료와 ODbL 고지를 다시 빌드해 내부 앱에 연결했고,
+배경 지도·경로·장소/고도 스크립트 다운로드 10개의 응답 해시를 배포 기록과 대조했다. `workout` DNS·Zitadel
+HTTPS 등록·공개 로그인·전체 제품 검증은 `not_executed`다.
 
 **최신 M0-06c 판정(2026-09-27):** 별도 서명 작성 앱의 합성 심박수 1건 저장 뒤, 종료된 probe의 새 background launch와 observer callback을 실기기에서 확인했다. [실행·정리 기록](progress/M0-06c-native-host-addendum.md#별도-서명-작성-앱으로-실제-wake-확인--2026-09-27)에 따라 M0-06c의 제한된 feasibility 범위는 `completed`다. 아래 초기 phase·실기기 기록의 `in_progress`와 `not_executed`는 해당 시점의 결과다. 미저장 Back 버튼별 기계 기록과 제품 native host 통합은 남아 있으며 제품 범위는 M3-01이다.
 
