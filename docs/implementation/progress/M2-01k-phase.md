@@ -62,3 +62,9 @@ Codex CLI `gpt-6-sol` high/read-only가 기준 `main` **`9ac6aa1f5af54a09497d7e5
 ## 독립 검토 7차 갱신과 main 병합
 
 같은 설정의 읽기 전용 검토가 기준 `main` **`9ac6aa1f5af54a09497d7e50504840fb91aae8f5`**부터 문서 기록을 포함한 phase HEAD **`0b183c88ccf08e21826169b1d56e72051b48467f`**까지 전체 44개 파일을 확인해 **APPROVE**를 냈다. 일곱 이전 지적은 모두 **FIXED**, 새 지적 없음으로 판정했다. 6차 승인 뒤 변경은 이 검토 결과를 기록한 문서 두 개뿐임을 확인했다. root가 `main`을 `9ac6aa1`에서 `0b183c8`로 fast-forward했고 작업 트리는 깨끗했다. 이번 병합 사실을 기록하는 문서 변경은 별도 검토 대상이다.
+
+## 2026-09-29 근거 정렬·독립 검토
+
+`main` **`3f8420f56a8520da533f67c722e765f71109ba66`**를 기준으로 phase HEAD **`9743edb29293dfdf3fc68b5e6b849c9537a5d128`**의 문서 두 파일 전체 diff를, 맥락을 전달받지 않은 Codex `gpt-6-sol` high 읽기 전용 subagent가 검토해 **APPROVE**했다. 기존 지적은 없었다. `P8-self-ops`는 장기 track 측정 근거를 반영해도 `partial`, 기존 기준의 `P8-coverage`는 `failed`이며 후속 새 기준의 `adequate`와 구분한다는 판정이 원문과 일치했다. 비차단 기존 지적으로 매트릭스 두 행의 요구 출처 줄 번호가 오래된 값이라는 점을 발견해 실제 207·208행으로 고쳤다. 이 수정과 이 기록은 검토한 HEAD 이후의 변경이므로 **전체 diff 재검토 전에는 main에 넣지 않는다**.
+
+검토 전 Node 24.12.0의 frozen install, `check:generated`, lint, typecheck 34/34, build 15/15, test 4,249/4,249, 일회용 PostgreSQL 통합 upgrade 1/1과 844/844, identity 두 번 각각 310 passed·11 skipped·0 failed, format, diff, JSON 110행·고유 ID·집계 및 변경 문서 링크 16개 확인이 통과했다. 첫 로컬 실행은 sandbox 포트 권한과 기존 프로세스의 포트 점유 때문에 실패했고, 별도 포트에 맞게 웹을 재빌드한 뒤 전체 identity를 두 번 통과했다. 점유 프로세스는 종료하지 않았다. 건너뛴 11개와 외부 OIDC·실계정·실기기 `not_executed`는 통과로 계산하지 않는다.
