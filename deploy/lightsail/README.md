@@ -120,7 +120,8 @@ no connection to the live Compose project. Create a database owned by
 `workout_owner`, restore into it while connected as that restricted role
 without `--create`, then test `db_setup`, runtime and worker grants, RLS, app
 startup, restart, data integrity, and private-object recovery. The restricted
-owner restore and subsequent `db_setup` role/grant stages passed in an isolated
-drill with temporary credentials. App startup on the restored database, worker
-operations, and data/private-object recovery remain unexecuted. Keep backups
-root-only and never point the recovery test at the live database.
+owner restore, subsequent `db_setup` role/grant setup, and app health on that
+restored database passed in an isolated drill with temporary credentials and a
+dummy IdP. Real IdP login, worker operations, app restart on the restored DB,
+and data/private-object recovery remain unexecuted. Keep backups root-only and
+never point the recovery test at the live database.
