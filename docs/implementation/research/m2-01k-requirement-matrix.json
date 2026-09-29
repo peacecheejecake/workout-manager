@@ -2349,7 +2349,7 @@
         "date": "2026-09-30",
         "verdict": "not_executed",
         "evidence": "docs/implementation/research/m0-06b-provider-privacy-audit.md",
-        "scope": "Official OSM/ODbL/Geofabrik/MapLibre/GraphHopper pages and repository-local provider, credential, request and logging paths reviewed. Deployed proxy/CDN/host logging, retention, and served ODbL artifacts remain unverified. Historical P8-coverage failed is unchanged."
+        "scope": "Official OSM/ODbL/BBBike/Geofabrik/MapLibre/GraphHopper pages and repository-local provider, credential, request and logging paths reviewed. BBBike Seoul basemap and Geofabrik national routing graph provenance are distinct. Deployed proxy/CDN/host logging, retention, and served ODbL artifacts remain unverified. Historical P8-coverage failed is unchanged."
       }
     },
     {
