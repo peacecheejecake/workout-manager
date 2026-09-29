@@ -210,7 +210,8 @@ copy of the checker. Its config schemaVersion is 1 and pins project
 `/srv/workout-manager/data/private`, PostgreSQL path
 `/srv/workout-manager/data/postgres`, the Compose file SHA-256, network
 `workout-manager_workout_internal`, the dedicated
-PostgreSQL cluster system identifier, and full current Docker IDs for `app`,
+PostgreSQL cluster system identifier, exact PostgreSQL 17.6 server version
+number `170006`, and full current Docker IDs for `app`,
 `postgres`, and `graphhopper`. The IDs and system identifier are observations
 to record through a controlled read-only host inspection, not constants to
 guess or reuse after replacement. The checker rejects changed Compose bytes,
@@ -234,6 +235,7 @@ verified deployment state before a controlled trial:
   "privateDir": "/srv/workout-manager/data/private",
   "postgresDir": "/srv/workout-manager/data/postgres",
   "postgresSystemIdentifier": "<dedicated cluster system identifier>",
+  "postgresVersionNum": "170006",
   "containers": {
     "app": "<64 lowercase hex characters>",
     "postgres": "<64 lowercase hex characters>",
@@ -243,17 +245,41 @@ verified deployment state before a controlled trial:
 ```
 
 The checker must run on the Docker host: it reads systemd and host locks and
-inspects all containers. The current collector also runs its own `pg_dump` on
-the host, but `wm-postgres` is a Docker-internal alias and PostgreSQL publishes
-no host port. **Do not run the live collector using this checker as-is.** A
-separate, narrowly mounted backup client using PostgreSQL 17-compatible tools
-and the Workout internal network, or another reviewed no-public-port transport,
-is needed. Do not mount the Docker socket into the backup client. The host
-checker needs a controlled way to pass status to that client without turning a
-single successful check into a long-lived permit. The backup role must be
-restricted to the dedicated Workout database and proven to dump every RLS
-table. Full archive restore is still necessary; `pg_restore --list` only reads
-the archive catalog.
+inspects all containers. The original collector's `--database-url-file` mode
+runs `pg_dump` on the host, but `wm-postgres` is a Docker-internal alias and
+PostgreSQL publishes no host port. The opt-in
+`--database-transport <root-owned-executable>` mode delegates only the archive
+step to `backup/docker-archive-transport.mjs`. Install a root-owned mode 0700
+copy of that executable **and** its adjacent `check-fence.mjs` module outside
+Git, then provide the same root-only fence configuration to both through
+`WORKOUT_BACKUP_FENCE_CONFIG`. No URL or password is needed for this mode. The
+transport invokes PostgreSQL 17.6's `pg_dump` as the `postgres` OS user inside
+the pinned, existing Workout DB container and streams its raw stdout to a mode
+0600 partial file under the collector's root-only staging directory. It never
+publishes a DB port or joins the apex project. It sends those exact bytes back
+through stdin to that container's `pg_restore --list` and
+`pg_restore --file=/dev/null`, checks a stable SHA-256, and renames the file
+only after the fence checker passes again. Failure removes the partial file;
+the collector removes its incomplete bundle. Standard output and errors contain
+fixed status codes only, never archive bytes or credentials. The transport
+does not mount the Docker socket in another container or create a backup
+container.
+
+This is still **offline preparation**, not an operational backup procedure.
+The checker and collector need a wrapper that owns both host locks for the
+entire capture and prevents every manual/deployment writer from restarting;
+the checker only samples state. The exact `postgres` local-socket authentication
+and Docker streaming path have not been exercised on the server. The host's
+`pg_restore` version must be suitable before using the collector's later
+`verify` command; the transport's capture-time PostgreSQL 17 validation does
+not supply a host PostgreSQL 17 binary for that later step. A full isolated
+restore is required to prove recoverability. The transport uses the dedicated
+cluster's local PostgreSQL administrator identity to read RLS-protected data,
+so protect the archive and do not mistake this for a least-privilege backup
+role. Its 30-minute subprocess limit and available disk must be checked against
+real data before scheduling. Actual production collection, backup retention,
+off-host copy, independent deletion ledger capture/replay, and recovery remain
+**not_executed**.
 
 The checker can miss a writer created between Docker inventory, DB query, and
 the collector's next call. In particular, `collect.mjs` enumerates private
@@ -276,6 +302,14 @@ off-host protected copies, retention, and an isolated PostgreSQL 17 restore
 with the app, private objects, workers, restart, and RLS checks before runtime
 access. An empty ledger needs independent attestation; the collector's `verify`
 checks its supplied bytes, not completeness or replay.
+
+`node --test deploy/lightsail/backup/docker-archive-transport.test.mjs
+deploy/lightsail/backup/collect.test.mjs` covers the opt-in handoff, complete
+and partial synthetic byte streams, Docker/fence failure, stale pins, and
+incomplete-bundle cleanup. The opt-in disposable PostgreSQL 14 collector test
+also checks an actual custom archive through no-filename `pg_restore --list`
+and `pg_restore --file=/dev/null` stdin reads. It does not exercise Docker or
+the deployed PostgreSQL 17.6 container.
 
 The collector rejects symlinks and nonregular private entries, overlapping
 source/output paths, low available disk, unsafe ownership or modes, changed

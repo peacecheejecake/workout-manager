@@ -43,10 +43,26 @@ function parseArgs(argv) {
   }
   const required =
     command === 'collect'
-      ? ['--database-url-file', '--private-dir', '--output-dir', '--fence-check']
+      ? ['--private-dir', '--output-dir', '--fence-check']
       : ['--bundle', '--post-backup-ledger-dir'];
   if (required.some((key) => !options[key])) fail('BACKUP_MISSING_ARGUMENT');
-  const allowed = new Set([...required, '--synthetic-test', '--min-free-bytes']);
+  if (
+    command === 'collect' &&
+    Boolean(options['--database-url-file']) === Boolean(options['--database-transport'])
+  ) {
+    fail('BACKUP_DATABASE_SOURCE_REQUIRED');
+  }
+  const allowed = new Set(
+    command === 'collect'
+      ? [
+          ...required,
+          '--database-url-file',
+          '--database-transport',
+          '--synthetic-test',
+          '--min-free-bytes',
+        ]
+      : [...required, '--synthetic-test', '--min-free-bytes'],
+  );
   if (Object.keys(options).some((key) => !allowed.has(key))) fail('BACKUP_INVALID_ARGUMENT');
   return { command, options };
 }
@@ -92,11 +108,11 @@ function assertRootOwned(paths, options) {
   }
 }
 
-function run(command, args, env = process.env) {
+function run(command, args, env = process.env, timeout = 120_000) {
   const result = spawnSync(command, args, {
     env,
     encoding: 'utf8',
-    timeout: 120_000,
+    timeout,
     maxBuffer: MAX_OUTPUT_BYTES,
     stdio: ['ignore', 'ignore', 'pipe'],
   });
@@ -175,7 +191,12 @@ function checkFence(path) {
 }
 
 function collect(options) {
-  const dbFile = resolve(options['--database-url-file']);
+  const dbFile = options['--database-url-file']
+    ? resolve(options['--database-url-file'])
+    : undefined;
+  const databaseTransport = options['--database-transport']
+    ? resolve(options['--database-transport'])
+    : undefined;
   const privateDir = resolve(options['--private-dir']);
   const outputDir = resolve(options['--output-dir']);
   const fence = resolve(options['--fence-check']);
@@ -185,11 +206,13 @@ function collect(options) {
     privateDir.startsWith(`${outputDir}${sep}`)
   )
     fail('BACKUP_OVERLAPPING_PATHS');
-  assertPrivilege(options, [dbFile, privateDir, outputDir, fence]);
-  for (const path of [dbFile, privateDir, outputDir, fence]) assertNoSymlinkParents(path);
+  const source = dbFile ?? databaseTransport;
+  assertPrivilege(options, [source, privateDir, outputDir, fence]);
+  for (const path of [source, privateDir, outputDir, fence]) assertNoSymlinkParents(path);
   assertSecureDir(privateDir);
   assertSecureDir(outputDir);
-  assertRootOwned([dbFile, outputDir, fence], options);
+  assertRootOwned([source, outputDir, fence], options);
+  if (databaseTransport) assertSecureFile(databaseTransport, 0o700);
   const files = privateFiles(privateDir);
   const estimatedBytes = files.reduce((total, file) => total + file.size, 0);
   const free = statfsSync(outputDir).bavail * statfsSync(outputDir).bsize;
@@ -197,7 +220,7 @@ function collect(options) {
   if (!Number.isSafeInteger(minimum) || minimum < MIN_HEADROOM_BYTES)
     fail('BACKUP_INVALID_MINIMUM');
   if (free < estimatedBytes * 2 + minimum) fail('BACKUP_DISK_LOW');
-  const env = databaseEnv(dbFile);
+  const env = dbFile ? databaseEnv(dbFile) : process.env;
   checkFence(fence);
   const id = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`;
   const staging = join(outputDir, `.${id}.partial`);
@@ -206,9 +229,15 @@ function collect(options) {
   try {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
-    run('pg_dump', ['-Fc', '--no-owner', '--no-acl', '-f', dump], env);
-    chmodSync(dump, 0o600);
-    run('pg_restore', ['--list', dump]);
+    if (databaseTransport) {
+      run(databaseTransport, ['--output', dump, '--fence-check', fence], env, 30 * 60_000);
+      if (!existsSync(dump)) fail('BACKUP_TRANSPORT_OUTPUT_MISSING');
+      assertSecureFile(dump, 0o600);
+    } else {
+      run('pg_dump', ['-Fc', '--no-owner', '--no-acl', '-f', dump], env);
+      chmodSync(dump, 0o600);
+      run('pg_restore', ['--list', dump]);
+    }
     const copied = [];
     for (const file of files) {
       checkFence(fence);

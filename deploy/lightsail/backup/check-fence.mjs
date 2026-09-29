@@ -10,6 +10,7 @@ const SERVICES = ['app', 'postgres', 'graphhopper'];
 const COMPOSE_FILE = '/srv/workout-manager/source/deploy/lightsail/compose.yml';
 const PRIVATE_DIR = '/srv/workout-manager/data/private';
 const POSTGRES_DIR = '/srv/workout-manager/data/postgres';
+const POSTGRES_VERSION_NUM = '170006';
 const TIMERS = ['workout-resource-cleanup.timer', 'workout-course-thumbnails.timer'];
 const LOCKS = [
   '/run/lock/workout-manager/backup.lock',
@@ -38,7 +39,7 @@ function isFullId(value) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 }
 
-function checkConfig(config) {
+export function checkConfig(config) {
   if (
     config?.schemaVersion !== 1 ||
     config.project !== PROJECT ||
@@ -49,6 +50,7 @@ function checkConfig(config) {
     !/^[a-f0-9]{64}$/.test(config.composeSha256) ||
     typeof config.postgresSystemIdentifier !== 'string' ||
     !/^\d{10,25}$/.test(config.postgresSystemIdentifier) ||
+    config.postgresVersionNum !== POSTGRES_VERSION_NUM ||
     typeof config.network !== 'string' ||
     config.network !== `${PROJECT}_workout_internal` ||
     !config.containers ||
@@ -168,7 +170,7 @@ function checkLocks(runner) {
 }
 
 const DATABASE_QUERY =
-  'SELECT current_database(), (pg_control_system()).system_identifier::text, ' +
+  "SELECT current_database(), (pg_control_system()).system_identifier::text, current_setting('server_version_num'), " +
   "(SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid())";
 
 function checkDatabase(config, runner) {
@@ -190,10 +192,11 @@ function checkDatabase(config, runner) {
   ]);
   const rows = output.trim().split('\n');
   if (rows.length !== 1) reject();
-  const [database, systemIdentifier, otherClients] = rows[0].split('\t');
+  const [database, systemIdentifier, serverVersionNum, otherClients] = rows[0].split('\t');
   if (
     database !== 'workout' ||
     systemIdentifier !== config.postgresSystemIdentifier ||
+    serverVersionNum !== config.postgresVersionNum ||
     otherClients !== '0'
   ) {
     reject();
@@ -247,13 +250,9 @@ function liveRunner(program, args) {
   });
 }
 
-function runLive() {
-  if (process.getuid?.() !== 0) reject();
-  secureFile(resolve(process.argv[1]), 0o700);
-  const configPath = process.env.WORKOUT_BACKUP_FENCE_CONFIG;
-  if (!configPath || !isAbsolute(configPath)) reject();
+export function loadFenceConfig(configPath) {
+  if (process.getuid?.() !== 0 || !configPath || !isAbsolute(configPath)) reject();
   secureFile(configPath, 0o600);
-  for (const lock of LOCKS) secureFile(lock, 0o600);
   const config = parseJson(readFileSync(configPath, 'utf8'));
   checkConfig(config);
   for (const path of [config.composeFile, config.privateDir, config.postgresDir]) {
@@ -264,6 +263,14 @@ function runLive() {
   if (createHash('sha256').update(source).digest('hex') !== config.composeSha256) reject();
   if (!lstatSync(config.privateDir).isDirectory() || !lstatSync(config.postgresDir).isDirectory())
     reject();
+  return config;
+}
+
+function runLive() {
+  if (process.getuid?.() !== 0) reject();
+  secureFile(resolve(process.argv[1]), 0o700);
+  for (const lock of LOCKS) secureFile(lock, 0o600);
+  const config = loadFenceConfig(process.env.WORKOUT_BACKUP_FENCE_CONFIG);
   assessFence(config, liveRunner);
   process.stdout.write('BACKUP_FENCE_CHECKED\n');
 }

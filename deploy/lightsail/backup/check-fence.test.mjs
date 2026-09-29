@@ -12,6 +12,7 @@ const config = {
   privateDir: '/srv/workout-manager/data/private',
   postgresDir: '/srv/workout-manager/data/postgres',
   postgresSystemIdentifier: '7534718236249421545',
+  postgresVersionNum: '170006',
   containers: { app: id('a'), postgres: id('b'), graphhopper: id('c') },
 };
 
@@ -48,7 +49,7 @@ function fixture() {
     config: structuredClone(config),
     containers: [container('app'), container('postgres'), container('graphhopper')],
     timerOutput: 'LoadState=not-found\nActiveState=inactive\nUnitFileState=\n',
-    databaseOutput: `workout\t${config.postgresSystemIdentifier}\t0\n`,
+    databaseOutput: `workout\t${config.postgresSystemIdentifier}\t170006\t0\n`,
     dockerFailure: false,
     databaseCommandFailure: false,
     lockStatus: 75,
@@ -122,13 +123,17 @@ test('rejects a wrong project, Compose source, mount, and database identity', ()
   rejected(expectedPath);
 
   const database = fixture();
-  database.databaseOutput = 'workout\t1234567890123456789\t0\n';
+  database.databaseOutput = 'workout\t1234567890123456789\t170006\t0\n';
   rejected(database);
+
+  const replacedContainer = fixture();
+  replacedContainer.config.containers.postgres = id('d');
+  rejected(replacedContainer);
 });
 
 test('rejects active database sessions, active timers, free locks, and Docker failures', () => {
   const session = fixture();
-  session.databaseOutput = `workout\t${config.postgresSystemIdentifier}\t1\n`;
+  session.databaseOutput = `workout\t${config.postgresSystemIdentifier}\t170006\t1\n`;
   rejected(session);
 
   const timer = fixture();

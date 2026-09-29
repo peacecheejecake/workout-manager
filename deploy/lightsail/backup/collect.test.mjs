@@ -3,8 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -125,6 +127,57 @@ test('collects a fenced synthetic PostgreSQL-command and private bundle; rejects
   }
 });
 
+test('uses an opt-in archive transport and rejects ambiguous database sources', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-backup-transport-test-')));
+  const privateDir = join(root, 'private');
+  const output = join(root, 'output');
+  const transport = join(root, 'transport.sh');
+  const fence = join(root, 'fence.sh');
+  const dbFile = join(root, 'database-url');
+  try {
+    mkdirSync(privateDir, { mode: 0o700 });
+    mkdirSync(output, { mode: 0o700 });
+    writeFileSync(fence, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    writeFileSync(dbFile, 'postgresql://fixture:fixture@localhost/workout\n', { mode: 0o600 });
+    writeFileSync(
+      transport,
+      '#!/bin/sh\n[ "$1" = "--output" ] || exit 1\nprintf "PGDMPsynthetic-validated-archive" > "$2"\nchmod 600 "$2"\n',
+      { mode: 0o700 },
+    );
+    const shared = [
+      'collect',
+      '--private-dir',
+      privateDir,
+      '--output-dir',
+      output,
+      '--fence-check',
+      fence,
+    ];
+    assert.match(invoke(shared, '').stderr, /BACKUP_DATABASE_SOURCE_REQUIRED/);
+    assert.match(
+      invoke([...shared, '--database-url-file', dbFile, '--database-transport', transport], '')
+        .stderr,
+      /BACKUP_DATABASE_SOURCE_REQUIRED/,
+    );
+    const collected = invoke([...shared, '--database-transport', transport], '');
+    assert.equal(collected.status, 0, collected.stderr);
+    const bundle = join(output, readdirSync(output)[0]);
+    assert.equal(
+      readFileSync(join(bundle, 'database.dump'), 'utf8'),
+      'PGDMPsynthetic-validated-archive',
+    );
+    assert.equal(statSync(join(bundle, 'database.dump')).mode & 0o777, 0o600);
+    writeFileSync(transport, '#!/bin/sh\nexit 0\n');
+    assert.match(
+      invoke([...shared, '--database-transport', transport], '').stderr,
+      /BACKUP_TRANSPORT_OUTPUT_MISSING/,
+    );
+    assert.equal(readdirSync(output).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test(
   'collects and checks an actual disposable PostgreSQL archive',
   {
@@ -201,6 +254,20 @@ test(
       const bundle = join(output, readdirSync(output)[0]);
       const dump = join(bundle, 'database.dump');
       assert.match(checked('pg_restore', ['--list', dump]), /TABLE DATA public fixture/);
+      for (const args of [['--list'], ['--file=/dev/null']]) {
+        const fd = openSync(dump, 'r');
+        try {
+          const streamed = spawnSync('pg_restore', args, {
+            stdio: [fd, 'pipe', 'pipe'],
+            encoding: 'utf8',
+            timeout: 120_000,
+          });
+          assert.equal(streamed.status, 0, streamed.stderr);
+          if (args[0] === '--list') assert.match(streamed.stdout, /TABLE DATA public fixture/);
+        } finally {
+          closeSync(fd);
+        }
+      }
       assert.equal(
         readFileSync(join(bundle, 'private', 'synthetic.bin')).equals(Buffer.from([17, 0, 255])),
         true,
