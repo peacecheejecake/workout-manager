@@ -188,8 +188,10 @@ without `--create`, then test `db_setup`, runtime and worker grants, RLS, app
 startup, restart, data integrity, and private-object recovery. The restricted
 owner restore, subsequent `db_setup` role/grant setup, and app health on that
 restored database passed in an isolated drill with temporary credentials and a
-dummy IdP. Real IdP login, worker operations, app restart on the restored DB,
-and deployed data/private-object recovery remain unexecuted. Keep backups root-only and
+dummy IdP. A later synthetic Docker drill also passed restored app health after
+restarting its isolated PostgreSQL container and an empty-queue cleanup worker
+invocation. Real IdP login, nonempty worker operations, and deployed
+data/private-object recovery remain unexecuted. Keep backups root-only and
 never point the recovery test at the live database.
 
 The opt-in synthetic drill (`node --import tsx
@@ -204,3 +206,15 @@ does not exercise the deployed PostgreSQL 17.6 Compose topology, HTTP health,
 restored app restart, production backup collection, or a live IdP. A separate
 two-stack drill with the deployed image and private bind mount remains required
 before claiming operational recovery.
+
+The host-only opt-in `synthetic-restore-drill.sh --execute` uses the pinned app
+image and PostgreSQL 17.6 in two new internal Docker networks. It creates a
+synthetic database archive and private file, restores as `workout_owner`, runs
+`db_setup`, replays a fixed synthetic post-backup tenant erasure before app
+startup, then checks app health and object bytes after a database restart. It
+also runs the cleanup worker against an empty queue. The script removes its
+containers, networks, volumes, archive, and file in an exit trap. Run it only
+on a host where that image is already available, after checking for sufficient
+temporary capacity. The [recorded host run](../../docs/implementation/research/lightsail-synthetic-restore-20260930.json)
+does not establish production backup, independent ledger, nonempty cleanup,
+real authentication, public HTTPS, or RPO/RTO behavior.

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-09-29T16:56:00Z",
+  "host": "Lightsail workout-shared-8gb-20260929",
+  "sourceCommit": "1dd8336388d345cddce5953a501834a24fa2fd7e",
+  "image": "workout-manager/app:ext-hosting-prelive-20260929",
+  "appImageId": "sha256:902466cf07ac4814f5a2672e2458516aa0fe5a7e4ec682d608f19d2afaee245c",
+  "postgresImage": "postgres:17.6-bookworm",
+  "postgresImageId": "sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3",
+  "scope": "Isolated synthetic Docker backup and restore; no production Workout database, private data, apex database, Caddy, DNS or live IdP credentials were used.",
+  "attempts": [
+    {
+      "outcome": "failed",
+      "at": "synthetic_archive_list",
+      "reason": "pg_restore --list /dev/stdin did not recognize the piped archive; switched to stdin without a path.",
+      "cleanupVerified": true
+    },
+    {
+      "outcome": "passed",
+      "checks": [
+        "synthetic_dump_readable",
+        "post_backup_erasure_captured",
+        "owner_restore_and_setup",
+        "erasure_replayed_before_runtime_rls",
+        "restored_app_http_and_database_health",
+        "restored_private_object_exact_bytes",
+        "restored_database_restart_app_health_erasure_and_object",
+        "empty_queue_worker_one_shot"
+      ],
+      "checkCount": 8
+    }
+  ],
+  "cleanup": {
+    "labeledContainersRemaining": 0,
+    "temporaryNetworksRemaining": 0,
+    "temporaryVolumesRemaining": 0,
+    "temporaryRemoteScriptRemoved": true
+  },
+  "liveContainersBefore": [
+    "workout-manager-graphhopper-1: running",
+    "workout-manager-app-1: healthy",
+    "workout-manager-postgres-1: healthy",
+    "infra-web-1: healthy",
+    "infra-agent-api-1: healthy",
+    "infra-llm-gateway-1: healthy",
+    "infra-fact-api-1: healthy",
+    "infra-caddy-1: running",
+    "infra-postgres-1: healthy"
+  ],
+  "liveContainersAfter": [
+    "workout-manager-graphhopper-1: running",
+    "workout-manager-app-1: healthy",
+    "workout-manager-postgres-1: healthy",
+    "infra-web-1: healthy",
+    "infra-agent-api-1: healthy",
+    "infra-llm-gateway-1: healthy",
+    "infra-fact-api-1: healthy",
+    "infra-caddy-1: running",
+    "infra-postgres-1: healthy"
+  ],
+  "liveContainerCheck": {
+    "workoutAppHealthy": true,
+    "workoutPostgresHealthy": true,
+    "workoutGraphhopperRunning": true,
+    "apexWebHealthy": true,
+    "apexApisHealthy": true,
+    "apexPostgresHealthy": true,
+    "apexCaddyRunning": true
+  },
+  "limitations": [
+    "The source database, erased tenant, retained tenant, and private file were synthetic; the production backup collection and production data recovery were not tested.",
+    "The fixed tenant erasure was replayed manually before the restored app started; an operational external ledger capture and replay service was not tested.",
+    "The private object was copied exactly but no application upload, export, retrieval, deletion, or object purge was tested.",
+    "The resource cleanup worker ran against an empty queue; no nonempty cleanup or deletion suppression job was tested.",
+    "The app used fake .invalid origins and credentials; real OIDC, public HTTPS, Caddy and browser flows were not tested.",
+    "This exercise used two temporary Docker networks rather than full Compose stacks and did not measure RPO or RTO."
+  ]
+}
