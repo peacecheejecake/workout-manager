@@ -47,11 +47,20 @@ final class HealthKitWorkoutCollector {
     }
 
     func applicationDidLaunch() {
+        #if DEBUG
+        // Debug builds never resume the product-wide cursor against a device with personal workouts.
+        return
+        #else
         scheduleCollection()
+        #endif
     }
 
     func sceneDidBecomeActive() {
+        #if DEBUG
+        return
+        #else
         scheduleCollection()
+        #endif
     }
 
     /** Bounded owner-only status. No raw UUIDs, anchor, sample, token, or timestamps cross the bridge. */
@@ -89,6 +98,10 @@ final class HealthKitWorkoutCollector {
     /// Call only after a visible product action and server-side HealthKit consent.
     /// HealthKit intentionally does not reveal whether read access was denied.
     func requestReadAuthorizationFromProductAction() async throws {
+        #if DEBUG
+        // Only the isolated, marker-scoped debug probe may request HealthKit in Debug.
+        throw HealthKitCollectionFailure.unavailable
+        #else
         guard HKHealthStore.isHealthDataAvailable(), let state = availableState() else {
             throw HealthKitCollectionFailure.unavailable
         }
@@ -120,6 +133,7 @@ final class HealthKitWorkoutCollector {
         try state.requestReconciliation()
         registerObserverIfNeeded()
         scheduleCollection()
+        #endif
     }
 
     private func invalidateOwner() {
@@ -134,6 +148,9 @@ final class HealthKitWorkoutCollector {
     }
 
     private func scheduleCollection() {
+        #if DEBUG
+        return
+        #else
         wakePending = true
         guard !collecting else { return }
         collecting = true
@@ -145,6 +162,7 @@ final class HealthKitWorkoutCollector {
                 if wakePending { try? await Task.sleep(nanoseconds: 1_000_000_000) }
             }
         }
+        #endif
     }
 
     private func collectOnce() async {
@@ -243,6 +261,9 @@ final class HealthKitWorkoutCollector {
     }
 
     private func registerObserverIfNeeded() {
+        #if DEBUG
+        return
+        #else
         guard observer == nil, HKHealthStore.isHealthDataAvailable() else { return }
         let query = HKObserverQuery(sampleType: workoutType, predicate: nil) { [weak self] _, completion, _ in
             Task { @MainActor in
@@ -264,6 +285,7 @@ final class HealthKitWorkoutCollector {
         healthStore.enableBackgroundDelivery(for: workoutType, frequency: .immediate) { _, _ in
             // Delivery is best effort; foreground/launch also checks the persisted anchor.
         }
+        #endif
     }
 
     private typealias Page = (samples: [HKSample], deleted: [HKDeletedObject], anchor: HKQueryAnchor?)

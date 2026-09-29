@@ -55,3 +55,34 @@
 - 검토자는 제출된 PostgreSQL 844/844, 단위·컴포넌트 4236 통과·7건 건너뜀, 정적 검사·빌드·Swift·브라우저 및 identity E2E 두 실행의 기록을 대조했다. 이 읽기 전용 검토에서 검사 명령을 재실행하지는 않았다.
 - 이 승인은 M3-02h의 서명된 제품 iPhone 전체 경로 실행을 포함하지 않는다. M3-02h는 `not_executed` 외부 gate이며 M3-02 부모도 완료로 바꾸지 않는다.
 - 이 기록을 추가한 새 phase HEAD는 diff identity가 바뀌므로 최종 읽기 전용 검토 refresh 후에만 `main`으로 fast-forward한다.
+
+## 2026-09-29~30 · `main` 병합 후 단계 전체 검증 · 독립 재검토 대기
+
+- `main` `ac99e3749c643ecc4d9cd78cd0b05353ae511430`을 `phase/m3-02`에 충돌 없이 병합했다. 검증 시작 시 병합 HEAD는 `7824336d2d6ad291617174546a3f1516b2f08e9a`였다. `main`의 M2-01k 진행 문서·연구 매트릭스 변경과 단계의 M3-02 변경을 모두 보존했다.
+- Node 20.10.0의 첫 `pnpm install --frozen-lockfile`은 저장소의 Node `>=24.12.0 <25` 조건에 거절됐다. Node 24.19.0의 첫 설치도 네트워크 제한, 오프라인 재시도는 캐시에 없는 `fastify` tarball 때문에 실패했다. 접근 가능한 환경에서 같은 잠금 파일 고정 설치가 완료됐다. 이 실패를 통과로 소급하지 않는다.
+- `pnpm check:generated`, `pnpm lint`, `pnpm format:check` 통과. `pnpm typecheck`는 34/34, `pnpm build`는 15/15 통과했으며 두 작업 집합은 공유 Turbo 캐시 결과였다.
+- 전체 단위·컴포넌트 첫 실행은 샌드박스의 로컬 OIDC 서버 바인딩 제한으로 35 실패·4,207 통과·7 건너뜀이다. 동일 코드의 로컬 바인딩 허용 재실행은 **4,242 통과·7 건너뜀**이었다. PostgreSQL 통합 첫 실행은 공유 메모리 `shmget` 제한으로 `initdb` 시작에 실패했다. 권한을 갖춘 재실행은 **844/844 통과**했다.
+- identity E2E의 첫 시작은 기존 프로세스가 기본 API 포트 4300을 사용해 중단됐다. 별도 포트에서 이전 API origin을 담은 웹 빌드를 그대로 쓴 첫 실행은 앞선 4건이 30초 제한에 걸려 중단했다. 새 API origin으로 Next·Vite 셸을 다시 빌드한 뒤 대표 1건이 통과했고, 전체 실행 두 회는 각각 **308 통과·13 건너뜀·실패 0**(15.2분, 15.0분)이었다. 사용자 지도·고도 자산은 기존 로컬 검증 경로로 제공했다. 초기 중단과 제한 시간 초과를 통과로 바꾸지 않는다.
+- Debug `Info-Debug.plist`와 Release `Info.plist`의 `plutil -lint`가 통과했다. `CODE_SIGNING_ALLOWED=NO` generic iOS Debug 빌드 두 회가 통과했다. 테스트 전용 `https://api.example.invalid`·`https://idp.example.invalid` override를 준 산출물에는 정확한 두 origin이, override 없는 산출물에는 두 빈 문자열이 들어 있었다. Release 원본의 두 origin도 비어 있다. 테스트 주소는 실제 서비스가 아니다.
+- `git diff --check` 통과. 서명된 새 iPhone 빌드·설치·제품 로그인·실제 HTTPS 연결·HealthKit 읽기/쓰기/삭제·background wake·offline ACK와 제품 전체 수용은 이번 검증에서 **not_executed**다. M3-02h 외부 gate 및 M3-02 부모 상태를 통과/완료로 바꾸지 않는다. 이 단계 기록 커밋을 포함한 최종 phase HEAD와 `main`의 전체 diff는 독립 읽기 전용 재검토를 새로 받아야 한다.
+
+## 다섯 번째 검토 · BLOCK 및 P2 보완
+
+- 독립 `gpt-6-sol` high/read-only 전체 phase 검토는 base `main` `ac99e37` → HEAD `66a689f`에서 **BLOCK** 판정을 냈다. P2: HealthKit 운동 읽기를 OS에서 거부한 상태의 빈 anchored 조회가 삭제 API 성공 뒤 anchor를 전진시킬 수 있고, 삭제 확정 상태의 명시적 권한 재시도도 그 anchor를 초기화하지 않아 이후 허용된 tombstone을 놓칠 수 있다.
+- P2 **FIXED in current content, 독립 재검토 대기**: 명시적 읽기 재시도는 삭제 확정 여부와 관계없이 같은 UUID 범위의 anchor를 nil로 돌린다. 비어 있는 조회는 cursor를 전진시키지 않으며, 현재 조회에서 실제 tombstone을 관측해야만 삭제 이벤트 확인을 보고한다. 계정·UUID·source·표식의 조회/삭제 격리는 유지한다. Swift harness의 거부 → 삭제 → 허용 → 재시도 상태 전이 통과, iOS SDK 타입 검사와 서명 없는 Simulator 빌드 통과. 첫 sandbox 빌드는 CoreSimulatorService·캐시 권한 문제로 중단됐고 접근 가능한 환경에서 재실행이 통과했다.
+- 새 HEAD의 전체 install/generated/lint/typecheck/build/test/integration/identity 2회/format gate는 이 보완 뒤 아직 재실행하지 않았다. 실기기 HealthKit 동작과 M3-02h 전체 수용도 **not_executed**다. 새 전체 검토가 완료되기 전까지 `main` 병합은 보류한다.
+
+## 2026-09-30 · P2 보완 HEAD 단계 전체 재검증 · 독립 재검토 대기
+
+- 기준 `main`은 `ac99e3749c643ecc4d9cd78cd0b05353ae511430`, 검증한 phase HEAD는 `e8f53b82415fb06629753601b94fc4779265b3c4`였다. 시작 작업 트리는 깨끗했다. 이 검증 중 제품 코드는 수정하지 않았다.
+- Node 24.12.0·pnpm 10.34.5에서 고정 잠금 설치의 첫 시도는 샌드박스 DNS 제한(`ENOTFOUND registry.npmjs.org`)과 비대화형 modules 제거 보호로 실패했다. `CI=true`를 준 접근 가능한 환경의 동일 `pnpm install --frozen-lockfile` 재실행은 통과했다. pnpm은 `msw` build script를 무시한다는 기존 경고를 냈다.
+- `pnpm check:generated`, `pnpm lint`, `pnpm format:check`, `git diff --check` 통과. `pnpm typecheck`는 34/34, `pnpm build`는 15/15 통과했다. 두 Turbo 결과는 전부 공유 캐시였으며, 별도 identity API origin을 지정한 `@workout/web` 직접 빌드도 통과했고 출력의 route manifest에 그 origin이 들어 있었다.
+- 전체 단위·컴포넌트 첫 실행은 샌드박스의 로컬 시험 서버 바인딩 제한으로 35 실패·4,207 통과·7 건너뜀이다. 접근 가능한 환경에서 같은 HEAD를 재실행해 **4,242 통과·7 건너뜀**을 확인했다. 실제 PostgreSQL 통합 시험은 **844/844 통과**했다.
+- identity E2E는 별도 웹/API/OIDC/Garmin 포트와 기존 로컬 지도·고도 자산을 사용했다. 첫 전체 실행은 모바일도 별도 포트 53111로 지정했으나, `native-shell.spec.ts` 한 건이 `127.0.0.1:4200`을 고정 사용해 **307 통과·13 건너뜀·1 실패**(15.0분)였다. 이는 실행 구성 불일치이며 통과로 소급하지 않는다. 모바일 포트를 4200으로 바꾼 집중 시험은 1/1 통과했다. `pnpm test:identity -- native-shell.spec.ts` 시도는 CLI 인자가 필터로 적용되지 않아 전체 실행을 시작했으므로 43번째 부근에서 중단했고 통과 증거로 사용하지 않는다. 올바른 구성의 전체 재실행 두 회는 각각 **308 통과·13 건너뜀·실패 0**(14.9분, 15.0분)이었다. 두 회 모두 고정 포트 시험이 통과했다.
+- 이 HEAD의 Swift 상태 전이 harness, iOS SDK 타입 검사, 서명 없는 Simulator 빌드 결과는 위 P2 보완 기록과 `M3-02h.md`의 2026-09-30 기록을 확인했다. 이번 단계 전체 게이트에서 이 세 명령을 별도 재실행하지 않았다. 서명된 새 iPhone 빌드·설치·제품 로그인·실제 HTTPS와 HealthKit 읽기/쓰기/삭제·background wake·offline ACK 및 M3-02h 전체 수용은 계속 **not_executed**다. M3-02 부모를 완료로 바꾸지 않으며, 이 검증 기록 커밋까지 포함한 새 phase HEAD의 독립 읽기 전용 전체 diff 재검토가 필요하다.
+
+## 여섯 번째 검토 · APPROVE
+
+- Codex 앱의 새 context-less `gpt-6-sol` high subagent가 base `main` `ac99e3749c643ecc4d9cd78cd0b05353ae511430` → `phase/m3-02` HEAD `73e472de3b4e6537fba457ec2d43a896b373f4c5` 전체 diff를 읽기 전용으로 검토했다. 변경 파일은 11개, 미추적 파일은 0개, 작업 트리는 깨끗했고 `git diff --check`가 통과했다. 판정은 **APPROVE**, 새 차단 지적은 없었다.
+- 다섯 번째 검토의 P2는 **FIXED**로 확인됐다. 삭제 확정 뒤에도 명시적 읽기 재요청이 같은 표본의 anchor를 초기화하고, 비어 있는 filtered page는 cursor를 전진시키지 않으며, 현재 조회에서 tombstone을 실제 관측해야 삭제 확인을 보고한다. 이전 P1 #1–#5도 현재 코드에서 모두 **FIXED 유지**로 확인됐다.
+- 검토자는 제출된 전체 게이트와 Swift 시험·타입 검사·서명 없는 빌드 기록을 대조했으며 명령을 재실행하지 않았다. UUID 범위의 `HKDeletedObject`가 실제 iPhone에서 반환되는지, 새 서명 빌드·제품 로그인·공개 HTTPS·합성 HealthKit 표본 수명주기·background wake·offline ACK는 **not_executed**인 M3-02h 외부 gate로 남는다. 이 승인으로 M3-02h나 부모 M3-02를 완료 처리하지 않는다. 이 판정 기록을 추가한 새 HEAD는 diff identity가 바뀌므로 `main` 병합 전에 읽기 전용 검토 refresh가 필요하다.

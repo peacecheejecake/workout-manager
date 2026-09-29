@@ -8,6 +8,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         Task { @MainActor in HealthKitWorkoutCollector.shared.applicationDidLaunch() }
+        #if DEBUG
+        Task { @MainActor in await HealthKitWorkoutDebugProbe.shared.resumeScopedRunIfNeeded() }
+        #endif
         return true
     }
 
