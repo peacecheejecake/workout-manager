@@ -103,3 +103,14 @@ This Compose project does not remap the IP or change DNS. Adding the workout
 Caddy site still requires a controlled edit and reload of the existing Caddy
 container. Backups, restore, and external end-to-end checks remain required
 before calling the Workout Manager deployment complete.
+
+## Database recovery prerequisite
+
+A `pg_dump -Fc` backup contains the Workout database but not cluster roles.
+Before restoring into a fresh cluster, create `workout_owner` as a restricted
+role: several RLS policies name it explicitly. Restore with `pg_restore
+--exit-on-error --no-owner --no-acl --create -d postgres` and then run the
+one-shot `db_setup` with the separately protected production credentials to
+recreate role passwords and bounded grants. A database restore without
+that final setup is not an operational recovery. Keep backups root-only and
+verify a restore in an isolated environment before relying on one.
