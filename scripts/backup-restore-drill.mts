@@ -1231,7 +1231,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 24);
+      assert.equal(before.schemaVersion, 28);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -1293,7 +1293,7 @@ async function execute() {
         await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
       );
       const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+      if (coachingExport.schemaVersion !== 28) throw new Error('Expected coaching export v28');
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1319,7 +1319,7 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v18 is added.
+      // A historical v8 download keeps its original shape and remains readable after v28 is added.
       const {
         coachingDecisions,
         coachingProposals,
@@ -1370,6 +1370,10 @@ async function execute() {
         courseShares: _courseShares,
         courseDeletions: _courseDeletions,
         courseShareAreaBudgets: _courseShareAreaBudgets,
+        healthKitWorkoutSamples: _healthKitWorkoutSamples,
+        healthKitWorkoutBatchReceipts: _healthKitWorkoutBatchReceipts,
+        healthKitWorkoutLineage: _healthKitWorkoutLineage,
+        healthKitExistingBindings: _healthKitExistingBindings,
         ...v8Data
       } = coachingExport.data;
       assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
@@ -1521,7 +1525,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 24) throw new Error('Expected candidate export v24');
+      if (candidateExport.schemaVersion !== 28) throw new Error('Expected candidate export v28');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -4497,7 +4501,7 @@ async function execute() {
     );
     const constraintExport =
       await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 24);
+    assert.ok(constraintExport.schemaVersion === 28);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -4532,7 +4536,7 @@ async function execute() {
     );
     const withdrawnExport =
       await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
+    if (withdrawnExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -4584,7 +4588,7 @@ async function execute() {
     );
     const absentExport =
       await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
+    if (absentExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
     assert.deepEqual(absentExport.data.consents, []);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -5278,7 +5282,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 24) throw new Error('Expected resource export v24');
+    if (retainedExport.schemaVersion !== 28) throw new Error('Expected resource export v28');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -5699,7 +5703,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+    if (retainedExport.schemaVersion !== 28) throw new Error('Expected coaching export v28');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -5831,7 +5835,7 @@ async function execute() {
     );
     const coachingAfterReplay =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 24) throw new Error('Expected coaching export v24');
+    if (coachingAfterReplay.schemaVersion !== 28) throw new Error('Expected coaching export v28');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -6007,7 +6011,7 @@ async function execute() {
     );
     const scrubbedExport =
       await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 24) throw new Error('Expected evidence export v24');
+    if (scrubbedExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',
@@ -6047,6 +6051,58 @@ async function execute() {
     );
     checks.push('restored_source_deletion_scrubs_candidate_bodies_and_digest_in_export');
     checks.push('erasure_gate_rejects_stale_runtime_write');
+
+    // Close every old connection before restarting the isolated PostgreSQL process. Reopen
+    // through the restricted runtime role so this checks persisted rows and RLS, not an
+    // in-memory repository result or a still-live connection from before the restart.
+    await Promise.all(databases.map((value) => value.close()));
+    await Promise.all(pools.map((value) => value.end()));
+    databases.length = 0;
+    pools.length = 0;
+    run(bin, 'pg_ctl', ['-D', data, '-m', 'fast', '-w', 'stop']);
+    started = false;
+    // Set this before start so cleanup also attempts a stop if startup times out after fork.
+    started = true;
+    run(bin, 'pg_ctl', [
+      '-D',
+      data,
+      '-l',
+      join(directory, 'postgres-restart.log'),
+      '-o',
+      `-k ${directory} -h ''`,
+      '-w',
+      'start',
+    ]);
+    const restartedDb = database('drill_restore');
+    const restartedHealth = await restartedDb.tenant(retainedAthlete, (tx) =>
+      tx.query('SELECT 1 AS healthy'),
+    );
+    assert.equal(restartedHealth.rowCount, 1);
+    assert.deepEqual(restartedHealth.rows, [{ healthy: 1 }]);
+    assert.deepEqual(
+      await createPrivateTextResourceRepository(restartedDb).read(
+        retainedAthlete,
+        retainedResourceV2.resource.id,
+      ),
+      retainedResourceV2,
+    );
+    await assert.rejects(
+      () =>
+        createPrivateTextResourceRepository(restartedDb).read(
+          deletedAthlete,
+          deletedResource.resource.id,
+        ),
+      TenantErasedError,
+    );
+    const restartedStorage = await createLocalFilesystemObjectStorage(restoredObjectRoot);
+    const restartedObject = await restartedStorage.open(storedFile.key);
+    assert.ok(restartedObject);
+    const restartedChunks: Uint8Array[] = [];
+    for await (const chunk of restartedObject.body) restartedChunks.push(chunk);
+    assert.deepEqual(Buffer.concat(restartedChunks), fileBytes);
+    checks.push(
+      'restarted_restored_cluster_retains_runtime_health_tenant_gate_and_exact_private_object_bytes',
+    );
   } finally {
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);

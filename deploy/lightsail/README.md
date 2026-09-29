@@ -189,5 +189,18 @@ startup, restart, data integrity, and private-object recovery. The restricted
 owner restore, subsequent `db_setup` role/grant setup, and app health on that
 restored database passed in an isolated drill with temporary credentials and a
 dummy IdP. Real IdP login, worker operations, app restart on the restored DB,
-and data/private-object recovery remain unexecuted. Keep backups root-only and
+and deployed data/private-object recovery remain unexecuted. Keep backups root-only and
 never point the recovery test at the live database.
+
+The opt-in synthetic drill (`node --import tsx
+scripts/backup-restore-drill.mts --execute`) restores generated account and
+resource rows with an exact-byte private-object directory copy. It replays
+independently captured deletion ledgers before runtime access, checks tenant
+ownership and erasure suppression, then restarts its isolated PostgreSQL
+process and rechecks restricted-role database access, the retained resource,
+erased-account denial, and the private object's bytes. Its Unix-socket cluster
+has no TCP listener and is removed afterward. This local PostgreSQL 14 drill
+does not exercise the deployed PostgreSQL 17.6 Compose topology, HTTP health,
+restored app restart, production backup collection, or a live IdP. A separate
+two-stack drill with the deployed image and private bind mount remains required
+before claiming operational recovery.
