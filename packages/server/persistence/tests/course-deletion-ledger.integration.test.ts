@@ -237,6 +237,16 @@ async function ledgerRows(athleteId: string) {
   ).rows;
 }
 
+async function suppressionEvents(athleteId: string) {
+  return (
+    await admin.query<{ event_id: string; target_id: string; occurred_at: Date }>(
+      `SELECT event_id,target_id::text,occurred_at FROM restore_suppression_event
+       WHERE athlete_id=$1 AND kind='course_deleted' ORDER BY target_id`,
+      [athleteId],
+    )
+  ).rows;
+}
+
 async function coursePurge(athleteId: string, courseId: string) {
   return (
     // Instants as text: microseconds, which a JavaScript Date would round away.
@@ -296,6 +306,9 @@ describe('course deletion ledger (M2-01ao)', () => {
     const ledger = await ledgerRows(tenant);
     expect(ledger.map((row) => row.course_id)).toEqual([courseId]);
     expect(ledger[0]?.deleted_at.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
+    expect(await suppressionEvents(tenant)).toEqual([
+      { event_id: expect.any(String), target_id: courseId, occurred_at: ledger[0]?.deleted_at },
+    ]);
     expect(await coursePurge(tenant, courseId)).toEqual([expect.objectContaining({ open: true })]);
     // The course the owner kept is untouched: no ledger row, no purge, every row still there.
     expect((await courses.read(tenant, kept)).status).toBe('available');
@@ -355,12 +368,14 @@ describe('course deletion ledger (M2-01ao)', () => {
     expect(await replay(tenant, courseId, deletedAt)).toBe('deleted');
     expect(await courseRowCounts(tenant, courseId)).toEqual(noRows);
     expect(await ledgerRows(tenant)).toEqual([{ course_id: courseId, deleted_at: deletedAt }]);
+    expect(await suppressionEvents(tenant)).toEqual([]);
     const purge = await coursePurge(tenant, courseId);
     expect(purge).toEqual([expect.objectContaining({ open: true })]);
 
     // Replaying the same entry again changes nothing at all.
     expect(await replay(tenant, courseId, deletedAt)).toBe('already_applied');
     expect(await ledgerRows(tenant)).toEqual([{ course_id: courseId, deleted_at: deletedAt }]);
+    expect(await suppressionEvents(tenant)).toEqual([]);
     expect(await coursePurge(tenant, courseId)).toEqual(purge);
     expect(await courseRowCounts(tenant, courseId)).toEqual(noRows);
   });
@@ -372,6 +387,7 @@ describe('course deletion ledger (M2-01ao)', () => {
 
     expect(await replay(tenant, courseId, deletedAt)).toBe('absent');
     expect(await ledgerRows(tenant)).toEqual([{ course_id: courseId, deleted_at: deletedAt }]);
+    expect(await suppressionEvents(tenant)).toEqual([]);
     const purge = await coursePurge(tenant, courseId);
     expect(purge).toEqual([expect.objectContaining({ open: true })]);
 
@@ -466,6 +482,8 @@ describe('course deletion ledger (M2-01ao)', () => {
     const courseId = await courseWithOwnerFacts(tenant);
     await courses.remove(tenant, courseId, 1);
     expect(await ledgerRows(tenant)).toHaveLength(1);
+    const event = await suppressionEvents(tenant);
+    expect(event).toHaveLength(1);
     // The link this migration wraps is 048's Garmin one: the same erasure must still reach it.
     await asTenant(tenant, (client) =>
       client.query(
@@ -476,6 +494,7 @@ describe('course deletion ledger (M2-01ao)', () => {
     );
     await operations.eraseAccount(tenant);
     expect(await ledgerRows(tenant)).toEqual([]);
+    expect(await suppressionEvents(tenant)).toEqual(event);
     const garmin = await admin.query(
       'SELECT 1 FROM garmin_unofficial_connection WHERE athlete_id=$1',
       [tenant],

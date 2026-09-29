@@ -4,7 +4,12 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDatabase, type Database } from '../src/database.js';
-import { grantOperations, grantResourceObjectCleanupWorker, migrate } from '../src/migrate.js';
+import {
+  grantCourses,
+  grantOperations,
+  grantResourceObjectCleanupWorker,
+  migrate,
+} from '../src/migrate.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import {
   createResourceObjectCleanupRepository,
@@ -78,6 +83,7 @@ beforeAll(async () => {
     await owner.end();
   }
   await grantOperations(ownerUrl, runtimeRole);
+  await grantCourses(ownerUrl, runtimeRole);
   await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
   runtime = createDatabase({ connectionString: urlFor(runtimeRole), max: 2 });
   operations = createOperationsRepository(runtime);
@@ -121,6 +127,32 @@ async function erasureEventCount(tenant: string): Promise<number> {
     `SELECT count(*)::int AS total FROM restore_suppression_event
        WHERE athlete_id=$1 AND kind='tenant_erased'`,
     [tenant],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
+async function liveCourseDeletionEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const courseId = randomUUID();
+  await inspect.query(
+    `INSERT INTO course(athlete_id,course_id,name,visibility,status,unavailable_reason,
+       reclaimed_at,created_at,updated_at)
+     VALUES($1,$2,'Removed source','private','unavailable','source_activity_deleted',
+       now(),now(),now())`,
+    [tenant, courseId],
+  );
+  const deleted = await runtime.tenant(tenant, (tx) =>
+    tx.query('SELECT public.delete_course($1,1) AS deleted', [courseId]),
+  );
+  expect(deleted.rows[0]?.['deleted']).toBe(true);
+  return erasureEventCountForCourse(tenant, courseId);
+}
+
+async function erasureEventCountForCourse(tenant: string, courseId: string): Promise<number> {
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+       WHERE athlete_id=$1 AND kind='course_deleted' AND target_id=$2`,
+    [tenant, courseId],
   );
   return result.rows[0]?.total ?? 0;
 }
@@ -178,6 +210,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     const tenant = randomUUID();
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
+    expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -209,6 +242,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     );
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
+    expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -237,6 +271,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     const tenant = randomUUID();
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
+    expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });

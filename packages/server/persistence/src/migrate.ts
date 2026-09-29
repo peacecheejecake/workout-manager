@@ -72,6 +72,7 @@ const migrationFiles = [
   '064_healthkit_consent_epoch.sql',
   '065_healthkit_activity_track.sql',
   '066_tenant_erasure_suppression_event.sql',
+  '067_course_deletion_suppression_event.sql',
 ] as const;
 
 /**

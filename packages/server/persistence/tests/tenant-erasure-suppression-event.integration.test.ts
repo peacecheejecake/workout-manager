@@ -37,6 +37,38 @@ type EventRow = {
 let owner: Pool;
 let app: Pool;
 const legacyTenant = randomUUID();
+const preUpgradeEventTenant = randomUUID();
+const preUpgradeCourseTenant = randomUUID();
+const preUpgradeCourseId = randomUUID();
+let preUpgradeEventId: string;
+
+async function createUnavailableCourse(tenant: string, courseId: string): Promise<void> {
+  await inTenant(owner, tenant, (client) =>
+    client.query(
+      `INSERT INTO course(athlete_id,course_id,name,visibility,status,unavailable_reason,
+         reclaimed_at,created_at,updated_at)
+       VALUES($1,$2,'Removed source','private','unavailable','source_activity_deleted',
+         now(),now(),now())`,
+      [tenant, courseId],
+    ),
+  );
+}
+
+async function courseEvents(tenant: string) {
+  const result = await owner.query<{
+    event_id: string;
+    athlete_id: string;
+    kind: string;
+    target_id: string;
+    occurred_at: Date;
+  }>(
+    `SELECT event_id,athlete_id,kind,target_id,occurred_at
+       FROM restore_suppression_event WHERE athlete_id=$1 AND kind='course_deleted'
+       ORDER BY target_id`,
+    [tenant],
+  );
+  return result.rows;
+}
 
 async function inTenant<T>(
   pool: Pool,
@@ -79,9 +111,143 @@ beforeAll(async () => {
   await inTenant(owner, legacyTenant, (client) =>
     client.query('INSERT INTO tenant_erasure(athlete_id) VALUES($1)', [legacyTenant]),
   );
+  await migrate(urlFor(ownerRole), migrationIndex + 1);
+  await inTenant(owner, preUpgradeEventTenant, (client) =>
+    client.query('INSERT INTO tenant_erasure(athlete_id) VALUES($1)', [preUpgradeEventTenant]),
+  );
+  await inTenant(owner, preUpgradeCourseTenant, (client) =>
+    client.query(
+      'INSERT INTO course_deletion(athlete_id,course_id,deleted_at) VALUES($1,$2,now())',
+      [preUpgradeCourseTenant, preUpgradeCourseId],
+    ),
+  );
+  preUpgradeEventId = (await events(preUpgradeEventTenant))[0]?.event_id ?? '';
+  expect(preUpgradeEventId).not.toBe('');
+  // The old bounded command is already granted on an upgraded installation. 067 must
+  // preserve its EXECUTE ACL while replacing the function body.
+  await owner.query(`GRANT EXECUTE ON FUNCTION public.delete_course(uuid,integer) TO "${appRole}"`);
   await migrate(urlFor(ownerRole));
   await owner.query(`GRANT USAGE ON SCHEMA public TO "${appRole}"`);
   await grantOperations(urlFor(ownerRole), appRole);
+});
+
+describe('course deletion events on the same plain PostgreSQL owner', () => {
+  it('records one event per committed course, retaining both after account erasure', async () => {
+    const tenant = randomUUID();
+    const first = randomUUID();
+    const second = randomUUID();
+    await createUnavailableCourse(tenant, first);
+    await createUnavailableCourse(tenant, second);
+    expect(
+      (
+        await inTenant(app, tenant, (client) =>
+          client.query<{ deleted: boolean }>('SELECT public.delete_course($1,1) AS deleted', [
+            first,
+          ]),
+        )
+      ).rows[0]?.deleted,
+    ).toBe(true);
+    const afterFirst = await courseEvents(tenant);
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst[0]).toMatchObject({
+      athlete_id: tenant,
+      kind: 'course_deleted',
+      target_id: first,
+    });
+    const ledger = await inTenant(owner, tenant, (client) =>
+      client.query<{ deleted_at: Date }>(
+        'SELECT deleted_at FROM course_deletion WHERE athlete_id=$1 AND course_id=$2',
+        [tenant, first],
+      ),
+    );
+    expect(afterFirst[0]?.occurred_at).toEqual(ledger.rows[0]?.deleted_at);
+    expect(
+      (
+        await inTenant(app, tenant, (client) =>
+          client.query<{ deleted: boolean }>('SELECT public.delete_course($1,1) AS deleted', [
+            first,
+          ]),
+        )
+      ).rows[0]?.deleted,
+    ).toBe(false);
+    expect(await courseEvents(tenant)).toEqual(afterFirst);
+    expect(
+      (
+        await inTenant(app, tenant, (client) =>
+          client.query<{ deleted: boolean }>('SELECT public.delete_course($1,1) AS deleted', [
+            second,
+          ]),
+        )
+      ).rows[0]?.deleted,
+    ).toBe(true);
+    const both = await courseEvents(tenant);
+    expect(both.map((event) => event.target_id).sort()).toEqual([first, second].sort());
+    expect(new Set(both.map((event) => event.event_id)).size).toBe(2);
+
+    await inTenant(app, tenant, (client) =>
+      client.query('SELECT public.erase_account($1)', [tenant]),
+    );
+    expect(await courseEvents(tenant)).toEqual(both);
+    expect(
+      (
+        await inTenant(owner, tenant, (client) =>
+          client.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [tenant]),
+        )
+      ).rows,
+    ).toEqual([]);
+    expect((await events(tenant)).map((event) => event.kind)).toContain('tenant_erased');
+  });
+
+  it('rolls back event and deletion and refuses a foreign tenant course', async () => {
+    const tenant = randomUUID();
+    const foreign = randomUUID();
+    const courseId = randomUUID();
+    await createUnavailableCourse(tenant, courseId);
+    expect(
+      (
+        await inTenant(app, foreign, (client) =>
+          client.query<{ deleted: boolean }>('SELECT public.delete_course($1,1) AS deleted', [
+            courseId,
+          ]),
+        )
+      ).rows[0]?.deleted,
+    ).toBe(false);
+    expect(await courseEvents(tenant)).toEqual([]);
+    expect(await courseEvents(foreign)).toEqual([]);
+    await inTenant(
+      app,
+      tenant,
+      async (client) => {
+        const result = await client.query<{ deleted: boolean }>(
+          'SELECT public.delete_course($1,1) AS deleted',
+          [courseId],
+        );
+        expect(result.rows[0]?.deleted).toBe(true);
+      },
+      false,
+    );
+    expect(await courseEvents(tenant)).toEqual([]);
+    expect(
+      (
+        await inTenant(owner, tenant, (client) =>
+          client.query('SELECT 1 FROM course WHERE athlete_id=$1 AND course_id=$2', [
+            tenant,
+            courseId,
+          ]),
+        )
+      ).rowCount,
+    ).toBe(1);
+    expect(
+      (
+        await inTenant(owner, tenant, (client) =>
+          client.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1 AND course_id=$2', [
+            tenant,
+            courseId,
+          ]),
+        )
+      ).rowCount,
+    ).toBe(0);
+  });
 });
 
 afterAll(async () => {
@@ -128,6 +294,22 @@ describe('tenant erasure suppression event foundation on a plain PostgreSQL owne
       ),
     ).rejects.toMatchObject({ code: '42501' });
     expect(await events(legacyTenant)).toEqual([]);
+    const previous = await owner.query<{ event_id: string; target_id: string | null }>(
+      'SELECT event_id,target_id FROM restore_suppression_event WHERE athlete_id=$1',
+      [preUpgradeEventTenant],
+    );
+    expect(previous.rows).toEqual([{ event_id: preUpgradeEventId, target_id: null }]);
+    expect(await courseEvents(preUpgradeCourseTenant)).toEqual([]);
+    expect(
+      (
+        await inTenant(owner, preUpgradeCourseTenant, (client) =>
+          client.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1 AND course_id=$2', [
+            preUpgradeCourseTenant,
+            preUpgradeCourseId,
+          ]),
+        )
+      ).rowCount,
+    ).toBe(1);
   });
 
   it('commits one minimal event with erase_account and keeps its identity on retry', async () => {
