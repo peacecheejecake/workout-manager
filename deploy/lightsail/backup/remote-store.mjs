@@ -108,10 +108,11 @@ function configCheck(config) {
     typeof config.prefix !== 'string' ||
     !validRelative(config.prefix) ||
     config.prefix.endsWith('/') ||
+    config.region !== 'ap-northeast-2' ||
     typeof config.expectedBucketOwner !== 'string' ||
     !/^\d{12}$/.test(config.expectedBucketOwner) ||
     Object.keys(config).sort().join(',') !==
-      ['bucket', 'expectedBucketOwner', 'prefix', 'schemaVersion'].sort().join(',')
+      ['bucket', 'expectedBucketOwner', 'prefix', 'region', 'schemaVersion'].sort().join(',')
   )
     reject();
   return config;
@@ -180,6 +181,7 @@ function completionCheck(completion, config, bundleId, files) {
     completion?.schemaVersion !== 1 ||
     completion.bucket !== config.bucket ||
     completion.prefix !== config.prefix ||
+    completion.region !== config.region ||
     completion.bundleId !== bundleId ||
     completion.ledgerCompleteness !== 'not_verified' ||
     !Array.isArray(completion.files) ||
@@ -261,6 +263,7 @@ export async function uploadBundle({ bundle, config, client, synthetic = false }
     schemaVersion: 1,
     bucket: config.bucket,
     prefix: config.prefix,
+    region: config.region,
     bundleId,
     ledgerCompleteness: 'not_verified',
     files: staged,
@@ -344,6 +347,8 @@ class AwsCliClient {
         ...args,
         '--bucket',
         this.config.bucket,
+        '--region',
+        this.config.region,
         '--expected-bucket-owner',
         this.config.expectedBucketOwner,
         '--output',

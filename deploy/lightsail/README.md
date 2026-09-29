@@ -309,7 +309,8 @@ completeness and replay remain independent acceptance gates.
 
 `backup/remote-store.mjs` is an opt-in, uninstalled S3 transport for a local
 bundle that `collect.mjs` has already published. It requires a root-owned mode
-0600 JSON config with `schemaVersion: 1`, `bucket`, `prefix`, and the 12-digit
+0600 JSON config with `schemaVersion: 1`, `bucket`, `prefix`,
+`region: "ap-northeast-2"`, and the 12-digit
 `expectedBucketOwner`; commands are `upload <absolute-config> <absolute-bundle>`
 and `download <absolute-config> <bundle-id> <new-absolute-destination>`. The
 bucket must have versioning enabled. Upload verifies the bundle's exact file

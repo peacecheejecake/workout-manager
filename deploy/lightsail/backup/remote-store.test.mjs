@@ -19,6 +19,7 @@ const config = {
   schemaVersion: 1,
   bucket: 'workout-private-backups',
   prefix: 'workout/v1',
+  region: 'ap-northeast-2',
   expectedBucketOwner: '681892421656',
 };
 
@@ -152,6 +153,14 @@ test('rejects partial upload, corruption, suspended versioning, and conflicting 
     client.enabled = false;
     await assert.rejects(
       downloadBundle({ bundleId: 'backup-fixture', destination, config, client, synthetic: true }),
+    );
+    await assert.rejects(
+      uploadBundle({
+        bundle,
+        config: { ...config, region: 'NEW_REGION' },
+        client,
+        synthetic: true,
+      }),
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
