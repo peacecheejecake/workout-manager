@@ -1,6 +1,6 @@
 # EXT-HOSTING · AWS HTTPS 배포
 
-상태: **in_progress**. 2026-09-29 사용자가 AWS 서울 리전과 월 10만 원 상한으로 시험 호스팅을 결정하고 `workout.red-10-proto.xyz`를 선택했다. AWS Organizations·Identity Center·예산 경고는 생성했으나, 유료 앱/DB 자원 생성·Zitadel HTTPS callback 등록·로그인/로그아웃/배포 시험은 **not_executed**다.
+상태: **in_progress**. 2026-09-29 사용자가 AWS 서울 리전과 월 10만 원 상한으로 시험 호스팅을 결정하고 `workout.red-10-proto.xyz`를 선택했다. AWS Organizations·Identity Center·예산 경고를 만들었고, 단일 Lightsail 서버에서 기존 사이트와 분리된 Workout 앱·DB·경로 엔진을 비공개로 기동했다. 서울 Secrets Manager에서 서버의 root 전용 파일로 OIDC 값을 전달했고 값은 기록하지 않았다. `workout` DNS·공개 HTTPS·Zitadel HTTPS callback 등록·실제 로그인/로그아웃 수용은 아직 **not_executed**다.
 
 ## 계정·배포 사전 확인
 
@@ -39,8 +39,8 @@
 
 ## 남은 외부 수용
 
-1. 서울 리전의 실제 자원·월 총비용을 확인한다. ECS Express Mode 또는 예산에 맞는 대안, PostgreSQL·영속 저장소·secret manager의 설계와 접근 권한을 검증한다. 별도 mountpoint 검사와 실제 영속성은 구분하고, 배포 후 컨테이너 재시작을 거쳐 같은 private resource 객체를 다시 읽어 증명한다.
-2. 이미지 빌드·실행을 확인하고 위 새 ODbL 산출물만 배포한다. 공개 `/map-data-licence`와 script 응답 바이트를 활성 manifest SHA-256에 대조한다.
-3. HTTPS origin을 Zitadel redirect·post-logout·back-channel 설정에 등록한다. `NODE_ENV=production`, secure `__Host-` cookie, secret manager 주입과 배포 환경의 로그인·계정 전환·로그아웃·취소·만료·back-channel 전파를 각각 확인한다.
+1. 현재 단일 Lightsail 서버의 실제 비용·스냅샷 저장량과 월 예산을 계속 확인한다. 전용 PostgreSQL과 비공개 파일 저장소의 재시작 후 지속성, 전체 운영 복구, worker 실행과 삭제 억제를 검증한다. 위 격리 복원 드릴은 제품 기동까지의 복구 증거가 아니다.
+2. 가비아 DNS에 `workout` 주소를 연결하고 검증된 Caddy 후보를 활성화해 공개 HTTPS를 확인한다. 공개 `/map-data-licence`와 script 응답 바이트를 활성 manifest SHA-256에 다시 대조한다. 내부 응답 검사는 공개 응답 검사를 대신하지 않는다.
+3. Zitadel에 HTTPS redirect·post-logout·back-channel URL을 등록한다. `NODE_ENV=production`, secure `__Host-` cookie, secret manager 전달과 배포 환경의 로그인·계정 전환·로그아웃·취소·만료·back-channel 전파를 각각 확인한다. 실제 공급자에서 접근 불가능한 취소 경로는 미검증으로 남긴다.
 
 참고: [AWS App Runner 신규 고객 제한](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html), [ECS Express Mode 기본 HTTPS 주소](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-getting-started.html), [Lightsail 요금](https://aws.amazon.com/lightsail/pricing/), [Secrets Manager 요금](https://aws.amazon.com/secrets-manager/pricing/), [Route 53 요금](https://aws.amazon.com/route53/pricing/), [Lightsail 스냅샷 과금](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-frequently-asked-questions-faq-billing-and-account-management.html), [Lightsail IAM 범위](https://docs.aws.amazon.com/lightsail/latest/userguide/security_iam_service-with-iam.html).
