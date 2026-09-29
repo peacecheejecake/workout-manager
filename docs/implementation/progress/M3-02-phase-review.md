@@ -55,3 +55,13 @@
 - 검토자는 제출된 PostgreSQL 844/844, 단위·컴포넌트 4236 통과·7건 건너뜀, 정적 검사·빌드·Swift·브라우저 및 identity E2E 두 실행의 기록을 대조했다. 이 읽기 전용 검토에서 검사 명령을 재실행하지는 않았다.
 - 이 승인은 M3-02h의 서명된 제품 iPhone 전체 경로 실행을 포함하지 않는다. M3-02h는 `not_executed` 외부 gate이며 M3-02 부모도 완료로 바꾸지 않는다.
 - 이 기록을 추가한 새 phase HEAD는 diff identity가 바뀌므로 최종 읽기 전용 검토 refresh 후에만 `main`으로 fast-forward한다.
+
+## 2026-09-29~30 · `main` 병합 후 단계 전체 검증 · 독립 재검토 대기
+
+- `main` `ac99e3749c643ecc4d9cd78cd0b05353ae511430`을 `phase/m3-02`에 충돌 없이 병합했다. 검증 시작 시 병합 HEAD는 `7824336d2d6ad291617174546a3f1516b2f08e9a`였다. `main`의 M2-01k 진행 문서·연구 매트릭스 변경과 단계의 M3-02 변경을 모두 보존했다.
+- Node 20.10.0의 첫 `pnpm install --frozen-lockfile`은 저장소의 Node `>=24.12.0 <25` 조건에 거절됐다. Node 24.19.0의 첫 설치도 네트워크 제한, 오프라인 재시도는 캐시에 없는 `fastify` tarball 때문에 실패했다. 접근 가능한 환경에서 같은 잠금 파일 고정 설치가 완료됐다. 이 실패를 통과로 소급하지 않는다.
+- `pnpm check:generated`, `pnpm lint`, `pnpm format:check` 통과. `pnpm typecheck`는 34/34, `pnpm build`는 15/15 통과했으며 두 작업 집합은 공유 Turbo 캐시 결과였다.
+- 전체 단위·컴포넌트 첫 실행은 샌드박스의 로컬 OIDC 서버 바인딩 제한으로 35 실패·4,207 통과·7 건너뜀이다. 동일 코드의 로컬 바인딩 허용 재실행은 **4,242 통과·7 건너뜀**이었다. PostgreSQL 통합 첫 실행은 공유 메모리 `shmget` 제한으로 `initdb` 시작에 실패했다. 권한을 갖춘 재실행은 **844/844 통과**했다.
+- identity E2E의 첫 시작은 기존 프로세스가 기본 API 포트 4300을 사용해 중단됐다. 별도 포트에서 이전 API origin을 담은 웹 빌드를 그대로 쓴 첫 실행은 앞선 4건이 30초 제한에 걸려 중단했다. 새 API origin으로 Next·Vite 셸을 다시 빌드한 뒤 대표 1건이 통과했고, 전체 실행 두 회는 각각 **308 통과·13 건너뜀·실패 0**(15.2분, 15.0분)이었다. 사용자 지도·고도 자산은 기존 로컬 검증 경로로 제공했다. 초기 중단과 제한 시간 초과를 통과로 바꾸지 않는다.
+- Debug `Info-Debug.plist`와 Release `Info.plist`의 `plutil -lint`가 통과했다. `CODE_SIGNING_ALLOWED=NO` generic iOS Debug 빌드 두 회가 통과했다. 테스트 전용 `https://api.example.invalid`·`https://idp.example.invalid` override를 준 산출물에는 정확한 두 origin이, override 없는 산출물에는 두 빈 문자열이 들어 있었다. Release 원본의 두 origin도 비어 있다. 테스트 주소는 실제 서비스가 아니다.
+- `git diff --check` 통과. 서명된 새 iPhone 빌드·설치·제품 로그인·실제 HTTPS 연결·HealthKit 읽기/쓰기/삭제·background wake·offline ACK와 제품 전체 수용은 이번 검증에서 **not_executed**다. M3-02h 외부 gate 및 M3-02 부모 상태를 통과/완료로 바꾸지 않는다. 이 단계 기록 커밋을 포함한 최종 phase HEAD와 `main`의 전체 diff는 독립 읽기 전용 재검토를 새로 받아야 한다.
