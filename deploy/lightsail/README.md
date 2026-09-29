@@ -313,7 +313,7 @@ bundle that `collect.mjs` has already published. It requires a root-owned mode
 `region: "ap-northeast-2"`, and the 12-digit
 `expectedBucketOwner`; commands are `upload <absolute-config> <absolute-bundle>`
 and `download <absolute-config> <bundle-id> <new-absolute-destination>`. The
-bucket must have versioning enabled. Upload verifies the bundle's exact file
+bucket must be in Seoul and have versioning enabled. Upload verifies the bundle's exact file
 set and SHA-256 manifest, uses S3 SSE-S3, downloads each pinned object version
 to check its bytes, and conditionally publishes `completion.json` last. A
 repeated upload verifies all recorded remote versions; download starts from an

@@ -240,6 +240,7 @@ export async function uploadBundle({ bundle, config, client, synthetic = false }
   const bundleId = basename(bundle);
   const doneKey = remoteKey(config, bundleId, 'completion.json');
   if ((await client.versioning()) !== 'Enabled') reject();
+  if ((await client.location()) !== config.region) reject();
   const existing = await existingCompletion(client, doneKey);
   if (existing) {
     completionCheck(existing.completion, config, bundleId, files);
@@ -314,6 +315,7 @@ export async function downloadBundle({ bundleId, destination, config, client, sy
   if (resolve(destination) !== destination || existsSync(destination)) reject();
   safePath(destination);
   if ((await client.versioning()) !== 'Enabled') reject();
+  if ((await client.location()) !== config.region) reject();
   const completed = await existingCompletion(
     client,
     remoteKey(config, bundleId, 'completion.json'),
@@ -370,6 +372,10 @@ class AwsCliClient {
 
   async versioning() {
     return this.call(['get-bucket-versioning']).Status;
+  }
+
+  async location() {
+    return this.call(['get-bucket-location']).LocationConstraint;
   }
 
   async put(key, path) {

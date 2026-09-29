@@ -55,11 +55,16 @@ class FakeS3 {
   objects = new Map();
   next = 0;
   enabled = true;
+  region = config.region;
   corrupt = false;
   failAt = -1;
 
   async versioning() {
     return this.enabled ? 'Enabled' : 'Suspended';
+  }
+
+  async location() {
+    return this.region;
   }
 
   async put(key, path) {
@@ -162,6 +167,9 @@ test('rejects partial upload, corruption, suspended versioning, and conflicting 
         synthetic: true,
       }),
     );
+    client.enabled = true;
+    client.region = 'ap-northeast-1';
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
