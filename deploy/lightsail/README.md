@@ -108,9 +108,17 @@ before calling the Workout Manager deployment complete.
 
 A `pg_dump -Fc` backup contains the Workout database but not cluster roles.
 Before restoring into a fresh cluster, create `workout_owner` as a restricted
-role: several RLS policies name it explicitly. Restore with `pg_restore
---exit-on-error --no-owner --no-acl --create -d postgres` and then run the
-one-shot `db_setup` with the separately protected production credentials to
-recreate role passwords and bounded grants. A database restore without
-that final setup is not an operational recovery. Keep backups root-only and
-verify a restore in an isolated environment before relying on one.
+role: several RLS policies name it explicitly. The isolated schema drill used
+`pg_restore --exit-on-error --no-owner --no-acl --create -d postgres`, but
+that runs as the PostgreSQL administrator and may leave restored objects owned
+by that administrator. `db_setup` changes database and schema ownership; it
+does not transfer each restored object's ownership. Do **not** treat that
+drill or a later `db_setup` invocation as a verified operational recovery.
+
+Test the complete procedure in a separate PostgreSQL cluster and network with
+no connection to the live Compose project. Create a database owned by
+`workout_owner`, restore into it while connected as that restricted role
+without `--create`, then test `db_setup`, runtime and worker grants, RLS, app
+startup, restart, data integrity, and private-object recovery. This sequence
+is a proposed procedure until its own isolated drill succeeds. Keep backups
+root-only and never point the recovery test at the live database.
