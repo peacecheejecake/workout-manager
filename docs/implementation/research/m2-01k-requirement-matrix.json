@@ -3590,11 +3590,11 @@
     },
     {
       "id": "P8-self-ops",
-      "source": "docs/implementation/map-implementation-plan.md:199",
+      "source": "docs/implementation/map-implementation-plan.md:207",
       "quote": "| 자체 운영 | 외부 runtime 요청 없음, CSP/worker·asset license·대표 장기 track의 시간/메모리/GPU 측정, graph 갱신/rollback·과부하 |",
       "verdict": "partial",
       "evidence": ["probe-routing-operational, probe-course-performance"],
-      "reason": "M2-01k-e amendment: still partial. Graph update/rollback and overload now have executed real-engine evidence (see K-graph-rollback, P6-tenant-limits), but the same row's long-track time/memory/GPU measurement belongs to M2-01k-f and was not measured here.",
+      "reason": "Still partial. M2-01k-e executed real-engine graph replacement/rollback and overload checks (see K-graph-rollback and P6-tenant-limits). M2-01k-f subsequently measured a synthetic 20,000-point long track on one desktop: server and browser time, API/engine memory, browser JS heap, and lazy worker loading have judged evidence (docs/implementation/progress/M2-01k-f.md; docs/implementation/research/performance-budget.json). Earlier self-hosted basemap evidence covers zero external runtime requests, same-origin worker/CSP checks, and a SwiftShader render measurement (docs/implementation/research/self-hosted-map-adr.md, sections 9-10). This does not establish a physical-GPU frame budget or low-end real-device performance; the four real-device metrics remain not_executed. Asset license/ODbL distribution obligations and an actual hosted deployment/rollback drill are also unresolved. The desktop warm-cache and software-renderer results cannot close those conditions.",
       "round2": {
         "change": "unchanged",
         "verdict": "partial",
@@ -3619,7 +3619,7 @@
     },
     {
       "id": "P8-coverage",
-      "source": "docs/implementation/map-implementation-plan.md:200",
+      "source": "docs/implementation/map-implementation-plan.md:208",
       "quote": "| 보행 coverage | graph 신원 고정, 사전 기대 결과와 독립 검토자, 도심/횡단보도/다리/계단/공원/접근시간·음성 대조; HTTP 200만으로 통과 금지 |",
       "verdict": "failed",
       "evidence": [
@@ -3627,7 +3627,7 @@
         "docs/implementation/research/m0-06b-coverage-review-results-m2-01ay.json",
         "docs/implementation/research/m0-06b-coverage-regrade-m2-01ay-grading.txt"
       ],
-      "reason": "M2-01ay amendment: stays failed. After the fixes (military perimeter barriers, ferry and time-conditional warnings, the stair-route acceptance fix, probe way matching from the engine) the same reviewer re-graded against the same pre-registration: 73.5/82 with no disqualifying results, but three strata stay below their bars (rural, bridge-pedestrian, negative-sea-island), so the pre-registered verdict is still inadequate. Criteria were not moved. Remaining misses are attributed by the reviewer to sample design and an OSM data gap (Jamsugyo); changing the criteria is a human decision. Limits: one model reviewer, no field check.",
+      "reason": "M2-01ay amendment: stays failed under the original pre-registration. After the fixes (military perimeter barriers, ferry and time-conditional warnings, the stair-route acceptance fix, probe way matching from the engine) the same reviewer re-graded 73.5/82 with no disqualifying results, but three strata stayed below their bars (rural, bridge-pedestrian, negative-sea-island); the original verdict remains inadequate (docs/implementation/research/m0-06b-coverage-regrade-m2-01ay-grading.txt). The user subsequently approved a different M2-01az criterion after seeing those results. Two new real-engine runs and an independent grading found the new criterion adequate at 75.5/82, all 23 required strata met, zero disqualifiers (docs/implementation/research/m0-06b-coverage-criteria-m2-01az.md; docs/implementation/research/m0-06b-coverage-execution-m2-01az.md; docs/implementation/research/m0-06b-coverage-review-grading-m2-01az.md). That later result does not retroactively change this historical failed verdict or establish field safety. Limits: one model reviewer, no field check.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
