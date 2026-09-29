@@ -2326,7 +2326,7 @@
       "quote": "- [ ] 대표 지역 품질, 이용 조건·표시 의무·credential·좌표 최소화 정책을 검토한다.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "M0-06b-cov amendment: still not_executed. The representative-region quality part has now been reviewed independently and found inadequate (P8-coverage failed, fixes in M2-01ay); terms, attribution and ODbL section 4.2/4.6 obligations, credential and coordinate-minimisation review are still not carried out.",
+      "reason": "M0-06b repo audit: still not_executed. The original representative-region review failed (P8-coverage historical failed verdict retained); ODbL code and repository-local provider/credential/logging review have since added partial evidence. Applied proxy/CDN/host logs and retention, served disclosure artifacts, and remaining deployment gates have not been verified.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
@@ -2343,6 +2343,13 @@
           "docs/implementation/research/m0-06b-coverage-review.md: 82-pair stratified blinded sample (38 existing pairs plus 44 new, urban core, crosswalk, pedestrian and motorway bridges, stairs, parks, access time, 16 negative controls, 13 regions); the independent reviewer (Codex gpt-6-sol, high, run with no repository access) pre-registered per-pair expectations and verdict criteria (sha256 98ef1cee..., 2026-09-26T02:22:22Z) before the engine run (02:22:59Z) on the national graph 188b65effcc6ef5c with the pinned extract 848daadc; a second run was identical",
           "the same reviewer graded under its own pre-registered criteria (from an empty directory with only the pre-registration, the blinded sample and the results): 68 of 82 against a bar of 70, four disqualifying results (military area entered at Yongsan and toward Panmunjom, an access=no gate, a foot=no bridge match), seven strata below their bars; verdict inadequate; a reviewer arithmetic slip was corrected by the reviewer itself and did not change the verdict"
         ]
+      },
+      "providerPrivacyAudit": {
+        "node": "M0-06b",
+        "date": "2026-09-30",
+        "verdict": "not_executed",
+        "evidence": "docs/implementation/research/m0-06b-provider-privacy-audit.md",
+        "scope": "Official OSM/ODbL/Geofabrik/MapLibre/GraphHopper pages and repository-local provider, credential, request and logging paths reviewed. Deployed proxy/CDN/host logging, retention, and served ODbL artifacts remain unverified. Historical P8-coverage failed is unchanged."
       }
     },
     {
