@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule Workout Manager resource cleanup
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=1min
+AccuracySec=1min
+Persistent=false
+Unit=workout-maintenance@resource_cleanup.service
+
+[Install]
+WantedBy=timers.target

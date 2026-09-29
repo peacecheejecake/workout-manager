@@ -1,0 +1,13 @@
+[Unit]
+Description=Workout Manager bounded maintenance worker (%i)
+Requires=docker.service
+After=docker.service
+OnFailure=workout-maintenance-failure@%i.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/workout-manager/source/deploy/lightsail/maintenance/run-one-shot.sh %i
+TimeoutStartSec=22min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=workout-maintenance

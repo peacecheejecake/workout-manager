@@ -45,6 +45,8 @@
 
 ## 남은 외부 수용
 
+- 호스트 정기 작업은 저장소에 **비활성 systemd 템플릿만** 추가했다. `resource_cleanup`(15분)와 `course_thumbnails`(5분)용 타이머, 공통 `flock`·고정 Docker 컨테이너 이름·20분 제한·실패 기록 단위를 포함한다. URL 수집 타이머는 실제 승인 작업·정확한 `RESOURCE_URL_ALLOWED_HOSTS`·fetch/parse·삭제 억제 검증 전까지 만들지 않았다. 로컬 셸 문법·거부 경로와 unit 정적 구성을 확인했지만 서버 설치·타이머 활성화·journald 영속 보존·실제 작업·실패 알림 수용은 **not_executed**다. 활성화 전 조건과 운영자 점검은 [Lightsail 안내](../../../deploy/lightsail/README.md#host-maintenance-schedule-template-inactive)에 기록했다.
+
 - 2026-09-29 재개 확인: `main` `ac99e37`을 phase 브랜치에 병합한 `68c59d5`에서 충돌이 없었고, 병합 diff 검사와 task graph·요구 매트릭스 JSON 파싱이 통과했다. 이후 읽기 전용 조회에서 `workout.red-10-proto.xyz`의 공개 A 레코드는 여전히 없었다. AWS 비루트 SSO 세션은 계정 `681892421656`의 관리자 역할이었고, Lightsail은 `workout-shared-8gb-20260929` 한 대만 실행 중이었다. 기존 apex HTTPS는 최종 200·TLS 검증 0, 월 USD 60 Budget 조회의 실제 지출은 USD 25.468·예측은 USD 26.978이었다. 이 수치는 조회 시점의 집계이며 월 지출 상한 보증이 아니다. 공개 Workout HTTPS·IdP 등록·실제 로그인은 계속 **not_executed**다.
 - 운영 worker 단발 기동의 첫 `resource_cleanup` 요청은 자동 승인 검토가 DB가 비었다는 신뢰할 만한 증거가 없어 삭제 위험이 있다는 이유로 거절했다. 우회 실행하지 않고 전용 DB의 계정·활동·자료·객체·URL 작업·코스·썸네일·삭제 원장·정리 대기 행이 각각 0, private 저장소 파일이 0개임을 읽기 전용으로 확인했다. 그 뒤 `resource_cleanup`, `course_thumbnails`, `url_ingestion`을 각각 `docker compose --profile maintenance run --rm`으로 한 번 실행했고 모두 exit 0이었다. URL 작업자에는 `www.openstreetmap.org`만 단발 환경값으로 허용했으며 작업 큐는 비어 있었다. 실행 뒤 계정·자료·객체·URL 작업·코스·썸네일과 private 파일은 여전히 0, 앱·DB·GraphHopper는 healthy/실행 중, 기존 apex HTTPS는 200·TLS 검증 0이었다. 이는 **빈 큐에서 작업자 기동·권한 확인**일 뿐 실제 fetch/parse, 삭제 억제, 재시도, 정기 스케줄의 증거가 아니다.
 

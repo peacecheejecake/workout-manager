@@ -124,6 +124,52 @@ Caddy site still requires a controlled edit and reload of the existing Caddy
 container. Backups, restore, and external end-to-end checks remain required
 before calling the Workout Manager deployment complete.
 
+## Host maintenance schedule template (inactive)
+
+`maintenance/` contains two systemd timers for the existing one-shot
+`resource_cleanup` and `course_thumbnails` services. Nothing in this checkout
+installs or starts them. The 15-minute cleanup and 5-minute thumbnail cadence
+are initial limits to review against queue volume and host load, not measured
+production capacity. There is deliberately **no URL ingestion timer**. Its
+allowlist and a real approved job still need end-to-end validation before a
+recurring invocation is safe. Keep `url_ingestion` manual under the procedure
+above; an empty queue run is not approval to schedule it.
+
+Before installing either timer, confirm the immutable release, Compose model,
+dedicated worker roles and grants, healthy app/DB, private mount, verified
+backup, and an isolated restore drill. Run each worker on a controlled
+nonempty fixture or approved job and inspect the ledger, object state, deletion
+suppression, retry/failure behavior, and host resource use. Confirm enough disk
+for persistent systemd journal and choose a retention policy. Configure
+journald persistent storage (`Storage=persistent`) and verify that a failed
+test unit remains in `journalctl` after a restart. Arrange an operator to
+review failed units, `/var/lib/workout-manager/maintenance/*.failed-at`, and
+journal entries; this template does not send remote alerts. The marker has only
+a UTC timestamp, remains until deliberately cleared after investigation, and
+must be root-readable only. A zero exit code means the one-shot process ran,
+not that a queue was drained or its domain result was accepted.
+
+After those gates, copy the four systemd unit files from `maintenance/` to
+`/etc/systemd/system/` as root, keeping the runner executable at the pinned
+`/srv/workout-manager/source` release path. Verify the file contents and run
+`systemd-analyze verify` against all units, `systemctl daemon-reload`, then
+enable/start **only** `workout-resource-cleanup.timer` and
+`workout-course-thumbnails.timer`. Check `systemctl list-timers`, both worker
+service statuses, `journalctl -u 'workout-maintenance@*'`, and the failure
+markers after a real invocation. Timer installation/activation, restart
+retention, monitoring, and live job behavior remain external checks.
+
+The host runner holds one nonblocking lock across both services. A second
+invocation fails visibly rather than overlapping. The fixed Docker container
+name also blocks a new invocation if Compose is killed but its container remains.
+Each call has a 20-minute timeout and a 30-second TERM grace period; systemd
+also bounds the unit at 22 minutes. A timeout or stale container needs operator
+inspection of the ledger and Docker state before any retry or cleanup. Do not
+force-remove an active container just to clear the name. `Persistent=false`
+avoids a backlog burst after host downtime. The wrapper rejects
+`url_ingestion` and unknown service names before starting Docker, and never
+prints its environment or Compose configuration.
+
 ## Database recovery prerequisite
 
 A `pg_dump -Fc` backup contains the Workout database but not cluster roles.
