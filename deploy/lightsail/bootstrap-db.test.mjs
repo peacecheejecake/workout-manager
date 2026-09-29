@@ -5,11 +5,12 @@ import { connection, createOrLimitRole } from './bootstrap-db.mjs';
 
 test('setup URLs require the exact internal host, database, role, and a strong password', () => {
   const password = 'synthetic-credential-32-chars-long';
-  const valid = `postgresql://workout_runtime:${password}@postgres:5432/workout`;
+  const valid = `postgresql://workout_runtime:${password}@wm-postgres:5432/workout`;
   assert.equal(connection(valid, 'workout_runtime').password, password);
   for (const invalid of [
     valid.replace('workout_runtime:', 'postgres:'),
-    valid.replace('@postgres:', '@example.com:'),
+    valid.replace('@wm-postgres:', '@example.com:'),
+    valid.replace('@wm-postgres:', '@postgres:'),
     valid.replace('/workout', '/other'),
     valid.replace(password, 'short'),
     `${valid}?sslmode=disable`,

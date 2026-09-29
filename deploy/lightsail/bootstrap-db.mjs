@@ -26,7 +26,7 @@ export function connection(value, expectedRole) {
   if (
     !['postgres:', 'postgresql:'].includes(url.protocol) ||
     decodeURIComponent(url.username) !== expectedRole ||
-    url.hostname !== 'postgres' ||
+    url.hostname !== 'wm-postgres' ||
     (url.port !== '' && url.port !== '5432') ||
     url.pathname !== '/workout' ||
     url.search !== '' ||

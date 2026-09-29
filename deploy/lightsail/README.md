@@ -37,12 +37,17 @@ with mode 0600 files. Run Compose as root so it can read them. Required files ar
 (`workout_resource_cleanup_worker`), `COURSE_THUMBNAIL_DATABASE_URL`
 (`workout_course_thumbnail_worker`), and `RESOURCE_URL_INGESTION_DATABASE_URL`
 (`workout_resource_ingestion_worker`). Each is a percent-encoded PostgreSQL URL
-to host `postgres`, database `workout`, with a distinct random password of at
+to host `wm-postgres`, database `workout`, with a distinct random password of at
 least 24 characters. `POSTGRES_BOOTSTRAP_URL` must use the password in
 `postgres.env`. Copy the runtime and worker URLs to their respective files
 without copying the bootstrap or migration owner URL. The URL ingestion worker
 also requires `RESOURCE_URL_ALLOWED_HOSTS` in its own env file. It is an exact
 host allowlist; set it from approved sources, not a wildcard.
+
+The unique `wm-postgres` network alias is required because the existing site's
+external Caddy network also contains a service named `postgres`. The Workout app
+joins both networks; an unqualified `postgres` host may resolve to the existing
+site's database. Never point a Workout URL at that shared name.
 
 The one-shot `db_setup` service creates or limits the five non-bootstrap roles,
 transfers the dedicated database/schema to `workout_owner`, applies the checked

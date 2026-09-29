@@ -56,7 +56,9 @@ services:
         source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/postgres
         target: /var/lib/postgresql/data
     networks:
-      - workout_internal
+      workout_internal:
+        aliases:
+          - wm-postgres
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d workout']
       interval: 10s
