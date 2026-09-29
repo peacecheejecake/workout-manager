@@ -160,9 +160,16 @@ final class HealthKitWorkoutDebugProbe {
         readOptedIn && sampleId != nil
     }
 
-    static func shouldResetAnchorAfterEmptyRead(deletionConfirmed: Bool,
-                                                observedOwnedUpsert: Bool) -> Bool {
-        !deletionConfirmed && !observedOwnedUpsert
+    static func anchorAfterExplicitReadRequest(_ priorAnchor: Data?) -> Data? {
+        // HealthKit does not disclose a denied read. Even a confirmed delete may
+        // have a cursor advanced by an empty query while read access was denied.
+        nil
+    }
+
+    static func anchorAfterFilteredPage(currentAnchor: Data?, nextAnchor: Data,
+                                        sawUpsert: Bool, sawDeletion: Bool) -> Data? {
+        // An empty page proves neither read permission nor absence of a tombstone.
+        (sawUpsert || sawDeletion) ? nextAnchor : currentAnchor
     }
 
     static func canReportCurrentRead(deletionConfirmed: Bool, sawUpsert: Bool,
@@ -282,11 +289,7 @@ final class HealthKitWorkoutDebugProbe {
         }
         try await requireCurrentAccount(accountId)
         current.readOptedIn = true
-        if !current.deletionConfirmed {
-            // The explicit action must see this sample anew; an older empty page may
-            // have advanced its cursor while OS read access was denied.
-            current.anchorArchive = nil
-        }
+        current.anchorArchive = Self.anchorAfterExplicitReadRequest(current.anchorArchive)
         try persist(current, accountId: accountId)
         if observerAccountId != accountId { stopObserver() }
         if observer == nil { try startFilteredObserver(for: current) }
@@ -509,14 +512,11 @@ final class HealthKitWorkoutDebugProbe {
             }
         }
         guard current.pendingEvents.count <= 100 else { throw DebugProbeError.invalidState }
-        if Self.shouldResetAnchorAfterEmptyRead(deletionConfirmed: current.deletionConfirmed,
-                                                observedOwnedUpsert: sawUpsert) {
-            // Applies to launch/foreground observer reads too, not just explicit retries.
-            current.anchorArchive = nil
-        } else {
-            current.anchorArchive = try NSKeyedArchiver.archivedData(
-                withRootObject: nextAnchor, requiringSecureCoding: true)
-        }
+        let nextArchive = try NSKeyedArchiver.archivedData(
+            withRootObject: nextAnchor, requiringSecureCoding: true)
+        current.anchorArchive = Self.anchorAfterFilteredPage(
+            currentAnchor: current.anchorArchive, nextAnchor: nextArchive,
+            sawUpsert: sawUpsert, sawDeletion: sawDeletion)
         try persist(current, accountId: accountId)
         return ReadResult(sawUpsert: sawUpsert, sawDeletion: sawDeletion)
     }
