@@ -109,11 +109,13 @@ function Harness({
   snapshotId = evidenceId,
   revision = 1,
   sessionId = 'login-session',
+  createId = () => 'same-request-key',
 }: {
   transport: AuthenticatedTransport;
   snapshotId?: string | null;
   revision?: number | null;
   sessionId?: string;
+  createId?: () => string;
 }) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -127,7 +129,7 @@ function Harness({
         threadId={threadId}
         snapshotId={snapshotId}
         observedRevision={revision}
-        createId={() => 'same-request-key'}
+        createId={createId}
       />
     </QueryClientProvider>
   );
@@ -265,7 +267,11 @@ describe('coaching run panel', () => {
     ).toHaveLength(2);
     expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
     await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
-    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    await waitFor(() =>
+      expect(
+        f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries'),
+      ).toHaveLength(4),
+    );
     expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
     expect(screen.getByLabelText('검토 자료 검색어(선택)')).toHaveValue('회복');
     await user.click(screen.getByRole('button', { name: '입력 수정' }));
@@ -401,25 +407,76 @@ describe('coaching run panel', () => {
     expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
   });
 
-  it('rechecks a resource-backed uncertain create with the original query, body and key', async () => {
+  it('replays a dispatched create despite later retrieval denial, preserving body and key', async () => {
     const f = fixture();
     f.failCreate();
-    render(<Harness transport={f.transport} />);
+    let preflightCalls = 0;
+    const transport: AuthenticatedTransport = {
+      request: (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          preflightCalls += 1;
+          if (preflightCalls > 1)
+            return Promise.resolve(
+              transportReplySchema.parse({
+                status: 409,
+                traceId: null,
+                body: { error: { code: 'RETRIEVAL_SET_UNSTABLE' } },
+              }),
+            );
+        }
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} />);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
     await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
     await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(screen.queryByRole('button', { name: '입력 수정' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
     await screen.findByRole('region', { name: '선택한 실행' });
     const preflights = f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries');
     const creates = f.requests.filter(
       (request) => request.path.endsWith('/runs') && request.method === 'POST',
     );
-    expect(preflights).toHaveLength(2);
+    expect(preflightCalls).toBe(1);
+    expect(preflights).toHaveLength(1);
     expect(creates).toHaveLength(2);
-    expect(preflights[1]?.body).toEqual(preflights[0]?.body);
     expect(creates[1]?.body).toEqual(creates[0]?.body);
     expect(creates[1]?.idempotencyKey).toBe(creates[0]?.idempotencyKey);
+  });
+
+  it('repeats preflight after an unknown failure before create dispatch', async () => {
+    const f = fixture();
+    const createId = vi.fn(() => 'same-request-key');
+    let preflightCalls = 0;
+    const transport: AuthenticatedTransport = {
+      request: (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          preflightCalls += 1;
+          if (preflightCalls === 1) return Promise.reject(new Error('offline preflight'));
+        }
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} createId={createId} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
+    await screen.findByRole('region', { name: '선택한 실행' });
+    expect(preflightCalls).toBe(2);
+    expect(createId).toHaveBeenCalledTimes(1);
+    const creates = f.requests.filter(
+      (request) => request.path.endsWith('/runs') && request.method === 'POST',
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]?.body).toMatchObject({
+      retrieval: { kind: 'resource-access-v1', query: '회복' },
+    });
+    expect(creates[0]?.idempotencyKey).toBe('same-request-key');
   });
 
   it('labels analysis as unvalidated and requires an explicit fixture validation request', async () => {

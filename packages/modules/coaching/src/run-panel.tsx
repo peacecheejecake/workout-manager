@@ -21,7 +21,7 @@ interface Props {
 }
 
 type Operation =
-  | { kind: 'create'; command: CoachingRunCreateCommandV1 }
+  | { kind: 'create'; command: CoachingRunCreateCommandV1; phase: 'preflight' | 'dispatched' }
   | { kind: 'fixture'; runId: string; idempotencyKey: string }
   | { kind: 'cancel'; runId: string };
 type Feedback = { kind: 'status' | 'alert'; text: string };
@@ -212,7 +212,10 @@ function Panel({
     let preflightPending = false;
     try {
       if (command.kind === 'create') {
-        if (command.command.retrieval.kind === 'resource-access-v1') {
+        if (
+          command.phase === 'preflight' &&
+          command.command.retrieval.kind === 'resource-access-v1'
+        ) {
           preflightPending = true;
           setPreflightActive(true);
           const complete = await completeRetrievalPreflight(
@@ -223,6 +226,12 @@ function Panel({
           preflightPending = false;
           setPreflightActive(false);
         }
+        if (controller.signal.aborted) return;
+        // Once the exact create is sent, a lost response may hide a committed
+        // run. Recheck with the original body/key without gating that replay on
+        // a newly changed retrieval set; the server receipt decides its result.
+        if (command.phase === 'preflight')
+          setOperation({ kind: 'create', command: command.command, phase: 'dispatched' });
         const created = await api.create(threadId, command.command, controller.signal);
         if (controller.signal.aborted) return;
         setSelectedId(created.id);
@@ -311,16 +320,18 @@ function Panel({
           <button type="button" onClick={() => void send(operation)}>
             같은 요청 재확인
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOperation(null);
-              setIndexingProgress(null);
-              setFeedback(null);
-            }}
-          >
-            입력 수정
-          </button>
+          {operation.kind !== 'create' || operation.phase === 'preflight' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOperation(null);
+                setIndexingProgress(null);
+                setFeedback(null);
+              }}
+            >
+              입력 수정
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className={styles.field}>
@@ -354,7 +365,8 @@ function Panel({
                   : { kind: 'none' },
               idempotencyKey: createId(),
             });
-            if (parsed.success) void send({ kind: 'create', command: parsed.data });
+            if (parsed.success)
+              void send({ kind: 'create', command: parsed.data, phase: 'preflight' });
             else setFeedback({ kind: 'alert', text: '선택한 근거와 상담 기록을 확인하세요.' });
           }}
         >
