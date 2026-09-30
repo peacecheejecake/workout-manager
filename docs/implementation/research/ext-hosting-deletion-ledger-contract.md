@@ -114,3 +114,11 @@ IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받
 `077_actual_deletion_suppression_event.sql`은 `IntakeEntry`와 `RecoveryActionLog`가 `active→deleted`가 되는 같은 거래에서 각각 `intake_entry_deleted`와 `recovery_action_deleted`를 한 번만 기록한다. 영양 사건의 `target_id`는 사용자가 정한 문자열 `intakeId`가 아니라 최초 생성 revision의 불변 UUID이고, 회복 사건은 서버 생성 action UUID를 쓴다. 두 사건에는 tenant·종류·삭제 revision·삭제 tombstone 시각과 무작위 event ID만 있고 음식/건강 값·메모·idempotency key·비밀 없는 hash는 없다. 기존 삭제는 backfill하지 않으며 계정 말소로 원본 revision이 사라져도 사건은 남는다.
 
 이 사건은 백업에 대상 행이 포함된 경우에만 그 행의 고정 식별자와 맞출 수 있다. 백업 뒤 생성·삭제되어 백업에 없는 행을 차단하려면 복원 세대값 회전과 원격 원장의 완전성·replay 설계가 추가로 필요하다. 077 자체는 exporter·호스트 밖 내구성·복원 재생·운영 검증을 제공하지 않는다. 이 범위는 **not_executed**다.
+
+## 로컬 pgoutput sequence envelope (migration 078, 진단 단계)
+
+`078_restore_suppression_pgoutput_publication.sql`은 `restore_suppression_event` 한 표의 INSERT만 포함하는 `workout_restore_suppression_events` publication을 만든다. 전용 코드는 일회용 로컬 slot에 SQL `pg_logical_slot_peek_binary_changes`를 사용하며, 요청당 1,000개 메시지·2 MiB 상한을 둔다. `Begin`·`Relation`·`Insert`·`Commit`을 완전하게 파싱하고 표의 정확한 컬럼 이름·순서·PostgreSQL 타입, `record_version=1`, 알려진 사건 종류를 확인한다. 다른 message나 중간에서 끝난 거래는 거절한다. 다른 표만 바뀐 거래의 빈 `Begin`/`Commit`도 PostgreSQL이 출력할 수 있으므로 거래 위치를 보존하되 해당 거래에서 사건을 만들지 않는다. 전 구간에 사건이 하나도 없으면 envelope를 만들지 않는다.
+
+결과의 **로컬 진단용 sequence envelope**에는 클러스터 system identifier, 시작/끝 WAL 위치, 거래별 commit/end 위치, 사건의 무작위 event ID·종류, 앞선 envelope 해시와 현재 SHA-256만 담는다. tenant·source/대상 ID, 건강 값·메모·위치, 삭제 시각을 넣지 않는다. 동일 peek의 재전달은 같은 envelope이고, 검증기는 전달된 envelope 사이의 hash·경계 위치·중복 event ID·순서를 검사한다. WAL의 숫자상 빈 위치는 다른 거래와 내부 기록이 들어갈 수 있으므로 임의 점프 자체를 누락으로 판정하지 않는다. **전달자가 완전한 WAL을 제공했는지**, 앞선 slot 시작점부터 빠진 거래가 없는지, 최종 tail이 없는지와 호스트 밖 내구성은 이 envelope로 증명할 수 없다. `peek`는 `confirmed_flush_lsn`을 전진시키지 않으며 원격 ack와 연결되지 않는다. 원본 사건의 복구 필드가 빠진 진단 산출물이므로 이것을 v1 복원 원장, `collect.mjs`의 ledger manifest 또는 접근 재개 증거로 쓰지 않는다.
+
+격리 PostgreSQL 14의 실제 `pgoutput` 시험에서 publication의 단일 표·INSERT 설정, 서로 다른 시작/commit 순서, rollback 제외, 다른 표 변경의 사건 제외, 연결을 바꾼 두 peek의 동일 접두부 재전달과 slot 위치 불변, 부분 거래·불명 kind/schema 거절을 확인했다. 생산 PostgreSQL 17.6, 운영 slot/서비스, 장기 보관·원격 내구성 ack, 복원 가능한 전체 사건 필드 반출, 백업 기준점·미수집 tail 증명과 restore replay는 **not_executed**다.

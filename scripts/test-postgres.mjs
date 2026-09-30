@@ -11,10 +11,27 @@ function run(command, args, options = {}) {
   if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
 }
 const logicalContract = process.argv.length === 3 && process.argv[2] === '--logical-contract';
-if (!logicalContract && process.argv.length !== 2) {
+const pgoutputContract = process.argv.length === 3 && process.argv[2] === '--pgoutput-contract';
+const foundationContract = process.argv.length === 3 && process.argv[2] === '--foundation-contract';
+if (!logicalContract && !pgoutputContract && !foundationContract && process.argv.length !== 2) {
   throw new Error('Unknown PostgreSQL test harness argument.');
 }
 function runIntegrationTests(env) {
+  if (foundationContract) {
+    run(
+      'pnpm',
+      [
+        'exec',
+        'vitest',
+        'run',
+        '--config',
+        'vitest.integration.config.ts',
+        'packages/server/persistence/tests/foundation.integration.test.ts',
+      ],
+      { env },
+    );
+    return;
+  }
   if (logicalContract) {
     run(
       'pnpm',
@@ -27,6 +44,21 @@ function runIntegrationTests(env) {
         'packages/server/persistence/tests/restore-suppression-logical-decoding.integration.test.ts',
       ],
       { env: { ...env, TEST_LOGICAL_DECODING: '1' } },
+    );
+    return;
+  }
+  if (pgoutputContract) {
+    run(
+      'pnpm',
+      [
+        'exec',
+        'vitest',
+        'run',
+        '--config',
+        'vitest.integration.config.ts',
+        'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
+      ],
+      { env: { ...env, TEST_PGOUTPUT_CONTRACT: '1' } },
     );
     return;
   }
@@ -54,6 +86,8 @@ function runIntegrationTests(env) {
       'packages/server/persistence/tests/resource-url-ingestion-upgrade.integration.test.ts',
       '--exclude',
       'packages/server/persistence/tests/restore-suppression-logical-decoding.integration.test.ts',
+      '--exclude',
+      'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
     ],
     { env },
   );
@@ -63,7 +97,7 @@ if (Boolean(process.env.TEST_DATABASE_URL) !== Boolean(process.env.TEST_DATABASE
     'Supply both isolated test database URLs, or neither for a local ephemeral cluster.',
   );
 }
-if (logicalContract && process.env.TEST_DATABASE_URL) {
+if ((logicalContract || pgoutputContract) && process.env.TEST_DATABASE_URL) {
   throw new Error('Logical decoding contract requires a local disposable PostgreSQL cluster.');
 }
 if (process.env.TEST_DATABASE_URL && process.env.TEST_DATABASE_ADMIN_URL) {
@@ -103,7 +137,7 @@ if (process.env.TEST_DATABASE_URL && process.env.TEST_DATABASE_ADMIN_URL) {
       '-l',
       join(directory, 'postgres.log'),
       '-o',
-      `-k ${directory} -h ''${logicalContract ? ' -c wal_level=logical -c max_replication_slots=4 -c max_wal_senders=4' : ''}`,
+      `-k ${directory} -h ''${logicalContract || pgoutputContract ? ' -c wal_level=logical -c max_replication_slots=4 -c max_wal_senders=4' : ''}`,
       '-w',
       'start',
     ]);
