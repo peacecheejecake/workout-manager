@@ -80,6 +80,7 @@ const migrationFiles = [
   '072_ai_consent_transition_suppression_event.sql',
   '073_check_in_deletion_suppression_event.sql',
   '074_resource_share_revoke_suppression_event.sql',
+  '075_course_share_revoke_suppression_event.sql',
 ] as const;
 
 /**
