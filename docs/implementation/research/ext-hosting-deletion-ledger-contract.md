@@ -46,6 +46,8 @@
 
 이 로컬 행의 `record_version`은 아래 **독립 원장 v1의 `schemaVersion`이 아니다**. 사건에는 클러스터 식별자·WAL commit 위치/연속성·독립 내구성 확인이 없으며, exporter·호스트 밖 반출·복원 재생도 없다. 이 행을 읽어 `collect.mjs`의 ledger manifest를 채우거나 복원 접근을 허용할 수 없다. 코스/Activity 복구 재생과 로컬 사건 생성은 별개의 경로이며, 다른 파괴적 쓰기 경로는 아직 이 표에 연결되지 않았다.
 
+`scripts/test-postgres.mjs --logical-contract`는 일회용 PostgreSQL 14 클러스터에만 `wal_level=logical`을 켜고 공식 진단용 `test_decoding` slot을 만든다. 합성 `tenant_erased` 사건으로 두 거래의 시작 순서와 반대인 commit 순서·증가하는 commit WAL 위치, 한 거래의 두 사건 묶음, rollback 사건 부재를 확인했다. 첫 소비자가 slot을 **peek**한 뒤 종료해도 새 소비자가 같은 변경을 다시 받고 `confirmed_flush_lsn`이 유지된다. SQL `get_changes` 후에는 그 위치가 전진하고 이미 소비한 변경은 다시 나오지 않는다. 이 전진은 **로컬 소비 위치**이며 호스트 밖 저장소의 내구성 확인이나 안전한 원격 ack가 아니다. `test_decoding`은 다른 표도 디코딩할 수 있으므로 시험에서만 사용하며 운영 publication·`pgoutput` exporter 계약이 아니다. 생산 클러스터의 commit 연속성, 백업 기준점과의 연결, 접근 차단·복원 replay, 운영 PostgreSQL 17.6 및 호스트 밖 내구성은 **not_executed**다.
+
 ## 최소 원장 v1 계약
 
 v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 필드가 없거나 알 수 없는 필드/종류가 있으면 복구를 중단한다. 사건 ID는 중복 제거용이고 commit 위치는 **전달 연속성** 검증용으로 구분한다.
@@ -78,7 +80,7 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 
 ## 수용 시험 계획 (계정 말소·코스·canonical Activity·자료·갤러리·CheckIn 삭제·HealthKit/AI 동의의 로컬 거래 조건만 부분 실행)
 
-1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리·개별 CheckIn 삭제·HealthKit/AI 동의 전이에 한해 PostgreSQL 14에서 실행했다.** PostgreSQL 17.6 재검증, dump 기준점 전/후·동시 commit·원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
+1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리·개별 CheckIn 삭제·HealthKit/AI 동의 전이에 한해 PostgreSQL 14에서 실행했다.** 별도 PostgreSQL 14 진단 slot 시험은 합성 말소 사건의 commit 순서·거래 묶음·rollback 제외·ack 전 재전달과 로컬 소비 위치 전진만 확인했다. PostgreSQL 17.6 재검증, dump 기준점 전/후·운영 원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
 2. 계정 A 말소와 A의 앞선 활동·코스 삭제를 겹치게 하고, 계정 B는 보존한다. dump 뒤 생성 후 삭제한 활동/source·코스, resource/gallery 삭제, 제약·체크인 삭제와 객체/검색 파생물 재생을 검사한다. 외래 tenant ID 또는 같은 대상의 모순 사건은 전체 복구를 rollback한다.
 3. AI 철회→재동의, HealthKit 철회→재동의와 consent revision/epoch 변경을 백업 뒤 실행한다. 복원된 과거 AI 근거·코치 출력·자료 `include_for_coach`와 HealthKit raw·lineage·receipt가 다시 노출되지 않아야 하며, 새 동의의 별도 새 자료는 보존한다. HealthKit UUID의 지연 재전송도 억제한다.
 4. 수집 중 프로세스 종료, SIGKILL, DB/호스트 장애, 원격 업로드 일부 성공·ack 전/후 중단, 복구 중단 뒤 재실행을 주입한다. 중복 사건은 무해하고 누락·불명확한 tail은 차단된다. 다른 tenant·보존 객체는 그대로여야 한다.
