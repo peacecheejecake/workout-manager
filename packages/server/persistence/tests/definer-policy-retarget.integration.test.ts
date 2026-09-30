@@ -15,6 +15,7 @@ import {
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import { createGalleryMediaRepository } from '../src/gallery-media.js';
 import { createPrivateTextResourceRepository } from '../src/resources.js';
+import { createConsentRepository } from '../src/repositories.js';
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
@@ -89,6 +90,13 @@ beforeAll(async () => {
   await grantOperations(ownerUrl, runtimeRole);
   await grantResources(ownerUrl, runtimeRole);
   await grantGalleryMedia(ownerUrl, runtimeRole);
+  const consentOwner = new Pool({ connectionString: ownerUrl, max: 1 });
+  try {
+    await consentOwner.query(`GRANT SELECT,INSERT,UPDATE ON consent TO "${runtimeRole}"`);
+    await consentOwner.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
+  } finally {
+    await consentOwner.end();
+  }
   await grantCourses(ownerUrl, runtimeRole);
   await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
   runtime = createDatabase({ connectionString: urlFor(runtimeRole), max: 2 });
@@ -266,6 +274,29 @@ async function liveGalleryDeletionEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveHealthKitConsentEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const consents = createConsentRepository(runtime);
+  await consents.setConsent(tenant, {
+    kind: 'healthkit',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await consents.setConsent(tenant, {
+    kind: 'healthkit',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='healthkit_consent_transition'`,
+    [tenant],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -323,6 +354,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
+    expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -358,6 +390,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
+    expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -390,6 +423,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
+    expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
