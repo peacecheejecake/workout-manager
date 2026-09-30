@@ -8,20 +8,49 @@ import {
   lstatSync,
   openSync,
   readSync,
+  realpathSync,
   renameSync,
   rmSync,
   statfsSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { checkConfig, loadFenceConfig } from './check-fence.mjs';
 
 const MAX_DURATION_MS = 30 * 60 * 1000;
 const MIN_FREE_BYTES = 64 * 1024 * 1024;
 const ARCHIVE_MAGIC = Buffer.from('PGDMP');
+const SNAPSHOT_NAME = /^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]*$/i;
+const WAL_LSN = /^[0-9A-F]{1,8}\/[0-9A-F]{1,8}$/i;
+const PG_IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
 
 function reject() {
   throw new Error('BACKUP_TRANSPORT_FAILED');
+}
+
+export function validateSnapshotContract(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) reject();
+  const keys = [
+    'snapshotName',
+    'consistentPointLsn',
+    'postgresSystemIdentifier',
+    'replicationSlot',
+    'publication',
+  ];
+  if (Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) reject();
+  if (
+    !keys.every((key) => typeof value[key] === 'string') ||
+    !SNAPSHOT_NAME.test(value.snapshotName) ||
+    !WAL_LSN.test(value.consistentPointLsn) ||
+    !/^[1-9][0-9]{0,19}$/.test(value.postgresSystemIdentifier) ||
+    BigInt(value.postgresSystemIdentifier) > 18_446_744_073_709_551_615n ||
+    !PG_IDENTIFIER.test(value.replicationSlot) ||
+    !PG_IDENTIFIER.test(value.publication)
+  ) {
+    reject();
+  }
+  return { ...value, consistentPointLsn: value.consistentPointLsn.toUpperCase() };
 }
 
 function noSymlinkParents(path) {
@@ -107,8 +136,20 @@ function restoreCheck(runner, containerId, archive, mode) {
   }
 }
 
-export function captureArchive({ output, fenceCheck, config, runner = spawnSync }) {
+export function captureArchive({
+  output,
+  fenceCheck,
+  config,
+  snapshotContract,
+  runner = spawnSync,
+}) {
   checkConfig(config);
+  const snapshot =
+    snapshotContract === undefined ? undefined : validateSnapshotContract(snapshotContract);
+  // V2 remains a disposable local contract until the slot export and remote
+  // tail are connected to an independently verified restore gate.
+  if (snapshot && !realpathSync(dirname(output)).startsWith(`${realpathSync(tmpdir())}${sep}`))
+    reject();
   if (
     !isAbsolute(output) ||
     resolve(output) !== output ||
@@ -139,6 +180,7 @@ export function captureArchive({ output, fenceCheck, config, runner = spawnSync 
         '--format=custom',
         '--no-owner',
         '--no-acl',
+        ...(snapshot ? [`--snapshot=${snapshot.snapshotName}`] : []),
         '--dbname=workout',
       ],
       ['ignore', fd, 'ignore'],
@@ -164,23 +206,32 @@ export function captureArchive({ output, fenceCheck, config, runner = spawnSync 
 }
 
 function parseArgs(args) {
-  if (
-    args.length !== 4 ||
-    args[0] !== '--output' ||
-    args[2] !== '--fence-check' ||
-    !args[1] ||
-    !args[3]
-  ) {
-    reject();
+  if (args.length < 4 || args.length % 2 !== 0) reject();
+  const options = new Map();
+  for (let i = 0; i < args.length; i += 2) {
+    if (!args[i]?.startsWith('--') || !args[i + 1] || options.has(args[i])) reject();
+    options.set(args[i], args[i + 1]);
   }
-  return { output: args[1], fenceCheck: args[3] };
+  const output = options.get('--output');
+  const fenceCheck = options.get('--fence-check');
+  if (!output || !fenceCheck) reject();
+  if (options.size === 2) return { output, fenceCheck };
+  if (options.get('--synthetic-snapshot-v2') !== 'yes' || options.size !== 8) reject();
+  const snapshotContract = validateSnapshotContract({
+    snapshotName: options.get('--snapshot-name'),
+    consistentPointLsn: options.get('--consistent-point-lsn'),
+    postgresSystemIdentifier: options.get('--postgres-system-identifier'),
+    replicationSlot: options.get('--replication-slot'),
+    publication: options.get('--publication'),
+  });
+  return { output, fenceCheck, snapshotContract };
 }
 
 function runLive() {
   process.umask(0o077);
   if (process.getuid?.() !== 0) reject();
   secureFile(resolve(process.argv[1]), 0o700);
-  const { output, fenceCheck } = parseArgs(process.argv.slice(2));
+  const { output, fenceCheck, snapshotContract } = parseArgs(process.argv.slice(2));
   if (!isAbsolute(output) || !isAbsolute(fenceCheck)) reject();
   noSymlinkParents(output);
   noSymlinkParents(fenceCheck);
@@ -189,7 +240,7 @@ function runLive() {
   const free = statfsSync(dirname(output));
   if (free.bavail * free.bsize < MIN_FREE_BYTES) reject();
   const config = loadFenceConfig(process.env.WORKOUT_BACKUP_FENCE_CONFIG);
-  captureArchive({ output, fenceCheck, config });
+  captureArchive({ output, fenceCheck, config, snapshotContract });
   process.stdout.write('BACKUP_TRANSPORT_ARCHIVE_VALIDATED\n');
 }
 

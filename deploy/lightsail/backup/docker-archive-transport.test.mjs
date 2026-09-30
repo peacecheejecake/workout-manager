@@ -20,6 +20,13 @@ const config = {
   containers: { app: 'a'.repeat(64), postgres: containerId, graphhopper: 'c'.repeat(64) },
 };
 const complete = Buffer.from('PGDMPsynthetic archive body and table data');
+const snapshotContract = {
+  snapshotName: '00000003-0000001B-1',
+  consistentPointLsn: '0/16B6C50',
+  postgresSystemIdentifier: config.postgresSystemIdentifier,
+  replicationSlot: 'workout_suppression_slot',
+  publication: 'workout_restore_suppression',
+};
 
 function runnerFor(state) {
   return (program, args, options) => {
@@ -34,6 +41,7 @@ function runnerFor(state) {
     assert.equal(args.includes('postgres'), true);
     if (args.includes('pg_dump')) {
       assert.equal(args.includes('--dbname=workout'), true);
+      state.dumpArgs = args;
       writeSync(options.stdio[1], state.archive);
       return { status: state.dumpStatus };
     }
@@ -55,6 +63,7 @@ function fixture() {
     failFenceAt: 0,
     fenceCalls: 0,
     restoreChecks: [],
+    dumpArgs: [],
   };
   return { dir, output, state };
 }
@@ -82,6 +91,49 @@ test('streams and validates the complete archive through the pinned container', 
     assert.equal(existsSync(`${current.output}.partial`), false);
   } finally {
     rmSync(current.dir, { recursive: true, force: true });
+  }
+});
+
+test('passes a supplied exported snapshot as one pg_dump argument and rejects unsafe contracts', () => {
+  const current = fixture();
+  try {
+    captureArchive({
+      output: current.output,
+      fenceCheck: '/root/check-fence',
+      config,
+      snapshotContract,
+      runner: runnerFor(current.state),
+    });
+    assert.equal(current.state.dumpArgs.filter((arg) => arg.startsWith('--snapshot=')).length, 1);
+    assert.ok(current.state.dumpArgs.includes('--snapshot=00000003-0000001B-1'));
+  } finally {
+    rmSync(current.dir, { recursive: true, force: true });
+  }
+  for (const changed of [
+    { snapshotName: '00000003-0000001B-1; echo unsafe' },
+    { consistentPointLsn: '0/16B6C50;unsafe' },
+    { replicationSlot: 'other-slot' },
+    { publication: 'publication with spaces' },
+    { postgresSystemIdentifier: '0' },
+  ]) {
+    const invalid = fixture();
+    try {
+      assert.throws(
+        () =>
+          captureArchive({
+            output: invalid.output,
+            fenceCheck: '/root/check-fence',
+            config,
+            snapshotContract: { ...snapshotContract, ...changed },
+            runner: runnerFor(invalid.state),
+          }),
+        /BACKUP_TRANSPORT_FAILED/,
+      );
+      assert.equal(invalid.state.fenceCalls, 0);
+      assert.equal(existsSync(invalid.output), false);
+    } finally {
+      rmSync(invalid.dir, { recursive: true, force: true });
+    }
   }
 });
 

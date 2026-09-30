@@ -20,6 +20,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { validateSnapshotContract } from './docker-archive-transport.mjs';
 
 const MAX_OUTPUT_BYTES = 4096;
 const MIN_HEADROOM_BYTES = 64 * 1024 * 1024;
@@ -60,6 +61,12 @@ function parseArgs(argv) {
           '--database-transport',
           '--synthetic-test',
           '--min-free-bytes',
+          '--synthetic-snapshot-v2',
+          '--snapshot-name',
+          '--consistent-point-lsn',
+          '--postgres-system-identifier',
+          '--replication-slot',
+          '--publication',
         ]
       : [...required, '--synthetic-test', '--min-free-bytes'],
   );
@@ -190,7 +197,38 @@ function checkFence(path) {
   run(path, []);
 }
 
+function snapshotContract(options) {
+  const keys = [
+    '--synthetic-snapshot-v2',
+    '--snapshot-name',
+    '--consistent-point-lsn',
+    '--postgres-system-identifier',
+    '--replication-slot',
+    '--publication',
+  ];
+  if (!keys.some((key) => key in options)) return undefined;
+  if (
+    options['--synthetic-snapshot-v2'] !== 'yes' ||
+    options['--synthetic-test'] !== 'yes' ||
+    keys.some((key) => !options[key])
+  ) {
+    fail('BACKUP_SNAPSHOT_V2_INACTIVE');
+  }
+  try {
+    return validateSnapshotContract({
+      snapshotName: options['--snapshot-name'],
+      consistentPointLsn: options['--consistent-point-lsn'],
+      postgresSystemIdentifier: options['--postgres-system-identifier'],
+      replicationSlot: options['--replication-slot'],
+      publication: options['--publication'],
+    });
+  } catch {
+    fail('BACKUP_INVALID_SNAPSHOT_CONTRACT');
+  }
+}
+
 function collect(options) {
+  const snapshot = snapshotContract(options);
   const dbFile = options['--database-url-file']
     ? resolve(options['--database-url-file'])
     : undefined;
@@ -230,11 +268,48 @@ function collect(options) {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
     if (databaseTransport) {
-      run(databaseTransport, ['--output', dump, '--fence-check', fence], env, 30 * 60_000);
+      run(
+        databaseTransport,
+        [
+          '--output',
+          dump,
+          '--fence-check',
+          fence,
+          ...(snapshot
+            ? [
+                '--synthetic-snapshot-v2',
+                'yes',
+                '--snapshot-name',
+                snapshot.snapshotName,
+                '--consistent-point-lsn',
+                snapshot.consistentPointLsn,
+                '--postgres-system-identifier',
+                snapshot.postgresSystemIdentifier,
+                '--replication-slot',
+                snapshot.replicationSlot,
+                '--publication',
+                snapshot.publication,
+              ]
+            : []),
+        ],
+        env,
+        30 * 60_000,
+      );
       if (!existsSync(dump)) fail('BACKUP_TRANSPORT_OUTPUT_MISSING');
       assertSecureFile(dump, 0o600);
     } else {
-      run('pg_dump', ['-Fc', '--no-owner', '--no-acl', '-f', dump], env);
+      run(
+        'pg_dump',
+        [
+          '-Fc',
+          '--no-owner',
+          '--no-acl',
+          ...(snapshot ? [`--snapshot=${snapshot.snapshotName}`] : []),
+          '-f',
+          dump,
+        ],
+        env,
+      );
       chmodSync(dump, 0o600);
       run('pg_restore', ['--list', dump]);
     }
@@ -257,10 +332,13 @@ function collect(options) {
     }
     checkFence(fence);
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: snapshot ? 2 : 1,
       capturedAt: new Date().toISOString(),
-      consistency: 'operator-enforced-quiesced-write-fence',
+      consistency: snapshot
+        ? 'caller-supplied-exported-snapshot-local-integrity-only'
+        : 'operator-enforced-quiesced-write-fence',
       independentPostBackupErasureLedgerRequired: true,
+      ...(snapshot ? { snapshot } : {}),
       database: digest(dump),
       privateFiles: copied,
     };
@@ -289,11 +367,29 @@ function verify(options) {
   assertSecureFile(manifestPath, 0o600);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (
-    manifest.schemaVersion !== 1 ||
-    manifest.consistency !== 'operator-enforced-quiesced-write-fence' ||
+    (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) ||
+    manifest.consistency !==
+      (manifest.schemaVersion === 2
+        ? 'caller-supplied-exported-snapshot-local-integrity-only'
+        : 'operator-enforced-quiesced-write-fence') ||
     manifest.independentPostBackupErasureLedgerRequired !== true ||
     !Number.isFinite(Date.parse(manifest.capturedAt))
   ) {
+    fail('BACKUP_INVALID_MANIFEST');
+  }
+  if (manifest.schemaVersion === 2) {
+    if (options['--synthetic-test'] !== 'yes') fail('BACKUP_SNAPSHOT_V2_INACTIVE');
+    try {
+      if (
+        JSON.stringify(validateSnapshotContract(manifest.snapshot)) !==
+        JSON.stringify(manifest.snapshot)
+      ) {
+        fail('BACKUP_INVALID_MANIFEST');
+      }
+    } catch {
+      fail('BACKUP_INVALID_MANIFEST');
+    }
+  } else if ('snapshot' in manifest) {
     fail('BACKUP_INVALID_MANIFEST');
   }
   const dump = join(bundle, 'database.dump');
@@ -315,6 +411,9 @@ function verify(options) {
       fail('BACKUP_PRIVATE_MISMATCH');
     }
   }
+  // A v2 dump/manifest pair is locally checkable, but no independently proven
+  // replication boundary or remote tail exists to authorize restore.
+  if (manifest.schemaVersion === 2) fail('BACKUP_SNAPSHOT_V2_RESTORE_NOT_READY');
   // This is an external, independently captured replay input. Its completeness
   // cannot be inferred from a backup, so verification checks presence only.
   const ledgerManifestPath = join(ledger, 'ledger-manifest.json');
@@ -357,7 +456,7 @@ try {
   else verify(options);
 } catch (error) {
   const code =
-    error instanceof Error && /^BACKUP_[A-Z_]+$/.test(error.message)
+    error instanceof Error && /^BACKUP_[A-Z0-9_]+$/.test(error.message)
       ? error.message
       : 'BACKUP_FAILED';
   process.stderr.write(`${code}\n`);

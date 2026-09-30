@@ -148,3 +148,11 @@ IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받
 `restore-suppression-replay.ts`는 호출자가 **독립적으로 신뢰할 수 있는 백업 기준점과 마지막 위치에서 가져온** cluster ID·시작/끝 LSN·이전/마지막 로컬 해시·순서가 고정된 암호문 SHA-256 목록을 받아, 각 세그먼트의 정확한 암호문을 확인하고 전부 복호화한다. 세그먼트 사이의 LSN·해시 연속성과 전체 event ID 유일성을 확인하며 현재 재생 범위 밖의 10종 사건을 거절한다. 현재 허용된 사건 종류는 `tenant_erased`와 `course_deleted` 두 가지다. 검증 결과에는 개인 식별자나 원문 사건을 반환하지 않는다.
 
 이 구현에는 DB 쓰기 경로가 없다. 테스트가 만든 기준점은 운영 백업·원격 원장·최종 tail을 증명하지 않는다. 실제 복구 시 앱 접근을 차단한 상태에서 백업 baseline과 마지막 사건 범위의 독립 증명, 소유자 전용 단일 거래 재생, 충돌/소유권 검증, 복원 세대 회전과 session 무효화, 중단·재시도 드릴을 검증하기 전에는 접근을 재개하지 않는다. 이 작업들은 **not_executed**다.
+
+## 백업 exported snapshot v2 계약 (비운영 합성 경로)
+
+기존 `collect.mjs`의 `schemaVersion: 1` 백업·검증 경로는 그대로 유지한다. v1의 `capturedAt`은 dump의 WAL commit 경계가 아니며, 기존 ledger manifest의 시각 비교도 복원 안전성 증명이 아니다. 새 `schemaVersion: 2`는 `--synthetic-test yes`와 모든 v2 인자를 명시한 **임시 디렉터리 합성 실행에서만** 수집한다. 운영 호출은 거절하고 v2 `verify`는 dump/private 파일의 해시를 확인한 뒤에도 `BACKUP_SNAPSHOT_V2_RESTORE_NOT_READY`로 실패한다.
+
+v2 호출자는 `snapshotName`, `consistentPointLsn`, `postgresSystemIdentifier`, `replicationSlot`, `publication`을 한 세트로 공급해야 한다. collector와 Docker transport는 스냅샷 이름·LSN·식별자 형식을 검사하고 `pg_dump`에 `--snapshot=<이름>`을 **단일 argv 인자**로 전달한다. 셸 보간은 하지 않는다. 게시 manifest에는 이 세트와 dump SHA-256/바이트 수, 각 private 파일 SHA-256/바이트 수를 함께 기록한다. `capturedAt`에서 WAL 위치를 계산하거나 추정하지 않는다. 호출자는 실제 `CREATE_REPLICATION_SLOT ... LOGICAL ... EXPORT_SNAPSHOT` 응답의 `snapshot_name`과 `consistent_point`가 같은 전용 slot·클러스터에 속함을 검증하고, 해당 **복제 프로토콜 연결을 dump가 snapshot을 가져올 때까지 유지**해야 한다. 지금 코드는 그 연결 생성·응답 검증·수명 소유를 구현하지 않았으며 인자 값의 출처를 인증하지 않는다. [PostgreSQL 17 복제 프로토콜](https://www.postgresql.org/docs/17/protocol-replication.html)과 [pg_dump `--snapshot`](https://www.postgresql.org/docs/17/app-pgdump.html)이 이 연결 수명과 snapshot 사용을 규정한다.
+
+일회용 PostgreSQL 14에서 일반 SQL `pg_export_snapshot()`의 연결을 유지한 동안 v2 `pg_dump`가 성공하고, 연결 거래를 끝낸 후 같은 snapshot으로 재시도하면 실패함을 확인했다. 이 시험의 SQL snapshot과 임의 fixture LSN은 **slot-export 기준점의 증거가 아니다**. PostgreSQL 17.6 운영 slot에서의 실제 export·동일 클러스터 확인·WAL 시작점 연결, 호스트 밖 원장 전송과 독립 보존, 원본 소실 뒤 마지막 commit까지의 tail 완전성, 복원 replay는 모두 **not_executed**다. Slot-export snapshot은 백업의 **시작 경계**만 도울 수 있고 재해 후의 tail이 비지 않았다는 보증을 제공하지 않는다.

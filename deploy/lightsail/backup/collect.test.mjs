@@ -178,6 +178,97 @@ test('uses an opt-in archive transport and rejects ambiguous database sources', 
   }
 });
 
+test('v2 binds an independently supplied snapshot and LSN but stays inactive for restore', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-backup-snapshot-v2-')));
+  const bin = join(root, 'bin');
+  const privateDir = join(root, 'private');
+  const output = join(root, 'output');
+  const ledger = join(root, 'ledger');
+  const dbFile = join(root, 'database-url');
+  const fence = join(root, 'fence.sh');
+  try {
+    for (const dir of [bin, privateDir, output, ledger]) mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(
+      join(bin, 'pg_dump'),
+      '#!/bin/sh\nfor arg in "$@"; do\n  case "$arg" in --snapshot=*) [ "$arg" = "--snapshot=00000003-0000001B-1" ] || exit 8;; esac\ndone\nwhile [ "$1" != "-f" ]; do shift; done\nshift\nprintf "PGDMPsynthetic-v2-archive" > "$1"\n',
+      { mode: 0o700 },
+    );
+    writeFileSync(join(bin, 'pg_restore'), '#!/bin/sh\n[ "$1" = "--list" ] || exit 1\n', {
+      mode: 0o700,
+    });
+    writeFileSync(dbFile, 'postgresql://fixture:fixture@localhost:5432/workout_backup_fixture\n', {
+      mode: 0o600,
+    });
+    writeFileSync(fence, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    writeFileSync(join(privateDir, 'fixture.bin'), 'synthetic-only');
+    const args = [
+      'collect',
+      '--database-url-file',
+      dbFile,
+      '--private-dir',
+      privateDir,
+      '--output-dir',
+      output,
+      '--fence-check',
+      fence,
+      '--synthetic-snapshot-v2',
+      'yes',
+      '--snapshot-name',
+      '00000003-0000001B-1',
+      '--consistent-point-lsn',
+      '0/16B6C50',
+      '--postgres-system-identifier',
+      '7534718236249421545',
+      '--replication-slot',
+      'workout_suppression_slot',
+      '--publication',
+      'workout_restore_suppression',
+    ];
+    assert.match(
+      invoke(
+        args.filter((arg, index) => ![13, 14].includes(index)),
+        bin,
+      ).stderr,
+      /BACKUP_SNAPSHOT_V2_INACTIVE/,
+    );
+    const unsafeArgs = [...args];
+    unsafeArgs[12] = 'unsafe;echo';
+    assert.match(invoke(unsafeArgs, bin).stderr, /BACKUP_INVALID_SNAPSHOT_CONTRACT/);
+    const liveAttempt = spawnSync(process.execPath, [collector, ...args], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    });
+    assert.match(liveAttempt.stderr, /BACKUP_SNAPSHOT_V2_INACTIVE/);
+    const collected = invoke(args, bin);
+    assert.equal(collected.status, 0, collected.stderr);
+    const bundle = join(output, readdirSync(output)[0]);
+    const manifestPath = join(bundle, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.equal(manifest.schemaVersion, 2);
+    assert.equal(manifest.snapshot.snapshotName, '00000003-0000001B-1');
+    assert.equal(manifest.snapshot.consistentPointLsn, '0/16B6C50');
+    assert.equal(manifest.snapshot.postgresSystemIdentifier, '7534718236249421545');
+    assert.equal(manifest.snapshot.replicationSlot, 'workout_suppression_slot');
+    assert.equal(manifest.snapshot.publication, 'workout_restore_suppression');
+    assert.deepEqual(manifest.database, hash(join(bundle, 'database.dump')));
+    assert.deepEqual(manifest.privateFiles, [
+      { path: 'fixture.bin', ...hash(join(privateDir, 'fixture.bin')) },
+    ]);
+    assert.match(
+      invoke(['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger], bin).stderr,
+      /BACKUP_SNAPSHOT_V2_RESTORE_NOT_READY/,
+    );
+    manifest.snapshot.consistentPointLsn = '0/0;unsafe';
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.match(
+      invoke(['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger], bin).stderr,
+      /BACKUP_INVALID_MANIFEST/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test(
   'collects and checks an actual disposable PostgreSQL archive',
   {
@@ -185,7 +276,7 @@ test(
       process.env.WORKOUT_BACKUP_REAL_PG !== '1' &&
       'Set WORKOUT_BACKUP_REAL_PG=1 for opt-in database test',
   },
-  () => {
+  async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-backup-pg-')));
     const cluster = join(root, 'cluster');
     const socket = join(root, 'socket');
@@ -294,6 +385,50 @@ test(
         invoke(['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger], '').status,
         0,
       );
+      // This checks PostgreSQL's exported-snapshot connection lifetime only. A
+      // SQL pg_export_snapshot is not a replication-slot consistent point.
+      const { Client } = await import('pg');
+      const holder = new Client({ host: socket, port, user, database: 'workout_backup_fixture' });
+      await holder.connect();
+      let exportedSnapshot;
+      try {
+        await holder.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const snapshotRow = await holder.query('SELECT pg_export_snapshot() AS name');
+        exportedSnapshot = snapshotRow.rows[0].name;
+        const systemRow = await holder.query(
+          'SELECT system_identifier AS id FROM pg_control_system()',
+        );
+        const v2Args = [
+          'collect',
+          '--database-url-file',
+          dbFile,
+          '--private-dir',
+          privateDir,
+          '--output-dir',
+          output,
+          '--fence-check',
+          fence,
+          '--synthetic-snapshot-v2',
+          'yes',
+          '--snapshot-name',
+          exportedSnapshot,
+          '--consistent-point-lsn',
+          '0/16B6C50',
+          '--postgres-system-identifier',
+          String(systemRow.rows[0].id),
+          '--replication-slot',
+          'synthetic_slot',
+          '--publication',
+          'synthetic_publication',
+        ];
+        const alive = invoke(v2Args, '');
+        assert.equal(alive.status, 0, alive.stderr);
+        await holder.query('ROLLBACK');
+        const expired = invoke(v2Args, '');
+        assert.match(expired.stderr, /BACKUP_SUBPROCESS_FAILED/);
+      } finally {
+        await holder.end();
+      }
       writeFileSync(dump, 'not-a-postgres-archive');
       assert.match(
         invoke(['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger], '').stderr,
