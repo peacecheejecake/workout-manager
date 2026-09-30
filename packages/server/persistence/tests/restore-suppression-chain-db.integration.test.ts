@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool, type PoolClient } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { migrate } from '../src/migrate.js';
 import type { LocalReplayRecordEnvelope } from '../src/restore-suppression-pgoutput.js';
@@ -91,15 +91,19 @@ async function restoredActivity(athleteId: string, activityId: string): Promise<
   });
 }
 
-async function restoredResource(athleteId: string, resourceId: string): Promise<void> {
+async function restoredResource(
+  athleteId: string,
+  resourceId: string,
+  accessRevision = 1,
+): Promise<void> {
   const versionId = randomUUID();
   await tenant(athleteId, async (client) => {
     await client.query(
       `INSERT INTO resource(athlete_id,id,title,category,metadata,tags,
          access_revision,current_version,current_version_id,created_at,updated_at)
        VALUES($1,$2,'Synthetic note','note','{}'::jsonb,'[]'::jsonb,
-         1,1,$3,'2026-09-29 00:00:00+00','2026-09-29 00:00:00+00')`,
-      [athleteId, resourceId, versionId],
+         $4,1,$3,'2026-09-29 00:00:00+00','2026-09-29 00:00:00+00')`,
+      [athleteId, resourceId, versionId, accessRevision],
     );
     await client.query(
       `INSERT INTO resource_version(athlete_id,resource_id,version_id,version,
@@ -109,6 +113,23 @@ async function restoredResource(athleteId: string, resourceId: string): Promise<
       [athleteId, resourceId, versionId],
     );
   });
+}
+
+async function restoredResourceShare(
+  athleteId: string,
+  resourceId: string,
+  shareId: string,
+): Promise<void> {
+  await restoredResource(athleteId, resourceId, 2);
+  await tenant(athleteId, (client) =>
+    client.query(
+      `INSERT INTO resource_share(athlete_id,share_id,resource_id,grantee_kind,
+         grantee_principal_id,state,granted_access_revision,granted_at,updated_at)
+       VALUES($1,$2,$3,'coach',$4,'active',2,
+         '2026-09-29 00:00:00+00','2026-09-29 00:00:00+00')`,
+      [athleteId, shareId, resourceId, randomUUID()],
+    ),
+  );
 }
 
 async function restoredGalleryMedia(athleteId: string, mediaId: string): Promise<void> {
@@ -188,6 +209,37 @@ function chain(records: readonly SuppressionRecord[]): {
   };
 }
 
+function sameTransactionChain(records: readonly SuppressionRecord[]): {
+  segments: Buffer[];
+  anchor: TrustedReplayAnchor;
+} {
+  if (records.length < 2) throw new Error('compound fixture requires multiple records');
+  const body = {
+    localRecordVersion: 1 as const,
+    clusterId,
+    fromLsn: '0/100',
+    throughLsn: '0/120',
+    previousHash: null,
+    transactions: [{ commitLsn: '0/110', endLsn: '0/120', records: [...records] }],
+  };
+  const envelope: LocalReplayRecordEnvelope = {
+    ...body,
+    sha256: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
+  };
+  const bytes = encryptReplaySegment({ envelope, key, keyId }).bytes;
+  return {
+    segments: [bytes],
+    anchor: {
+      clusterId,
+      fromLsn: '0/100',
+      previousHash: null,
+      throughLsn: '0/120',
+      finalLocalHash: envelope.sha256,
+      ciphertextHashes: [createHash('sha256').update(bytes).digest('hex')],
+    },
+  };
+}
+
 function courseRecord(athleteId: string, targetId: string, occurredAt: string): SuppressionRecord {
   return {
     schemaVersion: 1,
@@ -237,6 +289,25 @@ function resourceRecord(
     kind: 'resource_deleted',
     targetId,
     resourceAccessRevision: 2,
+  };
+}
+
+function resourceShareRecord(
+  athleteId: string,
+  targetId: string,
+  shareId: string,
+  occurredAt: string,
+): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'resource_share_revoked',
+    targetId,
+    shareId,
+    shareGrantedAccessRevision: 2,
+    shareRevokedAccessRevision: 3,
   };
 }
 
@@ -1147,5 +1218,235 @@ describe('authenticated chain to owner-only exact replay', () => {
       ),
     );
     expect(state.rows[0]?.head).toBe('0');
+  });
+
+  it('replays a standalone resource share revocation exactly once', async () => {
+    const athleteId = await account();
+    const resourceId = randomUUID();
+    const shareId = randomUUID();
+    await restoredResourceShare(athleteId, resourceId, shareId);
+    const record = resourceShareRecord(athleteId, resourceId, shareId, '2026-09-30 12:34:56+00');
+    const sample = chain([record]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        revision: number;
+        share: string;
+        events: string;
+        receipts: string;
+        audit: string;
+      }>(
+        `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+          (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1 AND kind='resource_share_revoked') events,
+          (SELECT count(*)::text FROM restore_resource_share_replay_receipt WHERE athlete_id=$1) receipts,
+          (SELECT count(*)::text FROM resource_access_audit WHERE athlete_id=$1 AND share_id=$3 AND action='share_revoked') audit`,
+        [athleteId, resourceId, shareId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      revision: 3,
+      share: 'revoked',
+      events: '1',
+      receipts: '1',
+      audit: '1',
+    });
+  });
+
+  it('rolls back a preceding share revocation on a later foreign or conflicting event', async () => {
+    const athleteId = await account();
+    const other = await account();
+    const firstResource = randomUUID();
+    const firstShare = randomUUID();
+    const foreignResource = randomUUID();
+    const foreignShare = randomUUID();
+    await restoredResourceShare(athleteId, firstResource, firstShare);
+    await restoredResourceShare(other, foreignResource, foreignShare);
+    const first = resourceShareRecord(
+      athleteId,
+      firstResource,
+      firstShare,
+      '2026-09-30 12:34:56+00',
+    );
+    for (const [later, error] of [
+      [
+        resourceShareRecord(athleteId, foreignResource, foreignShare, '2026-09-30 12:35:56+00'),
+        'RESTORE_SHARE_FOREIGN_TARGET',
+      ],
+      [
+        resourceShareRecord(athleteId, firstResource, firstShare, '2026-09-30 12:35:56+00'),
+        'RESTORE_SHARE_EVENT_CONFLICT',
+      ],
+    ] as const) {
+      await expect(
+        replayVerifiedSuppressionChain({ ...chain([first, later]), key, keyId, ownerPool: owner }),
+      ).rejects.toThrow(error);
+      const state = await tenant(athleteId, (client) =>
+        client.query<{ revision: number; share: string; events: string; receipts: string }>(
+          `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+            (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share,
+            (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+            (SELECT count(*)::text FROM restore_resource_share_replay_receipt WHERE athlete_id=$1) receipts`,
+          [athleteId, firstResource, firstShare],
+        ),
+      );
+      expect(state.rows[0]).toMatchObject({
+        revision: 2,
+        share: 'active',
+        events: '0',
+        receipts: '0',
+      });
+    }
+  });
+
+  it('rejects a resource deletion compound chain before connecting or changing the share', async () => {
+    const athleteId = await account();
+    const resourceId = randomUUID();
+    const shareId = randomUUID();
+    await restoredResourceShare(athleteId, resourceId, shareId);
+    const deletion = {
+      ...resourceRecord(athleteId, resourceId, '2026-09-30 12:35:56+00'),
+      resourceAccessRevision: 3,
+    };
+    const revocation = resourceShareRecord(
+      athleteId,
+      resourceId,
+      shareId,
+      '2026-09-30 12:34:56+00',
+    );
+    const connect = vi.spyOn(owner, 'connect');
+    try {
+      await expect(
+        replayVerifiedSuppressionChain({
+          ...sameTransactionChain([deletion, revocation]),
+          key,
+          keyId,
+          ownerPool: owner,
+        }),
+      ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ revision: number; share: string; events: string }>(
+        `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+          (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events`,
+        [athleteId, resourceId, shareId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ revision: 2, share: 'active', events: '0' });
+  });
+
+  it('allows an earlier standalone share transaction followed by resource deletion', async () => {
+    const athleteId = await account();
+    const resourceId = randomUUID();
+    const shareId = randomUUID();
+    await restoredResourceShare(athleteId, resourceId, shareId);
+    const revocation = resourceShareRecord(
+      athleteId,
+      resourceId,
+      shareId,
+      '2026-09-30 12:34:56+00',
+    );
+    const deletion = {
+      ...resourceRecord(athleteId, resourceId, '2026-09-30 12:35:56+00'),
+      resourceAccessRevision: 4,
+    };
+    const sample = chain([revocation, deletion]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        revision: number;
+        deleted_at: Date;
+        share: string;
+        events: string;
+        share_receipts: string;
+        resource_receipts: string;
+      }>(
+        `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+          (SELECT deleted_at FROM resource WHERE athlete_id=$1 AND id=$2) deleted_at,
+          (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_resource_share_replay_receipt WHERE athlete_id=$1) share_receipts,
+          (SELECT count(*)::text FROM restore_resource_replay_receipt WHERE athlete_id=$1) resource_receipts`,
+        [athleteId, resourceId, shareId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      revision: 4,
+      deleted_at: new Date(deletion.occurredAt),
+      share: 'revoked',
+      events: '2',
+      share_receipts: '1',
+      resource_receipts: '1',
+    });
+  });
+
+  it('rejects share revocation and tenant erasure in the same source transaction', async () => {
+    const athleteId = await account();
+    const resourceId = randomUUID();
+    const shareId = randomUUID();
+    await restoredResourceShare(athleteId, resourceId, shareId);
+    const sample = sameTransactionChain([
+      resourceShareRecord(athleteId, resourceId, shareId, '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    const connect = vi.spyOn(owner, 'connect');
+    try {
+      await expect(
+        replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+      ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ revision: number; share: string; erased: string }>(
+        `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+          (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share,
+          (SELECT count(*)::text FROM tenant_erasure WHERE athlete_id=$1) erased`,
+        [athleteId, resourceId, shareId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ revision: 2, share: 'active', erased: '0' });
+  });
+
+  it('denies standalone share replay through a runtime pool', async () => {
+    const athleteId = await account();
+    const resourceId = randomUUID();
+    const shareId = randomUUID();
+    await restoredResourceShare(athleteId, resourceId, shareId);
+    await expect(
+      replayVerifiedSuppressionChain({
+        ...chain([resourceShareRecord(athleteId, resourceId, shareId, '2026-09-30 12:34:56+00')]),
+        key,
+        keyId,
+        ownerPool: runtime,
+      }),
+    ).rejects.toThrow(/permission denied/);
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ revision: number; share: string }>(
+        `SELECT (SELECT access_revision FROM resource WHERE athlete_id=$1 AND id=$2) revision,
+          (SELECT state FROM resource_share WHERE athlete_id=$1 AND share_id=$3) share`,
+        [athleteId, resourceId, shareId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ revision: 2, share: 'active' });
   });
 });

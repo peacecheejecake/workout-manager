@@ -64,7 +64,9 @@ function envelope(input: {
 
 function chain(
   overrides: {
+    firstRecord?: SuppressionRecord;
     secondRecord?: SuppressionRecord;
+    sameTransaction?: boolean;
     secondPreviousHash?: string | null;
     secondClusterId?: string;
   } = {},
@@ -74,8 +76,27 @@ function chain(
     commitLsn: '0/110',
     throughLsn: '0/120',
     previousHash: null,
-    records: [record('tenant_erased', firstId)],
+    records: [
+      overrides.firstRecord ?? record('tenant_erased', firstId),
+      ...(overrides.sameTransaction
+        ? [overrides.secondRecord ?? record('course_deleted', secondId)]
+        : []),
+    ],
   });
+  if (overrides.sameTransaction) {
+    const bytes = encryptReplaySegment({ envelope: first, key, keyId }).bytes;
+    return {
+      segments: [bytes],
+      anchor: {
+        clusterId,
+        fromLsn: '0/100',
+        previousHash: null,
+        throughLsn: '0/120',
+        finalLocalHash: first.sha256,
+        ciphertextHashes: [createHash('sha256').update(bytes).digest('hex')],
+      },
+    };
+  }
   const second = envelope({
     fromLsn: '0/120',
     commitLsn: '0/130',
@@ -149,7 +170,7 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts the eight exact replay kinds and rejects the remaining unsupported kinds', () => {
+  it('accepts the nine supported standalone kinds and rejects the remaining kinds', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const resource = chain({
@@ -216,6 +237,21 @@ describe('restore suppression local preflight', () => {
       },
     });
     expect(inspect(ai.segments, ai.anchor).eventCount).toBe(2);
+    const share = chain({
+      firstRecord: record('course_deleted', firstId),
+      secondRecord: {
+        schemaVersion: 1,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'resource_share_revoked',
+        targetId: courseId,
+        shareId: firstId,
+        shareGrantedAccessRevision: 2,
+        shareRevokedAccessRevision: 3,
+      },
+    });
+    expect(inspect(share.segments, share.anchor).eventCount).toBe(2);
     const base = {
       schemaVersion: 1 as const,
       eventId: secondId,
@@ -223,14 +259,6 @@ describe('restore suppression local preflight', () => {
       occurredAt,
     };
     const unsupported: SuppressionRecord[] = [
-      {
-        ...base,
-        kind: 'resource_share_revoked',
-        targetId: courseId,
-        shareId: firstId,
-        shareGrantedAccessRevision: 1,
-        shareRevokedAccessRevision: 2,
-      },
       {
         ...base,
         kind: 'course_share_revoked',
@@ -326,15 +354,41 @@ describe('restore suppression local preflight', () => {
           eventId: secondId,
           athleteId: defaultAthleteId,
           occurredAt,
-          kind: 'resource_share_revoked',
+          kind: 'course_share_revoked',
           targetId: courseId,
-          shareId: firstId,
-          shareGrantedAccessRevision: 1,
-          shareRevokedAccessRevision: 2,
+          courseShareId: firstId,
+          courseShareEpoch: 1,
+          courseShareCourseRevision: 1,
         },
       });
       await expect(
         replayVerifiedSuppressionChain({ ...unsupported, key, keyId, ownerPool: pool }),
+      ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      const compound = chain({
+        sameTransaction: true,
+        firstRecord: {
+          schemaVersion: 1,
+          eventId: firstId,
+          athleteId: defaultAthleteId,
+          occurredAt,
+          kind: 'resource_deleted',
+          targetId: courseId,
+          resourceAccessRevision: 3,
+        },
+        secondRecord: {
+          schemaVersion: 1,
+          eventId: secondId,
+          athleteId: defaultAthleteId,
+          occurredAt,
+          kind: 'resource_share_revoked',
+          targetId: courseId,
+          shareId: firstId,
+          shareGrantedAccessRevision: 2,
+          shareRevokedAccessRevision: 3,
+        },
+      });
+      await expect(
+        replayVerifiedSuppressionChain({ ...compound, key, keyId, ownerPool: pool }),
       ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
       expect(connect).not.toHaveBeenCalled();
     } finally {

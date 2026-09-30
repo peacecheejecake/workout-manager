@@ -42,7 +42,8 @@ type SupportedRecord =
           | 'activity_deleted'
           | 'resource_deleted'
           | 'gallery_media_deleted'
-          | 'check_in_deleted';
+          | 'check_in_deleted'
+          | 'resource_share_revoked';
       }
     >
   | Extract<SuppressionRecord, { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }>;
@@ -116,6 +117,9 @@ function verifyChain(input: ReplayInput): VerifiedChain {
       return fail();
     for (const transaction of envelope.transactions) {
       const authenticated: SupportedRecord[] = [];
+      const resourceDeletions = new Set<string>();
+      const tenantErasures = new Set<string>();
+      const shareRevocations: { athleteId: string; resourceId: string }[] = [];
       for (const record of transaction.records) {
         if (seen.has(record.eventId)) return fail();
         seen.add(record.eventId);
@@ -127,6 +131,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'resource_deleted' &&
           record.kind !== 'gallery_media_deleted' &&
           record.kind !== 'check_in_deleted' &&
+          record.kind !== 'resource_share_revoked' &&
           record.kind !== 'healthkit_consent_transition' &&
           record.kind !== 'ai_consent_transition'
         )
@@ -158,6 +163,16 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         )
           return fail();
         if (
+          record.kind === 'resource_share_revoked' &&
+          (!canonicalUuid.test(record.shareId) ||
+            record.shareGrantedAccessRevision < 1 ||
+            record.shareGrantedAccessRevision > 2147483645 ||
+            record.shareRevokedAccessRevision < 2 ||
+            record.shareRevokedAccessRevision > 2147483646 ||
+            record.shareRevokedAccessRevision <= record.shareGrantedAccessRevision)
+        )
+          return fail();
+        if (
           (record.kind === 'healthkit_consent_transition' ||
             record.kind === 'ai_consent_transition') &&
           (record.consentRevision < 1 ||
@@ -171,8 +186,23 @@ function verifyChain(input: ReplayInput): VerifiedChain {
                 record.consentRevision !== record.consentPreviousRevision + 1))
         )
           return fail();
+        if (record.kind === 'resource_deleted')
+          resourceDeletions.add(`${record.athleteId}:${record.targetId}`);
+        if (record.kind === 'tenant_erased') tenantErasures.add(record.athleteId);
+        if (record.kind === 'resource_share_revoked')
+          shareRevocations.push({ athleteId: record.athleteId, resourceId: record.targetId });
         authenticated.push(record);
       }
+      // Only a shared source transaction needs coordinated parent/child replay.
+      // Separate completed revocations can precede later resource deletion.
+      if (
+        shareRevocations.some(
+          (share) =>
+            resourceDeletions.has(`${share.athleteId}:${share.resourceId}`) ||
+            tenantErasures.has(share.athleteId),
+        )
+      )
+        return fail();
       transactions.push(authenticated);
     }
     currentLsn = envelope.throughLsn;
@@ -275,6 +305,19 @@ export async function replayVerifiedSuppressionChain(
             record.occurredAt,
             record.checkInRevision,
           ]);
+        } else if (record.kind === 'resource_share_revoked') {
+          await client.query(
+            'SELECT public.replay_resource_share_revoke_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.shareId,
+              record.eventId,
+              record.occurredAt,
+              record.shareGrantedAccessRevision,
+              record.shareRevokedAccessRevision,
+            ],
+          );
         } else if (record.kind === 'healthkit_consent_transition') {
           await client.query(
             'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
