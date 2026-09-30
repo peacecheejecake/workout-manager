@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 const KINDS = Object.freeze([
   'tenant_erased',
@@ -23,6 +23,30 @@ const TABLES = Object.freeze([
   'public.coaching_constraint',
   'public.course_share_area_budget',
 ]);
+const DOMAIN_TABLES = Object.freeze([
+  'public.course_deletion',
+  'public.course',
+  'public.activity_canonical',
+  'public.activity_source_head',
+  'public.activity_suppression',
+  'public.resource',
+  'public.gallery_media_item',
+  'public.check_in',
+  'public.resource_share',
+  'public.resource_access_audit',
+  'public.course_share',
+  'public.course_share_audit',
+  'public.intake_entry',
+  'public.recovery_action_log',
+  'public.coaching_constraint',
+  'public.course_share_area_budget',
+]);
+const DOMAIN_ROW_LIMIT = 10_000;
+const DOMAIN_BYTE_LIMIT = 32 * 1024 * 1024;
+const ROW_BYTE_LIMIT = 2 * 1024 * 1024;
+const ROW_BATCH_LIMIT = 8;
+const OWNER_LIMIT = 10_000;
+const REQUIRED_MIGRATION_VERSION = 93;
 const SNAPSHOT = /^[0-9]+:[0-9]+:(?:[0-9]+(?:,[0-9]+)*)?$/;
 const LSN = /^[0-9A-F]{1,8}\/[0-9A-F]{1,8}$/i;
 const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -49,12 +73,71 @@ function id(value) {
   if (typeof value !== 'string' || value.length < 1 || value.length > 200) fail();
   return value;
 }
+function tag(key, purpose, ...parts) {
+  const hmac = createHmac('sha256', key);
+  for (const part of [purpose, ...parts]) {
+    const encoded = Buffer.from(part, 'utf8');
+    hmac.update(String(encoded.length)).update(':').update(encoded);
+  }
+  return hmac.digest('hex');
+}
+
+/** Hash a sorted, exact catalog description. Its expected value must be pinned outside this DB. */
+export function domainSchemaFingerprint(catalog, migrations) {
+  if (
+    !Array.isArray(catalog) ||
+    catalog.length === 0 ||
+    !Array.isArray(migrations) ||
+    migrations.length !== REQUIRED_MIGRATION_VERSION
+  )
+    fail();
+  for (const [index, row] of migrations.entries()) {
+    if (
+      row.version !== index + 1 ||
+      typeof row.checksum !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.checksum)
+    )
+      fail();
+  }
+  const descriptions = catalog.map((row) => {
+    if (
+      typeof row.table_name !== 'string' ||
+      typeof row.column_name !== 'string' ||
+      typeof row.data_type !== 'string' ||
+      typeof row.owner_name !== 'string' ||
+      typeof row.not_null !== 'boolean' ||
+      typeof row.force_rls !== 'boolean' ||
+      typeof row.row_security !== 'boolean'
+    )
+      fail();
+    return [
+      row.table_name,
+      row.column_name,
+      row.data_type,
+      row.owner_name,
+      row.not_null,
+      row.force_rls,
+      row.row_security,
+    ];
+  });
+  descriptions.sort((a, b) => {
+    const left = JSON.stringify(a);
+    const right = JSON.stringify(b);
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  return createHash('sha256').update(JSON.stringify({ descriptions, migrations })).digest('hex');
+}
 
 /**
  * Read-only, in-memory coverage inventory. The caller owns the already imported
  * exported-snapshot transaction and must roll it back after this call. This
  * inventory is not a backup anchor, replay ledger, owner-completeness proof,
  * or permission to restore. expectedOwners is an independently obtained roster.
+ * expectedDomainSchemaFingerprint must be pinned independently from the source
+ * database: it binds exact catalog columns/RLS/owner and migration 001–093
+ * checksums. Captured domain leaves include all current row fields; the result
+ * contains HMAC tags, counts, and consent/status summaries but no raw rows.
+ * Keep the result private. The inventory rejects oversized owners.
  * expectedSnapshotId is the caller-provided transaction-view identifier; it
  * cannot prove that snapshotName came from the replication slot.
  */
@@ -63,6 +146,7 @@ export async function buildSnapshotCoverage({
   snapshot,
   expectedSnapshotId,
   expectedOwners,
+  expectedDomainSchemaFingerprint,
   hmacKey,
 }) {
   if (
@@ -77,6 +161,9 @@ export async function buildSnapshotCoverage({
     typeof expectedSnapshotId !== 'string' ||
     !SNAPSHOT.test(expectedSnapshotId) ||
     !Array.isArray(expectedOwners) ||
+    expectedOwners.length > OWNER_LIMIT ||
+    typeof expectedDomainSchemaFingerprint !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(expectedDomainSchemaFingerprint) ||
     !Buffer.isBuffer(hmacKey) ||
     hmacKey.length !== 32
   )
@@ -94,6 +181,37 @@ export async function buildSnapshotCoverage({
     state.isolation !== 'repeatable read' ||
     state.read_only !== 'on' ||
     state.snapshot_id !== expectedSnapshotId
+  )
+    fail();
+  const catalog = rows(
+    await client.query(
+      `SELECT n.nspname||'.'||c.relname AS table_name,
+    a.attname AS column_name, pg_catalog.format_type(a.atttypid,a.atttypmod) AS data_type,
+    pg_catalog.pg_get_userbyid(c.relowner) AS owner_name,
+    a.attnotnull AS not_null, c.relforcerowsecurity AS force_rls,
+    c.relrowsecurity AS row_security
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
+    WHERE n.nspname||'.'||c.relname=ANY($1::text[]) AND c.relkind='r'`,
+      [DOMAIN_TABLES],
+    ),
+  );
+  const migrations = rows(
+    await client.query('SELECT version,checksum FROM public.schema_migrations ORDER BY version'),
+  );
+  if (
+    catalog.length > 1_600 ||
+    new Set(catalog.map((row) => row.table_name)).size !== DOMAIN_TABLES.length ||
+    new Set(catalog.map((row) => `${row.table_name}.${row.column_name}`)).size !== catalog.length ||
+    catalog.some(
+      (row) =>
+        !DOMAIN_TABLES.includes(row.table_name) ||
+        row.owner_name !== state.current_role ||
+        row.force_rls !== true ||
+        row.row_security !== true,
+    ) ||
+    domainSchemaFingerprint(catalog, migrations) !== expectedDomainSchemaFingerprint
   )
     fail();
   const role = one(
@@ -125,10 +243,16 @@ export async function buildSnapshotCoverage({
   // tenant_erasure has tenant FORCE RLS, so a global scan would silently hide
   // other owners. An independent roster must include any pre-event erasures.
   const discovered = rows(
-    await client.query(`SELECT athlete_id::text AS athlete_id FROM identity_private.account
-    UNION SELECT athlete_id FROM public.restore_suppression_event`),
+    await client.query(
+      `SELECT athlete_id FROM (
+      SELECT athlete_id::text AS athlete_id FROM identity_private.account
+      UNION SELECT athlete_id FROM public.restore_suppression_event
+    ) discovered_owners LIMIT $1`,
+      [OWNER_LIMIT + 1],
+    ),
   ).map((row) => id(row.athlete_id));
   if (
+    discovered.length > OWNER_LIMIT ||
     new Set(discovered).size !== discovered.length ||
     discovered.length !== expected.length ||
     discovered.some((owner) => !expected.includes(owner))
@@ -143,6 +267,56 @@ export async function buildSnapshotCoverage({
       ]),
     );
     if (scope.scoped !== owner) fail();
+    const domain = {};
+    let totalRows = 0;
+    let totalBytes = 0;
+    for (const table of DOMAIN_TABLES) {
+      // Fixed allowlisted table and cursor names. The owner was set with a bound
+      // value above; the explicit predicate also blocks grantee-only RLS rows.
+      // PostgreSQL suppresses an oversized row before it crosses the wire.
+      const leaves = [];
+      let opened = false;
+      try {
+        await client.query(`DECLARE workout_snapshot_domain_cursor NO SCROLL CURSOR FOR
+          SELECT CASE WHEN octet_length(to_jsonb(t)::text) <= ${ROW_BYTE_LIMIT}
+            THEN to_jsonb(t)::text ELSE NULL END AS row_json
+          FROM ${table} t
+          WHERE athlete_id=nullif(current_setting('app.athlete_id',true),'')`);
+        opened = true;
+        while (true) {
+          const batch = rows(
+            await client.query(
+              `FETCH FORWARD ${ROW_BATCH_LIMIT} FROM workout_snapshot_domain_cursor`,
+            ),
+          );
+          if (batch.length > ROW_BATCH_LIMIT) fail();
+          totalRows += batch.length;
+          if (totalRows > DOMAIN_ROW_LIMIT) fail();
+          for (const row of batch) {
+            if (typeof row.row_json !== 'string') fail();
+            const bytes = Buffer.byteLength(row.row_json);
+            totalBytes += bytes;
+            if (bytes > ROW_BYTE_LIMIT || totalBytes > DOMAIN_BYTE_LIMIT) fail();
+            leaves.push(tag(hmacKey, 'domain-row-v1', owner, table, row.row_json));
+          }
+          if (batch.length === 0) break;
+        }
+      } finally {
+        if (opened) await client.query('CLOSE workout_snapshot_domain_cursor');
+      }
+      leaves.sort();
+      domain[table] = {
+        count: leaves.length,
+        digest: tag(
+          hmacKey,
+          'domain-table-v1',
+          expectedDomainSchemaFingerprint,
+          owner,
+          table,
+          ...leaves,
+        ),
+      };
+    }
     const eventRows = rows(
       await client.query(
         `SELECT kind, record_version, count(*)::text AS total
@@ -230,7 +404,8 @@ export async function buildSnapshotCoverage({
       tombstones = count(constraints.tombstones);
     if (tombstones > constraintTotal || (head.state === 'absent' && constraintTotal !== 0)) fail();
     owners.push({
-      ownerTag: createHmac('sha256', hmacKey).update(owner).digest('hex'),
+      ownerTag: tag(hmacKey, 'owner-v1', owner),
+      domain,
       events,
       consent,
       erasure: erasureCount === 1 ? 'present' : 'absent',
@@ -239,7 +414,8 @@ export async function buildSnapshotCoverage({
     });
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    domainSchemaFingerprint: expectedDomainSchemaFingerprint,
     snapshot: {
       snapshotName: snapshot.snapshotName,
       snapshotId: expectedSnapshotId,
@@ -258,6 +434,7 @@ export async function buildSnapshotCoverage({
       'SHARE_EPOCH_OUTSIDE_DATABASE',
       'POST_SNAPSHOT_TAIL_NOT_WITNESSED',
       'DOMAIN_HEADS_NOT_FULLY_CAPTURED',
+      'DOMAIN_SCHEMA_FINGERPRINT_NOT_INDEPENDENTLY_VERIFIED',
     ],
   };
 }
