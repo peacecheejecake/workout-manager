@@ -16,6 +16,7 @@
   },
   "exports": {
     "./restore-generation": "./src/restore-generation.ts",
+    "./restore-suppression-coordinator": "./src/restore-suppression-coordinator.ts",
     "./gallery-media": "./src/gallery-media.ts",
     "./resources": "./src/resources.ts",
     "./resource-access": "./src/resource-access.ts",

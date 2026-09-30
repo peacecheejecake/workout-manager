@@ -10,17 +10,21 @@
     "coaching:fixture": "tsx src/start.ts",
     "resources:cleanup": "node --import tsx src/resource-cleanup.ts",
     "resources:url-ingest": "node --import tsx src/url-ingestion.ts",
-    "courses:thumbnails": "node --import tsx src/course-thumbnail.ts"
+    "courses:thumbnails": "node --import tsx src/course-thumbnail.ts",
+    "ledger:export-once": "node --import tsx src/suppression-ledger-once.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1143.0",
     "@workout/contracts": "workspace:*",
     "@workout/server-coaching": "workspace:*",
     "@workout/server-courses": "workspace:*",
     "@workout/server-media": "workspace:*",
     "@workout/server-persistence": "workspace:*",
-    "@workout/server-resource-ingestion": "workspace:*"
+    "@workout/server-resource-ingestion": "workspace:*",
+    "pg": "8.23.0"
   },
   "devDependencies": {
+    "@types/pg": "8.23.1",
     "tsx": "4.23.13",
     "vitest": "4.1.11"
   }

@@ -189,6 +189,47 @@ services:
     cap_drop:
       - ALL
 
+  ledger_export:
+    profiles: [ledger]
+    image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
+    restart: 'no'
+    user: '0:0'
+    read_only: true
+    tmpfs:
+      - /tmp:mode=0700,size=16m
+    command:
+      - node
+      - --import
+      - tsx
+      - /app/apps/worker/src/suppression-ledger-once.ts
+      - --run-once
+    env_file:
+      - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/ledger-export.env
+    environment:
+      NODE_ENV: production
+      SUPPRESSION_LEDGER_EXPORT_ENABLED: 'true'
+      SUPPRESSION_LEDGER_ENCRYPTION_KEY_FILE: /run/ledger-secrets/encryption.key
+      SUPPRESSION_LEDGER_HEAD_HMAC_KEY_FILE: /run/ledger-secrets/head-hmac.key
+    volumes:
+      - type: bind
+        source: ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/ledger-encryption.key
+        target: /run/ledger-secrets/encryption.key
+        read_only: true
+      - type: bind
+        source: ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/ledger-head-hmac.key
+        target: /run/ledger-secrets/head-hmac.key
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - workout_internal
+      - workout_egress
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
 networks:
   workout_internal:
     internal: true
