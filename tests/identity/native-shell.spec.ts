@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 
 test('bundled native entry does not mount browser auth or call the cookie API', async ({
   page,
@@ -14,7 +15,7 @@ test('bundled native entry does not mount browser auth or call the cookie API', 
     });
   });
 
-  await page.goto('http://127.0.0.1:4200/account');
+  await page.goto(`${identityMobileOrigin}/account`);
 
   await expect(page.getByRole('heading', { name: 'Workout Manager' })).toBeVisible();
   await expect(
