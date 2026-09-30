@@ -88,6 +88,7 @@ const migrationFiles = [
   '080_exact_activity_deletion_replay.sql',
   '081_exact_resource_deletion_replay.sql',
   '082_exact_gallery_media_deletion_replay.sql',
+  '083_exact_check_in_deletion_replay.sql',
 ] as const;
 
 /**
