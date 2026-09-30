@@ -45,12 +45,7 @@ type SupportedRecord =
           | 'check_in_deleted';
       }
     >
-  | (Extract<
-      SuppressionRecord,
-      { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }
-    > & {
-      kind: 'healthkit_consent_transition';
-    });
+  | Extract<SuppressionRecord, { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }>;
 type VerifiedChain = {
   summary: ReplayPreflight;
   transactions: readonly (readonly SupportedRecord[])[];
@@ -132,13 +127,15 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'resource_deleted' &&
           record.kind !== 'gallery_media_deleted' &&
           record.kind !== 'check_in_deleted' &&
-          record.kind !== 'healthkit_consent_transition'
+          record.kind !== 'healthkit_consent_transition' &&
+          record.kind !== 'ai_consent_transition'
         )
           return fail();
         if (
           !canonicalUuid.test(record.athleteId) ||
           (record.kind !== 'tenant_erased' &&
             record.kind !== 'healthkit_consent_transition' &&
+            record.kind !== 'ai_consent_transition' &&
             !('targetId' in record && canonicalUuid.test(record.targetId))) ||
           Date.parse(record.occurredAt) > now
         )
@@ -161,7 +158,8 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         )
           return fail();
         if (
-          record.kind === 'healthkit_consent_transition' &&
+          (record.kind === 'healthkit_consent_transition' ||
+            record.kind === 'ai_consent_transition') &&
           (record.consentRevision < 1 ||
             record.consentRevision > 2147483647 ||
             (record.consentPreviousRevision === null) !==
@@ -173,11 +171,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
                 record.consentRevision !== record.consentPreviousRevision + 1))
         )
           return fail();
-        if ('consentRevision' in record) {
-          authenticated.push({ ...record, kind: 'healthkit_consent_transition' });
-        } else {
-          authenticated.push(record);
-        }
+        authenticated.push(record);
       }
       transactions.push(authenticated);
     }
@@ -281,9 +275,22 @@ export async function replayVerifiedSuppressionChain(
             record.occurredAt,
             record.checkInRevision,
           ]);
-        } else {
+        } else if (record.kind === 'healthkit_consent_transition') {
           await client.query(
             'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.eventId,
+              record.occurredAt,
+              record.consentPreviousRevision,
+              record.consentPreviousGranted,
+              record.consentRevision,
+              record.consentGranted,
+            ],
+          );
+        } else {
+          await client.query(
+            'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
             [
               record.athleteId,
               record.eventId,

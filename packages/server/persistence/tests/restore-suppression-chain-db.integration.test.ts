@@ -284,6 +284,26 @@ function healthkitRecord(
   };
 }
 
+function aiRecord(
+  athleteId: string,
+  occurredAt: string,
+  revision: number,
+  granted: boolean,
+  previousGranted: boolean | null,
+): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'ai_consent_transition',
+    consentPreviousRevision: revision === 1 ? null : revision - 1,
+    consentPreviousGranted: previousGranted,
+    consentRevision: revision,
+    consentGranted: granted,
+  };
+}
+
 beforeAll(async () => {
   for (const role of [ownerRole, runtimeRole])
     await admin.query(
@@ -1001,6 +1021,128 @@ describe('authenticated chain to owner-only exact replay', () => {
     const state = await tenant(athleteId, (client) =>
       client.query<{ head: string }>(
         `SELECT count(*)::text AS head FROM consent WHERE athlete_id=$1 AND kind='healthkit'`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]?.head).toBe('0');
+  });
+
+  it('replays AI grant, withdrawal and regrant with exact retries after later epochs', async () => {
+    const athleteId = await account();
+    const grant = aiRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null);
+    const withdraw = aiRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, true);
+    const regrant = aiRecord(athleteId, '2026-09-30 12:36:56+00', 3, true, false);
+    const sample = chain([grant, withdraw, regrant]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    expect(result.eventCount).toBe(3);
+    await replayVerifiedSuppressionChain({ ...chain([grant]), key, keyId, ownerPool: owner });
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        revision: number;
+        granted: boolean;
+        events: string;
+        receipts: string;
+        healthkit: string;
+        outbox: string;
+      }>(
+        `SELECT (SELECT revision FROM consent WHERE athlete_id=$1 AND kind='ai') revision,
+          (SELECT granted FROM consent WHERE athlete_id=$1 AND kind='ai') granted,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1 AND kind='ai_consent_transition') events,
+          (SELECT count(*)::text FROM restore_ai_consent_replay_receipt WHERE athlete_id=$1) receipts,
+          (SELECT count(*)::text FROM restore_healthkit_consent_replay_receipt WHERE athlete_id=$1) healthkit,
+          (SELECT count(*)::text FROM outbox WHERE athlete_id=$1 AND topic='consent.changed') outbox`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      revision: 3,
+      granted: true,
+      events: '3',
+      receipts: '3',
+      healthkit: '0',
+      outbox: '3',
+    });
+  });
+
+  it('preserves both AI and HealthKit kinds in one authenticated chain', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      aiRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null),
+      healthkitRecord(athleteId, '2026-09-30 12:35:56+00', 1, false, null),
+    ]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        ai: boolean;
+        healthkit: boolean;
+        ai_events: string;
+        healthkit_events: string;
+      }>(
+        `SELECT (SELECT granted FROM consent WHERE athlete_id=$1 AND kind='ai') ai,
+          (SELECT granted FROM consent WHERE athlete_id=$1 AND kind='healthkit') healthkit,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1 AND kind='ai_consent_transition') ai_events,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1 AND kind='healthkit_consent_transition') healthkit_events`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      ai: true,
+      healthkit: false,
+      ai_events: '1',
+      healthkit_events: '1',
+    });
+  });
+
+  it('rolls back AI grant for a later contradictory epoch or unknown tenant', async () => {
+    const athleteId = await account();
+    const grant = aiRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null);
+    for (const [later, error] of [
+      [aiRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, false), 'RESTORE_AI_STATE_CONFLICT'],
+      [
+        aiRecord(randomUUID(), '2026-09-30 12:35:56+00', 1, true, null),
+        'RESTORE_AI_TENANT_UNKNOWN',
+      ],
+    ] as const) {
+      await expect(
+        replayVerifiedSuppressionChain({ ...chain([grant, later]), key, keyId, ownerPool: owner }),
+      ).rejects.toThrow(error);
+      const state = await tenant(athleteId, (client) =>
+        client.query<{ head: string; events: string; receipts: string }>(
+          `SELECT (SELECT count(*)::text FROM consent WHERE athlete_id=$1 AND kind='ai') head,
+            (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+            (SELECT count(*)::text FROM restore_ai_consent_replay_receipt WHERE athlete_id=$1) receipts`,
+          [athleteId],
+        ),
+      );
+      expect(state.rows[0]).toMatchObject({ head: '0', events: '0', receipts: '0' });
+    }
+  });
+
+  it('denies the AI chain through a runtime pool', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      aiRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null),
+      aiRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, true),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: runtime }),
+    ).rejects.toThrow(/permission denied/);
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ head: string }>(
+        `SELECT count(*)::text AS head FROM consent WHERE athlete_id=$1 AND kind='ai'`,
         [athleteId],
       ),
     );
