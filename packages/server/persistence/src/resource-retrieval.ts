@@ -288,7 +288,12 @@ async function retrieveWithManifest(
     const manifest = await captureResourceCoachUseManifest(tx);
     const authorized = await readAuthorized(tx);
     await pruneSupersededPassages(tx);
-    await indexMissing(tx, authorized);
+    // A cache key identifies the access set, not indexing progress. A cached
+    // top-k can hide passages added in this call or a later bounded batch.
+    const missingCount = authorized.filter((row) => !row.indexed).length;
+    const indexedCount = await indexMissing(tx, authorized);
+    const indexComplete = missingCount === indexedCount;
+    const cacheReusable = indexComplete && indexedCount === 0;
     const key = cacheKey({
       athleteId: tx.athleteId,
       authorizationDigest: manifest.entriesDigest,
@@ -297,14 +302,21 @@ async function retrieveWithManifest(
     });
     let cache: ResourceRetrievalResult['cache'] = 'miss';
     let excerpts: ReturnType<typeof excerpt>[] | null = null;
-    const cached = (
-      await tx.query(
-        `SELECT passage_ids FROM resource_retrieval_cache
+    if (!cacheReusable)
+      await tx.query('DELETE FROM resource_retrieval_cache WHERE athlete_id=$1 AND cache_key=$2', [
+        tx.athleteId,
+        key,
+      ]);
+    const cached = cacheReusable
+      ? (
+          await tx.query(
+            `SELECT passage_ids FROM resource_retrieval_cache
          WHERE athlete_id=$1 AND cache_key=$2 AND corpus_version=$3 AND authorization_digest=$4
            AND expires_at>statement_timestamp()`,
-        [tx.athleteId, key, RESOURCE_PASSAGE_CORPUS_VERSION, manifest.entriesDigest],
-      )
-    ).rows[0];
+            [tx.athleteId, key, RESOURCE_PASSAGE_CORPUS_VERSION, manifest.entriesDigest],
+          )
+        ).rows[0]
+      : undefined;
     if (cached) {
       const ids = z.array(uuid).max(RESOURCE_RETRIEVAL_MAX_EXCERPTS).parse(cached['passage_ids']);
       const rows = z
@@ -335,7 +347,7 @@ async function retrieveWithManifest(
     // Verified identity: the set observed before the search is still the set.
     const verified = await captureResourceCoachUseManifest(tx);
     if (verified.entriesDigest !== manifest.entriesDigest) continue;
-    if (cache !== 'revalidated') {
+    if (indexComplete && cache !== 'revalidated') {
       await reclaimRetrievalCache(tx);
       await tx.query(
         `INSERT INTO resource_retrieval_cache(athlete_id,cache_key,corpus_version,
