@@ -32,7 +32,10 @@ export type ReplayPreflight = {
   finalLocalHash: string;
 };
 
-type SupportedRecord = Extract<SuppressionRecord, { kind: 'tenant_erased' | 'course_deleted' }>;
+type SupportedRecord = Extract<
+  SuppressionRecord,
+  { kind: 'tenant_erased' | 'course_deleted' | 'activity_deleted' }
+>;
 type VerifiedChain = {
   summary: ReplayPreflight;
   transactions: readonly (readonly SupportedRecord[])[];
@@ -107,11 +110,24 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         if (seen.has(record.eventId)) return fail();
         seen.add(record.eventId);
         eventCount++;
-        if (record.kind !== 'tenant_erased' && record.kind !== 'course_deleted') return fail();
+        if (
+          record.kind !== 'tenant_erased' &&
+          record.kind !== 'course_deleted' &&
+          record.kind !== 'activity_deleted'
+        )
+          return fail();
         if (
           !canonicalUuid.test(record.athleteId) ||
-          (record.kind === 'course_deleted' && !canonicalUuid.test(record.targetId)) ||
+          (record.kind !== 'tenant_erased' && !canonicalUuid.test(record.targetId)) ||
           Date.parse(record.occurredAt) > now
+        )
+          return fail();
+        if (
+          record.kind === 'activity_deleted' &&
+          (record.activityRevision < 2 ||
+            (record.sourceKind === 'healthkit' &&
+              (!canonicalUuid.test(record.sourceId) ||
+                record.sourceContentHash !== '0'.repeat(64))))
         )
           return fail();
         authenticated.push(record);
@@ -172,13 +188,28 @@ export async function replayVerifiedSuppressionChain(
             record.eventId,
             record.occurredAt,
           ]);
-        } else {
+        } else if (record.kind === 'course_deleted') {
           await client.query('SELECT public.replay_course_deletion_exact($1,$2,$3,$4)', [
             record.athleteId,
             record.targetId,
             record.eventId,
             record.occurredAt,
           ]);
+        } else {
+          await client.query(
+            'SELECT public.replay_activity_deletion_exact($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.activityRevision,
+              record.sourceKind,
+              record.sourceId,
+              record.sourceRevision,
+              record.sourceContentHash,
+            ],
+          );
         }
       }
     }

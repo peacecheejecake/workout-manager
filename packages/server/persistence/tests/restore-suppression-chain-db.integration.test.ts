@@ -76,6 +76,21 @@ async function restoredCourse(athleteId: string, courseId: string): Promise<void
   );
 }
 
+async function restoredActivity(athleteId: string, activityId: string): Promise<void> {
+  await tenant(athleteId, async (client) => {
+    await client.query(
+      `INSERT INTO activity_canonical(athlete_id,id,revision,original)
+       VALUES($1,$2,1,'{}'::jsonb)`,
+      [athleteId, activityId],
+    );
+    await client.query(
+      `INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id)
+       VALUES($1,'fixture',$2,1,repeat('a',64),$3)`,
+      [athleteId, randomUUID(), activityId],
+    );
+  });
+}
+
 function chain(records: readonly SuppressionRecord[]): {
   segments: Buffer[];
   anchor: TrustedReplayAnchor;
@@ -129,6 +144,27 @@ function courseRecord(athleteId: string, targetId: string, occurredAt: string): 
 
 function erasureRecord(athleteId: string, occurredAt: string): SuppressionRecord {
   return { schemaVersion: 1, eventId: randomUUID(), athleteId, occurredAt, kind: 'tenant_erased' };
+}
+
+function activityRecord(
+  athleteId: string,
+  targetId: string,
+  occurredAt: string,
+  sourceKind: 'fixture' | 'manual' = 'fixture',
+): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'activity_deleted',
+    targetId,
+    activityRevision: 2,
+    sourceKind,
+    sourceId: randomUUID(),
+    sourceRevision: 1,
+    sourceContentHash: 'a'.repeat(64),
+  };
 }
 
 beforeAll(async () => {
@@ -231,5 +267,147 @@ describe('authenticated chain to owner-only exact replay', () => {
         )
       ).rowCount,
     ).toBe(1);
+  });
+
+  it('replays activity deletion then exact erasure and retries without identifiers in the result', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      activityRecord(athleteId, randomUUID(), '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        events: string;
+        activity_receipts: string;
+        erasure_receipts: string;
+        activities: string;
+        erased: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_activity_replay_receipt WHERE athlete_id=$1) activity_receipts,
+          (SELECT count(*)::text FROM restore_exact_replay_receipt WHERE athlete_id=$1) erasure_receipts,
+          (SELECT count(*)::text FROM activity_canonical WHERE athlete_id=$1) activities,
+          (SELECT count(*)::text FROM tenant_erasure WHERE athlete_id=$1) erased`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      events: '2',
+      activity_receipts: '1',
+      erasure_receipts: '1',
+      activities: '0',
+      erased: '1',
+    });
+  });
+
+  it('rolls back an earlier activity when a later activity names a foreign owner', async () => {
+    const athleteId = await account();
+    const other = await account();
+    const foreignId = randomUUID();
+    await restoredActivity(other, foreignId);
+    const first = activityRecord(athleteId, randomUUID(), '2026-09-30 12:34:56+00');
+    const later = activityRecord(athleteId, foreignId, '2026-09-30 12:35:56+00');
+    const sample = chain([first, later]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_ACTIVITY_FOREIGN_ACTIVITY');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ events: string; receipts: string; activities: string }>(
+        `SELECT
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_activity_replay_receipt WHERE athlete_id=$1) receipts,
+          (SELECT count(*)::text FROM activity_canonical WHERE athlete_id=$1) activities`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ events: '0', receipts: '0', activities: '0' });
+    expect(
+      (
+        await tenant(other, (client) =>
+          client.query('SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2', [
+            other,
+            foreignId,
+          ]),
+        )
+      ).rowCount,
+    ).toBe(1);
+  });
+
+  it('rejects conflicting event identity for the same activity and rolls back both', async () => {
+    const athleteId = await account();
+    const targetId = randomUUID();
+    const sample = chain([
+      activityRecord(athleteId, targetId, '2026-09-30 12:34:56+00'),
+      activityRecord(athleteId, targetId, '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_ACTIVITY_EVENT_CONFLICT');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ events: string; receipts: string; activities: string }>(
+        `SELECT
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_activity_replay_receipt WHERE athlete_id=$1) receipts,
+          (SELECT count(*)::text FROM activity_canonical WHERE athlete_id=$1) activities`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ events: '0', receipts: '0', activities: '0' });
+  });
+
+  it('rolls back an earlier course for an unsupported absent manual activity', async () => {
+    const athleteId = await account();
+    const courseId = randomUUID();
+    await restoredCourse(athleteId, courseId);
+    const sample = chain([
+      courseRecord(athleteId, courseId, '2026-09-30 12:34:56+00'),
+      activityRecord(athleteId, randomUUID(), '2026-09-30 12:35:56+00', 'manual'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_ACTIVITY_MANUAL_ABSENT_UNSUPPORTED');
+    expect(
+      (
+        await tenant(athleteId, (client) =>
+          client.query('SELECT 1 FROM course WHERE athlete_id=$1 AND course_id=$2', [
+            athleteId,
+            courseId,
+          ]),
+        )
+      ).rowCount,
+    ).toBe(1);
+  });
+
+  it('denies an activity chain through the runtime pool before an erasure can apply', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      activityRecord(athleteId, randomUUID(), '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: runtime }),
+    ).rejects.toThrow(/permission denied/);
+    expect(
+      (
+        await tenant(athleteId, (client) =>
+          client.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [athleteId]),
+        )
+      ).rowCount,
+    ).toBe(0);
   });
 });

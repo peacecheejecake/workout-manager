@@ -149,10 +149,11 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('rejects any unsupported kind before a replay caller can write', () => {
+  it('accepts activity deletion and rejects the remaining unsupported kinds', () => {
+    const supported = chain({ secondRecord: record('activity_deleted', secondId) });
+    expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const base = { schemaVersion: 1 as const, eventId: secondId, athleteId: 'owner', occurredAt };
     const unsupported: SuppressionRecord[] = [
-      record('activity_deleted', secondId),
       { ...base, kind: 'resource_deleted', targetId: courseId, resourceAccessRevision: 1 },
       { ...base, kind: 'gallery_media_deleted', targetId: courseId, galleryAccessRevision: 1 },
       {
@@ -215,6 +216,13 @@ describe('restore suppression local preflight', () => {
     for (const altered of [
       record('tenant_erased', secondId, 'owner'),
       { ...record('course_deleted', secondId), targetId: '33333333-3333-0333-8333-333333333333' },
+      { ...record('activity_deleted', secondId), activityRevision: 1 },
+      {
+        ...record('activity_deleted', secondId),
+        sourceKind: 'healthkit' as const,
+        sourceId: courseId,
+        sourceContentHash: 'a'.repeat(64),
+      },
     ]) {
       const sample = chain({ secondRecord: altered });
       expect(() => inspect(sample.segments, sample.anchor)).toThrow(
@@ -244,7 +252,17 @@ describe('restore suppression local preflight', () => {
           ownerPool: pool,
         }),
       ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
-      const unsupported = chain({ secondRecord: record('activity_deleted', secondId) });
+      const unsupported = chain({
+        secondRecord: {
+          schemaVersion: 1,
+          eventId: secondId,
+          athleteId: defaultAthleteId,
+          occurredAt,
+          kind: 'resource_deleted',
+          targetId: courseId,
+          resourceAccessRevision: 1,
+        },
+      });
       await expect(
         replayVerifiedSuppressionChain({ ...unsupported, key, keyId, ownerPool: pool }),
       ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
