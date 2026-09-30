@@ -68,7 +68,7 @@ describe('restore generation storage (EXT-HOSTING)', () => {
       'SELECT version,checksum FROM schema_migrations ORDER BY version',
     );
     expect(before.rows).toHaveLength(priorVersion);
-    await migrate(urlFor(firstOwner));
+    await migrate(urlFor(firstOwner), priorVersion + 1);
     const initial = await generation(owner);
     expect(initial).toMatch(/^[0-9a-f]{8}-[0-9a-f-]{27}$/);
     expect(await owner.query('SELECT * FROM public.restore_generation')).toMatchObject({
@@ -78,7 +78,7 @@ describe('restore generation storage (EXT-HOSTING)', () => {
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='public.restore_generation'::regclass",
     );
     expect(security.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
-    await migrate(urlFor(firstOwner));
+    await migrate(urlFor(firstOwner), priorVersion + 1);
     expect(await generation(owner)).toBe(initial);
     const after = await owner.query<{ version: number; checksum: string }>(
       'SELECT version,checksum FROM schema_migrations ORDER BY version',

@@ -1,6 +1,6 @@
 # EXT-HOSTING · 독립 삭제 원장 계약 초안
 
-상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리·개별 CheckIn 삭제·resource 공유 철회·HealthKit/AI 동의 전이의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
+상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리·개별 CheckIn·IntakeEntry·RecoveryActionLog 삭제·resource 공유 철회·HealthKit/AI 동의 전이의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
 
 ## 현재 경계와 근거
 
@@ -22,7 +22,7 @@
 | AI 철회의 자료 권한   | 철회 trigger가 `resource.include_for_coach=false` 및 정리 큐를 기록한다. 재동의 뒤 최종 consent만으로 이전 dump의 `include_for_coach=true`를 안전하게 재생할 수 없다.                                               | [migration 030](../../../packages/server/persistence/migrations/030_resource_access_sharing.sql)                                                                                                                                                                                                   |
 | 사용자 제약·체크인    | 제약은 최신 head/삭제 tombstone과 본문 교체가 필요하고, 체크인 삭제는 값을 비운 tombstone을 쓴다. 기존 합성 제약 원장에는 본문이 있어 보호가 필요하다. 체크인 및 관련 파생물의 운영 재생 범위는 추가 조사 대상이다. | [제약 복구](../../../scripts/coaching-constraint-restore.mts), [체크인 삭제](../../../packages/server/persistence/src/check-ins.ts)                                                                                                                                                                |
 
-**미확정 범위:** resource 공유 철회의 복원 재생과 파생물 정리, gallery 공유 철회, 개별 CheckIn 삭제의 완전한 파생물, IntakeEntry·RecoveryActionLog 사용자 삭제, HealthKit raw-only 삭제, Garmin consent/credential 철회, 코스 공유 epoch·평생 구역 예산, 자료/미디어 객체·검색 색인·인용, 기타 물리 삭제와 후속 migration을 전수 조사해야 한다. [운영 절차](../operations-runbook.md)의 credential cleanup 및 share epoch 절차도 복구 계약에 포함된다. 이 범위가 닫히기 전에는 “모든 삭제 도메인 보호 완료”라고 판정하지 않는다. 기존 합성 AI 원장 parser의 1,000개 행 상한은 운영 규모 계약이 아니다.
+**미확정 범위:** resource 공유 철회의 복원 재생과 파생물 정리, gallery 공유 철회, 개별 CheckIn 삭제의 완전한 파생물, IntakeEntry·RecoveryActionLog의 복원 재생과 파생물 정리, HealthKit raw-only 삭제, Garmin consent/credential 철회, 코스 공유 epoch·평생 구역 예산, 자료/미디어 객체·검색 색인·인용, 기타 물리 삭제와 후속 migration을 전수 조사해야 한다. [운영 절차](../operations-runbook.md)의 credential cleanup 및 share epoch 절차도 복구 계약에 포함된다. 이 범위가 닫히기 전에는 “모든 삭제 도메인 보호 완료”라고 판정하지 않는다. 기존 합성 AI 원장 parser의 1,000개 행 상한은 운영 규모 계약이 아니다.
 
 ## 계정 말소·코스·Activity·자료·갤러리·CheckIn 삭제·resource/코스 공유 철회·HealthKit/AI 동의의 로컬 사건 기반 (066–075)
 
@@ -40,7 +40,7 @@
 
 **RecoveryActionLog 사용자 삭제의 설계 대기(076 미사용):** `createAction`은 서버에서 불투명 `action_id` UUID를 만들고, `deleteAction`은 새 삭제 revision의 `record_json`에 `deletedAt`을 기록한 뒤 같은 거래에서 `recovery_action_log.status='active'→'deleted'`와 revision을 갱신한다. 따라서 이미 복원본에 존재하는 행은 tenant·action UUID·삭제 revision/시각으로 식별할 수 있다. 하지만 create 요청에는 action UUID가 없고, `idempotencyKey`는 임의의 8–128자 문자열이다. 현재 DB에서는 삭제 뒤 같은 create 요청의 receipt가 `ACTION_NOT_FOUND`를 반환하지만, **백업 뒤 생성→삭제**된 기록은 복원본에 행과 receipt가 모두 없다. 오래된 create 요청은 새 UUID로 동일한 건강 기록을 다시 만들 수 있으므로 action UUID만 담은 삭제 사건은 이 부활을 억제하지 못한다. 원본 건강 값·메모 또는 idempotencyKey 원문·무키 해시를 사건에 추가하지 않는다. 새 설계는 복원 시에도 확인할 수 있는 create 요청의 비밀키 기반 식별자와 발급/삭제 연계, 또는 복원 epoch로 구형 create를 거절하는 정책 중 하나를 정하고 기존 receipt·백업의 호환성을 검증해야 한다. 수용 시험에는 백업에 있던 action의 삭제 재생과 백업 뒤 생성→삭제→복원→오래된 create 재시도 거절, 새 epoch의 정상 생성 및 파생 계산/근거 비노출을 포함한다. 이 범위에서는 076 migration과 복원 replay를 만들지 않았다.
 
-**2026-09-30 후속 구현:** 위 두 문단은 삭제 사건을 설계하던 당시의 판단이다. 이후 migration 076은 삭제 사건 번호 대신 [복원 세대값](../../../packages/server/persistence/migrations/076_restore_generation.sql)에 배정됐다. `createIntake`와 `createAction`은 현재 세대 UUID가 없는 요청과 이전 세대의 요청을 거절하며, 영수증 재생 전 거래 안에서 비교한다. 따라서 복원 접근 재개 전 소유자 함수로 세대를 회전하면 오래된 생성 요청의 재시도는 차단된다. [검증 기록](../progress/EXT-HOSTING.md#복원-이전-create-요청-차단-로컬-구현)의 격리 PostgreSQL 시험은 세대 회전·rollback·구형 요청 거절·새 요청 허용을 확인했다. 이 차단은 **삭제 사건, 백업 속 행의 삭제 재생, 원격 반출, 운영 복원 절차**를 구현하거나 검증하지 않는다. 현재 두 삭제 사건의 설계와 복원 재생은 계속 대기 중이다.
+**2026-09-30 후속 구현:** 위 두 문단은 삭제 사건을 설계하던 당시의 판단이다. 이후 migration 076은 삭제 사건 번호 대신 [복원 세대값](../../../packages/server/persistence/migrations/076_restore_generation.sql)에 배정됐다. `createIntake`와 `createAction`은 현재 세대 UUID가 없는 요청과 이전 세대의 요청을 거절하며, 영수증 재생 전 거래 안에서 비교한다. 따라서 복원 접근 재개 전 소유자 함수로 세대를 회전하면 오래된 생성 요청의 재시도는 차단된다. [검증 기록](../progress/EXT-HOSTING.md#복원-이전-create-요청-차단-로컬-구현)의 격리 PostgreSQL 시험은 세대 회전·rollback·구형 요청 거절·새 요청 허용을 확인했다. 이 차단은 **삭제 사건, 백업 속 행의 삭제 재생, 원격 반출, 운영 복원 절차**를 구현하거나 검증하지 않는다. 이후 077에서 두 로컬 삭제 사건을 추가했으며, 복원 재생과 외부 반출은 계속 대기 중이다. 바로 아래의 migration 077 절을 현행 구현 기준으로 따른다.
 
 `069_resource_deletion_suppression_event.sql`은 `resource.deleted_at`이 비어 있는 head에서 삭제 시각으로 바뀐 뒤 같은 거래에서 `resource_deleted` 한 행을 기록한다. 기존 전이 검사는 `access_revision`의 한 단계 증가와 삭제 시각 일치를 강제한다. 사건에는 tenant·자료 UUID·삭제 access revision·`deleted_at`만 추가하며 본문·객체 key·URL·metadata·공유 상대는 넣지 않는다. 기존 사용자 `softDelete`는 이 UPDATE 뒤 감사 사실, 공유 회수, 객체·파생물 정리, receipt tombstone, outbox를 같은 거래에서 마친다. 후속 단계가 실패하면 사건과 삭제 모두 rollback된다. 재호출은 원래 `event_id`를 유지하고, 계정 말소가 자료 행을 지워도 사건은 남는다. 이전 삭제 head는 역산하지 않는다. DB 관리자의 물리 DELETE와 자료 공유/동의 철회는 이 사건의 범위 밖이다. 독립 v1 계약에 필요한 객체·파생물 복구 재생 범위 및 복원 함수는 아직 구현되지 않았다.
 
@@ -74,6 +74,8 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 | `resource_deleted`, `gallery_media_deleted` | tenant·대상 ID, 삭제 access revision·시각, 해당 객체/파생물 cleanup 범위; dump에 없는 대상도 재수집/재사용 억제                              |
 | `resource_share_revoked`                    | 소유 tenant·resource ID·share ID, grant/철회 access revision·철회 시각; 같은 share의 접근 회수와 파생물 정리, 공유 상대 식별자 없음          |
 | `check_in_deleted`                          | tenant·CheckIn ID·삭제 revision·시각; 본문 없는 tombstone과 연관 근거 정리 범위는 복구 설계에서 추가 확정해야 함                             |
+| `intake_entry_deleted`                      | tenant·최초 revision UUID·삭제 revision·시각; 백업에 대상이 없는 경우 복원 세대 회전과 별도 재생 계약 필요                                   |
+| `recovery_action_deleted`                   | tenant·서버 action UUID·삭제 revision·시각; 백업에 대상이 없는 경우 복원 세대 회전과 별도 재생 계약 필요                                     |
 
 제약 본문·head, AI/HealthKit의 최종 동의 상태, 코스 공유 예산처럼 **현재 상태**가 필요한 자료는 위 사건과 별도의 versioned snapshot 원장이다. CheckIn의 값 없는 tombstone 재생·연관 파생물 정리, HealthKit raw-only 삭제와 미확정 범위의 정확한 사건 종류·필드는 도메인 조사 후 v1에 추가해야 한다. 그 전에는 해당 쓰기가 가능한 배포의 복원을 허용하지 않는다.
 
@@ -101,8 +103,14 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 
 이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity·자료·갤러리·개별 CheckIn 삭제·HealthKit/AI 동의 전이의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.
 
-## 복원 세대값 저장 원시값 (migration 076, 준비 단계)
+## 복원 세대값과 생성 요청 결속 (migration 076, 준비 단계)
 
 `076_restore_generation.sql`은 전체 DB에 단 하나의 불투명 UUID `restore_generation.generation_id`를 최초 migration에서 만든다. 제한된 런타임 역할에는 테이블 SELECT/DML 없이 `current_restore_generation()`의 EXECUTE만 권한 설정에서 명시적으로 부여할 수 있다. `rotate_restore_generation()`은 테이블 소유자 세션만 호출할 수 있는 통제된 회전 지점이며, 회전은 호출 거래와 함께 commit 또는 rollback된다. FORCE RLS 정책은 현재 테이블 소유자를 조회하므로 소유권 재할당 및 `--no-owner` 복원 뒤에도 유지된다.
 
-이 UUID는 **저장 원시값만** 제공한다. create 요청에 아직 묶이지 않았고, 복원 전 요청의 stale retry 차단, 원격 원장·반출·재생, 실제 복원 회전과 접근 재개 검증은 모두 **not_executed**다. IntakeEntry·RecoveryActionLog 삭제 사건의 설계 대기 상태는 그대로다. 현재 운영 DB의 migration은 65개이며 076은 배포하지 않았다.
+IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받는다. 서버는 같은 거래에서 receipt 재생과 INSERT보다 먼저 현재 세대값과 비교하고, 오래된 요청은 `STALE_RESTORE_GENERATION`으로 거절한다. 두 화면은 생성 의도에서 읽은 값을 불확실한 재시도에 고정하고, stale 응답 뒤 새 명시적 입력에서만 새 값과 idempotency key를 사용한다. 이 검증은 로컬 생성 경로의 보호다. 실제 복원 시 회전·접근 차단의 연결, 원격 원장·반출·재생과 오래된 백업의 데이터 억제는 **not_executed**다. 현재 운영 DB의 migration은 65개이며 076 이후 코드는 배포하지 않았다.
+
+## 실제 기록 사용자 삭제의 로컬 사건 (migration 077)
+
+`077_actual_deletion_suppression_event.sql`은 `IntakeEntry`와 `RecoveryActionLog`가 `active→deleted`가 되는 같은 거래에서 각각 `intake_entry_deleted`와 `recovery_action_deleted`를 한 번만 기록한다. 영양 사건의 `target_id`는 사용자가 정한 문자열 `intakeId`가 아니라 최초 생성 revision의 불변 UUID이고, 회복 사건은 서버 생성 action UUID를 쓴다. 두 사건에는 tenant·종류·삭제 revision·삭제 tombstone 시각과 무작위 event ID만 있고 음식/건강 값·메모·idempotency key·비밀 없는 hash는 없다. 기존 삭제는 backfill하지 않으며 계정 말소로 원본 revision이 사라져도 사건은 남는다.
+
+이 사건은 백업에 대상 행이 포함된 경우에만 그 행의 고정 식별자와 맞출 수 있다. 백업 뒤 생성·삭제되어 백업에 없는 행을 차단하려면 복원 세대값 회전과 원격 원장의 완전성·replay 설계가 추가로 필요하다. 077 자체는 exporter·호스트 밖 내구성·복원 재생·운영 검증을 제공하지 않는다. 이 범위는 **not_executed**다.

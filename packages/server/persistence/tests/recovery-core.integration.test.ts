@@ -251,11 +251,29 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
       idempotencyKey: randomUUID(),
     }),
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
-  const removed = await repo.deleteAction(owner, {
+  const deletionCommand = {
     actionId: saved.actionId,
     expectedRevision: 2,
     idempotencyKey: randomUUID(),
+  };
+  const removed = await repo.deleteAction(owner, deletionCommand);
+  expect(await repo.deleteAction(owner, deletionCommand)).toEqual(removed);
+  const deletionEvents = await admin.query(
+    `SELECT event_id,target_id,actual_deletion_revision,occurred_at,to_jsonb(e) AS event
+     FROM restore_suppression_event e
+     WHERE athlete_id=$1 AND kind='recovery_action_deleted'`,
+    [owner],
+  );
+  expect(deletionEvents.rows).toHaveLength(1);
+  expect(deletionEvents.rows[0]).toMatchObject({
+    event_id: expect.any(String),
+    target_id: saved.actionId,
+    actual_deletion_revision: 3,
+    occurred_at: new Date(removed.deletedAt),
   });
+  const eventJson = JSON.stringify(deletionEvents.rows[0]?.event);
+  expect(eventJson).not.toContain(deletionCommand.idempotencyKey);
+  expect(eventJson).not.toContain('Prepared for sleep');
   expect(removed.status).toBe('deleted');
   expect((await repo.workspace(owner)).actions).toEqual([removed]);
   await expect(repo.createAction(owner, action)).rejects.toMatchObject({
@@ -324,4 +342,13 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   } finally {
     eraser.release();
   }
+  expect(
+    (
+      await admin.query(
+        `SELECT event_id FROM restore_suppression_event
+         WHERE athlete_id=$1 AND kind='recovery_action_deleted'`,
+        [owner],
+      )
+    ).rows,
+  ).toEqual([{ event_id: deletionEvents.rows[0]?.event_id }]);
 });

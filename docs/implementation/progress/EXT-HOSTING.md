@@ -97,3 +97,9 @@
 - 계약/API/화면 관련 Vitest **6파일·40시험 통과**, 브라우저 세션 전송 계층 **1파일·100시험 통과**, 전체 타입 검사 **34개 패키지 통과**, 전체 빌드 **15개 작업 통과**. 변경 TS ESLint·Prettier와 `git diff --check` 통과. 격리 PostgreSQL 14 전체 통합 시험 **104파일·890시험 통과**, 임시 서버 종료. Playwright의 격리 OIDC·API·DB·실제 Chromium에서 영양·회복 **2시험 통과**. 첫 브라우저 실행은 다른 시험 서버 포트에 연결돼 로그인 단계에서 실패했고, 별도 포트 빌드 후에는 시험 API의 조회 경로 누락과 브라우저 Host 허용 경로 누락을 발견해 수정했다. 이 두 실패를 통과로 바꾸지 않고 최종 재실행 결과를 별도로 기록한다. Aside 업데이트는 `fetch failed`, Chrome 직접 제어는 시간 초과여서 브라우저 검증 도구는 Playwright였다.
 - 공유 메모리 슬롯이 고아 세그먼트 31개로 소진되어 최초 DB 시험은 `initdb` 전에 실패했다. 사용자 명시 승인 뒤 연결 수 0인 세그먼트 31개만 정리하고 활성 PostgreSQL의 세그먼트 1개는 유지했다. 그 후 위 전체 통합 시험이 통과했다.
 - 이 변경은 **백업 이전/이후 생성 요청의 재시도 식별**만 다룬다. 삭제 사건, 외부 독립 반출, 복원 replay, 운영 PostgreSQL 17.6 적용, 공개 서비스 검증은 여전히 **not_executed**다. 실제 복원 작업은 앱 쓰기를 차단하고 소유자 전용 `rotate_restore_generation()`을 복원 접근 재개 전에 호출해야 한다. 그 운영 절차와 복원 드릴도 아직 검증하지 않았다.
+
+## 실제 기록 사용자 삭제 사건 (로컬 구현)
+
+- migration 077은 `IntakeEntry`와 `RecoveryActionLog`의 `active→deleted` 전이와 같은 거래에 삭제 억제 사건을 하나씩 남긴다. 영양 사건 대상은 사용자가 지정하는 문자열 ID가 아닌 최초 revision UUID이고, 회복 사건 대상은 서버 생성 action UUID다. 사건에 음식·건강 값, 메모, 멱등 키를 넣지 않는다. 삭제 tombstone과 revision 연결이 틀리면 거래를 거절하고, 삭제된 회복 기록의 재활성화도 막는다. 과거 삭제 사건은 역산해 채우지 않는다.
+- 비슈퍼유저 소유자의 업그레이드, 실제 삭제·중복 요청·rollback·잘못된 tombstone·재활성화 거절·계정 말소 후 사건 보존·FORCE RLS를 임시 PostgreSQL 14에서 검증했다. 전체 `pnpm test:integration`은 **105파일·891시험 통과**했고 임시 서버는 종료됐다. 전체 `pnpm typecheck`는 **34작업 통과**했으며 변경 파일 ESLint·Prettier와 `git diff --check`도 통과했다.
+- 운영 PostgreSQL 17.6 배포, `pgoutput` exporter, 호스트 밖 내구성 확인, 백업 행에 대한 replay, 실제 복원 후 접근 재개 드릴은 **not_executed**다. 로컬 사건 기록만으로 복원 안전성을 판정하지 않는다.

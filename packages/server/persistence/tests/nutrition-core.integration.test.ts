@@ -243,13 +243,32 @@ describe('M1b-01 nutrition persistence', () => {
         })
       ).coverage,
     ).toMatchObject({ status: 'partial', knownEntries: 1, entriesWithUnknownNutrients: 1 });
-    const deleted = await repository.deleteIntake(athlete, {
+    const deletionCommand = {
       idempotencyKey: randomUUID(),
       intakeId: first.intakeId,
       expectedRevision: 2,
-      confirmed: true,
-      reason: 'user_requested',
+      confirmed: true as const,
+      reason: 'user_requested' as const,
+    };
+    const deleted = await repository.deleteIntake(athlete, deletionCommand);
+    expect(await repository.deleteIntake(athlete, deletionCommand)).toEqual(deleted);
+    const deletionEvents = await admin.query(
+      `SELECT event_id,target_id,actual_deletion_revision,occurred_at,to_jsonb(e) AS event
+       FROM restore_suppression_event e
+       WHERE athlete_id=$1 AND kind='intake_entry_deleted'`,
+      [athlete],
+    );
+    expect(deletionEvents.rows).toHaveLength(1);
+    expect(deletionEvents.rows[0]).toMatchObject({
+      event_id: expect.any(String),
+      target_id: first.revisionId,
+      actual_deletion_revision: 3,
+      occurred_at: new Date(deleted.deletedAt),
     });
+    const eventJson = JSON.stringify(deletionEvents.rows[0]?.event);
+    expect(eventJson).not.toContain(first.intakeId);
+    expect(eventJson).not.toContain(deletionCommand.idempotencyKey);
+    expect(eventJson).not.toContain('Updated oats');
     expect(await repository.readIntake(athlete, first.intakeId)).toEqual(deleted);
     const listing = await repository.listIntakes(athlete, {
       from: '2026-09-18T00:00:00.000Z',

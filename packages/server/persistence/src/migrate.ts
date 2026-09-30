@@ -82,6 +82,7 @@ const migrationFiles = [
   '074_resource_share_revoke_suppression_event.sql',
   '075_course_share_revoke_suppression_event.sql',
   '076_restore_generation.sql',
+  '077_actual_deletion_suppression_event.sql',
 ] as const;
 
 /**
