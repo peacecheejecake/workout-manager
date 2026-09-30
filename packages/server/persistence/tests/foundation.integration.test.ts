@@ -128,6 +128,7 @@ describe('real PostgreSQL foundation', () => {
       { version: 76, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       { version: 77, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
       { version: 78, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { version: 79, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     ]);
   });
   it('rejects privileged runtime connections', async () => {
