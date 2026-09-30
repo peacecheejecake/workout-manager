@@ -59,18 +59,39 @@ export const resourceRetrievalExcerptSchema = z.strictObject({
   text: spanText(16384),
 });
 
-export const resourceRetrievalResultSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  scope: z.literal('resource-retrieval-v1'),
-  query: boundedText(RESOURCE_RETRIEVAL_MAX_QUERY_LENGTH),
-  checkedAt: instantSchema,
-  /** Digest of the whole authorized set observed at retrieval time. */
-  authorizationDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  /** `revalidated` means a cached entry was found and re-authorized row by row. */
-  cache: z.enum(['miss', 'revalidated', 'invalidated']),
-  authorizedResourceCount: z.number().int().min(0),
-  excerpts: z.array(resourceRetrievalExcerptSchema).max(RESOURCE_RETRIEVAL_MAX_EXCERPTS),
-});
+export const resourceRetrievalResultSchema = z
+  .strictObject({
+    schemaVersion: z.literal(2),
+    scope: z.literal('resource-retrieval-v2'),
+    query: boundedText(RESOURCE_RETRIEVAL_MAX_QUERY_LENGTH),
+    checkedAt: instantSchema,
+    /** Digest of the whole authorized set observed at retrieval time. */
+    authorizationDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    /** `revalidated` means a cached entry was found and re-authorized row by row. */
+    cache: z.enum(['miss', 'revalidated', 'invalidated']),
+    authorizedResourceCount: z.number().int().min(0),
+    /** Passage coverage of the authorized resource set at this read. A partial
+     * top-k must never be presented to a caller as the complete search result. */
+    indexing: z.discriminatedUnion('status', [
+      z.strictObject({
+        status: z.literal('in_progress'),
+        indexedResourceCount: z.number().int().min(0),
+        pendingResourceCount: z.number().int().positive(),
+      }),
+      z.strictObject({
+        status: z.literal('complete'),
+        indexedResourceCount: z.number().int().min(0),
+        pendingResourceCount: z.literal(0),
+      }),
+    ]),
+    excerpts: z.array(resourceRetrievalExcerptSchema).max(RESOURCE_RETRIEVAL_MAX_EXCERPTS),
+  })
+  .refine(
+    (result) =>
+      result.indexing.indexedResourceCount + result.indexing.pendingResourceCount ===
+      result.authorizedResourceCount,
+    { path: ['indexing'], message: 'Index coverage must equal the authorized set' },
+  );
 
 /** One citation as stored. `unavailable` is returned instead of the quote when
  * the query-time gate no longer authorizes the resource; a deleted excerpt has

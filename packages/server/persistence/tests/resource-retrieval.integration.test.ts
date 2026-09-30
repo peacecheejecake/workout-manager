@@ -296,12 +296,22 @@ describe('ACL-filtered retrieval over reviewed resources', () => {
 
     const first = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
     expect(first.authorizedResourceCount).toBe(6);
+    expect(first.indexing).toEqual({
+      status: 'in_progress',
+      indexedResourceCount: 5,
+      pendingResourceCount: 1,
+    });
     expect(first.excerpts).toHaveLength(5);
     expect(await count(athleteId, 'resource_passage')).toBe(5);
     expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
 
     const second = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
     expect(second.excerpts).toHaveLength(6);
+    expect(second.indexing).toEqual({
+      status: 'complete',
+      indexedResourceCount: 6,
+      pendingResourceCount: 0,
+    });
     expect(new Set(second.excerpts.map((item) => item.resourceId))).toEqual(new Set(resourceIds));
     expect(await count(athleteId, 'resource_passage')).toBe(6);
     expect(second.cache).toBe('miss');
@@ -322,6 +332,10 @@ describe('ACL-filtered retrieval over reviewed resources', () => {
       retrieval.retrieve(owner, { ...query, limit: 6 }),
     ]);
     expect([first.excerpts.length, second.excerpts.length].sort()).toEqual([5, 6]);
+    expect([first.indexing.status, second.indexing.status].sort()).toEqual([
+      'complete',
+      'in_progress',
+    ]);
     expect(await count(owner, 'resource_passage')).toBe(6);
     expect(
       new Set(
@@ -343,6 +357,11 @@ describe('ACL-filtered retrieval over reviewed resources', () => {
     for (let request = 1; request <= 20; request += 1) {
       const result = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
       expect(result.authorizedResourceCount).toBe(100);
+      expect(result.indexing).toEqual({
+        status: request === 20 ? 'complete' : 'in_progress',
+        indexedResourceCount: request * 5,
+        pendingResourceCount: 100 - request * 5,
+      });
       expect(result.excerpts.length).toBeLessThanOrEqual(6);
       expect(await count(athleteId, 'resource_passage')).toBe(request * 5);
       if (request < 20) expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
@@ -352,6 +371,40 @@ describe('ACL-filtered retrieval over reviewed resources', () => {
     console.info(
       `retrieval 100-resource/20-call observation: ${Math.round(performance.now() - started)} ms, process RSS peak ${Math.round(peakRssBytes / 1024 / 1024)} MiB`,
     );
+  });
+
+  it('does not call an attempted but unindexable resource complete', async () => {
+    const athleteId = randomUUID();
+    await grantAiConsent(athleteId);
+    const { versionId } = await reviewedResource(athleteId);
+    // The DB limits JSON shape and size, while the retrieval boundary validates
+    // each paragraph. The version is immutable to ordinary writers. Use this
+    // isolated cluster's admin session to simulate stored corruption, without
+    // disabling triggers for any other test connection.
+    const client = await admin.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(
+        "UPDATE resource_version SET paragraphs='[{}]'::jsonb WHERE athlete_id=$1 AND version_id=$2",
+        [athleteId, versionId],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    const result = await retrieval.retrieve(athleteId, query);
+    expect(result.indexing).toEqual({
+      status: 'in_progress',
+      indexedResourceCount: 0,
+      pendingResourceCount: 1,
+    });
+    expect(result.excerpts).toEqual([]);
+    expect(await count(athleteId, 'resource_passage')).toBe(0);
+    expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
   });
 
   it('indexes and returns only reviewed, coach-enabled, consented resources', async () => {
@@ -766,6 +819,32 @@ describe('deletion, withdrawal and downgrade cannot resurface an excerpt', () =>
 });
 
 describe('grounded coaching output cites reviewed excerpts', () => {
+  it('does not pin a partial search result as completed grounding', async () => {
+    const athleteId = randomUUID();
+    const { thread, evidence } = await seedCoaching(athleteId);
+    await Promise.all(Array.from({ length: 6 }, async () => reviewedResource(athleteId)));
+    const command = {
+      schemaVersion: 1 as const,
+      evidenceSnapshotId: evidence.id,
+      expectedConversationRevision: 1,
+      retrieval: { kind: 'resource-access-v1' as const, query: '회복' },
+      idempotencyKey: randomUUID(),
+    };
+    await expect(runRepository().create(athleteId, thread.id, command)).rejects.toThrow(
+      'RETRIEVAL_INDEX_INCOMPLETE',
+    );
+    expect(await count(athleteId, 'resource_grounding')).toBe(0);
+    expect(await count(athleteId, 'coaching_run')).toBe(0);
+    // The failed run transaction rolls back its bounded index work; a normal
+    // retrieval request makes durable progress before retrying run creation.
+    expect(await count(athleteId, 'resource_passage')).toBe(0);
+    const first = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
+    expect(first.indexing.status).toBe('in_progress');
+    const run = await runRepository().create(athleteId, thread.id, command);
+    expect(run.id).toBeTruthy();
+    expect(await count(athleteId, 'resource_grounding_excerpt')).toBe(6);
+  });
+
   it('pins a grounding, stores citations, and never resurrects them after deletion', async () => {
     const athleteId = randomUUID();
     const { thread, evidence } = await seedCoaching(athleteId);
