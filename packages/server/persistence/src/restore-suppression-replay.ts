@@ -40,7 +40,8 @@ type SupportedRecord = Extract<
       | 'course_deleted'
       | 'activity_deleted'
       | 'resource_deleted'
-      | 'gallery_media_deleted';
+      | 'gallery_media_deleted'
+      | 'check_in_deleted';
   }
 >;
 type VerifiedChain = {
@@ -122,7 +123,8 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'course_deleted' &&
           record.kind !== 'activity_deleted' &&
           record.kind !== 'resource_deleted' &&
-          record.kind !== 'gallery_media_deleted'
+          record.kind !== 'gallery_media_deleted' &&
+          record.kind !== 'check_in_deleted'
         )
           return fail();
         if (
@@ -142,6 +144,11 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         if (record.kind === 'resource_deleted' && record.resourceAccessRevision > 2147483646)
           return fail();
         if (record.kind === 'gallery_media_deleted' && record.galleryAccessRevision > 2147483646)
+          return fail();
+        if (
+          record.kind === 'check_in_deleted' &&
+          (record.checkInRevision < 2 || record.checkInRevision > 2147483646)
+        )
           return fail();
         authenticated.push(record);
       }
@@ -231,13 +238,21 @@ export async function replayVerifiedSuppressionChain(
             record.occurredAt,
             record.resourceAccessRevision,
           ]);
-        } else {
+        } else if (record.kind === 'gallery_media_deleted') {
           await client.query('SELECT public.replay_gallery_media_deletion_exact($1,$2,$3,$4,$5)', [
             record.athleteId,
             record.targetId,
             record.eventId,
             record.occurredAt,
             record.galleryAccessRevision,
+          ]);
+        } else {
+          await client.query('SELECT public.replay_check_in_deletion_exact($1,$2,$3,$4,$5)', [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.checkInRevision,
           ]);
         }
       }

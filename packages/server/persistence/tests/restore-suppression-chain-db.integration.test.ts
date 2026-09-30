@@ -123,6 +123,27 @@ async function restoredGalleryMedia(athleteId: string, mediaId: string): Promise
   );
 }
 
+async function restoredCheckIn(athleteId: string, checkInId: string): Promise<void> {
+  await tenant(athleteId, async (client) => {
+    await client.query(
+      `INSERT INTO check_in(athlete_id,id,revision,values_json,local_date,recorded_at,updated_at)
+       VALUES($1,$2,1,'{"fatigue":0}'::jsonb,'2026-09-29',
+         '2026-09-29 00:00:00+00','2026-09-29 00:00:00+00')`,
+      [athleteId, checkInId],
+    );
+    await client.query(
+      `INSERT INTO check_in_revision(athlete_id,check_in_id,revision,values_json,created_at)
+       VALUES($1,$2,1,'{"fatigue":0}'::jsonb,'2026-09-29 00:00:00+00')`,
+      [athleteId, checkInId],
+    );
+    await client.query(
+      `INSERT INTO check_in_collection_head(athlete_id,revision) VALUES($1,1)
+       ON CONFLICT (athlete_id) DO UPDATE SET revision=check_in_collection_head.revision+1`,
+      [athleteId],
+    );
+  });
+}
+
 function chain(records: readonly SuppressionRecord[]): {
   segments: Buffer[];
   anchor: TrustedReplayAnchor;
@@ -224,6 +245,18 @@ function galleryRecord(athleteId: string, targetId: string, occurredAt: string):
     kind: 'gallery_media_deleted',
     targetId,
     galleryAccessRevision: 2,
+  };
+}
+
+function checkInRecord(athleteId: string, targetId: string, occurredAt: string): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'check_in_deleted',
+    targetId,
+    checkInRevision: 2,
   };
 }
 
@@ -713,6 +746,134 @@ describe('authenticated chain to owner-only exact replay', () => {
       client.query<{ revision: number }>(
         'SELECT access_revision AS revision FROM gallery_media_item WHERE athlete_id=$1 AND id=$2',
         [athleteId, mediaId],
+      ),
+    );
+    expect(state.rows[0]?.revision).toBe(1);
+  });
+
+  it('replays check-in deletion then erasure exactly once without identifiers in the result', async () => {
+    const athleteId = await account();
+    const checkInId = randomUUID();
+    await restoredCheckIn(athleteId, checkInId);
+    const sample = chain([
+      checkInRecord(athleteId, checkInId, '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        events: string;
+        check_in_receipts: string;
+        erasure_receipts: string;
+        check_ins: string;
+        erased: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_check_in_replay_receipt WHERE athlete_id=$1) check_in_receipts,
+          (SELECT count(*)::text FROM restore_exact_replay_receipt WHERE athlete_id=$1) erasure_receipts,
+          (SELECT count(*)::text FROM check_in WHERE athlete_id=$1) check_ins,
+          (SELECT count(*)::text FROM tenant_erasure WHERE athlete_id=$1) erased`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      events: '2',
+      check_in_receipts: '1',
+      erasure_receipts: '1',
+      check_ins: '0',
+      erased: '1',
+    });
+  });
+
+  it('rolls back an earlier course when a later check-in head is absent', async () => {
+    const athleteId = await account();
+    const courseId = randomUUID();
+    await restoredCourse(athleteId, courseId);
+    const sample = chain([
+      courseRecord(athleteId, courseId, '2026-09-30 12:34:56+00'),
+      checkInRecord(athleteId, randomUUID(), '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_CHECK_IN_ABSENT_UNSUPPORTED');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ course: string; events: string }>(
+        `SELECT (SELECT count(*)::text FROM course WHERE athlete_id=$1 AND course_id=$2) course,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events`,
+        [athleteId, courseId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ course: '1', events: '0' });
+  });
+
+  it('rolls back an earlier check-in for a later foreign owner or conflicting event', async () => {
+    const athleteId = await account();
+    const other = await account();
+    const firstId = randomUUID();
+    const foreignId = randomUUID();
+    await restoredCheckIn(athleteId, firstId);
+    await restoredCheckIn(other, foreignId);
+    const first = checkInRecord(athleteId, firstId, '2026-09-30 12:34:56+00');
+    for (const [later, error] of [
+      [
+        checkInRecord(athleteId, foreignId, '2026-09-30 12:35:56+00'),
+        'RESTORE_CHECK_IN_FOREIGN_TARGET',
+      ],
+      [
+        checkInRecord(athleteId, firstId, '2026-09-30 12:35:56+00'),
+        'RESTORE_CHECK_IN_EVENT_CONFLICT',
+      ],
+    ] as const) {
+      await expect(
+        replayVerifiedSuppressionChain({ ...chain([first, later]), key, keyId, ownerPool: owner }),
+      ).rejects.toThrow(error);
+      const state = await tenant(athleteId, (client) =>
+        client.query<{ events: string; receipts: string; revision: number; history: string }>(
+          `SELECT (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+            (SELECT count(*)::text FROM restore_check_in_replay_receipt WHERE athlete_id=$1) receipts,
+            (SELECT revision FROM check_in WHERE athlete_id=$1 AND id=$2) revision,
+            (SELECT count(*)::text FROM check_in_revision WHERE athlete_id=$1 AND check_in_id=$2) history`,
+          [athleteId, firstId],
+        ),
+      );
+      expect(state.rows[0]).toMatchObject({
+        events: '0',
+        receipts: '0',
+        revision: 1,
+        history: '1',
+      });
+    }
+  });
+
+  it('denies the check-in chain through a runtime pool', async () => {
+    const athleteId = await account();
+    const checkInId = randomUUID();
+    await restoredCheckIn(athleteId, checkInId);
+    const sample = chain([
+      checkInRecord(athleteId, checkInId, '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: runtime }),
+    ).rejects.toThrow(/permission denied/);
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ revision: number }>(
+        'SELECT revision FROM check_in WHERE athlete_id=$1 AND id=$2',
+        [athleteId, checkInId],
       ),
     );
     expect(state.rows[0]?.revision).toBe(1);

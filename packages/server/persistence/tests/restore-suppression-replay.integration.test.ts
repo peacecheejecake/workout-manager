@@ -149,7 +149,7 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts activity, resource and gallery deletion and rejects the remaining unsupported kinds', () => {
+  it('accepts the six exact replay kinds and rejects the remaining unsupported kinds', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const resource = chain({
@@ -176,6 +176,18 @@ describe('restore suppression local preflight', () => {
       },
     });
     expect(inspect(gallery.segments, gallery.anchor).eventCount).toBe(2);
+    const checkIn = chain({
+      secondRecord: {
+        schemaVersion: 1,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'check_in_deleted',
+        targetId: courseId,
+        checkInRevision: 2,
+      },
+    });
+    expect(inspect(checkIn.segments, checkIn.anchor).eventCount).toBe(2);
     const base = {
       schemaVersion: 1 as const,
       eventId: secondId,
@@ -199,7 +211,6 @@ describe('restore suppression local preflight', () => {
         consentRevision: 1,
         consentGranted: true,
       },
-      { ...base, kind: 'check_in_deleted', targetId: courseId, checkInRevision: 2 },
       {
         ...base,
         kind: 'resource_share_revoked',
@@ -259,6 +270,15 @@ describe('restore suppression local preflight', () => {
         targetId: '33333333-3333-0333-8333-333333333333',
         galleryAccessRevision: 2,
       },
+      {
+        schemaVersion: 1 as const,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'check_in_deleted' as const,
+        targetId: '33333333-3333-0333-8333-333333333333',
+        checkInRevision: 2,
+      },
     ]) {
       const sample = chain({ secondRecord: altered });
       expect(() => inspect(sample.segments, sample.anchor)).toThrow(
@@ -294,9 +314,11 @@ describe('restore suppression local preflight', () => {
           eventId: secondId,
           athleteId: defaultAthleteId,
           occurredAt,
-          kind: 'check_in_deleted',
+          kind: 'resource_share_revoked',
           targetId: courseId,
-          checkInRevision: 2,
+          shareId: firstId,
+          shareGrantedAccessRevision: 1,
+          shareRevokedAccessRevision: 2,
         },
       });
       await expect(
