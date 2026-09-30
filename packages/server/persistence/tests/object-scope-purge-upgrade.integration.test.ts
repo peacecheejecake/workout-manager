@@ -65,6 +65,13 @@ beforeAll(async () => {
   // already reclaimed, and a deleted activity of a tenant whose id names no key prefix.
   await insertActivity(tenant, deletedBefore, true);
   await insertActivity(tenant, liveBefore, false);
+  // Live canonical activities must retain a source identity for later deletion replay.
+  // Historical deleted rows above deliberately have no source and are not backfilled.
+  await upgraded.query(
+    `INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,
+       content_hash,activity_id) VALUES($1,'fixture',$2,1,repeat('a',64),$3)`,
+    [tenant, randomUUID(), liveBefore],
+  );
   await insertActivity(legacyTenant, legacyDeleted, true);
   await upgraded.query(
     `INSERT INTO course(athlete_id,course_id,name,visibility,status,unavailable_reason,

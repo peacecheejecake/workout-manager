@@ -103,6 +103,13 @@ beforeAll(async () => {
         }),
       ],
     );
+    // A deletable canonical Activity has a source head: 068 records both identities.
+    await tx.query(
+      `INSERT INTO activity_source_head
+       (athlete_id,kind,source_id,source_revision,content_hash,activity_id)
+       VALUES($1,'fixture',$2,1,repeat('a',64),$3)`,
+      [athlete, randomUUID(), activityId],
+    );
   });
 });
 afterAll(async () => {

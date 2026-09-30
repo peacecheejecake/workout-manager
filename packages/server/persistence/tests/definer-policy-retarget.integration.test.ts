@@ -157,6 +157,41 @@ async function erasureEventCountForCourse(tenant: string, courseId: string): Pro
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveActivityDeletionEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const activityId = randomUUID();
+  const client = await inspect.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [tenant]);
+    await client.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}'::jsonb)",
+      [tenant, activityId],
+    );
+    await client.query(
+      `INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,
+         content_hash,activity_id) VALUES($1,'fixture',$2,1,repeat('a',64),$3)`,
+      [tenant, randomUUID(), activityId],
+    );
+    await client.query(
+      'UPDATE activity_canonical SET deleted=true,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
+      [tenant, activityId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+       WHERE athlete_id=$1 AND kind='activity_deleted' AND target_id=$2`,
+    [tenant, activityId],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -211,6 +246,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
+    expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -243,6 +279,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
+    expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -272,6 +309,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     await expect(operations.eraseAccount(tenant)).resolves.toEqual({ erased: true });
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
+    expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });

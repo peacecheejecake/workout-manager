@@ -40,6 +40,8 @@ const legacyTenant = randomUUID();
 const preUpgradeEventTenant = randomUUID();
 const preUpgradeCourseTenant = randomUUID();
 const preUpgradeCourseId = randomUUID();
+const preUpgradeActivityTenant = randomUUID();
+const preUpgradeActivityId = randomUUID();
 let preUpgradeEventId: string;
 
 async function createUnavailableCourse(tenant: string, courseId: string): Promise<void> {
@@ -65,6 +67,23 @@ async function courseEvents(tenant: string) {
     `SELECT event_id,athlete_id,kind,target_id,occurred_at
        FROM restore_suppression_event WHERE athlete_id=$1 AND kind='course_deleted'
        ORDER BY target_id`,
+    [tenant],
+  );
+  return result.rows;
+}
+
+async function activityEvents(tenant: string) {
+  const result = await owner.query<{
+    target_id: string;
+    activity_revision: number;
+    source_kind: string;
+    source_id: string;
+    source_revision: number;
+    source_content_hash: string;
+  }>(
+    `SELECT target_id::text,activity_revision,source_kind,source_id,
+       source_revision,source_content_hash FROM restore_suppression_event
+       WHERE athlete_id=$1 AND kind='activity_deleted'`,
     [tenant],
   );
   return result.rows;
@@ -126,9 +145,63 @@ beforeAll(async () => {
   // The old bounded command is already granted on an upgraded installation. 067 must
   // preserve its EXECUTE ACL while replacing the function body.
   await owner.query(`GRANT EXECUTE ON FUNCTION public.delete_course(uuid,integer) TO "${appRole}"`);
+  await migrate(urlFor(ownerRole), migrationIndex + 2);
+  await inTenant(owner, preUpgradeActivityTenant, async (client) => {
+    await client.query(
+      `INSERT INTO activity_canonical(athlete_id,id,revision,original,deleted)
+         VALUES($1,$2,2,'{}'::jsonb,true)`,
+      [preUpgradeActivityTenant, preUpgradeActivityId],
+    );
+    await client.query(
+      `INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,
+         content_hash,activity_id) VALUES($1,'fixture',$2,1,repeat('a',64),$3)`,
+      [preUpgradeActivityTenant, randomUUID(), preUpgradeActivityId],
+    );
+  });
   await migrate(urlFor(ownerRole));
   await owner.query(`GRANT USAGE ON SCHEMA public TO "${appRole}"`);
   await grantOperations(urlFor(ownerRole), appRole);
+});
+
+describe('activity deletion events on the same plain PostgreSQL owner', () => {
+  it('records the canonical tombstone and source head under FORCE RLS', async () => {
+    const tenant = randomUUID();
+    const activityId = randomUUID();
+    const sourceId = randomUUID();
+    await inTenant(owner, tenant, async (client) => {
+      await client.query(
+        `INSERT INTO activity_canonical(athlete_id,id,revision,original)
+         VALUES($1,$2,1,'{}'::jsonb)`,
+        [tenant, activityId],
+      );
+      await client.query(
+        `INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,
+           content_hash,activity_id) VALUES($1,'fixture',$2,2,repeat('a',64),$3)`,
+        [tenant, sourceId, activityId],
+      );
+    });
+    await inTenant(owner, tenant, (client) =>
+      client.query(
+        'UPDATE activity_canonical SET deleted=true,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
+        [tenant, activityId],
+      ),
+    );
+    const recorded = await activityEvents(tenant);
+    expect(recorded).toEqual([
+      {
+        target_id: activityId,
+        activity_revision: 2,
+        source_kind: 'fixture',
+        source_id: sourceId,
+        source_revision: 2,
+        source_content_hash: 'a'.repeat(64),
+      },
+    ]);
+    await inTenant(app, tenant, (client) =>
+      client.query('SELECT public.erase_account($1)', [tenant]),
+    );
+    expect(await activityEvents(tenant)).toEqual(recorded);
+  });
 });
 
 describe('course deletion events on the same plain PostgreSQL owner', () => {
@@ -300,6 +373,7 @@ describe('tenant erasure suppression event foundation on a plain PostgreSQL owne
     );
     expect(previous.rows).toEqual([{ event_id: preUpgradeEventId, target_id: null }]);
     expect(await courseEvents(preUpgradeCourseTenant)).toEqual([]);
+    expect(await activityEvents(preUpgradeActivityTenant)).toEqual([]);
     expect(
       (
         await inTenant(owner, preUpgradeCourseTenant, (client) =>

@@ -356,6 +356,25 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       other_active: 1,
       purged_receipts: 0,
     });
+    const deletionEvent = await admin.query<{
+      target_id: string;
+      source_kind: string;
+      source_id: string;
+      source_content_hash: string;
+    }>(
+      `SELECT target_id::text,source_kind,source_id,source_content_hash
+         FROM restore_suppression_event WHERE athlete_id=$1 AND kind='activity_deleted'
+           AND target_id=$2`,
+      [fixture.athleteId, created.activityId],
+    );
+    expect(deletionEvent.rows).toEqual([
+      {
+        target_id: created.activityId,
+        source_kind: 'healthkit',
+        source_id: fixture.sampleId,
+        source_content_hash: '0'.repeat(64),
+      },
+    ]);
     const exported = await createOperationsRepository(database).exportAccount(fixture.athleteId);
     expect(JSON.stringify(exported)).not.toContain(fixture.expectedSampleDigest);
     expect(JSON.stringify(exported)).not.toContain('secret health note');
