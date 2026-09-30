@@ -3,8 +3,10 @@
 This Compose project runs Workout Manager alongside the existing `pfm-agent` site. It
 does not publish host ports, replace the existing Caddyfile, or reuse its PostgreSQL
 data. The existing Caddy container must stay on the `infra_default` Docker network.
-Only after the app is healthy, add `workout.caddy` as an additional Caddy site block;
-retain the existing apex site block. Recheck both hostnames after a Caddy reload.
+The public Workout hostname currently serves `workout-holding.caddy`'s 503 page.
+`workout.caddy` is an inactive cutover candidate: replace that one site block only
+after the gates below. Do not append a second block for the same hostname. Retain
+the existing apex site block and recheck both hostnames after a controlled reload.
 
 ## Files outside the checkout
 
@@ -119,10 +121,58 @@ invocations to finish a two-phase job, and record those checks separately before
 setting a recurring schedule. Keep service logs free of fetched URLs and content.
 
 The existing apex site and static IP are already on the 8 GiB shared host.
-This Compose project does not remap the IP or change DNS. Adding the workout
-Caddy site still requires a controlled edit and reload of the existing Caddy
-container. Backups, restore, and external end-to-end checks remain required
-before calling the Workout Manager deployment complete.
+This Compose project does not remap the IP or change DNS. Backups, restore, and
+external end-to-end checks remain required before calling the Workout Manager
+deployment complete.
+
+## Prepare the Caddy cutover without activating it
+
+Keep the 503 block active until the installed image, dedicated DB and private
+mount, graph and ODbL disclosures, and Caddy-to-`wm-hosting-app:3100` reachability
+have been checked on the host. Confirm that the actual Zitadel application is
+configured for the exact HTTPS callback
+`https://workout.red-10-proto.xyz/bff/v1/auth/callback` and its intended logout
+flow before opening the product. A successful OIDC discovery request alone is
+not that check. Confirm the current apex response and TLS certificate first.
+
+Take a protected copy of the _active_ Caddyfile and prepare a separate candidate
+file. The helper replaces an exact copy of the checked-in 503 site block and
+refuses a changed or duplicate Workout block. It does not edit or reload Caddy,
+and it writes a new mode-0600 file. If the active block has been formatted or
+edited since the checked-in copy, stop and review the actual file manually;
+do not overwrite it to make the helper pass.
+
+```sh
+node deploy/lightsail/prepare-caddy-candidate.mjs /path/to/active/Caddyfile /path/to/new/Caddyfile.candidate
+```
+
+Review the diff between the protected active copy and candidate. The only
+change should be replacement of the Workout 503 block by `workout.caddy`; the
+apex block and global options must remain byte-for-byte the same. Validate the
+**whole** candidate with the same Caddy version and environment as the running
+container (`caddy fmt --diff` and `caddy validate --config ... --adapter caddyfile`).
+Validation of `workout.caddy` alone does not establish that it can coexist with
+the apex configuration. Keep the active 503 file and its backup for rollback.
+The candidate is a review artifact, not a command to publish it.
+
+Only a separately approved, controlled deployment should install the candidate
+and reload the existing Caddy container. Immediately check the apex site's
+HTTPS response and certificate, the Workout site's HTTPS response and ODbL
+disclosures, then a real login, callback, logout, and failure recovery. If a
+check fails, restore the known-good 503 Caddyfile and reload; verify the apex
+and 503 responses again. Product reverse proxy, public authentication, and
+recovery remain unverified until those checks actually run.
+
+For local template checks without secrets or a Docker daemon, use a disposable
+release and paths with Compose's `--no-env-resolution` option. This checks the
+model and allows inspection of the service networks and mounts; it does not
+prove that host paths, external `infra_default`, OIDC, or Caddy are available:
+
+```sh
+WORKOUT_RELEASE=local-check WORKOUT_DATA_DIR=/tmp/workout-data WORKOUT_SECRETS_DIR=/tmp/workout-secrets \
+  docker compose --profile '*' -f deploy/lightsail/compose.yml config --no-env-resolution --quiet
+node --test deploy/lightsail/prepare-caddy-candidate.test.mjs
+```
 
 ## Host maintenance schedule template (inactive)
 

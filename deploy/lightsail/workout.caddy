@@ -1,5 +1,6 @@
-# Add this site block to the existing pfm-agent Caddyfile; retain its apex site block.
-# The `infra_default` network resolves this service name only to the workout app.
+# Inactive cutover candidate. Replace only the Workout 503 site block after the
+# deployment gates in README.md; retain the existing apex site block verbatim.
+# Caddy must share infra_default with the Workout app for this alias to resolve.
 workout.red-10-proto.xyz {
 	encode zstd gzip
 
