@@ -34,7 +34,14 @@ export type ReplayPreflight = {
 
 type SupportedRecord = Extract<
   SuppressionRecord,
-  { kind: 'tenant_erased' | 'course_deleted' | 'activity_deleted' | 'resource_deleted' }
+  {
+    kind:
+      | 'tenant_erased'
+      | 'course_deleted'
+      | 'activity_deleted'
+      | 'resource_deleted'
+      | 'gallery_media_deleted';
+  }
 >;
 type VerifiedChain = {
   summary: ReplayPreflight;
@@ -114,7 +121,8 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'tenant_erased' &&
           record.kind !== 'course_deleted' &&
           record.kind !== 'activity_deleted' &&
-          record.kind !== 'resource_deleted'
+          record.kind !== 'resource_deleted' &&
+          record.kind !== 'gallery_media_deleted'
         )
           return fail();
         if (
@@ -132,6 +140,8 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         )
           return fail();
         if (record.kind === 'resource_deleted' && record.resourceAccessRevision > 2147483646)
+          return fail();
+        if (record.kind === 'gallery_media_deleted' && record.galleryAccessRevision > 2147483646)
           return fail();
         authenticated.push(record);
       }
@@ -213,13 +223,21 @@ export async function replayVerifiedSuppressionChain(
               record.sourceContentHash,
             ],
           );
-        } else {
+        } else if (record.kind === 'resource_deleted') {
           await client.query('SELECT public.replay_resource_deletion_exact($1,$2,$3,$4,$5)', [
             record.athleteId,
             record.targetId,
             record.eventId,
             record.occurredAt,
             record.resourceAccessRevision,
+          ]);
+        } else {
+          await client.query('SELECT public.replay_gallery_media_deletion_exact($1,$2,$3,$4,$5)', [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.galleryAccessRevision,
           ]);
         }
       }

@@ -149,7 +149,7 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts activity and resource deletion and rejects the remaining unsupported kinds', () => {
+  it('accepts activity, resource and gallery deletion and rejects the remaining unsupported kinds', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const resource = chain({
@@ -164,9 +164,25 @@ describe('restore suppression local preflight', () => {
       },
     });
     expect(inspect(resource.segments, resource.anchor).eventCount).toBe(2);
-    const base = { schemaVersion: 1 as const, eventId: secondId, athleteId: 'owner', occurredAt };
+    const gallery = chain({
+      secondRecord: {
+        schemaVersion: 1,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'gallery_media_deleted',
+        targetId: courseId,
+        galleryAccessRevision: 2,
+      },
+    });
+    expect(inspect(gallery.segments, gallery.anchor).eventCount).toBe(2);
+    const base = {
+      schemaVersion: 1 as const,
+      eventId: secondId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+    };
     const unsupported: SuppressionRecord[] = [
-      { ...base, kind: 'gallery_media_deleted', targetId: courseId, galleryAccessRevision: 1 },
       {
         ...base,
         kind: 'healthkit_consent_transition',
@@ -234,6 +250,15 @@ describe('restore suppression local preflight', () => {
         sourceId: courseId,
         sourceContentHash: 'a'.repeat(64),
       },
+      {
+        schemaVersion: 1 as const,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'gallery_media_deleted' as const,
+        targetId: '33333333-3333-0333-8333-333333333333',
+        galleryAccessRevision: 2,
+      },
     ]) {
       const sample = chain({ secondRecord: altered });
       expect(() => inspect(sample.segments, sample.anchor)).toThrow(
@@ -269,9 +294,9 @@ describe('restore suppression local preflight', () => {
           eventId: secondId,
           athleteId: defaultAthleteId,
           occurredAt,
-          kind: 'gallery_media_deleted',
+          kind: 'check_in_deleted',
           targetId: courseId,
-          galleryAccessRevision: 1,
+          checkInRevision: 2,
         },
       });
       await expect(

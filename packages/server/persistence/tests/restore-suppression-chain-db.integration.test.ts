@@ -111,6 +111,18 @@ async function restoredResource(athleteId: string, resourceId: string): Promise<
   });
 }
 
+async function restoredGalleryMedia(athleteId: string, mediaId: string): Promise<void> {
+  await tenant(athleteId, (client) =>
+    client.query(
+      `INSERT INTO gallery_media_item(athlete_id,id,media_kind,storage_ref,
+         original_filename,media_type,size_bytes,content_hash,access_revision,created_at,updated_at)
+       VALUES($1,$2,'image',$3,'synthetic.png','image/png',1024,repeat('a',64),
+         1,'2026-09-29 00:00:00+00','2026-09-29 00:00:00+00')`,
+      [athleteId, mediaId, `private/v1/tenants/${athleteId}/gallery/${mediaId}/synthetic.png`],
+    ),
+  );
+}
+
 function chain(records: readonly SuppressionRecord[]): {
   segments: Buffer[];
   anchor: TrustedReplayAnchor;
@@ -200,6 +212,18 @@ function resourceRecord(
     kind: 'resource_deleted',
     targetId,
     resourceAccessRevision: 2,
+  };
+}
+
+function galleryRecord(athleteId: string, targetId: string, occurredAt: string): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'gallery_media_deleted',
+    targetId,
+    galleryAccessRevision: 2,
   };
 }
 
@@ -570,5 +594,127 @@ describe('authenticated chain to owner-only exact replay', () => {
         )
       ).rows[0]?.access_revision,
     ).toBe(1);
+  });
+
+  it('replays gallery deletion then erasure exactly once without identifiers in the result', async () => {
+    const athleteId = await account();
+    const mediaId = randomUUID();
+    await restoredGalleryMedia(athleteId, mediaId);
+    const sample = chain([
+      galleryRecord(athleteId, mediaId, '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        events: string;
+        gallery_receipts: string;
+        erasure_receipts: string;
+        media: string;
+        erased: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_gallery_media_replay_receipt WHERE athlete_id=$1) gallery_receipts,
+          (SELECT count(*)::text FROM restore_exact_replay_receipt WHERE athlete_id=$1) erasure_receipts,
+          (SELECT count(*)::text FROM gallery_media_item WHERE athlete_id=$1) media,
+          (SELECT count(*)::text FROM tenant_erasure WHERE athlete_id=$1) erased`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      events: '2',
+      gallery_receipts: '1',
+      erasure_receipts: '1',
+      media: '0',
+      erased: '1',
+    });
+  });
+
+  it('rolls back an earlier course when the later gallery head is absent', async () => {
+    const athleteId = await account();
+    const courseId = randomUUID();
+    await restoredCourse(athleteId, courseId);
+    const sample = chain([
+      courseRecord(athleteId, courseId, '2026-09-30 12:34:56+00'),
+      galleryRecord(athleteId, randomUUID(), '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_GALLERY_ABSENT_UNSUPPORTED');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ course: string; events: string }>(
+        `SELECT (SELECT count(*)::text FROM course WHERE athlete_id=$1 AND course_id=$2) course,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events`,
+        [athleteId, courseId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ course: '1', events: '0' });
+  });
+
+  it('rolls back an earlier gallery for a later foreign owner or conflicting event', async () => {
+    const athleteId = await account();
+    const other = await account();
+    const firstId = randomUUID();
+    const foreignId = randomUUID();
+    await restoredGalleryMedia(athleteId, firstId);
+    await restoredGalleryMedia(other, foreignId);
+    const first = galleryRecord(athleteId, firstId, '2026-09-30 12:34:56+00');
+    for (const [later, error] of [
+      [
+        galleryRecord(athleteId, foreignId, '2026-09-30 12:35:56+00'),
+        'RESTORE_GALLERY_FOREIGN_MEDIA',
+      ],
+      [
+        galleryRecord(athleteId, firstId, '2026-09-30 12:35:56+00'),
+        'RESTORE_GALLERY_EVENT_CONFLICT',
+      ],
+    ] as const) {
+      await expect(
+        replayVerifiedSuppressionChain({ ...chain([first, later]), key, keyId, ownerPool: owner }),
+      ).rejects.toThrow(error);
+      const state = await tenant(athleteId, (client) =>
+        client.query<{ events: string; receipts: string; revision: number }>(
+          `SELECT (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+            (SELECT count(*)::text FROM restore_gallery_media_replay_receipt WHERE athlete_id=$1) receipts,
+            (SELECT access_revision FROM gallery_media_item WHERE athlete_id=$1 AND id=$2) revision`,
+          [athleteId, firstId],
+        ),
+      );
+      expect(state.rows[0]).toMatchObject({ events: '0', receipts: '0', revision: 1 });
+    }
+  });
+
+  it('denies the gallery chain through a runtime pool', async () => {
+    const athleteId = await account();
+    const mediaId = randomUUID();
+    await restoredGalleryMedia(athleteId, mediaId);
+    const sample = chain([
+      galleryRecord(athleteId, mediaId, '2026-09-30 12:34:56+00'),
+      erasureRecord(athleteId, '2026-09-30 12:35:56+00'),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: runtime }),
+    ).rejects.toThrow(/permission denied/);
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ revision: number }>(
+        'SELECT access_revision AS revision FROM gallery_media_item WHERE athlete_id=$1 AND id=$2',
+        [athleteId, mediaId],
+      ),
+    );
+    expect(state.rows[0]?.revision).toBe(1);
   });
 });
