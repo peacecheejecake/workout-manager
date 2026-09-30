@@ -13,7 +13,11 @@ import {
   type CoachingRunListQuery,
 } from '@workout/contracts/coaching-runs';
 import { trainingCandidateBundleV1Schema } from '@workout/contracts/coaching-candidates';
-import { coachingRunGroundingSchema } from '@workout/contracts/resource-retrieval';
+import {
+  coachingRunGroundingSchema,
+  resourceRetrievalQuerySchema,
+  resourceRetrievalResultSchema,
+} from '@workout/contracts/resource-retrieval';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const knownErrors = new Set([
@@ -27,6 +31,9 @@ const knownErrors = new Set([
   'STALE_BASIS',
   'UNAUTHENTICATED',
   'FORBIDDEN',
+  'COACH_USE_MANIFEST_TOO_LARGE',
+  'RETRIEVAL_SET_UNSTABLE',
+  'RETRIEVAL_INDEX_INCOMPLETE',
 ]);
 
 export class CoachingRunRequestError extends Error {
@@ -77,6 +84,23 @@ export function createCoachingRunApi(transport: AuthenticatedTransport) {
   }
 
   return {
+    async retrieval(query: string, signal?: AbortSignal) {
+      const body = resourceRetrievalQuerySchema.parse({ schemaVersion: 1, query, limit: 6 });
+      const result = await request(
+        '/bff/v1/retrieval/queries',
+        'POST',
+        resourceRetrievalResultSchema,
+        signal,
+        body,
+      );
+      if (result.query !== body.query || result.authorizedResourceCount > 100)
+        throw new Error('COACHING_RUN_RESPONSE_MISMATCH');
+      // The UI needs coverage, never the private excerpt bodies returned by this endpoint.
+      return {
+        indexing: result.indexing,
+        authorizedResourceCount: result.authorizedResourceCount,
+      };
+    },
     async list(threadId: string, input: Partial<CoachingRunListQuery>, signal?: AbortSignal) {
       const thread = uuid.parse(threadId);
       const query = coachingRunListQuerySchema.parse(input);

@@ -177,6 +177,52 @@ test('cites a reviewed resource in the browser and blocks the citation once the 
       enabled.coachUseAuthorized === true,
   );
 
+  // Six approved resources exceed one bounded indexing batch. The browser must
+  // finish a separate, durable retrieval request before it creates the run.
+  for (let index = 2; index <= 6; index += 1) {
+    const extra: unknown = await post('/bff/v1/resources', {
+      sourceKind: 'text',
+      title: `보조 훈련 지침 ${index}`,
+      category: 'guide',
+      metadata: {},
+      tags: [],
+      favorite: false,
+      text: `보조 훈련 지침 ${index}: 강도를 낮춘다.`,
+    });
+    assert.ok(
+      typeof extra === 'object' &&
+        extra !== null &&
+        'resource' in extra &&
+        typeof extra.resource === 'object' &&
+        extra.resource !== null &&
+        'id' in extra.resource &&
+        typeof extra.resource.id === 'string' &&
+        'accessRevision' in extra.resource &&
+        typeof extra.resource.accessRevision === 'number' &&
+        'version' in extra &&
+        typeof extra.version === 'object' &&
+        extra.version !== null &&
+        'id' in extra.version &&
+        typeof extra.version.id === 'string',
+    );
+    const extraReviewed: unknown = await post(`/bff/v1/resources/${extra.resource.id}/reviewed`, {
+      reviewed: true,
+      expectedAccessRevision: extra.resource.accessRevision,
+      expectedCurrentVersionId: extra.version.id,
+    });
+    assert.ok(
+      typeof extraReviewed === 'object' &&
+        extraReviewed !== null &&
+        'accessRevision' in extraReviewed &&
+        typeof extraReviewed.accessRevision === 'number',
+    );
+    await post(`/bff/v1/resources/${extra.resource.id}/coach-use`, {
+      includeForCoach: true,
+      expectedAccessRevision: extraReviewed.accessRevision,
+      expectedCurrentVersionId: extra.version.id,
+    });
+  }
+
   const current = planReadSchema.parse(await get('/bff/v1/plans/current'));
   const draft = planDraftSchema.parse({
     title: 'Synthetic citation plan',
@@ -241,6 +287,14 @@ test('cites a reviewed resource in the browser and blocks the citation once the 
   await page.goto(`/coach?thread=${thread.id}&snapshot=${snapshot.id}`);
   const runPanel = page.getByRole('region', { name: '코칭 실행' });
   await runPanel.getByLabel('검토 자료 검색어(선택)').fill('회복');
+  const retrievalRequests: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/bff/v1/retrieval/queries'
+    )
+      retrievalRequests.push(request.url());
+  });
   const queuedResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === `/bff/v1/coaching-threads/${thread.id}/runs` &&
@@ -249,10 +303,11 @@ test('cites a reviewed resource in the browser and blocks the citation once the 
   await runPanel.getByRole('button', { name: '선택한 근거로 실행' }).click();
   const queued = coachingRunV1Schema.parse(await (await queuedResponse).json());
   expect(queued.status.kind).toBe('queued');
+  expect(retrievalRequests).toHaveLength(2);
 
   const citations = runPanel.getByRole('region', { name: '검토 자료 인용' });
   await expect(citations.getByText(/검색어 “회복”/)).toBeVisible();
-  await expect(citations.getByText(/고정한 자료 1건/)).toBeVisible();
+  await expect(citations.getByText(/고정한 자료 6건/)).toBeVisible();
 
   await dispatchFixtureWorker(athleteId);
   await runPanel.getByRole('button', { name: '상태 새로고침' }).click();
