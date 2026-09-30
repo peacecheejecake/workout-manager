@@ -121,4 +121,10 @@ IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받
 
 결과의 **로컬 진단용 sequence envelope**에는 클러스터 system identifier, 시작/끝 WAL 위치, 거래별 commit/end 위치, 사건의 무작위 event ID·종류, 앞선 envelope 해시와 현재 SHA-256만 담는다. tenant·source/대상 ID, 건강 값·메모·위치, 삭제 시각을 넣지 않는다. 동일 peek의 재전달은 같은 envelope이고, 검증기는 전달된 envelope 사이의 hash·경계 위치·중복 event ID·순서를 검사한다. WAL의 숫자상 빈 위치는 다른 거래와 내부 기록이 들어갈 수 있으므로 임의 점프 자체를 누락으로 판정하지 않는다. **전달자가 완전한 WAL을 제공했는지**, 앞선 slot 시작점부터 빠진 거래가 없는지, 최종 tail이 없는지와 호스트 밖 내구성은 이 envelope로 증명할 수 없다. `peek`는 `confirmed_flush_lsn`을 전진시키지 않으며 원격 ack와 연결되지 않는다. 원본 사건의 복구 필드가 빠진 진단 산출물이므로 이것을 v1 복원 원장, `collect.mjs`의 ledger manifest 또는 접근 재개 증거로 쓰지 않는다.
 
-격리 PostgreSQL 14의 실제 `pgoutput` 시험에서 publication의 단일 표·INSERT 설정, 서로 다른 시작/commit 순서, rollback 제외, 다른 표 변경의 사건 제외, 연결을 바꾼 두 peek의 동일 접두부 재전달과 slot 위치 불변, 부분 거래·불명 kind/schema 거절을 확인했다. 생산 PostgreSQL 17.6, 운영 slot/서비스, 장기 보관·원격 내구성 ack, 복원 가능한 전체 사건 필드 반출, 백업 기준점·미수집 tail 증명과 restore replay는 **not_executed**다.
+격리 PostgreSQL 14의 실제 `pgoutput` 시험에서 publication의 단일 표·INSERT 설정, 서로 다른 시작/commit 순서, rollback 제외, 다른 표 변경의 사건 제외, 연결을 바꾼 두 peek의 동일 접두부 재전달과 slot 위치 불변, 부분 거래·불명 kind/schema 거절을 확인했다. 생산 PostgreSQL 17.6, 운영 slot/서비스, 장기 보관·원격 내구성 ack, 백업 기준점·미수집 tail 증명과 restore replay는 **not_executed**다.
+
+## 메모리 내 복원 필드 디코딩 (v1 준비 단계)
+
+기존 pgoutput 파서에서 12종 로컬 사건의 `record_version=1`을 읽고, 각 종류에 필요한 복원 필드만 `schemaVersion=1` 판별 가능 기록으로 변환한다. 모든 컬럼 이름·순서·타입 및 종류별 필수·금지 필드를 확인한다. UUID·revision 범위·동의 이전/현재 revision 관계·공유 철회 revision 순서·시간대가 있는 시각·중복 event ID를 검사하고, 불명 종류/버전, 부분 거래, 변경된 schema, 불필요한 non-null 필드를 거절한다. 거래의 commit/end LSN, 빈 거래, cluster ID, 앞선 해시와 로컬 해시를 메모리 envelope에 유지한다. 합성 바이너리의 변조·부분/중복 시험과 일회용 PostgreSQL 14의 12종 INSERT 디코딩을 통과했다.
+
+이 기록은 아직 **메모리 안의 로컬 산출물**이다. Activity의 `source_id`는 복구에 필요한 정확한 식별자이며 현재 DB 계약상 URL 또는 민감해 보이는 문자열일 수도 있다. 문자열 모양만으로 이를 안전하게 판정할 수 없어 원문을 보존하고 DB와 같은 200문자 상한·제어문자를 검증한다. 따라서 기록 전체를 운영 로그, 디스크 파일, 원격 저장소, collector manifest에 쓰거나 그대로 전송하지 않는다. 개인 정보 분류·암호화·접근 제어·수명 정책, 실제 재생기의 소유권 및 revision 검증을 정하기 전에는 안전한 외부 원장이 아니다. 로컬 해시와 WAL 위치는 누락 없는 전달, 백업 기준점, 최종 tail 또는 호스트 밖 내구성의 증명이 아니다. 운영 복원 접근 재개 조건은 여전히 **not_executed**다.

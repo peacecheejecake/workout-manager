@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate } from '../src/migrate.js';
 import {
   decodeSuppressionPgoutput,
+  decodeSuppressionPgoutputRecords,
   makeLocalSequenceEnvelope,
   peekSuppressionPgoutput,
   verifyLocalSequenceChain,
@@ -213,5 +214,90 @@ describe.skipIf(!enabled)('local pgoutput suppression publication', () => {
     expect(() => decodeSuppressionPgoutput(corruptSchema, startLsn)).toThrow(
       'PGOUTPUT_UNEXPECTED_TABLE',
     );
+  });
+
+  it('decodes committed PostgreSQL rows into kind-specific replay fields', async () => {
+    const cases: readonly [string, Record<string, string | number | boolean>][] = [
+      ['tenant_erased', {}],
+      ['course_deleted', { target_id: randomUUID() }],
+      [
+        'activity_deleted',
+        {
+          target_id: randomUUID(),
+          activity_revision: 2,
+          source_kind: 'healthkit',
+          source_id: 'opaque-source-id',
+          source_revision: 3,
+          source_content_hash: 'a'.repeat(64),
+        },
+      ],
+      ['resource_deleted', { target_id: randomUUID(), resource_access_revision: 2 }],
+      ['gallery_media_deleted', { target_id: randomUUID(), gallery_access_revision: 2 }],
+      ['healthkit_consent_transition', { consent_revision: 1, consent_granted: true }],
+      [
+        'ai_consent_transition',
+        {
+          consent_previous_revision: 1,
+          consent_previous_granted: true,
+          consent_revision: 2,
+          consent_granted: false,
+        },
+      ],
+      ['check_in_deleted', { target_id: randomUUID(), check_in_revision: 2 }],
+      [
+        'resource_share_revoked',
+        {
+          target_id: randomUUID(),
+          share_id: randomUUID(),
+          share_granted_access_revision: 1,
+          share_revoked_access_revision: 2,
+        },
+      ],
+      [
+        'course_share_revoked',
+        {
+          target_id: randomUUID(),
+          course_share_id: randomUUID(),
+          course_share_epoch: 1,
+          course_share_course_revision: 2,
+        },
+      ],
+      ['intake_entry_deleted', { target_id: randomUUID(), actual_deletion_revision: 2 }],
+      ['recovery_action_deleted', { target_id: randomUUID(), actual_deletion_revision: 2 }],
+    ];
+    const inserted = new Map<string, string>();
+    for (const [kind, fields] of cases) {
+      const columns = ['athlete_id', 'kind', 'occurred_at', ...Object.keys(fields)];
+      const parameters = [
+        randomUUID(),
+        kind,
+        new Date('2026-09-30T12:34:56.123Z'),
+        ...Object.values(fields),
+      ];
+      const row = await admin().query<{ event_id: string }>(
+        `INSERT INTO restore_suppression_event(${columns.join(',')}) VALUES(${parameters.map((_, index) => `$${index + 1}`).join(',')}) RETURNING event_id`,
+        parameters,
+      );
+      const eventId = row.rows[0]?.event_id;
+      if (!eventId) throw new Error('Missing inserted event ID');
+      inserted.set(eventId, kind);
+    }
+    const decoded = decodeSuppressionPgoutputRecords(
+      await peekSuppressionPgoutput(admin(), slot),
+      startLsn,
+    );
+    const records = decoded.flatMap((transaction) => transaction.records);
+    const matching = records.filter((record) => inserted.has(record.eventId));
+    expect(matching).toHaveLength(cases.length);
+    for (const record of matching) {
+      expect(record.kind).toBe(inserted.get(record.eventId));
+      expect(record.schemaVersion).toBe(1);
+      expect(new Date(record.occurredAt).toISOString()).toBe('2026-09-30T12:34:56.123Z');
+    }
+    expect(matching.find((record) => record.kind === 'activity_deleted')).toMatchObject({
+      sourceId: 'opaque-source-id',
+      sourceRevision: 3,
+    });
+    expect(JSON.stringify(matching)).not.toContain('idempotency');
   });
 });

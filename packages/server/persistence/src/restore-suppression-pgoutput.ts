@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 
 import type { Pool } from 'pg';
 
+import {
+  validateSuppressionRecord,
+  type SuppressionRecord,
+} from './restore-suppression-records.js';
+
 // This is a local, content-free sequence envelope. It cannot replay a deletion.
 // In particular, its hash is not a remote durability acknowledgement.
 export const LOCAL_SEQUENCE_VERSION = 1;
@@ -58,6 +63,20 @@ export type SequenceTransaction = {
   endLsn: string;
   events: SequenceEvent[];
 };
+export type ReplayRecordTransaction = {
+  commitLsn: string;
+  endLsn: string;
+  records: SuppressionRecord[];
+};
+export type LocalReplayRecordEnvelope = {
+  localRecordVersion: 1;
+  clusterId: string;
+  fromLsn: string;
+  throughLsn: string;
+  previousHash: string | null;
+  transactions: ReplayRecordTransaction[];
+  sha256: string;
+};
 export type LocalSequenceEnvelope = {
   localSequenceVersion: 1;
   clusterId: string;
@@ -102,7 +121,14 @@ class Reader {
   }
   string(count: number): string {
     this.need(count);
-    const value = this.bytes.subarray(this.offset, this.offset + count).toString('utf8');
+    let value: string;
+    try {
+      value = new TextDecoder('utf-8', { fatal: true }).decode(
+        this.bytes.subarray(this.offset, this.offset + count),
+      );
+    } catch {
+      throw new Error('PGOUTPUT_INVALID_UTF8');
+    }
     this.offset += count;
     if (Buffer.byteLength(value) !== count) throw new Error('PGOUTPUT_INVALID_UTF8');
     return value;
@@ -130,7 +156,7 @@ function lsn(value: bigint): string {
 function lsnValue(value: string): bigint {
   if (!/^[0-9A-Fa-f]+\/[0-9A-Fa-f]+$/.test(value)) throw new Error('INVALID_LSN');
   const [high, low] = value.split('/');
-  if (!high || !low || low.length > 8) throw new Error('INVALID_LSN');
+  if (!high || !low || high.length > 8 || low.length > 8) throw new Error('INVALID_LSN');
   return (BigInt(`0x${high}`) << 32n) | BigInt(`0x${low}`);
 }
 
@@ -170,18 +196,20 @@ function validateRelation(reader: Reader): number {
 }
 
 /** Decode a complete, bounded pgoutput peek without advancing its logical slot. */
-export function decodeSuppressionPgoutput(
+function decodePgoutput<T>(
   messages: readonly Buffer[],
   fromLsn: string,
-): SequenceTransaction[] {
+  project: (values: Map<string, string | null>) => T,
+  id: (value: T) => string,
+): { commitLsn: string; endLsn: string; events: T[] }[] {
   if (messages.length > MAX_PGOUTPUT_MESSAGES) throw new Error('PGOUTPUT_MESSAGES_LIMIT');
   if (messages.reduce((sum, message) => sum + message.length, 0) > MAX_PGOUTPUT_BYTES) {
     throw new Error('PGOUTPUT_BYTES_LIMIT');
   }
-  const transactions: SequenceTransaction[] = [];
+  const transactions: { commitLsn: string; endLsn: string; events: T[] }[] = [];
   const eventIds = new Set<string>();
   let relationId: number | null = null;
-  let pending: { finalLsn: bigint; events: SequenceEvent[] } | null = null;
+  let pending: { finalLsn: bigint; events: T[] } | null = null;
   let previous = lsnValue(fromLsn);
   for (const message of messages) {
     const reader = new Reader(message);
@@ -210,19 +238,11 @@ export function decodeSuppressionPgoutput(
       }
       const values = tuple(reader);
       reader.done();
-      const eventId = values.get('event_id');
-      const kind = values.get('kind');
-      if (
-        values.get('record_version') !== '1' ||
-        !eventId ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId) ||
-        !kind ||
-        !kinds.has(kind)
-      )
-        throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+      const projected = project(values);
+      const eventId = id(projected);
       if (eventIds.has(eventId)) throw new Error('PGOUTPUT_DUPLICATE_EVENT');
       eventIds.add(eventId);
-      pending.events.push({ eventId, kind });
+      pending.events.push(projected);
     } else if (type === 67) {
       // Commit
       if (!pending) throw new Error('PGOUTPUT_COMMIT_WITHOUT_BEGIN');
@@ -243,6 +263,34 @@ export function decodeSuppressionPgoutput(
   }
   if (pending) throw new Error('PGOUTPUT_PARTIAL_TRANSACTION');
   return transactions;
+}
+
+export function decodeSuppressionPgoutput(
+  messages: readonly Buffer[],
+  fromLsn: string,
+): SequenceTransaction[] {
+  return decodePgoutput(
+    messages,
+    fromLsn,
+    (values) => {
+      const record = validateSuppressionRecord(values);
+      return { eventId: record.eventId, kind: record.kind };
+    },
+    (event) => event.eventId,
+  );
+}
+
+/** Complete committed records in memory. Caller must not log or persist this local diagnostic output. */
+export function decodeSuppressionPgoutputRecords(
+  messages: readonly Buffer[],
+  fromLsn: string,
+): ReplayRecordTransaction[] {
+  return decodePgoutput(
+    messages,
+    fromLsn,
+    validateSuppressionRecord,
+    (record) => record.eventId,
+  ).map(({ commitLsn, endLsn, events }) => ({ commitLsn, endLsn, records: events }));
 }
 
 function digest(value: Omit<LocalSequenceEnvelope, 'sha256'>): string {
@@ -274,6 +322,73 @@ export function makeLocalSequenceEnvelope(input: {
     transactions,
   } as const;
   return { ...body, sha256: digest(body) };
+}
+
+/** Build an in-memory record envelope. No caller may treat its hash as an external ack. */
+export function makeLocalReplayRecordEnvelope(input: {
+  clusterId: string;
+  fromLsn: string;
+  previousHash: string | null;
+  messages: readonly Buffer[];
+}): LocalReplayRecordEnvelope {
+  if (!/^[1-9]\d{0,19}$/.test(input.clusterId)) throw new Error('INVALID_CLUSTER_ID');
+  if (input.previousHash !== null && !/^[a-f0-9]{64}$/.test(input.previousHash))
+    throw new Error('INVALID_PREVIOUS_HASH');
+  const fromLsn = lsn(lsnValue(input.fromLsn));
+  const transactions = decodeSuppressionPgoutputRecords(input.messages, fromLsn);
+  if (!transactions.some((transaction) => transaction.records.length > 0))
+    throw new Error('EMPTY_RECORD_ENVELOPE');
+  const last = transactions.at(-1);
+  if (!last) throw new Error('EMPTY_RECORD_ENVELOPE');
+  const body = {
+    localRecordVersion: 1 as const,
+    clusterId: input.clusterId,
+    fromLsn,
+    throughLsn: last.endLsn,
+    previousHash: input.previousHash,
+    transactions,
+  };
+  return { ...body, sha256: createHash('sha256').update(JSON.stringify(body)).digest('hex') };
+}
+
+/** Verifies only the supplied in-memory chain; it cannot prove missing WAL or tail coverage. */
+export function verifyLocalReplayRecordChain(
+  envelopes: readonly LocalReplayRecordEnvelope[],
+): void {
+  let previous: LocalReplayRecordEnvelope | null = null;
+  const seen = new Set<string>();
+  for (const envelope of envelopes) {
+    const { sha256, ...body } = envelope;
+    if (
+      body.localRecordVersion !== 1 ||
+      createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sha256
+    )
+      throw new Error('LOCAL_RECORD_HASH_MISMATCH');
+    if (!previous && body.previousHash !== null) throw new Error('LOCAL_RECORD_GAP');
+    if (
+      previous &&
+      (body.clusterId !== previous.clusterId ||
+        body.fromLsn !== previous.throughLsn ||
+        body.previousHash !== previous.sha256)
+    )
+      throw new Error('LOCAL_RECORD_GAP');
+    let cursor = lsnValue(body.fromLsn);
+    let count = 0;
+    for (const transaction of body.transactions) {
+      const commit = lsnValue(transaction.commitLsn);
+      const end = lsnValue(transaction.endLsn);
+      if (commit < cursor || end <= commit) throw new Error('LOCAL_RECORD_ORDER');
+      for (const record of transaction.records) {
+        if (seen.has(record.eventId)) throw new Error('LOCAL_RECORD_EVENT_CONFLICT');
+        seen.add(record.eventId);
+        count += 1;
+      }
+      cursor = end;
+    }
+    if (count === 0) throw new Error('EMPTY_RECORD_ENVELOPE');
+    if (body.throughLsn !== lsn(cursor)) throw new Error('LOCAL_RECORD_END_MISMATCH');
+    previous = envelope;
+  }
 }
 
 /** Checks local envelope ordering and continuity; not WAL or remote-tail completeness. */
