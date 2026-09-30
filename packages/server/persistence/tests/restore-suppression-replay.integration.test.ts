@@ -195,7 +195,7 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts the nine supported standalone kinds and rejects the remaining kinds', () => {
+  it('accepts nine supported v1 standalone kinds and rejects incomplete older facts', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const resource = chain({
@@ -300,6 +300,42 @@ describe('restore suppression local preflight', () => {
       expect(() => inspect(sample.segments, sample.anchor)).toThrow(
         'RESTORE_REPLAY_PREFLIGHT_FAILED',
       );
+    }
+  });
+
+  it('accepts complete v2 course-share and actual deletion records', () => {
+    const courseShare: SuppressionRecord = {
+      schemaVersion: 2,
+      eventId: secondId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'course_share_revoked',
+      targetId: courseId,
+      courseShareId: '55555555-5555-4555-8555-555555555555',
+      courseShareEpoch: 3,
+      courseShareCourseRevision: 2,
+      courseShareRevokeReason: 'owner_all',
+      courseShareAuditId: '66666666-6666-4666-8666-666666666666',
+      courseShareAuditOccurredAt: '2026-09-30 12:34:57+00',
+    };
+    const actual: SuppressionRecord = {
+      schemaVersion: 2,
+      eventId: secondId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'intake_entry_deleted',
+      targetId: courseId,
+      actualDeletionRevision: 2,
+      actualPreviousRevisionId: '55555555-5555-4555-8555-555555555555',
+      actualDeletedRevisionId: '66666666-6666-4666-8666-666666666666',
+    };
+    for (const item of [
+      courseShare,
+      actual,
+      { ...actual, kind: 'recovery_action_deleted' as const },
+    ]) {
+      const sample = chain({ firstRecord: record('course_deleted', firstId), secondRecord: item });
+      expect(inspect(sample.segments, sample.anchor).eventCount).toBe(2);
     }
   });
 

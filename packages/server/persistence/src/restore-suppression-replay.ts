@@ -46,7 +46,17 @@ type SupportedRecord =
           | 'resource_share_revoked';
       }
     >
-  | Extract<SuppressionRecord, { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }>;
+  | Extract<
+      SuppressionRecord,
+      {
+        kind:
+          | 'healthkit_consent_transition'
+          | 'ai_consent_transition'
+          | 'course_share_revoked'
+          | 'intake_entry_deleted'
+          | 'recovery_action_deleted';
+      }
+    >;
 type ShareRecord = Extract<SupportedRecord, { kind: 'resource_share_revoked' }>;
 type ReplayTransaction = {
   records: readonly SupportedRecord[];
@@ -193,7 +203,10 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'check_in_deleted' &&
           record.kind !== 'resource_share_revoked' &&
           record.kind !== 'healthkit_consent_transition' &&
-          record.kind !== 'ai_consent_transition'
+          record.kind !== 'ai_consent_transition' &&
+          record.kind !== 'course_share_revoked' &&
+          record.kind !== 'intake_entry_deleted' &&
+          record.kind !== 'recovery_action_deleted'
         )
           return fail();
         if (
@@ -232,6 +245,32 @@ function verifyChain(input: ReplayInput): VerifiedChain {
             record.shareRevokedAccessRevision <= record.shareGrantedAccessRevision)
         )
           return fail();
+        if (record.kind === 'course_share_revoked') {
+          if (
+            record.schemaVersion !== 2 ||
+            !canonicalUuid.test(record.courseShareId) ||
+            !canonicalUuid.test(record.courseShareAuditId ?? '') ||
+            record.courseShareRevokeReason === undefined ||
+            record.courseShareAuditOccurredAt === undefined ||
+            Date.parse(record.courseShareAuditOccurredAt) < Date.parse(record.occurredAt) ||
+            record.courseShareEpoch < 1 ||
+            record.courseShareEpoch > 2147483646 ||
+            record.courseShareCourseRevision < 1 ||
+            record.courseShareCourseRevision > 2147483646
+          )
+            return fail();
+        }
+        if (record.kind === 'intake_entry_deleted' || record.kind === 'recovery_action_deleted') {
+          if (
+            record.schemaVersion !== 2 ||
+            !canonicalUuid.test(record.actualPreviousRevisionId ?? '') ||
+            !canonicalUuid.test(record.actualDeletedRevisionId ?? '') ||
+            record.actualPreviousRevisionId === record.actualDeletedRevisionId ||
+            record.actualDeletionRevision < 2 ||
+            record.actualDeletionRevision > 2147483646
+          )
+            return fail();
+        }
         if (
           (record.kind === 'healthkit_consent_transition' ||
             record.kind === 'ai_consent_transition') &&
@@ -412,6 +451,48 @@ export async function replayVerifiedSuppressionChain(
               ],
             );
           }
+        } else if (record.kind === 'course_share_revoked') {
+          await client.query(
+            'SELECT public.replay_course_share_revoke_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.courseShareId,
+              record.eventId,
+              record.occurredAt,
+              record.courseShareEpoch,
+              record.courseShareCourseRevision,
+              record.courseShareRevokeReason,
+              record.courseShareAuditId,
+              record.courseShareAuditOccurredAt,
+            ],
+          );
+        } else if (record.kind === 'intake_entry_deleted') {
+          await client.query(
+            'SELECT public.replay_intake_entry_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.actualDeletionRevision,
+              record.actualPreviousRevisionId,
+              record.actualDeletedRevisionId,
+            ],
+          );
+        } else if (record.kind === 'recovery_action_deleted') {
+          await client.query(
+            'SELECT public.replay_recovery_action_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.actualDeletionRevision,
+              record.actualPreviousRevisionId,
+              record.actualDeletedRevisionId,
+            ],
+          );
         } else if (record.kind === 'healthkit_consent_transition') {
           await client.query(
             'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
@@ -425,7 +506,7 @@ export async function replayVerifiedSuppressionChain(
               record.consentGranted,
             ],
           );
-        } else {
+        } else if (record.kind === 'ai_consent_transition') {
           await client.query(
             'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
             [
@@ -438,6 +519,8 @@ export async function replayVerifiedSuppressionChain(
               record.consentGranted,
             ],
           );
+        } else {
+          throw new Error('RESTORE_REPLAY_UNSUPPORTED_KIND');
         }
       }
     }
