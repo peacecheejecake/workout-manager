@@ -14,10 +14,12 @@ if (
 )
   throw new Error('API_ORIGIN must be an HTTP(S) origin');
 /**
- * Development/preview only: where the self-hosted background map is served from.
+ * Development only: where the self-hosted background map is served from.
  *
  * This shell has no server of its own, so during development the background assets are
  * proxied to whichever origin already serves them (the Next shell, or a static host).
+ * Preview never serves these paths: a raw static origin or copied dist file can bypass
+ * the production map disclosure guard.
  * Production hosting serves `/map/basemap/**` itself. Unset means no background map, which
  * the route screen shows as its own state rather than as a failure.
  */
@@ -33,7 +35,7 @@ if (
     basemapTarget.hash)
 )
   throw new Error('BASEMAP_ORIGIN must be an HTTP(S) origin');
-const proxy =
+const devProxy =
   target || basemapTarget
     ? {
         ...(target ? { '/bff': { target: target.origin } } : {}),
@@ -43,9 +45,36 @@ const proxy =
 
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
-  server: { host: '127.0.0.1', port: 4200, strictPort: true, ...(proxy ? { proxy } : {}) },
+  server: {
+    host: '127.0.0.1',
+    port: 4200,
+    strictPort: true,
+    ...(devProxy ? { proxy: devProxy } : {}),
+  },
+  plugins: [
+    {
+      name: 'deny-preview-basemap',
+      configurePreviewServer(server) {
+        // This runs before Vite's static and SPA fallback middlewares.
+        server.middlewares.use((request, response, next) => {
+          let pathname: string;
+          try {
+            pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+          } catch {
+            response.writeHead(400).end();
+            return;
+          }
+          if (pathname === '/map/basemap' || pathname.startsWith('/map/basemap/')) {
+            response.writeHead(404, { 'Cache-Control': 'no-store' }).end();
+            return;
+          }
+          next();
+        });
+      },
+    },
+  ],
   preview: {
-    ...(proxy ? { proxy } : {}),
+    ...(target ? { proxy: { '/bff': { target: target.origin } } } : {}),
     headers: {
       'Content-Security-Policy':
         "worker-src 'self'; connect-src 'self'; img-src 'self' data: blob:",
