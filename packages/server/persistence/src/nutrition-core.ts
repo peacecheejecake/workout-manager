@@ -35,6 +35,7 @@ import {
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { requireCurrentRestoreGeneration } from './restore-generation.js';
 
 const boundedId = z.string().min(1).max(128);
 const foodQuerySchema = z.strictObject({
@@ -500,6 +501,7 @@ export function createNutritionRepository(
       const request = { operation: 'nutrition_intake_create', ...command };
       return database.tenant(athleteId, async (tx) => {
         await commandLock(tx);
+        await requireCurrentRestoreGeneration(tx, command.restoreGeneration);
         const prior = await replay(tx, key, request, activeIntakeEntrySchema);
         if (prior) return prior;
         if (await currentIntake(tx, command.intakeId))

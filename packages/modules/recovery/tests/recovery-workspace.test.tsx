@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { focusManager } from '@tanstack/react-query';
+import { z } from 'zod';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import {
   recoveryStrategyDraftSchema,
@@ -353,10 +354,13 @@ function actionFixtures() {
 
 it('freezes an uncertain action creation and retries the identical body and key', async () => {
   const { method, action, workspace } = actionFixtures();
+  const restoreGeneration = 'ad01a6b2-e6c6-4384-a818-729e15aa5eb5';
   const writes: { body: unknown; key: string | null | undefined }[] = [];
   let saved = false;
   const transport: AuthenticatedTransport = {
     async request(input) {
+      if (input.path === '/bff/v1/restore-generation')
+        return { status: 200, body: { generationId: restoreGeneration }, traceId: null };
       if (input.method === 'GET')
         return { status: 200, body: workspace(saved ? [action] : []), traceId: null };
       if (input.path === '/bff/v1/recovery/action-logs') {
@@ -382,7 +386,64 @@ it('freezes an uncertain action creation and retries the identical body and key'
   await userEvent.click(within(form).getByRole('button', { name: '같은 요청 다시 시도' }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes[1]).toEqual(writes[0]);
+  expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[0]?.body).restoreGeneration).toBe(
+    restoreGeneration,
+  );
   await screen.findByText('개인 취침 준비 · performed');
+});
+
+it('does not silently retag a rejected action creation after restore', async () => {
+  const { method, action, workspace } = actionFixtures();
+  const generations = [
+    'ad01a6b2-e6c6-4384-a818-729e15aa5eb5',
+    'b9d34e73-00bf-4a9e-bb47-b861586fe86f',
+  ];
+  const writes: { body: unknown; key: string | null | undefined }[] = [];
+  let generationReads = 0;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path === '/bff/v1/restore-generation') {
+        const generationId = generations[generationReads++];
+        if (!generationId) throw new Error('Unexpected generation read');
+        return { status: 200, body: { generationId }, traceId: null };
+      }
+      if (input.path === '/bff/v1/recovery' && input.method === 'GET')
+        return { status: 200, body: workspace([]), traceId: null };
+      if (input.path === '/bff/v1/recovery/action-logs') {
+        writes.push({ body: input.body, key: input.idempotencyKey });
+        if (writes.length === 1)
+          return {
+            status: 409,
+            body: { error: { code: 'STALE_RESTORE_GENERATION' } },
+            traceId: null,
+          };
+        return { status: 200, body: action, traceId: null };
+      }
+      return { status: 404, body: { error: { code: 'UNEXPECTED_ROUTE' } }, traceId: null };
+    },
+  };
+  render(<RecoveryWorkspace athleteId="owner" sessionId="session" transport={transport} />);
+  const form = (await screen.findByRole('button', { name: '행동 저장' })).closest('form');
+  if (!form) throw new Error('ACTION_FORM_MISSING');
+  await userEvent.selectOptions(within(form).getByLabelText('방법'), method.versionId);
+  fireEvent.change(within(form).getByLabelText('실제 시각'), {
+    target: { value: '2026-09-18T10:00' },
+  });
+  await userEvent.click(within(form).getByRole('button', { name: '행동 저장' }));
+  await within(form).findByText(/이전 저장 요청이 만료됐습니다/);
+  expect(writes).toHaveLength(1);
+  expect(generationReads).toBe(1);
+
+  await userEvent.click(within(form).getByRole('button', { name: '행동 저장' }));
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(generationReads).toBe(2);
+  expect(writes[1]?.key).not.toBe(writes[0]?.key);
+  expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[0]?.body).restoreGeneration).toBe(
+    generations[0],
+  );
+  expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[1]?.body).restoreGeneration).toBe(
+    generations[1],
+  );
 });
 
 it('does not turn lost method or strategy responses into second creations', async () => {

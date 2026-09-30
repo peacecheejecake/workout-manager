@@ -111,8 +111,16 @@ describe('manual recovery boundaries', () => {
       userNotes: '',
       source: 'user_confirmed',
       idempotencyKey: 'recovery-contract-1',
+      restoreGeneration: id,
     };
     expect(createRecoveryActionRequestSchema.safeParse(action).success).toBe(false);
+    expect(
+      createRecoveryActionRequestSchema.safeParse({
+        ...action,
+        plannedOptionId: null,
+        restoreGeneration: undefined,
+      }).success,
+    ).toBe(false);
     expect(
       createRecoveryActionRequestSchema.safeParse({
         ...action,

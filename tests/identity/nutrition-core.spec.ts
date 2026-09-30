@@ -9,6 +9,7 @@ import {
 } from '../../packages/contracts/src/nutrition-core';
 import { parseCurrentAccountExport } from './account-export';
 import { manualActivityResultSchema } from '../../packages/contracts/src/activity';
+import { restoreGenerationResponseSchema } from '../../packages/contracts/src/restore-generation';
 
 type Headers = {
   origin: string;
@@ -124,8 +125,14 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
     linkedActivities.push(manualActivityResultSchema.parse(await response.json()).activityId);
   }
   const id = randomUUID();
+  const generationResponse = await page.request.get('/bff/v1/restore-generation', { headers });
+  expect(generationResponse.status()).toBe(200);
+  const { generationId: restoreGeneration } = restoreGenerationResponseSchema.parse(
+    await generationResponse.json(),
+  );
   const body = {
     intakeId: id,
+    restoreGeneration,
     confirmed: true,
     occurredAt,
     timezone,
@@ -178,7 +185,11 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
     data: {
       confirmed: true,
       expectedRevision: 1,
-      ...Object.fromEntries(Object.entries(body).filter(([field]) => field !== 'intakeId')),
+      ...Object.fromEntries(
+        Object.entries(body).filter(
+          ([field]) => field !== 'intakeId' && field !== 'restoreGeneration',
+        ),
+      ),
       nutrientTotal: {
         ...nutrients(),
         energy: { value: 0, unit: 'kcal', status: 'reported', evidenceIds: [] },

@@ -72,6 +72,7 @@ import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
 import { createDatabase, type Database } from '../packages/server/persistence/src/database.ts';
+import { createRestoreGenerationRepository } from '../packages/server/persistence/src/restore-generation.ts';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.ts';
 import { createIdentityRepository } from '../packages/server/persistence/src/identity.ts';
 import {
@@ -520,6 +521,7 @@ try {
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
     nutrition: createNutritionRepository(database),
+    restoreGeneration: createRestoreGenerationRepository(database),
     supplementary: createSupplementaryRepository(database),
     stretching: createStretchingRepository(database),
     routines: createRoutineRepository(database),

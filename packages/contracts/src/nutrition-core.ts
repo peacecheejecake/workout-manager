@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { restoreGenerationSchema } from './restore-generation.js';
 
 import {
   foodPortionSchema,
@@ -383,6 +384,7 @@ function validateManualSource(
 export const createIntakeEntryRequestSchema = z
   .strictObject({
     idempotencyKey: idempotencyKeySchema,
+    restoreGeneration: restoreGenerationSchema,
     intakeId: boundedIdSchema,
     confirmed: z.literal(true),
     ...intakeFields,

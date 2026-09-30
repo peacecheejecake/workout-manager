@@ -15,6 +15,7 @@
     "@workout/server-resource-ingestion": "workspace:*"
   },
   "exports": {
+    "./restore-generation": "./src/restore-generation.ts",
     "./gallery-media": "./src/gallery-media.ts",
     "./resources": "./src/resources.ts",
     "./resource-access": "./src/resource-access.ts",

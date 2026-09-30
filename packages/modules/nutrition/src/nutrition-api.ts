@@ -3,6 +3,7 @@ import type { AuthenticatedTransport, TransportRequest } from '@workout/contract
 import { transportReplySchema } from '@workout/contracts/core';
 import { activityListSchema } from '@workout/contracts/activity';
 import { planReadSchema, planSnapshotSchema } from '@workout/contracts/planning';
+import { restoreGenerationResponseSchema } from '@workout/contracts/restore-generation';
 import {
   activeIntakeEntrySchema,
   createIntakeEntryRequestSchema,
@@ -69,6 +70,16 @@ export function createNutritionApi(transport: AuthenticatedTransport) {
   const planPath = (id: string) => `/bff/v1/nutrition/plans/${encodeURIComponent(id)}`;
   const intakePath = (id: string) => `/bff/v1/nutrition/intakes/${encodeURIComponent(id)}`;
   return {
+    restoreGeneration(signal?: AbortSignal) {
+      return request(
+        '/bff/v1/restore-generation',
+        'GET',
+        restoreGenerationResponseSchema,
+        null,
+        null,
+        signal,
+      );
+    },
     listPlans(from: string, toInclusive: string, signal?: AbortSignal) {
       return request(
         `/bff/v1/nutrition/plans?${new URLSearchParams({ from, toInclusive, limit: '100' })}`,

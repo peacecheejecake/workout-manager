@@ -35,6 +35,9 @@ import type { SupplementaryRepository } from '@workout/server-persistence/supple
 import type { StretchingRepository } from '@workout/server-persistence/stretching';
 import type { RoutineRepository } from '@workout/server-persistence/routine-core';
 import type { RecoveryRepository } from '@workout/server-persistence/recovery-core';
+import type { RestoreGenerationRepository } from '@workout/server-persistence/restore-generation';
+import { restoreGenerationResponseSchema } from '@workout/contracts/restore-generation';
+import { emptyQuery, input } from './product-boundary.js';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { HealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import { registerHealthKitIngestionRoutes } from './healthkit-ingestion-routes.js';
@@ -84,6 +87,7 @@ import type { ResourceRetrievalRepository } from '@workout/server-persistence/re
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
+  restoreGeneration?: RestoreGenerationRepository;
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
   supplementary?: SupplementaryRepository;
@@ -145,6 +149,19 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.restoreGeneration) {
+    const restoreGeneration = repositories.restoreGeneration;
+    routes.get('/restore-generation', async (request, reply) => {
+      input(emptyQuery, request.query);
+      return reply
+        .header('cache-control', 'no-store')
+        .send(
+          restoreGenerationResponseSchema.parse(
+            await restoreGeneration.read(principal(request).athleteId),
+          ),
+        );
+    });
+  }
   if (repositories.coachingConstraints)
     registerCoachingConstraintRoutes(routes, repositories.coachingConstraints, principal);
   if (repositories.evidenceSnapshots)

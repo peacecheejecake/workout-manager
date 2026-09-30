@@ -31,6 +31,7 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
+let restoreGeneration: string;
 const policy = { id: 'joint-coaching-v3', version: '1' };
 const repository = () => createJointApprovalRepository(database, { policy });
 const happenedAt = '2026-09-18T08:00:00.000Z';
@@ -42,6 +43,8 @@ const countDefinition = {
 
 beforeAll(async () => {
   await migrate(adminUrl);
+  restoreGeneration = (await admin.query('SELECT public.current_restore_generation() AS id'))
+    .rows[0]?.id as string;
   await grantOperations(adminUrl, 'workout_runtime');
   await grantNutritionCore(adminUrl, 'workout_runtime');
   await grantSupplementaryCore(adminUrl, 'workout_runtime');
@@ -494,6 +497,7 @@ describe('M1b-03 V022-A30–A32 atomic joint approval', () => {
       evidenceIds: [],
     });
     await createNutritionRepository(database).createIntake(data.athleteId, {
+      restoreGeneration,
       idempotencyKey: randomUUID(),
       intakeId: randomUUID(),
       confirmed: true,

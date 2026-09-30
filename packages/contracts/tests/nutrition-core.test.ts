@@ -410,11 +410,16 @@ describe('actual intake commands and reads', () => {
   it('accepts a confirmed name-only actual without inventing nutrients or a consumed amount', () => {
     const request = {
       idempotencyKey: 'intake-create-1',
+      restoreGeneration: planId,
       intakeId: 'intake-1',
       confirmed: true,
       ...intakeContent,
     };
     expect(createIntakeEntryRequestSchema.parse(request)).toEqual(request);
+    expect(
+      createIntakeEntryRequestSchema.safeParse({ ...request, restoreGeneration: undefined })
+        .success,
+    ).toBe(false);
     expect(nutrientValueCoverage(unknownNutrients)).toBe('unknown');
     expect(nutrientValueCoverage({ ...unknownNutrients, energy: datum('kcal', 0) })).toBe(
       'partial',

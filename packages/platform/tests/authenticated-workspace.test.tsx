@@ -214,6 +214,23 @@ describe('session-bound authenticated transport', () => {
       );
     }
   });
+  it('allows the restore generation read for the current session without write credentials', async () => {
+    fetchMock.mockResolvedValue(json({ generationId: 'ad01a6b2-e6c6-4384-a818-729e15aa5eb5' }));
+    await createSessionTransport(session, vi.fn()).request({
+      path: '/bff/v1/restore-generation',
+      method: 'GET',
+      body: null,
+      idempotencyKey: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/bff/v1/restore-generation',
+      expect.objectContaining({
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'x-workout-session-id': session.sessionId },
+      }),
+    );
+  });
   it('keeps dashboard reads bound to the current session without write credentials', async () => {
     fetchMock.mockResolvedValue(json({ definitionVersion: 'dashboard-v1' }));
     const transport = createSessionTransport(session, vi.fn());

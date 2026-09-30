@@ -22,6 +22,7 @@ const versionId = '49440716-5da4-43db-b5c5-8bcda106a8bb';
 const approvalId = '5ce5b145-8d14-45c7-8642-8cd2fd778523';
 const nextVersionId = 'f940c86c-2b04-4aa9-81d5-3eddb45c4f41';
 const trainingVersionId = 'c1274bb9-91ef-452e-8492-e4439574cde1';
+const restoreGeneration = 'ad01a6b2-e6c6-4384-a818-729e15aa5eb5';
 
 function planVersion(targets: unknown[] = []) {
   return {
@@ -101,7 +102,14 @@ function intakeRecord(occurredAt = '2025-11-02T01:30:45.123-04:00') {
 
 function transportWith(reply: (input: TransportRequest) => unknown) {
   const request = vi.fn(async (input: TransportRequest) => ({
-    ...transportReplySchema.parse({ status: 200, body: reply(input), traceId: null }),
+    ...transportReplySchema.parse({
+      status: 200,
+      body:
+        input.path === '/bff/v1/restore-generation'
+          ? { generationId: restoreGeneration }
+          : reply(input),
+      traceId: null,
+    }),
   }));
   return { transport: { request } satisfies AuthenticatedTransport, request };
 }
@@ -453,6 +461,9 @@ describe('nutrition manual workspace', () => {
     expect(writes).toHaveLength(1);
     const saved = z.object({ relatedActivityIds: z.array(z.uuid()) }).parse(writes[0]?.body);
     expect(saved.relatedActivityIds).toEqual(ids);
+    expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[0]?.body).restoreGeneration).toBe(
+      restoreGeneration,
+    );
   });
 
   it('requires an explicit actual confirmation and preserves name-only unknown nutrients (V022-A12)', async () => {
@@ -520,6 +531,74 @@ describe('nutrition manual workspace', () => {
       .object({ energy: z.object({ value: z.number().nullable() }) })
       .parse(z.object({ nutrientTotal: z.unknown() }).parse(write?.body).nutrientTotal);
     expect(nutrients.energy.value).toBeNull();
+  });
+
+  it('requires renewed confirmation after a stale create generation is rejected', async () => {
+    const generations = [restoreGeneration, 'b9d34e73-00bf-4a9e-bb47-b861586fe86f'];
+    const navigate = vi.fn();
+    const writes: TransportRequest[] = [];
+    let generationReads = 0;
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.path === '/bff/v1/restore-generation') {
+          const generationId = generations[generationReads++];
+          if (!generationId) throw new Error('Unexpected generation read');
+          return { status: 200, body: { generationId }, traceId: null };
+        }
+        if (input.path === '/bff/v1/nutrition/foods?limit=100')
+          return { status: 200, body: { foods: [], nextCursor: null }, traceId: null };
+        if (input.path.startsWith('/bff/v1/activities?'))
+          return { status: 200, body: { items: [], total: 0 }, traceId: null };
+        if (input.path === '/bff/v1/nutrition/intakes' && input.method === 'POST') {
+          writes.push(input);
+          if (writes.length === 1)
+            return {
+              status: 409,
+              body: { error: { code: 'STALE_RESTORE_GENERATION' } },
+              traceId: null,
+            };
+          return {
+            status: 200,
+            body: {
+              ...intakeRecord(),
+              intakeId: z.object({ intakeId: z.string() }).parse(input.body).intakeId,
+            },
+            traceId: null,
+          };
+        }
+        throw new Error(`Unexpected request ${input.method} ${input.path}`);
+      },
+    };
+    render(
+      <NutritionWorkspace
+        athleteId="athlete-a"
+        sessionId="session-a"
+        transport={transport}
+        route={{ kind: 'log-new' }}
+        navigate={navigate}
+      />,
+    );
+    await userEvent.type(await screen.findByRole('textbox', { name: '먹은 음식·음료' }), '물');
+    const confirmed = screen.getByRole('checkbox', { name: /실제로 섭취한 시각/ });
+    await userEvent.click(confirmed);
+    await userEvent.click(screen.getByRole('button', { name: '섭취 저장' }));
+    await screen.findByText(/이전 저장 요청이 만료됐습니다/);
+    expect(writes).toHaveLength(1);
+    expect((confirmed as HTMLInputElement).checked).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+
+    await userEvent.click(confirmed);
+    await userEvent.click(screen.getByRole('button', { name: '섭취 저장' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(writes).toHaveLength(2);
+    expect(generationReads).toBe(2);
+    expect(writes[1]?.idempotencyKey).not.toBe(writes[0]?.idempotencyKey);
+    expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[0]?.body).restoreGeneration).toBe(
+      generations[0],
+    );
+    expect(z.object({ restoreGeneration: z.uuid() }).parse(writes[1]?.body).restoreGeneration).toBe(
+      generations[1],
+    );
   });
 
   it('keeps a plan draft across latest-version refresh and failed retry, with its original CAS base', async () => {

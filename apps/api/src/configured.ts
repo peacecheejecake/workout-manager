@@ -61,6 +61,7 @@ import { isAbsolute, parse, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { z } from 'zod';
 import { createDatabase } from '@workout/server-persistence/database';
+import { createRestoreGenerationRepository } from '@workout/server-persistence/restore-generation';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createIdentityService } from '@workout/server-identity/service';
@@ -276,6 +277,7 @@ export async function createConfiguredApi(
       consent: createConsentRepository(database),
       planning: createPlanningRepository(database),
       nutrition: createNutritionRepository(database),
+      restoreGeneration: createRestoreGenerationRepository(database),
       supplementary: createSupplementaryRepository(database),
       stretching: createStretchingRepository(database),
       routines: createRoutineRepository(database),

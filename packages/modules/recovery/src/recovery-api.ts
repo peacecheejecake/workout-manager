@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AuthenticatedTransport, TransportRequest } from '@workout/contracts/core';
 import { transportReplySchema } from '@workout/contracts/core';
+import { restoreGenerationResponseSchema } from '@workout/contracts/restore-generation';
 import {
   recoveryActionLogSchema,
   recoveryMethodVersionSchema,
@@ -53,6 +54,16 @@ export function createRecoveryApi(transport: AuthenticatedTransport) {
     return schema.parse(reply.body);
   }
   return {
+    restoreGeneration(signal?: AbortSignal) {
+      return request(
+        '/bff/v1/restore-generation',
+        'GET',
+        restoreGenerationResponseSchema,
+        null,
+        null,
+        signal,
+      );
+    },
     workspace(signal?: AbortSignal) {
       return request('/bff/v1/recovery', 'GET', recoveryWorkspaceReadSchema, null, null, signal);
     },

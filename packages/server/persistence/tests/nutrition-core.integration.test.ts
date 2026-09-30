@@ -15,6 +15,7 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
+let restoreGeneration: string;
 const makeRepository = () =>
   createNutritionRepository(database, {
     now: () => new Date('2026-09-19T00:00:00.000Z'),
@@ -30,6 +31,8 @@ beforeAll(async () => {
     'GRANT SELECT ON plan_snapshot,activity_canonical,tenant_erasure TO workout_runtime',
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
+  restoreGeneration = (await admin.query('SELECT public.current_restore_generation() AS id'))
+    .rows[0]?.id as string;
 });
 afterAll(async () => {
   await database?.close();
@@ -93,6 +96,7 @@ function food(foodId = 'oats'): SaveFoodDefinitionVersionRequest {
 function intake(foodVersionId: string, intakeId: string = randomUUID()): CreateIntakeEntryRequest {
   return {
     idempotencyKey: randomUUID(),
+    restoreGeneration,
     intakeId,
     confirmed: true,
     occurredAt: '2026-09-18T08:00:00.000Z',
@@ -218,8 +222,10 @@ describe('M1b-01 nutrition persistence', () => {
     expect(first.nutrientTotal.protein).toMatchObject({ value: null, status: 'unknown' });
     expect(first.nutrientValueCoverage).toBe('partial');
     const input = intake(firstFood.versionId, first.intakeId);
+    const { restoreGeneration: _generation, ...correctionInput } = input;
+    void _generation;
     const corrected = await repository.correctIntake(athlete, {
-      ...input,
+      ...correctionInput,
       expectedRevision: 1,
       notes: 'Corrected portion',
     });
@@ -402,15 +408,17 @@ describe('M1b-01 nutrition persistence', () => {
     const savedFood = await repository.saveFood(athlete, food());
     const created = await repository.createIntake(athlete, intake(savedFood.versionId));
     const correction = intake(savedFood.versionId, created.intakeId);
+    const { restoreGeneration: _generation, ...correctionInput } = correction;
+    void _generation;
     const attempts = await Promise.allSettled([
       repository.correctIntake(athlete, {
-        ...correction,
+        ...correctionInput,
         expectedRevision: 1,
         idempotencyKey: randomUUID(),
         notes: 'First',
       }),
       repository.correctIntake(athlete, {
-        ...correction,
+        ...correctionInput,
         expectedRevision: 1,
         idempotencyKey: randomUUID(),
         notes: 'Second',
@@ -439,5 +447,66 @@ describe('M1b-01 nutrition persistence', () => {
     ]);
     expect(receipts.rowCount).toBe(0);
     expect(savedPlan.planId).toBeTruthy();
+  });
+
+  it('rejects a prior-generation retry before receipt replay and preserves rolled-back rotations', async () => {
+    const repository = makeRepository();
+    const athlete = randomUUID();
+    const other = randomUUID();
+    const savedFood = await repository.saveFood(athlete, food());
+    const request = intake(savedFood.versionId);
+    const saved = await repository.createIntake(athlete, request);
+    const client = await admin.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT public.rotate_restore_generation()');
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+    expect(await repository.createIntake(athlete, request)).toEqual(saved);
+    try {
+      const rotated = (await admin.query('SELECT public.rotate_restore_generation() AS id')).rows[0]
+        ?.id as string;
+      await expect(repository.createIntake(athlete, request)).rejects.toMatchObject({
+        code: 'STALE_RESTORE_GENERATION',
+      });
+      await expect(
+        repository.createIntake(other, {
+          ...request,
+          intakeId: randomUUID(),
+          idempotencyKey: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'STALE_RESTORE_GENERATION' });
+      expect(await repository.readIntake(athlete, request.intakeId)).toEqual(saved);
+      const next = await repository.createIntake(athlete, {
+        ...request,
+        restoreGeneration: rotated,
+        intakeId: randomUUID(),
+        idempotencyKey: randomUUID(),
+      });
+      expect(next.status).toBe('active');
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::integer AS count FROM intake_entry WHERE athlete_id=$1',
+            [athlete],
+          )
+        ).rows[0]?.count,
+      ).toBe(2);
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::integer AS count FROM intake_entry WHERE athlete_id=$1',
+            [other],
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+    } finally {
+      await admin.query(
+        'UPDATE public.restore_generation SET generation_id=$1 WHERE singleton=true',
+        [restoreGeneration],
+      );
+    }
   });
 });

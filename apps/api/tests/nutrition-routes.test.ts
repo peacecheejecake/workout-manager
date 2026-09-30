@@ -2,9 +2,11 @@ import { Writable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NutritionReferenceError } from '@workout/server-persistence/nutrition-core';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
+import { StaleRestoreGenerationError } from '@workout/server-persistence/restore-generation';
 import { createApi } from '../src/app.js';
 
 const base = '/bff/v1/nutrition';
+const generationId = '30000000-0000-4000-8000-000000000001';
 const headers = {
   cookie: 'session=fixture',
   origin: 'https://workout.example',
@@ -49,6 +51,7 @@ function setup(authenticated = true) {
     },
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     nutrition,
+    restoreGeneration: { read: vi.fn().mockResolvedValue({ generationId }) },
     logStream: new Writable({
       write(_chunk, _encoding, callback) {
         callback();
@@ -135,4 +138,70 @@ it('maps stale heads, missing entries and malformed cursors to stable client err
   nutrition.listFoods.mockRejectedValueOnce(new Error('INVALID_CURSOR'));
   expect((await app.inject({ url: `${base}/foods?cursor=invalid`, headers })).statusCode).toBe(400);
   expect((await app.inject({ url: `${base}/intakes/missing`, headers })).statusCode).toBe(404);
+});
+
+it('reads the generation only for an authenticated tenant and rejects stale create requests distinctly', async () => {
+  const anonymous = setup(false);
+  expect((await anonymous.app.inject({ url: '/bff/v1/restore-generation' })).statusCode).toBe(401);
+  const { app, nutrition } = setup();
+  const read = await app.inject({ url: '/bff/v1/restore-generation', headers });
+  expect(read.statusCode).toBe(200);
+  expect(read.headers['cache-control']).toBe('no-store');
+  expect(read.json()).toEqual({ generationId });
+  expect(
+    (await app.inject({ url: '/bff/v1/restore-generation?unexpected=1', headers })).statusCode,
+  ).toBe(400);
+  const body = {
+    restoreGeneration: generationId,
+    intakeId: 'intake-route-1',
+    confirmed: true,
+    occurredAt: '2026-09-18T08:00:00.000Z',
+    timezone: 'UTC',
+    foods: [
+      {
+        foodVersionId: null,
+        description: 'Snack',
+        quantity: null,
+        unit: 'unspecified',
+        sourceBasis: 'unknown',
+      },
+    ],
+    nutrientTotal: Object.fromEntries(
+      [
+        ['energy', 'kcal'],
+        ['carbohydrate', 'g'],
+        ['protein', 'g'],
+        ['fat', 'g'],
+        ['fluid', 'mL'],
+        ['sodium', 'mg'],
+      ].map(([key, unit]) => [key, { value: null, unit, status: 'unknown', evidenceIds: [] }]),
+    ),
+    plannedItemId: null,
+    relatedSessionIds: [],
+    relatedActivityIds: [],
+    source: 'user',
+    sourceRecordId: null,
+    notes: null,
+  };
+  const missing = await app.inject({
+    method: 'POST',
+    url: `${base}/intakes`,
+    headers,
+    payload: { ...body, restoreGeneration: undefined },
+  });
+  expect(missing.statusCode).toBe(400);
+  expect(nutrition.createIntake).not.toHaveBeenCalled();
+  nutrition.createIntake.mockRejectedValueOnce(new StaleRestoreGenerationError());
+  const stale = await app.inject({
+    method: 'POST',
+    url: `${base}/intakes`,
+    headers,
+    payload: body,
+  });
+  expect(stale.statusCode).toBe(409);
+  expect(stale.json().error.code).toBe('STALE_RESTORE_GENERATION');
+  expect(nutrition.createIntake).toHaveBeenCalledWith('owner', {
+    ...body,
+    idempotencyKey: headers['idempotency-key'],
+  });
 });

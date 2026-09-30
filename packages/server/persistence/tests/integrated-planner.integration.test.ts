@@ -22,6 +22,7 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
+let restoreGeneration: string;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
@@ -36,6 +37,8 @@ beforeAll(async () => {
   await admin.query('GRANT SELECT,INSERT ON command_receipt TO workout_runtime');
   await admin.query('GRANT SELECT,INSERT,UPDATE ON outbox TO workout_runtime');
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
+  restoreGeneration = (await admin.query('SELECT public.current_restore_generation() AS id'))
+    .rows[0]?.id as string;
 });
 afterAll(async () => {
   await database?.close();
@@ -203,7 +206,7 @@ describe('integrated Planner read under tenant RLS', () => {
       sourceRecordId: null,
       notes: null,
     };
-    await nutrition.createIntake(athlete, request);
+    await nutrition.createIntake(athlete, { ...request, restoreGeneration });
     const read = createIntegratedPlannerRepository(database);
     const query = { from: '2026-09-18', toExclusive: '2026-09-20', timezone: 'UTC' };
     const first = await read.read(athlete, query);

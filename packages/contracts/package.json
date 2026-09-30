@@ -5,6 +5,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./restore-generation": {
+      "types": "./src/restore-generation.ts",
+      "default": "./dist/restore-generation.js"
+    },
     "./healthkit-binding": {
       "types": "./src/healthkit-binding.ts",
       "default": "./dist/healthkit-binding.js"

@@ -614,6 +614,13 @@ function ActionForm({
     | { kind: 'correct'; payload: CorrectRecoveryActionRequest }
     | null
   >(null);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [selectedMethod, setSelectedMethod] = useState(existing?.methodVersionId ?? '');
   const [selectedPlanOption, setSelectedPlanOption] = useState(
     existing?.strategyVersionId && existing.plannedOptionId
@@ -634,6 +641,7 @@ function ActionForm({
     );
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     if (existing && currentRevisionId !== existing.revisionId && pendingCommand === null) {
       setError('기록이 변경되었습니다. 입력은 유지되며 새 버전으로 다시 시작해야 합니다.');
       return;
@@ -667,17 +675,37 @@ function ActionForm({
         userNotes: String(values.get('userNotes') ?? ''),
         source: 'user_confirmed' as const,
       };
-      command = existing
-        ? {
-            kind: 'correct',
-            payload: {
-              ...body,
-              actionId: existing.actionId,
-              expectedRevision: existing.revision,
-              idempotencyKey: crypto.randomUUID(),
-            },
-          }
-        : { kind: 'create', payload: { ...body, idempotencyKey: crypto.randomUUID() } };
+      if (existing) {
+        command = {
+          kind: 'correct',
+          payload: {
+            ...body,
+            actionId: existing.actionId,
+            expectedRevision: existing.revision,
+            idempotencyKey: crypto.randomUUID(),
+          },
+        };
+      } else {
+        setSaving(true);
+        setError(null);
+        let generationId: string;
+        try {
+          generationId = (await api.restoreGeneration()).generationId;
+        } catch {
+          setSaving(false);
+          setError('복원 상태를 확인하지 못했습니다. 입력은 유지됐습니다. 다시 시도해 주세요.');
+          return;
+        }
+        if (!active.current) return;
+        command = {
+          kind: 'create',
+          payload: {
+            ...body,
+            idempotencyKey: crypto.randomUUID(),
+            restoreGeneration: generationId,
+          },
+        };
+      }
       setPendingCommand(command);
       onPendingChange?.(true);
     }
@@ -698,6 +726,14 @@ function ActionForm({
         setSelectedPlanOption('');
       }
     } catch (error) {
+      if (error instanceof RecoveryRequestError && error.code === 'STALE_RESTORE_GENERATION') {
+        setPendingCommand(null);
+        onPendingChange?.(false);
+        setError(
+          '서버가 복원되어 이전 저장 요청이 만료됐습니다. 입력을 다시 확인하고 저장을 누르면 새 요청을 보냅니다.',
+        );
+        return;
+      }
       if (isDefinitiveRejection(error)) {
         setPendingCommand(null);
         onPendingChange?.(false);

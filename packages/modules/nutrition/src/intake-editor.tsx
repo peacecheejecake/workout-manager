@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type {
   ActiveIntakeEntry,
@@ -256,6 +256,14 @@ function IntakeFormView({
   const key = useRef<string | null>(null);
   const deleteKey = useRef<string | null>(null);
   const newId = useRef<string | null>(null);
+  const restoreGeneration = useRef<string | null>(null);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   function changeFood(index: number, next: FoodInput) {
     setForm((current) => ({
       ...current,
@@ -331,6 +339,7 @@ function IntakeFormView({
     newId.current ??= crypto.randomUUID();
     setBusy(true);
     setNotice('');
+    let createSent = false;
     try {
       const content = {
         occurredAt: record && !occurredEdited ? record.occurredAt : occurredAt.toISOString(),
@@ -353,10 +362,16 @@ function IntakeFormView({
           confirmed: true,
         });
       } else {
+        const generationId =
+          restoreGeneration.current ?? (await api.restoreGeneration()).generationId;
+        if (!active.current) return;
+        restoreGeneration.current = generationId;
+        createSent = true;
         await api.createIntake({
           ...content,
           intakeId: newId.current,
           idempotencyKey,
+          restoreGeneration: generationId,
           confirmed: true,
         });
       }
@@ -365,6 +380,22 @@ function IntakeFormView({
         `/nutrition/logs?date=${encodeURIComponent(dayInTimezone(content.occurredAt, clock.timezone))}`,
       );
     } catch (error) {
+      if (!record && !createSent) {
+        key.current = null;
+        newId.current = null;
+        setNotice('복원 상태를 확인하지 못했습니다. 입력은 유지됐습니다. 다시 시도해 주세요.');
+        return;
+      }
+      if (error instanceof NutritionRequestError && error.code === 'STALE_RESTORE_GENERATION') {
+        key.current = null;
+        newId.current = null;
+        restoreGeneration.current = null;
+        setConfirmed(false);
+        setNotice(
+          '서버가 복원되어 이전 저장 요청이 만료됐습니다. 입력을 다시 확인하고 저장에 동의하면 새 요청을 보낼 수 있습니다.',
+        );
+        return;
+      }
       if (error instanceof NutritionRequestError && [400, 404, 409].includes(error.status)) {
         key.current = null;
         setNotice(

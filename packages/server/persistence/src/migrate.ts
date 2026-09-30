@@ -407,6 +407,9 @@ export async function grantNutritionCore(
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
     await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.current_restore_generation() TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT SELECT,INSERT ON nutrition_plan_version,nutrition_plan_history,food_definition_version,intake_entry_revision TO "${runtimeRole}"`,
     );
     await pool.query(
@@ -480,6 +483,9 @@ export async function grantRecoveryCore(
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.current_restore_generation() TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO "${runtimeRole}"`,
     );

@@ -15,6 +15,7 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
 let database: Database;
+let restoreGeneration: string;
 
 beforeAll(async () => {
   await migrate(adminUrl);
@@ -42,7 +43,12 @@ beforeAll(async () => {
   );
   await admin.query('GRANT SELECT,INSERT ON command_receipt TO workout_runtime');
   await admin.query('GRANT SELECT,INSERT,UPDATE ON outbox TO workout_runtime');
+  await admin.query(
+    'GRANT EXECUTE ON FUNCTION public.current_restore_generation() TO workout_runtime',
+  );
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
+  restoreGeneration = (await admin.query('SELECT public.current_restore_generation() AS id'))
+    .rows[0]?.id as string;
 });
 afterAll(async () => {
   await database?.close();
@@ -177,6 +183,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   );
   expect(noActionBefore.rows[0]?.['count']).toBe(0);
   const action: CreateRecoveryActionRequest = {
+    restoreGeneration,
     methodVersionId: method.versionId,
     strategyVersionId: null,
     plannedOptionId: null,
@@ -203,16 +210,31 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
     }),
   ).rejects.toMatchObject({ code: 'OPTION_LINK_INVALID' });
   const saved = await repo.createAction(owner, action);
+  expect('restoreGeneration' in saved).toBe(false);
   expect(saved.durationSeconds).toBeNull();
   expect(await repo.createAction(owner, action)).toEqual(saved);
+  try {
+    await admin.query('SELECT public.rotate_restore_generation()');
+    await expect(repo.createAction(owner, action)).rejects.toMatchObject({
+      code: 'STALE_RESTORE_GENERATION',
+    });
+    expect((await repo.workspace(owner)).actions).toHaveLength(1);
+  } finally {
+    await admin.query(
+      'UPDATE public.restore_generation SET generation_id=$1 WHERE singleton=true',
+      [restoreGeneration],
+    );
+  }
   await expect(
     repo.createAction(other, {
       ...action,
       idempotencyKey: randomUUID(),
     }),
   ).rejects.toBeInstanceOf(RecoveryReferenceError);
+  const { restoreGeneration: _generation, ...correctionFields } = action;
+  void _generation;
   const correctionCommand = {
-    ...action,
+    ...correctionFields,
     actionId: saved.actionId,
     expectedRevision: 1,
     state: 'partial',
@@ -223,7 +245,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   expect(corrected.revision).toBe(2);
   await expect(
     repo.correctAction(owner, {
-      ...action,
+      ...correctionFields,
       actionId: saved.actionId,
       expectedRevision: 1,
       idempotencyKey: randomUUID(),

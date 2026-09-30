@@ -31,6 +31,7 @@ import {
 } from '@workout/contracts/recovery-core';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { requireCurrentRestoreGeneration } from './restore-generation.js';
 
 export class RecoveryReferenceError extends Error {
   constructor(
@@ -194,7 +195,10 @@ async function ownedStrategy(tx: Transaction, versionId: string): Promise<Recove
   return recoveryStrategyVersionSchema.parse(found.rows[0]['record_json']);
 }
 
-async function validateActionLinks(tx: Transaction, action: CreateRecoveryActionRequest) {
+async function validateActionLinks(
+  tx: Transaction,
+  action: Omit<CreateRecoveryActionRequest, 'restoreGeneration'>,
+) {
   await ownedMethod(tx, action.methodVersionId);
   for (const ref of [action.beforeCheckIn, action.afterCheckIn]) {
     if (ref === null) continue;
@@ -469,6 +473,7 @@ export function createRecoveryRepository(
       const key = 'recovery-action:' + command.idempotencyKey;
       return database.tenant(athleteId, async (tx) => {
         await lockCommands(tx);
+        await requireCurrentRestoreGeneration(tx, command.restoreGeneration);
         const prior = await replay(tx, key, request, recoveryActionLogSchema);
         if (prior) {
           const current = await currentAction(tx, prior.actionId);
@@ -479,8 +484,9 @@ export function createRecoveryRepository(
         if (Date.parse(command.occurredAt) > now().getTime() + 5 * 60_000)
           throw new RecoveryValidationError();
         await validateActionLinks(tx, command);
-        const { idempotencyKey: _key, ...fields } = command;
+        const { idempotencyKey: _key, restoreGeneration: _generation, ...fields } = command;
         void _key;
+        void _generation;
         const saved = recoveryActionLogSchema.parse({
           schemaVersion: 1,
           actionId: randomUUID(),

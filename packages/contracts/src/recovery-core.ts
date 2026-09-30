@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { restoreGenerationSchema } from './restore-generation.js';
 import { instantSchema, localDateSchema, timeZoneSchema } from './primitives.js';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
@@ -220,6 +221,7 @@ export const createRecoveryActionRequestSchema = z
   .strictObject({
     ...actionFields,
     idempotencyKey: commandKey,
+    restoreGeneration: restoreGenerationSchema,
   })
   .superRefine((action, context) => {
     if (action.beforeCheckIn !== null && action.beforeCheckIn.kind !== 'check_in')
@@ -246,7 +248,8 @@ export const recoveryActionLogSchema = z.strictObject({
 export type RecoveryActionLog = z.infer<typeof recoveryActionLogSchema>;
 export const correctRecoveryActionRequestSchema = z
   .strictObject({
-    ...createRecoveryActionRequestSchema.shape,
+    ...actionFields,
+    idempotencyKey: commandKey,
     actionId: uuid,
     expectedRevision: z.number().int().positive(),
   })
