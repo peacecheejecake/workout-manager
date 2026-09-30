@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 
-import { describe, expect, it } from 'vitest';
+import { Pool } from 'pg';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { LocalReplayRecordEnvelope } from '../src/restore-suppression-pgoutput.js';
 import type { SuppressionRecord } from '../src/restore-suppression-records.js';
 import {
   preflightSuppressionReplay,
+  replayVerifiedSuppressionChain,
   type TrustedReplayAnchor,
 } from '../src/restore-suppression-replay.js';
 import { encryptReplaySegment } from '../src/restore-suppression-segment.js';
@@ -17,11 +19,12 @@ const occurredAt = '2026-09-30 12:34:56+00';
 const firstId = '11111111-1111-4111-8111-111111111111';
 const secondId = '22222222-2222-4222-8222-222222222222';
 const courseId = '33333333-3333-4333-8333-333333333333';
+const defaultAthleteId = '44444444-4444-4444-8444-444444444444';
 
 function record(
   kind: 'tenant_erased' | 'course_deleted' | 'activity_deleted',
   eventId: string,
-  athleteId = 'owner',
+  athleteId = defaultAthleteId,
 ): SuppressionRecord {
   const base = { schemaVersion: 1 as const, eventId, athleteId, occurredAt };
   if (kind === 'tenant_erased') return { ...base, kind };
@@ -206,5 +209,49 @@ describe('restore suppression local preflight', () => {
       { ...anchor, ciphertextHashes: [] },
     ])
       expect(() => inspect(segments, modified)).toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+  });
+
+  it('rejects IDs that the exact database replay functions would reject', () => {
+    for (const altered of [
+      record('tenant_erased', secondId, 'owner'),
+      { ...record('course_deleted', secondId), targetId: '33333333-3333-0333-8333-333333333333' },
+    ]) {
+      const sample = chain({ secondRecord: altered });
+      expect(() => inspect(sample.segments, sample.anchor)).toThrow(
+        'RESTORE_REPLAY_PREFLIGHT_FAILED',
+      );
+    }
+  });
+
+  it('never connects for a tampered later segment or an unsupported kind', async () => {
+    const pool = new Pool({
+      connectionString: 'postgresql://invalid@127.0.0.1:1/none',
+      connectionTimeoutMillis: 100,
+    });
+    const connect = vi.spyOn(pool, 'connect');
+    try {
+      const good = chain();
+      const tampered = good.segments.map((bytes) => Buffer.from(bytes));
+      const last = tampered[1];
+      if (!last) throw new Error('bad fixture');
+      last[last.length - 1] = (last[last.length - 1] ?? 0) ^ 1;
+      await expect(
+        replayVerifiedSuppressionChain({
+          ...good,
+          segments: tampered,
+          key,
+          keyId,
+          ownerPool: pool,
+        }),
+      ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      const unsupported = chain({ secondRecord: record('activity_deleted', secondId) });
+      await expect(
+        replayVerifiedSuppressionChain({ ...unsupported, key, keyId, ownerPool: pool }),
+      ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+      await pool.end();
+    }
   });
 });
