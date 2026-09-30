@@ -97,4 +97,9 @@
 
 - 최신 `main` `1851d58c5753eccf96ef970a67bbc68f42cb8ea1`을 phase 브랜치에 충돌 없이 병합했다. 새 context-less `gpt-6-sol` high 읽기 전용 검토자는 이 base에서 `phase/m3-02` HEAD `0b934b3f1be8a0ea3cbdf5dc295de6525c405f5b`까지의 전체 diff를 검토해 **APPROVE**했고 차단 지적은 없었다. 변경은 `M3-02h.md` 7줄이며 staged·unstaged·미추적 파일은 없었다.
 - 검토자는 Debug 제품 수집 차단, 별도 읽기 동의 화면, 단일 UUID 범위 조회, source·표식 검증, 계정 격리와 업로드 분리가 현재 Swift 코드와 일치한다고 확인했다. 이전 P1 #1–#5와 P2는 현재 내용에서 **FIXED 유지**로 판정했다. `git diff --check`와 문서 Prettier 검사가 통과했고, 이 문서 변경에 대해 전체 앱 시험은 다시 실행하지 않았다.
-- 서명된 iPhone의 HealthKit 전체 경로 M3-02h와 부모 M3-02는 계속 **not_executed/in_progress**다. 이 판정 기록 커밋으로 diff identity가 바뀌므로 `main` 병합 전 읽기 전용 최종 검토를 새로 받는다.
+- 서명된 iPhone의 HealthKit 전체 경로 수용은 **not_executed**, M3-02h 노드는 **in_progress**, 부모 M3-02 노드는 **not_started/미완료**다. 이 판정 기록 커밋으로 diff identity가 바뀌므로 `main` 병합 전 읽기 전용 최종 검토를 새로 받는다.
+
+## 아홉 번째 검토 · 문서 상태 정정
+
+- base `main` `1851d58c5753eccf96ef970a67bbc68f42cb8ea1` → HEAD `7b5ef205f4601d3db3d56d806787a7a7b829e282`의 새 context-less `gpt-6-sol` high 읽기 전용 검토는 **BLOCK**이었다. 이전 P1 #1–#5와 P2 수정, HealthKit 범위 감사 내용은 유지됐지만, 위 여덟 번째 기록이 부모 M3-02를 `in_progress`로 읽히게 했다. [task graph](../task-graph.json)의 부모는 `not_started`다.
+- 지적은 위 문장을 실기기 수용 `not_executed`, M3-02h 노드 `in_progress`, 부모 M3-02 노드 `not_started/미완료`로 분리해 **FIXED in current content**다. 이 수정은 검토자의 재검증 전이며 제품 실기기 수용은 여전히 미실행이다.
