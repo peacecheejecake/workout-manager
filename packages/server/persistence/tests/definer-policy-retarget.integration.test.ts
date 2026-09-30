@@ -7,10 +7,12 @@ import { createDatabase, type Database } from '../src/database.js';
 import {
   grantCourses,
   grantOperations,
+  grantResources,
   grantResourceObjectCleanupWorker,
   migrate,
 } from '../src/migrate.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
+import { createPrivateTextResourceRepository } from '../src/resources.js';
 import {
   createResourceObjectCleanupRepository,
   processOneResourceObjectCleanup,
@@ -83,6 +85,7 @@ beforeAll(async () => {
     await owner.end();
   }
   await grantOperations(ownerUrl, runtimeRole);
+  await grantResources(ownerUrl, runtimeRole);
   await grantCourses(ownerUrl, runtimeRole);
   await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
   runtime = createDatabase({ connectionString: urlFor(runtimeRole), max: 2 });
@@ -192,6 +195,33 @@ async function liveActivityDeletionEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveResourceDeletionEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const resources = createPrivateTextResourceRepository(runtime);
+  const created = await resources.create(tenant, {
+    sourceKind: 'text',
+    title: 'Synthetic note',
+    category: 'note',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Synthetic content.',
+    idempotencyKey: randomUUID(),
+  });
+  if (created.status !== 'available') throw new Error('Expected available resource');
+  await resources.softDelete(tenant, created.resource.id, {
+    expectedAccessRevision: created.resource.accessRevision,
+    expectedCurrentVersionId: created.version.id,
+    idempotencyKey: randomUUID(),
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='resource_deleted' AND target_id=$2`,
+    [tenant, created.resource.id],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -247,6 +277,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
+    expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -280,6 +311,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
+    expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -310,6 +342,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await erasureEventCount(tenant)).toBe(1);
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
+    expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
