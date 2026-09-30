@@ -4,7 +4,9 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDatabase, type Database } from '../src/database.js';
+import { createCheckInRepository } from '../src/check-ins.js';
 import {
+  grantCheckIns,
   grantCourses,
   grantGalleryMedia,
   grantOperations,
@@ -90,6 +92,7 @@ beforeAll(async () => {
   await grantOperations(ownerUrl, runtimeRole);
   await grantResources(ownerUrl, runtimeRole);
   await grantGalleryMedia(ownerUrl, runtimeRole);
+  await grantCheckIns(ownerUrl, runtimeRole);
   const consentOwner = new Pool({ connectionString: ownerUrl, max: 1 });
   try {
     await consentOwner.query(`GRANT SELECT,INSERT,UPDATE ON consent TO "${runtimeRole}"`);
@@ -320,6 +323,32 @@ async function liveAiConsentEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveCheckInDeletionEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const checkIns = createCheckInRepository(runtime);
+  const created = await checkIns.createCheckIn(tenant, {
+    idempotencyKey: randomUUID(),
+    values: {
+      observedAt: '2026-01-02T23:00:00Z',
+      timezone: 'Asia/Seoul',
+      fatigue: 0,
+      discomfort: null,
+      bodyLocation: null,
+      note: 'synthetic check-in',
+    },
+  });
+  await checkIns.deleteCheckIn(tenant, created.id, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='check_in_deleted'`,
+    [tenant],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -379,6 +408,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
+    expect(await liveCheckInDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -416,6 +446,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
+    expect(await liveCheckInDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -450,6 +481,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
+    expect(await liveCheckInDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
