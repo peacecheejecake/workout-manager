@@ -28,6 +28,11 @@ const columnNames = [
   'actual_deletion_revision',
   'share_cause_kind',
   'share_cause_event_id',
+  'course_share_revoke_reason',
+  'course_share_audit_id',
+  'course_share_audit_occurred_at',
+  'actual_previous_revision_id',
+  'actual_deleted_revision_id',
 ] as const;
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -80,11 +85,16 @@ export type SuppressionRecord = Base &
         courseShareId: string;
         courseShareEpoch: number;
         courseShareCourseRevision: number;
+        courseShareRevokeReason?: 'owner' | 'owner_all' | 'zone_added' | 'zone_removed' | undefined;
+        courseShareAuditId?: string | undefined;
+        courseShareAuditOccurredAt?: string | undefined;
       }
     | {
         kind: 'intake_entry_deleted' | 'recovery_action_deleted';
         targetId: string;
         actualDeletionRevision: number;
+        actualPreviousRevisionId?: string | undefined;
+        actualDeletedRevisionId?: string | undefined;
       }
   );
 
@@ -200,7 +210,13 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const occurredAt = validTimestamp(required(values, 'occurred_at'));
   const base: Base = { schemaVersion: version === '1' ? 1 : 2, eventId, athleteId, occurredAt };
   const kind = required(values, 'kind');
-  if (version === '2' && kind !== 'resource_share_revoked')
+  if (
+    version === '2' &&
+    kind !== 'resource_share_revoked' &&
+    kind !== 'course_share_revoked' &&
+    kind !== 'intake_entry_deleted' &&
+    kind !== 'recovery_action_deleted'
+  )
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   switch (kind) {
     case 'tenant_erased':
@@ -338,13 +354,33 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
             }),
       };
     }
-    case 'course_share_revoked':
+    case 'course_share_revoked': {
       only(values, [
         'target_id',
         'course_share_id',
         'course_share_epoch',
         'course_share_course_revision',
+        'course_share_revoke_reason',
+        'course_share_audit_id',
+        'course_share_audit_occurred_at',
       ]);
+      const reason = optional(values, 'course_share_revoke_reason');
+      const auditId = optional(values, 'course_share_audit_id');
+      const auditAt = optional(values, 'course_share_audit_occurred_at');
+      if (
+        (version === '2') !== (reason !== null && auditId !== null && auditAt !== null) ||
+        (reason === null) !== (auditId === null) ||
+        (reason === null) !== (auditAt === null) ||
+        (reason !== null &&
+          reason !== 'owner' &&
+          reason !== 'owner_all' &&
+          reason !== 'zone_added' &&
+          reason !== 'zone_removed')
+      )
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      const validatedAuditAt = auditAt === null ? null : validTimestamp(auditAt);
+      if (validatedAuditAt !== null && Date.parse(validatedAuditAt) < Date.parse(occurredAt))
+        throw new Error('PGOUTPUT_INVALID_RECORD');
       return {
         ...base,
         kind,
@@ -352,16 +388,44 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
         courseShareId: match(required(values, 'course_share_id'), uuid),
         courseShareEpoch: revision(values, 'course_share_epoch', 1, 2147483646),
         courseShareCourseRevision: revision(values, 'course_share_course_revision', 1, 2147483646),
+        ...(reason === null || auditId === null || validatedAuditAt === null
+          ? {}
+          : {
+              courseShareRevokeReason: reason,
+              courseShareAuditId: match(auditId, uuid),
+              courseShareAuditOccurredAt: validatedAuditAt,
+            }),
       };
+    }
     case 'intake_entry_deleted':
-    case 'recovery_action_deleted':
-      only(values, ['target_id', 'actual_deletion_revision']);
+    case 'recovery_action_deleted': {
+      only(values, [
+        'target_id',
+        'actual_deletion_revision',
+        'actual_previous_revision_id',
+        'actual_deleted_revision_id',
+      ]);
+      const previousId = optional(values, 'actual_previous_revision_id');
+      const deletedId = optional(values, 'actual_deleted_revision_id');
+      if (
+        (previousId === null) !== (deletedId === null) ||
+        (version === '2') !== (previousId !== null) ||
+        (previousId !== null && previousId === deletedId)
+      )
+        throw new Error('PGOUTPUT_INVALID_RECORD');
       return {
         ...base,
         kind,
         targetId: target(values),
         actualDeletionRevision: revision(values, 'actual_deletion_revision', 2, 2147483646),
+        ...(previousId === null || deletedId === null
+          ? {}
+          : {
+              actualPreviousRevisionId: match(previousId, uuid),
+              actualDeletedRevisionId: match(deletedId, uuid),
+            }),
       };
+    }
     default:
       throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   }

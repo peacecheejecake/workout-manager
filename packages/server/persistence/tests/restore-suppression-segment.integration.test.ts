@@ -111,6 +111,50 @@ describe('encrypted restore suppression segment', () => {
     ).toThrow('INVALID_ENCRYPTED_SEGMENT');
   });
 
+  it('round-trips complete future course-share and actual deletion provenance', () => {
+    const course = {
+      schemaVersion: 2 as const,
+      eventId,
+      athleteId,
+      occurredAt: '2026-09-30 12:34:56+00',
+      kind: 'course_share_revoked' as const,
+      targetId,
+      courseShareId: '55555555-5555-4555-8555-555555555555',
+      courseShareEpoch: 3,
+      courseShareCourseRevision: 2,
+      courseShareRevokeReason: 'owner_all' as const,
+      courseShareAuditId: '66666666-6666-4666-8666-666666666666',
+      courseShareAuditOccurredAt: '2026-09-30 12:34:57+00',
+    };
+    const actual = {
+      schemaVersion: 2 as const,
+      eventId,
+      athleteId,
+      occurredAt: '2026-09-30 12:34:56+00',
+      kind: 'intake_entry_deleted' as const,
+      targetId,
+      actualDeletionRevision: 2,
+      actualPreviousRevisionId: '55555555-5555-4555-8555-555555555555',
+      actualDeletedRevisionId: '66666666-6666-4666-8666-666666666666',
+    };
+    for (const record of [course, actual]) {
+      const envelope = withRecord(record);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+    }
+    for (const record of [
+      { ...course, courseShareAuditOccurredAt: '2026-09-30 12:34:55+00' },
+      { ...course, courseShareAuditId: undefined },
+      { ...actual, actualDeletedRevisionId: actual.actualPreviousRevisionId },
+      { ...actual, actualPreviousRevisionId: undefined },
+    ])
+      expect(() => encryptReplaySegment({ envelope: withRecord(record), key, keyId })).toThrow(
+        'INVALID_ENCRYPTED_SEGMENT',
+      );
+  });
+
   it('round-trips canonical authenticated content without exposing sensitive record fields', () => {
     const source = fixture();
     const first = encryptReplaySegment({ envelope: source, key, keyId });

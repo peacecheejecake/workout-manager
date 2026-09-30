@@ -108,6 +108,11 @@ const record = z
         courseShareId: uuid,
         courseShareEpoch: revision,
         courseShareCourseRevision: revision,
+        courseShareRevokeReason: z
+          .enum(['owner', 'owner_all', 'zone_added', 'zone_removed'])
+          .optional(),
+        courseShareAuditId: uuid.optional(),
+        courseShareAuditOccurredAt: occurredAt.optional(),
       })
       .strict(),
     base
@@ -115,11 +120,13 @@ const record = z
         kind: z.union([z.literal('intake_entry_deleted'), z.literal('recovery_action_deleted')]),
         targetId: uuid,
         actualDeletionRevision: revision,
+        actualPreviousRevisionId: uuid.optional(),
+        actualDeletedRevisionId: uuid.optional(),
       })
       .strict(),
   ])
   .superRefine((item, context) => {
-    let valid = item.kind === 'resource_share_revoked' || item.schemaVersion === 1;
+    let valid = true;
     switch (item.kind) {
       case 'healthkit_consent_transition':
       case 'ai_consent_transition':
@@ -148,18 +155,41 @@ const record = z
           (item.schemaVersion === 2) === (item.shareCauseEventId !== undefined);
         break;
       case 'course_share_revoked':
-        valid = item.courseShareEpoch <= 2147483646 && item.courseShareCourseRevision <= 2147483646;
+        valid =
+          item.courseShareEpoch <= 2147483646 &&
+          item.courseShareCourseRevision <= 2147483646 &&
+          (item.courseShareRevokeReason === undefined) ===
+            (item.courseShareAuditId === undefined) &&
+          (item.courseShareRevokeReason === undefined) ===
+            (item.courseShareAuditOccurredAt === undefined) &&
+          (item.schemaVersion === 2) === (item.courseShareRevokeReason !== undefined) &&
+          (item.courseShareAuditOccurredAt === undefined ||
+            Date.parse(item.courseShareAuditOccurredAt) >= Date.parse(item.occurredAt));
         break;
       case 'intake_entry_deleted':
       case 'recovery_action_deleted':
-        valid = item.actualDeletionRevision >= 2 && item.actualDeletionRevision <= 2147483646;
+        valid =
+          item.actualDeletionRevision >= 2 &&
+          item.actualDeletionRevision <= 2147483646 &&
+          (item.actualPreviousRevisionId === undefined) ===
+            (item.actualDeletedRevisionId === undefined) &&
+          (item.schemaVersion === 2) === (item.actualPreviousRevisionId !== undefined) &&
+          (item.actualPreviousRevisionId === undefined ||
+            item.actualPreviousRevisionId !== item.actualDeletedRevisionId);
         break;
       case 'tenant_erased':
       case 'course_deleted':
       case 'activity_deleted':
         break;
     }
-    if (item.kind !== 'resource_share_revoked' && item.schemaVersion !== 1) valid = false;
+    if (
+      item.schemaVersion === 2 &&
+      item.kind !== 'resource_share_revoked' &&
+      item.kind !== 'course_share_revoked' &&
+      item.kind !== 'intake_entry_deleted' &&
+      item.kind !== 'recovery_action_deleted'
+    )
+      valid = false;
     if (!valid) context.addIssue({ code: 'custom', message: 'invalid record relationship' });
   });
 

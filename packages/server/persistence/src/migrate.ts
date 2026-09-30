@@ -95,6 +95,8 @@ const migrationFiles = [
   '087_resource_share_cause.sql',
   '088_exact_erasure_share_child_replay.sql',
   '089_exact_resource_deletion_compound_replay.sql',
+  '090_course_share_replay_provenance.sql',
+  '091_actual_deletion_revision_provenance.sql',
 ] as const;
 
 /**

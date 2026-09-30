@@ -42,6 +42,11 @@ const columns = [
   ['actual_deletion_revision', 23],
   ['share_cause_kind', 25],
   ['share_cause_event_id', 2950],
+  ['course_share_revoke_reason', 25],
+  ['course_share_audit_id', 2950],
+  ['course_share_audit_occurred_at', 1184],
+  ['actual_previous_revision_id', 2950],
+  ['actual_deleted_revision_id', 2950],
 ] as const;
 
 const kinds = new Set([

@@ -37,6 +37,11 @@ const namesAndOids: readonly (readonly [string, number])[] = [
   ['actual_deletion_revision', 23],
   ['share_cause_kind', 25],
   ['share_cause_event_id', 2950],
+  ['course_share_revoke_reason', 25],
+  ['course_share_audit_id', 2950],
+  ['course_share_audit_occurred_at', 1184],
+  ['actual_previous_revision_id', 2950],
+  ['actual_deleted_revision_id', 2950],
 ];
 
 const targetId = randomUUID();
@@ -287,6 +292,82 @@ describe('local replay record decoder', () => {
     const missing = values('tenant_erased');
     missing.delete('target_id');
     expect(() => validateSuppressionRecord(missing)).toThrow('PGOUTPUT_SCHEMA_CHANGED');
+  });
+
+  it('accepts complete future course and actual provenance while preserving v1 shape', () => {
+    const auditId = randomUUID();
+    const previousId = randomUUID();
+    const deletedId = randomUUID();
+    expect(
+      validateSuppressionRecord(
+        values('course_share_revoked', {
+          record_version: '2',
+          target_id: targetId,
+          course_share_id: shareId,
+          course_share_epoch: '3',
+          course_share_course_revision: '2',
+          course_share_revoke_reason: 'owner_all',
+          course_share_audit_id: auditId,
+          course_share_audit_occurred_at: '2026-09-30 12:34:57+00',
+        }),
+      ),
+    ).toMatchObject({
+      schemaVersion: 2,
+      courseShareRevokeReason: 'owner_all',
+      courseShareAuditId: auditId,
+    });
+    expect(
+      validateSuppressionRecord(
+        values('intake_entry_deleted', {
+          record_version: '2',
+          target_id: targetId,
+          actual_deletion_revision: '2',
+          actual_previous_revision_id: previousId,
+          actual_deleted_revision_id: deletedId,
+        }),
+      ),
+    ).toMatchObject({
+      schemaVersion: 2,
+      actualPreviousRevisionId: previousId,
+      actualDeletedRevisionId: deletedId,
+    });
+    for (const [kind, fields] of [
+      [
+        'course_share_revoked',
+        {
+          target_id: targetId,
+          course_share_id: shareId,
+          course_share_epoch: '3',
+          course_share_course_revision: '2',
+          course_share_revoke_reason: 'owner',
+        },
+      ],
+      [
+        'recovery_action_deleted',
+        {
+          target_id: targetId,
+          actual_deletion_revision: '2',
+          actual_previous_revision_id: previousId,
+        },
+      ],
+    ] as const)
+      expect(() => validateSuppressionRecord(values(kind, fields))).toThrow(
+        'PGOUTPUT_INVALID_RECORD',
+      );
+    expect(() =>
+      validateSuppressionRecord(
+        values('course_share_revoked', {
+          record_version: '2',
+          target_id: targetId,
+          course_share_id: shareId,
+          course_share_epoch: '3',
+          course_share_course_revision: '2',
+          course_share_revoke_reason: 'owner',
+          course_share_audit_id: auditId,
+          course_share_audit_occurred_at: '2026-09-30 12:34:55+00',
+        }),
+      ),
+    ).toThrow('PGOUTPUT_INVALID_RECORD');
   });
 
   it('preserves committed WAL boundaries and exact restore fields in memory', () => {
