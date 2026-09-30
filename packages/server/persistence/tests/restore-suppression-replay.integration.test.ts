@@ -149,12 +149,23 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts activity deletion and rejects the remaining unsupported kinds', () => {
+  it('accepts activity and resource deletion and rejects the remaining unsupported kinds', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
+    const resource = chain({
+      secondRecord: {
+        schemaVersion: 1,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'resource_deleted',
+        targetId: courseId,
+        resourceAccessRevision: 1,
+      },
+    });
+    expect(inspect(resource.segments, resource.anchor).eventCount).toBe(2);
     const base = { schemaVersion: 1 as const, eventId: secondId, athleteId: 'owner', occurredAt };
     const unsupported: SuppressionRecord[] = [
-      { ...base, kind: 'resource_deleted', targetId: courseId, resourceAccessRevision: 1 },
       { ...base, kind: 'gallery_media_deleted', targetId: courseId, galleryAccessRevision: 1 },
       {
         ...base,
@@ -258,9 +269,9 @@ describe('restore suppression local preflight', () => {
           eventId: secondId,
           athleteId: defaultAthleteId,
           occurredAt,
-          kind: 'resource_deleted',
+          kind: 'gallery_media_deleted',
           targetId: courseId,
-          resourceAccessRevision: 1,
+          galleryAccessRevision: 1,
         },
       });
       await expect(
