@@ -85,6 +85,7 @@ const migrationFiles = [
   '077_actual_deletion_suppression_event.sql',
   '078_restore_suppression_pgoutput_publication.sql',
   '079_exact_restore_suppression_replay.sql',
+  '080_exact_activity_deletion_replay.sql',
 ] as const;
 
 /**

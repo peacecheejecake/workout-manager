@@ -354,6 +354,7 @@ describe('plain-owner purge migration upgrade of a database a plain owner built'
       'finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean)',
       'lease_object_scope_purge(uuid,timestamp with time zone,timestamp with time zone)',
       'lease_tenant_object_purge(uuid,timestamp with time zone,timestamp with time zone)',
+      'replay_activity_deletion_exact(text,uuid,uuid,timestamp with time zone,integer,text,text,integer,text)',
       'replay_course_deletion(text,uuid,timestamp with time zone)',
     ]);
     // The helpers are the leases' own: nobody else may call them.
