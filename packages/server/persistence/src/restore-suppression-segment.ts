@@ -35,7 +35,7 @@ const occurredAt = z
       Number.isFinite(Date.parse(value)),
   );
 const base = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
@@ -97,6 +97,8 @@ const record = z
         shareId: uuid,
         shareGrantedAccessRevision: revision,
         shareRevokedAccessRevision: revision,
+        shareCauseKind: z.enum(['resource_deleted', 'tenant_erased']).optional(),
+        shareCauseEventId: uuid.optional(),
       })
       .strict(),
     base
@@ -117,7 +119,7 @@ const record = z
       .strict(),
   ])
   .superRefine((item, context) => {
-    let valid = true;
+    let valid = item.kind === 'resource_share_revoked' || item.schemaVersion === 1;
     switch (item.kind) {
       case 'healthkit_consent_transition':
       case 'ai_consent_transition':
@@ -141,7 +143,9 @@ const record = z
           item.shareGrantedAccessRevision <= 2147483645 &&
           item.shareRevokedAccessRevision >= 2 &&
           item.shareRevokedAccessRevision <= 2147483646 &&
-          item.shareRevokedAccessRevision > item.shareGrantedAccessRevision;
+          item.shareRevokedAccessRevision > item.shareGrantedAccessRevision &&
+          (item.shareCauseKind === undefined) === (item.shareCauseEventId === undefined) &&
+          (item.schemaVersion === 2) === (item.shareCauseEventId !== undefined);
         break;
       case 'course_share_revoked':
         valid = item.courseShareEpoch <= 2147483646 && item.courseShareCourseRevision <= 2147483646;
@@ -155,6 +159,7 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (item.kind !== 'resource_share_revoked' && item.schemaVersion !== 1) valid = false;
     if (!valid) context.addIssue({ code: 'custom', message: 'invalid record relationship' });
   });
 

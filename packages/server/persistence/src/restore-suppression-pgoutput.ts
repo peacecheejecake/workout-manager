@@ -40,6 +40,8 @@ const columns = [
   ['course_share_epoch', 23],
   ['course_share_course_revision', 23],
   ['actual_deletion_revision', 23],
+  ['share_cause_kind', 25],
+  ['share_cause_event_id', 2950],
 ] as const;
 
 const kinds = new Set([

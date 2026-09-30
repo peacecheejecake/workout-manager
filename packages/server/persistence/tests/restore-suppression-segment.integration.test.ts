@@ -78,6 +78,39 @@ function errorMessage(operation: () => unknown): string {
 }
 
 describe('encrypted restore suppression segment', () => {
+  it('keeps v1 standalone shares and authenticates v2 parent causes', () => {
+    const share = {
+      eventId,
+      athleteId,
+      occurredAt: '2026-09-30 12:34:56.123456+00',
+      kind: 'resource_share_revoked' as const,
+      targetId,
+      shareId: '55555555-5555-4555-8555-555555555555',
+      shareGrantedAccessRevision: 2,
+      shareRevokedAccessRevision: 3,
+    };
+    const old = withRecord({ schemaVersion: 1, ...share });
+    const caused = withRecord({
+      schemaVersion: 2,
+      ...share,
+      shareCauseKind: 'resource_deleted',
+      shareCauseEventId: '66666666-6666-4666-8666-666666666666',
+    });
+    for (const envelope of [old, caused]) {
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+    }
+    expect(() =>
+      encryptReplaySegment({
+        envelope: withRecord({ schemaVersion: 2, ...share, shareCauseKind: 'tenant_erased' }),
+        key,
+        keyId,
+      }),
+    ).toThrow('INVALID_ENCRYPTED_SEGMENT');
+  });
+
   it('round-trips canonical authenticated content without exposing sensitive record fields', () => {
     const source = fixture();
     const first = encryptReplaySegment({ envelope: source, key, keyId });

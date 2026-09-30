@@ -35,6 +35,8 @@ const namesAndOids: readonly (readonly [string, number])[] = [
   ['course_share_epoch', 23],
   ['course_share_course_revision', 23],
   ['actual_deletion_revision', 23],
+  ['share_cause_kind', 25],
+  ['share_cause_event_id', 2950],
 ];
 
 const targetId = randomUUID();
@@ -210,6 +212,33 @@ describe('local replay record decoder', () => {
   });
 
   it('rejects unknown, malformed, partial and cross-kind values', () => {
+    const caused = validateSuppressionRecord(
+      values('resource_share_revoked', {
+        record_version: '2',
+        target_id: targetId,
+        share_id: shareId,
+        share_granted_access_revision: '1',
+        share_revoked_access_revision: '2',
+        share_cause_kind: 'resource_deleted',
+        share_cause_event_id: randomUUID(),
+      }),
+    );
+    expect(caused).toMatchObject({ schemaVersion: 2, shareCauseKind: 'resource_deleted' });
+    expect(() =>
+      validateSuppressionRecord(values('tenant_erased', { record_version: '2' })),
+    ).toThrow('PGOUTPUT_UNKNOWN_EVENT');
+    expect(() =>
+      validateSuppressionRecord(
+        values('resource_share_revoked', {
+          record_version: '2',
+          target_id: targetId,
+          share_id: shareId,
+          share_granted_access_revision: '1',
+          share_revoked_access_revision: '2',
+          share_cause_kind: 'tenant_erased',
+        }),
+      ),
+    ).toThrow('PGOUTPUT_INVALID_RECORD');
     expect(
       validateSuppressionRecord(
         values('activity_deleted', {

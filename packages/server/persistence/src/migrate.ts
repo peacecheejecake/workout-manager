@@ -92,6 +92,7 @@ const migrationFiles = [
   '084_exact_healthkit_consent_replay.sql',
   '085_exact_ai_consent_replay.sql',
   '086_exact_resource_share_revoke_replay.sql',
+  '087_resource_share_cause.sql',
 ] as const;
 
 /**

@@ -26,6 +26,8 @@ const columnNames = [
   'course_share_epoch',
   'course_share_course_revision',
   'actual_deletion_revision',
+  'share_cause_kind',
+  'share_cause_event_id',
 ] as const;
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -34,7 +36,7 @@ const timestamp =
   /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.\d{1,6})?([+-])(\d\d)(?::(\d\d))?$/;
 
 type Base = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   eventId: string;
   athleteId: string;
   occurredAt: string;
@@ -69,6 +71,8 @@ export type SuppressionRecord = Base &
         shareId: string;
         shareGrantedAccessRevision: number;
         shareRevokedAccessRevision: number;
+        shareCauseKind?: 'resource_deleted' | 'tenant_erased' | undefined;
+        shareCauseEventId?: string | undefined;
       }
     | {
         kind: 'course_share_revoked';
@@ -188,13 +192,16 @@ function only(values: Values, allowed: readonly string[]): void {
 /** Converts exactly one known DB event shape; rejects extra non-null fields. */
 export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const eventId = match(required(values, 'event_id'), uuid);
-  if (required(values, 'record_version') !== '1') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  const version = required(values, 'record_version');
+  if (version !== '1' && version !== '2') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   const athleteId = required(values, 'athlete_id');
   if ([...athleteId].length < 1 || [...athleteId].length > 200 || hasControl(athleteId))
     throw new Error('PGOUTPUT_INVALID_RECORD');
   const occurredAt = validTimestamp(required(values, 'occurred_at'));
-  const base: Base = { schemaVersion: 1, eventId, athleteId, occurredAt };
+  const base: Base = { schemaVersion: version === '1' ? 1 : 2, eventId, athleteId, occurredAt };
   const kind = required(values, 'kind');
+  if (version === '2' && kind !== 'resource_share_revoked')
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   switch (kind) {
     case 'tenant_erased':
       only(values, []);
@@ -291,7 +298,17 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
         'share_id',
         'share_granted_access_revision',
         'share_revoked_access_revision',
+        'share_cause_kind',
+        'share_cause_event_id',
       ]);
+      const causeKind = optional(values, 'share_cause_kind');
+      const causeEventId = optional(values, 'share_cause_event_id');
+      if (
+        (causeKind === null) !== (causeEventId === null) ||
+        (version === '2') !== (causeKind !== null) ||
+        (causeKind !== null && causeKind !== 'resource_deleted' && causeKind !== 'tenant_erased')
+      )
+        throw new Error('PGOUTPUT_INVALID_RECORD');
       const shareGrantedAccessRevision = revision(
         values,
         'share_granted_access_revision',
@@ -313,6 +330,12 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
         shareId: match(required(values, 'share_id'), uuid),
         shareGrantedAccessRevision,
         shareRevokedAccessRevision,
+        ...(causeKind === null || causeEventId === null
+          ? {}
+          : {
+              shareCauseKind: causeKind,
+              shareCauseEventId: match(causeEventId, uuid),
+            }),
       };
     }
     case 'course_share_revoked':

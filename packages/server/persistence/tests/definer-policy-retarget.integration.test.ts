@@ -53,6 +53,7 @@ const definerPolicies = [
   'object_scope_purge:object_scope_purge_definer',
   'resource_derived_cleanup:resource_derived_cleanup_definer',
   'resource_object_cleanup:resource_object_cleanup_definer',
+  'restore_share_erasure_context:restore_share_erasure_context_definer',
   'restore_suppression_event:restore_suppression_event_definer',
   'routing_admission:routing_admission_definer',
   'tenant_object_purge:tenant_object_purge_definer',
