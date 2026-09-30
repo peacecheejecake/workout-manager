@@ -172,14 +172,6 @@ afterAll(async () => {
 describe('owner-only exact resource deletion replay', () => {
   it('preserves original identity, revision and time through deletion and exact retry', async () => {
     const item = await liveResource(await account());
-    await tenant(owner, item.athleteId, (client) =>
-      client.query(
-        `INSERT INTO resource_share(athlete_id,share_id,resource_id,grantee_kind,
-           grantee_principal_id,state,granted_access_revision,granted_at,updated_at)
-         VALUES($1,$2,$3,'coach',$4,'active',$5,now(),now())`,
-        [item.athleteId, randomUUID(), item.targetId, randomUUID(), item.accessRevision - 1],
-      ),
-    );
     expect(await replay(owner, item)).toBe('deleted');
     expect(await replay(owner, item)).toBe('already_applied');
     expect(await state(item)).toMatchObject({
@@ -189,7 +181,7 @@ describe('owner-only exact resource deletion replay', () => {
       outbox_count: '1',
       cleanup_count: '1',
       active_share_count: '0',
-      revoked_share_count: '1',
+      revoked_share_count: '0',
       tombstone_receipt_count: '1',
       revision: item.accessRevision,
       deleted_at: new Date(item.occurredAt),

@@ -93,6 +93,8 @@ const migrationFiles = [
   '085_exact_ai_consent_replay.sql',
   '086_exact_resource_share_revoke_replay.sql',
   '087_resource_share_cause.sql',
+  '088_exact_erasure_share_child_replay.sql',
+  '089_exact_resource_deletion_compound_replay.sql',
 ] as const;
 
 /**
