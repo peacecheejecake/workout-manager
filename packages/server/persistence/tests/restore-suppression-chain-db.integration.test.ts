@@ -148,12 +148,12 @@ function chain(records: readonly SuppressionRecord[]): {
   segments: Buffer[];
   anchor: TrustedReplayAnchor;
 } {
-  if (records.length !== 2) throw new Error('two-record fixture required');
+  if (records.length < 1) throw new Error('nonempty fixture required');
   let previousHash: string | null = null;
   const segments: Buffer[] = [];
   for (const [index, record] of records.entries()) {
-    const fromLsn = index === 0 ? '0/100' : '0/120';
-    const throughLsn = index === 0 ? '0/120' : '0/140';
+    const fromLsn = `0/${(0x100 + 0x20 * index).toString(16).toUpperCase()}`;
+    const throughLsn = `0/${(0x120 + 0x20 * index).toString(16).toUpperCase()}`;
     const body = {
       localRecordVersion: 1 as const,
       clusterId,
@@ -161,7 +161,11 @@ function chain(records: readonly SuppressionRecord[]): {
       throughLsn,
       previousHash,
       transactions: [
-        { commitLsn: index === 0 ? '0/110' : '0/130', endLsn: throughLsn, records: [record] },
+        {
+          commitLsn: `0/${(0x110 + 0x20 * index).toString(16).toUpperCase()}`,
+          endLsn: throughLsn,
+          records: [record],
+        },
       ],
     };
     const envelope: LocalReplayRecordEnvelope = {
@@ -177,7 +181,7 @@ function chain(records: readonly SuppressionRecord[]): {
       clusterId,
       fromLsn: '0/100',
       previousHash: null,
-      throughLsn: '0/140',
+      throughLsn: `0/${(0x100 + 0x20 * records.length).toString(16).toUpperCase()}`,
       finalLocalHash: previousHash ?? '',
       ciphertextHashes: segments.map((bytes) => createHash('sha256').update(bytes).digest('hex')),
     },
@@ -257,6 +261,26 @@ function checkInRecord(athleteId: string, targetId: string, occurredAt: string):
     kind: 'check_in_deleted',
     targetId,
     checkInRevision: 2,
+  };
+}
+
+function healthkitRecord(
+  athleteId: string,
+  occurredAt: string,
+  revision: number,
+  granted: boolean,
+  previousGranted: boolean | null,
+): SuppressionRecord {
+  return {
+    schemaVersion: 1,
+    eventId: randomUUID(),
+    athleteId,
+    occurredAt,
+    kind: 'healthkit_consent_transition',
+    consentPreviousRevision: revision === 1 ? null : revision - 1,
+    consentPreviousGranted: previousGranted,
+    consentRevision: revision,
+    consentGranted: granted,
   };
 }
 
@@ -877,5 +901,109 @@ describe('authenticated chain to owner-only exact replay', () => {
       ),
     );
     expect(state.rows[0]?.revision).toBe(1);
+  });
+
+  it('replays initial HealthKit consent, withdrawal and regrant with exact retries after later epochs', async () => {
+    const athleteId = await account();
+    const grant = healthkitRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null);
+    const withdraw = healthkitRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, true);
+    const regrant = healthkitRecord(athleteId, '2026-09-30 12:36:56+00', 3, true, false);
+    const sample = chain([grant, withdraw, regrant]);
+    const result = await replayVerifiedSuppressionChain({
+      ...sample,
+      key,
+      keyId,
+      ownerPool: owner,
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      'clusterId',
+      'eventCount',
+      'finalLocalHash',
+      'segmentCount',
+      'throughLsn',
+    ]);
+    expect(result.eventCount).toBe(3);
+    await replayVerifiedSuppressionChain({ ...chain([grant]), key, keyId, ownerPool: owner });
+    await replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner });
+    const state = await tenant(athleteId, (client) =>
+      client.query<{
+        revision: number;
+        granted: boolean;
+        events: string;
+        receipts: string;
+        outbox: string;
+      }>(
+        `SELECT (SELECT revision FROM consent WHERE athlete_id=$1 AND kind='healthkit') revision,
+          (SELECT granted FROM consent WHERE athlete_id=$1 AND kind='healthkit') granted,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1 AND kind='healthkit_consent_transition') events,
+          (SELECT count(*)::text FROM restore_healthkit_consent_replay_receipt WHERE athlete_id=$1) receipts,
+          (SELECT count(*)::text FROM outbox WHERE athlete_id=$1 AND topic='consent.changed') outbox`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({
+      revision: 3,
+      granted: true,
+      events: '3',
+      receipts: '3',
+      outbox: '3',
+    });
+  });
+
+  it('rolls back the initial HealthKit grant for a later contradictory epoch', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      healthkitRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null),
+      healthkitRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, false),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_HEALTHKIT_STATE_CONFLICT');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ head: string; events: string; receipts: string }>(
+        `SELECT (SELECT count(*)::text FROM consent WHERE athlete_id=$1 AND kind='healthkit') head,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events,
+          (SELECT count(*)::text FROM restore_healthkit_consent_replay_receipt WHERE athlete_id=$1) receipts`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ head: '0', events: '0', receipts: '0' });
+  });
+
+  it('rolls back an earlier HealthKit grant when a later tenant is unknown', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      healthkitRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null),
+      healthkitRecord(randomUUID(), '2026-09-30 12:35:56+00', 1, true, null),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: owner }),
+    ).rejects.toThrow('RESTORE_HEALTHKIT_TENANT_UNKNOWN');
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ head: string; events: string }>(
+        `SELECT (SELECT count(*)::text FROM consent WHERE athlete_id=$1 AND kind='healthkit') head,
+          (SELECT count(*)::text FROM restore_suppression_event WHERE athlete_id=$1) events`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]).toMatchObject({ head: '0', events: '0' });
+  });
+
+  it('denies the HealthKit chain through a runtime pool', async () => {
+    const athleteId = await account();
+    const sample = chain([
+      healthkitRecord(athleteId, '2026-09-30 12:34:56+00', 1, true, null),
+      healthkitRecord(athleteId, '2026-09-30 12:35:56+00', 2, false, true),
+    ]);
+    await expect(
+      replayVerifiedSuppressionChain({ ...sample, key, keyId, ownerPool: runtime }),
+    ).rejects.toThrow(/permission denied/);
+    const state = await tenant(athleteId, (client) =>
+      client.query<{ head: string }>(
+        `SELECT count(*)::text AS head FROM consent WHERE athlete_id=$1 AND kind='healthkit'`,
+        [athleteId],
+      ),
+    );
+    expect(state.rows[0]?.head).toBe('0');
   });
 });

@@ -32,18 +32,25 @@ export type ReplayPreflight = {
   finalLocalHash: string;
 };
 
-type SupportedRecord = Extract<
-  SuppressionRecord,
-  {
-    kind:
-      | 'tenant_erased'
-      | 'course_deleted'
-      | 'activity_deleted'
-      | 'resource_deleted'
-      | 'gallery_media_deleted'
-      | 'check_in_deleted';
-  }
->;
+type SupportedRecord =
+  | Extract<
+      SuppressionRecord,
+      {
+        kind:
+          | 'tenant_erased'
+          | 'course_deleted'
+          | 'activity_deleted'
+          | 'resource_deleted'
+          | 'gallery_media_deleted'
+          | 'check_in_deleted';
+      }
+    >
+  | (Extract<
+      SuppressionRecord,
+      { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }
+    > & {
+      kind: 'healthkit_consent_transition';
+    });
 type VerifiedChain = {
   summary: ReplayPreflight;
   transactions: readonly (readonly SupportedRecord[])[];
@@ -124,12 +131,15 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'activity_deleted' &&
           record.kind !== 'resource_deleted' &&
           record.kind !== 'gallery_media_deleted' &&
-          record.kind !== 'check_in_deleted'
+          record.kind !== 'check_in_deleted' &&
+          record.kind !== 'healthkit_consent_transition'
         )
           return fail();
         if (
           !canonicalUuid.test(record.athleteId) ||
-          (record.kind !== 'tenant_erased' && !canonicalUuid.test(record.targetId)) ||
+          (record.kind !== 'tenant_erased' &&
+            record.kind !== 'healthkit_consent_transition' &&
+            !('targetId' in record && canonicalUuid.test(record.targetId))) ||
           Date.parse(record.occurredAt) > now
         )
           return fail();
@@ -150,7 +160,24 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           (record.checkInRevision < 2 || record.checkInRevision > 2147483646)
         )
           return fail();
-        authenticated.push(record);
+        if (
+          record.kind === 'healthkit_consent_transition' &&
+          (record.consentRevision < 1 ||
+            record.consentRevision > 2147483647 ||
+            (record.consentPreviousRevision === null) !==
+              (record.consentPreviousGranted === null) ||
+            (record.consentPreviousRevision === null
+              ? record.consentRevision !== 1
+              : record.consentPreviousRevision < 1 ||
+                record.consentPreviousRevision > 2147483646 ||
+                record.consentRevision !== record.consentPreviousRevision + 1))
+        )
+          return fail();
+        if ('consentRevision' in record) {
+          authenticated.push({ ...record, kind: 'healthkit_consent_transition' });
+        } else {
+          authenticated.push(record);
+        }
       }
       transactions.push(authenticated);
     }
@@ -246,7 +273,7 @@ export async function replayVerifiedSuppressionChain(
             record.occurredAt,
             record.galleryAccessRevision,
           ]);
-        } else {
+        } else if (record.kind === 'check_in_deleted') {
           await client.query('SELECT public.replay_check_in_deletion_exact($1,$2,$3,$4,$5)', [
             record.athleteId,
             record.targetId,
@@ -254,6 +281,19 @@ export async function replayVerifiedSuppressionChain(
             record.occurredAt,
             record.checkInRevision,
           ]);
+        } else {
+          await client.query(
+            'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.eventId,
+              record.occurredAt,
+              record.consentPreviousRevision,
+              record.consentPreviousGranted,
+              record.consentRevision,
+              record.consentGranted,
+            ],
+          );
         }
       }
     }

@@ -149,7 +149,7 @@ describe('restore suppression local preflight', () => {
       );
   });
 
-  it('accepts the six exact replay kinds and rejects the remaining unsupported kinds', () => {
+  it('accepts the seven exact replay kinds and rejects the remaining unsupported kinds', () => {
     const supported = chain({ secondRecord: record('activity_deleted', secondId) });
     expect(inspect(supported.segments, supported.anchor).eventCount).toBe(2);
     const resource = chain({
@@ -188,6 +188,20 @@ describe('restore suppression local preflight', () => {
       },
     });
     expect(inspect(checkIn.segments, checkIn.anchor).eventCount).toBe(2);
+    const healthkit = chain({
+      secondRecord: {
+        schemaVersion: 1,
+        eventId: secondId,
+        athleteId: defaultAthleteId,
+        occurredAt,
+        kind: 'healthkit_consent_transition',
+        consentPreviousRevision: null,
+        consentPreviousGranted: null,
+        consentRevision: 1,
+        consentGranted: true,
+      },
+    });
+    expect(inspect(healthkit.segments, healthkit.anchor).eventCount).toBe(2);
     const base = {
       schemaVersion: 1 as const,
       eventId: secondId,
@@ -195,14 +209,6 @@ describe('restore suppression local preflight', () => {
       occurredAt,
     };
     const unsupported: SuppressionRecord[] = [
-      {
-        ...base,
-        kind: 'healthkit_consent_transition',
-        consentPreviousRevision: null,
-        consentPreviousGranted: null,
-        consentRevision: 1,
-        consentGranted: true,
-      },
       {
         ...base,
         kind: 'ai_consent_transition',
