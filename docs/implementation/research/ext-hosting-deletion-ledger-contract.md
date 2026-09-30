@@ -98,3 +98,9 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 5. 호스트 디스크와 원본 DB가 사라진 조건에서 **호스트 밖** 백업·원장만으로 복원한다. 원격 사본 변조·오래된 manifest·마지막 세그먼트 소실을 각각 거절한다. 확인된 전체 구간에서만 차단 상태의 앱·worker·RLS·실제 객체 purge를 검사한 뒤 접근을 연다. 실제 RPO/RTO와 재시작 후 상태를 별도 기록한다.
 
 이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity·자료·갤러리·개별 CheckIn 삭제·HealthKit/AI 동의 전이의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.
+
+## 복원 세대값 저장 원시값 (migration 076, 준비 단계)
+
+`076_restore_generation.sql`은 전체 DB에 단 하나의 불투명 UUID `restore_generation.generation_id`를 최초 migration에서 만든다. 제한된 런타임 역할에는 테이블 SELECT/DML 없이 `current_restore_generation()`의 EXECUTE만 권한 설정에서 명시적으로 부여할 수 있다. `rotate_restore_generation()`은 테이블 소유자 세션만 호출할 수 있는 통제된 회전 지점이며, 회전은 호출 거래와 함께 commit 또는 rollback된다. FORCE RLS 정책은 현재 테이블 소유자를 조회하므로 소유권 재할당 및 `--no-owner` 복원 뒤에도 유지된다.
+
+이 UUID는 **저장 원시값만** 제공한다. create 요청에 아직 묶이지 않았고, 복원 전 요청의 stale retry 차단, 원격 원장·반출·재생, 실제 복원 회전과 접근 재개 검증은 모두 **not_executed**다. IntakeEntry·RecoveryActionLog 삭제 사건의 설계 대기 상태는 그대로다. 현재 운영 DB의 migration은 65개이며 076은 배포하지 않았다.
