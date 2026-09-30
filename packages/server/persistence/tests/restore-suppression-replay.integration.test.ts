@@ -122,6 +122,31 @@ function chain(
   };
 }
 
+function singleTransaction(records: SuppressionRecord[]): {
+  segments: Buffer[];
+  anchor: TrustedReplayAnchor;
+} {
+  const body = envelope({
+    fromLsn: '0/100',
+    commitLsn: '0/110',
+    throughLsn: '0/120',
+    previousHash: null,
+    records,
+  });
+  const bytes = encryptReplaySegment({ envelope: body, key, keyId }).bytes;
+  return {
+    segments: [bytes],
+    anchor: {
+      clusterId,
+      fromLsn: '0/100',
+      previousHash: null,
+      throughLsn: '0/120',
+      finalLocalHash: body.sha256,
+      ciphertextHashes: [createHash('sha256').update(bytes).digest('hex')],
+    },
+  };
+}
+
 const inspect = (segments: readonly Uint8Array[], anchor: TrustedReplayAnchor) =>
   preflightSuppressionReplay({ segments, anchor, key, keyId });
 
@@ -390,6 +415,106 @@ describe('restore suppression local preflight', () => {
       await expect(
         replayVerifiedSuppressionChain({ ...compound, key, keyId, ownerPool: pool }),
       ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+      await pool.end();
+    }
+  });
+
+  it('accepts authenticated version-2 parent-child transactions in source order', () => {
+    const parent: SuppressionRecord = {
+      schemaVersion: 1,
+      eventId: firstId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'resource_deleted',
+      targetId: courseId,
+      resourceAccessRevision: 3,
+    };
+    const child: SuppressionRecord = {
+      schemaVersion: 2,
+      eventId: secondId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'resource_share_revoked',
+      targetId: courseId,
+      shareId: '55555555-5555-4555-8555-555555555555',
+      shareGrantedAccessRevision: 2,
+      shareRevokedAccessRevision: 3,
+      shareCauseKind: 'resource_deleted',
+      shareCauseEventId: firstId,
+    };
+    const resource = chain({ sameTransaction: true, firstRecord: parent, secondRecord: child });
+    expect(inspect(resource.segments, resource.anchor).eventCount).toBe(2);
+    const erasure = chain({
+      sameTransaction: true,
+      firstRecord: {
+        ...child,
+        eventId: firstId,
+        shareCauseKind: 'tenant_erased',
+        shareCauseEventId: secondId,
+      },
+      secondRecord: record('tenant_erased', secondId),
+    });
+    expect(inspect(erasure.segments, erasure.anchor).eventCount).toBe(2);
+  });
+
+  it('rejects forged or misordered version-2 parent-child relationships before connecting', async () => {
+    const parent: SuppressionRecord = {
+      schemaVersion: 1,
+      eventId: firstId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'resource_deleted',
+      targetId: courseId,
+      resourceAccessRevision: 3,
+    };
+    const child: SuppressionRecord = {
+      schemaVersion: 2,
+      eventId: secondId,
+      athleteId: defaultAthleteId,
+      occurredAt,
+      kind: 'resource_share_revoked',
+      targetId: courseId,
+      shareId: '55555555-5555-4555-8555-555555555555',
+      shareGrantedAccessRevision: 2,
+      shareRevokedAccessRevision: 3,
+      shareCauseKind: 'resource_deleted',
+      shareCauseEventId: firstId,
+    };
+    const invalid = [
+      chain({ sameTransaction: true, firstRecord: child, secondRecord: parent }),
+      chain({
+        sameTransaction: true,
+        firstRecord: parent,
+        secondRecord: { ...child, shareCauseEventId: courseId },
+      }),
+      chain({
+        sameTransaction: true,
+        firstRecord: parent,
+        secondRecord: { ...child, shareRevokedAccessRevision: 4 },
+      }),
+      chain({ firstRecord: parent, secondRecord: child }),
+      singleTransaction([
+        parent,
+        record('course_deleted', '66666666-6666-4666-8666-666666666666'),
+        child,
+      ]),
+      chain({
+        sameTransaction: true,
+        firstRecord: parent,
+        secondRecord: { ...child, occurredAt: '2026-09-30 12:34:55+00' },
+      }),
+    ];
+    const pool = new Pool({ connectionString: 'postgresql://invalid@127.0.0.1:1/none' });
+    const connect = vi.spyOn(pool, 'connect');
+    try {
+      for (const candidate of invalid) {
+        await expect(
+          replayVerifiedSuppressionChain({ ...candidate, key, keyId, ownerPool: pool }),
+        ).rejects.toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+      }
       expect(connect).not.toHaveBeenCalled();
     } finally {
       connect.mockRestore();

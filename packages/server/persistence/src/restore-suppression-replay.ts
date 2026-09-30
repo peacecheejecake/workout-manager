@@ -47,9 +47,14 @@ type SupportedRecord =
       }
     >
   | Extract<SuppressionRecord, { kind: 'healthkit_consent_transition' | 'ai_consent_transition' }>;
+type ShareRecord = Extract<SupportedRecord, { kind: 'resource_share_revoked' }>;
+type ReplayTransaction = {
+  records: readonly SupportedRecord[];
+  resourceChildren: ReadonlyMap<string, readonly ShareRecord[]>;
+};
 type VerifiedChain = {
   summary: ReplayPreflight;
-  transactions: readonly (readonly SupportedRecord[])[];
+  transactions: readonly ReplayTransaction[];
 };
 type ReplayInput = {
   segments: readonly Uint8Array[];
@@ -67,6 +72,64 @@ function lsnValue(value: string): bigint {
   const [high, low] = value.split('/');
   if (!high || !low) return fail();
   return (BigInt(`0x${high}`) << 32n) | BigInt(`0x${low}`);
+}
+
+function groupCompoundRecords(records: readonly SupportedRecord[]): ReplayTransaction {
+  const byId = new Map(records.map((record, index) => [record.eventId, { record, index }]));
+  const resourceChildren = new Map<string, ShareRecord[]>();
+  const resourceDeletions = new Set<string>();
+  const tenantErasures = new Set<string>();
+  for (const record of records) {
+    if (record.kind === 'resource_deleted')
+      resourceDeletions.add(`${record.athleteId}:${record.targetId}`);
+    if (record.kind === 'tenant_erased') tenantErasures.add(record.athleteId);
+  }
+  for (const [index, record] of records.entries()) {
+    if (record.kind !== 'resource_share_revoked') continue;
+    if (record.shareCauseKind === undefined || record.shareCauseEventId === undefined) {
+      // A v1 share in the same source transaction as an erasure/deletion has
+      // no authenticated parent identity and cannot be classified safely.
+      if (
+        resourceDeletions.has(`${record.athleteId}:${record.targetId}`) ||
+        tenantErasures.has(record.athleteId)
+      )
+        return fail();
+      continue;
+    }
+    if (record.schemaVersion !== 2 || !canonicalUuid.test(record.shareCauseEventId)) return fail();
+    const parent = byId.get(record.shareCauseEventId);
+    if (!parent || parent.record.athleteId !== record.athleteId) return fail();
+    if (record.shareCauseKind === 'resource_deleted') {
+      if (
+        parent.record.kind !== 'resource_deleted' ||
+        parent.record.targetId !== record.targetId ||
+        parent.index >= index ||
+        Date.parse(record.occurredAt) < Date.parse(parent.record.occurredAt) ||
+        record.shareRevokedAccessRevision !== parent.record.resourceAccessRevision
+      )
+        return fail();
+      const children = resourceChildren.get(parent.record.eventId) ?? [];
+      children.push(record);
+      resourceChildren.set(parent.record.eventId, children);
+    } else if (
+      parent.record.kind !== 'tenant_erased' ||
+      parent.index <= index ||
+      Date.parse(record.occurredAt) > Date.parse(parent.record.occurredAt) ||
+      record.shareRevokedAccessRevision !== record.shareGrantedAccessRevision + 1
+    ) {
+      return fail();
+    }
+  }
+  // The compound SQL function applies all resource children at the parent
+  // position. Refuse interleaved events so replay keeps source event order.
+  for (const [parentId, children] of resourceChildren) {
+    const parentIndex = byId.get(parentId)?.index;
+    if (parentIndex === undefined) return fail();
+    for (const [offset, child] of children.entries()) {
+      if (byId.get(child.eventId)?.index !== parentIndex + offset + 1) return fail();
+    }
+  }
+  return { records, resourceChildren };
 }
 
 /**
@@ -96,7 +159,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
   let eventCount = 0;
   const now = Date.now();
   const seen = new Set<string>();
-  const transactions: SupportedRecord[][] = [];
+  const transactions: ReplayTransaction[] = [];
   for (let index = 0; index < segments.length; index++) {
     const bytes = segments[index];
     const expectedHash = anchor.ciphertextHashes[index];
@@ -117,9 +180,6 @@ function verifyChain(input: ReplayInput): VerifiedChain {
       return fail();
     for (const transaction of envelope.transactions) {
       const authenticated: SupportedRecord[] = [];
-      const resourceDeletions = new Set<string>();
-      const tenantErasures = new Set<string>();
-      const shareRevocations: { athleteId: string; resourceId: string }[] = [];
       for (const record of transaction.records) {
         if (seen.has(record.eventId)) return fail();
         seen.add(record.eventId);
@@ -186,24 +246,9 @@ function verifyChain(input: ReplayInput): VerifiedChain {
                 record.consentRevision !== record.consentPreviousRevision + 1))
         )
           return fail();
-        if (record.kind === 'resource_deleted')
-          resourceDeletions.add(`${record.athleteId}:${record.targetId}`);
-        if (record.kind === 'tenant_erased') tenantErasures.add(record.athleteId);
-        if (record.kind === 'resource_share_revoked')
-          shareRevocations.push({ athleteId: record.athleteId, resourceId: record.targetId });
         authenticated.push(record);
       }
-      // Only a shared source transaction needs coordinated parent/child replay.
-      // Separate completed revocations can precede later resource deletion.
-      if (
-        shareRevocations.some(
-          (share) =>
-            resourceDeletions.has(`${share.athleteId}:${share.resourceId}`) ||
-            tenantErasures.has(share.athleteId),
-        )
-      )
-        return fail();
-      transactions.push(authenticated);
+      transactions.push(groupCompoundRecords(authenticated));
     }
     currentLsn = envelope.throughLsn;
     currentHash = envelope.sha256;
@@ -250,8 +295,13 @@ export async function replayVerifiedSuppressionChain(
     transactionOpen = true;
     await client.query("SELECT set_config('statement_timeout','5000',true)");
     await client.query("SELECT set_config('lock_timeout','3000',true)");
-    for (const records of verified.transactions) {
-      for (const record of records) {
+    for (const transaction of verified.transactions) {
+      for (const record of transaction.records) {
+        if (
+          record.kind === 'resource_share_revoked' &&
+          record.shareCauseKind === 'resource_deleted'
+        )
+          continue;
         await client.query("SELECT set_config('app.athlete_id',$1,true)", [record.athleteId]);
         if (record.kind === 'tenant_erased') {
           await client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
@@ -282,13 +332,41 @@ export async function replayVerifiedSuppressionChain(
             ],
           );
         } else if (record.kind === 'resource_deleted') {
-          await client.query('SELECT public.replay_resource_deletion_exact($1,$2,$3,$4,$5)', [
-            record.athleteId,
-            record.targetId,
-            record.eventId,
-            record.occurredAt,
-            record.resourceAccessRevision,
-          ]);
+          const children = transaction.resourceChildren.get(record.eventId);
+          if (children?.length) {
+            await client.query(
+              'SELECT public.replay_resource_deletion_compound_exact($1,$2,$3,$4,$5,$6::jsonb)',
+              [
+                record.athleteId,
+                record.targetId,
+                record.eventId,
+                record.occurredAt,
+                record.resourceAccessRevision,
+                JSON.stringify(
+                  children.map((child) => ({
+                    recordVersion: child.schemaVersion,
+                    eventId: child.eventId,
+                    athleteId: child.athleteId,
+                    targetId: child.targetId,
+                    shareId: child.shareId,
+                    occurredAt: child.occurredAt,
+                    shareGrantedAccessRevision: child.shareGrantedAccessRevision,
+                    shareRevokedAccessRevision: child.shareRevokedAccessRevision,
+                    shareCauseKind: child.shareCauseKind,
+                    shareCauseEventId: child.shareCauseEventId,
+                  })),
+                ),
+              ],
+            );
+          } else {
+            await client.query('SELECT public.replay_resource_deletion_exact($1,$2,$3,$4,$5)', [
+              record.athleteId,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.resourceAccessRevision,
+            ]);
+          }
         } else if (record.kind === 'gallery_media_deleted') {
           await client.query('SELECT public.replay_gallery_media_deletion_exact($1,$2,$3,$4,$5)', [
             record.athleteId,
@@ -306,18 +384,34 @@ export async function replayVerifiedSuppressionChain(
             record.checkInRevision,
           ]);
         } else if (record.kind === 'resource_share_revoked') {
-          await client.query(
-            'SELECT public.replay_resource_share_revoke_exact($1,$2,$3,$4,$5,$6,$7)',
-            [
-              record.athleteId,
-              record.targetId,
-              record.shareId,
-              record.eventId,
-              record.occurredAt,
-              record.shareGrantedAccessRevision,
-              record.shareRevokedAccessRevision,
-            ],
-          );
+          if (record.shareCauseKind === 'tenant_erased') {
+            await client.query(
+              'SELECT public.replay_erasure_share_child_exact($1,$2,$3,$4,$5,$6,$7,$8)',
+              [
+                record.athleteId,
+                record.targetId,
+                record.shareId,
+                record.eventId,
+                record.occurredAt,
+                record.shareGrantedAccessRevision,
+                record.shareRevokedAccessRevision,
+                record.shareCauseEventId,
+              ],
+            );
+          } else {
+            await client.query(
+              'SELECT public.replay_resource_share_revoke_exact($1,$2,$3,$4,$5,$6,$7)',
+              [
+                record.athleteId,
+                record.targetId,
+                record.shareId,
+                record.eventId,
+                record.occurredAt,
+                record.shareGrantedAccessRevision,
+                record.shareRevokedAccessRevision,
+              ],
+            );
+          }
         } else if (record.kind === 'healthkit_consent_transition') {
           await client.query(
             'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
