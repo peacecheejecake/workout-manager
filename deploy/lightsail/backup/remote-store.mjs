@@ -336,7 +336,7 @@ export async function downloadBundle({ bundleId, destination, config, client, sy
   }
 }
 
-class AwsCliClient {
+export class AwsCliClient {
   constructor(config) {
     this.config = config;
   }
