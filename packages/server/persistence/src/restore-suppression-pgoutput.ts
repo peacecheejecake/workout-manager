@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { Pool } from 'pg';
+import type { PoolClient } from 'pg';
 
 import {
   validateSuppressionRecord,
@@ -428,7 +428,10 @@ export function verifyLocalSequenceChain(envelopes: readonly LocalSequenceEnvelo
   }
 }
 
-export async function peekSuppressionPgoutput(pool: Pool, slotName: string): Promise<Buffer[]> {
+export async function peekSuppressionPgoutput(
+  pool: Pick<PoolClient, 'query'>,
+  slotName: string,
+): Promise<Buffer[]> {
   if (!/^wm_suppression_[a-z0-9_]{1,40}$/.test(slotName)) throw new Error('INVALID_SLOT_NAME');
   const result = await pool.query<{ data: Buffer }>(
     `SELECT data FROM pg_logical_slot_peek_binary_changes(
