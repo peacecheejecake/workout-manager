@@ -1,6 +1,6 @@
 # EXT-HOSTING · 독립 삭제 원장 계약 초안
 
-상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료 삭제의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
+상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
 
 ## 현재 경계와 근거
 
@@ -24,7 +24,7 @@
 
 **미확정 범위:** resource/gallery 공유 철회, 개별 CheckIn 삭제의 완전한 파생물, HealthKit raw-only 삭제, Garmin consent/credential 철회, 코스 공유 epoch·평생 구역 예산, 자료/미디어 객체·검색 색인·인용, 기타 물리 삭제와 후속 migration을 전수 조사해야 한다. [운영 절차](../operations-runbook.md)의 credential cleanup 및 share epoch 절차도 복구 계약에 포함된다. 이 범위가 닫히기 전에는 “모든 삭제 도메인 보호 완료”라고 판정하지 않는다. 기존 합성 AI 원장 parser의 1,000개 행 상한은 운영 규모 계약이 아니다.
 
-## 계정 말소·코스·Activity·자료 삭제의 로컬 사건 기반 (066–069)
+## 계정 말소·코스·Activity·자료·갤러리 삭제의 로컬 사건 기반 (066–070)
 
 `066_tenant_erasure_suppression_event.sql`은 `tenant_erasure` INSERT의 AFTER trigger에서 같은 PostgreSQL 거래에 `restore_suppression_event` 한 행을 기록한다. 행에는 `event_id`(무작위 UUID), 로컬 `record_version=1`, tenant ID, `tenant_erased`, 기존 tombstone의 `erased_at`만 있고 계정 FK나 건강 본문·자격 증명·좌표는 없다. `(athlete_id,kind)` 유일성과 기존 `erase_account`의 tombstone 재호출 경로 때문에 성공한 재호출은 최초 `event_id`와 시각을 유지한다. INSERT 또는 말소 거래가 rollback되면 사건도 없다. UPDATE·DELETE·TRUNCATE 거부 trigger가 행 변경을 막는다. DB 소유자와 superuser는 신뢰 경계이며 소유자가 trigger를 제거하거나 표를 DROP하는 행위까지 방지하는 수단은 아니다.
 
@@ -36,20 +36,22 @@
 
 `069_resource_deletion_suppression_event.sql`은 `resource.deleted_at`이 비어 있는 head에서 삭제 시각으로 바뀐 뒤 같은 거래에서 `resource_deleted` 한 행을 기록한다. 기존 전이 검사는 `access_revision`의 한 단계 증가와 삭제 시각 일치를 강제한다. 사건에는 tenant·자료 UUID·삭제 access revision·`deleted_at`만 추가하며 본문·객체 key·URL·metadata·공유 상대는 넣지 않는다. 기존 사용자 `softDelete`는 이 UPDATE 뒤 감사 사실, 공유 회수, 객체·파생물 정리, receipt tombstone, outbox를 같은 거래에서 마친다. 후속 단계가 실패하면 사건과 삭제 모두 rollback된다. 재호출은 원래 `event_id`를 유지하고, 계정 말소가 자료 행을 지워도 사건은 남는다. 이전 삭제 head는 역산하지 않는다. DB 관리자의 물리 DELETE와 자료 공유/동의 철회는 이 사건의 범위 밖이다. 독립 v1 계약에 필요한 객체·파생물 복구 재생 범위 및 복원 함수는 아직 구현되지 않았다.
 
+`070_gallery_media_deletion_suppression_event.sql`은 `gallery_media_item.deleted_at`이 NULL에서 삭제 시각으로 바뀐 뒤 같은 거래에서 `gallery_media_deleted` 한 행을 기록한다. 기존 BEFORE 전이 검사는 `access_revision`의 한 단계 증가와 `updated_at=deleted_at`을 요구한다. 사건에는 tenant·미디어 항목 UUID·삭제 access revision·시각만 추가하고 caption·album·원본 파일명·객체 key·hash·촬영 시각·byte metadata는 넣지 않는다. 사용자 `softDelete`는 이 UPDATE 뒤 receipt tombstone, 지연 업로드 취소, 원본·preview 객체 cleanup, outbox를 같은 거래에서 처리한다. 뒤 단계가 실패하면 사건과 삭제가 함께 rollback된다. 같은 성공 요청은 `event_id`를 유지하고, 계정 말소로 갤러리 행이 지워져도 사건은 남는다. 070 이전 삭제는 backfill하지 않는다. 이 단계는 갤러리 객체 복원 재생, exporter, 원격 원장에 연결되지 않았다.
+
 이 로컬 행의 `record_version`은 아래 **독립 원장 v1의 `schemaVersion`이 아니다**. 사건에는 클러스터 식별자·WAL commit 위치/연속성·독립 내구성 확인이 없으며, exporter·호스트 밖 반출·복원 재생도 없다. 이 행을 읽어 `collect.mjs`의 ledger manifest를 채우거나 복원 접근을 허용할 수 없다. 코스/Activity 복구 재생과 로컬 사건 생성은 별개의 경로이며, 다른 파괴적 쓰기 경로는 아직 이 표에 연결되지 않았다.
 
 ## 최소 원장 v1 계약
 
 v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 필드가 없거나 알 수 없는 필드/종류가 있으면 복구를 중단한다. 사건 ID는 중복 제거용이고 commit 위치는 **전달 연속성** 검증용으로 구분한다.
 
-| `kind`                                | 필수 복구 사실                                                                                                                               |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tenant_erased`                       | tenant ID, 말소 시각; 앞선 같은 tenant 사건과 겹쳐도 말소가 우선                                                                             |
-| `activity_deleted`                    | tenant·activity ID, 삭제 revision, source kind/ID, source revision·content hash; dump에 없는 source의 값 없는 tombstone과 suppression 재구성 |
-| `course_deleted`                      | tenant·course ID·삭제 시각; 없는 코스에도 terminal suppression과 객체 prefix purge                                                           |
-| `consent_transition`                  | tenant·kind, 이전/새 revision, `exists`/`absent` 및 granted 상태, 철회 epoch; 철회 이력을 최종 재동의와 분리                                 |
-| `evidence_purged`                     | tenant·snapshot ID, `source_deleted`/`consent_withdrawn`; 본문 없음                                                                          |
-| `resource_deleted`, `gallery_deleted` | tenant·대상 ID, 삭제 access revision·시각, 해당 객체/파생물 cleanup 범위; dump에 없는 대상도 재수집/재사용 억제                              |
+| `kind`                                      | 필수 복구 사실                                                                                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenant_erased`                             | tenant ID, 말소 시각; 앞선 같은 tenant 사건과 겹쳐도 말소가 우선                                                                             |
+| `activity_deleted`                          | tenant·activity ID, 삭제 revision, source kind/ID, source revision·content hash; dump에 없는 source의 값 없는 tombstone과 suppression 재구성 |
+| `course_deleted`                            | tenant·course ID·삭제 시각; 없는 코스에도 terminal suppression과 객체 prefix purge                                                           |
+| `consent_transition`                        | tenant·kind, 이전/새 revision, `exists`/`absent` 및 granted 상태, 철회 epoch; 철회 이력을 최종 재동의와 분리                                 |
+| `evidence_purged`                           | tenant·snapshot ID, `source_deleted`/`consent_withdrawn`; 본문 없음                                                                          |
+| `resource_deleted`, `gallery_media_deleted` | tenant·대상 ID, 삭제 access revision·시각, 해당 객체/파생물 cleanup 범위; dump에 없는 대상도 재수집/재사용 억제                              |
 
 제약 본문·head, AI/HealthKit의 최종 동의 상태, 코스 공유 예산처럼 **현재 상태**가 필요한 자료는 위 사건과 별도의 versioned snapshot 원장이다. 개별 CheckIn·HealthKit raw-only 삭제와 미확정 범위의 정확한 사건 종류·필드는 도메인 조사 후 v1에 추가해야 한다. 그 전에는 해당 쓰기가 가능한 배포의 복원을 허용하지 않는다.
 
@@ -67,12 +69,12 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 - tenant/대상/source 소유 불일치, revision 역행, consent epoch 충돌, 철회 뒤 재동의 이력 누락, 객체·검색·인용 정리 실패, 세션/credential/share epoch 무효화 실패.
 - 복원 완료 전 writer 또는 공개 요청이 접근 가능하거나, 백업 창의 수동 writer·재기동을 막는 fence가 증명되지 않음.
 
-## 수용 시험 계획 (계정 말소·코스·canonical Activity·자료 삭제의 로컬 거래 조건만 부분 실행)
+## 수용 시험 계획 (계정 말소·코스·canonical Activity·자료·갤러리 삭제의 로컬 거래 조건만 부분 실행)
 
-1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료 삭제에 한해 PostgreSQL 14에서 실행했다.** 별도 동의 철회 사건, PostgreSQL 17.6 재검증, dump 기준점 전/후·동시 commit·원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
+1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제에 한해 PostgreSQL 14에서 실행했다.** 별도 동의 철회 사건, PostgreSQL 17.6 재검증, dump 기준점 전/후·동시 commit·원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
 2. 계정 A 말소와 A의 앞선 활동·코스 삭제를 겹치게 하고, 계정 B는 보존한다. dump 뒤 생성 후 삭제한 활동/source·코스, resource/gallery 삭제, 제약·체크인 삭제와 객체/검색 파생물 재생을 검사한다. 외래 tenant ID 또는 같은 대상의 모순 사건은 전체 복구를 rollback한다.
 3. AI 철회→재동의, HealthKit 철회→재동의와 consent revision/epoch 변경을 백업 뒤 실행한다. 복원된 과거 AI 근거·코치 출력·자료 `include_for_coach`와 HealthKit raw·lineage·receipt가 다시 노출되지 않아야 하며, 새 동의의 별도 새 자료는 보존한다. HealthKit UUID의 지연 재전송도 억제한다.
 4. 수집 중 프로세스 종료, SIGKILL, DB/호스트 장애, 원격 업로드 일부 성공·ack 전/후 중단, 복구 중단 뒤 재실행을 주입한다. 중복 사건은 무해하고 누락·불명확한 tail은 차단된다. 다른 tenant·보존 객체는 그대로여야 한다.
 5. 호스트 디스크와 원본 DB가 사라진 조건에서 **호스트 밖** 백업·원장만으로 복원한다. 원격 사본 변조·오래된 manifest·마지막 세그먼트 소실을 각각 거절한다. 확인된 전체 구간에서만 차단 상태의 앱·worker·RLS·실제 객체 purge를 검사한 뒤 접근을 연다. 실제 RPO/RTO와 재시작 후 상태를 별도 기록한다.
 
-이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity 삭제의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.
+이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity·자료·갤러리 삭제의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.

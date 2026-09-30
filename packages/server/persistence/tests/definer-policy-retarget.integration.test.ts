@@ -6,12 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, type Database } from '../src/database.js';
 import {
   grantCourses,
+  grantGalleryMedia,
   grantOperations,
   grantResources,
   grantResourceObjectCleanupWorker,
   migrate,
 } from '../src/migrate.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
+import { createGalleryMediaRepository } from '../src/gallery-media.js';
 import { createPrivateTextResourceRepository } from '../src/resources.js';
 import {
   createResourceObjectCleanupRepository,
@@ -86,6 +88,7 @@ beforeAll(async () => {
   }
   await grantOperations(ownerUrl, runtimeRole);
   await grantResources(ownerUrl, runtimeRole);
+  await grantGalleryMedia(ownerUrl, runtimeRole);
   await grantCourses(ownerUrl, runtimeRole);
   await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
   runtime = createDatabase({ connectionString: urlFor(runtimeRole), max: 2 });
@@ -222,6 +225,47 @@ async function liveResourceDeletionEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveGalleryDeletionEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const gallery = createGalleryMediaRepository(runtime);
+  const reservation = await gallery.reserveCreate(
+    tenant,
+    {
+      mediaKind: 'image',
+      album: null,
+      caption: null,
+      activityId: null,
+      capturedAt: null,
+      capturedLocalDate: null,
+    },
+    `gallery-${randomUUID()}`,
+  );
+  const hash = 'c'.repeat(64);
+  const storageRef = `private/v1/tenants/${tenant}/gallery/${reservation.mediaItemId}/objects/uploads/${reservation.uploadId}/sha256/${hash}.png`;
+  await gallery.prepareObject(tenant, reservation.uploadId, {
+    storageRef,
+    file: {
+      originalFileName: 'synthetic.png',
+      mediaType: 'image/png',
+      byteSize: 2048,
+      sha256: hash,
+    },
+  });
+  await gallery.markStaged(tenant, reservation.uploadId);
+  const finalized = await gallery.finalize(tenant, reservation.uploadId);
+  if (finalized.status !== 'available') throw new Error('Expected available media item');
+  await gallery.softDelete(tenant, finalized.item.id, {
+    expectedAccessRevision: finalized.item.accessRevision,
+    idempotencyKey: `gallery-${randomUUID()}`,
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='gallery_media_deleted' AND target_id=$2`,
+    [tenant, finalized.item.id],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -278,6 +322,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -312,6 +357,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -343,6 +389,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });

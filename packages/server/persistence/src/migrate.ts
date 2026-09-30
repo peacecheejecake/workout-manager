@@ -75,6 +75,7 @@ const migrationFiles = [
   '067_course_deletion_suppression_event.sql',
   '068_activity_deletion_suppression_event.sql',
   '069_resource_deletion_suppression_event.sql',
+  '070_gallery_media_deletion_suppression_event.sql',
 ] as const;
 
 /**
