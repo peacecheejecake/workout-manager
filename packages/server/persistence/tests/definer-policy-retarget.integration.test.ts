@@ -297,6 +297,29 @@ async function liveHealthKitConsentEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveAiConsentEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const consents = createConsentRepository(runtime);
+  await consents.setConsent(tenant, {
+    kind: 'ai',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await consents.setConsent(tenant, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='ai_consent_transition'`,
+    [tenant],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 /** One due deletion of a key nothing references, and whether the worker can finish it. */
 async function workerFinishesADeletion(): Promise<boolean> {
   const ref = `private/v1/tenants/${randomUUID()}/resources/${randomUUID()}/temporary/${randomUUID()}`;
@@ -355,6 +378,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
+    expect(await liveAiConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });
@@ -391,6 +415,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
+    expect(await liveAiConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
     // Running it again changes nothing.
@@ -424,6 +449,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveResourceDeletionEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
+    expect(await liveAiConsentEventCount()).toBe(2);
     expect(await workerFinishesADeletion()).toBe(true);
     expect(await workerPrunesAnExpiredCacheEntry()).toBe(true);
   });

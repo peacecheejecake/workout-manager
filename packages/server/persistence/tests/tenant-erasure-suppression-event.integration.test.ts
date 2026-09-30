@@ -112,7 +112,7 @@ async function inTenant<T>(
 
 async function events(tenant: string): Promise<EventRow[]> {
   const result = await owner.query<EventRow>(
-    'SELECT event_id,record_version,athlete_id,kind,occurred_at FROM restore_suppression_event WHERE athlete_id=$1',
+    "SELECT event_id,record_version,athlete_id,kind,occurred_at FROM restore_suppression_event WHERE athlete_id=$1 AND kind='tenant_erased'",
     [tenant],
   );
   return result.rows;

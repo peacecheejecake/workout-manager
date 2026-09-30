@@ -1,6 +1,6 @@
 # EXT-HOSTING · 독립 삭제 원장 계약 초안
 
-상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제·HealthKit 동의 전이의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
+상태: **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제·HealthKit/AI 동의 전이의 로컬 거래 기록만 구현·검증; 독립 원장·운영 검증 not_executed** (2026-09-30). 대상은 단일 Lightsail 호스트의 Workout 전용 PostgreSQL과 비공개 객체 저장소다. 이 문서는 원본 DB와 호스트가 사라져도 오래된 백업에서 삭제·말소·동의 철회가 되살아나지 않게 하는 최소 계약이다. 아래 대상 목록은 확인한 경로의 목록이며 전체 파괴적 쓰기 경로를 조사 완료했다는 뜻이 아니다.
 
 ## 현재 경계와 근거
 
@@ -24,7 +24,7 @@
 
 **미확정 범위:** resource/gallery 공유 철회, 개별 CheckIn 삭제의 완전한 파생물, HealthKit raw-only 삭제, Garmin consent/credential 철회, 코스 공유 epoch·평생 구역 예산, 자료/미디어 객체·검색 색인·인용, 기타 물리 삭제와 후속 migration을 전수 조사해야 한다. [운영 절차](../operations-runbook.md)의 credential cleanup 및 share epoch 절차도 복구 계약에 포함된다. 이 범위가 닫히기 전에는 “모든 삭제 도메인 보호 완료”라고 판정하지 않는다. 기존 합성 AI 원장 parser의 1,000개 행 상한은 운영 규모 계약이 아니다.
 
-## 계정 말소·코스·Activity·자료·갤러리 삭제·HealthKit 동의의 로컬 사건 기반 (066–071)
+## 계정 말소·코스·Activity·자료·갤러리 삭제·HealthKit/AI 동의의 로컬 사건 기반 (066–072)
 
 `066_tenant_erasure_suppression_event.sql`은 `tenant_erasure` INSERT의 AFTER trigger에서 같은 PostgreSQL 거래에 `restore_suppression_event` 한 행을 기록한다. 행에는 `event_id`(무작위 UUID), 로컬 `record_version=1`, tenant ID, `tenant_erased`, 기존 tombstone의 `erased_at`만 있고 계정 FK나 건강 본문·자격 증명·좌표는 없다. `(athlete_id,kind)` 유일성과 기존 `erase_account`의 tombstone 재호출 경로 때문에 성공한 재호출은 최초 `event_id`와 시각을 유지한다. INSERT 또는 말소 거래가 rollback되면 사건도 없다. UPDATE·DELETE·TRUNCATE 거부 trigger가 행 변경을 막는다. DB 소유자와 superuser는 신뢰 경계이며 소유자가 trigger를 제거하거나 표를 DROP하는 행위까지 방지하는 수단은 아니다.
 
@@ -38,7 +38,9 @@
 
 `070_gallery_media_deletion_suppression_event.sql`은 `gallery_media_item.deleted_at`이 NULL에서 삭제 시각으로 바뀐 뒤 같은 거래에서 `gallery_media_deleted` 한 행을 기록한다. 기존 BEFORE 전이 검사는 `access_revision`의 한 단계 증가와 `updated_at=deleted_at`을 요구한다. 사건에는 tenant·미디어 항목 UUID·삭제 access revision·시각만 추가하고 caption·album·원본 파일명·객체 key·hash·촬영 시각·byte metadata는 넣지 않는다. 사용자 `softDelete`는 이 UPDATE 뒤 receipt tombstone, 지연 업로드 취소, 원본·preview 객체 cleanup, outbox를 같은 거래에서 처리한다. 뒤 단계가 실패하면 사건과 삭제가 함께 rollback된다. 같은 성공 요청은 `event_id`를 유지하고, 계정 말소로 갤러리 행이 지워져도 사건은 남는다. 070 이전 삭제는 backfill하지 않는다. 이 단계는 갤러리 객체 복원 재생, exporter, 원격 원장에 연결되지 않았다.
 
-`071_healthkit_consent_transition_suppression_event.sql`은 사용자 동의 명령의 HealthKit `INSERT` 또는 `UPDATE`와 같은 거래에서 `healthkit_consent_transition`을 기록한다. 최초 행에는 이전 상태 `absent`(null 쌍)와 새 granted/revision 1을, 이후에는 이전·새 granted와 연속 revision을 기록한다. `true→false` 철회 revision과 `false→true` 재동의 revision이 별개 사건이므로 최종 `granted=true`만으로 과거 허용을 이어 붙이지 않는다. 기존 철회 trigger가 raw workout을 삭제하고 batch receipt digest를 비우며, ingestion은 현재 granted revision과 맞지 않는 과거 batch를 거부한다. 재동의 후 새 revision의 새 batch는 허용한다. 사건에는 workout/batch/device ID·digest·token·좌표를 넣지 않는다. 재호출은 새 사건을 만들지 않고 계정 말소 뒤에도 사건은 남는다. 071 이전 전이는 backfill하지 않는다. AI 동의 경로와 계정 말소 이외의 직접 `consent DELETE`·revision reset은 이 구현 범위 밖이며, 이 로컬 사건만으로 외부 원장 연속성이나 복구 재생을 증명하지 않는다.
+`071_healthkit_consent_transition_suppression_event.sql`은 사용자 동의 명령의 HealthKit `INSERT` 또는 `UPDATE`와 같은 거래에서 `healthkit_consent_transition`을 기록한다. 최초 행에는 이전 상태 `absent`(null 쌍)와 새 granted/revision 1을, 이후에는 이전·새 granted와 연속 revision을 기록한다. `true→false` 철회 revision과 `false→true` 재동의 revision이 별개 사건이므로 최종 `granted=true`만으로 과거 허용을 이어 붙이지 않는다. 기존 철회 trigger가 raw workout을 삭제하고 batch receipt digest를 비우며, ingestion은 현재 granted revision과 맞지 않는 과거 batch를 거부한다. 재동의 후 새 revision의 새 batch는 허용한다. 사건에는 workout/batch/device ID·digest·token·좌표를 넣지 않는다. 재호출은 새 사건을 만들지 않고 계정 말소 뒤에도 사건은 남는다. 071 이전 전이는 backfill하지 않는다.
+
+`072_ai_consent_transition_suppression_event.sql`은 별도 종류인 `ai_consent_transition`에 이전·새 granted와 연속 revision만 기록한다. 이 revision이 정책 epoch다. 기존 철회 trigger가 AI 근거·후보 본문을 지우고 자료의 코치 사용 권한을 해제하며 파생물 cleanup을 예약한다. 검색·cache·citation은 즉시 조회 권한을 재검사하고, 정리 후 재동의해도 이전 근거·자료의 접근 권한과 인용은 돌아오지 않는다. 새로 검토·승인한 자료만 새 epoch에서 사용할 수 있다. 사건에는 prompt·본문·자료 ID·token을 넣지 않는다. 재호출은 같은 사건 ID를 유지하며 계정 말소 뒤에도 남는다. 072 이전 전이는 backfill하지 않는다. 계정 말소 이외의 직접 `consent DELETE`·revision reset과 다른 consent 종류는 이 구현 범위 밖이며, 이 로컬 사건만으로 외부 원장 연속성이나 복구 재생을 증명하지 않는다.
 
 이 로컬 행의 `record_version`은 아래 **독립 원장 v1의 `schemaVersion`이 아니다**. 사건에는 클러스터 식별자·WAL commit 위치/연속성·독립 내구성 확인이 없으며, exporter·호스트 밖 반출·복원 재생도 없다. 이 행을 읽어 `collect.mjs`의 ledger manifest를 채우거나 복원 접근을 허용할 수 없다. 코스/Activity 복구 재생과 로컬 사건 생성은 별개의 경로이며, 다른 파괴적 쓰기 경로는 아직 이 표에 연결되지 않았다.
 
@@ -71,12 +73,12 @@ v1의 사건은 `kind`별 필수 필드를 검증하는 판별형 계약이다. 
 - tenant/대상/source 소유 불일치, revision 역행, consent epoch 충돌, 철회 뒤 재동의 이력 누락, 객체·검색·인용 정리 실패, 세션/credential/share epoch 무효화 실패.
 - 복원 완료 전 writer 또는 공개 요청이 접근 가능하거나, 백업 창의 수동 writer·재기동을 막는 fence가 증명되지 않음.
 
-## 수용 시험 계획 (계정 말소·코스·canonical Activity·자료·갤러리 삭제·HealthKit 동의의 로컬 거래 조건만 부분 실행)
+## 수용 시험 계획 (계정 말소·코스·canonical Activity·자료·갤러리 삭제·HealthKit/AI 동의의 로컬 거래 조건만 부분 실행)
 
-1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제·HealthKit 동의 전이에 한해 PostgreSQL 14에서 실행했다.** AI 동의 철회 사건, PostgreSQL 17.6 재검증, dump 기준점 전/후·동시 commit·원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
+1. 격리 PostgreSQL 17.6의 실제 삭제·철회 명령과 rollback에서 사건의 거래 원자성을 확인한다. **계정 말소·사용자 코스 삭제·canonical Activity 삭제·자료·갤러리 삭제·HealthKit/AI 동의 전이에 한해 PostgreSQL 14에서 실행했다.** PostgreSQL 17.6 재검증, dump 기준점 전/후·동시 commit·원장 순서/중복/누락과 임의 `replayThrough` 차단은 **not_executed**다.
 2. 계정 A 말소와 A의 앞선 활동·코스 삭제를 겹치게 하고, 계정 B는 보존한다. dump 뒤 생성 후 삭제한 활동/source·코스, resource/gallery 삭제, 제약·체크인 삭제와 객체/검색 파생물 재생을 검사한다. 외래 tenant ID 또는 같은 대상의 모순 사건은 전체 복구를 rollback한다.
 3. AI 철회→재동의, HealthKit 철회→재동의와 consent revision/epoch 변경을 백업 뒤 실행한다. 복원된 과거 AI 근거·코치 출력·자료 `include_for_coach`와 HealthKit raw·lineage·receipt가 다시 노출되지 않아야 하며, 새 동의의 별도 새 자료는 보존한다. HealthKit UUID의 지연 재전송도 억제한다.
 4. 수집 중 프로세스 종료, SIGKILL, DB/호스트 장애, 원격 업로드 일부 성공·ack 전/후 중단, 복구 중단 뒤 재실행을 주입한다. 중복 사건은 무해하고 누락·불명확한 tail은 차단된다. 다른 tenant·보존 객체는 그대로여야 한다.
 5. 호스트 디스크와 원본 DB가 사라진 조건에서 **호스트 밖** 백업·원장만으로 복원한다. 원격 사본 변조·오래된 manifest·마지막 세그먼트 소실을 각각 거절한다. 확인된 전체 구간에서만 차단 상태의 앱·worker·RLS·실제 객체 purge를 검사한 뒤 접근을 연다. 실제 RPO/RTO와 재시작 후 상태를 별도 기록한다.
 
-이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity·자료·갤러리 삭제·HealthKit 동의 전이의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.
+이 문서는 구현 결정의 입력이다. 계정 말소·사용자 코스 삭제·canonical Activity·자료·갤러리 삭제·HealthKit/AI 동의 전이의 로컬 사건 외에 운영 collector 설치, 실제 백업·원장 반출, 복원 자동화, 외부 장애 시험을 실행하거나 통과로 표시하지 않았다.

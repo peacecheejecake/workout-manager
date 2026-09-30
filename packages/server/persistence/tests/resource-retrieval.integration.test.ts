@@ -615,6 +615,20 @@ describe('deletion, withdrawal and downgrade cannot resurface an excerpt', () =>
         expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
         expect((await retrieval.retrieve(athleteId, query)).excerpts).toEqual([]);
       }
+      if (testCase.name === 'a withdrawn AI consent') {
+        await grantAiConsent(athleteId);
+        // The new policy epoch permits newly reviewed material, while old
+        // excerpts and citations remain gone after the withdrawal cleanup.
+        expect((await retrieval.retrieve(athleteId, query)).excerpts).toEqual([]);
+        expect(await count(athleteId, 'resource_citation')).toBe(0);
+        const fresh = await reviewedResource(athleteId);
+        expect((await retrieval.retrieve(athleteId, query)).excerpts).toMatchObject([
+          { resourceId: fresh.resourceId },
+        ]);
+        const oldGrounding = await retrieval.readGrounding(athleteId, run.id);
+        if (oldGrounding.status !== 'available') throw new Error('Expected old grounding metadata');
+        expect(oldGrounding.citations).toEqual([]);
+      }
     });
 
   it('refuses to purge a derived store without a live lease on the manifest', async () => {
