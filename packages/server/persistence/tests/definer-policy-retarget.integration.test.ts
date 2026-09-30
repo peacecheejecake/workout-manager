@@ -17,6 +17,7 @@ import {
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import { createGalleryMediaRepository } from '../src/gallery-media.js';
 import { createPrivateTextResourceRepository } from '../src/resources.js';
+import { createResourceAccessRepository } from '../src/resource-access.js';
 import { createConsentRepository } from '../src/repositories.js';
 import {
   createResourceObjectCleanupRepository,
@@ -236,6 +237,41 @@ async function liveResourceDeletionEventCount(): Promise<number> {
   return result.rows[0]?.total ?? 0;
 }
 
+async function liveResourceShareRevokeEventCount(): Promise<number> {
+  const tenant = randomUUID();
+  const resources = createPrivateTextResourceRepository(runtime);
+  const access = createResourceAccessRepository(runtime);
+  const created = await resources.create(tenant, {
+    sourceKind: 'text',
+    title: 'Synthetic share',
+    category: 'note',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Synthetic content.',
+    idempotencyKey: randomUUID(),
+  });
+  if (created.status !== 'available') throw new Error('Expected available resource');
+  const granted = await access.grantShare(tenant, created.resource.id, {
+    granteeKind: 'coach',
+    granteePrincipalId: randomUUID(),
+    expectedAccessRevision: created.resource.accessRevision,
+    idempotencyKey: randomUUID(),
+  });
+  const shareId = granted.shares[0]?.shareId;
+  if (!shareId) throw new Error('Expected share');
+  await access.revokeShare(tenant, created.resource.id, shareId, {
+    expectedAccessRevision: granted.accessRevision,
+    idempotencyKey: randomUUID(),
+  });
+  const result = await inspect.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM restore_suppression_event
+     WHERE athlete_id=$1 AND kind='resource_share_revoked' AND target_id=$2 AND share_id=$3`,
+    [tenant, created.resource.id, shareId],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
 async function liveGalleryDeletionEventCount(): Promise<number> {
   const tenant = randomUUID();
   const gallery = createGalleryMediaRepository(runtime);
@@ -405,6 +441,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveResourceShareRevokeEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
@@ -443,6 +480,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveResourceShareRevokeEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
@@ -478,6 +516,7 @@ describe('definer policies follow the owner through retarget_definer_policies()'
     expect(await liveCourseDeletionEventCount()).toBe(1);
     expect(await liveActivityDeletionEventCount()).toBe(1);
     expect(await liveResourceDeletionEventCount()).toBe(1);
+    expect(await liveResourceShareRevokeEventCount()).toBe(1);
     expect(await liveGalleryDeletionEventCount()).toBe(1);
     expect(await liveHealthKitConsentEventCount()).toBe(2);
     expect(await liveAiConsentEventCount()).toBe(2);
