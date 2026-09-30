@@ -92,3 +92,9 @@
 - Codex 앱의 새 context-less `gpt-6-sol` high subagent가 base `main` `e1b21111572aed340757105f857d306ec80bc2dd` → `phase/m3-02` HEAD `d9dceaee1a37697b02cb5390cba265cdfab43874` 전체 diff를 읽기 전용으로 검토했다. 변경은 `M3-02h.md` 한 파일(8줄 추가·1줄 수정), 미추적·staged·unstaged 변경은 0개였다. `git diff --check`와 해당 문서 Prettier 검사가 통과했고 판정은 **APPROVE**, 차단 지적은 없었다.
 - 검토자는 임시 빌드 산출물에서 `BUILD SUCCEEDED`, Debug probe 컴파일, bundle ID, 두 HTTPS origin, HealthKit·background delivery entitlement, 앱과 mobile-web의 동일한 웹 자산 SHA-256을 대조했다. 제한된 첫 `codesign --verify --deep --strict`는 신뢰 저장소 접근 오류 `CSSMERR_TP_NOT_TRUSTED`로 실패했고, 권한 있는 동일한 읽기 전용 재실행은 exit 0이었다. 첫 실패를 검토 통과로 소급하지 않는다.
 - API 주소는 호스팅 phase Compose의 계획된 `PUBLIC_ORIGIN`과 같지만 공개 DNS/HTTPS는 아직 없다. 새 빌드의 iPhone 설치·실행, 제품 로그인, 실제 합성 HealthKit 표본 수명주기·tombstone·background wake·offline ACK는 **not_executed**다. 이번 승인은 M3-02h의 실기기 수용이나 M3-02 부모 완료가 아니다. 이 검토 기록 커밋으로 HEAD가 바뀌므로 `main` 병합 전 읽기 전용 검토 refresh가 필요하다.
+
+## 여덟 번째 검토 · 기존 운동이 있는 기기 범위 감사 APPROVE
+
+- 최신 `main` `1851d58c5753eccf96ef970a67bbc68f42cb8ea1`을 phase 브랜치에 충돌 없이 병합했다. 새 context-less `gpt-6-sol` high 읽기 전용 검토자는 이 base에서 `phase/m3-02` HEAD `0b934b3f1be8a0ea3cbdf5dc295de6525c405f5b`까지의 전체 diff를 검토해 **APPROVE**했고 차단 지적은 없었다. 변경은 `M3-02h.md` 7줄이며 staged·unstaged·미추적 파일은 없었다.
+- 검토자는 Debug 제품 수집 차단, 별도 읽기 동의 화면, 단일 UUID 범위 조회, source·표식 검증, 계정 격리와 업로드 분리가 현재 Swift 코드와 일치한다고 확인했다. 이전 P1 #1–#5와 P2는 현재 내용에서 **FIXED 유지**로 판정했다. `git diff --check`와 문서 Prettier 검사가 통과했고, 이 문서 변경에 대해 전체 앱 시험은 다시 실행하지 않았다.
+- 서명된 iPhone의 HealthKit 전체 경로 M3-02h와 부모 M3-02는 계속 **not_executed/in_progress**다. 이 판정 기록 커밋으로 diff identity가 바뀌므로 `main` 병합 전 읽기 전용 최종 검토를 새로 받는다.
