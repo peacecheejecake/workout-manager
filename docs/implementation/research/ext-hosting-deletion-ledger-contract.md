@@ -128,3 +128,9 @@ IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받
 기존 pgoutput 파서에서 12종 로컬 사건의 `record_version=1`을 읽고, 각 종류에 필요한 복원 필드만 `schemaVersion=1` 판별 가능 기록으로 변환한다. 모든 컬럼 이름·순서·타입 및 종류별 필수·금지 필드를 확인한다. UUID·revision 범위·동의 이전/현재 revision 관계·공유 철회 revision 순서·시간대가 있는 시각·중복 event ID를 검사하고, 불명 종류/버전, 부분 거래, 변경된 schema, 불필요한 non-null 필드를 거절한다. 거래의 commit/end LSN, 빈 거래, cluster ID, 앞선 해시와 로컬 해시를 메모리 envelope에 유지한다. 합성 바이너리의 변조·부분/중복 시험과 일회용 PostgreSQL 14의 12종 INSERT 디코딩을 통과했다.
 
 이 기록은 아직 **메모리 안의 로컬 산출물**이다. Activity의 `source_id`는 복구에 필요한 정확한 식별자이며 현재 DB 계약상 URL 또는 민감해 보이는 문자열일 수도 있다. 문자열 모양만으로 이를 안전하게 판정할 수 없어 원문을 보존하고 DB와 같은 200문자 상한·제어문자를 검증한다. 따라서 기록 전체를 운영 로그, 디스크 파일, 원격 저장소, collector manifest에 쓰거나 그대로 전송하지 않는다. 개인 정보 분류·암호화·접근 제어·수명 정책, 실제 재생기의 소유권 및 revision 검증을 정하기 전에는 안전한 외부 원장이 아니다. 로컬 해시와 WAL 위치는 누락 없는 전달, 백업 기준점, 최종 tail 또는 호스트 밖 내구성의 증명이 아니다. 운영 복원 접근 재개 조건은 여전히 **not_executed**다.
+
+## 메모리 내 암호화 세그먼트 코덱 (로컬 준비 단계)
+
+`restore-suppression-segment.ts`는 검증된 `LocalReplayRecordEnvelope`를 상한 있는 canonical JSON으로 직렬화한 뒤, 호출자가 제공한 정확히 32바이트의 데이터 키로 AES-256-GCM 암호문을 만든다. 공개 헤더에는 codec/record 버전, key ID, 난수 nonce, cluster ID, 시작·끝 LSN, 앞선 로컬 해시, 평문 바이트 수만 둔다. 헤더 전체를 GCM AAD로 인증하며 tenant, target, `sourceId`, 사건 ID와 복원 본문은 암호문 안에만 둔다. 운영 경로의 nonce는 Node 암호학적 난수 생성기가 매번 새로 만든다. 복호화는 키 ID·크기·태그·헤더/본문 필드 일치·로컬 해시·거래 순서·중복 사건·종류별 필드/관계를 검증한다. 오류에는 값 대신 고정 코드만 사용한다. 코덱은 평문 파일을 만들거나 기록을 출력하지 않는다.
+
+이 코덱의 출력은 **불투명한 단일 로컬 세그먼트 바이트**이며 별도 보관 승인이나 원장 완성 판정이 아니다. 데이터 키 발급·rotation·KMS wrapping, key ID 정책, 저장소 접근/보존, 호스트 밖 실제 전송과 원격 byte 재검증, slot ACK, 백업 기준점/최종 tail/복구 재생은 **not_executed**다. 기존 envelope의 SHA-256은 키가 없는 로컬 무결성 검사이므로 출처 인증, 누락 없는 WAL 또는 독립 원격 내구성의 증명이 아니다. 검증된 외부 원장과 복구 완료 증거가 생기기 전에는 공개 제품 복원 접근 재개 조건을 충족하지 못한다.
