@@ -67,6 +67,8 @@ function parseArgs(argv) {
           '--postgres-system-identifier',
           '--replication-slot',
           '--publication',
+          '--local-exported-slot-proof',
+          '--local-expected-system-identifier',
         ]
       : [...required, '--synthetic-test', '--min-free-bytes'],
   );
@@ -227,8 +229,40 @@ function snapshotContract(options) {
   }
 }
 
-function collect(options) {
-  const snapshot = snapshotContract(options);
+function localSlotProof(options) {
+  if (
+    !['--local-exported-slot-proof', '--local-expected-system-identifier'].some(
+      (key) => key in options,
+    )
+  )
+    return undefined;
+  if (
+    options['--local-exported-slot-proof'] !== 'yes' ||
+    options['--synthetic-test'] !== 'yes' ||
+    !options['--database-url-file'] ||
+    options['--database-transport'] ||
+    !options['--local-expected-system-identifier'] ||
+    !options['--replication-slot'] ||
+    !options['--publication'] ||
+    [
+      '--synthetic-snapshot-v2',
+      '--snapshot-name',
+      '--consistent-point-lsn',
+      '--postgres-system-identifier',
+    ].some((key) => key in options)
+  ) {
+    fail('BACKUP_LOCAL_SLOT_PROOF_INACTIVE');
+  }
+  return {
+    expectedSystemIdentifier: options['--local-expected-system-identifier'],
+    slotName: options['--replication-slot'],
+    publication: options['--publication'],
+  };
+}
+
+async function collect(options) {
+  const localProof = localSlotProof(options);
+  let snapshot = localProof ? undefined : snapshotContract(options);
   const dbFile = options['--database-url-file']
     ? resolve(options['--database-url-file'])
     : undefined;
@@ -267,7 +301,47 @@ function collect(options) {
   try {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
-    if (databaseTransport) {
+    if (localProof) {
+      // Keep the operational v1 collector free of the disposable proof's pg dependency.
+      const { withLocalExportedSlotSnapshot } = await import('./slot-snapshot.mjs');
+      const connectionString = readFileSync(dbFile, 'utf8').trim();
+      const url = new URL(connectionString);
+      const socketDir = url.searchParams.get('host');
+      const { snapshot: exported } = await withLocalExportedSlotSnapshot({
+        connectionString,
+        socketDir,
+        expectedDatabase: decodeURIComponent(url.pathname.slice(1)),
+        expectedSystemIdentifier: localProof.expectedSystemIdentifier,
+        slotName: localProof.slotName,
+        disposableTest: true,
+        capture: async (contract) => {
+          const actual = validateSnapshotContract({
+            ...contract,
+            publication: localProof.publication,
+          });
+          const { default: pg } = await import('pg');
+          const sql = new pg.Client({ connectionString });
+          try {
+            await sql.connect();
+            const publication = await sql.query(
+              'SELECT pubname FROM pg_publication WHERE pubname = $1',
+              [actual.publication],
+            );
+            if (publication.rows.length !== 1) fail('BACKUP_LOCAL_PUBLICATION_MISSING');
+          } finally {
+            await sql.end();
+          }
+          run(
+            'pg_dump',
+            ['-Fc', '--no-owner', '--no-acl', `--snapshot=${actual.snapshotName}`, '-f', dump],
+            env,
+          );
+          chmodSync(dump, 0o600);
+          run('pg_restore', ['--list', dump]);
+        },
+      });
+      snapshot = validateSnapshotContract({ ...exported, publication: localProof.publication });
+    } else if (databaseTransport) {
       run(
         databaseTransport,
         [
@@ -335,7 +409,9 @@ function collect(options) {
       schemaVersion: snapshot ? 2 : 1,
       capturedAt: new Date().toISOString(),
       consistency: snapshot
-        ? 'caller-supplied-exported-snapshot-local-integrity-only'
+        ? localProof
+          ? 'replication-slot-exported-snapshot-disposable-local-proof-only'
+          : 'caller-supplied-exported-snapshot-local-integrity-only'
         : 'operator-enforced-quiesced-write-fence',
       independentPostBackupErasureLedgerRequired: true,
       ...(snapshot ? { snapshot } : {}),
@@ -368,10 +444,12 @@ function verify(options) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (
     (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) ||
-    manifest.consistency !==
-      (manifest.schemaVersion === 2
-        ? 'caller-supplied-exported-snapshot-local-integrity-only'
-        : 'operator-enforced-quiesced-write-fence') ||
+    !(manifest.schemaVersion === 2
+      ? [
+          'caller-supplied-exported-snapshot-local-integrity-only',
+          'replication-slot-exported-snapshot-disposable-local-proof-only',
+        ].includes(manifest.consistency)
+      : manifest.consistency === 'operator-enforced-quiesced-write-fence') ||
     manifest.independentPostBackupErasureLedgerRequired !== true ||
     !Number.isFinite(Date.parse(manifest.capturedAt))
   ) {
@@ -452,7 +530,7 @@ function verify(options) {
 try {
   process.umask(0o077);
   const { command, options } = parseArgs(process.argv.slice(2));
-  if (command === 'collect') collect(options);
+  if (command === 'collect') await collect(options);
   else verify(options);
 } catch (error) {
   const code =
