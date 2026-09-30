@@ -158,3 +158,127 @@ export async function uploadLedgerSegment(options) {
     reject();
   }
 }
+
+// This adapter accepts only opaque ciphertext and authenticated-head bytes. The
+// caller owns their meaning, keys, and completeness checks. The injected client
+// must issue owner-bound, conditional, versioned requests to one private bucket.
+const MAX_HEAD_BYTES = 1024 * 1024;
+const SHA256 = /^[a-f0-9]{64}$/;
+
+function boundedBytes(value, limit) {
+  if (!Buffer.isBuffer(value) || value.length < 1 || value.length > limit) reject();
+  return Buffer.from(value);
+}
+
+function exactMetadata(object, config, versionId) {
+  if (
+    !object ||
+    object.versionId !== versionId ||
+    object.deleted !== false ||
+    object.encryption !== 'AES256' ||
+    object.owner !== config.expectedBucketOwner ||
+    object.region !== config.region
+  )
+    reject();
+}
+
+function exactEtag(value) {
+  if (typeof value !== 'string' || !/^"[a-fA-F0-9-]{1,128}"$/.test(value)) reject();
+  return value;
+}
+
+function exactVersionedBytes(object, config, versionId, limit) {
+  exactMetadata(object, config, versionId);
+  return boundedBytes(object.bytes, limit);
+}
+
+/** A local, injected-client boundary. It does not configure AWS or seed the first signed head. */
+export function createSuppressionRemoteStore({ config, client }) {
+  validateConfig(config, client);
+  const headKey = `${config.prefix}/head.bin`;
+  const segmentKey = (id) => {
+    if (typeof id !== 'string' || !SHA256.test(id)) reject();
+    return `${config.prefix}/segments/${id}.bin`;
+  };
+  const ready = async () => {
+    if ((await client.versioning()) !== 'Enabled' || (await client.location()) !== config.region)
+      reject();
+  };
+  const versioned = async (key, versionId, limit) => {
+    assertVersion(versionId);
+    const metadata = await client.head(key, versionId);
+    exactMetadata(metadata, config, versionId);
+    const object = await client.get(key, versionId);
+    return exactVersionedBytes(object, config, versionId, limit);
+  };
+  const latest = async (key, limit) => {
+    const object = await client.getLatestOrNull(key);
+    if (!object) reject(); // A missing/deleted head or segment is never evidence of completeness.
+    assertVersion(object.versionId);
+    exactEtag(object.etag);
+    const bytes = exactVersionedBytes(object, config, object.versionId, limit);
+    const exact = await versioned(key, object.versionId, limit);
+    if (!bytes.equals(exact)) reject();
+    return { bytes, versionId: object.versionId, etag: object.etag };
+  };
+  const putAndVerify = async (key, bytes, put) => {
+    const written = await put();
+    assertVersion(written?.versionId);
+    exactMetadata(written, config, written.versionId);
+    const readBack = await versioned(key, written.versionId, bytes.length);
+    if (!readBack.equals(bytes)) reject();
+    const current = await latest(key, bytes.length);
+    if (current.versionId !== written.versionId || !current.bytes.equals(bytes)) reject();
+    return written.versionId;
+  };
+  return {
+    async readHead() {
+      await ready();
+      const current = await latest(headKey, MAX_HEAD_BYTES);
+      return { bytes: current.bytes, versionId: current.versionId };
+    },
+    async readSegment(segmentId, versionId) {
+      await ready();
+      const key = segmentKey(segmentId);
+      const bytes = await versioned(key, versionId, MAX_SEGMENT_BYTES);
+      if (createHash('sha256').update(bytes).digest('hex') !== segmentId) reject();
+      const current = await latest(key, MAX_SEGMENT_BYTES);
+      const versions = await client.versions(key);
+      if (
+        current.versionId !== versionId ||
+        !current.bytes.equals(bytes) ||
+        !Array.isArray(versions) ||
+        versions.length !== 1 ||
+        versions[0] !== versionId
+      )
+        reject();
+      return { bytes, versionId };
+    },
+    async putImmutableSegment(value) {
+      await ready();
+      const bytes = boundedBytes(value, MAX_SEGMENT_BYTES);
+      const segmentId = createHash('sha256').update(bytes).digest('hex');
+      const key = segmentKey(segmentId);
+      // If-None-Match alone accepts a key whose current version is a delete marker.
+      const before = await client.versions(key);
+      if (!Array.isArray(before) || before.length !== 0) reject();
+      const versionId = await putAndVerify(key, bytes, () =>
+        client.putIfAbsent(key, Buffer.from(bytes)),
+      );
+      const after = await client.versions(key);
+      if (!Array.isArray(after) || after.length !== 1 || after[0] !== versionId) reject();
+      return { segmentId, versionId };
+    },
+    async compareAndSetHead(expectedVersionId, value) {
+      await ready();
+      assertVersion(expectedVersionId);
+      const bytes = boundedBytes(value, MAX_HEAD_BYTES);
+      const current = await latest(headKey, MAX_HEAD_BYTES);
+      if (current.versionId !== expectedVersionId) reject();
+      const versionId = await putAndVerify(headKey, bytes, () =>
+        client.putIfMatch(headKey, current.etag, Buffer.from(bytes)),
+      );
+      return { versionId };
+    },
+  };
+}

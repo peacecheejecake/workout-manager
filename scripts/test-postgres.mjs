@@ -58,6 +58,7 @@ function runIntegrationTests(env) {
         'vitest.integration.config.ts',
         'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-exporter.integration.test.ts',
+        'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
       ],
       { env: { ...env, TEST_PGOUTPUT_CONTRACT: '1' } },
     );
@@ -89,6 +90,8 @@ function runIntegrationTests(env) {
       'packages/server/persistence/tests/restore-suppression-logical-decoding.integration.test.ts',
       '--exclude',
       'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
+      '--exclude',
+      'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
     ],
     { env },
   );

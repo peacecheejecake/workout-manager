@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 
 import {
+  MAX_PGOUTPUT_BYTES,
+  MAX_PGOUTPUT_MESSAGES,
   makeLocalReplayRecordEnvelope,
   peekSuppressionPgoutput,
 } from './restore-suppression-pgoutput.js';
@@ -29,6 +31,11 @@ export type ExportedSuppressionSegment = {
   remote: VerifiedRemoteSegment;
 };
 
+export type SuppressionSlotPosition = {
+  clusterId: string;
+  throughLsn: string;
+};
+
 type Slot = {
   plugin: string;
   slot_type: string;
@@ -49,6 +56,12 @@ function normalizedLsn(value: string): string {
   const [high, low] = value.split('/');
   if (!high || !low) return fail();
   return `${BigInt(`0x${high}`).toString(16).toUpperCase()}/${BigInt(`0x${low}`).toString(16).toUpperCase()}`;
+}
+
+function lsnValue(value: string): bigint {
+  const [high, low] = normalizedLsn(value).split('/');
+  if (!high || !low) return fail();
+  return (BigInt(`0x${high}`) << 32n) | BigInt(`0x${low}`);
 }
 
 async function slotState(client: PoolClient, slotName: string): Promise<Slot> {
@@ -72,6 +85,115 @@ async function slotState(client: PoolClient, slotName: string): Promise<Slot> {
   )
     return fail();
   return slot;
+}
+
+/** Read the physical slot state; this is not a remote-head assertion. */
+export async function readSuppressionSlotPosition(input: {
+  pool: Pool;
+  slotName: string;
+}): Promise<SuppressionSlotPosition> {
+  if (!/^wm_suppression_[a-z0-9_]{1,40}$/.test(input.slotName)) return fail();
+  const client = await input.pool.connect();
+  try {
+    const cluster = await client.query<{ system_identifier: string }>(
+      'SELECT system_identifier::text FROM pg_control_system()',
+    );
+    const slot = await slotState(client, input.slotName);
+    if (!cluster.rows[0]?.system_identifier) return fail();
+    return {
+      clusterId: cluster.rows[0].system_identifier,
+      throughLsn: normalizedLsn(slot.confirmed_flush_lsn ?? ''),
+    };
+  } catch {
+    return fail();
+  } finally {
+    client.release();
+  }
+}
+
+/** Recover a published, authenticated segment whose slot ACK was interrupted. */
+export async function reconcileSuppressionSlot(input: {
+  pool: Pool;
+  slotName: string;
+  expectedClusterId: string;
+  fromLsn: string;
+  throughLsn: string;
+  previousHash: string | null;
+  localHash: string;
+}): Promise<void> {
+  if (
+    !/^wm_suppression_[a-z0-9_]{1,40}$/.test(input.slotName) ||
+    !/^[1-9]\d{0,19}$/.test(input.expectedClusterId) ||
+    !lsn.test(input.fromLsn) ||
+    !lsn.test(input.throughLsn) ||
+    !digest.test(input.localHash) ||
+    (input.previousHash !== null && !digest.test(input.previousHash))
+  )
+    return fail();
+  const client = await input.pool.connect();
+  let locked = false;
+  try {
+    const lock = await client.query<{ acquired: boolean }>(
+      'SELECT pg_try_advisory_lock($1,$2) AS acquired',
+      [LOCK_CLASS, LOCK_OBJECT],
+    );
+    if (lock.rows[0]?.acquired !== true) return fail();
+    locked = true;
+    const cluster = await client.query<{ system_identifier: string }>(
+      'SELECT system_identifier::text FROM pg_control_system()',
+    );
+    if (cluster.rows[0]?.system_identifier !== input.expectedClusterId) return fail();
+    const fromLsn = normalizedLsn(input.fromLsn);
+    const throughLsn = normalizedLsn(input.throughLsn);
+    if (lsnValue(throughLsn) <= lsnValue(fromLsn)) return fail();
+    const before = await slotState(client, input.slotName);
+    if (normalizedLsn(before.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
+    const peek = await client.query<{ data: Buffer }>(
+      `SELECT data FROM pg_logical_slot_peek_binary_changes(
+        $1,$2::pg_lsn,$3,'proto_version','1',
+        'publication_names','workout_restore_suppression_events')`,
+      [input.slotName, throughLsn, MAX_PGOUTPUT_MESSAGES + 1],
+    );
+    if (peek.rows.length > MAX_PGOUTPUT_MESSAGES) return fail();
+    const messages = peek.rows.map((row) => row.data);
+    if (messages.reduce((total, data) => total + data.length, 0) > MAX_PGOUTPUT_BYTES)
+      return fail();
+    const envelope = makeLocalReplayRecordEnvelope({
+      clusterId: input.expectedClusterId,
+      fromLsn,
+      previousHash: input.previousHash,
+      messages,
+    });
+    if (envelope.throughLsn !== throughLsn || envelope.sha256 !== input.localHash) return fail();
+    const afterPeek = await slotState(client, input.slotName);
+    if (normalizedLsn(afterPeek.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
+    const advanced = await client.query<{ slot_name: string; end_lsn: string }>(
+      'SELECT slot_name,end_lsn::text FROM pg_replication_slot_advance($1,$2::pg_lsn)',
+      [input.slotName, throughLsn],
+    );
+    if (
+      advanced.rows[0]?.slot_name !== input.slotName ||
+      normalizedLsn(advanced.rows[0]?.end_lsn ?? '') !== throughLsn
+    )
+      return fail();
+    const after = await slotState(client, input.slotName);
+    if (normalizedLsn(after.confirmed_flush_lsn ?? '') !== throughLsn) return fail();
+  } catch {
+    return fail();
+  } finally {
+    if (locked) {
+      try {
+        const released = await client.query<{ released: boolean }>(
+          'SELECT pg_advisory_unlock($1,$2) AS released',
+          [LOCK_CLASS, LOCK_OBJECT],
+        );
+        if (released.rows[0]?.released === true) client.release();
+        else client.release(true);
+      } catch {
+        client.release(true);
+      }
+    } else client.release();
+  }
 }
 
 function verifiedRemote(value: unknown, sha256: string, byteLength: number): VerifiedRemoteSegment {
