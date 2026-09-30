@@ -287,6 +287,73 @@ const runWorkerStore = () =>
   });
 
 describe('ACL-filtered retrieval over reviewed resources', () => {
+  it('finishes bounded indexing across repeated queries without hiding the unindexed remainder behind cache', async () => {
+    const athleteId = randomUUID();
+    await grantAiConsent(athleteId);
+    const resourceIds = await Promise.all(
+      Array.from({ length: 6 }, async () => (await reviewedResource(athleteId)).resourceId),
+    );
+
+    const first = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
+    expect(first.authorizedResourceCount).toBe(6);
+    expect(first.excerpts).toHaveLength(5);
+    expect(await count(athleteId, 'resource_passage')).toBe(5);
+    expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
+
+    const second = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
+    expect(second.excerpts).toHaveLength(6);
+    expect(new Set(second.excerpts.map((item) => item.resourceId))).toEqual(new Set(resourceIds));
+    expect(await count(athleteId, 'resource_passage')).toBe(6);
+    expect(second.cache).toBe('miss');
+    expect(await count(athleteId, 'resource_retrieval_cache')).toBe(1);
+    expect((await retrieval.retrieve(athleteId, { ...query, limit: 6 })).cache).toBe('revalidated');
+  });
+
+  it('serializes concurrent indexing without crossing tenant boundaries', async () => {
+    const owner = randomUUID();
+    const stranger = randomUUID();
+    await grantAiConsent(owner);
+    await grantAiConsent(stranger);
+    const resourcesForOwner = await Promise.all(
+      Array.from({ length: 6 }, async () => (await reviewedResource(owner)).resourceId),
+    );
+    const [first, second] = await Promise.all([
+      retrieval.retrieve(owner, { ...query, limit: 6 }),
+      retrieval.retrieve(owner, { ...query, limit: 6 }),
+    ]);
+    expect([first.excerpts.length, second.excerpts.length].sort()).toEqual([5, 6]);
+    expect(await count(owner, 'resource_passage')).toBe(6);
+    expect(
+      new Set(
+        (await retrieval.retrieve(owner, { ...query, limit: 6 })).excerpts.map(
+          (item) => item.resourceId,
+        ),
+      ),
+    ).toEqual(new Set(resourcesForOwner));
+    expect((await retrieval.retrieve(stranger, { ...query, limit: 6 })).excerpts).toEqual([]);
+    expect(await count(stranger, 'resource_passage')).toBe(0);
+  });
+
+  it('indexes at most five of 100 authorized resources per call and bounds the answer to six', async () => {
+    const athleteId = randomUUID();
+    await grantAiConsent(athleteId);
+    await Promise.all(Array.from({ length: 100 }, async () => reviewedResource(athleteId)));
+    const started = performance.now();
+    let peakRssBytes = process.memoryUsage().rss;
+    for (let request = 1; request <= 20; request += 1) {
+      const result = await retrieval.retrieve(athleteId, { ...query, limit: 6 });
+      expect(result.authorizedResourceCount).toBe(100);
+      expect(result.excerpts.length).toBeLessThanOrEqual(6);
+      expect(await count(athleteId, 'resource_passage')).toBe(request * 5);
+      if (request < 20) expect(await count(athleteId, 'resource_retrieval_cache')).toBe(0);
+      peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss);
+    }
+    expect(await count(athleteId, 'resource_retrieval_cache')).toBe(1);
+    console.info(
+      `retrieval 100-resource/20-call observation: ${Math.round(performance.now() - started)} ms, process RSS peak ${Math.round(peakRssBytes / 1024 / 1024)} MiB`,
+    );
+  });
+
   it('indexes and returns only reviewed, coach-enabled, consented resources', async () => {
     const athleteId = randomUUID();
     await grantAiConsent(athleteId);
