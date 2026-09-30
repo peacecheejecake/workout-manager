@@ -2,5 +2,13 @@
 # The `infra_default` network resolves this service name only to the workout app.
 workout.red-10-proto.xyz {
 	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+	}
+
 	reverse_proxy wm-hosting-app:3100
 }
