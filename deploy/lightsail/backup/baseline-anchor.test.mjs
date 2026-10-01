@@ -62,6 +62,7 @@ function fixture(expectedOwners = ['owner-a']) {
     consistentPointLsn: '0/16B6C50',
     postgresSystemIdentifier: '123',
     replicationSlot: 'slot_probe',
+    publication: 'workout_publication',
   };
   const fingerprint = 'a'.repeat(64);
   const domain = Object.fromEntries(
@@ -77,15 +78,29 @@ function fixture(expectedOwners = ['owner-a']) {
     backupId: 'backup-abc',
     snapshot,
     archives: {
+      manifest: { path: 'manifest.json', sha256: 'f'.repeat(64), versionId: 'version-manifest' },
       database: { path: 'database.dump', sha256: 'c'.repeat(64), versionId: 'version-db' },
       privateFiles: [
         { path: 'private/photo.bin', sha256: 'd'.repeat(64), versionId: 'version-private' },
       ],
     },
+    remote: {
+      bucket: 'workout-private-backups',
+      prefix: 'workout/v2',
+      region: 'ap-northeast-2',
+      expectedBucketOwner: '681892421656',
+      completionVersionId: 'completion-v1',
+    },
     coverage: {
       schemaVersion: 2,
       domainSchemaFingerprint: fingerprint,
-      snapshot: { ...snapshot, snapshotId: '1:2:' },
+      snapshot: {
+        snapshotName: snapshot.snapshotName,
+        consistentPointLsn: snapshot.consistentPointLsn,
+        postgresSystemIdentifier: snapshot.postgresSystemIdentifier,
+        replicationSlot: snapshot.replicationSlot,
+        snapshotId: '1:2:',
+      },
       owners: expectedOwners.map((owner) => ({
         ownerTag: ownerTag(owner),
         domain,
@@ -100,6 +115,7 @@ function fixture(expectedOwners = ['owner-a']) {
     },
     expectedOwners,
     expectedDomainSchemaFingerprint: fingerprint,
+    expectedPublication: snapshot.publication,
     coverageHmacKey: coverageKey,
     anchorHmacKey: anchorKey,
   };
@@ -153,17 +169,22 @@ test('snapshot and pinned schema identity must match', () => {
   const schema = fixture();
   schema.expectedDomainSchemaFingerprint = 'e'.repeat(64);
   rejects(schema);
+  const publication = fixture();
+  publication.expectedPublication = 'different_publication';
+  rejects(publication);
+  const malformedPublication = fixture();
+  malformedPublication.snapshot.publication = 'Invalid-Publication';
+  rejects(malformedPublication);
   const unpinned = fixture();
   unpinned.expectedDomainSchemaFingerprint = '';
   rejects(unpinned);
 });
 
 test('exact archive digests and opaque remote versions are mandatory', () => {
-  for (const kind of ['database', 'private']) {
+  for (const kind of ['manifest', 'database', 'private']) {
     for (const field of ['versionId', 'sha256']) {
       const options = fixture();
-      const file =
-        kind === 'database' ? options.archives.database : options.archives.privateFiles[0];
+      const file = kind === 'private' ? options.archives.privateFiles[0] : options.archives[kind];
       file[field] = '';
       rejects(options);
     }
@@ -186,6 +207,21 @@ test('verifier rejects tampering, wrong independent keys, and changed expectatio
     verifyBaselineAnchorCandidate(candidate, { ...options, anchorHmacKey: Buffer.alloc(32, 8) }),
   );
   for (const altered of [
+    {
+      ...options,
+      archives: {
+        ...options.archives,
+        manifest: { ...options.archives.manifest, versionId: 'new-manifest-version' },
+      },
+    },
+    {
+      ...options,
+      remote: { ...options.remote, completionVersionId: 'another-completion' },
+    },
+    {
+      ...options,
+      remote: { ...options.remote, bucket: 'different-backup-bucket' },
+    },
     {
       ...options,
       archives: {
@@ -216,6 +252,20 @@ test('candidate rejects equal or missing key roles', () => {
   const missingAnchor = fixture();
   delete missingAnchor.anchorHmacKey;
   rejects(missingAnchor);
+});
+
+test('remote location must be a bounded, exact Seoul S3 namespace', () => {
+  for (const change of [
+    { prefix: 'workout/../other' },
+    { prefix: 'workout//v2' },
+    { region: 'ap-northeast-1' },
+    { completionVersionId: '' },
+    { expectedBucketOwner: 'other' },
+  ]) {
+    const options = fixture();
+    options.remote = { ...options.remote, ...change };
+    rejects(options);
+  }
 });
 
 test('candidate remains authenticated after caller mutates its nested inputs', () => {

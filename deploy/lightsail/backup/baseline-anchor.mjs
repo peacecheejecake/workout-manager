@@ -52,6 +52,7 @@ const ANCHOR_GAPS = [
   'REMOTE_DURABILITY_NOT_INDEPENDENTLY_PROVEN',
   'EARLIER_ERASURES_NOT_PROVEN',
   'FINAL_TAIL_NOT_PROVEN',
+  'PUBLICATION_DEFINITION_NOT_INDEPENDENTLY_PROVEN',
   'RESTORE_REPLAY_NOT_VERIFIED',
 ];
 
@@ -130,21 +131,23 @@ function identity(snapshot) {
     'consistentPointLsn',
     'postgresSystemIdentifier',
     'replicationSlot',
+    'publication',
   ]);
   string(snapshot.snapshotName, SNAPSHOT, 100);
   string(snapshot.consistentPointLsn, LSN, 17);
   string(snapshot.postgresSystemIdentifier, SYSTEM_ID, 20);
   if (BigInt(snapshot.postgresSystemIdentifier) > 18_446_744_073_709_551_615n) fail();
   string(snapshot.replicationSlot, SLOT, 63);
+  string(snapshot.publication, SLOT, 63);
   return snapshot;
 }
 function archives(value) {
-  object(value, ['database', 'privateFiles']);
+  object(value, ['manifest', 'database', 'privateFiles']);
   if (!Array.isArray(value.privateFiles) || value.privateFiles.length > 10_000) fail();
   const seen = new Set();
-  for (const file of [value.database, ...value.privateFiles]) {
+  for (const file of [value.manifest, value.database, ...value.privateFiles]) {
     object(file, ['path', 'sha256', 'versionId']);
-    string(file.path, /^(?:database\.dump|private\/[A-Za-z0-9._/-]+)$/, 512);
+    string(file.path, /^(?:manifest\.json|database\.dump|private\/[A-Za-z0-9._/-]+)$/, 512);
     if (
       file.path.split('/').some((part) => part === '..' || part === '.' || !part) ||
       seen.has(file.path)
@@ -155,16 +158,32 @@ function archives(value) {
     string(file.versionId, /^[A-Za-z0-9._~+=/-]{1,256}$/, 256);
   }
   if (
+    value.manifest.path !== 'manifest.json' ||
     value.database.path !== 'database.dump' ||
     value.privateFiles.some((file) => !file.path.startsWith('private/'))
   )
     fail();
   return {
+    manifest: value.manifest,
     database: value.database,
     privateFiles: [...value.privateFiles].sort((a, b) =>
       a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
     ),
   };
+}
+function remoteLocation(value) {
+  object(value, ['bucket', 'prefix', 'region', 'expectedBucketOwner', 'completionVersionId']);
+  string(value.bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 63);
+  string(value.prefix, /^[A-Za-z0-9._~/-]{1,512}$/, 512);
+  if (
+    value.prefix.endsWith('/') ||
+    value.prefix.split('/').some((part) => !part || part === '.' || part === '..') ||
+    value.region !== 'ap-northeast-2'
+  )
+    fail();
+  string(value.expectedBucketOwner, /^[0-9]{12}$/, 12);
+  string(value.completionVersionId, /^[A-Za-z0-9._~+=/-]{1,256}$/, 256);
+  return value;
 }
 function owners(expectedOwners, key) {
   if (!Array.isArray(expectedOwners) || expectedOwners.length > 10_000) fail();
@@ -206,7 +225,13 @@ function coverageCheck(coverage, snapshot, expectedTags, fingerprint) {
     'replicationSlot',
   ]);
   string(coverage.snapshot.snapshotId, /^[0-9]+:[0-9]+:(?:[0-9]+(?:,[0-9]+)*)?$/, 256);
-  for (const name of Object.keys(snapshot)) if (coverage.snapshot[name] !== snapshot[name]) fail();
+  for (const name of [
+    'snapshotName',
+    'consistentPointLsn',
+    'postgresSystemIdentifier',
+    'replicationSlot',
+  ])
+    if (coverage.snapshot[name] !== snapshot[name]) fail();
   if (!Array.isArray(coverage.owners) || coverage.owners.length !== expectedTags.length) fail();
   const tags = [];
   for (const owner of coverage.owners) {
@@ -280,9 +305,11 @@ function input(options) {
     'backupId',
     'snapshot',
     'archives',
+    'remote',
     'coverage',
     'expectedOwners',
     'expectedDomainSchemaFingerprint',
+    'expectedPublication',
     'coverageHmacKey',
     'anchorHmacKey',
   ]);
@@ -291,7 +318,9 @@ function input(options) {
   if (timingSafeEqual(options.coverageHmacKey, options.anchorHmacKey)) fail();
   string(options.backupId, /^backup-[A-Za-z0-9-]{1,120}$/, 127);
   const snapshot = identity(options.snapshot);
+  if (options.expectedPublication !== snapshot.publication) fail();
   const archiveSet = archives(options.archives);
+  const remote = remoteLocation(options.remote);
   string(options.expectedDomainSchemaFingerprint, HASH, 64);
   const tags = owners(options.expectedOwners, options.coverageHmacKey);
   coverageCheck(options.coverage, snapshot, tags, options.expectedDomainSchemaFingerprint);
@@ -299,6 +328,7 @@ function input(options) {
     backupId: options.backupId,
     snapshot,
     archives: archiveSet,
+    remote,
     coverage: options.coverage,
     expectedOwnerTags: tags,
     domainSchemaFingerprint: options.expectedDomainSchemaFingerprint,
@@ -335,6 +365,7 @@ export function verifyBaselineAnchorCandidate(candidate, options) {
     'backupId',
     'snapshot',
     'archives',
+    'remote',
     'coverage',
     'expectedOwnerTags',
     'domainSchemaFingerprint',
