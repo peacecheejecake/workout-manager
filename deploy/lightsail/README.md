@@ -543,10 +543,13 @@ external operational control. Do not use it against the live host until the
 fence procedure, disk capacity, and recovery input are reviewed.
 
 `backup/check-fence.mjs` is an opt-in host-side checker for that external
-command slot. On 2026-10-01, only the reviewed checker and its pinned,
-root-only configuration were installed on the shared Lightsail host; the
-collector, transport, backup-window wrapper, timer, and backup directory remain
-uninstalled. The checker makes a point-in-time, fail-closed
+command slot. On 2026-10-01, the reviewed checker and its pinned, root-only
+configuration were installed on the shared Lightsail host. On 2026-10-02, the
+reviewed collector, transport, backup-window wrapper, remote-store transport,
+and the same checker were installed together in the inactive root-only
+`/srv/workout-manager/admin/backup/releases/9122959` directory. The backup
+directory exists at mode 0700. No backup timer or S3 workload identity was
+installed and no operational collection was run. The checker makes a point-in-time, fail-closed
 assessment; it does not establish or hold a write fence. Before even considering
 an operational run, an operator must establish a bounded maintenance window,
 stop/disable both Workout maintenance timers if installed, wait for their
@@ -693,10 +696,10 @@ The window wrapper has synthetic tests at
 `node --test deploy/lightsail/backup/backup-window.test.mjs` for exact stop/start
 order, initially stopped services, locks/timers/project failures, a Docker stop
 that changes state but returns failure, checker failure, and collector failure.
-No host timer, wrapper, or recurring backup is installed. Deletion-ledger
+The wrapper is installed but has no host timer or recurring backup. Deletion-ledger
 completeness and replay remain independent acceptance gates.
 
-`backup/remote-store.mjs` is an opt-in, uninstalled S3 transport for a local
+`backup/remote-store.mjs` is an opt-in, inactive S3 transport for a local
 bundle that the backup window has finalized. It requires a root-owned mode
 0600 JSON config with `schemaVersion: 1`, `bucket`, `prefix`,
 `region: "ap-northeast-2"`, and the 12-digit
