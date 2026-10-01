@@ -722,6 +722,34 @@ it.each(['throw', 'malformed', 'oversized', 'jsonb_expansion'] as const)(
   },
 );
 
+it('persists a deadline failure once and never creates an analysis output', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  let signal: AbortSignal | undefined;
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      evaluationTimeoutMs: 10,
+      adapter: {
+        evaluate: async (_evidence, _grounding, receivedSignal) => {
+          signal = receivedSignal;
+          return new Promise(() => {});
+        },
+      },
+    }),
+  ).toBe('stored');
+  expect(signal?.aborted).toBe(true);
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'unable_to_evaluate',
+    code: 'budget_exceeded',
+    reason: 'Evaluation exceeded its time budget',
+  });
+  expect(await repository().readOutput(athleteId, run.id)).toBeNull();
+  expect(await workerStore().claim(athleteId)).toBeNull();
+});
+
 it('stores a bounded clarification question as terminal metadata without an analysis output', async () => {
   const athleteId = randomUUID();
   const { thread, command } = await seed(athleteId);
