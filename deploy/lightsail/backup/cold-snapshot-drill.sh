@@ -42,6 +42,7 @@ clone_setup_created=0
 clone_net_created=0
 cleanup_failed=0
 snapshot_complete=0
+snapshot_created=0
 policies_touched=0
 
 fail() { return 1; }
@@ -173,8 +174,12 @@ cleanup() {
     [[ $(docker_short network inspect -f '{{index .Labels "workout.cold-snapshot"}}' "$clone_net") == "$run_id" ]] &&
       quiet docker_short network rm "$clone_net" || cleanup_failed=1
   fi
-  if [[ -n $scratch ]]; then rm -rf -- "$scratch" || cleanup_failed=1; fi
-  if (( !snapshot_complete )) && [[ -n $snapshot && $snapshot == "$snapshot_root/"* ]]; then
+  # Keep the bind source whenever a disposable container or network was not removed.
+  if [[ -n $scratch ]]; then
+    if (( !cleanup_failed )); then rm -rf -- "$scratch" || cleanup_failed=1;
+    else printf 'COLD_SNAPSHOT_SCRATCH_RETAINED=%s\n' "$scratch" >&3; fi
+  fi
+  if (( snapshot_created && !snapshot_complete )) && [[ -n $snapshot && $snapshot == "$snapshot_root/"* ]]; then
     rm -rf -- "$snapshot" || cleanup_failed=1
   fi
   # The production app may start only after the original, not the clone, passes integrity and SQL checks.
@@ -321,6 +326,7 @@ snapshot="$snapshot_root/$run_id"
 snapshot_data="$snapshot/postgres"
 [[ ! -e $snapshot ]] || fail
 mkdir -m 0700 -- "$snapshot" || fail
+snapshot_created=1
 root_directory "$snapshot" 700 || fail
 mkdir -m 0700 -- "$snapshot_data" || fail
 /usr/bin/cp -a --reflink=never -- "$source_dir/." "$snapshot_data/" || fail

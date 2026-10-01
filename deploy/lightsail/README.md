@@ -460,7 +460,9 @@ call Compose, migrate or restore production, change Caddy, or touch `infra`.
 Output is limited to fixed `COLD_SNAPSHOT_<phase>_FAILED` and
 `COLD_SNAPSHOT_CLEANUP_FAILED` codes, `COLD_SNAPSHOT_RETAINED=<protected path>`
 after a verified snapshot, and `COLD_SNAPSHOT_REHEARSAL_PASSED` only after
-successful cleanup and original-service checks. If cleanup fails, **do not
+successful cleanup and original-service checks. If a disposable clone cannot
+be removed, `COLD_SNAPSHOT_SCRATCH_RETAINED=<protected path>` identifies its
+root-only bind source for manual inspection. If cleanup fails, **do not
 restart the app or enable its restart policy until the original database has
 been inspected and verified**. A power loss, SIGKILL, privilege bypass, or
 concurrent root/Docker writer can defeat the process-local cleanup and advisory

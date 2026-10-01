@@ -190,3 +190,44 @@ test('failure cleanup gates original app restart on the verified original DB and
   assert.match(script, /COLD_SNAPSHOT_RETAINED=/);
   assert.doesNotMatch(script, /docker_short (?:start|update)[^\n]*\binfra\b/);
 });
+
+test('cleanup preserves a colliding snapshot and clone bind source after failed removal', () => {
+  const begin = script.indexOf('cleanup() {');
+  const end = script.indexOf('\ntrap cleanup EXIT', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const cleanup = script.slice(begin, end);
+  const temp = mkdtempSync(join(tmpdir(), 'wm-cleanup-test-'));
+  const snapshot = join(temp, 'existing-snapshot');
+  const scratch = join(temp, 'clone-scratch');
+  try {
+    mkdirSync(snapshot);
+    mkdirSync(scratch);
+    writeFileSync(join(snapshot, 'keep'), 'backup');
+    writeFileSync(join(scratch, 'keep'), 'clone');
+    const base = `snapshot_root=${temp}\nsnapshot=${snapshot}\nsnapshot_complete=0\nsnapshot_created=0\nphase=TEST\npg_stopped=0\napp_stopped=0\ngraph_stopped=0\nclone_app_created=0\nclone_setup_created=0\nclone_net_created=0\npolicies_touched=0\ncleanup_failed=0\n`;
+    const collision = spawnSync(
+      'bash',
+      [
+        '-c',
+        `${base}scratch=\nclone_db_created=0\ncleanup_container() { :; }\n${cleanup}\ncleanup`,
+        '_',
+      ],
+      { timeout: 5000 },
+    );
+    assert.equal(collision.status, 0);
+    assert.equal(readFileSync(join(snapshot, 'keep'), 'utf8'), 'backup');
+    const failedClone = spawnSync(
+      'bash',
+      [
+        '-c',
+        `${base}snapshot=\nscratch=${scratch}\nclone_db_created=1\ncleanup_container() { cleanup_failed=1; }\n${cleanup}\ncleanup`,
+        '_',
+      ],
+      { timeout: 5000 },
+    );
+    assert.equal(failedClone.status, 1);
+    assert.equal(readFileSync(join(scratch, 'keep'), 'utf8'), 'clone');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
