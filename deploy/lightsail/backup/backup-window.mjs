@@ -11,6 +11,29 @@ const LOCKS = [join(LOCK_DIRECTORY, 'backup.lock'), join(LOCK_DIRECTORY, 'mainte
 const BACKUP_OUTPUT_DIR = '/srv/workout-manager/backups';
 const BACKUP_TIMEOUT_MS = 35 * 60_000;
 const DOCKER_TIMEOUT_MS = 60_000;
+const INSTALLED_NODE = '/srv/workout-manager/backup-runtime/20261001-9babcea-node24/node';
+const EXECUTABLES = Object.freeze({
+  docker: '/usr/bin/docker',
+  flock: '/usr/bin/flock',
+  systemctl: '/usr/bin/systemctl',
+});
+
+export function childEnvironment() {
+  return {
+    PATH: '/srv/workout-manager/backup-runtime/20261001-9babcea-node24:/usr/bin:/bin',
+    HOME: '/root',
+    LANG: 'C.UTF-8',
+    TMPDIR: '/tmp',
+    DOCKER_HOST: 'unix:///var/run/docker.sock',
+    WORKOUT_BACKUP_FENCE_CONFIG: '/srv/workout-manager/admin/backup/fence.json',
+  };
+}
+
+export function executableFor(program) {
+  if (Object.hasOwn(EXECUTABLES, program)) return EXECUTABLES[program];
+  if (isAbsolute(program)) return program;
+  reject();
+}
 
 function reject() {
   throw new Error('BACKUP_WINDOW_FAILED');
@@ -38,13 +61,14 @@ function secureDirectory(path) {
   if (!info.isDirectory() || info.uid !== 0 || (info.mode & 0o777) !== 0o700) reject();
 }
 
-function runner(program, args, options = {}) {
-  return spawnSync(program, args, {
+export function runner(program, args, options = {}) {
+  return spawnSync(executableFor(program), args, {
     encoding: 'utf8',
     timeout: options.timeout ?? DOCKER_TIMEOUT_MS,
     maxBuffer: 4 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'],
-    env: process.env,
+    env: childEnvironment(),
+    shell: false,
   });
 }
 
@@ -365,10 +389,11 @@ function pathsForInstalledSuite() {
 
 function runLive() {
   process.umask(0o077);
-  if (process.getuid?.() !== 0 || process.argv.length > 3) reject();
+  if (process.getuid?.() !== 0 || process.execPath !== INSTALLED_NODE || process.argv.length > 3)
+    reject();
   const held = process.argv[2] === '--locks-held';
   if (process.argv.length === 3 && !held) reject();
-  const config = loadFenceConfig(process.env.WORKOUT_BACKUP_FENCE_CONFIG);
+  const config = loadFenceConfig(childEnvironment().WORKOUT_BACKUP_FENCE_CONFIG);
   const paths = pathsForInstalledSuite();
   prepareLocks();
   if (!held) {
@@ -379,7 +404,7 @@ function runLive() {
         '--conflict-exit-code',
         '75',
         LOCKS[0],
-        'flock',
+        EXECUTABLES.flock,
         '--nonblock',
         '--conflict-exit-code',
         '75',

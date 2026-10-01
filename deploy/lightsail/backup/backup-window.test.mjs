@@ -1,6 +1,61 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { runWindow } from './backup-window.mjs';
+import { childEnvironment, executableFor, runWindow, runner } from './backup-window.mjs';
+
+test('production runner uses fixed executables and a minimal child environment', () => {
+  assert.equal(
+    readFileSync(new URL('./check-fence.mjs', import.meta.url), 'utf8').split('\n', 1)[0],
+    '#!/usr/bin/env node',
+  );
+  assert.equal(
+    childEnvironment().PATH.split(':', 1)[0],
+    '/srv/workout-manager/backup-runtime/20261001-9babcea-node24',
+  );
+  assert.equal(executableFor('docker'), '/usr/bin/docker');
+  assert.equal(executableFor('flock'), '/usr/bin/flock');
+  assert.equal(executableFor('systemctl'), '/usr/bin/systemctl');
+  assert.throws(() => executableFor('docker-malicious'));
+  assert.throws(() => executableFor('./docker'));
+  assert.equal(executableFor('/root/backup/check-fence.mjs'), '/root/backup/check-fence.mjs');
+
+  const original = {
+    NODE_OPTIONS: process.env.NODE_OPTIONS,
+    PATH: process.env.PATH,
+    DOCKER_HOST: process.env.DOCKER_HOST,
+    AWS_PROFILE: process.env.AWS_PROFILE,
+    WORKOUT_BACKUP_FENCE_CONFIG: process.env.WORKOUT_BACKUP_FENCE_CONFIG,
+  };
+  try {
+    process.env.NODE_OPTIONS = '--require=/tmp/hostile.cjs';
+    process.env.PATH = '/tmp/untrusted';
+    process.env.DOCKER_HOST = 'tcp://untrusted:2375';
+    process.env.AWS_PROFILE = 'untrusted';
+    process.env.WORKOUT_BACKUP_FENCE_CONFIG = '/tmp/untrusted.json';
+    const result = runner(process.execPath, [
+      '-e',
+      'process.stdout.write(JSON.stringify(process.env))',
+    ]);
+    assert.equal(result.status, 0);
+    const environment = JSON.parse(result.stdout);
+    // macOS adds this process-local Cocoa key even when spawnSync receives an explicit env.
+    delete environment.__CF_USER_TEXT_ENCODING;
+    assert.deepEqual(environment, childEnvironment());
+    assert.deepEqual(childEnvironment(), {
+      PATH: '/srv/workout-manager/backup-runtime/20261001-9babcea-node24:/usr/bin:/bin',
+      HOME: '/root',
+      LANG: 'C.UTF-8',
+      TMPDIR: '/tmp',
+      DOCKER_HOST: 'unix:///var/run/docker.sock',
+      WORKOUT_BACKUP_FENCE_CONFIG: '/srv/workout-manager/admin/backup/fence.json',
+    });
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) Reflect.deleteProperty(process.env, key);
+      else process.env[key] = value;
+    }
+  }
+});
 
 const id = (digit) => digit.repeat(64);
 const config = {
