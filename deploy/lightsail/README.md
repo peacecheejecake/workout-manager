@@ -415,6 +415,11 @@ does not mount the Docker socket in another container or create a backup
 container.
 
 This is still **offline preparation**, not an operational backup procedure.
+The separate [synthetic persistent-slot capture](backup/synthetic-persistent-capture.md)
+uses an explicitly marked, disposable PostgreSQL 17.6 loopback database. It
+proves the exported-snapshot dump and retained-slot handoff locally, but does
+not activate this host backup window or establish remote durability or restore
+readiness.
 The opt-in `backup/backup-window.mjs` host wrapper now takes both root-only
 `flock` locks for the whole stop → capture → restore sequence. It requires an
 already disabled or absent pair of Workout maintenance timers, the pinned
@@ -472,8 +477,10 @@ to check its bytes, and conditionally publishes `completion.json` last. A
 repeated upload verifies all recorded remote versions; download starts from an
 empty destination and rejects missing or changed bytes. Individual files over
 4 GiB are rejected. This transport has synthetic success, interruption,
-corruption, conflict, and retry tests; no S3 bucket, IAM policy, retention,
-Object Lock, live upload, independent signature, or recovery run has been
+corruption, conflict, and retry tests. Two empty, private, versioned Seoul S3
+buckets for backup and deletion ledger were created on 2026-10-02 and their
+basic settings were read back. Task-scoped IAM credentials, retention,
+Object Lock, live upload, independent signature, and recovery have not been
 verified. The completion record fixes `ledgerCompleteness` to `not_verified`:
 it is a transfer receipt, never permission to restore or reopen the app. The
 post-backup deletion ledger and its complete tail remain separate gates.

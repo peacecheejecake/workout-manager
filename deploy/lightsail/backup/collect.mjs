@@ -70,6 +70,11 @@ function parseArgs(argv) {
           '--publication',
           '--local-exported-slot-proof',
           '--local-expected-system-identifier',
+          '--synthetic-persistent-slot-proof',
+          '--persistent-expected-system-identifier',
+          '--persistent-publication-tables',
+          '--persistent-publication-operations',
+          '--persistent-slot-owner',
         ]
       : [...required, '--synthetic-test', '--min-free-bytes'],
   );
@@ -187,9 +192,9 @@ function privateFiles(root) {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function databaseEnv(file) {
+function databaseEnv(file, connectionString) {
   assertSecureFile(file, 0o600);
-  const url = new URL(readFileSync(file, 'utf8').trim());
+  const url = new URL(connectionString ?? readFileSync(file, 'utf8').trim());
   if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:')
     fail('BACKUP_INVALID_DATABASE_URL');
   if (
@@ -213,10 +218,10 @@ function databaseEnv(file) {
   };
 }
 
-function checkFence(path) {
+function checkFence(path, timeout = 120_000) {
   const info = assertSecureFile(path, 0o700);
   if (process.getuid?.() === 0 && info.uid !== 0) fail('BACKUP_FENCE_OWNER');
-  run(path, []);
+  run(path, [], process.env, timeout);
 }
 
 function snapshotContract(options) {
@@ -280,9 +285,68 @@ function localSlotProof(options) {
   };
 }
 
+function persistentSlotProof(options) {
+  const keys = [
+    '--synthetic-persistent-slot-proof',
+    '--persistent-expected-system-identifier',
+    '--persistent-publication-tables',
+    '--persistent-publication-operations',
+    '--persistent-slot-owner',
+  ];
+  if (!keys.some((key) => key in options)) return undefined;
+  if (
+    options['--synthetic-persistent-slot-proof'] !== 'yes' ||
+    options['--synthetic-test'] !== 'yes' ||
+    !options['--database-url-file'] ||
+    options['--database-transport'] ||
+    keys.some((key) => !options[key]) ||
+    !options['--replication-slot'] ||
+    !options['--publication'] ||
+    !/^[a-zA-Z0-9_-]{1,80}$/.test(options['--persistent-slot-owner']) ||
+    !/^[a-z_][a-z0-9_]{0,62}$/.test(options['--replication-slot']) ||
+    [
+      '--local-exported-slot-proof',
+      '--local-expected-system-identifier',
+      '--synthetic-snapshot-v2',
+      '--snapshot-name',
+      '--consistent-point-lsn',
+      '--postgres-system-identifier',
+    ].some((key) => key in options)
+  )
+    fail('BACKUP_PERSISTENT_SLOT_PROOF_INACTIVE');
+  return {
+    expectedSystemIdentifier: options['--persistent-expected-system-identifier'],
+    slotName: options['--replication-slot'],
+    expectedPublication: options['--publication'],
+    expectedPublicationTables: options['--persistent-publication-tables'].split(','),
+    expectedPublicationOperations: options['--persistent-publication-operations'].split(','),
+    owner: options['--persistent-slot-owner'],
+  };
+}
+
+function syncOwnership(path, value, exclusive = false) {
+  const temporary = `${path}.${randomUUID()}.partial`;
+  // The exclusive reservation survives crashes and prohibits automatic retries.
+  if (exclusive) {
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    syncFile(path);
+    syncFile(dirname(path));
+    return;
+  }
+  try {
+    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    syncFile(temporary);
+    renameSync(temporary, path);
+    syncFile(dirname(path));
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
 async function collect(options) {
+  const persistentProof = persistentSlotProof(options);
   const localProof = localSlotProof(options);
-  let snapshot = localProof ? undefined : snapshotContract(options);
+  let snapshot = localProof || persistentProof ? undefined : snapshotContract(options);
   const dbFile = options['--database-url-file']
     ? resolve(options['--database-url-file'])
     : undefined;
@@ -292,6 +356,7 @@ async function collect(options) {
   const privateDir = resolve(options['--private-dir']);
   const outputDir = resolve(options['--output-dir']);
   const fence = resolve(options['--fence-check']);
+  const assertFence = () => checkFence(fence, persistentProof ? 5_000 : 120_000);
   if (
     outputDir === privateDir ||
     outputDir.startsWith(`${privateDir}${sep}`) ||
@@ -307,25 +372,37 @@ async function collect(options) {
   if (databaseTransport) assertSecureFile(databaseTransport, 0o700);
   const files = privateFiles(privateDir);
   const estimatedBytes = files.reduce((total, file) => total + file.size, 0);
+  if (persistentProof && (files.length > 16 || estimatedBytes > 32 * 1024 * 1024))
+    fail('BACKUP_PERSISTENT_CAPTURE_LIMIT');
   const free = statfsSync(outputDir).bavail * statfsSync(outputDir).bsize;
   const minimum = Number(options['--min-free-bytes'] ?? MIN_HEADROOM_BYTES);
   if (!Number.isSafeInteger(minimum) || minimum < MIN_HEADROOM_BYTES)
     fail('BACKUP_INVALID_MINIMUM');
   if (free < estimatedBytes * 2 + minimum) fail('BACKUP_DISK_LOW');
   const env = dbFile ? databaseEnv(dbFile) : process.env;
-  checkFence(fence);
+  assertFence();
   const id = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`;
   const staging = join(outputDir, `.${id}.partial`);
   const published = join(outputDir, id);
   mkdirSync(staging, { mode: 0o700 });
   let renamed = false;
+  let ownershipPath;
+  let ownership;
+  let ownsReservation = false;
+  const publish = () => {
+    syncDirectoryTree(staging);
+    assertFence();
+    renameSync(staging, published);
+    renamed = true;
+    syncFile(outputDir);
+  };
   try {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
     const finishStaging = (capturedSnapshot, consistency) => {
       const copied = [];
       for (const file of files) {
-        checkFence(fence);
+        assertFence();
         const target = join(staging, 'private', file.name);
         mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
         copyFileSync(file.path, target);
@@ -340,7 +417,18 @@ async function collect(options) {
         }
         copied.push({ path: file.name, ...targetDigest });
       }
-      checkFence(fence);
+      assertFence();
+      if (persistentProof) {
+        const finalFiles = privateFiles(privateDir);
+        if (JSON.stringify(finalFiles) !== JSON.stringify(files)) fail('BACKUP_PRIVATE_CHANGED');
+        for (const [index, file] of finalFiles.entries()) {
+          if (
+            JSON.stringify(digest(file.path)) !==
+            JSON.stringify({ sha256: copied[index].sha256, bytes: copied[index].bytes })
+          )
+            fail('BACKUP_PRIVATE_CHANGED');
+        }
+      }
       const manifest = {
         schemaVersion: capturedSnapshot ? 2 : 1,
         capturedAt: new Date().toISOString(),
@@ -355,7 +443,94 @@ async function collect(options) {
         flag: 'wx',
       });
     };
-    if (localProof) {
+    if (persistentProof) {
+      const connectionString = readFileSync(dbFile, 'utf8').trim();
+      const sourceEnv = databaseEnv(dbFile, connectionString);
+      // Ambient libpq service, hostaddr and option variables must not redirect the dump.
+      const allowedPg = new Set([
+        'PGHOST',
+        'PGPORT',
+        'PGUSER',
+        'PGPASSWORD',
+        'PGDATABASE',
+        'PGCONNECT_TIMEOUT',
+      ]);
+      const persistentEnv = Object.fromEntries(
+        Object.entries(sourceEnv).filter(([key]) => !key.startsWith('PG') || allowedPg.has(key)),
+      );
+      const { assertSyntheticPersistentTarget } = await import('./synthetic-persistent-guard.mjs');
+      await assertSyntheticPersistentTarget(
+        connectionString,
+        persistentProof.expectedSystemIdentifier,
+      );
+      for (const program of ['pg_dump', 'pg_restore']) {
+        const version = spawnSync(program, ['--version'], {
+          encoding: 'utf8',
+          timeout: 5_000,
+          maxBuffer: MAX_OUTPUT_BYTES,
+        });
+        if (
+          version.error ||
+          version.status !== 0 ||
+          !version.stdout.trim().startsWith(`${program} (PostgreSQL) 17.6`) ||
+          !/^.* 17\.6(?:\s.*)?$/.test(version.stdout.trim())
+        )
+          fail('BACKUP_PERSISTENT_PG17_TOOLS_REQUIRED');
+      }
+      ownershipPath = join(outputDir, `.persistent-slot-${persistentProof.slotName}.json`);
+      ownership = {
+        schemaVersion: 1,
+        syntheticOnly: true,
+        restoreAccessAllowed: false,
+        owner: persistentProof.owner,
+        database: 'workout_pg17_proof',
+        postgresSystemIdentifier: persistentProof.expectedSystemIdentifier,
+        replicationSlot: persistentProof.slotName,
+        publication: persistentProof.expectedPublication,
+        bundleId: id,
+        state: 'reserved-investigate-before-retry',
+        slotCreationProven: false,
+        cleanup:
+          'Do not drop a slot when slotCreationProven is false. After proven creation, the exclusive owner must inspect cluster identity, exact snapshot/LSN, inactivity and absence of reuse before manual drop. Never delete this record to retry without investigation.',
+      };
+      syncOwnership(ownershipPath, ownership, true);
+      ownsReservation = true;
+      const { withPersistentExportedSlotSnapshot } = await import('./persistent-slot-snapshot.mjs');
+      const expectedCompletionMarker = createHash('sha256').update(randomUUID()).digest('hex');
+      const result = await withPersistentExportedSlotSnapshot({
+        ...persistentProof,
+        connectionString,
+        expectedDatabase: ownership.database,
+        expectedCompletionMarker,
+        capture: async (contract) => {
+          const actual = validateSnapshotContract({
+            ...contract,
+            publication: persistentProof.expectedPublication,
+          });
+          ownership = { ...ownership, slotCreationProven: true, snapshot: actual };
+          syncOwnership(ownershipPath, ownership);
+          assertFence();
+          run(
+            'pg_dump',
+            ['-Fc', '--no-owner', '--no-acl', `--snapshot=${actual.snapshotName}`, '-f', dump],
+            persistentEnv,
+          );
+          chmodSync(dump, 0o600);
+          run('pg_restore', ['--list', dump]);
+          run('pg_restore', ['--file=/dev/null', dump]);
+          finishStaging(actual, 'caller-supplied-exported-snapshot-local-integrity-only');
+          // Retention is permitted only after durable local publication and final fence.
+          publish();
+          return { completionMarker: expectedCompletionMarker };
+        },
+      });
+      snapshot = validateSnapshotContract({
+        ...result.snapshot,
+        publication: persistentProof.expectedPublication,
+      });
+      ownership = { ...ownership, state: 'retained-owner-cleanup-required', snapshot };
+      syncOwnership(ownershipPath, ownership);
+    } else if (localProof) {
       // Keep the operational v1 collector free of the disposable proof's pg dependency.
       const { withLocalExportedSlotSnapshot } = await import('./slot-snapshot.mjs');
       const connectionString = readFileSync(dbFile, 'utf8').trim();
@@ -442,7 +617,7 @@ async function collect(options) {
       chmodSync(dump, 0o600);
       run('pg_restore', ['--list', dump]);
     }
-    if (!localProof) {
+    if (!localProof && !persistentProof) {
       finishStaging(
         snapshot,
         snapshot
@@ -450,13 +625,16 @@ async function collect(options) {
           : 'operator-enforced-quiesced-write-fence',
       );
     }
-    syncDirectoryTree(staging);
-    checkFence(fence);
-    renameSync(staging, published);
-    renamed = true;
-    syncFile(outputDir);
+    if (!persistentProof) publish();
     process.stdout.write(`BACKUP_PUBLISHED ${basename(published)}\n`);
   } catch (error) {
+    if (ownsReservation) {
+      try {
+        syncOwnership(ownershipPath, { ...ownership, state: 'failed-investigation-required' });
+      } catch {
+        // The durable reservation still requires investigation; never infer slot absence.
+      }
+    }
     rmSync(renamed ? published : staging, { recursive: true, force: true });
     syncFile(outputDir);
     throw error;

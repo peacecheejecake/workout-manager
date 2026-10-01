@@ -199,7 +199,12 @@ export async function withPersistentExportedSlotSnapshot(options) {
     expectedCompletionMarker,
     capture,
   } = options;
-  const replication = new pg.Client({ connectionString, replication: 'database' });
+  const connectionOptions = {
+    connectionString,
+    connectionTimeoutMillis: 5_000,
+    query_timeout: 15_000,
+  };
+  const replication = new pg.Client({ ...connectionOptions, replication: 'database' });
   let catalog;
   let replicationConnected = false;
   let catalogConnected = false;
@@ -209,7 +214,7 @@ export async function withPersistentExportedSlotSnapshot(options) {
   let failure;
   async function openCatalog() {
     if (catalogConnected) return;
-    catalog = new pg.Client({ connectionString });
+    catalog = new pg.Client(connectionOptions);
     try {
       await catalog.connect();
       catalogConnected = true;
