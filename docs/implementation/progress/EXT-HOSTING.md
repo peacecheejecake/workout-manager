@@ -1,6 +1,6 @@
 # EXT-HOSTING · AWS HTTPS 배포
 
-상태: **in_progress**. 2026-09-29 사용자가 AWS 서울 리전과 월 10만 원 상한으로 시험 호스팅을 결정하고 `workout.red-10-proto.xyz`를 선택했다. AWS Organizations·Identity Center·예산 경고를 만들었고, 단일 Lightsail 서버에서 기존 사이트와 분리된 Workout 앱·DB·경로 엔진을 비공개로 기동했다. 서울 Secrets Manager에서 서버의 root 전용 파일로 OIDC 값을 전달했고 값은 기록하지 않았다. 2026-09-30 `workout` DNS A 레코드와 HTTPS 503 안내용 Caddy 블록을 활성화했다. Workout 제품 reverse proxy·Zitadel HTTPS callback 등록·실제 로그인/로그아웃 수용은 아직 **not_executed**다.
+상태: **in_progress**. 2026-09-29 사용자가 AWS 서울 리전과 월 10만 원 상한으로 시험 호스팅을 결정하고 `workout.red-10-proto.xyz`를 선택했다. AWS Organizations·Identity Center·예산 경고를 만들었고, 단일 Lightsail 서버에서 기존 사이트와 분리된 Workout 앱·DB·경로 엔진을 비공개로 기동했다. 서울 Secrets Manager에서 서버의 root 전용 파일로 OIDC 값을 전달했고 값은 기록하지 않았다. 2026-09-30 `workout` DNS A 레코드와 HTTPS 503 안내용 Caddy 블록을 활성화했다. Zitadel HTTPS callback·post-logout·back-channel URL은 2026-10-01 등록·재확인했다. Workout 제품 reverse proxy와 실제 로그인/로그아웃 수용은 아직 **not_executed**다.
 
 ## 계정·배포 사전 확인
 
