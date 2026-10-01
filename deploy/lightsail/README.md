@@ -640,7 +640,9 @@ container IDs to `restart=no`, verifies the policy, then stops them in
 `graphhopper` → `app` order. It rechecks their identities, policy, and stopped
 state before and after capture. Afterward it restores the original running
 state and restart policy in `app` → `graphhopper` order. An initially stopped
-service remains stopped. It does not call Compose
+app or GraphHopper is accepted only with `restart=no` and remains stopped.
+Docker `restarting`, paused, dead, or contradictory running/status states are
+rejected before capture. It does not call Compose
 `up`/`down`, create replacement containers, change Caddy, or touch `infra`.
 If an update or stop reports failure after changing state, it still attempts
 to restore the pinned service. A changed ID or policy fails closed. If app
