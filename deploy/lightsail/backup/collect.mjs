@@ -301,6 +301,39 @@ async function collect(options) {
   try {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
+    const finishStaging = (capturedSnapshot, consistency) => {
+      const copied = [];
+      for (const file of files) {
+        checkFence(fence);
+        const target = join(staging, 'private', file.name);
+        mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+        copyFileSync(file.path, target);
+        chmodSync(target, 0o600);
+        const sourceDigest = digest(file.path);
+        const targetDigest = digest(target);
+        if (
+          sourceDigest.bytes !== file.size ||
+          JSON.stringify(sourceDigest) !== JSON.stringify(targetDigest)
+        ) {
+          fail('BACKUP_PRIVATE_CHANGED');
+        }
+        copied.push({ path: file.name, ...targetDigest });
+      }
+      checkFence(fence);
+      const manifest = {
+        schemaVersion: capturedSnapshot ? 2 : 1,
+        capturedAt: new Date().toISOString(),
+        consistency,
+        independentPostBackupErasureLedgerRequired: true,
+        ...(capturedSnapshot ? { snapshot: capturedSnapshot } : {}),
+        database: digest(dump),
+        privateFiles: copied,
+      };
+      writeFileSync(join(staging, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
+        mode: 0o600,
+        flag: 'wx',
+      });
+    };
     if (localProof) {
       // Keep the operational v1 collector free of the disposable proof's pg dependency.
       const { withLocalExportedSlotSnapshot } = await import('./slot-snapshot.mjs');
@@ -338,6 +371,7 @@ async function collect(options) {
           );
           chmodSync(dump, 0o600);
           run('pg_restore', ['--list', dump]);
+          finishStaging(actual, 'replication-slot-exported-snapshot-disposable-local-proof-only');
         },
       });
       snapshot = validateSnapshotContract({ ...exported, publication: localProof.publication });
@@ -387,41 +421,14 @@ async function collect(options) {
       chmodSync(dump, 0o600);
       run('pg_restore', ['--list', dump]);
     }
-    const copied = [];
-    for (const file of files) {
-      checkFence(fence);
-      const target = join(staging, 'private', file.name);
-      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-      copyFileSync(file.path, target);
-      chmodSync(target, 0o600);
-      const sourceDigest = digest(file.path);
-      const targetDigest = digest(target);
-      if (
-        sourceDigest.bytes !== file.size ||
-        JSON.stringify(sourceDigest) !== JSON.stringify(targetDigest)
-      ) {
-        fail('BACKUP_PRIVATE_CHANGED');
-      }
-      copied.push({ path: file.name, ...targetDigest });
+    if (!localProof) {
+      finishStaging(
+        snapshot,
+        snapshot
+          ? 'caller-supplied-exported-snapshot-local-integrity-only'
+          : 'operator-enforced-quiesced-write-fence',
+      );
     }
-    checkFence(fence);
-    const manifest = {
-      schemaVersion: snapshot ? 2 : 1,
-      capturedAt: new Date().toISOString(),
-      consistency: snapshot
-        ? localProof
-          ? 'replication-slot-exported-snapshot-disposable-local-proof-only'
-          : 'caller-supplied-exported-snapshot-local-integrity-only'
-        : 'operator-enforced-quiesced-write-fence',
-      independentPostBackupErasureLedgerRequired: true,
-      ...(snapshot ? { snapshot } : {}),
-      database: digest(dump),
-      privateFiles: copied,
-    };
-    writeFileSync(join(staging, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
-      mode: 0o600,
-      flag: 'wx',
-    });
     renameSync(staging, published);
     process.stdout.write(`BACKUP_PUBLISHED ${basename(published)}\n`);
   } catch (error) {

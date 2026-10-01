@@ -36,6 +36,7 @@ test(
     const dbFile = join(root, 'database-url');
     const fence = join(root, 'fence.sh');
     const stream = join(root, 'stream.txt');
+    const dumpReady = join(root, 'dump-ready');
     let started = false;
     try {
       for (const dir of [socket, bin, privateDir, output, ledger]) mkdirSync(dir, { mode: 0o700 });
@@ -88,7 +89,17 @@ test(
       const url = new URL('postgresql://workout_admin:synthetic@localhost/postgres');
       url.searchParams.set('host', socket);
       writeFileSync(dbFile, `${url}\n`, { mode: 0o600 });
-      writeFileSync(fence, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+      writeFileSync(
+        fence,
+        `#!/bin/sh
+set -eu
+if [ -f '${dumpReady}' ]; then
+  if [ "\${WM_FAIL_FINALIZE:-}" = 1 ]; then exit 9; fi
+  test "$("${join(pgBin, 'psql')}" -X -At -c "SELECT count(*) FROM pg_replication_slots WHERE slot_name = 'snapshot_proof'")" = 1
+fi
+`,
+        { mode: 0o700 },
+      );
       writeFileSync(join(privateDir, 'fixture.bin'), 'synthetic-only');
       writeFileSync(
         join(bin, 'pg_dump'),
@@ -99,6 +110,15 @@ if [ "\${WM_FAIL_CAPTURE:-}" = 1 ]; then exit 8; fi
 "${join(pgBin, 'psql')}" -X -v ON_ERROR_STOP=1 -c "INSERT INTO snapshot_probe VALUES (3, 'after-snapshot')" >/dev/null
 "${join(pgBin, 'psql')}" -X -At -v ON_ERROR_STOP=1 -c "SELECT chr(get_byte(data,0)) FROM pg_logical_slot_peek_binary_changes('snapshot_proof', NULL, 100, 'proto_version', '1', 'publication_names', 'snapshot_probe_pub')" > "${stream}"
 exec "${join(pgBin, 'pg_dump')}" "$@"
+`,
+        { mode: 0o700 },
+      );
+      writeFileSync(
+        join(bin, 'pg_restore'),
+        `#!/bin/sh
+set -eu
+"${join(pgBin, 'pg_restore')}" "$@"
+if [ "$1" = --list ]; then touch '${dumpReady}'; fi
 `,
         { mode: 0o700 },
       );
@@ -197,6 +217,7 @@ exec "${join(pgBin, 'pg_dump')}" "$@"
         ).trim();
       }
       assert.equal(slots(), '');
+      rmSync(dumpReady, { force: true });
       const mismatched = [...args];
       mismatched[mismatched.indexOf('--local-expected-system-identifier') + 1] = '1';
       const wrongCluster = spawnSync(process.execPath, [collector, ...mismatched], {
@@ -231,6 +252,9 @@ exec "${join(pgBin, 'pg_dump')}" "$@"
       const failedCapture = invoke([], { WM_FAIL_CAPTURE: '1' });
       assert.match(failedCapture.stderr, /BACKUP_SUBPROCESS_FAILED/);
       assert.equal(slots(), '');
+      const failedFinalize = invoke([], { WM_FAIL_FINALIZE: '1' });
+      assert.match(failedFinalize.stderr, /BACKUP_SUBPROCESS_FAILED/);
+      assert.equal(slots(), '', 'a failure after the dump must drop the test slot');
       assert.deepEqual(
         readdirSync(output),
         [bundle.split('/').at(-1)],
