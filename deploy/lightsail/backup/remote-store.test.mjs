@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { downloadBundle, uploadBundle } from './remote-store.mjs';
+import { AwsCliClient, downloadBundle, uploadBundle } from './remote-store.mjs';
 
 const config = {
   schemaVersion: 1,
@@ -22,6 +22,38 @@ const config = {
   region: 'ap-northeast-2',
   expectedBucketOwner: '681892421656',
 };
+
+test('AWS backup CLI ignores configured endpoint overrides before transferring private bytes', async () => {
+  const previous = {
+    endpoint: process.env.AWS_ENDPOINT_URL,
+    s3Endpoint: process.env.AWS_ENDPOINT_URL_S3,
+    ignore: process.env.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS,
+  };
+  try {
+    process.env.AWS_ENDPOINT_URL = 'https://untrusted.example';
+    process.env.AWS_ENDPOINT_URL_S3 = 'https://untrusted-s3.example';
+    process.env.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS = 'false';
+    const calls = [];
+    const client = new AwsCliClient(config, (command, args, options) => {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: JSON.stringify({ Status: 'Enabled' }), stderr: '' };
+    });
+    assert.equal(await client.versioning(), 'Enabled');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, 'aws');
+    assert.equal(calls[0].options.env.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS, 'true');
+    assert.equal(calls[0].options.env.AWS_ENDPOINT_URL, 'https://untrusted.example');
+    assert.equal(calls[0].options.env.AWS_ENDPOINT_URL_S3, 'https://untrusted-s3.example');
+    assert.deepEqual(calls[0].args.slice(0, 2), ['s3api', 'get-bucket-versioning']);
+  } finally {
+    if (previous.endpoint === undefined) delete process.env.AWS_ENDPOINT_URL;
+    else process.env.AWS_ENDPOINT_URL = previous.endpoint;
+    if (previous.s3Endpoint === undefined) delete process.env.AWS_ENDPOINT_URL_S3;
+    else process.env.AWS_ENDPOINT_URL_S3 = previous.s3Endpoint;
+    if (previous.ignore === undefined) delete process.env.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS;
+    else process.env.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS = previous.ignore;
+  }
+});
 
 function digest(value) {
   return { sha256: createHash('sha256').update(value).digest('hex'), bytes: value.length };

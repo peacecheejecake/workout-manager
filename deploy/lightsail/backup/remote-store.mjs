@@ -455,12 +455,13 @@ export async function downloadBundle({ bundleId, destination, config, client, sy
 }
 
 export class AwsCliClient {
-  constructor(config) {
+  constructor(config, runner = spawnSync) {
     this.config = config;
+    this.runner = runner;
   }
 
   call(args, allowMissing = false) {
-    const result = spawnSync(
+    const result = this.runner(
       'aws',
       [
         's3api',
@@ -474,7 +475,12 @@ export class AwsCliClient {
         '--output',
         'json',
       ],
-      { encoding: 'utf8', timeout: 30 * 60_000, maxBuffer: MAX_RESULT_BYTES, env: process.env },
+      {
+        encoding: 'utf8',
+        timeout: 30 * 60_000,
+        maxBuffer: MAX_RESULT_BYTES,
+        env: { ...process.env, AWS_IGNORE_CONFIGURED_ENDPOINT_URLS: 'true' },
+      },
     );
     if (result.error || result.signal) reject();
     if (result.status !== 0) {
