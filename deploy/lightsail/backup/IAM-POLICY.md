@@ -55,3 +55,37 @@ The bucket creation and empty-state check are recorded in
 local preparation only. Identity creation/attachment, credentials or workload
 identity, real upload/version re-read, retention/deletion controls, independent
 ledger replay, and operational restore remain **not_executed**.
+
+## Short-lived workload identity preparation
+
+The two S3 identity policies above can be attached to separate IAM roles for
+[IAM Roles Anywhere](https://docs.aws.amazon.com/rolesanywhere/latest/userguide/introduction.html).
+This avoids a long-lived AWS access key on the Lightsail host. The service's
+[credential helper](https://docs.aws.amazon.com/rolesanywhere/latest/userguide/credential-helper.html)
+can supply short-lived credentials to an AWS CLI `credential_process`. A
+self-managed certificate authority requires protected issuance, renewal, and
+revocation; do not place its signing key on the application server. AWS Private
+CA is a separately priced service and is not assumed by this plan.
+
+`roles-anywhere-trust.mjs` prints one role trust policy at a time after a real
+Seoul trust anchor ARN exists:
+
+```sh
+node deploy/lightsail/backup/roles-anywhere-trust.mjs backup <trust-anchor-arn>
+node deploy/lightsail/backup/roles-anywhere-trust.mjs ledger <trust-anchor-arn>
+```
+
+The documents bind the exact account and trust anchor, and use distinct
+`x509Subject/CN` principal tags (`workout-manager-backup-v1` and
+`workout-manager-ledger-v1`). The profile must map the certificate subject CN
+as described by the [AWS trust model](https://docs.aws.amazon.com/rolesanywhere/latest/userguide/trust-model.html)
+and [attribute mapping guide](https://docs.aws.amazon.com/rolesanywhere/latest/userguide/attribute-mapping-and-trust-policy.html).
+Review the generated policies and actual roles separately before attachment.
+The role's identity policy must remain the corresponding narrow S3 policy
+above. Two roles on one root-controlled host do not by themselves make deletion
+records independent of a host compromise.
+
+The actual trust anchor, roles, profiles, certificate authority and leaf
+certificates, helper installation, host `credential_process`, and real
+allow/deny S3 tests are **not_executed**. Keep the existing versioned buckets
+empty until those identities and retention boundaries are verified.
