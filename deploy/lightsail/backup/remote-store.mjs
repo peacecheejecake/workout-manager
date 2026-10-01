@@ -20,6 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { validateSnapshotContract } from './docker-archive-transport.mjs';
 
 const MAX_FILE_BYTES = 4 * 1024 ** 3;
 const MAX_RESULT_BYTES = 16 * 1024;
@@ -118,20 +119,67 @@ function configCheck(config) {
   return config;
 }
 
+function exactKeys(value, keys) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join(',') === [...keys].sort().join(',')
+  );
+}
+
+function snapshotCheck(snapshot) {
+  try {
+    if (JSON.stringify(validateSnapshotContract(snapshot)) !== JSON.stringify(snapshot)) reject();
+  } catch {
+    reject();
+  }
+}
+
+function manifestCheck(manifest) {
+  const v2 = manifest?.schemaVersion === 2;
+  if (
+    (v2 &&
+      (!exactKeys(manifest, [
+        'schemaVersion',
+        'capturedAt',
+        'consistency',
+        'independentPostBackupErasureLedgerRequired',
+        'snapshot',
+        'database',
+        'privateFiles',
+      ]) ||
+        ![
+          'caller-supplied-exported-snapshot-local-integrity-only',
+          'replication-slot-exported-snapshot-disposable-local-proof-only',
+        ].includes(manifest.consistency))) ||
+    (!v2 &&
+      (manifest?.schemaVersion !== 1 ||
+        manifest.consistency !== 'operator-enforced-quiesced-write-fence' ||
+        'snapshot' in manifest)) ||
+    manifest.independentPostBackupErasureLedgerRequired !== true ||
+    typeof manifest.capturedAt !== 'string' ||
+    !Number.isFinite(Date.parse(manifest.capturedAt)) ||
+    !Array.isArray(manifest.privateFiles)
+  )
+    reject();
+  if (v2) {
+    snapshotCheck(manifest.snapshot);
+    if (
+      !exactKeys(manifest.database, ['sha256', 'bytes']) ||
+      manifest.privateFiles.some((file) => !exactKeys(file, ['path', 'sha256', 'bytes']))
+    )
+      reject();
+  }
+  return manifest;
+}
+
 function bundleFiles(bundle, synthetic, expectedBundleId = basename(bundle)) {
   secureDir(bundle, synthetic);
   if (!/^backup-[a-zA-Z0-9-]+$/.test(expectedBundleId)) reject();
   const manifestPath = join(bundle, 'manifest.json');
   secureFile(manifestPath, synthetic);
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (
-    manifest.schemaVersion !== 1 ||
-    manifest.consistency !== 'operator-enforced-quiesced-write-fence' ||
-    manifest.independentPostBackupErasureLedgerRequired !== true ||
-    !Number.isFinite(Date.parse(manifest.capturedAt)) ||
-    !Array.isArray(manifest.privateFiles)
-  )
-    reject();
+  const manifest = manifestCheck(JSON.parse(readFileSync(manifestPath, 'utf8')));
   const files = [
     { path: 'manifest.json', ...digest(manifestPath) },
     { path: 'database.dump', ...manifest.database },
@@ -155,7 +203,7 @@ function bundleFiles(bundle, synthetic, expectedBundleId = basename(bundle)) {
     }
   };
   walk(bundle);
-  return files;
+  return { files, manifest };
 }
 
 function remoteKey(config, bundleId, path) {
@@ -176,9 +224,11 @@ async function downloadOne(client, key, versionId, expected, target) {
   exactDigest(expected, digest(target));
 }
 
-function completionCheck(completion, config, bundleId, files) {
+function completionCheck(completion, config, bundleId, files, manifest) {
+  const schemaVersion = manifest?.schemaVersion ?? completion?.schemaVersion;
   if (
-    completion?.schemaVersion !== 1 ||
+    completion?.schemaVersion !== schemaVersion ||
+    (schemaVersion !== 1 && schemaVersion !== 2) ||
     completion.bucket !== config.bucket ||
     completion.prefix !== config.prefix ||
     completion.region !== config.region ||
@@ -188,6 +238,26 @@ function completionCheck(completion, config, bundleId, files) {
     completion.files.length !== files.length
   )
     reject();
+  if (schemaVersion === 2) {
+    if (
+      !exactKeys(completion, [
+        'schemaVersion',
+        'bucket',
+        'prefix',
+        'region',
+        'bundleId',
+        'snapshot',
+        'ledgerCompleteness',
+        'restoreAccessAllowed',
+        'files',
+      ]) ||
+      completion.restoreAccessAllowed !== false
+    )
+      reject();
+    snapshotCheck(completion.snapshot);
+    if (manifest && JSON.stringify(completion.snapshot) !== JSON.stringify(manifest.snapshot))
+      reject();
+  }
   const paths = new Set();
   files.forEach((file, i) => {
     const recorded = completion.files[i];
@@ -199,6 +269,8 @@ function completionCheck(completion, config, bundleId, files) {
       !Number.isSafeInteger(recorded.bytes) ||
       recorded.bytes < 0
     )
+      reject();
+    if (schemaVersion === 2 && !exactKeys(recorded, ['path', 'sha256', 'bytes', 'versionId']))
       reject();
     paths.add(recorded.path);
     if (
@@ -236,16 +308,21 @@ export async function uploadBundle({ bundle, config, client, synthetic = false }
   configCheck(config);
   if (!synthetic && process.getuid?.() !== 0) reject();
   if (!isAbsolute(bundle) || resolve(bundle) !== bundle) reject();
-  const files = bundleFiles(bundle, synthetic);
+  const { files, manifest } = bundleFiles(bundle, synthetic);
   const bundleId = basename(bundle);
   const doneKey = remoteKey(config, bundleId, 'completion.json');
   if ((await client.versioning()) !== 'Enabled') reject();
   if ((await client.location()) !== config.region) reject();
   const existing = await existingCompletion(client, doneKey);
   if (existing) {
-    completionCheck(existing.completion, config, bundleId, files);
+    completionCheck(existing.completion, config, bundleId, files, manifest);
     await verifyRemoteFiles(client, config, bundleId, existing.completion.files);
-    return { bundleId, versionId: existing.versionId, alreadyComplete: true };
+    return {
+      bundleId,
+      versionId: existing.versionId,
+      alreadyComplete: true,
+      ...(manifest.schemaVersion === 2 ? { completion: existing.completion } : {}),
+    };
   }
   const staged = [];
   for (const file of files) {
@@ -260,12 +337,19 @@ export async function uploadBundle({ bundle, config, client, synthetic = false }
     }
     staged.push({ ...file, versionId });
   }
+  const checked = bundleFiles(bundle, synthetic);
+  if (JSON.stringify(checked.files) !== JSON.stringify(files)) reject();
+  if (manifest.schemaVersion === 2 && JSON.stringify(checked.manifest) !== JSON.stringify(manifest))
+    reject();
   const completion = {
-    schemaVersion: 1,
+    schemaVersion: manifest.schemaVersion,
     bucket: config.bucket,
     prefix: config.prefix,
     region: config.region,
     bundleId,
+    ...(manifest.schemaVersion === 2
+      ? { snapshot: manifest.snapshot, restoreAccessAllowed: false }
+      : {}),
     ledgerCompleteness: 'not_verified',
     files: staged,
   };
@@ -279,15 +363,25 @@ export async function uploadBundle({ bundle, config, client, synthetic = false }
     } catch {
       const concurrent = await existingCompletion(client, doneKey);
       if (!concurrent) reject();
-      completionCheck(concurrent.completion, config, bundleId, files);
+      completionCheck(concurrent.completion, config, bundleId, files, manifest);
       await verifyRemoteFiles(client, config, bundleId, concurrent.completion.files);
-      return { bundleId, versionId: concurrent.versionId, alreadyComplete: true };
+      return {
+        bundleId,
+        versionId: concurrent.versionId,
+        alreadyComplete: true,
+        ...(manifest.schemaVersion === 2 ? { completion: concurrent.completion } : {}),
+      };
     }
     assertVersion(versionId);
     const published = await existingCompletion(client, doneKey);
     if (!published || published.versionId !== versionId) reject();
-    completionCheck(published.completion, config, bundleId, files);
-    return { bundleId, versionId, alreadyComplete: false };
+    completionCheck(published.completion, config, bundleId, files, manifest);
+    return {
+      bundleId,
+      versionId,
+      alreadyComplete: false,
+      ...(manifest.schemaVersion === 2 ? { completion: published.completion } : {}),
+    };
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
@@ -326,10 +420,14 @@ export async function downloadBundle({ bundleId, destination, config, client, sy
   mkdirSync(staging, { mode: 0o700 });
   try {
     await verifyRemoteFiles(client, config, bundleId, completed.completion.files, staging);
-    const files = bundleFiles(staging, synthetic, bundleId);
-    completionCheck(completed.completion, config, bundleId, files);
+    const { files, manifest } = bundleFiles(staging, synthetic, bundleId);
+    completionCheck(completed.completion, config, bundleId, files, manifest);
     renameSync(staging, destination);
-    return { bundleId, versionId: completed.versionId };
+    return {
+      bundleId,
+      versionId: completed.versionId,
+      ...(manifest.schemaVersion === 2 ? { completion: completed.completion } : {}),
+    };
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     throw error;
@@ -441,7 +539,10 @@ async function main() {
     command === 'upload'
       ? await uploadBundle({ bundle: first, config, client })
       : await downloadBundle({ bundleId: first, destination: second, config, client });
-  process.stdout.write(`BACKUP_REMOTE_${command.toUpperCase()}_VERIFIED ${result.bundleId}\n`);
+  const status = result.completion
+    ? `BACKUP_REMOTE_${command.toUpperCase()}_LOCAL_INTEGRITY_ONLY`
+    : `BACKUP_REMOTE_${command.toUpperCase()}_VERIFIED`;
+  process.stdout.write(`${status} ${result.bundleId}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

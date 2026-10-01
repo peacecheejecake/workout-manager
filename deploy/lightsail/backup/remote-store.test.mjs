@@ -27,7 +27,15 @@ function digest(value) {
   return { sha256: createHash('sha256').update(value).digest('hex'), bytes: value.length };
 }
 
-function fixture() {
+const snapshot = {
+  snapshotName: '00000001-00000002-1',
+  consistentPointLsn: '0/16B6C50',
+  postgresSystemIdentifier: '1234567890123456789',
+  replicationSlot: 'workout_slot',
+  publication: 'workout_publication',
+};
+
+function fixture(schemaVersion = 1) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-remote-test-')));
   const bundle = join(root, 'backup-fixture');
   mkdirSync(bundle, { mode: 0o700 });
@@ -39,10 +47,14 @@ function fixture() {
   writeFileSync(
     join(bundle, 'manifest.json'),
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion,
       capturedAt: '2026-09-30T00:00:00.000Z',
-      consistency: 'operator-enforced-quiesced-write-fence',
+      consistency:
+        schemaVersion === 2
+          ? 'caller-supplied-exported-snapshot-local-integrity-only'
+          : 'operator-enforced-quiesced-write-fence',
       independentPostBackupErasureLedgerRequired: true,
+      ...(schemaVersion === 2 ? { snapshot } : {}),
       database: digest(database),
       privateFiles: [{ path: 'fixture.bin', ...digest(privateFile) }],
     }),
@@ -132,6 +144,161 @@ test('publishes completion last, verifies exact bytes, downloads, and retries id
       readFileSync(join(destination, 'database.dump')),
       readFileSync(join(bundle, 'database.dump')),
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v2 stores exact snapshot and versioned files with explicit no-restore marker', async () => {
+  const { root, bundle } = fixture(2);
+  const client = new FakeS3();
+  try {
+    const uploaded = await uploadBundle({ bundle, config, client, synthetic: true });
+    const key = `${config.prefix}/backup-fixture/completion.json`;
+    const remote = JSON.parse(client.find(key).data);
+    assert.deepEqual(uploaded.completion, remote);
+    assert.equal(remote.schemaVersion, 2);
+    assert.deepEqual(remote.snapshot, snapshot);
+    assert.equal(remote.ledgerCompleteness, 'not_verified');
+    assert.equal(remote.restoreAccessAllowed, false);
+    assert.deepEqual(
+      remote.files.map(({ path }) => path),
+      ['manifest.json', 'database.dump', 'private/fixture.bin'],
+    );
+    for (const file of remote.files) {
+      assert.equal(
+        file.versionId,
+        client.find(`${config.prefix}/backup-fixture/files/${file.path}`).versionId,
+      );
+      assert.deepEqual(
+        { sha256: file.sha256, bytes: file.bytes },
+        digest(readFileSync(join(bundle, ...file.path.split('/')))),
+      );
+    }
+    const retried = await uploadBundle({ bundle, config, client, synthetic: true });
+    assert.equal(retried.alreadyComplete, true);
+    assert.deepEqual(retried.completion, remote);
+    const downloaded = await downloadBundle({
+      bundleId: 'backup-fixture',
+      destination: join(root, 'downloaded'),
+      config,
+      client,
+      synthetic: true,
+    });
+    assert.deepEqual(downloaded.completion, remote);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v2 rejects interrupted upload, changed local bytes, and forged snapshot or completion', async () => {
+  const { root, bundle } = fixture(2);
+  const client = new FakeS3();
+  const key = `${config.prefix}/backup-fixture/completion.json`;
+  try {
+    client.failAt = 1;
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    assert.equal(client.objects.has(key), false);
+    client.failAt = -1;
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    const remote = JSON.parse(client.find(key).data);
+    remote.snapshot.publication = 'wrong_publication';
+    client.find(key).data = Buffer.from(JSON.stringify(remote));
+    await assert.rejects(
+      downloadBundle({
+        bundleId: 'backup-fixture',
+        destination: join(root, 'bad'),
+        config,
+        client,
+        synthetic: true,
+      }),
+    );
+    remote.snapshot = snapshot;
+    remote.restoreAccessAllowed = true;
+    client.find(key).data = Buffer.from(JSON.stringify(remote));
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    remote.restoreAccessAllowed = false;
+    client.find(key).data = Buffer.from(JSON.stringify(remote));
+    writeFileSync(join(bundle, 'database.dump'), 'changed');
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v1 and v2 completion schemas cannot be interchanged', async () => {
+  const { root, bundle } = fixture(2);
+  const client = new FakeS3();
+  try {
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    const key = `${config.prefix}/backup-fixture/completion.json`;
+    const remote = JSON.parse(client.find(key).data);
+    remote.schemaVersion = 1;
+    client.find(key).data = Buffer.from(JSON.stringify(remote));
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    await assert.rejects(
+      downloadBundle({
+        bundleId: 'backup-fixture',
+        destination: join(root, 'bad'),
+        config,
+        client,
+        synthetic: true,
+      }),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v2 rejects unsupported consistency and malformed publication before upload', async () => {
+  const { root, bundle } = fixture(2);
+  const client = new FakeS3();
+  const path = join(bundle, 'manifest.json');
+  try {
+    const original = JSON.parse(readFileSync(path, 'utf8'));
+    writeFileSync(path, JSON.stringify({ ...original, consistency: 'operationally-restorable' }));
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...original,
+        snapshot: { ...snapshot, publication: 'Invalid-Publication' },
+      }),
+    );
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    assert.equal(client.objects.size, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v2 rejects altered remote bytes, encryption, and version IDs without publishing a download', async () => {
+  const { root, bundle } = fixture(2);
+  const client = new FakeS3();
+  const destination = join(root, 'downloaded');
+  const key = `${config.prefix}/backup-fixture/files/database.dump`;
+  try {
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    const object = client.find(key);
+    object.data = Buffer.from('tampered');
+    await assert.rejects(
+      downloadBundle({ bundleId: 'backup-fixture', destination, config, client, synthetic: true }),
+    );
+    assert.equal(existsSync(destination), false);
+    object.data = readFileSync(join(bundle, 'database.dump'));
+    object.encryption = 'aws:kms';
+    await assert.rejects(
+      downloadBundle({ bundleId: 'backup-fixture', destination, config, client, synthetic: true }),
+    );
+    object.encryption = 'AES256';
+    const completionKey = `${config.prefix}/backup-fixture/completion.json`;
+    const completion = JSON.parse(client.find(completionKey).data);
+    completion.files[1].versionId = 'missing';
+    client.find(completionKey).data = Buffer.from(JSON.stringify(completion));
+    await assert.rejects(
+      downloadBundle({ bundleId: 'backup-fixture', destination, config, client, synthetic: true }),
+    );
+    assert.equal(existsSync(destination), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
