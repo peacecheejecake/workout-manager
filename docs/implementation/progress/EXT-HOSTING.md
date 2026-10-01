@@ -242,3 +242,29 @@
 - `collect.mjs`가 첫 fence 검사 전에 비공개 파일을 열거하던 순서를 바꿨다. 이제 첫 검사 뒤 초기 파일 집합·내용 해시를 고정하고, 모든 수집 경로에서 복사 전후와 게시 직전에 원본 집합·해시 및 복사본 해시를 대조한다. v1 Docker transport 중 파일 추가·변경·삭제는 게시 없이 `BACKUP_PRIVATE_CHANGED`로 실패한다. README의 검사 간 경쟁 상태와 외부 지속 write fence 요구는 유지했다.
 - 담당 agent의 Node 24 집중 시험은 **6 통과·2 opt-in skip**, 변경 파일 ESLint·Prettier·구문·diff 검사 통과였다. root의 Node 24.12.0 백업 디렉터리 전체 재실행은 **85 통과·8 명시적 skip·0 실패**였다. root의 첫 ESLint 실행은 기본 Node가 ESLint 설정에 맞지 않아 시작 전에 실패했고, Node 24를 PATH에 고정한 재실행에서 ESLint·Prettier·diff 검사가 통과했다. 운영 수집, 마지막 검사와 게시 사이의 경쟁 제어, 원격 보존·독립 원장·복원은 계속 **not_executed**다.
 - `main` `b9a4cd98ca0b75379e78c93945f7c0ada12d73cd` → `phase/ext-hosting` `ba0a367b9095d78382e691d252dd379f3d666012` 전체 diff의 새 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 단계 검토는 **APPROVE**, 차단 지적 없음이었다. 검토자는 초기·복사 전후·게시 직전 비교, 실패 정리, 영속 slot 경로와 문서 한계를 대조했다. `collect.test.mjs` 독립 실행은 **4 통과·1 opt-in skip**, `git diff --check`도 통과했다. 실서버 백업·원격 보존·복원은 재실행하지 않았다. 이 판정 기록을 포함한 HEAD는 병합 전 검토 새로고침 대상이다.
+
+## AWS S3 합성 버전 쓰기 실측 · 2026-10-02
+
+- 비루트 Identity Center 관리자 세션의 STS 계정이 `681892421656`인지 재확인하고, 서울의 전용 백업·삭제 원장 버킷 두 곳 모두 버전 관리가 `Enabled`인지 재조회했다. 두 버킷 각각의 전용 prefix에 작은 **합성 바이트**만 `If-None-Match: *`·SSE-S3 `AES256`으로 썼다. 반환된 버전 ID로 `HeadObject`의 버전·암호화를 대조하고 `GetObject`의 정확한 버전을 내려받아 SHA-256이 원본과 같은지 확인했다. 두 시험 모두 성공했다.
+- 각 시험에서 생성한 **정확한 객체 버전만** 삭제한 뒤 키별 버전/삭제 마커 부재와 두 버킷 전체의 빈 버전/삭제 마커 목록을 확인했다. 시험 스크립트·합성 파일은 로컬 임시 디렉터리에서 제거했다. 이 실측은 AWS S3 버전/암호화/정확한 재조회와 정리만 증명한다. 관리자 자격 증명으로 실행했으므로 전용 최소 권한 identity·서버 자격 증명·기존 S3 전송기의 실호출을 검증하지 않았고, 운영 DB·비공개 파일·삭제 원장은 전송하지 않았다. 해당 운영 항목, retention·독립 원장·복원은 계속 **not_executed**다.
+
+## 운영 원본과 스키마 선행 조사 · 2026-10-02
+
+- AWS가 반환한 ED25519 호스트 키를 다시 고정한 읽기 전용 SSH에서 실제 컨테이너 마운트를 확인했다. Workout 앱의 `data/private`는 쓰기 가능, `basemap`·`geo-data`·`routing`은 읽기 전용이다. Workout PostgreSQL의 `data/postgres`, 경로 엔진의 `data/routing`은 쓰기 가능이다. 서버에는 이 외에 `data/backups`·옛 `geo-data-pre-node24` 디렉터리도 있으므로 현재 DB+private 수집만으로 호스트 전체 복구 원본이 완전하다고 말할 수 없다.
+- 운영 DB의 `schema_migrations`는 **65행·최대 65**였고, 비시스템 일반 테이블은 `public` 140개·`identity_private` 6개·`garmin_private` 2개였다. 계정 표는 0행, `data/private`의 파일은 0개·전체 크기 0바이트였지만 다른 DB 표/삭제 기록이 비었다는 증거는 아니다. DB 크기는 16,747,667바이트, `pg_wal` 디렉터리는 33,554,432바이트, 파일시스템 여유는 101,490,749,440바이트였다. 현재 앱 이미지와 65개 스키마는 새 staged `fa29723` 이미지의 93개 migration보다 이전이다. 운영 DB 백업·격리 복원, 66–93 적용, 앱 교체·logical WAL 전환은 **not_executed**다.
+
+## DB 원본 목록 후보 · 2026-10-02
+
+- 별도 작업 커밋 `0a85ac3`에서 migration 001–093의 격리 PostgreSQL 14 catalog를 고정한 후보 등록부와 읽기 전용 snapshot 검사기를 추가했다. 비시스템 namespace 3개, 관계 501개와 컬럼 2,147개를 정확히 대조한다. 관계 중 행 HMAC 범위는 16개, 요약만 있는 관계는 5개, 행 coverage가 없는 관계는 480개다. 미등록·삭제·schema/owner/RLS/컬럼/마이그레이션 변경은 고정 오류로 거절하며 결과는 항상 `complete:false`다. 대형 객체와 호스트 파일·외부 저장소·snapshot 이후 WAL tail도 별도 gap으로 남긴다.
+- 담당 agent의 단위 시험 **4/4**, 실제 격리 PostgreSQL 14 imported snapshot 시험 **1/1**이 통과했다. root가 단위 **4/4**, PostgreSQL 통합 **1/1**을 재실행했다. 첫 root PostgreSQL 실행은 sandbox의 공유 메모리 거부로 시작 전에 실패했고 허용된 격리 실행에서 통과했다. 운영 DB는 migration **65**라 이 93개 후보와 일치하지 않고, 운영 PostgreSQL 17에서의 실행과 독립 단계 검토는 **not_executed**다. 후보 등록부가 원본 coverage 승인이나 복구 가능 판정은 아니다.
+
+## DB 전용 사전 마이그레이션 리허설 준비 · 2026-10-02
+
+- 별도 작업 커밋 `0ff7de4`에서 비활성·명시적 실행 방식의 운영 리허설 스크립트와 절차를 추가했다. 설치된 checker·고정 컨테이너/Compose 신원·두 잠금·빈 private를 확인한 뒤 앱과 경로 엔진을 정지하고 root 전용 DB archive를 만든다. 격리 PostgreSQL 17.6 네트워크에서 제한된 owner로 archive를 복원한 다음 고정 staged 이미지의 `db_setup`을 migration 93까지 시험하고 제한된 앱 health를 확인하도록 설계했다. 성공·실패 종료 모두 격리 자원 정리와 원래 컨테이너 재시작을 확인한다.
+- 담당 agent와 root의 Bash 구문·Node 24 정적 시험 **2/2**, 변경 JS ESLint·Prettier·diff 검사는 통과했다. 이 시험은 실제 Docker/DB 복원 경로를 실행하지 않았다. 스크립트 설치, 운영 DB archive 생성, 격리 PostgreSQL 17.6 실제 복원·migration, 운영 DB 적용은 모두 **not_executed**다. DB 전용 archive는 비공개 파일·독립 삭제 원장·마지막 WAL tail·원격 사본을 담지 않으며 공개 쓰기 재개 근거가 아니다. SIGKILL/정전에서는 종료 trap이 실행되지 않아 현장 상태 확인이 필요하다.
+
+## 현재 단계 검증 · 2026-10-02
+
+- `pnpm install --frozen-lockfile`은 sandbox의 npm DNS 거부로 첫 시도가 중단돼 의존성 폴더가 불완전해졌다. 허용된 재실행은 잠금 파일 변경 없이 성공했다. `pnpm check`의 생성물·전체 Prettier·전체 ESLint·전체 typecheck는 통과했다. 이어진 첫 단위 시험은 sandbox의 로컬 시험 서버 포트 거부로 **4,250 통과·36 실패·7 skip**이었고, 허용된 로컬 포트 재실행은 **4,286 통과·7 skip·0 실패**였다. `pnpm build`는 Turbo cache의 **15/15**였고, 시험용 대체 API 포트를 반영한 Web 직접 빌드도 통과했다.
+- `pnpm test:integration`의 격리 PostgreSQL 14 실행은 **1,045 통과·3 skip**이었다. 새 source-inventory의 Node 시험 **4/4**와 격리 PostgreSQL imported snapshot 시험 **1/1**, pre-migration Bash 구문·정적 시험 **2/2**, backup 디렉터리 전체 Node 시험 **91 통과·9 opt-in skip**도 root가 확인했다. 첫 source-inventory PostgreSQL 실행의 sandbox 공유 메모리 거부는 허용된 격리 실행으로 재검증했다.
+- 첫 `pnpm test:identity`는 로컬 Docker가 기본 API 포트 4300을 사용 중이라 시작되지 않았다. 대체 53100–53104 포트만 설정한 첫 재실행은 Web 빌드가 기본 API 포트로 고정돼 로그인 화면 시험 4개 timeout 후 중단했다. Web을 대체 API 포트로 직접 재빌드한 뒤 앞서 실패한 단일 시험 **1/1**과 전체 두 번 각각 **307 통과·14 skip·0 실패**를 완료했다. 대체 포트와 빌드는 로컬 fixture에 한정한다. 실제 공개 OIDC, HealthKit, 운영 DB·S3, 복원 및 릴리스 gate는 **not_executed**다.
