@@ -699,9 +699,10 @@ that changes state but returns failure, checker failure, and collector failure.
 The wrapper is installed but has no host timer or recurring backup. Deletion-ledger
 completeness and replay remain independent acceptance gates.
 
-`backup/run-backup-window.sh` is a proposed root-only entry point for a future
-reviewed release. It accepts no arguments, refuses symlinked entry/runtime
-paths, checks root ownership and mode 0700 of itself, its physical release
+`backup/run-backup-window.sh` is the root-only entry point installed in the
+inactive, reviewed release `681accc` at
+`/srv/workout-manager/admin/backup/releases/681accc`. It accepts no arguments,
+refuses symlinked entry/runtime paths, checks root ownership and mode 0700 of itself, its physical release
 directory, the adjacent `backup-window.mjs`, and the pinned Node 24 binary. It
 launches that exact wrapper with a clean environment, fixed local Docker
 socket, and root-only fence config. The wrapper also pins Docker/flock/systemctl
@@ -709,8 +710,10 @@ executables and clears inherited variables for its children. The fixed PATH
 begins with the pinned Node 24 directory so executable fence checks using
 `/usr/bin/env node` use the same runtime. Verify every deployed file's hash,
 ownership and permissions before enabling a narrowly scoped invocation. The
-currently installed release `9122959` does **not** include this launcher or
-hardening; no host execution or concurrent-writer drill has occurred. This
+older release `9122959` is retained separately and does **not** include this
+launcher or hardening. The new release has passed file-hash, mode, Node syntax,
+and shell syntax checks, but has not been invoked as root or connected to a
+timer. No backup window or concurrent-writer drill has occurred. This
 entry point does not make advisory locks a privilege boundary while `ubuntu`
 retains broad sudo, Docker, and private-directory write access.
 
