@@ -475,6 +475,37 @@ authorization for a production restore. Run
 `node --test deploy/lightsail/backup/cold-snapshot-drill.test.mjs` for local
 guard and copy-comparison checks; this does not substitute for a host rehearsal.
 
+### Isolated physical rollback rehearsal (manual, not executed)
+
+`backup/physical-rollback-drill.sh` is a separate opt-in root-only drill for the
+retained `/srv/workout-manager/backups/cold-postgres/15eff9a95c86d1ca6f5e237d/postgres`
+cluster. Review its pinned PostgreSQL 17.6, old app and staged app image IDs,
+then install it as `/srv/workout-manager/admin/physical-rollback-drill.sh`
+(root:0700). With the same root-owned backup and lock directories as above,
+at least 2 GiB free under `/tmp`, and exclusive maintenance of the retained
+snapshot, run `sudo /srv/workout-manager/admin/physical-rollback-drill.sh --execute`.
+The optional `--inject-post-migration-failure` after `--execute` reports an
+intentional failure only after testing the physical restoration and old health.
+
+The script reads but never mounts the retained cluster for writes. It compares
+its files and metadata before and after use, checks clean shutdown and system
+identifier, and copies it into a new private scratch bind directory. An isolated
+internal Docker network with no published ports hosts only the cloned database,
+staged `db_setup` to schema 93, then the old `db_setup` and app health after
+physical rollback to schema 65. Rollback stops the exact clone PostgreSQL ID,
+removes only children of its scratch bind directory, copies the untouched
+snapshot back into that **same** directory, syncs it, verifies its inode and clean data,
+then restarts that exact ID. Output is limited to `PHYSICAL_ROLLBACK_*` codes.
+If disposable container or network cleanup fails, the root-only scratch path
+is retained for inspection. No original Workout or infra container, Caddy
+configuration, live PostgreSQL volume, or live credential file is used.
+
+Local guards and in-place copy behavior are checked with
+`node --test deploy/lightsail/backup/physical-rollback-drill.test.mjs`.
+This isolated rehearsal does not prove a production switch, backup freshness,
+off-host durability, or deletion-ledger/WAL capture and replay. The retained
+snapshot predates later live writes and is **not** a current recovery point.
+
 ### Backup collector preparation (inactive)
 
 `backup/collect.mjs` is an opt-in local collector, not an installed schedule or
