@@ -82,7 +82,7 @@
 
 1. 현재 단일 Lightsail 서버의 실제 비용·스냅샷 저장량과 월 예산을 계속 확인한다. 전용 PostgreSQL과 비공개 파일 저장소의 재시작 후 지속성, 실제 백업/독립 삭제 원장과 비어 있지 않은 worker 작업을 포함한 전체 운영 복구를 검증한다. 위 서버 격리 드릴은 합성 자료의 앱 기동과 DB 재시작까지의 증거다.
 2. 가비아 DNS의 `workout` A 레코드와 공개 HTTPS 503 대기 블록은 활성화·조회했다. 제품 reverse proxy를 검증 후 별도로 활성화하고 공개 `/map-data-licence`와 script 응답 바이트를 활성 manifest SHA-256에 다시 대조한다. 내부 응답 검사와 대기 화면은 제품 공개 응답 검사를 대신하지 않는다.
-3. Zitadel에 HTTPS redirect·post-logout·back-channel URL을 등록한다. `NODE_ENV=production`, secure `__Host-` cookie, secret manager 전달과 배포 환경의 로그인·계정 전환·로그아웃·취소·만료·back-channel 전파를 각각 확인한다. 실제 공급자에서 접근 불가능한 취소 경로는 미검증으로 남긴다.
+3. Zitadel의 HTTPS redirect·post-logout·back-channel URL 등록과 저장 후 재확인은 완료했다. `NODE_ENV=production`, secure `__Host-` cookie, secret manager 전달과 배포 환경의 로그인·계정 전환·로그아웃·취소·만료·back-channel 전파를 각각 확인한다. 실제 공급자에서 접근 불가능한 취소 경로는 미검증으로 남긴다.
 
 참고: [AWS App Runner 신규 고객 제한](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html), [ECS Express Mode 기본 HTTPS 주소](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-getting-started.html), [Lightsail 요금](https://aws.amazon.com/lightsail/pricing/), [Secrets Manager 요금](https://aws.amazon.com/secrets-manager/pricing/), [Route 53 요금](https://aws.amazon.com/route53/pricing/), [Lightsail 스냅샷 과금](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-frequently-asked-questions-faq-billing-and-account-management.html), [Lightsail IAM 범위](https://docs.aws.amazon.com/lightsail/latest/userguide/security_iam_service-with-iam.html).
 
