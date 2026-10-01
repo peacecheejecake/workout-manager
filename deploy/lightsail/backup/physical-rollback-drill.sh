@@ -100,6 +100,12 @@ clone_identity() {
   [[ $got == "$db_id|$pg_image|$run_id|$net|no|bind:$scratch/pg:/var/lib/postgresql/data:true" ]]
 }
 clone_sql() { docker_short exec --user postgres "$db_id" psql -X -v ON_ERROR_STOP=1 -qAt -d workout -c "$1"; }
+setup_complete() {
+  local output
+  output=$(docker_long run --name "$setup" --network "$net" --label "$label_key=$run_id" \
+    --env-file "$scratch/setup.env" "$1" node --import tsx /app/deploy/lightsail/bootstrap-db.mjs) || return 1
+  [[ $output == DATABASE_SETUP_COMPLETE ]]
+}
 rotate_clone_roles() {
   # Local peer auth reaches only the isolated PostgreSQL container.
   quiet docker_short exec -i --user postgres "$db_id" psql -X -v ON_ERROR_STOP=1 -q -d workout <<ROLES
@@ -112,7 +118,9 @@ ALTER ROLE workout_resource_ingestion_worker PASSWORD '${ingestion_password}';
 ROLES
 }
 schema_is() {
-  [[ $(clone_sql "SELECT (pg_control_system()).system_identifier::text='$system_id' AND current_setting('server_version_num')='170006' AND (SELECT count(*)=$1 AND min(version)=1 AND max(version)=$1 AND bool_and(checksum ~ '^[0-9a-f]{64}$') FROM public.schema_migrations)") == t ]]
+  local result
+  result=$(clone_sql "SELECT (pg_control_system()).system_identifier::text='$system_id' AND current_setting('server_version_num')='170006' AND (SELECT count(*)=$1 AND min(version)=1 AND max(version)=$1 AND bool_and(checksum ~ '^[0-9a-f]{64}$') FROM public.schema_migrations)") || return 1
+  [[ $result == t ]]
 }
 wait_db() {
   local i
@@ -132,6 +140,7 @@ stop_clone() {
 restore_clone() {
   # Docker retains the bind-source inode. Empty and refill only its children while stopped.
   [[ $restore_needed == 1 && $restored == 0 ]] || return 1
+  quiesce_setup || return 1
   if (( ! db_stopped )); then stop_clone || return 1; fi
   clone_identity && root_directory "$scratch" 700 &&
     [[ $(stat -c '%d:%i' "$scratch") == "$scratch_identity" ]] &&
@@ -153,6 +162,13 @@ remove_container() {
   local got
   got=$(docker_short inspect -f '{{index .Config.Labels "workout.physical-rollback"}}' "$1") || { cleanup_failed=1; return; }
   [[ $got == "$run_id" ]] && quiet docker_short rm -f "$1" || cleanup_failed=1
+}
+quiesce_setup() {
+  if (( setup_created )); then
+    remove_container "$setup"
+    (( !cleanup_failed )) || return 1
+    setup_created=0
+  fi
 }
 cleanup() {
   local status=$?
@@ -249,9 +265,7 @@ SETUP
 phase=STAGED_SETUP
 restore_needed=1
 setup_created=1
-if [[ $(docker_long run --name "$setup" --network "$net" --label "$label_key=$run_id" \
-  --env-file "$scratch/setup.env" "$staged_image" node --import tsx /app/deploy/lightsail/bootstrap-db.mjs) == DATABASE_SETUP_COMPLETE ]] &&
-  schema_is 93; then stage_ok=1; fi
+if setup_complete "$staged_image" && schema_is 93; then stage_ok=1; fi
 # Simulate a post-migration failure before recovery, then still verify the old stack.
 injected_failure=0
 if (( stage_ok )) && [[ $# == 2 ]]; then injected_failure=1; fi
@@ -260,12 +274,8 @@ restore_clone || fail
 (( stage_ok )) || fail
 phase=OLD_SETUP
 rotate_clone_roles || fail
-remove_container "$setup"
-(( !cleanup_failed )) || fail
-setup_created=0
 setup_created=1
-[[ $(docker_long run --name "$setup" --network "$net" --label "$label_key=$run_id" \
-  --env-file "$scratch/setup.env" "$old_image" node --import tsx /app/deploy/lightsail/bootstrap-db.mjs) == DATABASE_SETUP_COMPLETE ]] || fail
+setup_complete "$old_image" || fail
 schema_is 65 || fail
 phase=OLD_HEALTH
 app_created=1

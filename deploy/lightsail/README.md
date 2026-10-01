@@ -492,7 +492,8 @@ its files and metadata before and after use, checks clean shutdown and system
 identifier, and copies it into a new private scratch bind directory. An isolated
 internal Docker network with no published ports hosts only the cloned database,
 staged `db_setup` to schema 93, then the old `db_setup` and app health after
-physical rollback to schema 65. Rollback stops the exact clone PostgreSQL ID,
+physical rollback to schema 65. Rollback first removes the labelled staged
+setup writer, then stops the exact clone PostgreSQL ID,
 removes only children of its scratch bind directory, copies the untouched
 snapshot back into that **same** directory, syncs it, verifies its inode and clean data,
 then restarts that exact ID. Output is limited to `PHYSICAL_ROLLBACK_*` codes.

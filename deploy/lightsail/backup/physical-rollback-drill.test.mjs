@@ -83,12 +83,24 @@ test('copies into one bind source, migrates to 93, stops, restores in place, res
     'phase=OLD_HEALTH',
   );
   const restore = section('restore_clone', 'remove_container');
+  assert.match(restore, /quiesce_setup \|\| return 1[\s\S]*stop_clone/);
   assert.match(restore, /find "\$scratch\/pg" -mindepth 1 -maxdepth 1 -exec rm -rf -- \{\} \+/);
   assert.match(restore, /stat -c '%d:%i' "\$scratch\/pg"\) == "\$bind_identity"/);
   assert.match(restore, /docker_short start "\$db_id"/);
   assert.match(restore, /sync -f "\$scratch\/pg"/);
   assert.match(restore, /wait_db && schema_is 65/);
   assert.doesNotMatch(script, /docker_short (stop|update|rm|start) "\$(app_id|pg_id|graph_id)"/);
+});
+
+test('setup success marker cannot hide a nonzero Docker exit', () => {
+  const definition = section('setup_complete', 'rotate_clone_roles');
+  const prelude = 'docker_long() { echo DATABASE_SETUP_COMPLETE; return "$SETUP_EXIT"; }';
+  const execute = (status) =>
+    spawnSync('bash', ['-c', `${prelude}\n${definition}\nsetup_complete image`], {
+      env: { ...process.env, SETUP_EXIT: String(status) },
+    }).status;
+  assert.equal(execute(0), 0);
+  assert.equal(execute(42), 1);
 });
 
 test('tree comparison rejects changed bytes, metadata and file set', () => {
@@ -132,7 +144,7 @@ test('local restore refills same directory inode and refuses a wrong bind identi
       '/usr/bin/cp -a --reflink=never',
       'cp -a',
     );
-    const run = (identity) =>
+    const run = (identity, writerActive = false) =>
       spawnSync(
         'bash',
         [
@@ -147,6 +159,7 @@ snapshot_intact() { return 0; }
 tree_compare() { return 0; }
 control_clean() { return 0; }
 sync() { return 0; }
+quiesce_setup() { [[ "$WRITER_ACTIVE" != active ]]; }
 docker_short() { if [[ $1 == inspect ]]; then echo false; elif [[ $1 == start && $2 == clone-id ]]; then touch "$scratch/started"; else return 1; fi; }
 quiet() { "$@" >/dev/null 2>&1; }
 wait_db() { return 0; }
@@ -157,10 +170,16 @@ restore_clone`,
           scratch,
           identity,
         ],
-        { encoding: 'utf8' },
+        {
+          encoding: 'utf8',
+          env: { ...process.env, WRITER_ACTIVE: writerActive ? 'active' : 'quiet' },
+        },
       );
     const wrong = run('0:0');
     assert.equal(wrong.status, 1);
+    assert.equal(readFileSync(join(scratch, 'pg', 'PG_VERSION'), 'utf8'), '93\n');
+    const activeWriter = run(`${statSync(join(scratch, 'pg')).dev}:${inode}`, true);
+    assert.equal(activeWriter.status, 1);
     assert.equal(readFileSync(join(scratch, 'pg', 'PG_VERSION'), 'utf8'), '93\n');
     const correct = run(`${statSync(join(scratch, 'pg')).dev}:${inode}`);
     assert.equal(correct.status, 0, correct.stderr);
