@@ -333,8 +333,11 @@ fence. The collector cannot establish a consistent recovery point without this
 external operational control. Do not use it against the live host until the
 fence procedure, disk capacity, and recovery input are reviewed.
 
-`backup/check-fence.mjs` is an **offline-prepared, uninstalled** host-side
-checker for that external command slot. It makes a point-in-time, fail-closed
+`backup/check-fence.mjs` is an opt-in host-side checker for that external
+command slot. On 2026-10-01, only the reviewed checker and its pinned,
+root-only configuration were installed on the shared Lightsail host; the
+collector, transport, backup-window wrapper, timer, and backup directory remain
+uninstalled. The checker makes a point-in-time, fail-closed
 assessment; it does not establish or hold a write fence. Before even considering
 an operational run, an operator must establish a bounded maintenance window,
 stop/disable both Workout maintenance timers if installed, wait for their
