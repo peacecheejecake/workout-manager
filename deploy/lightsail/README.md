@@ -138,6 +138,9 @@ sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lights
 
 Before any controlled deployment, install a root-owned mode 0700 copy of
 `maintenance/run-host-writer.mjs` at the `admin` path above. Keep
+`/srv/workout-manager` and the `admin` directory root-owned and unavailable
+for replacement by the deployment user; file ownership checks do not protect
+against a writable ancestor directory. Keep
 `/srv/workout-manager/compose.env` root-owned mode 0600 and verify GNU `flock`
 and Docker at `/usr/bin/flock` and `/usr/bin/docker` on that host. Verify that
 the executable's `node` resolves to a supported Node 24 runtime. Install a
