@@ -370,7 +370,8 @@ async function collect(options) {
   assertSecureDir(outputDir);
   assertRootOwned([source, outputDir, fence], options);
   if (databaseTransport) assertSecureFile(databaseTransport, 0o700);
-  const files = privateFiles(privateDir);
+  assertFence();
+  const files = privateFiles(privateDir).map((file) => ({ ...file, ...digest(file.path) }));
   const estimatedBytes = files.reduce((total, file) => total + file.size, 0);
   if (persistentProof && (files.length > 16 || estimatedBytes > 32 * 1024 * 1024))
     fail('BACKUP_PERSISTENT_CAPTURE_LIMIT');
@@ -389,8 +390,21 @@ async function collect(options) {
   let ownershipPath;
   let ownership;
   let ownsReservation = false;
+  let capturedPrivateFiles;
   const publish = () => {
     syncDirectoryTree(staging);
+    assertFence();
+    const finalFiles = privateFiles(privateDir).map((file) => ({ ...file, ...digest(file.path) }));
+    if (
+      !capturedPrivateFiles ||
+      JSON.stringify(finalFiles) !== JSON.stringify(files) ||
+      finalFiles.some(
+        (file, index) =>
+          file.sha256 !== capturedPrivateFiles[index].sha256 ||
+          file.bytes !== capturedPrivateFiles[index].bytes,
+      )
+    )
+      fail('BACKUP_PRIVATE_CHANGED');
     assertFence();
     renameSync(staging, published);
     renamed = true;
@@ -403,14 +417,27 @@ async function collect(options) {
       const copied = [];
       for (const file of files) {
         assertFence();
+        let sourceDigest;
+        try {
+          sourceDigest = digest(file.path);
+        } catch {
+          fail('BACKUP_PRIVATE_CHANGED');
+        }
+        if (sourceDigest.sha256 !== file.sha256 || sourceDigest.bytes !== file.bytes)
+          fail('BACKUP_PRIVATE_CHANGED');
         const target = join(staging, 'private', file.name);
         mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
         copyFileSync(file.path, target);
         chmodSync(target, 0o600);
-        const sourceDigest = digest(file.path);
+        try {
+          sourceDigest = digest(file.path);
+        } catch {
+          fail('BACKUP_PRIVATE_CHANGED');
+        }
         const targetDigest = digest(target);
         if (
-          sourceDigest.bytes !== file.size ||
+          sourceDigest.sha256 !== file.sha256 ||
+          sourceDigest.bytes !== file.bytes ||
           JSON.stringify(sourceDigest) !== JSON.stringify(targetDigest)
         ) {
           fail('BACKUP_PRIVATE_CHANGED');
@@ -418,17 +445,6 @@ async function collect(options) {
         copied.push({ path: file.name, ...targetDigest });
       }
       assertFence();
-      if (persistentProof) {
-        const finalFiles = privateFiles(privateDir);
-        if (JSON.stringify(finalFiles) !== JSON.stringify(files)) fail('BACKUP_PRIVATE_CHANGED');
-        for (const [index, file] of finalFiles.entries()) {
-          if (
-            JSON.stringify(digest(file.path)) !==
-            JSON.stringify({ sha256: copied[index].sha256, bytes: copied[index].bytes })
-          )
-            fail('BACKUP_PRIVATE_CHANGED');
-        }
-      }
       const manifest = {
         schemaVersion: capturedSnapshot ? 2 : 1,
         capturedAt: new Date().toISOString(),
@@ -442,6 +458,7 @@ async function collect(options) {
         mode: 0o600,
         flag: 'wx',
       });
+      capturedPrivateFiles = copied;
     };
     if (persistentProof) {
       const connectionString = readFileSync(dbFile, 'utf8').trim();

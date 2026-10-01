@@ -236,3 +236,8 @@
 - 종료 뒤 Workout 앱·PostgreSQL은 healthy, 경로 엔진은 실행 중이며 기존 사이트의 웹/API/DB도 healthy였다. 두 잠금은 다시 획득할 수 있었다. 공개 기존 사이트는 TLS 검증 0·HTTP 200, Workout 주소는 TLS 검증 0·HTTP 503이었다. PostgreSQL 데이터나 Caddy 설정은 바꾸지 않았다.
 - 이는 실제 checker의 **한 번의 성공 경로와 관리 wrapper의 잠금 경합** 증거다. `ubuntu`의 직접 Docker/sudo/비공개 파일 쓰기를 제한하지 않았고, 모든 DB·객체 writer의 동시 시도, 검사 간 TOCTOU, 수집기 설치·실행, 운영 DB/객체 백업·격리 복원, 독립 삭제 원장·최종 WAL tail은 여전히 **not_executed**다. 이 리허설만으로 완전한 write fence나 운영 복구 가능을 판정하지 않는다.
 - `main` `52adc52108f27ec3b6bb391c9ef5671fd81646e0` → `phase/ext-hosting` `1844592e99169ad536b3a5f7cff91e7a90d49cd0` 전체 diff의 새 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 단계 검토는 **APPROVE**, 차단 지적 없음이었다. 검토자는 README·checker·관리 wrapper·task graph와 증거 한계를 대조하고 `git diff --check`를 통과했다. AWS·SSH·운영 상태는 독립 재실행하지 않았다. 이 검토 기록 커밋을 포함한 HEAD는 병합 전 검토 새로고침 대상이다.
+
+## 수집기 파일 집합 검증 보강 · 2026-10-02
+
+- `collect.mjs`가 첫 fence 검사 전에 비공개 파일을 열거하던 순서를 바꿨다. 이제 첫 검사 뒤 초기 파일 집합·내용 해시를 고정하고, 모든 수집 경로에서 복사 전후와 게시 직전에 원본 집합·해시 및 복사본 해시를 대조한다. v1 Docker transport 중 파일 추가·변경·삭제는 게시 없이 `BACKUP_PRIVATE_CHANGED`로 실패한다. README의 검사 간 경쟁 상태와 외부 지속 write fence 요구는 유지했다.
+- 담당 agent의 Node 24 집중 시험은 **6 통과·2 opt-in skip**, 변경 파일 ESLint·Prettier·구문·diff 검사 통과였다. root의 Node 24.12.0 백업 디렉터리 전체 재실행은 **85 통과·8 명시적 skip·0 실패**였다. root의 첫 ESLint 실행은 기본 Node가 ESLint 설정에 맞지 않아 시작 전에 실패했고, Node 24를 PATH에 고정한 재실행에서 ESLint·Prettier·diff 검사가 통과했다. 운영 수집, 마지막 검사와 게시 사이의 경쟁 제어, 원격 보존·독립 원장·복원은 계속 **not_executed**다.

@@ -327,8 +327,9 @@ private directory, and a root-owned mode 0700 executable `--fence-check`. The
 operator must first stop **all** Workout database and private-object writers,
 including the app, workers, uploads, and any separate maintenance process. The
 checker must reject any visible loss of the externally held write fence; the
-collector runs it before the dump, before each private-file copy,
-and after the copy. A checker that merely returns zero is not evidence of a
+collector runs it before private-file enumeration and hashing, before the dump,
+before each private-file copy, and immediately around the final source-file
+recheck before publication. A checker that merely returns zero is not evidence of a
 fence. The collector cannot establish a consistent recovery point without this
 external operational control. Do not use it against the live host until the
 fence procedure, disk capacity, and recovery input are reviewed.
@@ -489,10 +490,11 @@ policies for these dedicated backup and ledger buckets. They are not attached
 to a workload identity, and no server credential or actual upload is in place.
 
 The checker can miss a writer created between Docker inventory, DB query, and
-the collector's next call. In particular, `collect.mjs` enumerates private
-files before its first checker invocation and there is a gap between its last
-check and publication. Merely calling the checker before and after copies does
-not close those races. All writer entry points must honor an independently held
+the collector's next call. `collect.mjs` now checks the fence before private-file
+enumeration and rejects added, removed, or changed source files against their
+initial hashes before publication, including in the v1 transport path. There
+is still a gap between its last check and publication. These point-in-time
+checks do not close the writer race. All writer entry points must honor an independently held
 host fence for the entire operation, and a real restart/concurrent writer drill
 must fail safely before production collection. Confirm that the chosen
 PostgreSQL connection points to this cluster; the collector currently checks
@@ -520,7 +522,7 @@ the deployed PostgreSQL 17.6 container.
 
 The collector rejects symlinks and nonregular private entries, overlapping
 source/output paths, low available disk, unsafe ownership or modes, changed
-source bytes, and failed `pg_dump`/`pg_restore --list`. It writes into a mode
+source bytes or file-set changes, and failed `pg_dump`/`pg_restore --list`. It writes into a mode
 0700 partial directory, stores the archive, copied private files, and manifest
 at mode 0600, then publishes the directory by rename only after all checks pass.
 It removes a failed partial directory. This checks capture bytes; it does not

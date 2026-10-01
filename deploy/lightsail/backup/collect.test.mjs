@@ -25,7 +25,7 @@ function invoke(args, path, instrumentation) {
   return spawnSync(
     process.execPath,
     [
-      ...(instrumentation ? ['--import', instrumentation.preload] : []),
+      ...(instrumentation?.preload ? ['--import', instrumentation.preload] : []),
       collector,
       ...args,
       '--synthetic-test',
@@ -186,10 +186,11 @@ test('collects a fenced synthetic PostgreSQL-command and private bundle; rejects
     assert.match(invoke(collectArgs, bin).stderr, /BACKUP_SUBPROCESS_FAILED/);
     assert.equal(readdirSync(output).length, before);
     symlinkSync(source, join(privateDir, 'private', 'v1', 'bad-link'));
+    assert.match(invoke(collectArgs, bin).stderr, /BACKUP_SUBPROCESS_FAILED/);
+    writeFileSync(fence, '#!/bin/sh\nexit 0\n');
     assert.match(invoke(collectArgs, bin).stderr, /BACKUP_UNSAFE_PRIVATE_ENTRY/);
     assert.equal(readdirSync(output).length, before);
     rmSync(join(privateDir, 'private', 'v1', 'bad-link'));
-    writeFileSync(fence, '#!/bin/sh\nexit 0\n');
     writeFileSync(join(bin, 'pg_dump'), '#!/bin/sh\nexit 4\n');
     assert.match(invoke(collectArgs, bin).stderr, /BACKUP_SUBPROCESS_FAILED/);
     assert.equal(readdirSync(output).length, before);
@@ -244,6 +245,47 @@ test('uses an opt-in archive transport and rejects ambiguous database sources', 
       /BACKUP_TRANSPORT_OUTPUT_MISSING/,
     );
     assert.equal(readdirSync(output).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v1 archive transport refuses private files added, changed, or removed during capture', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-backup-private-change-test-')));
+  const privateDir = join(root, 'private');
+  const output = join(root, 'output');
+  const transport = join(root, 'transport.mjs');
+  const fence = join(root, 'fence.sh');
+  const source = join(privateDir, 'fixture.bin');
+  try {
+    mkdirSync(privateDir, { mode: 0o700 });
+    mkdirSync(output, { mode: 0o700 });
+    writeFileSync(source, 'before');
+    writeFileSync(fence, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    writeFileSync(
+      transport,
+      `#!/usr/bin/env node\nimport { writeFileSync, rmSync } from 'node:fs';\nimport { join } from 'node:path';\nconst privateDir = ${JSON.stringify(privateDir)};\nwriteFileSync(process.argv[process.argv.indexOf('--output') + 1], 'synthetic-archive', { mode: 0o600 });\nif (process.env.WM_PRIVATE_MUTATION === 'added') writeFileSync(join(privateDir, 'added.bin'), 'added');\nif (process.env.WM_PRIVATE_MUTATION === 'changed') writeFileSync(join(privateDir, 'fixture.bin'), 'after!');\nif (process.env.WM_PRIVATE_MUTATION === 'removed') rmSync(join(privateDir, 'fixture.bin'));\n`,
+      { mode: 0o700 },
+    );
+    const args = [
+      'collect',
+      '--database-transport',
+      transport,
+      '--private-dir',
+      privateDir,
+      '--output-dir',
+      output,
+      '--fence-check',
+      fence,
+    ];
+    for (const mutation of ['added', 'changed', 'removed']) {
+      writeFileSync(source, 'before');
+      rmSync(join(privateDir, 'added.bin'), { force: true });
+      const result = invoke(args, '', { env: { WM_PRIVATE_MUTATION: mutation } });
+      assert.match(result.stderr, /BACKUP_PRIVATE_CHANGED/, `${mutation}: ${result.stderr}`);
+      assert.doesNotMatch(result.stdout, /BACKUP_PUBLISHED/);
+      assert.deepEqual(readdirSync(output), []);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
