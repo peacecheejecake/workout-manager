@@ -29,11 +29,21 @@ function serviceForId(containerId) {
 function fixture() {
   return {
     running: { app: true, graphhopper: true, postgres: true },
+    policy: {
+      app: { Name: 'unless-stopped', MaximumRetryCount: 0 },
+      graphhopper: { Name: 'on-failure', MaximumRetryCount: 3 },
+    },
     project: 'workout-manager',
     timerActive: false,
     lockStatus: 75,
     failStop: undefined,
     failStart: undefined,
+    failStartAfterChange: false,
+    failUpdate: undefined,
+    failUpdateAfterChange: false,
+    restartOnStop: false,
+    replaceAfter: undefined,
+    externalPolicyAfter: undefined,
     failFence: false,
     failCollector: false,
     failInspect: false,
@@ -57,6 +67,7 @@ function container(state, service) {
         'com.docker.compose.project.config_files': config.composeFile,
       },
     },
+    HostConfig: { RestartPolicy: state.policy[service] },
     Mounts: mounts,
     NetworkSettings: { Networks: { [config.network]: {} } },
     State: {
@@ -67,6 +78,13 @@ function container(state, service) {
 }
 
 function runnerFor(state) {
+  function record(action) {
+    state.actions.push(action);
+    if (state.replaceAfter === action) state.replaced = true;
+    if (state.externalPolicyAfter === action) {
+      state.policy.app = { Name: 'always', MaximumRetryCount: 0 };
+    }
+  }
   return (program, args) => {
     if (program === 'flock') return { status: state.lockStatus, stdout: '' };
     if (program === 'systemctl') {
@@ -81,27 +99,40 @@ function runnerFor(state) {
       if (state.failInspect) return { status: 1, stdout: '' };
       const service = serviceForId(args[1]);
       if (!service) return { status: 1, stdout: '' };
-      return { status: 0, stdout: JSON.stringify([container(state, service)]) };
+      const inspected = container(state, service);
+      if (state.replaced && service === 'app') inspected.Id = id('d');
+      return { status: 0, stdout: JSON.stringify([inspected]) };
+    }
+    if (program === 'docker' && args[0] === 'update') {
+      const service = serviceForId(args.at(-1));
+      const value = args[1].slice('--restart='.length);
+      record(`update:${service}:${value}`);
+      const failed = state.failUpdate === service && value === 'no';
+      if (!failed || state.failUpdateAfterChange) {
+        const [name, count] = value.split(':');
+        state.policy[service] = { Name: name, MaximumRetryCount: Number(count ?? 0) };
+      }
+      return { status: failed ? 1 : 0, stdout: '' };
     }
     if (program === 'docker' && args[0] === 'stop') {
       const service = serviceForId(args.at(-1));
-      state.actions.push(`stop:${service}`);
-      state.running[service] = false;
+      record(`stop:${service}`);
+      state.running[service] = state.restartOnStop && state.policy[service].Name !== 'no';
       return { status: state.failStop === service ? 1 : 0, stdout: '' };
     }
     if (program === 'docker' && args[0] === 'start') {
       const service = serviceForId(args[1]);
-      state.actions.push(`start:${service}`);
-      if (state.failStart === service) return { status: 1, stdout: '' };
-      state.running[service] = true;
-      return { status: 0, stdout: '' };
+      record(`start:${service}`);
+      const failed = state.failStart === service;
+      if (!failed || state.failStartAfterChange) state.running[service] = true;
+      return { status: failed ? 1 : 0, stdout: '' };
     }
     if (program === paths.fence) {
-      state.actions.push('fence');
+      record('fence');
       return { status: state.failFence ? 1 : 0, stdout: '' };
     }
     if (args[0] === paths.collector && args[1] === 'collect') {
-      state.actions.push('collector');
+      record('collector');
       return { status: state.failCollector ? 1 : 0, stdout: '' };
     }
     throw new Error(`Unexpected command ${program} ${args.join(' ')}`);
@@ -116,15 +147,21 @@ test('stops only pinned Workout services, collects, and restores in network-safe
   const state = fixture();
   assert.equal(execute(state), true);
   assert.deepEqual(state.actions, [
+    'update:graphhopper:no',
+    'update:app:no',
     'stop:graphhopper',
     'stop:app',
     'fence',
     'collector',
     'fence',
     'start:app',
+    'update:app:unless-stopped',
     'start:graphhopper',
+    'update:graphhopper:on-failure:3',
   ]);
   assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
+  assert.equal(state.policy.app.Name, 'unless-stopped');
+  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
 });
 
 test('leaves initially stopped services stopped', () => {
@@ -134,6 +171,24 @@ test('leaves initially stopped services stopped', () => {
   assert.equal(execute(state), true);
   assert.deepEqual(state.actions, ['fence', 'collector', 'fence']);
   assert.deepEqual(state.running, { app: false, graphhopper: false, postgres: true });
+  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+});
+
+test('leaves an initially stopped GraphHopper untouched while cycling the app', () => {
+  const state = fixture();
+  state.running.graphhopper = false;
+  assert.equal(execute(state), true);
+  assert.deepEqual(state.actions, [
+    'update:app:no',
+    'stop:app',
+    'fence',
+    'collector',
+    'fence',
+    'start:app',
+    'update:app:unless-stopped',
+  ]);
+  assert.equal(state.running.graphhopper, false);
+  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
 });
 
 test('refuses free locks, active timers, and wrong project before touching services', () => {
@@ -154,7 +209,14 @@ test('restores a service that stopped despite a failed Docker stop command', () 
   const state = fixture();
   state.failStop = 'graphhopper';
   assert.throws(() => execute(state));
-  assert.deepEqual(state.actions, ['stop:graphhopper', 'start:graphhopper']);
+  assert.deepEqual(state.actions, [
+    'update:graphhopper:no',
+    'update:app:no',
+    'stop:graphhopper',
+    'update:app:unless-stopped',
+    'start:graphhopper',
+    'update:graphhopper:on-failure:3',
+  ]);
   assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
 });
 
@@ -163,7 +225,12 @@ test('restores both stopped services after checker or collector failure', () => 
     const state = fixture();
     state[fail] = true;
     assert.throws(() => execute(state));
-    assert.deepEqual(state.actions.slice(-2), ['start:app', 'start:graphhopper']);
+    assert.deepEqual(state.actions.slice(-4), [
+      'start:app',
+      'update:app:unless-stopped',
+      'start:graphhopper',
+      'update:graphhopper:on-failure:3',
+    ]);
     assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
   }
 });
@@ -172,7 +239,11 @@ test('reports a restore failure without starting unrelated containers', () => {
   const state = fixture();
   state.failStart = 'graphhopper';
   assert.throws(() => execute(state));
-  assert.deepEqual(state.actions.slice(-2), ['start:app', 'start:graphhopper']);
+  assert.deepEqual(state.actions.slice(-3), [
+    'start:app',
+    'update:app:unless-stopped',
+    'start:graphhopper',
+  ]);
   assert.deepEqual(state.running, { app: true, graphhopper: false, postgres: true });
 });
 
@@ -187,4 +258,89 @@ test('rejects an unpinned output destination and inconsistent initial app state'
   inconsistent.running.app = false;
   assert.throws(() => execute(inconsistent));
   assert.deepEqual(inconsistent.actions, []);
+});
+
+test('restores policies when Docker update reports failure before or after changing state', () => {
+  for (const service of ['graphhopper', 'app'])
+    for (const changed of [false, true]) {
+      const state = fixture();
+      state.failUpdate = service;
+      state.failUpdateAfterChange = changed;
+      assert.throws(() => execute(state));
+      assert.equal(state.actions.includes('collector'), false);
+      assert.equal(
+        state.actions.some((action) => action.startsWith('stop:')),
+        false,
+      );
+      assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
+      assert.deepEqual(state.policy.app, { Name: 'unless-stopped', MaximumRetryCount: 0 });
+      assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+      assert.equal(
+        state.actions.some((action) => action.includes('postgres')),
+        false,
+      );
+    }
+});
+
+test('a failed start after state change still restores the original policy', () => {
+  const state = fixture();
+  state.failStart = 'app';
+  state.failStartAfterChange = true;
+  assert.throws(() => execute(state));
+  assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
+  assert.deepEqual(state.policy.app, { Name: 'unless-stopped', MaximumRetryCount: 0 });
+  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+});
+
+test('restart policy prevents an automatic restart race during stop', () => {
+  const state = fixture();
+  state.restartOnStop = true;
+  assert.equal(execute(state), true);
+  assert.equal(state.actions.includes('collector'), true);
+  assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
+});
+
+test('identity replacement after policy update aborts capture and does not touch replacement', () => {
+  const state = fixture();
+  state.replaceAfter = 'update:app:no';
+  assert.throws(() => execute(state));
+  assert.equal(state.actions.includes('collector'), false);
+  assert.equal(
+    state.actions.some((action) => action.startsWith('stop:')),
+    false,
+  );
+  assert.equal(
+    state.actions.some((action) => action.startsWith('start:')),
+    false,
+  );
+  assert.equal(state.policy.app.Name, 'no');
+  assert.equal(state.policy.graphhopper.Name, 'no');
+});
+
+test('unexpected policy change before capture fails closed', () => {
+  const state = fixture();
+  state.externalPolicyAfter = 'fence';
+  assert.throws(() => execute(state));
+  assert.equal(state.actions.includes('collector'), false);
+  assert.equal(state.actions.includes('start:app'), false);
+  assert.equal(state.policy.app.Name, 'always');
+});
+
+test('failed start leaves restart disabled when the original state cannot be recovered', () => {
+  const state = fixture();
+  state.failStart = 'graphhopper';
+  assert.throws(() => execute(state));
+  assert.equal(state.policy.graphhopper.Name, 'no');
+  assert.equal(state.running.graphhopper, false);
+});
+
+test('failed app restoration does not restart dependent GraphHopper', () => {
+  const state = fixture();
+  state.failStart = 'app';
+  assert.throws(() => execute(state));
+  assert.equal(state.running.app, false);
+  assert.equal(state.running.graphhopper, false);
+  assert.equal(state.policy.app.Name, 'no');
+  assert.equal(state.policy.graphhopper.Name, 'no');
+  assert.equal(state.actions.includes('start:graphhopper'), false);
 });

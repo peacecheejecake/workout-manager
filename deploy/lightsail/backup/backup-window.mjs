@@ -102,29 +102,92 @@ function inspect(run, config, service) {
       reject();
     }
   }
-  return container.State.Running;
+  const policy = container.HostConfig?.RestartPolicy;
+  if (
+    service !== 'postgres' &&
+    (!policy ||
+      !['no', 'always', 'unless-stopped', 'on-failure'].includes(policy.Name) ||
+      !Number.isSafeInteger(policy.MaximumRetryCount) ||
+      policy.MaximumRetryCount < 0 ||
+      (policy.Name !== 'on-failure' && policy.MaximumRetryCount !== 0))
+  ) {
+    reject();
+  }
+  return { id, running: container.State.Running, policy };
 }
 
 function validateServices(run, config) {
   const app = inspect(run, config, 'app');
   const graphhopper = inspect(run, config, 'graphhopper');
   inspect(run, config, 'postgres');
-  if (graphhopper && !app) reject();
+  if (graphhopper.running && !app.running) reject();
   return { app, graphhopper };
 }
 
-function stopPinned(run, config, service, attempted) {
-  const id = config.containers[service];
-  attempted.add(service);
-  command(run, 'docker', ['stop', '--time', '30', id]);
-  if (inspect(run, config, service)) reject();
+function policyArgument(policy) {
+  if (policy.Name !== 'on-failure' || policy.MaximumRetryCount === 0) return policy.Name;
+  return `on-failure:${policy.MaximumRetryCount}`;
 }
 
-function restorePinned(run, config, service) {
-  const running = inspect(run, config, service);
-  if (running) return;
-  command(run, 'docker', ['start', config.containers[service]]);
-  if (!inspect(run, config, service)) reject();
+function expectPinned(run, config, service, expectedPolicy, expectedRunning) {
+  const current = inspect(run, config, service);
+  if (
+    current.policy.Name !== expectedPolicy.Name ||
+    current.policy.MaximumRetryCount !== expectedPolicy.MaximumRetryCount ||
+    (expectedRunning !== undefined && current.running !== expectedRunning)
+  ) {
+    reject();
+  }
+  return current;
+}
+
+function updatePolicy(run, config, service, policy) {
+  command(run, 'docker', [
+    'update',
+    `--restart=${policyArgument(policy)}`,
+    config.containers[service],
+  ]);
+  expectPinned(run, config, service, policy);
+}
+
+const NO_RESTART = { Name: 'no', MaximumRetryCount: 0 };
+
+function stopPinned(run, config, service, initial, attempted) {
+  expectPinned(run, config, service, NO_RESTART, true);
+  attempted.add(service);
+  command(run, 'docker', ['stop', '--time', '30', initial.id]);
+  expectPinned(run, config, service, NO_RESTART, false);
+}
+
+function restorePinned(run, config, service, initial) {
+  const current = inspect(run, config, service);
+  if (
+    current.policy.Name === initial.policy.Name &&
+    current.policy.MaximumRetryCount === initial.policy.MaximumRetryCount &&
+    current.running === initial.running
+  ) {
+    return;
+  }
+  if (
+    current.policy.Name !== NO_RESTART.Name ||
+    current.policy.MaximumRetryCount !== NO_RESTART.MaximumRetryCount
+  ) {
+    // A changed policy or identity means another actor has taken control.
+    reject();
+  }
+  let startError;
+  if (initial.running && !current.running) {
+    try {
+      command(run, 'docker', ['start', initial.id]);
+    } catch (error) {
+      startError = error;
+    }
+    expectPinned(run, config, service, NO_RESTART, true);
+  }
+  if (!initial.running && current.running) reject();
+  if (initial.policy.Name !== 'no') updatePolicy(run, config, service, initial.policy);
+  expectPinned(run, config, service, initial.policy, initial.running);
+  return startError;
 }
 
 function checkFence(run, path) {
@@ -145,13 +208,37 @@ export function runWindow({ config, paths, run = runner }) {
   checkLocks(run);
   checkTimers(run);
   const initial = validateServices(run, config);
+  const policyAttempted = new Set();
   const attempted = new Set();
   let captureError;
   let restoreError;
   try {
-    if (initial.graphhopper) stopPinned(run, config, 'graphhopper', attempted);
-    if (initial.app) stopPinned(run, config, 'app', attempted);
+    for (const service of ['graphhopper', 'app']) {
+      if (!initial[service].running || initial[service].policy.Name === 'no') continue;
+      expectPinned(run, config, service, initial[service].policy, true);
+      policyAttempted.add(service);
+      updatePolicy(run, config, service, NO_RESTART);
+    }
+    if (initial.graphhopper.running)
+      stopPinned(run, config, 'graphhopper', initial.graphhopper, attempted);
+    if (initial.app.running) stopPinned(run, config, 'app', initial.app, attempted);
+    for (const service of ['app', 'graphhopper'])
+      expectPinned(
+        run,
+        config,
+        service,
+        initial[service].running ? NO_RESTART : initial[service].policy,
+        false,
+      );
     checkFence(run, paths.fence);
+    for (const service of ['app', 'graphhopper'])
+      expectPinned(
+        run,
+        config,
+        service,
+        initial[service].running ? NO_RESTART : initial[service].policy,
+        false,
+      );
     command(
       run,
       process.execPath,
@@ -170,13 +257,41 @@ export function runWindow({ config, paths, run = runner }) {
       BACKUP_TIMEOUT_MS,
     );
     checkFence(run, paths.fence);
+    for (const service of ['app', 'graphhopper'])
+      expectPinned(
+        run,
+        config,
+        service,
+        initial[service].running ? NO_RESTART : initial[service].policy,
+        false,
+      );
   } catch (error) {
     captureError = error;
   } finally {
+    let appRestored = !initial.app.running;
     for (const service of ['app', 'graphhopper']) {
-      if (!attempted.has(service)) continue;
+      if (!attempted.has(service) && !policyAttempted.has(service)) continue;
+      if (
+        service === 'graphhopper' &&
+        !appRestored &&
+        !attempted.has('app') &&
+        !policyAttempted.has('app')
+      ) {
+        try {
+          expectPinned(run, config, 'app', initial.app.policy, true);
+          appRestored = true;
+        } catch (error) {
+          restoreError = error;
+        }
+      }
+      if (service === 'graphhopper' && initial.app.running && !appRestored) {
+        restoreError = new Error('BACKUP_WINDOW_FAILED');
+        continue;
+      }
       try {
-        restorePinned(run, config, service);
+        const commandError = restorePinned(run, config, service, initial[service]);
+        if (service === 'app') appRestored = true;
+        if (commandError) restoreError = commandError;
       } catch (error) {
         restoreError = error;
       }
