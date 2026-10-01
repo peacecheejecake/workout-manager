@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { buildBaselineAnchorCandidate } from './baseline-anchor.mjs';
 
 const HASH = /^[a-f0-9]{64}$/;
 const VERSION = /^(?!null$)[A-Za-z0-9._~+=/-]{1,256}$/;
 const PRIVATE_PATH = /^private\/[A-Za-z0-9._/-]+$/;
+const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const CONSISTENCIES = new Set([
   'caller-supplied-exported-snapshot-local-integrity-only',
   'replication-slot-exported-snapshot-disposable-local-proof-only',
@@ -71,7 +74,7 @@ export function buildBaselineAnchorFromRemote(options) {
     'result',
     'config',
     'manifest',
-    'manifestFile',
+    'manifestBytes',
     'expectedSnapshot',
     'coverage',
     'expectedOwners',
@@ -84,7 +87,7 @@ export function buildBaselineAnchorFromRemote(options) {
     result,
     config,
     manifest,
-    manifestFile,
+    manifestBytes,
     expectedSnapshot,
     coverage,
     expectedOwners,
@@ -95,6 +98,23 @@ export function buildBaselineAnchorFromRemote(options) {
   } = options;
   exact(config, ['schemaVersion', 'bucket', 'prefix', 'region', 'expectedBucketOwner']);
   if (config.schemaVersion !== 1) fail();
+  if (
+    !Buffer.isBuffer(manifestBytes) ||
+    manifestBytes.length === 0 ||
+    manifestBytes.length > MAX_MANIFEST_BYTES
+  )
+    fail();
+  let parsedManifest;
+  try {
+    parsedManifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes));
+  } catch {
+    fail();
+  }
+  if (!isDeepStrictEqual(parsedManifest, manifest)) fail();
+  const manifestFile = {
+    sha256: createHash('sha256').update(manifestBytes).digest('hex'),
+    bytes: manifestBytes.length,
+  };
   exact(manifest, [
     'schemaVersion',
     'capturedAt',
@@ -113,8 +133,6 @@ export function buildBaselineAnchorFromRemote(options) {
   )
     fail();
   sameSnapshot(manifest.snapshot, expectedSnapshot);
-  exact(manifestFile, ['sha256', 'bytes']);
-  digest(manifestFile);
   exact(manifest.database, ['sha256', 'bytes']);
   digest(manifest.database);
   if (!Array.isArray(manifest.privateFiles) || manifest.privateFiles.length > 10_000) fail();

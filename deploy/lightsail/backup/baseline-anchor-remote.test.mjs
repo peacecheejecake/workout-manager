@@ -62,7 +62,7 @@ function fixture() {
   const expectations = {
     config,
     manifest,
-    manifestFile: digest(manifestBytes),
+    manifestBytes,
     expectedSnapshot: snapshot,
     coverage: {
       schemaVersion: 2,
@@ -179,6 +179,7 @@ test('bridge rejects mismatched or incomplete completion claims', async () => {
     const changed = (mutate) => {
       const copy = {
         ...structuredClone({ ...expectations, result }),
+        manifestBytes: Buffer.from(expectations.manifestBytes),
         coverageHmacKey: expectations.coverageHmacKey,
         anchorHmacKey: expectations.anchorHmacKey,
       };
@@ -237,7 +238,27 @@ test('bridge rejects mismatched or incomplete completion claims', async () => {
       value.result.completion.files[2] = { ...value.result.completion.files[1] };
     });
     changed((value) => {
-      value.manifestFile.sha256 = 'c'.repeat(64);
+      value.manifestBytes[0] ^= 1;
+    });
+    changed((value) => {
+      value.manifestBytes = Buffer.from(JSON.stringify(value.manifest));
+    });
+    changed((value) => {
+      value.manifestBytes = Buffer.from(
+        JSON.stringify({ ...value.manifest, capturedAt: '2026-10-01T00:00:00.000Z' }),
+      );
+    });
+    changed((value) => {
+      value.manifestBytes = Buffer.alloc(4 * 1024 * 1024 + 1);
+    });
+    changed((value) => {
+      value.manifestBytes = Buffer.from('{invalid-json');
+    });
+    changed((value) => {
+      value.manifestBytes = Buffer.from([0xff, 0xfe]);
+    });
+    changed((value) => {
+      value.manifestBytes = new Uint8Array(value.manifestBytes);
     });
     changed((value) => {
       value.manifest.privateFiles = [];
