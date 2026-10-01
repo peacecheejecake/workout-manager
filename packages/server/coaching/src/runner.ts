@@ -18,6 +18,7 @@ const leaseSchema = z.strictObject({
   runId: uuid,
   leaseToken: uuid,
   attempts: z.number().int().positive(),
+  leaseSeconds: z.number().int().min(1).max(300),
 });
 export type CoachingJobLease = z.infer<typeof leaseSchema>;
 
@@ -72,7 +73,11 @@ const adapterOutcomeSchema = z.discriminatedUnion('kind', [
 ]);
 export type CoachingAdapterOutcome = z.infer<typeof adapterOutcomeSchema>;
 export interface CoachingEvaluationAdapter {
-  evaluate(evidence: CoreEvidenceBodyV2, grounding: CoachingGrounding | null): Promise<unknown>;
+  evaluate(
+    evidence: CoreEvidenceBodyV2,
+    grounding: CoachingGrounding | null,
+    signal: AbortSignal,
+  ): Promise<unknown>;
 }
 export interface CoachingRunWorkerStore {
   claim(athleteId: string): Promise<CoachingJobLease | null>;
@@ -82,6 +87,7 @@ export interface CoachingRunWorkerStore {
     | { kind: 'ready'; evidence: CoreEvidenceBodyV2; grounding: CoachingGrounding | null }
     | { kind: 'skipped' }
   >;
+  renew(lease: CoachingJobLease): Promise<boolean>;
   finish(lease: CoachingJobLease, outcome: CoachingAdapterOutcome): Promise<'stored' | 'skipped'>;
 }
 
@@ -95,8 +101,8 @@ export interface CoachingRunWorkerStore {
  * recall content that was already handed over — exactly the boundary the shared
  * file streaming path documents. Today the only configured adapter is an
  * in-process deterministic fixture, so nothing leaves the server. Before a
- * provider adapter lands, the call has to carry a cancellation signal that is
- * aborted when the tenant's authorized set changes, and the postflight in
+ * provider adapter lands, authorization revocation must also abort its signal;
+ * a deadline alone does not recall already disclosed content. The postflight in
  * `finish` — which re-validates every citation against the live gate — must
  * stay the only path that stores anything.
  */
@@ -104,31 +110,121 @@ export async function runOneCoachingJob(input: {
   athleteId: string;
   store: CoachingRunWorkerStore;
   adapter: CoachingEvaluationAdapter;
+  evaluationTimeoutMs?: number;
 }): Promise<'empty' | 'skipped' | 'stored'> {
+  const evaluationTimeoutMs = z
+    .number()
+    .int()
+    .min(1)
+    .max(600_000)
+    .parse(input.evaluationTimeoutMs ?? 30_000);
   const lease = await input.store.claim(input.athleteId);
   const claimed = lease === null ? null : leaseSchema.parse(lease);
   if (!claimed) return 'empty';
   const prepared = await input.store.prepare(claimed);
   if (prepared.kind === 'skipped') return 'skipped';
-  let outcome: CoachingAdapterOutcome;
-  try {
-    const candidate = await input.adapter.evaluate(prepared.evidence, prepared.grounding);
-    const parsed = adapterOutcomeSchema.safeParse(candidate);
-    const serialized = parsed.success ? JSON.stringify(parsed.data) : '';
-    outcome =
-      parsed.success && Buffer.byteLength(serialized) <= 1_000_000
+  const heartbeatIntervalMs = Math.min(30_000, Math.floor((claimed.leaseSeconds * 1000) / 3));
+  const renewWithinWindow = async (): Promise<boolean> => {
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve()
+          .then(() => input.store.renew(claimed))
+          .catch(() => false),
+        new Promise<boolean>((resolve) => {
+          watchdog = setTimeout(() => resolve(false), heartbeatIntervalMs);
+        }),
+      ]);
+    } finally {
+      if (watchdog !== undefined) clearTimeout(watchdog);
+    }
+  };
+  // Preparing may consume part of the first lease. Establish fresh ownership
+  // before handing evidence to an adapter.
+  if (!(await renewWithinWindow())) return 'skipped';
+  const controller = new AbortController();
+  let resolveLost!: (value: 'lost') => void;
+  const lost = new Promise<'lost'>((resolve) => {
+    resolveLost = resolve;
+  });
+  let ownsLease = true;
+  let stopped = false;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+  let inFlightRenewal: Promise<void> | null = null;
+  const loseLease = () => {
+    if (!ownsLease) return;
+    ownsLease = false;
+    controller.abort();
+    resolveLost('lost');
+  };
+  const tick = () => {
+    if (stopped || !ownsLease) return;
+    inFlightRenewal = renewWithinWindow()
+      .then((renewed) => {
+        if (!renewed) loseLease();
+        else if (!stopped) heartbeatTimer = setTimeout(tick, heartbeatIntervalMs);
+      })
+      .catch(loseLease)
+      .finally(() => {
+        inFlightRenewal = null;
+      });
+  };
+  heartbeatTimer = setTimeout(tick, heartbeatIntervalMs);
+  const stopHeartbeat = async (): Promise<boolean> => {
+    stopped = true;
+    if (heartbeatTimer !== undefined) clearTimeout(heartbeatTimer);
+    if (inFlightRenewal) await inFlightRenewal;
+    return ownsLease;
+  };
+  const deadlineOutcome: CoachingAdapterOutcome = {
+    kind: 'unable_to_evaluate',
+    code: 'budget_exceeded',
+    reason: 'Evaluation exceeded its time budget',
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<CoachingAdapterOutcome>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(deadlineOutcome);
+    }, evaluationTimeoutMs);
+  });
+  // Promise.race observes both settlements, including a rejection after the
+  // deadline. An adapter that ignores abort may keep consuming resources.
+  const evaluation = Promise.resolve()
+    .then(() =>
+      controller.signal.aborted
+        ? deadlineOutcome
+        : input.adapter.evaluate(prepared.evidence, prepared.grounding, controller.signal),
+    )
+    .then((candidate): CoachingAdapterOutcome => {
+      if (controller.signal.aborted) return deadlineOutcome;
+      const parsed = adapterOutcomeSchema.safeParse(candidate);
+      const serialized = parsed.success ? JSON.stringify(parsed.data) : '';
+      return parsed.success && Buffer.byteLength(serialized) <= 1_000_000
         ? parsed.data
         : {
             kind: 'unable_to_evaluate',
             code: 'invalid_output',
             reason: 'Model output could not be used',
           };
-  } catch {
-    outcome = {
+    })
+    .catch((): CoachingAdapterOutcome => ({
       kind: 'unable_to_evaluate',
       code: 'provider_unavailable',
       reason: 'Evaluation could not be completed',
-    };
+    }));
+  let outcome: CoachingAdapterOutcome | 'lost';
+  try {
+    outcome = await Promise.race([evaluation, deadline, lost]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  if (!(await stopHeartbeat()) || outcome === 'lost') return 'skipped';
+  // Refresh immediately before postflight; finish still performs the final
+  // transactional lease/CAS check and can safely skip if ownership changes.
+  if (!(await renewWithinWindow())) {
+    controller.abort();
+    return 'skipped';
   }
   return input.store.finish(claimed, outcome);
 }
@@ -139,7 +235,7 @@ export function createDeterministicFixtureAdapter(
 ): CoachingEvaluationAdapter {
   if (fixtureId !== 'synthetic-v1') throw new Error('UNSUPPORTED_COACHING_FIXTURE');
   return {
-    async evaluate(evidence, grounding) {
+    async evaluate(evidence, grounding, _signal) {
       const first = evidence.plan.draft.sessions[0];
       if (!first || first.durationSeconds === null || first.durationRange) {
         return {

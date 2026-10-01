@@ -534,7 +534,27 @@ export function createCoachingRunWorkerStore(
           runId: payload.runId,
           leaseToken,
           attempts: event.attempts,
+          leaseSeconds,
         };
+      });
+    },
+    renew(lease) {
+      return database.tenant(lease.athleteId, async (tx) => {
+        const renewed = await tx.query(
+          `UPDATE outbox SET lease_until=clock_timestamp()+make_interval(secs => $6)
+           WHERE athlete_id=$1 AND id=$2 AND topic='coaching.run_queued'
+             AND lease_token=$3 AND attempts=$4 AND payload->>'runId'=$5
+             AND lease_until>clock_timestamp() AND completed_at IS NULL`,
+          [
+            tx.athleteId,
+            lease.eventId,
+            lease.leaseToken,
+            lease.attempts,
+            lease.runId,
+            leaseSeconds,
+          ],
+        );
+        return renewed.rowCount === 1;
       });
     },
     prepare(lease) {
