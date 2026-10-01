@@ -128,23 +128,75 @@ From the repository root on the server:
 
 ```sh
 sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml config --quiet
-sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml build
-sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml up -d postgres
-sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml --profile setup run --rm db_setup
-sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml up -d app graphhopper
+sudo /srv/workout-manager/admin/run-host-writer.mjs build
+sudo /srv/workout-manager/admin/run-host-writer.mjs up postgres
+sudo /srv/workout-manager/admin/run-host-writer.mjs setup
+sudo /srv/workout-manager/admin/run-host-writer.mjs up app
+sudo /srv/workout-manager/admin/run-host-writer.mjs up graphhopper
 sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml ps
 ```
+
+Before any controlled deployment, install a root-owned mode 0700 copy of
+`maintenance/run-host-writer.mjs` at the `admin` path above. Keep
+`/srv/workout-manager/compose.env` root-owned mode 0600 and verify GNU `flock`
+and Docker at `/usr/bin/flock` and `/usr/bin/docker` on that host. Verify that
+the executable's `node` resolves to a supported Node 24 runtime. Install a
+root-owned mode 0600 `/srv/workout-manager/admin/host-writer.json` from the
+reviewed release with the exact SHA-256 of its Compose file:
+
+```json
+{ "schemaVersion": 1, "composeSha256": "<64 lowercase hex characters>" }
+```
+
+Update that pin only as part of a controlled, reviewed release. The wrapper
+rejects missing/changed pins and Compose files writable by group or others.
+The checkout may remain deployment-user owned, so this byte check does not
+protect a mutable build context or a file replaced after the check. Those
+sources need the host privilege policy and release immutability gate below.
+The opt-in wrapper accepts only `build`, `up app|graphhopper|postgres`, `setup`,
+`start app|graphhopper|postgres`, and the fixed read-only
+`exec postgres-ready` probe. It accepts no arbitrary Compose flags, shell,
+container name, executable, or SQL. Run any sanctioned manual Workout
+deployment, setup, or start through this entry point; add other
+operations only after their exact command and privilege are reviewed. Read-only
+`config` and `ps` above remain direct checks.
+
+The wrapper requires root, its installed mode and ownership, the Compose file,
+the root-only Compose environment and pin files, and root-owned mode 0700
+`/run/lock/workout-manager`. It acquires nonblocking mode 0600 `backup.lock`
+**then** `maintenance.lock`, matching `backup/backup-window.mjs`, and holds both
+for the foreground child lifetime. A second invocation or backup window fails
+with status 75; command failures and TERM/INT status propagate. Do not retry a
+partial `up`, setup, or container start without inspecting Docker and database
+state. Setup uses a fixed `wm-db-setup-one-shot` container name and `--no-deps`;
+inspect for an orphaned setup container after a killed Docker client before
+retrying or starting a backup. It pins the Docker host socket and Compose project, and starts the child
+with a minimal environment so inherited Docker/Compose overrides do not retarget
+it. The wrapper neither prints environment values nor expands an operator
+supplied shell command. `node --test deploy/lightsail/maintenance/run-host-writer.test.mjs`
+checks the fixed command set, child failure, lock contention, and termination
+with synthetic local processes. Its lock shim is used because local macOS lacks
+GNU `flock`; the deployed Linux command and real Docker operations remain
+untested.
 
 The app health check covers the loopback API, Next.js web and PostgreSQL
 `SELECT 1`. It does **not** prove GraphHopper readiness, external OIDC, durable
 storage after restart, or public HTTPS. Check those separately before adding
-the Caddy site and DNS record. Run the one-shot `maintenance` services through
-`docker compose --profile maintenance run --rm <service>` with each worker's
-dedicated role after role grants are verified. They are not recurring schedulers;
-set up bounded scheduling separately. The fixture coaching worker is
-intentionally absent from production.
+the Caddy site and DNS record. Run the two supported one-shot maintenance
+services through `sudo /srv/workout-manager/admin/run-one-shot.sh resource_cleanup`
+or the same command with `course_thumbnails`, after role grants are verified.
+Install that runner as a root-owned mode 0700 copy outside the deployment-user
+owned checkout. Its Compose source and build context still need the host
+privilege policy and immutable release check before operational use. That
+existing runner holds `maintenance.lock`, uses a fixed container name and
+`--no-deps`, and bounds the run to 20 minutes plus a TERM grace period. Inspect
+Docker for an orphaned worker before retrying after a killed Compose client.
+These are not recurring schedulers; set up bounded scheduling separately. The
+fixture coaching worker is intentionally absent from production.
 
-For `url_ingestion`, first confirm that Compose resolves both networks and the
+For `url_ingestion`, first add a separately reviewed bounded host runner; the
+new writer wrapper intentionally rejects this service. In a controlled
+nonproduction check, confirm that Compose resolves both networks and the
 private bind mount, then run a single approved, non-sensitive URL job and inspect
 its ledger state and stored object through the application. A successful `config`
 check proves only the Compose model; an `empty` one-shot result proves only that
@@ -371,10 +423,12 @@ check. Signal interruption (especially SIGKILL), host loss, or a replaced
 container can prevent automatic restoration and require controlled manual
 recovery.
 
-The wrapper is not a complete write fence: manual `docker exec`, deployment
-commands, host processes, and unregistered writers can ignore its advisory
-locks. Those entry points need an operational exclusion rule and a concurrent
-writer/restart drill before live use. The checker still samples state. The
+The backup window and host writer wrapper are not a complete write fence:
+root, Docker socket access, direct database credentials, private bind-mount
+write access, host processes, and unregistered commands can bypass advisory
+locks. A host privilege policy must restrict those paths, and a real concurrent
+writer/restart drill must fail safely before live use; both remain
+**not_executed**. The checker still samples state. The
 exact `postgres` local-socket authentication and Docker streaming path have
 not been exercised on the server. The host's
 `pg_restore` version must be suitable before using the collector's later
