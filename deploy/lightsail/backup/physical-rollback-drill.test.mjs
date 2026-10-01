@@ -151,8 +151,16 @@ test('local restore refills same directory inode and refuses a wrong bind identi
           '-c',
           `${definitions}
 restore_needed=1; restored=0; db_stopped=1; db_id=clone-id
-snapshot="$1"; scratch="$2"; bind_identity="$3"; scratch_identity="$(/usr/bin/stat -f '%d:%i' "$2")"
-stat() { if [[ $1 == -c && $2 == '%d:%i' ]]; then /usr/bin/stat -f '%d:%i' "$3"; else /usr/bin/stat "$@"; fi; }
+snapshot="$1"; scratch="$2"; bind_identity="$3"; scratch_identity="$MOCK_SCRATCH_ID"
+stat() {
+  if [[ $1 == -c && $2 == '%d:%i' && $3 == "$scratch" ]]; then
+    printf '%s\n' "$MOCK_SCRATCH_ID"
+  elif [[ $1 == -c && $2 == '%d:%i' && $3 == "$scratch/pg" ]]; then
+    printf '%s\n' "$MOCK_BIND_ID"
+  else
+    return 1
+  fi
+}
 clone_identity() { return 0; }
 root_directory() { [[ -d $1 && ! -L $1 ]]; }
 snapshot_intact() { return 0; }
@@ -172,7 +180,12 @@ restore_clone`,
         ],
         {
           encoding: 'utf8',
-          env: { ...process.env, WRITER_ACTIVE: writerActive ? 'active' : 'quiet' },
+          env: {
+            ...process.env,
+            WRITER_ACTIVE: writerActive ? 'active' : 'quiet',
+            MOCK_SCRATCH_ID: `${statSync(scratch).dev}:${statSync(scratch).ino}`,
+            MOCK_BIND_ID: `${statSync(join(scratch, 'pg')).dev}:${inode}`,
+          },
         },
       );
     const wrong = run('0:0');
