@@ -126,6 +126,35 @@ test('new or removed schema/relation and schema, owner, RLS or column drift fail
     assert.throws(() => compare(change), /BACKUP_SOURCE_INVENTORY_UNVERIFIED/);
 });
 
+test('the snapshot role may also own the database and public schema', () => {
+  const sameOwnerNamespaces = namespaces.map((row) => ({
+    ...row,
+    owner: row.owner === databaseOwner ? role : row.owner,
+  }));
+  const sameOwnerRelations = relations.map((row) => ({
+    ...row,
+    owner: row.owner === databaseOwner ? role : row.owner,
+  }));
+  const result = compare({
+    databaseOwner: role,
+    namespaces: sameOwnerNamespaces,
+    relations: sameOwnerRelations,
+  });
+  assert.equal(result.namespaceCount, 3);
+  assert.equal(result.relationCount, 501);
+  assert.throws(
+    () =>
+      compare({
+        databaseOwner: role,
+        relations: sameOwnerRelations,
+        namespaces: sameOwnerNamespaces.map((row) =>
+          row.name === 'public' ? { ...row, owner: 'unexpected_owner' } : row,
+        ),
+      }),
+    /BACKUP_SOURCE_INVENTORY_UNVERIFIED/,
+  );
+});
+
 test('sequence, partition, materialized view and large object gaps have bounded classifications', () => {
   for (const kind of ['S', 'm', 'p']) {
     const added = {

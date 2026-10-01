@@ -268,3 +268,8 @@
 - `pnpm install --frozen-lockfile`은 sandbox의 npm DNS 거부로 첫 시도가 중단돼 의존성 폴더가 불완전해졌다. 허용된 재실행은 잠금 파일 변경 없이 성공했다. `pnpm check`의 생성물·전체 Prettier·전체 ESLint·전체 typecheck는 통과했다. 이어진 첫 단위 시험은 sandbox의 로컬 시험 서버 포트 거부로 **4,250 통과·36 실패·7 skip**이었고, 허용된 로컬 포트 재실행은 **4,286 통과·7 skip·0 실패**였다. `pnpm build`는 Turbo cache의 **15/15**였고, 시험용 대체 API 포트를 반영한 Web 직접 빌드도 통과했다.
 - `pnpm test:integration`의 격리 PostgreSQL 14 실행은 **1,045 통과·3 skip**이었다. 새 source-inventory의 Node 시험 **4/4**와 격리 PostgreSQL imported snapshot 시험 **1/1**, pre-migration Bash 구문·정적 시험 **2/2**, backup 디렉터리 전체 Node 시험 **91 통과·9 opt-in skip**도 root가 확인했다. 첫 source-inventory PostgreSQL 실행의 sandbox 공유 메모리 거부는 허용된 격리 실행으로 재검증했다.
 - 첫 `pnpm test:identity`는 로컬 Docker가 기본 API 포트 4300을 사용 중이라 시작되지 않았다. 대체 53100–53104 포트만 설정한 첫 재실행은 Web 빌드가 기본 API 포트로 고정돼 로그인 화면 시험 4개 timeout 후 중단했다. Web을 대체 API 포트로 직접 재빌드한 뒤 앞서 실패한 단일 시험 **1/1**과 전체 두 번 각각 **307 통과·14 skip·0 실패**를 완료했다. 대체 포트와 빌드는 로컬 fixture에 한정한다. 실제 공개 OIDC, HealthKit, 운영 DB·S3, 복원 및 릴리스 gate는 **not_executed**다.
+
+## 독립 단계 검토 지적과 수정 · 2026-10-02
+
+- `main` `05e6710523b9b8126d5bddded0a953459940750e` → `phase/ext-hosting` `6382bf0c42ae5546d5e4bbf20718eb29ef733131` 전체 diff의 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 검토는 **REQUEST_CHANGES**였다. P1 지적: 운영처럼 snapshot 검사 역할과 DB 소유자가 모두 `workout_owner`이면 `public`의 실제 소유자를 `$snapshot_owner`로 먼저 치환해 후보의 `$database_owner`와 충돌한다. 검토자는 순수 비교에서 재현했고, 나머지 드릴 경계에서는 추가 차단 지적을 찾지 못했다.
+- 소유자 치환을 후보의 독립 owner 종류와 실제 catalog 소유자 모두에 따라 수행하도록 바꾸었다. 동일 역할·DB 소유자에서도 다른 실제 소유자는 거절한다. root의 Node 단위 시험은 **5/5**, 운영과 같은 DB/`public` 소유자 구성의 격리 PostgreSQL 14 migration 001–093 imported snapshot 시험은 **1/1**, 변경 파일 ESLint·Prettier는 통과했다. 이전 지적은 수정 코드와 두 시험에서 **FIXED**로 평가한다. 이 수정 HEAD에 대한 독립 재검토는 아직 대기 중이며 운영 실행·복원은 계속 **not_executed**다.

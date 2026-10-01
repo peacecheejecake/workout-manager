@@ -27,9 +27,15 @@ function safeName(value) {
   return typeof value === 'string' && /^[a-z_][a-z0-9_]{0,62}$/.test(value);
 }
 
-function normalizeOwner(value, role, databaseOwner) {
-  if (value === role) return '$snapshot_owner';
-  if (value === databaseOwner || value === 'pg_database_owner') return '$database_owner';
+function normalizeOwner(value, role, databaseOwner, expectedOwner) {
+  // The snapshot role may also own the database. Resolve that overlap using the
+  // independently pinned owner class, while still checking the actual catalog owner.
+  if (expectedOwner === '$snapshot_owner' && value === role) return '$snapshot_owner';
+  if (
+    expectedOwner === '$database_owner' &&
+    (value === databaseOwner || value === 'pg_database_owner')
+  )
+    return '$database_owner';
   return value;
 }
 
@@ -65,7 +71,11 @@ export function compareSourceCatalog({
   const normalizedNamespaces = namespaces
     .map((row) => {
       if (!safeName(row.name) || !safeName(row.owner)) reject();
-      return { name: row.name, owner: normalizeOwner(row.owner, role, databaseOwner) };
+      const pinned = registry.namespaces.find((entry) => entry.name === row.name);
+      return {
+        name: row.name,
+        owner: normalizeOwner(row.owner, role, databaseOwner, pinned?.owner),
+      };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
   const normalizedRelations = relations
@@ -89,7 +99,7 @@ export function compareSourceCatalog({
         name: row.name,
         kind: row.kind,
         persistence: row.persistence,
-        owner: normalizeOwner(row.owner, role, databaseOwner),
+        owner: normalizeOwner(row.owner, role, databaseOwner, pinned?.owner),
         rls: row.rls,
         forceRls: row.forceRls,
         classification: pinned?.classification ?? 'uncovered',

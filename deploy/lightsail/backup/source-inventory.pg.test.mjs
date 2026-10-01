@@ -60,6 +60,9 @@ test(
       await admin.query('GRANT CREATE ON DATABASE postgres TO source_owner');
       await admin.query('GRANT CREATE ON SCHEMA public TO source_owner');
       await migrate(url('source_owner'), 93);
+      // Match bootstrap-db: the migration role owns both the database and public.
+      await admin.query('ALTER DATABASE postgres OWNER TO source_owner');
+      await admin.query('ALTER SCHEMA public OWNER TO source_owner');
       const owner = await connect('source_owner');
       const holder = await connect('source_owner');
       await holder.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
