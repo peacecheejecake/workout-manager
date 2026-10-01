@@ -228,3 +228,10 @@
 - 운영 PostgreSQL 17.6의 재조회 결과는 `wal_level=replica`, `max_slot_wal_keep_size=-1`, 복제 slot **0개**였다. 활성 서버 Compose의 SHA-256 `036e7458ab4379c0bf62651912cdf3b4257cc3a25ee54be3742dcb3e5d05a004`는 저장소의 logical 설정 후보와 다르다. DB 재시작·Compose 적용·앱 중지·백업 실행은 하지 않았다.
 - 이 시험은 **관리 도구 한 경로의 잠금 경합만** 증명한다. `ubuntu`의 Docker/sudo 직접 접근, 모든 일회성 작업·타이머·DB/비공개 파일 직접 쓰기, 잠금 전 기간 유지, 원본 범위와 마지막 WAL tail을 차단·증명하지 않았다. 운영 write fence, 보호된 백업과 격리 복원, WAL 보존 한도와 감시, logical 전환, S3 첫 쓰기와 복원 접근은 계속 **not_executed**다. [호스팅 절차](../../../deploy/lightsail/README.md)의 전환 선행 조건을 충족하기 전에는 운영 DB 설정을 바꾸지 않는다.
 - `main` `01dae6c2f049ffddac18c332e0672612fad05e92` → `phase/ext-hosting` `6b7a98543e3b5f93837448d0d5e7cf3a3d79ce88` 전체 diff의 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 단계 검토는 **APPROVE**, 차단 지적 없음이었다. 검토자는 실제 관리 도구의 고정 명령·잠금 순서와 호스팅 선행 조건, task graph 상태를 대조하고 `git diff --check`를 통과했다. AWS·SSH·운영 SQL은 재실행하지 않았다. 이 판정 기록을 포함한 HEAD는 병합 전 검토 새로고침 대상이다.
+
+## 운영 checker 성공 경로 리허설 · 2026-10-02
+
+- AWS Lightsail의 ED25519 호스트 키를 다시 조회해 별도 known_hosts에 고정했다. 서버 root 전용 `fence.json`의 Compose SHA-256·전체 앱/DB/경로 엔진 컨테이너 ID가 실제 서버 값과 일치했고, 두 maintenance timer는 `not-found`/`inactive`였다. 현재 `ubuntu`는 `sudo`와 `docker` 그룹에 속한다. 수집기·Docker transport·backup-window는 설치되지 않았고 실제 백업은 실행하지 않았다.
+- `backup.lock`과 `maintenance.lock`을 동시에 보유한 짧은 리허설에서 고정된 `graphhopper` 다음 `app` 컨테이너를 정지했다. 설치된 Node 24.12.0으로 실제 `check-fence.mjs`가 **`BACKUP_FENCE_CHECKED`**를 반환했다. 같은 잠금 중 `run-host-writer.mjs exec postgres-ready`의 경쟁 시도는 **exit 75**로 거절됐다. 종료 trap은 같은 컨테이너 ID의 앱과 경로 엔진을 다시 시작했다.
+- 종료 뒤 Workout 앱·PostgreSQL은 healthy, 경로 엔진은 실행 중이며 기존 사이트의 웹/API/DB도 healthy였다. 두 잠금은 다시 획득할 수 있었다. 공개 기존 사이트는 TLS 검증 0·HTTP 200, Workout 주소는 TLS 검증 0·HTTP 503이었다. PostgreSQL 데이터나 Caddy 설정은 바꾸지 않았다.
+- 이는 실제 checker의 **한 번의 성공 경로와 관리 wrapper의 잠금 경합** 증거다. `ubuntu`의 직접 Docker/sudo/비공개 파일 쓰기를 제한하지 않았고, 모든 DB·객체 writer의 동시 시도, 검사 간 TOCTOU, 수집기 설치·실행, 운영 DB/객체 백업·격리 복원, 독립 삭제 원장·최종 WAL tail은 여전히 **not_executed**다. 이 리허설만으로 완전한 write fence나 운영 복구 가능을 판정하지 않는다.
