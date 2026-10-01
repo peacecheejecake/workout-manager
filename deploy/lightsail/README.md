@@ -653,6 +653,21 @@ check. Signal interruption (especially SIGKILL), host loss, or a replaced
 container can prevent automatic restoration and require controlled manual
 recovery.
 
+The collector publishes a newly captured directory as **pending**. The window
+accepts exactly one `BACKUP_PUBLISHED <bundle-id>` line, performs its last fence
+check while app and GraphHopper are stopped, restores their original state and
+restart policies, and checks the pinned service identities and states again.
+Only then does it atomically publish and sync `finalization.json`, binding the
+bundle ID to the manifest SHA-256. A failed capture, fence, restoration, or
+post-restore state check leaves the pending directory for investigation without
+making it a usable backup. A host crash before marker durability also leaves it
+pending. `collect verify`, S3 upload/reupload/download, and the remote baseline
+bridge reject a missing, malformed, or mismatched marker. The marker is included
+in the versioned S3 completion file set. The synthetic persistent-slot proof
+publishes its marker only after its retained-owner receipt is durable; it does
+not establish a production restore point. Direct operational collector runs
+remain pending unless the reviewed window completes.
+
 The backup window and host writer wrapper are not a complete write fence:
 root, Docker socket access, direct database credentials, private bind-mount
 write access, host processes, and unregistered commands can bypass advisory
@@ -682,7 +697,7 @@ No host timer, wrapper, or recurring backup is installed. Deletion-ledger
 completeness and replay remain independent acceptance gates.
 
 `backup/remote-store.mjs` is an opt-in, uninstalled S3 transport for a local
-bundle that `collect.mjs` has already published. It requires a root-owned mode
+bundle that the backup window has finalized. It requires a root-owned mode
 0600 JSON config with `schemaVersion: 1`, `bucket`, `prefix`,
 `region: "ap-northeast-2"`, and the 12-digit
 `expectedBucketOwner`; commands are `upload <absolute-config> <absolute-bundle>`
@@ -739,8 +754,9 @@ The collector rejects symlinks and nonregular private entries, overlapping
 source/output paths, low available disk, unsafe ownership or modes, changed
 source bytes or file-set changes, and failed `pg_dump`/`pg_restore --list`. It writes into a mode
 0700 partial directory, stores the archive, copied private files, and manifest
-at mode 0600, then publishes the directory by rename only after all checks pass.
-It removes a failed partial directory. This checks capture bytes; it does not
+at mode 0600, then publishes a pending directory by rename only after all capture
+checks pass. It removes a failed partial directory; a renamed directory that
+fails a later check remains pending for investigation. This checks capture bytes; it does not
 make database and file writes atomic by itself. The database URL is passed to
 PostgreSQL through environment variables rather than command arguments; output
 contains only fixed status codes and the new bundle name.
