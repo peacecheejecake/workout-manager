@@ -372,10 +372,11 @@ control points. A local static test or this runbook alone cannot prove an
 operational run; use the recorded host result and recheck current state before
 any repeat.
 
-### Isolated rollback rehearsal from the retained archive (inactive)
+### Isolated rollback rehearsal from the retained archive (manual)
 
 `backup/rollback-rehearsal.sh` is a separate, opt-in **DB-only** test of the
-retained pre-migration archive. It has not been installed or run on the host.
+retained pre-migration archive. It was installed and passed once on the host on
+2026-10-02; see [the recorded result](../../docs/implementation/progress/EXT-HOSTING.md).
 Review the script and its fixed archive SHA-256 and image IDs before installing
 a root-owned mode 0700 copy at
 `/srv/workout-manager/admin/rollback-rehearsal.sh`. The source must remain the
@@ -409,11 +410,12 @@ into production. Run `node --test
 deploy/lightsail/backup/rollback-rehearsal.test.mjs` for local static guard
 checks; those checks are not a host rehearsal.
 
-### Cold physical PostgreSQL snapshot rehearsal (inactive)
+### Cold physical PostgreSQL snapshot rehearsal (manual)
 
 `backup/cold-snapshot-drill.sh` is an opt-in, root-only **physical cluster**
-rehearsal for the current dedicated PostgreSQL 17.6 bind mount. It has not
-been installed or run on the host. Review the script and its pinned image IDs,
+rehearsal for the current dedicated PostgreSQL 17.6 bind mount. It was installed
+and passed once on the host on 2026-10-02; see [the recorded result](../../docs/implementation/progress/EXT-HOSTING.md).
+Review the script and its pinned image IDs,
 cluster system identifier, fence configuration, Compose path and container
 IDs before installing it as
 `/srv/workout-manager/admin/cold-snapshot-drill.sh` (root:0700). The script
