@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "bucket": "workout-manager-ledger-681892421656-apne2",
+  "prefix": "deletion-ledger/v1",
+  "region": "ap-northeast-2",
+  "expectedBucketOwner": "681892421656"
+}

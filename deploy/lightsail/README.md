@@ -484,6 +484,9 @@ Object Lock, live upload, independent signature, and recovery have not been
 verified. The completion record fixes `ledgerCompleteness` to `not_verified`:
 it is a transfer receipt, never permission to restore or reopen the app. The
 post-backup deletion ledger and its complete tail remain separate gates.
+The [S3 IAM policy draft](backup/IAM-POLICY.md) generates separate identity
+policies for these dedicated backup and ledger buckets. They are not attached
+to a workload identity, and no server credential or actual upload is in place.
 
 The checker can miss a writer created between Docker inventory, DB query, and
 the collector's next call. In particular, `collect.mjs` enumerates private
