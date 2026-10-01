@@ -409,6 +409,68 @@ into production. Run `node --test
 deploy/lightsail/backup/rollback-rehearsal.test.mjs` for local static guard
 checks; those checks are not a host rehearsal.
 
+### Cold physical PostgreSQL snapshot rehearsal (inactive)
+
+`backup/cold-snapshot-drill.sh` is an opt-in, root-only **physical cluster**
+rehearsal for the current dedicated PostgreSQL 17.6 bind mount. It has not
+been installed or run on the host. Review the script and its pinned image IDs,
+cluster system identifier, fence configuration, Compose path and container
+IDs before installing it as
+`/srv/workout-manager/admin/cold-snapshot-drill.sh` (root:0700). The script
+requires root-owned mode 0700 `/srv/workout-manager/backups`, the installed
+fence checker and Node runtime, root-owned lock files and fence config, at
+least 2 GiB free, `/usr/bin/python3` and `/usr/bin/findmnt`, and the current Workout HTTPS 503 block.
+The private directory must be empty, both maintenance timers disabled or
+absent, and their one-shot services inactive. The current 71 MB cluster was
+observed in a Docker bind-source directory on the host ext4 root filesystem;
+the script rejects a changed backing filesystem or a mount within that
+directory, and disk use and entry types must be checked again
+on the host. A maintenance window must exclude deployments, manual `db_setup`,
+Docker writers, uploads, and direct database or bind-mount writers; advisory
+locks alone do not enforce that exclusion.
+
+The sole execution interface is:
+
+```sh
+sudo WORKOUT_BACKUP_FENCE_CONFIG=/srv/workout-manager/admin/backup/fence.json \
+  /srv/workout-manager/admin/cold-snapshot-drill.sh --execute
+```
+
+The script holds `backup.lock` then `maintenance.lock` through cleanup. It
+pins exact full IDs for the three existing Workout containers and disables
+their automatic restart policies before stopping GraphHopper, then the app.
+It runs the installed checker while the original PostgreSQL container is
+healthy with zero other clients, then stops PostgreSQL. It checks a clean
+`pg_controldata` shutdown and the pinned system identifier, rejects symlinks,
+special files and tablespaces, and copies the cold cluster into a new
+root-protected directory under `/srv/workout-manager/backups/cold-postgres`.
+It compares every file's SHA-256 and file metadata, syncs copied files and
+directories, and starts a second **disposable** copy on an isolated internal
+Docker network with no published ports. The pinned old app image checks the
+65 migrations and checksums and reaches Docker health against that clone.
+Temporary credentials, clone containers, network and working copy are removed.
+The retained cold snapshot is not mounted by the clone and is never used as a
+live database. The script rechecks the original stopped database before
+starting its exact original PostgreSQL ID, verifies DB identity, migrations
+and health, then starts the exact app and GraphHopper IDs, checks the serving
+process's loopback TCP port through the app network namespace, and restores their
+original `unless-stopped` policies only after the gates pass. It does not
+call Compose, migrate or restore production, change Caddy, or touch `infra`.
+
+Output is limited to fixed `COLD_SNAPSHOT_<phase>_FAILED` and
+`COLD_SNAPSHOT_CLEANUP_FAILED` codes, `COLD_SNAPSHOT_RETAINED=<protected path>`
+after a verified snapshot, and `COLD_SNAPSHOT_REHEARSAL_PASSED` only after
+successful cleanup and original-service checks. If cleanup fails, **do not
+restart the app or enable its restart policy until the original database has
+been inspected and verified**. A power loss, SIGKILL, privilege bypass, or
+concurrent root/Docker writer can defeat the process-local cleanup and advisory
+locks; a stopped app or disposable clone may require controlled manual
+recovery. The cold snapshot contains sensitive database bytes and remains
+on the same host. It is not an off-host backup, deletion-ledger replay, or
+authorization for a production restore. Run
+`node --test deploy/lightsail/backup/cold-snapshot-drill.test.mjs` for local
+guard and copy-comparison checks; this does not substitute for a host rehearsal.
+
 ### Backup collector preparation (inactive)
 
 `backup/collect.mjs` is an opt-in local collector, not an installed schedule or
