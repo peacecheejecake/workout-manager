@@ -35,4 +35,4 @@
 
 서울 Lightsail의 **적용된** Caddy 설정을 `caddy adapt`로 읽어 `logging=null`, `http_logs=[null]`임을 확인했다. 이는 Caddy HTTP access log가 구성되지 않았다는 관찰이다. Docker의 현재 `infra-caddy-1`은 `json-file` `max-size=10m`, `max-file=5`이고, `workout-manager-app-1`과 `workout-manager-graphhopper-1`의 `json-file` 옵션은 각각 `{}`였다. 원본 로그 내용·실제 사용자 좌표는 열거나 출력하지 않았다. 당시 Workout 공개 주소는 503 안내 화면이므로 실제 타일·경로 트래픽이 Caddy를 통과하는 배포 검증이 아니다.
 
-운영 app/GraphHopper 로그의 크기 제한은 관찰 시점에 없었다. 이후 [EXT-HOSTING 준비](../progress/EXT-HOSTING.md#docker-로그-크기-제한-준비--2026-10-02)에서 Workout Compose의 8개 서비스에 `json-file` 10m × 5를 명시했지만, 운영 컨테이너 재생성·로그 회전·시간 기준 보존과 합성 요청 로그 검사는 **not_executed**다. 따라서 `FUT-07-4` 전체 판정은 그대로 **not_executed**다.
+운영 app/GraphHopper 컨테이너에는 관찰 시점에 컨테이너별 크기 제한 옵션이 없었다. 호스트의 별도 보존 정책은 확인하지 않았다. 이후 [EXT-HOSTING 준비](../progress/EXT-HOSTING.md#docker-로그-크기-제한-준비--2026-10-02)에서 Workout Compose의 8개 서비스에 `json-file` 10m × 5를 명시했지만, 운영 컨테이너 재생성·로그 회전·시간 기준 보존과 합성 요청 로그 검사는 **not_executed**다. 따라서 `FUT-07-4` 전체 판정은 그대로 **not_executed**다.
