@@ -11,12 +11,14 @@ the existing apex site block and recheck both hostnames after a controlled reloa
 ## Files outside the checkout
 
 Create a deployment directory under `/srv/workout-manager` and keep all secrets
-outside Git. The source tree can be owned by the deployment user and its parent
-must allow the required traversal; the secrets directory alone must be root-owned
-and mode 0700. The path passed as `WORKOUT_DATA_DIR` needs
+outside Git. The source tree currently belongs to the deployment user; before
+enabling the backup window, replace it with the root-controlled reviewed release
+described in [the privilege cutover plan](HOST-PRIVILEGE-CUTOVER.md). The secrets
+directory must be root-owned and mode 0700. The path passed as `WORKOUT_DATA_DIR` needs
 separate `postgres`, `private`, `routing`, `basemap`, and `geo-data` directories. `private` is a
 dedicated persistent mount, readable and writable by the app's container user
-(UID 1000); it is not the existing site's storage. PostgreSQL's data directory
+(UID/GID 20001 in the prepared image, UID/GID 1000 on the current server); it is
+not the existing site's storage. PostgreSQL's data directory
 must be writable by its container user. Do not prepare either directory with
 world-writable permissions. The app entrypoint rejects a missing private bind
 mount even if its path exists inside the image.
