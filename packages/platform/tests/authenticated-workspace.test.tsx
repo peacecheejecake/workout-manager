@@ -934,3 +934,21 @@ it.each([
     expect(fetchMock).not.toHaveBeenCalled();
   },
 );
+
+it.each([
+  ['POST', '/bff/v1/retrieval/queries/admin'],
+  ['POST', '/bff/v1/retrieval/queries/'],
+  ['POST', '/bff/v1/retrieval/queries?admin=true'],
+  ['GET', '/bff/v1/retrieval/queries'],
+  ['PUT', '/bff/v1/retrieval/queries'],
+] as const)('rejects non-POST or non-exact retrieval query route %s %s', async (method, path) => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method,
+      path,
+      body: null,
+      idempotencyKey: null,
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
