@@ -318,13 +318,14 @@ prints its environment or Compose configuration.
 
 ## Database recovery prerequisite
 
-### Pre-migration rollback rehearsal (inactive)
+### Pre-migration rollback rehearsal (manual)
 
 `backup/pre-migration-drill.sh` is an opt-in, DB-only rollback rehearsal for the
 current PostgreSQL 17.6 Workout cluster before replacing the running migration
-65 app with the staged `fa29723` image (migration 93). It has **not** been run
-against the live host. Review the script and fixed image ID, then install a
-root-owned mode 0700 copy at
+65 app with the staged `fa29723` image (migration 93). It ran once on the live
+host on 2026-10-02; [the recorded result](../../docs/implementation/progress/EXT-HOSTING.md)
+is a DB-only isolated restore rehearsal. Review the script and fixed image ID,
+then use its root-owned mode 0700 copy at
 `/srv/workout-manager/admin/pre-migration-drill.sh`. Its root-only output
 directory is `/srv/workout-manager/backups/pre-migration` (mode 0700). It
 requires the already installed checker, Node 24 binary, root-owned fence
@@ -363,11 +364,13 @@ another attempt. A host power loss or untrappable kill can bypass cleanup and
 leave the original Workout services stopped; inspect them before recovery.
 The retained archive is for a separately reviewed rollback
 procedure; this rehearsal grants no permission to restore it into production.
-This is a DB-only rollback point. It does not capture private objects, a full
+The retained archive is a DB-only point-in-time copy, not a current rollback
+point after the original app restarted. It does not capture private objects, a full
 cluster/host backup, the independent deletion ledger, a WAL tail, or an
 off-host copy. The host's root/sudo access and Docker daemon remain trusted
-control points. Neither a successful local static test nor this runbook proves
-the live fence or restore until the host run is recorded separately.
+control points. A local static test or this runbook alone cannot prove an
+operational run; use the recorded host result and recheck current state before
+any repeat.
 
 ### Isolated rollback rehearsal from the retained archive (inactive)
 
