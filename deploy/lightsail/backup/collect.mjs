@@ -6,6 +6,7 @@ import {
   closeSync,
   copyFileSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -144,6 +145,25 @@ function digest(path) {
     closeSync(fd);
   }
   return { sha256: hash.digest('hex'), bytes };
+}
+
+function syncFile(path) {
+  const fd = openSync(path, 'r');
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function syncDirectoryTree(path) {
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) syncDirectoryTree(child);
+    else if (entry.isFile()) syncFile(child);
+    else fail('BACKUP_UNSAFE_STAGING_ENTRY');
+  }
+  syncFile(path);
 }
 
 function privateFiles(root) {
@@ -298,6 +318,7 @@ async function collect(options) {
   const staging = join(outputDir, `.${id}.partial`);
   const published = join(outputDir, id);
   mkdirSync(staging, { mode: 0o700 });
+  let renamed = false;
   try {
     mkdirSync(join(staging, 'private'), { mode: 0o700 });
     const dump = join(staging, 'database.dump');
@@ -429,10 +450,15 @@ async function collect(options) {
           : 'operator-enforced-quiesced-write-fence',
       );
     }
+    syncDirectoryTree(staging);
+    checkFence(fence);
     renameSync(staging, published);
+    renamed = true;
+    syncFile(outputDir);
     process.stdout.write(`BACKUP_PUBLISHED ${basename(published)}\n`);
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(renamed ? published : staging, { recursive: true, force: true });
+    syncFile(outputDir);
     throw error;
   }
 }

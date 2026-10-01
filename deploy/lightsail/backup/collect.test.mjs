@@ -21,12 +21,65 @@ import { test } from 'node:test';
 
 const collector = new URL('./collect.mjs', import.meta.url).pathname;
 
-function invoke(args, path) {
-  return spawnSync(process.execPath, [collector, ...args, '--synthetic-test', 'yes'], {
-    encoding: 'utf8',
-    timeout: 120_000,
-    env: { ...process.env, PATH: `${path}:${process.env.PATH}` },
+function invoke(args, path, instrumentation) {
+  return spawnSync(
+    process.execPath,
+    [
+      ...(instrumentation ? ['--import', instrumentation.preload] : []),
+      collector,
+      ...args,
+      '--synthetic-test',
+      'yes',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: 120_000,
+      env: { ...process.env, PATH: `${path}:${process.env.PATH}`, ...instrumentation?.env },
+    },
+  );
+}
+
+const syncProbe = `
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const open = fs.openSync;
+const sync = fs.fsyncSync;
+const rename = fs.renameSync;
+const append = fs.appendFileSync;
+const paths = new Map();
+let failed = false;
+fs.openSync = (...args) => {
+  const fd = open(...args);
+  paths.set(fd, args[0]);
+  return fd;
+};
+fs.fsyncSync = (fd) => {
+  const path = paths.get(fd);
+  append(process.env.WM_SYNC_PROBE_LOG, 'sync:' + path + '\\n');
+  if (path === process.env.WM_SYNC_PROBE_FAIL_PATH && !failed) {
+    failed = true;
+    throw new Error('synthetic directory sync failure');
+  }
+  return sync(fd);
+};
+fs.renameSync = (...args) => {
+  append(process.env.WM_SYNC_PROBE_LOG, 'rename:' + args[0] + '\\n');
+  return rename(...args);
+};
+syncBuiltinESMExports();
+`;
+
+function instrumentedInvoke(args, bin, root, output, failParent = false) {
+  const log = join(root, 'sync.log');
+  writeFileSync(log, '');
+  const result = invoke(args, bin, {
+    preload: `data:text/javascript,${encodeURIComponent(syncProbe)}`,
+    env: {
+      WM_SYNC_PROBE_LOG: log,
+      ...(failParent ? { WM_SYNC_PROBE_FAIL_PATH: output } : {}),
+    },
   });
+  return { result, events: readFileSync(log, 'utf8').trim().split('\n') };
 }
 
 function hash(path) {
@@ -82,6 +135,24 @@ test('collects a fenced synthetic PostgreSQL-command and private bundle; rejects
     const manifest = JSON.parse(readFileSync(join(bundle, 'manifest.json'), 'utf8'));
     assert.deepEqual(manifest.privateFiles[0], { path: 'private/v1/fixture.bin', ...hash(source) });
     assert.equal(manifest.independentPostBackupErasureLedgerRequired, true);
+    const synced = instrumentedInvoke(collectArgs, bin, root, output);
+    assert.equal(synced.result.status, 0, synced.result.stderr);
+    const renameIndex = synced.events.findIndex((event) => event.startsWith('rename:'));
+    assert.ok(renameIndex > 0);
+    assert.ok(
+      synced.events.slice(0, renameIndex).some((event) => event.endsWith('/database.dump')),
+    );
+    assert.ok(
+      synced.events.slice(0, renameIndex).some((event) => event.endsWith('/manifest.json')),
+    );
+    assert.ok(synced.events.slice(0, renameIndex).some((event) => event.endsWith('/private/v1')));
+    assert.equal(synced.events[renameIndex + 1], `sync:${output}`);
+    const beforeSyncFailure = readdirSync(output).length;
+    const failedSync = instrumentedInvoke(collectArgs, bin, root, output, true);
+    assert.notEqual(failedSync.result.status, 0);
+    assert.doesNotMatch(failedSync.result.stdout, /BACKUP_PUBLISHED/);
+    assert.equal(readdirSync(output).length, beforeSyncFailure);
+    assert.equal(failedSync.events.filter((event) => event === `sync:${output}`).length, 2);
     const verifyArgs = ['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger];
     assert.match(invoke(verifyArgs, bin).stderr, /BACKUP_LEDGER_REQUIRED/);
     const ledgerFile = join(ledger, 'independent-deletions.json');

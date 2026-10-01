@@ -136,6 +136,15 @@ function restoreCheck(runner, containerId, archive, mode) {
   }
 }
 
+function syncDirectory(path) {
+  const fd = openSync(path, 'r');
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function captureArchive({
   output,
   fenceCheck,
@@ -166,6 +175,7 @@ export function captureArchive({
   if (existsSync(partial)) reject();
   fence(runner, fenceCheck);
   let fd;
+  let published = false;
   try {
     fd = openSync(partial, 'wx', 0o600);
     successful(
@@ -197,10 +207,13 @@ export function captureArchive({
     if (JSON.stringify(digest(partial)) !== JSON.stringify(before)) reject();
     fence(runner, fenceCheck);
     renameSync(partial, output);
+    published = true;
+    syncDirectory(dirname(output));
     return before;
   } catch (error) {
     if (fd !== undefined) closeSync(fd);
-    rmSync(partial, { force: true });
+    rmSync(published ? output : partial, { force: true });
+    syncDirectory(dirname(output));
     throw error;
   }
 }

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { captureArchive } from './docker-archive-transport.mjs';
 
@@ -90,6 +92,69 @@ test('streams and validates the complete archive through the pinned container', 
     assert.equal(current.state.fenceCalls, 3);
     assert.equal(existsSync(`${current.output}.partial`), false);
   } finally {
+    rmSync(current.dir, { recursive: true, force: true });
+  }
+});
+
+test('syncs archive bytes before rename and its parent before success', () => {
+  const current = fixture();
+  const original = { openSync: fs.openSync, fsyncSync: fs.fsyncSync, renameSync: fs.renameSync };
+  const paths = new Map();
+  const events = [];
+  try {
+    fs.openSync = (...args) => {
+      const fd = original.openSync(...args);
+      paths.set(fd, args[0]);
+      return fd;
+    };
+    fs.fsyncSync = (fd) => {
+      events.push(`sync:${paths.get(fd)}`);
+      return original.fsyncSync(fd);
+    };
+    fs.renameSync = (...args) => {
+      events.push('rename');
+      return original.renameSync(...args);
+    };
+    syncBuiltinESMExports();
+    run(current);
+    assert.deepEqual(events, [
+      `sync:${current.output}.partial`,
+      'rename',
+      `sync:${dirname(current.output)}`,
+    ]);
+  } finally {
+    Object.assign(fs, original);
+    syncBuiltinESMExports();
+    rmSync(current.dir, { recursive: true, force: true });
+  }
+});
+
+test('removes the renamed archive if parent directory sync fails', () => {
+  const current = fixture();
+  const original = { openSync: fs.openSync, fsyncSync: fs.fsyncSync };
+  const paths = new Map();
+  let failed = false;
+  try {
+    fs.openSync = (...args) => {
+      const fd = original.openSync(...args);
+      paths.set(fd, args[0]);
+      return fd;
+    };
+    fs.fsyncSync = (fd) => {
+      if (paths.get(fd) === current.dir && !failed) {
+        failed = true;
+        throw new Error('synthetic directory sync failure');
+      }
+      return original.fsyncSync(fd);
+    };
+    syncBuiltinESMExports();
+    assert.throws(() => run(current), /synthetic directory sync failure/);
+    assert.equal(failed, true);
+    assert.equal(existsSync(current.output), false);
+    assert.equal(existsSync(`${current.output}.partial`), false);
+  } finally {
+    Object.assign(fs, original);
+    syncBuiltinESMExports();
     rmSync(current.dir, { recursive: true, force: true });
   }
 });
