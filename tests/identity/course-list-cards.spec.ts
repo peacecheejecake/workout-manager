@@ -64,8 +64,9 @@ const fitBytes = Buffer.from(
 );
 
 const elevationFile = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../.geo-build/geo-data/elevation.json',
+  process.env.IDENTITY_E2E_GEO_DATA_DIR ??
+    join(dirname(fileURLToPath(import.meta.url)), '../../.geo-build/geo-data'),
+  'elevation.json',
 );
 
 function metres(value: number): string {
