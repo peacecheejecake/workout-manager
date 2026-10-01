@@ -318,6 +318,57 @@ prints its environment or Compose configuration.
 
 ## Database recovery prerequisite
 
+### Pre-migration rollback rehearsal (inactive)
+
+`backup/pre-migration-drill.sh` is an opt-in, DB-only rollback rehearsal for the
+current PostgreSQL 17.6 Workout cluster before replacing the running migration
+65 app with the staged `fa29723` image (migration 93). It has **not** been run
+against the live host. Review the script and fixed image ID, then install a
+root-owned mode 0700 copy at
+`/srv/workout-manager/admin/pre-migration-drill.sh`. Its root-only output
+directory is `/srv/workout-manager/backups/pre-migration` (mode 0700). It
+requires the already installed checker, Node 24 binary, root-owned fence
+config at `/srv/workout-manager/admin/backup/fence.json`, and root-owned
+`backup.lock` and `maintenance.lock`. Run only in an approved maintenance
+window with both Workout maintenance timers disabled, all one-shot jobs
+finished, no competing host writer, enough disk space, and the public Workout
+503 block still active. The current empty `data/private` directory must be
+reconfirmed at execution time; this procedure refuses any private file or
+directory. Do not use the DB-only archive if private objects are present.
+
+The sole execution interface is:
+
+```sh
+sudo WORKOUT_BACKUP_FENCE_CONFIG=/srv/workout-manager/admin/backup/fence.json \
+  /srv/workout-manager/admin/pre-migration-drill.sh --execute
+```
+
+The script holds both locks, stops only the pinned Workout GraphHopper and app
+container IDs, and calls the installed fence checker before and after capture.
+It takes a root-only custom `pg_dump`, syncs and reads the archive, then restores
+the exact bytes with `workout_owner` into a new internal-network PostgreSQL
+17.6 container with no published ports. Temporary isolated credentials let
+the pinned staged image run `db_setup` against the clone. It checks 93
+migrations (including the migration code's checksum comparison), restricted
+roles, RLS, runtime grants, and isolated app health. Cleanup removes its clone,
+network, volume, and temporary credentials, then restarts the exact original
+Workout app and GraphHopper IDs. It never runs migration or restore against
+the live database and does not invoke Compose or Caddy.
+
+Output contains only fixed `PRE_MIGRATION_<phase>_FAILED` codes,
+`PRE_MIGRATION_CLEANUP_FAILED`, the protected archive path when one was
+validated, and `PRE_MIGRATION_REHEARSAL_PASSED` on full success. If cleanup
+fails, stop: inspect the original services and any isolated containers before
+another attempt. A host power loss or untrappable kill can bypass cleanup and
+leave the original Workout services stopped; inspect them before recovery.
+The retained archive is for a separately reviewed rollback
+procedure; this rehearsal grants no permission to restore it into production.
+This is a DB-only rollback point. It does not capture private objects, a full
+cluster/host backup, the independent deletion ledger, a WAL tail, or an
+off-host copy. The host's root/sudo access and Docker daemon remain trusted
+control points. Neither a successful local static test nor this runbook proves
+the live fence or restore until the host run is recorded separately.
+
 ### Backup collector preparation (inactive)
 
 `backup/collect.mjs` is an opt-in local collector, not an installed schedule or
