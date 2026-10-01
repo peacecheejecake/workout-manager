@@ -2326,7 +2326,7 @@
       "quote": "- [ ] 대표 지역 품질, 이용 조건·표시 의무·credential·좌표 최소화 정책을 검토한다.",
       "verdict": "not_executed",
       "evidence": [],
-      "reason": "M0-06b repo audit: still not_executed. The original representative-region review failed (P8-coverage historical failed verdict retained); ODbL code and repository-local provider/credential/logging review have since added partial evidence. Applied proxy/CDN/host logs and retention, served disclosure artifacts, and remaining deployment gates have not been verified.",
+      "reason": "M0-06b audit: still not_executed. The original representative-region review failed (P8-coverage historical failed verdict retained); ODbL code and repository-local provider/credential/logging review added partial evidence. A 2026-10-02 host read found no configured Caddy HTTP access log and size-bounded Caddy container logs, but the Workout app/GraphHopper still had unbounded Docker log options. A bounded Workout Compose policy is prepared, not deployed. Actual public tile/route traffic, host retention, served disclosure artifacts and remaining deployment gates have not been verified.",
       "round2": {
         "change": "unchanged",
         "verdict": "not_executed",
@@ -2349,7 +2349,7 @@
         "date": "2026-09-30",
         "verdict": "not_executed",
         "evidence": "docs/implementation/research/m0-06b-provider-privacy-audit.md",
-        "scope": "Official OSM/ODbL/BBBike/Geofabrik/MapLibre/GraphHopper pages and repository-local provider, credential, request and logging paths reviewed. BBBike Seoul basemap and Geofabrik national routing graph provenance are distinct. Deployed proxy/CDN/host logging, retention, and served ODbL artifacts remain unverified. Historical P8-coverage failed is unchanged."
+        "scope": "Official OSM/ODbL/BBBike/Geofabrik/MapLibre/GraphHopper pages and repository-local provider, credential, request and logging paths reviewed. BBBike Seoul basemap and Geofabrik national routing graph provenance are distinct. The 2026-10-02 host read verified Caddy has no configured HTTP access log and its container has 10m x 5 size bounds; Workout app/GraphHopper log options were empty. A bounded Workout Compose policy is prepared but not deployed. Live tile/route logging, time-based retention, served ODbL artifacts and full public deployment remain unverified. Historical P8-coverage failed is unchanged."
       }
     },
     {

@@ -30,3 +30,9 @@
 이 감사에서 약관 원문과 저장소의 사용 경계, browser key 부재, 일부 요청·로그 최소화 구현을 확인했다. `FUT-07-4` 전체 판정은 **`not_executed` 유지**: 실제 배포 산출물과 프록시/호스트 로그·보존 설정을 확인하지 않았고, 실기기 및 현재 배포의 검증도 없다. 과거 `P8-coverage`의 사전등록 실패 판정은 수정하지 않는다. 이후 별도 승인 기준의 재채점 결과는 [M2-01az 기록](../progress/M2-01az.md)을 따른다.
 
 운영 확인에 필요한 입력은 비밀값 자체가 아닌 적용된 Caddy/호스트/CDN 로그 설정과 보존 정책, 서빙 중인 basemap·GraphHopper 배포 ID, 공개 ODbL 페이지의 실제 응답이다. 이를 받아 합성 위치에서 타일·경로 요청을 재현하고 access/application log를 검토해야 `FUT-07-4`의 남은 부분을 판정할 수 있다.
+
+## 운영 호스트 로그 설정의 부분 확인 · 2026-10-02
+
+서울 Lightsail의 **적용된** Caddy 설정을 `caddy adapt`로 읽어 `logging=null`, `http_logs=[null]`임을 확인했다. 이는 Caddy HTTP access log가 구성되지 않았다는 관찰이다. Docker의 현재 `infra-caddy-1`은 `json-file` `max-size=10m`, `max-file=5`이고, `workout-manager-app-1`과 `workout-manager-graphhopper-1`의 `json-file` 옵션은 각각 `{}`였다. 원본 로그 내용·실제 사용자 좌표는 열거나 출력하지 않았다. 당시 Workout 공개 주소는 503 안내 화면이므로 실제 타일·경로 트래픽이 Caddy를 통과하는 배포 검증이 아니다.
+
+운영 app/GraphHopper 로그의 크기 제한은 관찰 시점에 없었다. 이후 [EXT-HOSTING 준비](../progress/EXT-HOSTING.md#docker-로그-크기-제한-준비--2026-10-02)에서 Workout Compose의 8개 서비스에 `json-file` 10m × 5를 명시했지만, 운영 컨테이너 재생성·로그 회전·시간 기준 보존과 합성 요청 로그 검사는 **not_executed**다. 따라서 `FUT-07-4` 전체 판정은 그대로 **not_executed**다.
