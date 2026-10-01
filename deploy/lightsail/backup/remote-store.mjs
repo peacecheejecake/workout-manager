@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateSnapshotContract } from './docker-archive-transport.mjs';
+import { assertFinalizedBundle } from './collect.mjs';
 
 const MAX_FILE_BYTES = 4 * 1024 ** 3;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
@@ -178,6 +179,11 @@ function manifestCheck(manifest) {
 function bundleFiles(bundle, synthetic, expectedBundleId = basename(bundle)) {
   secureDir(bundle, synthetic);
   if (!/^backup-[a-zA-Z0-9-]+$/.test(expectedBundleId)) reject();
+  try {
+    assertFinalizedBundle(bundle, expectedBundleId);
+  } catch {
+    reject();
+  }
   const manifestPath = join(bundle, 'manifest.json');
   secureFile(manifestPath, synthetic);
   const manifest = manifestCheck(JSON.parse(readFileSync(manifestPath, 'utf8')));
@@ -185,6 +191,7 @@ function bundleFiles(bundle, synthetic, expectedBundleId = basename(bundle)) {
     { path: 'manifest.json', ...digest(manifestPath) },
     { path: 'database.dump', ...manifest.database },
     ...manifest.privateFiles.map((entry) => ({ ...entry, path: `private/${entry.path}` })),
+    { path: 'finalization.json', ...digest(join(bundle, 'finalization.json')) },
   ];
   const expected = new Set();
   for (const file of files) {
@@ -284,7 +291,8 @@ function completionCheck(completion, config, bundleId, files, manifest) {
   });
   if (
     completion.files[0]?.path !== 'manifest.json' ||
-    completion.files[1]?.path !== 'database.dump'
+    completion.files[1]?.path !== 'database.dump' ||
+    completion.files.at(-1)?.path !== 'finalization.json'
   )
     reject();
 }

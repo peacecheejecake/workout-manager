@@ -45,6 +45,7 @@ import { syncBuiltinESMExports } from 'node:module';
 const open = fs.openSync;
 const sync = fs.fsyncSync;
 const rename = fs.renameSync;
+const link = fs.linkSync;
 const append = fs.appendFileSync;
 const paths = new Map();
 let failed = false;
@@ -65,6 +66,10 @@ fs.fsyncSync = (fd) => {
 fs.renameSync = (...args) => {
   append(process.env.WM_SYNC_PROBE_LOG, 'rename:' + args[0] + '\\n');
   return rename(...args);
+};
+fs.linkSync = (...args) => {
+  append(process.env.WM_SYNC_PROBE_LOG, 'link:' + args[1] + '\\n');
+  return link(...args);
 };
 syncBuiltinESMExports();
 `;
@@ -129,6 +134,13 @@ test('collects a fenced synthetic PostgreSQL-command and private bundle; rejects
     assert.equal(collected.status, 0, collected.stderr);
     assert.match(collected.stdout, /^BACKUP_PUBLISHED backup-/);
     const bundle = join(output, readdirSync(output)[0]);
+    const markerPath = join(bundle, 'finalization.json');
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+    assert.deepEqual(marker, {
+      schemaVersion: 1,
+      bundleId: readdirSync(output)[0],
+      manifestSha256: hash(join(bundle, 'manifest.json')).sha256,
+    });
     assert.equal(statSync(bundle).mode & 0o777, 0o700);
     assert.equal(statSync(join(bundle, 'database.dump')).mode & 0o777, 0o600);
     assert.equal(statSync(join(bundle, 'manifest.json')).mode & 0o777, 0o600);
@@ -147,11 +159,26 @@ test('collects a fenced synthetic PostgreSQL-command and private bundle; rejects
     );
     assert.ok(synced.events.slice(0, renameIndex).some((event) => event.endsWith('/private/v1')));
     assert.equal(synced.events[renameIndex + 1], `sync:${output}`);
+    const markerSync = synced.events.findIndex(
+      (event) => event.includes('finalization.json.') && event.startsWith('sync:'),
+    );
+    const markerLink = synced.events.findIndex(
+      (event) => event.startsWith('link:') && event.endsWith('/finalization.json'),
+    );
+    assert.ok(markerSync > renameIndex);
+    assert.ok(markerLink > markerSync);
+    assert.ok(
+      synced.events
+        .slice(markerLink + 1)
+        .includes(
+          `sync:${synced.events[markerLink].slice('link:'.length, -'/finalization.json'.length)}`,
+        ),
+    );
     const beforeSyncFailure = readdirSync(output).length;
     const failedSync = instrumentedInvoke(collectArgs, bin, root, output, true);
     assert.notEqual(failedSync.result.status, 0);
     assert.doesNotMatch(failedSync.result.stdout, /BACKUP_PUBLISHED/);
-    assert.equal(readdirSync(output).length, beforeSyncFailure);
+    assert.equal(readdirSync(output).length, beforeSyncFailure + 1);
     assert.equal(failedSync.events.filter((event) => event === `sync:${output}`).length, 2);
     const verifyArgs = ['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger];
     assert.match(invoke(verifyArgs, bin).stderr, /BACKUP_LEDGER_REQUIRED/);
@@ -375,7 +402,7 @@ test('v2 binds an independently supplied snapshot and LSN but stays inactive for
     writeFileSync(manifestPath, JSON.stringify(manifest));
     assert.match(
       invoke(['verify', '--bundle', bundle, '--post-backup-ledger-dir', ledger], bin).stderr,
-      /BACKUP_INVALID_MANIFEST/,
+      /BACKUP_FINALIZATION_MISMATCH/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

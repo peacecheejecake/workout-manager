@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,6 +19,7 @@ import {
   buildBaselineAnchorFromRemote,
 } from './baseline-anchor-remote.mjs';
 import { verifyBaselineAnchorCandidate } from './baseline-anchor.mjs';
+import { finalizePersistentBundle } from './collect.mjs';
 import { downloadBundle, uploadBundle } from './remote-store.mjs';
 
 const config = {
@@ -62,6 +73,26 @@ function fixture() {
   };
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest)}\n`);
   writeFileSync(join(bundle, 'manifest.json'), manifestBytes, { mode: 0o600 });
+  const receiptPath = join(root, '.persistent-slot-workout_slot.json');
+  const receipt = {
+    schemaVersion: 1,
+    syntheticOnly: true,
+    restoreAccessAllowed: false,
+    slotCreationProven: true,
+    state: 'retained-owner-cleanup-required',
+    bundleId: 'backup-fixture',
+    snapshot,
+  };
+  writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+  for (const path of [receiptPath, root]) {
+    const fd = openSync(path, 'r');
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  }
+  finalizePersistentBundle(bundle, receiptPath, receipt);
   const expectations = {
     config,
     manifest,
@@ -139,6 +170,11 @@ test('v2 upload and download results build the same incomplete, authenticated ca
   try {
     const uploaded = await uploadBundle({ bundle, config, client, synthetic: true });
     const candidate = buildBaselineAnchorFromRemote({ ...expectations, result: uploaded });
+    assert.equal(uploaded.completion.files.at(-1).path, 'finalization.json');
+    assert.deepEqual(
+      candidate.archives.privateFiles.map((file) => file.path),
+      ['private/fixture.bin'],
+    );
     assert.equal(candidate.complete, false);
     assert.equal(candidate.restoreAccessAllowed, false);
     assert.equal(candidate.remote.completionVersionId, uploaded.versionId);
@@ -306,6 +342,18 @@ test('bridge rejects mismatched or incomplete completion claims', async () => {
     });
     changed((value) => {
       value.result.completion.files[1].sha256 = 'b'.repeat(64);
+    });
+    changed((value) => {
+      value.result.completion.files.at(-1).sha256 = 'b'.repeat(64);
+    });
+    changed((value) => {
+      value.result.completion.files.at(-1).versionId = 'null';
+    });
+    changed((value) => {
+      value.result.completion.files.at(-1).path = 'private/finalization.json';
+    });
+    changed((value) => {
+      value.result.completion.files.pop();
     });
     changed((value) => {
       value.result.completion.files.push({

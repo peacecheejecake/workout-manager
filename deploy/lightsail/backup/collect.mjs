@@ -7,6 +7,7 @@ import {
   copyFileSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -21,11 +22,13 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { validateSnapshotContract } from './docker-archive-transport.mjs';
 
 const MAX_OUTPUT_BYTES = 4096;
 const MIN_HEADROOM_BYTES = 64 * 1024 * 1024;
 const ALLOWED_COMMANDS = new Set(['collect', 'verify']);
+const FINALIZATION_FILE = 'finalization.json';
 
 function fail(code) {
   throw new Error(code);
@@ -343,6 +346,100 @@ function syncOwnership(path, value, exclusive = false) {
   }
 }
 
+export function assertFinalizedBundle(bundle, expectedBundleId = basename(bundle)) {
+  assertNoSymlinkParents(bundle);
+  assertSecureDir(bundle);
+  const bundleId = expectedBundleId;
+  if (!/^backup-[a-zA-Z0-9-]+$/.test(bundleId)) fail('BACKUP_INVALID_BUNDLE_ID');
+  const markerPath = join(bundle, FINALIZATION_FILE);
+  assertNoSymlinkParents(markerPath);
+  assertSecureFile(markerPath, 0o600);
+  const markerInfo = lstatSync(markerPath);
+  if (markerInfo.nlink !== 1 || markerInfo.size < 1 || markerInfo.size > 1024)
+    fail('BACKUP_INVALID_FINALIZATION');
+  let marker;
+  let markerBytes;
+  try {
+    markerBytes = readFileSync(markerPath, 'utf8');
+    marker = JSON.parse(markerBytes);
+  } catch {
+    fail('BACKUP_INVALID_FINALIZATION');
+  }
+  if (
+    !marker ||
+    Object.keys(marker).sort().join(',') !== 'bundleId,manifestSha256,schemaVersion' ||
+    marker.schemaVersion !== 1 ||
+    marker.bundleId !== bundleId ||
+    !/^[a-f0-9]{64}$/.test(marker.manifestSha256) ||
+    markerBytes !== `${JSON.stringify(marker)}\n`
+  )
+    fail('BACKUP_INVALID_FINALIZATION');
+  const manifestPath = join(bundle, 'manifest.json');
+  assertSecureFile(manifestPath, 0o600);
+  if (digest(manifestPath).sha256 !== marker.manifestSha256) fail('BACKUP_FINALIZATION_MISMATCH');
+  return marker;
+}
+
+export function finalizeBundle(bundle, { requireRootOwned = false } = {}) {
+  assertNoSymlinkParents(bundle);
+  assertSecureDir(bundle);
+  const bundleId = basename(bundle);
+  if (!/^backup-[a-zA-Z0-9-]+$/.test(bundleId)) fail('BACKUP_INVALID_BUNDLE_ID');
+  const manifestPath = join(bundle, 'manifest.json');
+  assertSecureFile(manifestPath, 0o600);
+  if (requireRootOwned && (lstatSync(bundle).uid !== 0 || lstatSync(manifestPath).uid !== 0))
+    fail('BACKUP_ROOT_OWNER_REQUIRED');
+  const markerPath = join(bundle, FINALIZATION_FILE);
+  if (existsSync(markerPath)) fail('BACKUP_ALREADY_FINALIZED');
+  const marker = {
+    schemaVersion: 1,
+    bundleId,
+    manifestSha256: digest(manifestPath).sha256,
+  };
+  const temporary = join(bundle, `.${FINALIZATION_FILE}.${randomUUID()}.partial`);
+  let published = false;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(marker)}\n`, { mode: 0o600, flag: 'wx' });
+    syncFile(temporary);
+    // A hard-link publish is atomic and refuses to replace a concurrent marker.
+    linkSync(temporary, markerPath);
+    published = true;
+    rmSync(temporary);
+    syncFile(bundle);
+  } catch (error) {
+    if (published) {
+      rmSync(markerPath, { force: true });
+      syncFile(bundle);
+    }
+    throw error;
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+  assertFinalizedBundle(bundle);
+}
+
+export function finalizePersistentBundle(bundle, ownershipPath, expectedReceipt) {
+  assertNoSymlinkParents(ownershipPath);
+  assertSecureFile(ownershipPath, 0o600);
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(ownershipPath, 'utf8'));
+  } catch {
+    fail('BACKUP_PERSISTENT_RECEIPT_INVALID');
+  }
+  if (
+    receipt?.schemaVersion !== 1 ||
+    receipt.syntheticOnly !== true ||
+    receipt.restoreAccessAllowed !== false ||
+    receipt.slotCreationProven !== true ||
+    receipt.state !== 'retained-owner-cleanup-required' ||
+    receipt.bundleId !== basename(bundle) ||
+    JSON.stringify(receipt) !== JSON.stringify(expectedReceipt)
+  )
+    fail('BACKUP_PERSISTENT_RECEIPT_INVALID');
+  finalizeBundle(bundle);
+}
+
 async function collect(options) {
   const persistentProof = persistentSlotProof(options);
   const localProof = localSlotProof(options);
@@ -387,6 +484,7 @@ async function collect(options) {
   const published = join(outputDir, id);
   mkdirSync(staging, { mode: 0o700 });
   let renamed = false;
+  let finalized = false;
   let ownershipPath;
   let ownership;
   let ownsReservation = false;
@@ -547,6 +645,10 @@ async function collect(options) {
       });
       ownership = { ...ownership, state: 'retained-owner-cleanup-required', snapshot };
       syncOwnership(ownershipPath, ownership);
+      // The retained slot receipt is durable before the synthetic v2 proof is finalized.
+      assertFence();
+      finalizePersistentBundle(published, ownershipPath, ownership);
+      finalized = true;
     } else if (localProof) {
       // Keep the operational v1 collector free of the disposable proof's pg dependency.
       const { withLocalExportedSlotSnapshot } = await import('./slot-snapshot.mjs');
@@ -643,16 +745,22 @@ async function collect(options) {
       );
     }
     if (!persistentProof) publish();
+    if (!persistentProof && options['--synthetic-test'] === 'yes') {
+      // Disposable local proof only; operational collection is finalized by backup-window.
+      assertFence();
+      finalizeBundle(published);
+      finalized = true;
+    }
     process.stdout.write(`BACKUP_PUBLISHED ${basename(published)}\n`);
   } catch (error) {
-    if (ownsReservation) {
+    if (ownsReservation && !finalized) {
       try {
         syncOwnership(ownershipPath, { ...ownership, state: 'failed-investigation-required' });
       } catch {
         // The durable reservation still requires investigation; never infer slot absence.
       }
     }
-    rmSync(renamed ? published : staging, { recursive: true, force: true });
+    if (!renamed) rmSync(staging, { recursive: true, force: true });
     syncFile(outputDir);
     throw error;
   }
@@ -667,6 +775,7 @@ function verify(options) {
   assertSecureDir(bundle);
   assertSecureDir(ledger);
   assertRootOwned([bundle, ledger], options);
+  assertFinalizedBundle(bundle);
   const manifestPath = join(bundle, 'manifest.json');
   assertSecureFile(manifestPath, 0o600);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
@@ -755,16 +864,17 @@ function verify(options) {
   process.stdout.write('BACKUP_BYTES_VERIFIED_LEDGER_PRESENT_REPLAY_NOT_VERIFIED\n');
 }
 
-try {
-  process.umask(0o077);
-  const { command, options } = parseArgs(process.argv.slice(2));
-  if (command === 'collect') await collect(options);
-  else verify(options);
-} catch (error) {
-  const code =
-    error instanceof Error && /^BACKUP_[A-Z0-9_]+$/.test(error.message)
-      ? error.message
-      : 'BACKUP_FAILED';
-  process.stderr.write(`${code}\n`);
-  process.exitCode = 1;
-}
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
+  try {
+    process.umask(0o077);
+    const { command, options } = parseArgs(process.argv.slice(2));
+    if (command === 'collect') await collect(options);
+    else verify(options);
+  } catch (error) {
+    const code =
+      error instanceof Error && /^BACKUP_[A-Z0-9_]+$/.test(error.message)
+        ? error.message
+        : 'BACKUP_FAILED';
+    process.stderr.write(`${code}\n`);
+    process.exitCode = 1;
+  }

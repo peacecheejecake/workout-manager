@@ -1,12 +1,54 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertSyntheticPersistentTarget } from './synthetic-persistent-guard.mjs';
+import { finalizePersistentBundle } from './collect.mjs';
 
 const collector = new URL('./collect.mjs', import.meta.url).pathname;
+
+test('persistent finalization waits for the exact durable retained ownership receipt', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-persistent-receipt-')));
+  const bundle = join(root, 'backup-fixture');
+  const receiptPath = join(root, '.persistent-slot-fixture.json');
+  const retained = {
+    schemaVersion: 1,
+    syntheticOnly: true,
+    restoreAccessAllowed: false,
+    slotCreationProven: true,
+    state: 'retained-owner-cleanup-required',
+    bundleId: 'backup-fixture',
+    snapshot: { consistentPointLsn: '0/16B6C50' },
+  };
+  try {
+    mkdirSync(bundle, { mode: 0o700 });
+    writeFileSync(join(bundle, 'manifest.json'), '{}\n', { mode: 0o600 });
+    assert.throws(() => finalizePersistentBundle(bundle, receiptPath, retained));
+    assert.equal(existsSync(join(bundle, 'finalization.json')), false);
+    writeFileSync(
+      receiptPath,
+      `${JSON.stringify({ ...retained, state: 'reserved-investigate-before-retry' })}\n`,
+      { mode: 0o600 },
+    );
+    assert.throws(() => finalizePersistentBundle(bundle, receiptPath, retained));
+    assert.equal(existsSync(join(bundle, 'finalization.json')), false);
+    writeFileSync(receiptPath, `${JSON.stringify(retained)}\n`, { mode: 0o600 });
+    finalizePersistentBundle(bundle, receiptPath, retained);
+    assert.equal(existsSync(join(bundle, 'finalization.json')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('persistent synthetic capture rejects incomplete or mixed opt-ins before touching the database', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'wm-persistent-guard-')));

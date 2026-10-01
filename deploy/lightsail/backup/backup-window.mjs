@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkConfig, checkLocks, checkTimers, loadFenceConfig } from './check-fence.mjs';
+import { finalizeBundle } from './collect.mjs';
 
 const LOCK_DIRECTORY = '/run/lock/workout-manager';
 const LOCKS = [join(LOCK_DIRECTORY, 'backup.lock'), join(LOCK_DIRECTORY, 'maintenance.lock')];
@@ -205,7 +206,13 @@ function checkFence(run, path) {
   command(run, path, []);
 }
 
-export function runWindow({ config, paths, run = runner }) {
+export function runWindow({
+  config,
+  paths,
+  run = runner,
+  finalize = finalizeBundle,
+  listBundles = readdirSync,
+}) {
   checkConfig(config);
   if (
     !paths ||
@@ -223,6 +230,7 @@ export function runWindow({ config, paths, run = runner }) {
   const attempted = new Set();
   let captureError;
   let restoreError;
+  let publishedId;
   try {
     for (const service of ['graphhopper', 'app']) {
       if (!initial[service].running || initial[service].policy.Name === 'no') continue;
@@ -250,7 +258,8 @@ export function runWindow({ config, paths, run = runner }) {
         initial[service].running ? NO_RESTART : initial[service].policy,
         false,
       );
-    command(
+    const existingBundles = new Set(listBundles(paths.outputDir));
+    const output = command(
       run,
       process.execPath,
       [
@@ -267,6 +276,11 @@ export function runWindow({ config, paths, run = runner }) {
       ],
       BACKUP_TIMEOUT_MS,
     );
+    const published = /^BACKUP_PUBLISHED (backup-[a-zA-Z0-9-]+)\n$/.exec(output);
+    if (!published) reject();
+    publishedId = published[1];
+    if (existingBundles.has(publishedId) || !listBundles(paths.outputDir).includes(publishedId))
+      reject();
     checkFence(run, paths.fence);
     for (const service of ['app', 'graphhopper'])
       expectPinned(
@@ -309,6 +323,12 @@ export function runWindow({ config, paths, run = runner }) {
     }
   }
   if (captureError || restoreError) reject();
+  if (!publishedId) reject();
+  validateServices(run, config);
+  for (const service of ['app', 'graphhopper'])
+    expectPinned(run, config, service, initial[service].policy, initial[service].running);
+  const bundle = join(paths.outputDir, publishedId);
+  finalize(bundle, { requireRootOwned: true });
   return true;
 }
 

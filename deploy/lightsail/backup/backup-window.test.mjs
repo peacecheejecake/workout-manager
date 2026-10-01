@@ -47,7 +47,11 @@ function fixture() {
     replaceAfter: undefined,
     externalPolicyAfter: undefined,
     failFence: false,
+    failFenceAt: undefined,
+    fenceCount: 0,
     failCollector: false,
+    collectorOutput: 'BACKUP_PUBLISHED backup-fixture\n',
+    bundles: ['backup-existing'],
     failInspect: false,
     actions: [],
   };
@@ -139,18 +143,33 @@ function runnerFor(state) {
     }
     if (program === paths.fence) {
       record('fence');
-      return { status: state.failFence ? 1 : 0, stdout: '' };
+      state.fenceCount += 1;
+      return {
+        status: state.failFence || state.fenceCount === state.failFenceAt ? 1 : 0,
+        stdout: '',
+      };
     }
     if (args[0] === paths.collector && args[1] === 'collect') {
       record('collector');
-      return { status: state.failCollector ? 1 : 0, stdout: '' };
+      const match = /^BACKUP_PUBLISHED (backup-[a-zA-Z0-9-]+)\n$/.exec(state.collectorOutput);
+      if (!state.failCollector && match && !state.bundles.includes(match[1]))
+        state.bundles.push(match[1]);
+      return { status: state.failCollector ? 1 : 0, stdout: state.collectorOutput };
     }
     throw new Error(`Unexpected command ${program} ${args.join(' ')}`);
   };
 }
 
 function execute(state, chosenConfig = config) {
-  return runWindow({ config: chosenConfig, paths, run: runnerFor(state) });
+  return runWindow({
+    config: chosenConfig,
+    paths,
+    run: runnerFor(state),
+    finalize: (bundle) => {
+      state.finalized = bundle;
+    },
+    listBundles: () => [...state.bundles],
+  });
 }
 
 test('stops only pinned Workout services, collects, and restores in network-safe order', () => {
@@ -172,6 +191,45 @@ test('stops only pinned Workout services, collects, and restores in network-safe
   assert.deepEqual(state.running, { app: true, graphhopper: true, postgres: true });
   assert.equal(state.policy.app.Name, 'unless-stopped');
   assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+  assert.equal(state.finalized, '/srv/workout-manager/backups/backup-fixture');
+});
+
+test('wrong or duplicate collector output leaves only the new bundle pending', () => {
+  for (const collectorOutput of [
+    '',
+    'BACKUP_PUBLISHED backup-one\nBACKUP_PUBLISHED backup-two\n',
+    'BACKUP_PUBLISHED ../backup-other\n',
+    'BACKUP_PUBLISHED backup-one\nextra\n',
+  ]) {
+    const state = fixture();
+    state.collectorOutput = collectorOutput;
+    assert.throws(() => execute(state));
+    assert.equal(state.finalized, undefined);
+    assert.equal(state.running.app, true);
+    assert.deepEqual(state.bundles, ['backup-existing']);
+  }
+  const previous = fixture();
+  previous.collectorOutput = 'BACKUP_PUBLISHED backup-existing\n';
+  assert.throws(() => execute(previous));
+  assert.equal(previous.finalized, undefined);
+  assert.deepEqual(previous.bundles, ['backup-existing']);
+});
+
+test('final fence and restored-service checks must pass before finalization', () => {
+  const failedFence = fixture();
+  failedFence.failFenceAt = 2;
+  assert.throws(() => execute(failedFence));
+  assert.equal(failedFence.finalized, undefined);
+
+  const replaced = fixture();
+  replaced.replaceAfter = 'update:graphhopper:on-failure:3';
+  assert.throws(() => execute(replaced));
+  assert.equal(replaced.finalized, undefined);
+
+  const policyChanged = fixture();
+  policyChanged.externalPolicyAfter = 'update:graphhopper:on-failure:3';
+  assert.throws(() => execute(policyChanged));
+  assert.equal(policyChanged.finalized, undefined);
 });
 
 test('leaves initially stopped services stopped', () => {

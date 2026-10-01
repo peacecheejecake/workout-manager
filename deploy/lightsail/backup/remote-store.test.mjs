@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AwsCliClient, downloadBundle, uploadBundle } from './remote-store.mjs';
+import { finalizeBundle } from './collect.mjs';
 
 const config = {
   schemaVersion: 1,
@@ -92,6 +93,7 @@ function fixture(schemaVersion = 1) {
     }),
     { mode: 0o600 },
   );
+  finalizeBundle(bundle);
   return { root, bundle };
 }
 
@@ -163,7 +165,7 @@ test('publishes completion last, verifies exact bytes, downloads, and retries id
     assert.equal(JSON.parse(client.find(completionKey).data).ledgerCompleteness, 'not_verified');
     const second = await uploadBundle({ bundle, config, client, synthetic: true });
     assert.equal(second.alreadyComplete, true);
-    assert.equal(client.next, 4);
+    assert.equal(client.next, 5);
     const destination = join(root, 'downloaded');
     const downloaded = await downloadBundle({
       bundleId: 'backup-fixture',
@@ -176,6 +178,64 @@ test('publishes completion last, verifies exact bytes, downloads, and retries id
     assert.deepEqual(
       readFileSync(join(destination, 'database.dump')),
       readFileSync(join(bundle, 'database.dump')),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('pending, malformed, or mismatched local marker cannot upload or reupload', async () => {
+  const { root, bundle } = fixture();
+  const client = new FakeS3();
+  const markerPath = join(bundle, 'finalization.json');
+  const original = readFileSync(markerPath);
+  try {
+    rmSync(markerPath);
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    assert.equal(client.objects.size, 0);
+    writeFileSync(markerPath, '{"schemaVersion":1}\n', { mode: 0o600 });
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    writeFileSync(markerPath, original);
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    writeFileSync(markerPath, original.toString().replace('backup-fixture', 'backup-other'));
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+    writeFileSync(markerPath, original);
+    writeFileSync(join(bundle, 'manifest.json'), '{}', { mode: 0o600 });
+    await assert.rejects(uploadBundle({ bundle, config, client, synthetic: true }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('remote marker is versioned and required for download', async () => {
+  const { root, bundle } = fixture();
+  const client = new FakeS3();
+  const completionKey = `${config.prefix}/backup-fixture/completion.json`;
+  try {
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    const completion = JSON.parse(client.find(completionKey).data);
+    assert.equal(completion.files.at(-1).path, 'finalization.json');
+    client.find(`${config.prefix}/backup-fixture/files/finalization.json`).data = Buffer.from('{}');
+    await assert.rejects(
+      downloadBundle({
+        bundleId: 'backup-fixture',
+        destination: join(root, 'downloaded'),
+        config,
+        client,
+        synthetic: true,
+      }),
+    );
+    assert.equal(existsSync(join(root, 'downloaded')), false);
+    completion.files.pop();
+    client.find(completionKey).data = Buffer.from(JSON.stringify(completion));
+    await assert.rejects(
+      downloadBundle({
+        bundleId: 'backup-fixture',
+        destination: join(root, 'downloaded'),
+        config,
+        client,
+        synthetic: true,
+      }),
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -196,7 +256,7 @@ test('v2 stores exact snapshot and versioned files with explicit no-restore mark
     assert.equal(remote.restoreAccessAllowed, false);
     assert.deepEqual(
       remote.files.map(({ path }) => path),
-      ['manifest.json', 'database.dump', 'private/fixture.bin'],
+      ['manifest.json', 'database.dump', 'private/fixture.bin', 'finalization.json'],
     );
     for (const file of remote.files) {
       assert.equal(

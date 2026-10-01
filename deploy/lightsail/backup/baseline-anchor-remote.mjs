@@ -159,6 +159,18 @@ export function buildBaselineAnchorFromRemote(options) {
   if (typeof result.bundleId !== 'string' || !/^backup-[A-Za-z0-9-]{1,120}$/.test(result.bundleId))
     fail();
   version(result.versionId);
+  const finalizationBytes = Buffer.from(
+    `${JSON.stringify({
+      schemaVersion: 1,
+      bundleId: result.bundleId,
+      manifestSha256: manifestFile.sha256,
+    })}\n`,
+  );
+  expectedFiles.push({
+    path: 'finalization.json',
+    sha256: createHash('sha256').update(finalizationBytes).digest('hex'),
+    bytes: finalizationBytes.length,
+  });
   const completion = exact(result.completion, [
     'schemaVersion',
     'bucket',
@@ -197,7 +209,7 @@ export function buildBaselineAnchorFromRemote(options) {
     const archive = { path: file.path, sha256: file.sha256, versionId: file.versionId };
     if (index === 0) archives.manifest = archive;
     else if (index === 1) archives.database = archive;
-    else archives.privateFiles.push(archive);
+    else if (index < expectedFiles.length - 1) archives.privateFiles.push(archive);
   }
   return buildBaselineAnchorCandidate({
     backupId: result.bundleId,
