@@ -4,7 +4,10 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { buildBaselineAnchorFromRemote } from './baseline-anchor-remote.mjs';
+import {
+  buildBaselineAnchorFromDownloaded,
+  buildBaselineAnchorFromRemote,
+} from './baseline-anchor-remote.mjs';
 import { verifyBaselineAnchorCandidate } from './baseline-anchor.mjs';
 import { downloadBundle, uploadBundle } from './remote-store.mjs';
 
@@ -162,10 +165,92 @@ test('v2 upload and download results build the same incomplete, authenticated ca
       client,
       synthetic: true,
     });
+    assert.equal(typeof downloaded.manifestBytesBase64, 'string');
     assert.deepEqual(
-      buildBaselineAnchorFromRemote({ ...expectations, result: downloaded }),
+      Buffer.from(downloaded.manifestBytesBase64, 'base64'),
+      expectations.manifestBytes,
+    );
+    assert.deepEqual(
+      buildBaselineAnchorFromDownloaded({
+        result: downloaded,
+        config,
+        expectedSnapshot: snapshot,
+        coverage: expectations.coverage,
+        expectedOwners: expectations.expectedOwners,
+        expectedDomainSchemaFingerprint: fingerprint,
+        expectedPublication: snapshot.publication,
+        coverageHmacKey: expectations.coverageHmacKey,
+        anchorHmacKey: expectations.anchorHmacKey,
+      }),
       candidate,
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('downloaded bridge rejects swapped bytes, versions, and independent expectations', async () => {
+  const { root, bundle, expectations } = fixture();
+  const client = new FakeS3();
+  try {
+    await uploadBundle({ bundle, config, client, synthetic: true });
+    const result = await downloadBundle({
+      bundleId: 'backup-fixture',
+      destination: join(root, 'downloaded'),
+      config,
+      client,
+      synthetic: true,
+    });
+    const input = {
+      result,
+      config,
+      expectedSnapshot: snapshot,
+      coverage: expectations.coverage,
+      expectedOwners: expectations.expectedOwners,
+      expectedDomainSchemaFingerprint: fingerprint,
+      expectedPublication: snapshot.publication,
+      coverageHmacKey: expectations.coverageHmacKey,
+      anchorHmacKey: expectations.anchorHmacKey,
+    };
+    const changed = (mutate) => {
+      const copy = {
+        ...structuredClone(input),
+        coverageHmacKey: input.coverageHmacKey,
+        anchorHmacKey: input.anchorHmacKey,
+      };
+      mutate(copy);
+      assert.throws(
+        () => buildBaselineAnchorFromDownloaded(copy),
+        /BASELINE_ANCHOR_REMOTE_UNVERIFIED|BASELINE_ANCHOR_CANDIDATE_UNVERIFIED/,
+      );
+    };
+    changed((value) => {
+      value.result.manifestBytesBase64 = Buffer.from('swapped manifest').toString('base64');
+    });
+    changed((value) => {
+      value.result.manifestBytesBase64 = `${value.result.manifestBytesBase64.slice(0, -2)}??`;
+    });
+    changed((value) => {
+      value.result.completion.files[0].versionId = 'swapped-version';
+    });
+    changed((value) => {
+      value.result.versionId = '';
+    });
+    changed((value) => {
+      value.expectedSnapshot = { ...snapshot, consistentPointLsn: '0/16B6C51' };
+    });
+    changed((value) => {
+      value.expectedOwners = ['another-owner'];
+    });
+    changed((value) => {
+      value.expectedDomainSchemaFingerprint = 'b'.repeat(64);
+    });
+    changed((value) => {
+      value.expectedPublication = 'other_publication';
+    });
+    changed((value) => {
+      value.anchorHmacKey = value.coverageHmacKey;
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

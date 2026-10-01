@@ -23,6 +23,7 @@ import { pathToFileURL } from 'node:url';
 import { validateSnapshotContract } from './docker-archive-transport.mjs';
 
 const MAX_FILE_BYTES = 4 * 1024 ** 3;
+const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_RESULT_BYTES = 16 * 1024;
 const TEMP_ROOT = realpathSync(tmpdir());
 
@@ -422,11 +423,30 @@ export async function downloadBundle({ bundleId, destination, config, client, sy
     await verifyRemoteFiles(client, config, bundleId, completed.completion.files, staging);
     const { files, manifest } = bundleFiles(staging, synthetic, bundleId);
     completionCheck(completed.completion, config, bundleId, files, manifest);
+    let manifestBytesBase64;
+    if (manifest.schemaVersion === 2) {
+      const manifestPath = join(staging, 'manifest.json');
+      secureFile(manifestPath, synthetic);
+      const size = lstatSync(manifestPath).size;
+      if (size < 1 || size > MAX_MANIFEST_BYTES) reject();
+      const manifestBytes = readFileSync(manifestPath);
+      exactDigest(completed.completion.files[0], {
+        sha256: createHash('sha256').update(manifestBytes).digest('hex'),
+        bytes: manifestBytes.length,
+      });
+      manifestBytesBase64 = manifestBytes.toString('base64');
+    }
     renameSync(staging, destination);
     return {
       bundleId,
       versionId: completed.versionId,
-      ...(manifest.schemaVersion === 2 ? { completion: completed.completion } : {}),
+      ...(manifest.schemaVersion === 2
+        ? {
+            completion: completed.completion,
+            manifestBytesBase64,
+            verifiedManifestVersionId: completed.completion.files[0].versionId,
+          }
+        : {}),
     };
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });

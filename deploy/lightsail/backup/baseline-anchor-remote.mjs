@@ -218,3 +218,49 @@ export function buildBaselineAnchorFromRemote(options) {
     anchorHmacKey,
   });
 }
+
+/** Use only the manifest bytes returned by the exact-version v2 download. */
+export function buildBaselineAnchorFromDownloaded(options) {
+  exact(options, [
+    'result',
+    'config',
+    'expectedSnapshot',
+    'coverage',
+    'expectedOwners',
+    'expectedDomainSchemaFingerprint',
+    'expectedPublication',
+    'coverageHmacKey',
+    'anchorHmacKey',
+  ]);
+  const downloaded = exact(options.result, [
+    'bundleId',
+    'versionId',
+    'completion',
+    'manifestBytesBase64',
+    'verifiedManifestVersionId',
+  ]);
+  if (downloaded.verifiedManifestVersionId !== downloaded.completion?.files?.[0]?.versionId) fail();
+  const encoded = downloaded.manifestBytesBase64;
+  if (
+    typeof encoded !== 'string' ||
+    encoded.length === 0 ||
+    encoded.length > Math.ceil(MAX_MANIFEST_BYTES / 3) * 4 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)
+  )
+    fail();
+  const manifestBytes = Buffer.from(encoded, 'base64');
+  if (manifestBytes.length === 0 || manifestBytes.length > MAX_MANIFEST_BYTES) fail();
+  if (manifestBytes.toString('base64') !== encoded) fail();
+  let manifest;
+  try {
+    manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes));
+  } catch {
+    fail();
+  }
+  const result = {
+    bundleId: downloaded.bundleId,
+    versionId: downloaded.versionId,
+    completion: downloaded.completion,
+  };
+  return buildBaselineAnchorFromRemote({ ...options, result, manifest, manifestBytes });
+}

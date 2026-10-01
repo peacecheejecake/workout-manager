@@ -133,13 +133,14 @@ test('publishes completion last, verifies exact bytes, downloads, and retries id
     assert.equal(second.alreadyComplete, true);
     assert.equal(client.next, 4);
     const destination = join(root, 'downloaded');
-    await downloadBundle({
+    const downloaded = await downloadBundle({
       bundleId: 'backup-fixture',
       destination,
       config,
       client,
       synthetic: true,
     });
+    assert.deepEqual(downloaded, { bundleId: 'backup-fixture', versionId: first.versionId });
     assert.deepEqual(
       readFileSync(join(destination, 'database.dump')),
       readFileSync(join(bundle, 'database.dump')),
@@ -186,6 +187,12 @@ test('v2 stores exact snapshot and versioned files with explicit no-restore mark
       synthetic: true,
     });
     assert.deepEqual(downloaded.completion, remote);
+    assert.equal(downloaded.verifiedManifestVersionId, remote.files[0].versionId);
+    assert.equal(typeof downloaded.manifestBytesBase64, 'string');
+    assert.deepEqual(
+      Buffer.from(downloaded.manifestBytesBase64, 'base64'),
+      readFileSync(join(bundle, 'manifest.json')),
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
