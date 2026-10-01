@@ -23,6 +23,7 @@ db_created=0
 app_created=0
 net_created=0
 volume_created=0
+setup_started=0
 cleanup_failed=0
 
 fail() { return 1; }
@@ -44,21 +45,21 @@ archive_intact() {
 }
 cleanup_object() {
   local kind=$1 name=$2 expected=$3 label
-  label=$(docker_short "$kind" inspect -f '{{index .Labels "workout.rollback-rehearsal"}}' "$name" 2>/dev/null)
-  if [[ $label == "$expected" ]]; then
-    quiet docker_short "$kind" rm "$name" || cleanup_failed=1
-  elif [[ -n $label ]]; then
+  if ! label=$(docker_short "$kind" inspect -f '{{index .Labels "workout.rollback-rehearsal"}}' "$name" 2>/dev/null); then
     cleanup_failed=1
+    return
   fi
+  [[ $label == "$expected" ]] || { cleanup_failed=1; return; }
+  quiet docker_short "$kind" rm "$name" || cleanup_failed=1
 }
 cleanup_container() {
   local name=$1 expected=$2 label
-  label=$(docker_short container inspect -f '{{index .Config.Labels "workout.rollback-rehearsal"}}' "$name" 2>/dev/null)
-  if [[ $label == "$expected" ]]; then
-    quiet docker_short rm -f "$name" || cleanup_failed=1
-  elif [[ -n $label ]]; then
+  if ! label=$(docker_short container inspect -f '{{index .Config.Labels "workout.rollback-rehearsal"}}' "$name" 2>/dev/null); then
     cleanup_failed=1
+    return
   fi
+  [[ $label == "$expected" ]] || { cleanup_failed=1; return; }
+  quiet docker_short rm -f "$name" || cleanup_failed=1
 }
 cleanup() {
   local status=$?
@@ -68,7 +69,7 @@ cleanup() {
     quiet docker_short info || cleanup_failed=1
   fi
   if (( app_created )); then cleanup_container "$clone_app" "$run_id"; fi
-  if [[ -n $clone_setup ]]; then cleanup_container "$clone_setup" "$run_id"; fi
+  if (( setup_started )); then cleanup_container "$clone_setup" "$run_id"; fi
   if (( db_created )); then cleanup_container "$clone_db" "$run_id"; fi
   if (( net_created )); then cleanup_object network "$clone_net" "$run_id"; fi
   if (( volume_created )); then cleanup_object volume "$clone_volume" "$run_id"; fi
@@ -172,7 +173,8 @@ quiet docker_long exec -i -e "PGPASSWORD=$owner_password" "$clone_db" \
 archive_intact || fail
 
 phase=OLD_SETUP
-setup_result=$(docker_long run --rm --name "$clone_setup" --network "$clone_net" \
+setup_started=1
+setup_result=$(docker_long run --name "$clone_setup" --network "$clone_net" \
   --label "workout.rollback-rehearsal=$run_id" --env-file "$scratch/setup.env" "$app_image" \
   node --import tsx /app/deploy/lightsail/bootstrap-db.mjs) || fail
 [[ $setup_result == DATABASE_SETUP_COMPLETE ]] || fail

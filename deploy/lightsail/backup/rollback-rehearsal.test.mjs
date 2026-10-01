@@ -85,6 +85,10 @@ test('cleans all disposable resources and hides command diagnostics', () => {
     /cleanup_container "\$clone_app"[\s\S]*cleanup_container "\$clone_setup"[\s\S]*cleanup_container "\$clone_db"[\s\S]*cleanup_object network "\$clone_net"[\s\S]*cleanup_object volume "\$clone_volume"[\s\S]*rm -rf -- "\$scratch"/,
   );
   assert.match(script, /\$label == "\$expected"[\s\S]*docker_short rm -f "\$name"/);
+  assert.match(script, /if ! label=\$\(docker_short "\$kind" inspect[\s\S]*cleanup_failed=1/);
+  assert.match(script, /if ! label=\$\(docker_short container inspect[\s\S]*cleanup_failed=1/);
+  assert.match(script, /setup_started=1[\s\S]*docker_long run --name "\$clone_setup"/);
+  assert.doesNotMatch(script, /docker_long run --rm --name "\$clone_setup"/);
   assert.match(script, /--signal=TERM --kill-after=30s 35m/);
   assert.doesNotMatch(
     script,
