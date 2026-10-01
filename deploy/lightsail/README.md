@@ -114,6 +114,16 @@ recovery must account for that loss. Once a logical slot is created, reverting
 new snapshot/slot bootstrap. Do not treat Compose validation or the current
 host observations as proof of a working logical stream.
 
+The opt-in `backup/persistent-slot-snapshot.pg17.test.mjs` exercises the
+replication-protocol `EXPORT_SNAPSHOT` boundary against a disposable PostgreSQL
+17 database only. It requires a loopback URL for the exact database
+`workout_pg17_proof` and its `pg_database` comment
+`WM_DISPOSABLE_PG17_PROOF`; it refuses a target without these markers before
+writing. Run it only with a separate temporary cluster, then verify that its
+slot, publication, table, container, and connection tunnel are removed. This
+test does not activate the production Compose setting or prove a durable
+remote ledger, complete WAL tail, or restore.
+
 From the repository root on the server:
 
 ```sh
