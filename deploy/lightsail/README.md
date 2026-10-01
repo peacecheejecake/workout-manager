@@ -127,12 +127,13 @@ remote ledger, complete WAL tail, or restore.
 From the repository root on the server:
 
 ```sh
+WORKOUT_HOST_NODE=/srv/workout-manager/backup-runtime/20261001-9babcea-node24/node
 sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml config --quiet
-sudo /srv/workout-manager/admin/run-host-writer.mjs build
-sudo /srv/workout-manager/admin/run-host-writer.mjs up postgres
-sudo /srv/workout-manager/admin/run-host-writer.mjs setup
-sudo /srv/workout-manager/admin/run-host-writer.mjs up app
-sudo /srv/workout-manager/admin/run-host-writer.mjs up graphhopper
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/admin/run-host-writer.mjs build
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/admin/run-host-writer.mjs up postgres
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/admin/run-host-writer.mjs setup
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/admin/run-host-writer.mjs up app
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/admin/run-host-writer.mjs up graphhopper
 sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml ps
 ```
 
@@ -143,7 +144,9 @@ for replacement by the deployment user; file ownership checks do not protect
 against a writable ancestor directory. Keep
 `/srv/workout-manager/compose.env` root-owned mode 0600 and verify GNU `flock`
 and Docker at `/usr/bin/flock` and `/usr/bin/docker` on that host. Verify that
-the executable's `node` resolves to a supported Node 24 runtime. Install a
+`WORKOUT_HOST_NODE` is a root-owned executable of a supported Node 24 runtime;
+the shared host currently uses the versioned path shown above because its
+default `/usr/bin/node` is Node 22. Install a
 root-owned mode 0600 `/srv/workout-manager/admin/host-writer.json` from the
 reviewed release with the exact SHA-256 of its Compose file:
 
