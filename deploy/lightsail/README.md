@@ -634,13 +634,18 @@ The opt-in `backup/backup-window.mjs` host wrapper now takes both root-only
 already disabled or absent pair of Workout maintenance timers, the pinned
 config, root-owned mode 0700 installed checker/transport/collector/wrapper, and
 a root-owned mode 0700 `/srv/workout-manager/backups` directory. It checks the
-exact IDs, Compose labels, mounts, and health before touching containers. It
-stops only the pinned Workout `graphhopper` then `app` containers with
-`docker stop`; after the checker and collector complete, it starts only containers
-that it stopped, in `app` then `graphhopper` order. It does not call Compose
+exact IDs, Compose labels, mounts, health, and restart policy before touching
+containers. For initially running GraphHopper and app, it sets their exact
+container IDs to `restart=no`, verifies the policy, then stops them in
+`graphhopper` → `app` order. It rechecks their identities, policy, and stopped
+state before and after capture. Afterward it restores the original running
+state and restart policy in `app` → `graphhopper` order. An initially stopped
+service remains stopped. It does not call Compose
 `up`/`down`, create replacement containers, change Caddy, or touch `infra`.
-Failures before stopping leave the services alone. After a stop attempt it
-tries to restore that same pinned ID even if the stop command reported failure.
+If an update or stop reports failure after changing state, it still attempts
+to restore the pinned service. A changed ID or policy fails closed. If app
+recovery fails, GraphHopper remains stopped with `restart=no` for manual
+recovery rather than starting without its app network namespace.
 The app's health and public response after restart still require an operator
 check. Signal interruption (especially SIGKILL), host loss, or a replaced
 container can prevent automatic restoration and require controlled manual
