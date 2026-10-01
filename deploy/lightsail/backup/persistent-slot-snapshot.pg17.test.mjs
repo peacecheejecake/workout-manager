@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, isAbsolute, join } from 'node:path';
 import test from 'node:test';
 import pg from 'pg';
 import { withPersistentExportedSlotSnapshot } from './persistent-slot-snapshot.mjs';
@@ -8,6 +12,18 @@ const database = 'workout_pg17_proof';
 const disposableMarker = 'WM_DISPOSABLE_PG17_PROOF';
 const connectionString = process.env.WORKOUT_PERSISTENT_SLOT_PG17_URL;
 const completionMarker = 'c'.repeat(64);
+const pgDump = process.env.WORKOUT_PG17_DUMP_BIN ?? 'pg_dump';
+const pgRestore =
+  process.env.WORKOUT_PG17_RESTORE_BIN ??
+  (isAbsolute(pgDump) ? join(dirname(pgDump), 'pg_restore') : 'pg_restore');
+
+function runProgram(program, args) {
+  const result = spawnSync(program, args, { encoding: 'utf8', timeout: 30_000 });
+  if (result.error || result.status !== 0) {
+    throw new Error(`PG17_PROOF_DUMP_FAILED: ${result.error?.message ?? result.stderr}`);
+  }
+  return result.stdout;
+}
 
 function checkedConnectionString(value) {
   let url;
@@ -47,6 +63,8 @@ test(
     const url = checkedConnectionString(connectionString);
     let sql = await connect(url);
     let imported;
+    const archiveDir = mkdtempSync(join(tmpdir(), 'wm-pg17-archive-'));
+    const archive = join(archiveDir, 'database.dump');
     const suffix = randomBytes(8).toString('hex');
     const table = `pg17_snapshot_probe_${suffix}`;
     const publication = `pg17_snapshot_pub_${suffix}`;
@@ -69,6 +87,8 @@ test(
       assert.equal(target.disposable_marker, disposableMarker, 'PG17_PROOF_UNSAFE_TARGET');
       assert.equal(Math.floor(target.version / 10_000), 17, 'PG17_PROOF_WRONG_VERSION');
       assert.equal(target.wal_level, 'logical');
+      assert.match(runProgram(pgDump, ['--version']), /pg_dump \(PostgreSQL\) 17\./);
+      assert.match(runProgram(pgRestore, ['--version']), /pg_restore \(PostgreSQL\) 17\./);
 
       await sql.query(`CREATE TABLE public.${table} (id integer PRIMARY KEY, label text NOT NULL)`);
       tableCreated = true;
@@ -83,6 +103,8 @@ test(
         expectedDatabase: database,
         expectedSystemIdentifier: target.system_id,
         slotName: slot,
+        expectedPublication: publication,
+        expectedPublicationTables: [`public.${table}`],
         expectedCompletionMarker: completionMarker,
         capture: async (snapshot) => {
           const writer = await connect(url);
@@ -96,6 +118,25 @@ test(
           } finally {
             await writer.end();
           }
+
+          runProgram(pgDump, [
+            '--format=custom',
+            '--no-owner',
+            '--no-acl',
+            `--snapshot=${snapshot.snapshotName}`,
+            '--file',
+            archive,
+            url,
+          ]);
+          assert.equal(readFileSync(archive).subarray(0, 5).toString(), 'PGDMP');
+          const contents = runProgram(pgRestore, [
+            '--data-only',
+            `--table=${table}`,
+            '--file=-',
+            archive,
+          ]);
+          assert.match(contents, /before/);
+          assert.doesNotMatch(contents, /after/);
 
           imported = await connect(url);
           await imported.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -132,6 +173,7 @@ test(
 
       assert.equal(result.snapshot.replicationSlot, slot);
       assert.equal(result.output, 'snapshot-and-wal-observed');
+      assert.ok(readFileSync(archive).length > 5);
       const retained = (
         await sql.query(
           `SELECT plugin, slot_type, database, temporary, active
@@ -183,6 +225,7 @@ test(
       if (sql && tableCreated)
         await sql.query(`DROP TABLE public.${table}`).catch((error) => cleanupErrors.push(error));
       if (sql) await sql.end().catch((error) => cleanupErrors.push(error));
+      rmSync(archiveDir, { recursive: true, force: true });
     }
     if (failure && cleanupErrors.length)
       throw new AggregateError([failure, ...cleanupErrors], 'PG17_PROOF_AND_CLEANUP_FAILED');

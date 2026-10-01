@@ -22,11 +22,24 @@ function validate(options) {
     expectedDatabase,
     expectedSystemIdentifier,
     slotName,
+    expectedPublication,
+    expectedPublicationTables,
     expectedCompletionMarker,
     capture,
   } = options;
   if (typeof connectionString !== 'string' || typeof capture !== 'function') fail();
   if (!IDENTIFIER.test(expectedDatabase) || !IDENTIFIER.test(slotName)) fail();
+  if (
+    !IDENTIFIER.test(expectedPublication) ||
+    !Array.isArray(expectedPublicationTables) ||
+    expectedPublicationTables.length === 0 ||
+    expectedPublicationTables.some(
+      (table) =>
+        typeof table !== 'string' || !/^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_]{0,62}$/.test(table),
+    ) ||
+    new Set(expectedPublicationTables).size !== expectedPublicationTables.length
+  )
+    fail();
   if (
     !SYSTEM_IDENTIFIER.test(expectedSystemIdentifier) ||
     BigInt(expectedSystemIdentifier) > 18_446_744_073_709_551_615n
@@ -63,6 +76,25 @@ async function verifyDatabase(client, expectedDatabase, expectedSystemIdentifier
   if (database.name !== expectedDatabase || database.systemid !== expectedSystemIdentifier) fail();
 }
 
+async function publicationState(client, name, expectedTables) {
+  const publication = one(
+    await client.query('SELECT to_jsonb(p) AS detail FROM pg_publication p WHERE pubname = $1', [
+      name,
+    ]),
+  ).detail;
+  if (!publication || publication.puballtables !== false)
+    fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
+  const result = await client.query(
+    `SELECT to_jsonb(t) AS detail FROM pg_publication_tables t
+      WHERE pubname = $1 ORDER BY schemaname, tablename`,
+    [name],
+  );
+  const tables = result.rows.map(({ detail }) => `${detail.schemaname}.${detail.tablename}`);
+  if (JSON.stringify([...tables].sort()) !== JSON.stringify([...expectedTables].sort()))
+    fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
+  return JSON.stringify({ publication, tables: result.rows.map(({ detail }) => detail) });
+}
+
 function uncertain(code, previous) {
   return new Error(code, previous ? { cause: previous } : undefined);
 }
@@ -86,6 +118,9 @@ function verifySlot(row, { slotName, expectedDatabase, consistentPointLsn }) {
  * `{ output, completionMarker }` after its own capture succeeds. The marker
  * is a caller-supplied assertion, not independent proof of durability,
  * coverage, a complete WAL tail, or restore readiness.
+ * The publication definition and its complete, explicitly expected table set
+ * are compared before slot creation and after capture. A separate write fence
+ * remains necessary to prevent an intervening change from being reverted.
  *
  * A successful return leaves a persistent slot behind for a later owner.
  * The slot name must be exclusive to this invocation; existing slots are
@@ -99,6 +134,8 @@ export async function withPersistentExportedSlotSnapshot(options) {
     expectedDatabase,
     expectedSystemIdentifier,
     slotName,
+    expectedPublication,
+    expectedPublicationTables,
     expectedCompletionMarker,
     capture,
   } = options;
@@ -139,6 +176,11 @@ export async function withPersistentExportedSlotSnapshot(options) {
     await openCatalog();
     // A pre-existing slot is never reused or dropped by this boundary.
     if (await slotState(catalog, slotName)) fail('PERSISTENT_SLOT_ALREADY_EXISTS');
+    const publicationIdentity = await publicationState(
+      catalog,
+      expectedPublication,
+      expectedPublicationTables,
+    );
 
     await replication.connect();
     replicationConnected = true;
@@ -191,6 +233,11 @@ export async function withPersistentExportedSlotSnapshot(options) {
       fail('PERSISTENT_SLOT_CAPTURE_PROOF_FAILED');
     await openCatalog();
     verifySlot(await slotState(catalog, slotName), state);
+    if (
+      (await publicationState(catalog, expectedPublication, expectedPublicationTables)) !==
+      publicationIdentity
+    )
+      fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
     result = { snapshot, output: captured.output };
     retain = true;
   } catch (error) {

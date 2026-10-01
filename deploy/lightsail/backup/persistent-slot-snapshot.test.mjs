@@ -25,6 +25,8 @@ test('rejects invalid inputs before connecting', async () => {
       expectedDatabase: 'postgres',
       expectedSystemIdentifier: '1',
       slotName: 'unsafe;DROP',
+      expectedPublication: 'snapshot_probe_pub',
+      expectedPublicationTables: ['public.snapshot_probe'],
       expectedCompletionMarker: marker,
       capture: async () => ({ completionMarker: marker }),
     }),
@@ -76,6 +78,8 @@ test(
           connectionString,
           expectedDatabase: 'postgres',
           expectedSystemIdentifier,
+          expectedPublication: 'snapshot_probe_pub',
+          expectedPublicationTables: ['public.snapshot_probe'],
           expectedCompletionMarker: marker,
         };
         await sql.query(
@@ -174,6 +178,17 @@ test(
         await assert.rejects(
           withPersistentExportedSlotSnapshot({
             ...base,
+            expectedPublicationTables: ['public.missing_table'],
+            slotName: 'publication_probe',
+            capture: async () => {
+              throw new Error('must not capture');
+            },
+          }),
+          /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        await assert.rejects(
+          withPersistentExportedSlotSnapshot({
+            ...base,
             slotName: 'failed_probe',
             capture: async () => {
               throw new Error('dump failed');
@@ -201,6 +216,32 @@ test(
           (
             await sql.query(
               "SELECT count(*)::int AS n FROM pg_replication_slots WHERE slot_name = 'proof_probe'",
+            )
+          ).rows[0].n,
+          0,
+        );
+        await assert.rejects(
+          withPersistentExportedSlotSnapshot({
+            ...base,
+            slotName: 'publication_changed_probe',
+            capture: async () => {
+              const writer = new pg.Client({ connectionString });
+              await writer.connect();
+              try {
+                await writer.query("ALTER PUBLICATION snapshot_probe_pub SET (publish = 'insert')");
+              } finally {
+                await writer.end();
+              }
+              return { completionMarker: marker };
+            },
+          }),
+          /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        await sql.query("ALTER PUBLICATION snapshot_probe_pub SET (publish = 'insert,delete')");
+        assert.equal(
+          (
+            await sql.query(
+              "SELECT count(*)::int AS n FROM pg_replication_slots WHERE slot_name = 'publication_changed_probe'",
             )
           ).rows[0].n,
           0,
