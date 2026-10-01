@@ -95,17 +95,51 @@ test(
       await sql.query(`CREATE PUBLICATION ${publication} FOR TABLE public.${table}`);
       publicationCreated = true;
       await sql.query(`INSERT INTO public.${table} VALUES (1, 'before')`);
-      await sql.end();
-      sql = undefined;
-
-      const result = await withPersistentExportedSlotSnapshot({
+      const base = {
         connectionString: url,
         expectedDatabase: database,
         expectedSystemIdentifier: target.system_id,
         slotName: slot,
         expectedPublication: publication,
         expectedPublicationTables: [`public.${table}`],
+        expectedPublicationOperations: ['insert', 'update', 'delete', 'truncate'],
         expectedCompletionMarker: completionMarker,
+      };
+      const rejectBeforeSlot = async () => {
+        await assert.rejects(
+          withPersistentExportedSlotSnapshot({
+            ...base,
+            capture: async () => {
+              throw new Error('capture must not start');
+            },
+          }),
+          /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        assert.equal(
+          (
+            await sql.query(
+              'SELECT count(*)::int AS n FROM pg_replication_slots WHERE slot_name = $1',
+              [slot],
+            )
+          ).rows[0].n,
+          0,
+        );
+      };
+      await sql.query(`ALTER PUBLICATION ${publication} SET (publish = 'insert')`);
+      await rejectBeforeSlot();
+      await sql.query(
+        `ALTER PUBLICATION ${publication} SET (publish = 'insert,update,delete,truncate')`,
+      );
+      await sql.query(`ALTER PUBLICATION ${publication} SET TABLE public.${table} WHERE (id > 0)`);
+      await rejectBeforeSlot();
+      await sql.query(`ALTER PUBLICATION ${publication} SET TABLE public.${table} (id)`);
+      await rejectBeforeSlot();
+      await sql.query(`ALTER PUBLICATION ${publication} SET TABLE public.${table}`);
+      await sql.end();
+      sql = undefined;
+
+      const result = await withPersistentExportedSlotSnapshot({
+        ...base,
         capture: async (snapshot) => {
           const writer = await connect(url);
           try {
@@ -190,6 +224,38 @@ test(
           active: false,
         },
       ]);
+
+      const rejectAfterChange = async (name, alteration) => {
+        await assert.rejects(
+          withPersistentExportedSlotSnapshot({
+            ...base,
+            slotName: name,
+            capture: async () => {
+              await sql.query(alteration);
+              return { completionMarker };
+            },
+          }),
+          /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        assert.equal(
+          (
+            await sql.query(
+              'SELECT count(*)::int AS n FROM pg_replication_slots WHERE slot_name = $1',
+              [name],
+            )
+          ).rows[0].n,
+          0,
+        );
+        await sql.query(`ALTER PUBLICATION ${publication} SET TABLE public.${table}`);
+      };
+      await rejectAfterChange(
+        `${slot}_filter`,
+        `ALTER PUBLICATION ${publication} SET TABLE public.${table} WHERE (id > 0)`,
+      );
+      await rejectAfterChange(
+        `${slot}_columns`,
+        `ALTER PUBLICATION ${publication} SET TABLE public.${table} (id)`,
+      );
 
       imported = await connect(url);
       await imported.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');

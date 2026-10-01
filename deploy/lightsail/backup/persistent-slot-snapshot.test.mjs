@@ -27,6 +27,7 @@ test('rejects invalid inputs before connecting', async () => {
       slotName: 'unsafe;DROP',
       expectedPublication: 'snapshot_probe_pub',
       expectedPublicationTables: ['public.snapshot_probe'],
+      expectedPublicationOperations: ['insert', 'delete'],
       expectedCompletionMarker: marker,
       capture: async () => ({ completionMarker: marker }),
     }),
@@ -80,6 +81,7 @@ test(
           expectedSystemIdentifier,
           expectedPublication: 'snapshot_probe_pub',
           expectedPublicationTables: ['public.snapshot_probe'],
+          expectedPublicationOperations: ['insert', 'delete'],
           expectedCompletionMarker: marker,
         };
         await sql.query(
@@ -185,6 +187,25 @@ test(
             },
           }),
           /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        await assert.rejects(
+          withPersistentExportedSlotSnapshot({
+            ...base,
+            expectedPublicationOperations: ['insert'],
+            slotName: 'wrong_operations_probe',
+            capture: async () => {
+              throw new Error('must not capture');
+            },
+          }),
+          /PERSISTENT_SLOT_PUBLICATION_MISMATCH/,
+        );
+        assert.equal(
+          (
+            await sql.query(
+              "SELECT count(*)::int AS n FROM pg_replication_slots WHERE slot_name = 'wrong_operations_probe'",
+            )
+          ).rows[0].n,
+          0,
         );
         await assert.rejects(
           withPersistentExportedSlotSnapshot({

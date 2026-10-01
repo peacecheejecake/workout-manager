@@ -5,6 +5,18 @@ const SYSTEM_IDENTIFIER = /^[1-9][0-9]{0,19}$/;
 const LSN = /^[0-9A-F]{1,8}\/[0-9A-F]{1,8}$/i;
 const SNAPSHOT = /^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]*$/i;
 const PROOF = /^[a-f0-9]{64}$/;
+const PUBLISH_OPERATIONS = ['insert', 'update', 'delete', 'truncate'];
+const PUBLICATION_FIELDS = [
+  'oid',
+  'pubname',
+  'pubowner',
+  'puballtables',
+  'pubinsert',
+  'pubupdate',
+  'pubdelete',
+  'pubtruncate',
+  'pubviaroot',
+];
 
 function fail(code = 'PERSISTENT_SLOT_SNAPSHOT_FAILED') {
   throw new Error(code);
@@ -24,6 +36,7 @@ function validate(options) {
     slotName,
     expectedPublication,
     expectedPublicationTables,
+    expectedPublicationOperations,
     expectedCompletionMarker,
     capture,
   } = options;
@@ -38,6 +51,13 @@ function validate(options) {
         typeof table !== 'string' || !/^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_]{0,62}$/.test(table),
     ) ||
     new Set(expectedPublicationTables).size !== expectedPublicationTables.length
+  )
+    fail();
+  if (
+    !Array.isArray(expectedPublicationOperations) ||
+    expectedPublicationOperations.length === 0 ||
+    expectedPublicationOperations.some((operation) => !PUBLISH_OPERATIONS.includes(operation)) ||
+    new Set(expectedPublicationOperations).size !== expectedPublicationOperations.length
   )
     fail();
   if (
@@ -76,13 +96,23 @@ async function verifyDatabase(client, expectedDatabase, expectedSystemIdentifier
   if (database.name !== expectedDatabase || database.systemid !== expectedSystemIdentifier) fail();
 }
 
-async function publicationState(client, name, expectedTables) {
+async function publicationState(client, name, expectedTables, expectedOperations) {
   const publication = one(
     await client.query('SELECT to_jsonb(p) AS detail FROM pg_publication p WHERE pubname = $1', [
       name,
     ]),
   ).detail;
-  if (!publication || publication.puballtables !== false)
+  if (
+    !publication ||
+    JSON.stringify(Object.keys(publication).sort()) !==
+      JSON.stringify([...PUBLICATION_FIELDS].sort()) ||
+    publication.pubname !== name ||
+    publication.puballtables !== false ||
+    publication.pubviaroot !== false ||
+    PUBLISH_OPERATIONS.some(
+      (operation) => publication[`pub${operation}`] !== expectedOperations.includes(operation),
+    )
+  )
     fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
   const result = await client.query(
     `SELECT to_jsonb(t) AS detail FROM pg_publication_tables t
@@ -90,9 +120,37 @@ async function publicationState(client, name, expectedTables) {
     [name],
   );
   const tables = result.rows.map(({ detail }) => `${detail.schemaname}.${detail.tablename}`);
-  if (JSON.stringify([...tables].sort()) !== JSON.stringify([...expectedTables].sort()))
+  if (
+    JSON.stringify([...tables].sort()) !== JSON.stringify([...expectedTables].sort()) ||
+    result.rows.some(({ detail }) => detail.rowfilter != null)
+  )
     fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
-  return JSON.stringify({ publication, tables: result.rows.map(({ detail }) => detail) });
+  const relations = await client.query(
+    'SELECT to_jsonb(pr) AS detail FROM pg_publication_rel pr WHERE prpubid = $1 ORDER BY prrelid',
+    [publication.oid],
+  );
+  if (
+    relations.rows.length !== expectedTables.length ||
+    relations.rows.some(({ detail }) => detail.prattrs != null || detail.prqual != null)
+  )
+    fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
+  const namespaceCatalog = one(
+    await client.query("SELECT to_regclass('pg_catalog.pg_publication_namespace') AS relation"),
+  ).relation;
+  if (namespaceCatalog) {
+    const namespaces = one(
+      await client.query(
+        'SELECT count(*)::int AS count FROM pg_publication_namespace WHERE pnpubid = $1',
+        [publication.oid],
+      ),
+    ).count;
+    if (namespaces !== 0) fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
+  }
+  return JSON.stringify({
+    publication,
+    tables: result.rows.map(({ detail }) => detail),
+    relations: relations.rows.map(({ detail }) => detail),
+  });
 }
 
 function uncertain(code, previous) {
@@ -118,9 +176,10 @@ function verifySlot(row, { slotName, expectedDatabase, consistentPointLsn }) {
  * `{ output, completionMarker }` after its own capture succeeds. The marker
  * is a caller-supplied assertion, not independent proof of durability,
  * coverage, a complete WAL tail, or restore readiness.
- * The publication definition and its complete, explicitly expected table set
- * are compared before slot creation and after capture. A separate write fence
- * remains necessary to prevent an intervening change from being reverted.
+ * The expected publish operations, explicit table set, and absence of row
+ * filters, column lists, and schema-wide rules are checked before slot creation.
+ * The full catalog definition is compared again after capture. A separate write
+ * fence remains necessary to prevent an intervening change from being reverted.
  *
  * A successful return leaves a persistent slot behind for a later owner.
  * The slot name must be exclusive to this invocation; existing slots are
@@ -136,6 +195,7 @@ export async function withPersistentExportedSlotSnapshot(options) {
     slotName,
     expectedPublication,
     expectedPublicationTables,
+    expectedPublicationOperations,
     expectedCompletionMarker,
     capture,
   } = options;
@@ -180,6 +240,7 @@ export async function withPersistentExportedSlotSnapshot(options) {
       catalog,
       expectedPublication,
       expectedPublicationTables,
+      expectedPublicationOperations,
     );
 
     await replication.connect();
@@ -234,8 +295,12 @@ export async function withPersistentExportedSlotSnapshot(options) {
     await openCatalog();
     verifySlot(await slotState(catalog, slotName), state);
     if (
-      (await publicationState(catalog, expectedPublication, expectedPublicationTables)) !==
-      publicationIdentity
+      (await publicationState(
+        catalog,
+        expectedPublication,
+        expectedPublicationTables,
+        expectedPublicationOperations,
+      )) !== publicationIdentity
     )
       fail('PERSISTENT_SLOT_PUBLICATION_MISMATCH');
     result = { snapshot, output: captured.output };
