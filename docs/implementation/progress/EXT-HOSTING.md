@@ -290,3 +290,11 @@
 - `main` `ef9ef2ff7ab71f6e2658f47a96ad47bad6a044ab` → `phase/ext-hosting` `028f8ee5d12eb7ef0bc0d7a51e7612dd0a80e61a` 전체 diff의 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 검토는 **REQUEST_CHANGES**였다. P1: Docker `inspect` 오류를 자원 부재처럼 취급해 복원 DB 볼륨이 남아도 성공 출력이 가능했다. 검토자는 Bash 구문·정적 **4/4**·diff 검사 통과와 실제 운영 미실행을 확인했다.
 - 생성한 컨테이너·네트워크·볼륨의 `inspect` 실패나 실행별 라벨 불일치를 모두 정리 실패로 바꾸고, setup 컨테이너의 자동 삭제를 제거해 명시적으로 조회·삭제한다. root의 Bash 구문·정적 시험 **4/4**, 테스트 ESLint·Prettier는 통과했다. 이전 P1은 코드에서 **FIXED**로 평가한다. 실제 호스트 롤백 리허설은 계속 **not_executed**다.
 - 같은 `main` 기준점 → 수정 HEAD `7913d4c0c71d8bb441d535b60036813eeb25dc4e` 전체 diff의 새 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 재검토는 **APPROVE**였다. 이전 P1은 Docker 조회 실패·라벨 불일치의 고정 실패 판정과 setup 명시적 정리로 **FIXED**로 판정했고 새 차단 지적은 없었다. 검토자가 Bash 구문·Node 정적 **4/4**·`git diff --check`를 독립 재실행했다. 실제 운영 롤백 리허설은 재실행하지 않았다. 이 판정 기록을 포함한 후속 HEAD는 병합 전 최종 검토 새로고침 대상이다.
+- `main` `ef9ef2ff7ab71f6e2658f47a96ad47bad6a044ab` → 기록·runbook HEAD `912d88d6b4765a627c5f08f3a56ef98f895e142b` 전체 diff의 새 문맥 없는 Codex `gpt-6-sol` high 최종 읽기 전용 새로고침도 **APPROVE**였다. 이전 P1은 **FIXED**였고, runbook이 이전 운영 리허설 실행과 이번 별도 롤백 리허설 미실행을 정확히 구분했다. 검토된 HEAD만 `main`에 fast-forward 했으며 push는 하지 않았다.
+
+## 이전 이미지 격리 롤백 리허설 실측 · 2026-10-02
+
+- 검토된 `rollback-rehearsal.sh`의 로컬·서버 SHA-256 `ea0a92036469894f90b03fc4c9023151d49564a09cecda6faf9f64a1410cc389`가 같고, 서버 설치본이 root:root 0700임을 확인했다. 임시 업로드 파일은 지웠다. 고정한 DB archive의 SHA-256도 사전·사후 모두 `04870962d6fbe147d49856ea507885b0735ecf9a08f87d0f8d1e99f67c555517`로 같았다.
+- 설치본을 명시적 `--execute`로 운영 서버에서 **1회 실행**해 `ROLLBACK_REHEARSAL_PASSED`를 받았다. 이 스크립트는 보관된 migration 65 DB 전용 archive를 독립 PostgreSQL 17.6에 제한된 owner로 복원하고 정확한 이전 app 이미지의 `db_setup`·migration 65·권한·격리 app health를 확인한다. 운영 앱·DB·Caddy 컨테이너는 정지/교체하지 않았다.
+- 종료 뒤 실행별 라벨의 컨테이너, `wm-rollback-*` 네트워크/볼륨과 `/tmp/wm-rollback-rehearsal.*` 디렉터리가 남지 않았고 두 잠금은 획득 가능했다. 운영 Workout app·PostgreSQL은 healthy, 경로 엔진 실행 중, 기존 infra 서비스도 healthy였다. 운영 DB는 **65행·최대 65**, 기존 사이트 HTTPS **200/TLS 검증 0**, Workout HTTPS **503/TLS 검증 0**이었다.
+- 이는 **보관된 시점의 이전 이미지·스키마 복원 시험**이다. 새 운영 쓰기가 없는 시점의 fresh archive, 물리 DB 볼륨 전환·실패 시 운영 롤백, 비공개 파일/독립 원장/WAL tail/원격 백업, 실제 제품 공개는 여전히 **not_executed**다.
