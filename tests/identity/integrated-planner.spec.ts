@@ -6,6 +6,7 @@ import { manualActivityResultSchema } from '../../packages/contracts/src/activit
 import { integratedPlannerReadSchema } from '../../packages/contracts/src/integrated-planner';
 import { nutritionPlanDraftSchema } from '../../packages/contracts/src/nutrition-core';
 import { planDraftSchema, planSnapshotSchema } from '../../packages/contracts/src/planning';
+import { restoreGenerationResponseSchema } from '../../packages/contracts/src/restore-generation';
 import { supplementaryExecutionSchema } from '../../packages/contracts/src/supplementary-core';
 
 type Headers = {
@@ -171,8 +172,14 @@ test('integrated Planner shows approved plans and one canonical actual per ledge
   });
   expect(execution.status()).toBe(200);
   expect(supplementaryExecutionSchema.parse(await execution.json()).activityId).toBe(activityId);
+  const generationResponse = await page.request.get('/bff/v1/restore-generation', { headers });
+  expect(generationResponse.status()).toBe(200);
+  const { generationId: restoreGeneration } = restoreGenerationResponseSchema.parse(
+    await generationResponse.json(),
+  );
   const intake = await post('/bff/v1/nutrition/intakes', {
     intakeId: `intake-${marker}`,
+    restoreGeneration,
     confirmed: true,
     occurredAt,
     timezone: 'UTC',
