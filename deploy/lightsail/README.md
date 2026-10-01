@@ -369,6 +369,43 @@ off-host copy. The host's root/sudo access and Docker daemon remain trusted
 control points. Neither a successful local static test nor this runbook proves
 the live fence or restore until the host run is recorded separately.
 
+### Isolated rollback rehearsal from the retained archive (inactive)
+
+`backup/rollback-rehearsal.sh` is a separate, opt-in **DB-only** test of the
+retained pre-migration archive. It has not been installed or run on the host.
+Review the script and its fixed archive SHA-256 and image IDs before installing
+a root-owned mode 0700 copy at
+`/srv/workout-manager/admin/rollback-rehearsal.sh`. The source must remain the
+root-owned mode 0600 archive
+`/srv/workout-manager/backups/pre-migration/792017f9cac82695fb69e6c8.dump`.
+It fails closed if the path, ownership, mode, inode, bytes, or exact old app /
+PostgreSQL 17.6 image IDs differ. Run only with adequate disk space and no
+competing maintenance writer:
+
+```sh
+sudo /srv/workout-manager/admin/rollback-rehearsal.sh --execute
+```
+
+The script takes the backup and maintenance locks, creates a separate internal
+Docker network, no-port PostgreSQL container and volume, then restores the
+archive as `workout_owner` using temporary limited role credentials. The
+**pinned old app image** runs `db_setup` against that clone; the script checks
+all 65 migrations and checksum format, role limits, a runtime grant, and the
+old app clone's Docker health. It does not use live secret files or touch the
+original services, database, Caddy, or live volume. It removes clone
+containers, network, volume, and temporary credentials on both success and
+failure, retaining the archive. Output is limited to fixed phase/cleanup
+status codes. If cleanup fails, inspect and remove only the labelled
+`workout.rollback-rehearsal=<run ID>` disposable resources before retrying. A host
+power loss or untrappable kill can also leave these resources behind.
+
+A passing isolated rehearsal verifies the archived DB with that old image. It
+does **not** prove a production volume switch, current data freshness,
+post-backup deletion replay, private-object recovery, or permission to restore
+into production. Run `node --test
+deploy/lightsail/backup/rollback-rehearsal.test.mjs` for local static guard
+checks; those checks are not a host rehearsal.
+
 ### Backup collector preparation (inactive)
 
 `backup/collect.mjs` is an opt-in local collector, not an installed schedule or

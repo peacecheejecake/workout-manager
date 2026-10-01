@@ -282,3 +282,8 @@
 - 설치된 스크립트를 명시적 `--execute`로 **실제 운영 서버에서 1회 실행**해 `PRE_MIGRATION_REHEARSAL_PASSED`를 받았다. 양쪽 잠금과 Workout app/GraphHopper 정지 아래 운영 PostgreSQL 17.6의 DB 전용 custom dump를 만들고, 별도 내부망 PostgreSQL 17.6에 제한된 owner로 복원해 staged `fa29723` 이미지의 `db_setup` migration 93·권한/RLS·격리 앱 health를 통과했다. 스크립트의 고정 phase 출력 이외 SQL/개인 데이터는 노출하지 않았다.
 - 보존된 DB 전용 archive는 `/srv/workout-manager/backups/pre-migration/792017f9cac82695fb69e6c8.dump`, root:root 0600, **1,071,451바이트**, SHA-256 `04870962d6fbe147d49856ea507885b0735ecf9a08f87d0f8d1e99f67c555517`이다. 종료 뒤 원래 Workout app·PostgreSQL healthy, 경로 엔진 실행 중, 기존 infra 서비스 healthy였고 두 잠금 모두 해제됐다. 리허설 표식의 컨테이너·네트워크·볼륨과 `/tmp/wm-pre-migration.*`는 남지 않았다. 운영 DB의 migration은 그대로 **65행·최대 65**였다. 루트 사이트는 HTTPS **200/TLS 검증 0**, Workout은 **503/TLS 검증 0**이었다.
 - 이 실측은 해당 시점의 **DB 전용 archive·격리 복원·migration 93 리허설**에 한정한다. 리허설 뒤 app을 재시작했으므로 그 archive를 이후 쓰기가 없는 최신 롤백점으로 간주하지 않는다. 연속 write fence 아래의 새로운 백업, 운영 migration 적용·롤백, 원격 DB/객체 백업, 독립 삭제 원장·마지막 WAL tail 및 공개 접근은 계속 **not_executed**다.
+
+## 이전 이미지 격리 롤백 리허설 준비 · 2026-10-02
+
+- 위의 고정된 archive 경로·SHA-256과 운영 당시 app 이미지 `sha256:902466cf07ac4814f5a2672e2458516aa0fe5a7e4ec682d608f19d2afaee245c`, PostgreSQL 17.6 이미지 `sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3`를 사용하는 비활성 `rollback-rehearsal.sh`를 준비했다. root 전용 archive를 읽기만 하고 독립 내부망·볼륨에 복원한 뒤 **이전 app 이미지**의 `db_setup`·migration 65·제한된 역할/권한·app health를 확인하도록 설계했다. 실행별 Docker 라벨을 대조한 뒤 격리 자원만 정리하며 운영 컨테이너·DB·Caddy는 만지지 않는다.
+- 담당 agent와 root의 Bash 구문·Node 24 정적 시험 **4/4**, 변경 테스트 ESLint·Prettier·diff 검사는 통과했다. 해당 archive에서 실제 PostgreSQL 17.6 복원과 이전 app 기동, 생산 DB 볼륨 교체·롤백은 **not_executed**다. 이 리허설이 성공해도 archive 생성 후의 쓰기·삭제, 비공개 파일, 원격 보존, 원장 tail을 증명하지 않는다. 독립 단계 검토와 운영 실행은 별도 기록한다.
