@@ -19,6 +19,7 @@ const lease: CoachingJobLease = {
   runId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
   leaseToken: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
   attempts: 1,
+  leaseSeconds: 120,
 };
 
 function recordingStore() {
@@ -29,6 +30,9 @@ function recordingStore() {
     },
     async prepare() {
       return { kind: 'ready', evidence: evidence(600), grounding: null };
+    },
+    async renew() {
+      return true;
     },
     async finish(_lease, outcome) {
       outcomes.push(outcome);
@@ -284,6 +288,58 @@ describe('bounded coaching evaluation', () => {
         reason: 'Evaluation could not be completed',
       },
     ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renews through a long evaluation and clears the heartbeat after completion', async () => {
+    vi.useFakeTimers();
+    const { store, outcomes } = recordingStore();
+    const renew = vi.fn(async () => true);
+    store.renew = renew;
+    store.claim = async () => ({ ...lease, leaseSeconds: 1 });
+    let release!: (value: unknown) => void;
+    const pending = runOneCoachingJob({
+      athleteId: lease.athleteId,
+      store,
+      evaluationTimeoutMs: 2000,
+      adapter: {
+        evaluate() {
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(renew.mock.calls.length).toBeGreaterThan(2);
+    release({ kind: 'needs_question', question: 'Finished' });
+    expect(await pending).toBe('stored');
+    expect(outcomes).toEqual([{ kind: 'needs_question', question: 'Finished' }]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('aborts and skips output when lease renewal fails during evaluation', async () => {
+    vi.useFakeTimers();
+    const { store, outcomes } = recordingStore();
+    store.claim = async () => ({ ...lease, leaseSeconds: 1 });
+    let renewals = 0;
+    store.renew = async () => ++renewals === 1;
+    let signal: AbortSignal | undefined;
+    const pending = runOneCoachingJob({
+      athleteId: lease.athleteId,
+      store,
+      evaluationTimeoutMs: 2000,
+      adapter: {
+        evaluate(_evidence, _grounding, receivedSignal) {
+          signal = receivedSignal;
+          return new Promise(() => {});
+        },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(333);
+    expect(await pending).toBe('skipped');
+    expect(signal?.aborted).toBe(true);
+    expect(outcomes).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -750,6 +750,54 @@ it('persists a deadline failure once and never creates an analysis output', asyn
   expect(await workerStore().claim(athleteId)).toBeNull();
 });
 
+it('keeps ownership past a short lease and makes a deadline failure terminal', async () => {
+  const athleteId = randomUUID();
+  const { thread, command } = await seed(athleteId);
+  const run = await repository().create(athleteId, thread.id, command);
+  let enter!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  let signal: AbortSignal | undefined;
+  const pending = runOneCoachingJob({
+    athleteId,
+    store: workerStore(workerDatabase, 1),
+    evaluationTimeoutMs: 2200,
+    adapter: {
+      evaluate: async (_evidence, _grounding, receivedSignal) => {
+        signal = receivedSignal;
+        enter();
+        return new Promise(() => {});
+      },
+    },
+  });
+  await entered;
+  // This real-time wait crosses the original one-second lease boundary. A
+  // second worker must not claim the same event while the first evaluates.
+  await new Promise((resolve) => setTimeout(resolve, 1250));
+  expect(await workerStore(workerDatabase, 1).claim(athleteId)).toBeNull();
+  expect(await pending).toBe('stored');
+  expect(signal?.aborted).toBe(true);
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'unable_to_evaluate',
+    code: 'budget_exceeded',
+    reason: 'Evaluation exceeded its time budget',
+  });
+  expect(await repository().readOutput(athleteId, run.id)).toBeNull();
+  expect(await workerStore(workerDatabase, 1).claim(athleteId)).toBeNull();
+  const result = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      `SELECT attempts,completed_at IS NOT NULL AS completed,
+       (SELECT count(*)::integer FROM coaching_analysis_output
+        WHERE athlete_id=$1 AND run_id=$2) AS output_count
+       FROM outbox WHERE athlete_id=$1 AND topic='coaching.run_queued'
+         AND payload->>'runId'=$2::text`,
+      [athleteId, run.id],
+    ),
+  );
+  expect(result.rows).toEqual([{ attempts: 1, completed: true, output_count: 0 }]);
+});
+
 it('stores a bounded clarification question as terminal metadata without an analysis output', async () => {
   const athleteId = randomUUID();
   const { thread, command } = await seed(athleteId);
