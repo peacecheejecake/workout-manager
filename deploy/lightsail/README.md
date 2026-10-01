@@ -89,8 +89,31 @@ The app mounts it read-only and treats a missing or stale disclosure as unavaila
 
 ## Start and inspect
 
-Set `WORKOUT_DATA_DIR`, `WORKOUT_SECRETS_DIR`, and an immutable
-`WORKOUT_RELEASE` in a deployment-only Compose environment file outside Git.
+Set `WORKOUT_DATA_DIR`, `WORKOUT_SECRETS_DIR`, an immutable `WORKOUT_RELEASE`,
+and `WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE` in a deployment-only Compose
+environment file outside Git. The last value is required by the PostgreSQL
+command; choose a positive, finite PostgreSQL size with units (for example,
+`512MB`) only after measuring the host's WAL generation rate and the longest
+recovery outage to support. Do not use `-1` (unbounded) or copy the example
+size into production without that measurement. Reserve disk headroom for the
+database, backups, and other services on the shared host. The current host
+observation (`wal_level=replica`, `max_replication_slots=10`,
+`max_wal_senders=10`, no slots) does not activate logical decoding or establish
+a safe retention limit.
+
+This source change is inactive on the live host until Compose recreates its
+PostgreSQL container. Before that controlled recreation, complete a protected
+backup and isolated restore drill, verify the write-fence and recovery procedure,
+measure WAL rate and outage duration, and arrange monitoring and alerts for
+disk space, retained WAL, slot lag, and slot invalidation. After recreation,
+verify the running server's `wal_level`, `max_slot_wal_keep_size`,
+`max_replication_slots`, and `max_wal_senders` with `SHOW`, then check the
+database, app, and existing apex site. The cap can invalidate a lagging slot;
+recovery must account for that loss. Once a logical slot is created, reverting
+`wal_level` from `logical` invalidates its continuity and requires a deliberate
+new snapshot/slot bootstrap. Do not treat Compose validation or the current
+host observations as proof of a working logical stream.
+
 From the repository root on the server:
 
 ```sh
@@ -170,9 +193,14 @@ prove that host paths, external `infra_default`, OIDC, or Caddy are available:
 
 ```sh
 WORKOUT_RELEASE=local-check WORKOUT_DATA_DIR=/tmp/workout-data WORKOUT_SECRETS_DIR=/tmp/workout-secrets \
+  WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE=64MB \
   docker compose --profile '*' -f deploy/lightsail/compose.yml config --no-env-resolution --quiet
 node --test deploy/lightsail/prepare-caddy-candidate.test.mjs
 ```
+
+`64MB` above is a disposable syntax-check placeholder, not an operational
+limit or a measured recommendation. This check does not start PostgreSQL or
+verify its running settings.
 
 ## Host maintenance schedule template (inactive)
 

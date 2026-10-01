@@ -56,6 +56,12 @@ services:
   postgres:
     image: postgres:17.6-bookworm
     restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_slot_wal_keep_size=${WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE:?Set a measured, bounded PostgreSQL replication slot WAL limit}
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/postgres.env
     volumes:
