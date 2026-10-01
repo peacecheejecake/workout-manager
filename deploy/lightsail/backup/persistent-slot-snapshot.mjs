@@ -54,6 +54,19 @@ async function slotState(client, slotName) {
   return result.rows[0] ?? null;
 }
 
+async function verifyDatabase(client, expectedDatabase, expectedSystemIdentifier) {
+  const database = one(
+    await client.query(
+      'SELECT current_database() AS name, system_identifier::text AS systemid FROM pg_control_system()',
+    ),
+  );
+  if (database.name !== expectedDatabase || database.systemid !== expectedSystemIdentifier) fail();
+}
+
+function uncertain(code, previous) {
+  return new Error(code, previous ? { cause: previous } : undefined);
+}
+
 function verifySlot(row, { slotName, expectedDatabase, consistentPointLsn }) {
   if (
     !row ||
@@ -90,18 +103,40 @@ export async function withPersistentExportedSlotSnapshot(options) {
     capture,
   } = options;
   const replication = new pg.Client({ connectionString, replication: 'database' });
-  const catalog = new pg.Client({ connectionString });
+  let catalog;
   let replicationConnected = false;
   let catalogConnected = false;
   let created = false;
   let retain = false;
   let result;
   let failure;
+  async function openCatalog() {
+    if (catalogConnected) return;
+    catalog = new pg.Client({ connectionString });
+    try {
+      await catalog.connect();
+      catalogConnected = true;
+      await verifyDatabase(catalog, expectedDatabase, expectedSystemIdentifier);
+    } catch (error) {
+      if (catalogConnected) await catalog.end().catch(() => {});
+      catalogConnected = false;
+      catalog = undefined;
+      throw error;
+    }
+  }
+
+  async function closeCatalog() {
+    if (!catalogConnected) return;
+    try {
+      await catalog.end();
+    } finally {
+      catalogConnected = false;
+      catalog = undefined;
+    }
+  }
+
   try {
-    await catalog.connect();
-    catalogConnected = true;
-    const database = one(await catalog.query('SELECT current_database() AS name'));
-    if (database.name !== expectedDatabase) fail();
+    await openCatalog();
     // A pre-existing slot is never reused or dropped by this boundary.
     if (await slotState(catalog, slotName)) fail('PERSISTENT_SLOT_ALREADY_EXISTS');
 
@@ -143,6 +178,9 @@ export async function withPersistentExportedSlotSnapshot(options) {
     });
     const state = { slotName, expectedDatabase, consistentPointLsn: snapshot.consistentPointLsn };
     verifySlot(await slotState(catalog, slotName), state);
+    // A host-side write fence requires zero ordinary client backends during capture.
+    // Keep only the replication walsender alive so pg_dump can import its snapshot.
+    await closeCatalog();
     // Do not send another replication command while the exported snapshot is in use.
     const captured = await capture(snapshot);
     if (
@@ -151,6 +189,7 @@ export async function withPersistentExportedSlotSnapshot(options) {
       captured.completionMarker !== expectedCompletionMarker
     )
       fail('PERSISTENT_SLOT_CAPTURE_PROOF_FAILED');
+    await openCatalog();
     verifySlot(await slotState(catalog, slotName), state);
     result = { snapshot, output: captured.output };
     retain = true;
@@ -163,15 +202,16 @@ export async function withPersistentExportedSlotSnapshot(options) {
       // DROP is deliberately done on the original replication connection.
       // Failure leaves outcome uncertain and must remain visible to the caller.
       await replication.query(`DROP_REPLICATION_SLOT ${slotName}`);
+      await openCatalog();
       if (await slotState(catalog, slotName)) fail('PERSISTENT_SLOT_CLEANUP_UNCERTAIN');
     } catch {
-      failure = new Error('PERSISTENT_SLOT_CLEANUP_UNCERTAIN');
+      failure = uncertain('PERSISTENT_SLOT_CLEANUP_UNCERTAIN', failure);
     }
   }
   try {
     if (replicationConnected) await replication.end();
   } catch {
-    failure = new Error('PERSISTENT_SLOT_STATE_UNCERTAIN');
+    failure = uncertain('PERSISTENT_SLOT_STATE_UNCERTAIN', failure);
   }
   if (retain && !failure) {
     try {
@@ -181,13 +221,13 @@ export async function withPersistentExportedSlotSnapshot(options) {
         consistentPointLsn: result.snapshot.consistentPointLsn,
       });
     } catch {
-      failure = new Error('PERSISTENT_SLOT_STATE_UNCERTAIN');
+      failure = uncertain('PERSISTENT_SLOT_STATE_UNCERTAIN', failure);
     }
   }
   try {
-    if (catalogConnected) await catalog.end();
+    await closeCatalog();
   } catch {
-    failure = new Error('PERSISTENT_SLOT_STATE_UNCERTAIN');
+    failure = uncertain('PERSISTENT_SLOT_STATE_UNCERTAIN', failure);
   }
   if (failure) throw failure;
   return result;

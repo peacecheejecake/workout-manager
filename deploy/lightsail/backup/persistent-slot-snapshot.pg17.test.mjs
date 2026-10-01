@@ -45,7 +45,7 @@ test(
   { skip: !connectionString, timeout: 60_000 },
   async () => {
     const url = checkedConnectionString(connectionString);
-    const sql = await connect(url);
+    let sql = await connect(url);
     let imported;
     const suffix = randomBytes(8).toString('hex');
     const table = `pg17_snapshot_probe_${suffix}`;
@@ -75,6 +75,8 @@ test(
       await sql.query(`CREATE PUBLICATION ${publication} FOR TABLE public.${table}`);
       publicationCreated = true;
       await sql.query(`INSERT INTO public.${table} VALUES (1, 'before')`);
+      await sql.end();
+      sql = undefined;
 
       const result = await withPersistentExportedSlotSnapshot({
         connectionString: url,
@@ -83,32 +85,50 @@ test(
         slotName: slot,
         expectedCompletionMarker: completionMarker,
         capture: async (snapshot) => {
-          imported = await connect(url);
-          await sql.query(`DELETE FROM public.${table} WHERE id = 1`);
-          await sql.query(`INSERT INTO public.${table} VALUES (2, 'after')`);
+          const writer = await connect(url);
+          try {
+            const otherClients = await writer.query(
+              "SELECT count(*)::int AS n FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()",
+            );
+            assert.equal(otherClients.rows[0].n, 0, 'catalog connection must close for fence');
+            await writer.query(`DELETE FROM public.${table} WHERE id = 1`);
+            await writer.query(`INSERT INTO public.${table} VALUES (2, 'after')`);
+          } finally {
+            await writer.end();
+          }
 
+          imported = await connect(url);
           await imported.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
           await imported.query(`SET TRANSACTION SNAPSHOT '${snapshot.snapshotName}'`);
           assert.deepEqual(
             (await imported.query(`SELECT id, label FROM public.${table} ORDER BY id`)).rows,
             [{ id: 1, label: 'before' }],
           );
-          assert.deepEqual(
-            (await sql.query(`SELECT id, label FROM public.${table} ORDER BY id`)).rows,
-            [{ id: 2, label: 'after' }],
-          );
-          const changes = await sql.query(
-            `SELECT data FROM pg_logical_slot_peek_binary_changes($1, NULL, 100,
-              'proto_version', '1', 'publication_names', $2)`,
-            [slot, publication],
-          );
+          const observer = await connect(url);
+          let changes;
+          try {
+            assert.deepEqual(
+              (await observer.query(`SELECT id, label FROM public.${table} ORDER BY id`)).rows,
+              [{ id: 2, label: 'after' }],
+            );
+            changes = await observer.query(
+              `SELECT data FROM pg_logical_slot_peek_binary_changes($1, NULL, 100,
+                'proto_version', '1', 'publication_names', $2)`,
+              [slot, publication],
+            );
+          } finally {
+            await observer.end();
+          }
           const kinds = changes.rows.map(({ data }) => String.fromCharCode(data[0]));
           assert.equal(kinds.filter((kind) => kind === 'D').length, 1);
           assert.equal(kinds.filter((kind) => kind === 'I').length, 1);
           await imported.query('ROLLBACK');
+          await imported.end();
+          imported = undefined;
           return { completionMarker, output: 'snapshot-and-wal-observed' };
         },
       });
+      sql = await connect(url);
 
       assert.equal(result.snapshot.replicationSlot, slot);
       assert.equal(result.output, 'snapshot-and-wal-observed');
@@ -129,6 +149,7 @@ test(
         },
       ]);
 
+      imported = await connect(url);
       await imported.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       await assert.rejects(
         imported.query(`SET TRANSACTION SNAPSHOT '${result.snapshot.snapshotName}'`),
@@ -143,6 +164,7 @@ test(
         await imported.end().catch((error) => cleanupErrors.push(error));
       }
       try {
+        if (!sql) sql = await connect(url);
         const state = await sql.query(
           'SELECT active FROM pg_replication_slots WHERE slot_name = $1',
           [slot],
@@ -154,13 +176,13 @@ test(
       } catch (error) {
         cleanupErrors.push(error);
       }
-      if (publicationCreated)
+      if (sql && publicationCreated)
         await sql
           .query(`DROP PUBLICATION ${publication}`)
           .catch((error) => cleanupErrors.push(error));
-      if (tableCreated)
+      if (sql && tableCreated)
         await sql.query(`DROP TABLE public.${table}`).catch((error) => cleanupErrors.push(error));
-      await sql.end().catch((error) => cleanupErrors.push(error));
+      if (sql) await sql.end().catch((error) => cleanupErrors.push(error));
     }
     if (failure && cleanupErrors.length)
       throw new AggregateError([failure, ...cleanupErrors], 'PG17_PROOF_AND_CLEANUP_FAILED');

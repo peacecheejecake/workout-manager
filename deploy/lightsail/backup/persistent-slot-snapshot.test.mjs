@@ -66,7 +66,7 @@ test(
       ]);
       started = true;
       const connectionString = `postgresql://workout_admin@localhost/postgres?host=${encodeURIComponent(root)}`;
-      const sql = new pg.Client({ connectionString });
+      let sql = new pg.Client({ connectionString });
       await sql.connect();
       try {
         const expectedSystemIdentifier = (
@@ -85,12 +85,24 @@ test(
           "CREATE PUBLICATION snapshot_probe_pub FOR TABLE snapshot_probe WITH (publish = 'insert,delete')",
         );
         await sql.query("INSERT INTO snapshot_probe VALUES (1, 'before-delete')");
+        await sql.end();
+        sql = undefined;
         const { snapshot, output } = await withPersistentExportedSlotSnapshot({
           ...base,
           slotName: 'persistent_probe',
           capture: async (contract) => {
-            await sql.query('DELETE FROM snapshot_probe WHERE id = 1');
-            await sql.query("INSERT INTO snapshot_probe VALUES (2, 'after-snapshot')");
+            const writer = new pg.Client({ connectionString });
+            await writer.connect();
+            try {
+              const otherClients = await writer.query(
+                "SELECT count(*)::int AS n FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()",
+              );
+              assert.equal(otherClients.rows[0].n, 0, 'catalog connection must close for fence');
+              await writer.query('DELETE FROM snapshot_probe WHERE id = 1');
+              await writer.query("INSERT INTO snapshot_probe VALUES (2, 'after-snapshot')");
+            } finally {
+              await writer.end();
+            }
             run(join(bin, 'pg_dump'), [
               '--format=custom',
               `--snapshot=${contract.snapshotName}`,
@@ -98,16 +110,25 @@ test(
               archive,
               connectionString,
             ]);
-            const changes = await sql.query(
-              "SELECT data FROM pg_logical_slot_peek_binary_changes($1, NULL, 100, 'proto_version', '1', 'publication_names', 'snapshot_probe_pub')",
-              ['persistent_probe'],
-            );
+            const observer = new pg.Client({ connectionString });
+            await observer.connect();
+            let changes;
+            try {
+              changes = await observer.query(
+                "SELECT data FROM pg_logical_slot_peek_binary_changes($1, NULL, 100, 'proto_version', '1', 'publication_names', 'snapshot_probe_pub')",
+                ['persistent_probe'],
+              );
+            } finally {
+              await observer.end();
+            }
             const kinds = changes.rows.map(({ data: bytes }) => String.fromCharCode(bytes[0]));
             assert.equal(kinds.filter((kind) => kind === 'D').length, 1);
             assert.equal(kinds.filter((kind) => kind === 'I').length, 1);
             return { completionMarker: marker, output: readFileSync(archive).length };
           },
         });
+        sql = new pg.Client({ connectionString });
+        await sql.connect();
         assert.ok(output > 5);
         assert.equal(snapshot.postgresSystemIdentifier, expectedSystemIdentifier);
         const dump = run(join(bin, 'pg_restore'), ['--data-only', '--file=-', archive]);
@@ -202,7 +223,7 @@ test(
           0,
         );
       } finally {
-        await sql.end();
+        if (sql) await sql.end();
       }
     } finally {
       if (started) run(join(bin, 'pg_ctl'), ['-D', data, '-m', 'immediate', '-w', 'stop']);
