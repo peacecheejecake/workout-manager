@@ -475,7 +475,7 @@ authorization for a production restore. Run
 `node --test deploy/lightsail/backup/cold-snapshot-drill.test.mjs` for local
 guard and copy-comparison checks; this does not substitute for a host rehearsal.
 
-### Isolated physical rollback rehearsal (manual, not executed)
+### Isolated physical rollback rehearsal (manual; host rehearsal passed 2026-10-02)
 
 `backup/physical-rollback-drill.sh` is a separate opt-in root-only drill for the
 retained `/srv/workout-manager/backups/cold-postgres/15eff9a95c86d1ca6f5e237d/postgres`
