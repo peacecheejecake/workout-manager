@@ -246,8 +246,8 @@ const trackMap = (page: Page) => mapRegion(trackPanel(page), '저장된 활동 �
 /** Background tiles, when a self-hosted basemap is deployed on this machine. */
 const tiles = /\/map\/basemap\/[^/]+\/tiles\//;
 
-async function basemapDeployed(page: Page): Promise<boolean> {
-  return (await page.request.get(`${identityWebOrigin}/map/basemap/current.json`)).status() === 200;
+async function basemapDeployed(page: Page, origin: string): Promise<boolean> {
+  return (await page.request.get(`${origin}/map/basemap/current.json`)).status() === 200;
 }
 
 /**
@@ -513,7 +513,7 @@ for (const shell of shells) {
       const headers = await login(page);
       const tracked = await storeTrack(page, headers);
       const pending = await storeTrack(page, headers);
-      const withTiles = await basemapDeployed(page);
+      const withTiles = await basemapDeployed(page, shell.origin);
       await instrumentLifecycle(page);
       await page.setViewportSize({ width: 1280, height: 900 });
 
@@ -633,7 +633,7 @@ for (const shell of shells) {
       test.setTimeout(90_000);
       const headers = await login(page);
       const tracked = await storeTrack(page, headers);
-      const withTiles = await basemapDeployed(page);
+      const withTiles = await basemapDeployed(page, shell.origin);
       await instrumentLifecycle(page);
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(route(shell.origin, tracked, 'overview'));
@@ -910,7 +910,7 @@ for (const shell of shells) {
       const tracked = await storeTrack(page, headers);
       const name = `외부 요청 ${shell.name} ${randomUUID().slice(0, 8)}`;
       const courseId = await importCourse(page, headers, name);
-      const withTiles = await basemapDeployed(page);
+      const withTiles = await basemapDeployed(page, shell.origin);
       // Recording starts after the sign-in, which legitimately visits the identity provider.
       const network = await recordAttemptedRequests(page.context(), shell.origin);
       await page.setViewportSize({ width: 1280, height: 900 });
