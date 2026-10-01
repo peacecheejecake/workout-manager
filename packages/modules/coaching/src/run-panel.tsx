@@ -21,10 +21,12 @@ interface Props {
 }
 
 type Operation =
-  | { kind: 'create'; command: CoachingRunCreateCommandV1 }
+  | { kind: 'create'; command: CoachingRunCreateCommandV1; phase: 'preflight' | 'dispatched' }
   | { kind: 'fixture'; runId: string; idempotencyKey: string }
   | { kind: 'cancel'; runId: string };
 type Feedback = { kind: 'status' | 'alert'; text: string };
+type IndexingProgress = { indexed: number; total: number; attempt: number };
+const MAX_RETRIEVAL_PREFLIGHT_REQUESTS = 20; // 100 authorized resources / five indexed per request.
 
 const inFlight = (run: CoachingRunV1) =>
   run.status.kind === 'queued' || run.status.kind === 'running';
@@ -74,7 +76,9 @@ function RunStage({ run }: { run: CoachingRunV1 }) {
 }
 
 export function CoachingRunPanel(props: Props) {
-  return <Panel key={props.threadId} {...props} />;
+  return (
+    <Panel key={JSON.stringify([props.athleteId, props.sessionId, props.threadId])} {...props} />
+  );
 }
 
 function Panel({
@@ -95,11 +99,17 @@ function Panel({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [pollingSince, setPollingSince] = useState(() => Date.now());
   const [retrievalQuery, setRetrievalQuery] = useState('');
+  const [indexingProgress, setIndexingProgress] = useState<IndexingProgress | null>(null);
+  const [preflightActive, setPreflightActive] = useState(false);
   const life = useRef<AbortController | null>(null);
+  const active = useRef<AbortController | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     life.current = controller;
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      active.current?.abort();
+    };
   }, []);
   const list = useQuery({
     queryKey: [...prefix, 'list', offset],
@@ -168,13 +178,60 @@ function Panel({
     !(visibleRun && inFlight(visibleRun));
   const selectedSnapshotMatches = visibleRun?.evidenceSnapshotId === snapshotId;
 
+  async function completeRetrievalPreflight(query: string, signal: AbortSignal) {
+    let previousIndexed = -1;
+    let previousTotal = -1;
+    for (let attempt = 1; attempt <= MAX_RETRIEVAL_PREFLIGHT_REQUESTS; attempt += 1) {
+      if (signal.aborted) return false;
+      const result = await api.retrieval(query, signal);
+      if (signal.aborted) return false;
+      setIndexingProgress({
+        indexed: result.indexing.indexedResourceCount,
+        total: result.authorizedResourceCount,
+        attempt,
+      });
+      if (result.indexing.status === 'complete') return true;
+      if (
+        result.authorizedResourceCount === previousTotal &&
+        result.indexing.indexedResourceCount <= previousIndexed
+      )
+        break;
+      previousIndexed = result.indexing.indexedResourceCount;
+      previousTotal = result.authorizedResourceCount;
+    }
+    throw new Error('RETRIEVAL_PREFLIGHT_INCOMPLETE');
+  }
+
   async function send(command: Operation) {
-    const controller = life.current;
-    if (!controller || controller.signal.aborted) return;
+    if (!life.current || life.current.signal.aborted) return;
+    const controller = new AbortController();
+    active.current = controller;
     setOperation(command);
+    setIndexingProgress(null);
     setFeedback({ kind: 'status', text: '요청을 확인하고 있습니다.' });
+    let preflightPending = false;
     try {
       if (command.kind === 'create') {
+        if (
+          command.phase === 'preflight' &&
+          command.command.retrieval.kind === 'resource-access-v1'
+        ) {
+          preflightPending = true;
+          setPreflightActive(true);
+          const complete = await completeRetrievalPreflight(
+            command.command.retrieval.query,
+            controller.signal,
+          );
+          if (!complete || controller.signal.aborted) return;
+          preflightPending = false;
+          setPreflightActive(false);
+        }
+        if (controller.signal.aborted) return;
+        // Once the exact create is sent, a lost response may hide a committed
+        // run. Recheck with the original body/key without gating that replay on
+        // a newly changed retrieval set; the server receipt decides its result.
+        if (command.phase === 'preflight')
+          setOperation({ kind: 'create', command: command.command, phase: 'dispatched' });
         const created = await api.create(threadId, command.command, controller.signal);
         if (controller.signal.aborted) return;
         setSelectedId(created.id);
@@ -199,6 +256,7 @@ function Panel({
       });
     } catch (error) {
       if (controller.signal.aborted) return;
+      setPreflightActive(false);
       if (error instanceof CoachingRunRequestError && [404, 409, 422].includes(error.status)) {
         setOperation(null);
         setFeedback({
@@ -208,16 +266,35 @@ function Panel({
               ? '상담 또는 실행을 찾을 수 없습니다. 최신 목록을 확인하세요.'
               : error.status === 422
                 ? '선택한 근거 또는 fixture 결과를 사용할 수 없습니다. 근거를 다시 확인하세요.'
-                : '상담·근거·동의 또는 계획 상태가 변경되었습니다. 최신 내용을 확인한 뒤 새로 요청하세요.',
+                : error.code === 'RETRIEVAL_INDEX_INCOMPLETE'
+                  ? '검토 자료가 다시 변경되어 색인이 완료되지 않았습니다. 다시 실행하세요.'
+                  : '상담·근거·동의 또는 계획 상태가 변경되었습니다. 최신 내용을 확인한 뒤 새로 요청하세요.',
         });
       } else {
         // An uncertain response may have committed. Reuse the exact command and key on retry.
         setFeedback({
           kind: 'alert',
-          text: '요청 결과를 확인하지 못했습니다. 같은 요청 재확인으로 서버 결과를 조회하세요.',
+          text:
+            command.kind === 'create' && preflightPending
+              ? '검토 자료 준비를 완료하지 못했습니다. 같은 요청 재확인으로 다시 시도하세요.'
+              : '요청 결과를 확인하지 못했습니다. 같은 요청 재확인으로 서버 결과를 조회하세요.',
         });
       }
+    } finally {
+      if (active.current === controller) active.current = null;
     }
+  }
+
+  function cancelPreflight() {
+    active.current?.abort();
+    active.current = null;
+    setPreflightActive(false);
+    setIndexingProgress(null);
+    setOperation(null);
+    setFeedback({
+      kind: 'status',
+      text: '검토 자료 준비를 취소했습니다. 입력은 그대로 남아 있습니다.',
+    });
   }
 
   return (
@@ -227,10 +304,35 @@ function Panel({
         선택한 저장 근거와 상담 기록을 검토합니다. 실행 또는 후보 검증만으로 계획이 바뀌지 않습니다.
       </p>
       {feedback ? <p role={feedback.kind}>{feedback.text}</p> : null}
-      {operation && feedback?.kind === 'alert' ? (
-        <button type="button" onClick={() => void send(operation)}>
-          같은 요청 재확인
+      {preflightActive && indexingProgress ? (
+        <p role="status">
+          검토 자료 준비 중 · {indexingProgress.indexed}/{indexingProgress.total}건 색인됨 · 확인{' '}
+          {indexingProgress.attempt}/{MAX_RETRIEVAL_PREFLIGHT_REQUESTS}
+        </p>
+      ) : null}
+      {preflightActive ? (
+        <button type="button" onClick={cancelPreflight}>
+          자료 준비 취소
         </button>
+      ) : null}
+      {operation && feedback?.kind === 'alert' ? (
+        <div className={styles.actions}>
+          <button type="button" onClick={() => void send(operation)}>
+            같은 요청 재확인
+          </button>
+          {operation.kind !== 'create' || operation.phase === 'preflight' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOperation(null);
+                setIndexingProgress(null);
+                setFeedback(null);
+              }}
+            >
+              입력 수정
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <div className={styles.field}>
         <label htmlFor="coaching-retrieval-query">검토 자료 검색어(선택)</label>
@@ -263,7 +365,8 @@ function Panel({
                   : { kind: 'none' },
               idempotencyKey: createId(),
             });
-            if (parsed.success) void send({ kind: 'create', command: parsed.data });
+            if (parsed.success)
+              void send({ kind: 'create', command: parsed.data, phase: 'preflight' });
             else setFeedback({ kind: 'alert', text: '선택한 근거와 상담 기록을 확인하세요.' });
           }}
         >

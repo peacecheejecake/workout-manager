@@ -890,6 +890,7 @@ it.each([
   ['POST', '/bff/v1/coaching-threads/thread/messages'],
   ['GET', '/bff/v1/coaching-threads/thread/runs?limit=20&offset=0'],
   ['POST', '/bff/v1/coaching-threads/thread/runs'],
+  ['POST', '/bff/v1/retrieval/queries'],
   ['GET', '/bff/v1/coaching-runs/run'],
   ['POST', '/bff/v1/coaching-runs/run/candidates'],
   ['GET', '/bff/v1/coaching-candidates/candidate/status'],
@@ -930,6 +931,7 @@ it.each([
   '/bff/v1/coaching-constraints-admin',
   '/bff/v1/coaching-threads-admin',
   '/bff/v1/coaching-runs-admin',
+  '/bff/v1/retrieval/queries-admin',
   '/bff/v1/coaching-candidates-admin',
   '/bff/v1/planner-admin',
   '/bff/v1/joint-candidates-admin',
@@ -949,3 +951,21 @@ it.each([
     expect(fetchMock).not.toHaveBeenCalled();
   },
 );
+
+it.each([
+  ['POST', '/bff/v1/retrieval/queries/admin'],
+  ['POST', '/bff/v1/retrieval/queries/'],
+  ['POST', '/bff/v1/retrieval/queries?admin=true'],
+  ['GET', '/bff/v1/retrieval/queries'],
+  ['PUT', '/bff/v1/retrieval/queries'],
+] as const)('rejects non-POST or non-exact retrieval query route %s %s', async (method, path) => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method,
+      path,
+      body: null,
+      idempotencyKey: null,
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});

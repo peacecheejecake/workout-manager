@@ -40,6 +40,7 @@ export class ResourceRetrievalError extends Error {
       | 'GROUNDING_NOT_FOUND'
       | 'GROUNDING_ALREADY_PINNED'
       | 'GROUNDING_SET_CHANGED'
+      | 'RETRIEVAL_INDEX_INCOMPLETE'
       | 'RETRIEVAL_SET_UNSTABLE'
       | 'CITATION_NOT_GROUNDED'
       | 'CITATION_OUT_OF_RANGE'
@@ -165,9 +166,8 @@ async function readAuthorized(tx: Transaction) {
 async function indexMissing(
   tx: Transaction,
   authorized: z.infer<typeof authorizedRowSchema>[],
-): Promise<number> {
+): Promise<void> {
   const pending = authorized.filter((row) => !row.indexed).slice(0, MAX_INDEXED_RESOURCES_PER_CALL);
-  let indexed = 0;
   for (const resource of pending) {
     const version = (
       await tx.query(
@@ -220,9 +220,7 @@ async function indexMissing(
         ],
       );
     }
-    indexed += 1;
   }
-  return indexed;
 }
 
 function cacheKey(input: {
@@ -234,7 +232,7 @@ function cacheKey(input: {
   return createHash('sha256')
     .update(
       JSON.stringify({
-        scope: 'resource-retrieval-v1',
+        scope: 'resource-retrieval-v2',
         corpusVersion: RESOURCE_PASSAGE_CORPUS_VERSION,
         athleteId: input.athleteId,
         authorizationDigest: input.authorizationDigest,
@@ -291,9 +289,14 @@ async function retrieveWithManifest(
     // A cache key identifies the access set, not indexing progress. A cached
     // top-k can hide passages added in this call or a later bounded batch.
     const missingCount = authorized.filter((row) => !row.indexed).length;
-    const indexedCount = await indexMissing(tx, authorized);
-    const indexComplete = missingCount === indexedCount;
-    const cacheReusable = indexComplete && indexedCount === 0;
+    await indexMissing(tx, authorized);
+    // Count actual current-version passage rows after the bounded attempt.
+    // A missing or unparsable version can consume an attempt without producing
+    // a passage, so attempt count alone cannot prove completeness.
+    const afterIndex = await readAuthorized(tx);
+    const pendingResourceCount = afterIndex.filter((row) => !row.indexed).length;
+    const indexComplete = pendingResourceCount === 0;
+    const cacheReusable = indexComplete && missingCount === 0;
     const key = cacheKey({
       athleteId: tx.athleteId,
       authorizationDigest: manifest.entriesDigest,
@@ -347,6 +350,16 @@ async function retrieveWithManifest(
     // Verified identity: the set observed before the search is still the set.
     const verified = await captureResourceCoachUseManifest(tx);
     if (verified.entriesDigest !== manifest.entriesDigest) continue;
+    if (
+      afterIndex.length !== authorized.length ||
+      afterIndex.some(
+        (row, position) =>
+          row.resource_id !== authorized[position]?.resource_id ||
+          row.current_version_id !== authorized[position]?.current_version_id ||
+          row.access_revision !== authorized[position]?.access_revision,
+      )
+    )
+      continue;
     if (indexComplete && cache !== 'revalidated') {
       await reclaimRetrievalCache(tx);
       await tx.query(
@@ -372,13 +385,18 @@ async function retrieveWithManifest(
     return {
       manifest,
       result: resourceRetrievalResultSchema.parse({
-        schemaVersion: 1,
-        scope: 'resource-retrieval-v1',
+        schemaVersion: 2,
+        scope: 'resource-retrieval-v2',
         query: query.query,
         checkedAt: manifest.capturedAt,
         authorizationDigest: manifest.entriesDigest,
         cache,
         authorizedResourceCount: authorized.length,
+        indexing: {
+          status: indexComplete ? 'complete' : 'in_progress',
+          indexedResourceCount: authorized.length - pendingResourceCount,
+          pendingResourceCount,
+        },
         excerpts,
       }),
     };
@@ -453,6 +471,10 @@ export async function prepareRunGrounding(
   // Consent is a precondition of the gate itself, so an authorized excerpt
   // cannot exist without it; the explicit check keeps the failure named.
   if (!manifest.aiConsentGranted) throw new ResourceRetrievalError('COACH_USE_CONSENT_REQUIRED');
+  // A run pins the retrieved set as its grounding. A partial top-k cannot be
+  // promoted to that durable evidence, even if its ACL manifest is stable.
+  if (retrieval.indexing.status !== 'complete')
+    throw new ResourceRetrievalError('RETRIEVAL_INDEX_INCOMPLETE');
   // The manifest and the search read the authorized set in two statements. The
   // tenant lock serializes the application's own access commands but not the
   // cleanup lifecycle, so refuse rather than pin excerpts the manifest does not

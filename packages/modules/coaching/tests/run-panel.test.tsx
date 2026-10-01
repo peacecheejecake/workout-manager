@@ -9,6 +9,7 @@ import {
   type TransportRequest,
 } from '@workout/contracts/core';
 import type { CoachingRunV1 } from '@workout/contracts/coaching-runs';
+import { resourceRetrievalQuerySchema } from '@workout/contracts/resource-retrieval';
 import { CoachingRunPanel } from '../src/run-panel';
 
 afterEach(cleanup);
@@ -28,13 +29,44 @@ const run: CoachingRunV1 = {
   updatedAt: '2026-09-18T00:00:00Z',
   status: { kind: 'queued' },
 };
-function fixture(initial: CoachingRunV1 | null = null, grounding: unknown = { status: 'none' }) {
+function fixture(
+  initial: CoachingRunV1 | null = null,
+  grounding: unknown = { status: 'none' },
+  retrievalCoverage: { indexed: number; total: number }[] = [{ indexed: 0, total: 0 }],
+) {
   let current = initial;
   let createFailure: 'unknown' | null = null;
   let fixtureFailure = false;
   const requests: TransportRequest[] = [];
+  let retrievalRequestCount = 0;
   const request = vi.fn<AuthenticatedTransport['request']>(async (input) => {
     requests.push(input);
+    if (input.path === '/bff/v1/retrieval/queries') {
+      const coverage =
+        retrievalCoverage[Math.min(retrievalRequestCount, retrievalCoverage.length - 1)];
+      retrievalRequestCount += 1;
+      if (!coverage) throw new Error('Missing retrieval coverage fixture');
+      const pending = coverage.total - coverage.indexed;
+      return transportReplySchema.parse({
+        status: 200,
+        traceId: null,
+        body: {
+          schemaVersion: 2,
+          scope: 'resource-retrieval-v2',
+          query: resourceRetrievalQuerySchema.parse(input.body).query,
+          checkedAt: '2026-09-20T00:00:00Z',
+          authorizationDigest: 'a'.repeat(64),
+          cache: 'miss',
+          authorizedResourceCount: coverage.total,
+          indexing: {
+            status: pending === 0 ? 'complete' : 'in_progress',
+            indexedResourceCount: coverage.indexed,
+            pendingResourceCount: pending,
+          },
+          excerpts: [],
+        },
+      });
+    }
     if (input.method === 'POST' && input.path.endsWith('/runs')) {
       if (createFailure) {
         createFailure = null;
@@ -76,10 +108,14 @@ function Harness({
   transport,
   snapshotId = evidenceId,
   revision = 1,
+  sessionId = 'login-session',
+  createId = () => 'same-request-key',
 }: {
   transport: AuthenticatedTransport;
   snapshotId?: string | null;
   revision?: number | null;
+  sessionId?: string;
+  createId?: () => string;
 }) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -88,12 +124,12 @@ function Harness({
     <QueryClientProvider client={client}>
       <CoachingRunPanel
         athleteId="athlete"
-        sessionId="login-session"
+        sessionId={sessionId}
         transport={transport}
         threadId={threadId}
         snapshotId={snapshotId}
         observedRevision={revision}
-        createId={() => 'same-request-key'}
+        createId={createId}
       />
     </QueryClientProvider>
   );
@@ -170,7 +206,7 @@ describe('coaching run panel', () => {
     await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
     await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
     await screen.findByRole('region', { name: '검토 자료 인용' });
-    expect(f.requests.find((request) => request.method === 'POST')?.body).toMatchObject({
+    expect(f.requests.find((request) => request.path.endsWith('/runs'))?.body).toMatchObject({
       retrieval: { kind: 'resource-access-v1', query: '회복' },
     });
     expect(await screen.findByText(/검색어 “회복”/)).toBeVisible();
@@ -180,6 +216,157 @@ describe('coaching run panel', () => {
     expect(
       screen.getByText(/삭제·동의 철회·검토 해제로 권한이 사라진 발췌는 표시하지 않습니다/),
     ).toBeVisible();
+  });
+
+  it('completes bounded 5→6 indexing before creating a run with the exact query', async () => {
+    const f = fixture(null, { status: 'none' }, [
+      { indexed: 5, total: 6 },
+      { indexed: 6, total: 6 },
+    ]);
+    let releaseSecond!: () => void;
+    const delayed = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let retrievalCalls = 0;
+    const transport: AuthenticatedTransport = {
+      request: async (input) => {
+        if (input.path === '/bff/v1/retrieval/queries' && ++retrievalCalls === 2) await delayed;
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), ' 회복 ');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    expect(await screen.findByText(/검토 자료 준비 중 · 5\/6건 색인됨/)).toBeVisible();
+    expect(
+      f.requests.some((request) => request.path.endsWith('/runs') && request.method === 'POST'),
+    ).toBe(false);
+    await act(async () => releaseSecond());
+    await screen.findByRole('region', { name: '선택한 실행' });
+    const retrievals = f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries');
+    expect(retrievals).toHaveLength(2);
+    expect(retrievals.map((request) => request.body)).toEqual([
+      { schemaVersion: 1, query: '회복', limit: 6 },
+      { schemaVersion: 1, query: '회복', limit: 6 },
+    ]);
+    expect(f.requests.find((request) => request.path.endsWith('/runs'))?.body).toMatchObject({
+      retrieval: { kind: 'resource-access-v1', query: '회복' },
+    });
+  });
+
+  it('stops when indexing cannot progress and retries with the same command and key', async () => {
+    const f = fixture(null, { status: 'none' }, [{ indexed: 0, total: 1 }]);
+    render(<Harness transport={f.transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(
+      f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries'),
+    ).toHaveLength(2);
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
+    await waitFor(() =>
+      expect(
+        f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries'),
+      ).toHaveLength(4),
+    );
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+    expect(screen.getByLabelText('검토 자료 검색어(선택)')).toHaveValue('회복');
+    await user.click(screen.getByRole('button', { name: '입력 수정' }));
+    expect(screen.getByLabelText('검토 자료 검색어(선택)')).toBeEnabled();
+  });
+
+  it('caps progressive but incomplete preflight at 20 requests without creating a run', async () => {
+    const f = fixture(
+      null,
+      { status: 'none' },
+      Array.from({ length: 20 }, (_, index) => ({ indexed: index + 1, total: 100 })),
+    );
+    render(<Harness transport={f.transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(
+      f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries'),
+    ).toHaveLength(20);
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+  });
+
+  it('preserves the draft but clears a stale preflight command on conflict', async () => {
+    const f = fixture();
+    const transport: AuthenticatedTransport = {
+      request: (input) =>
+        input.path === '/bff/v1/retrieval/queries'
+          ? Promise.resolve(
+              transportReplySchema.parse({
+                status: 409,
+                traceId: null,
+                body: { error: { code: 'RETRIEVAL_SET_UNSTABLE' } },
+              }),
+            )
+          : f.transport.request(input),
+    };
+    render(<Harness transport={transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('변경되었습니다');
+    expect(screen.getByLabelText('검토 자료 검색어(선택)')).toHaveValue('회복');
+    expect(screen.getByRole('button', { name: '선택한 근거로 실행' })).toBeEnabled();
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+  });
+
+  it('cancels an in-flight preflight and never creates a run after a late response', async () => {
+    const f = fixture();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let signal: AbortSignal | undefined;
+    const transport: AuthenticatedTransport = {
+      request: async (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          signal = input.signal;
+          await pending;
+        }
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await waitFor(() => expect(signal).toBeDefined());
+    await user.click(screen.getByRole('button', { name: '자료 준비 취소' }));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => release());
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+    expect(screen.getByLabelText('검토 자료 검색어(선택)')).toHaveValue('회복');
+  });
+
+  it('aborts preflight when the account session changes', async () => {
+    const f = fixture();
+    let signal: AbortSignal | undefined;
+    const transport: AuthenticatedTransport = {
+      request: (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          signal = input.signal;
+          return new Promise(() => undefined);
+        }
+        return f.transport.request(input);
+      },
+    };
+    const mounted = render(<Harness transport={transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await waitFor(() => expect(signal).toBeDefined());
+    mounted.rerender(<Harness transport={transport} sessionId="new-login-session" />);
+    expect(signal?.aborted).toBe(true);
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
   });
 
   it('requires selected evidence and a fully observed conversation; sends no plan write', async () => {
@@ -218,6 +405,78 @@ describe('coaching run panel', () => {
     expect(posts).toHaveLength(2);
     expect(posts[1]?.body).toEqual(posts[0]?.body);
     expect(posts[1]?.idempotencyKey).toBe(posts[0]?.idempotencyKey);
+  });
+
+  it('replays a dispatched create despite later retrieval denial, preserving body and key', async () => {
+    const f = fixture();
+    f.failCreate();
+    let preflightCalls = 0;
+    const transport: AuthenticatedTransport = {
+      request: (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          preflightCalls += 1;
+          if (preflightCalls > 1)
+            return Promise.resolve(
+              transportReplySchema.parse({
+                status: 409,
+                traceId: null,
+                body: { error: { code: 'RETRIEVAL_SET_UNSTABLE' } },
+              }),
+            );
+        }
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(screen.queryByRole('button', { name: '입력 수정' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
+    await screen.findByRole('region', { name: '선택한 실행' });
+    const preflights = f.requests.filter((request) => request.path === '/bff/v1/retrieval/queries');
+    const creates = f.requests.filter(
+      (request) => request.path.endsWith('/runs') && request.method === 'POST',
+    );
+    expect(preflightCalls).toBe(1);
+    expect(preflights).toHaveLength(1);
+    expect(creates).toHaveLength(2);
+    expect(creates[1]?.body).toEqual(creates[0]?.body);
+    expect(creates[1]?.idempotencyKey).toBe(creates[0]?.idempotencyKey);
+  });
+
+  it('repeats preflight after an unknown failure before create dispatch', async () => {
+    const f = fixture();
+    const createId = vi.fn(() => 'same-request-key');
+    let preflightCalls = 0;
+    const transport: AuthenticatedTransport = {
+      request: (input) => {
+        if (input.path === '/bff/v1/retrieval/queries') {
+          preflightCalls += 1;
+          if (preflightCalls === 1) return Promise.reject(new Error('offline preflight'));
+        }
+        return f.transport.request(input);
+      },
+    };
+    render(<Harness transport={transport} createId={createId} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('검토 자료 검색어(선택)'), '회복');
+    await user.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+    await screen.findByRole('button', { name: '같은 요청 재확인' });
+    expect(f.requests.some((request) => request.path.endsWith('/runs'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: '같은 요청 재확인' }));
+    await screen.findByRole('region', { name: '선택한 실행' });
+    expect(preflightCalls).toBe(2);
+    expect(createId).toHaveBeenCalledTimes(1);
+    const creates = f.requests.filter(
+      (request) => request.path.endsWith('/runs') && request.method === 'POST',
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]?.body).toMatchObject({
+      retrieval: { kind: 'resource-access-v1', query: '회복' },
+    });
+    expect(creates[0]?.idempotencyKey).toBe('same-request-key');
   });
 
   it('labels analysis as unvalidated and requires an explicit fixture validation request', async () => {

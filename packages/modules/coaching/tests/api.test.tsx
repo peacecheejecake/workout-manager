@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
 import { createCoachingApi, CoachingRequestError } from '../src/api';
+import { createCoachingRunApi } from '../src/run-api';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const thread = {
   id,
@@ -23,7 +24,7 @@ function fixture(body: unknown = { thread, message }, status = 200) {
   const request = vi
     .fn<AuthenticatedTransport['request']>()
     .mockResolvedValue(transportReplySchema.parse({ status, body, traceId: null }));
-  return { request, api: createCoachingApi({ request }) };
+  return { request, api: createCoachingApi({ request }), apiTransport: { request } };
 }
 describe('coaching API adapter', () => {
   it('separates stable idempotency header and preserves text/abort with no plan writes', async () => {
@@ -106,5 +107,57 @@ describe('coaching API adapter', () => {
     await expect(
       fixture({ error: { code: 'secret upstream payload' } }, 500).api.thread(id),
     ).rejects.toMatchObject({ status: 500, code: 'REQUEST_FAILED' });
+  });
+});
+
+describe('coaching run retrieval preflight adapter', () => {
+  const response = {
+    schemaVersion: 2,
+    scope: 'resource-retrieval-v2',
+    query: '회복',
+    checkedAt: '2026-09-20T00:00:00Z',
+    authorizationDigest: 'a'.repeat(64),
+    cache: 'miss',
+    authorizedResourceCount: 6,
+    indexing: { status: 'in_progress', indexedResourceCount: 5, pendingResourceCount: 1 },
+    excerpts: [],
+  };
+
+  it('sends the exact bounded query and signal, returning coverage without private excerpts', async () => {
+    const f = fixture(response);
+    const signal = new AbortController().signal;
+    expect(await createCoachingRunApi(f.apiTransport).retrieval('회복', signal)).toEqual({
+      authorizedResourceCount: 6,
+      indexing: response.indexing,
+    });
+    expect(f.request).toHaveBeenCalledWith({
+      path: '/bff/v1/retrieval/queries',
+      method: 'POST',
+      body: { schemaVersion: 1, query: '회복', limit: 6 },
+      idempotencyKey: null,
+      signal,
+    });
+  });
+
+  it('rejects malformed, mismatched, and oversized responses before run creation', async () => {
+    for (const body of [
+      { ...response, query: 'different' },
+      {
+        ...response,
+        indexing: { status: 'complete', indexedResourceCount: 5, pendingResourceCount: 1 },
+      },
+      {
+        ...response,
+        authorizedResourceCount: 101,
+        indexing: { status: 'complete', indexedResourceCount: 101, pendingResourceCount: 0 },
+      },
+      { ...response, schemaVersion: 1, scope: 'resource-retrieval-v1' },
+    ]) {
+      const f = fixture(body);
+      await expect(createCoachingRunApi(f.apiTransport).retrieval('회복')).rejects.toThrow();
+    }
+    const f = fixture(response);
+    await expect(createCoachingRunApi(f.apiTransport).retrieval(' ')).rejects.toThrow();
+    expect(f.request).not.toHaveBeenCalled();
   });
 });

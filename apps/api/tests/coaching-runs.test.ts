@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoachingRunError } from '@workout/server-persistence/coaching-runs';
+import { ResourceRetrievalError } from '@workout/server-persistence/resource-retrieval';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { createApi } from '../src/app.js';
 import { createConfiguredApi } from '../src/configured.js';
@@ -81,6 +82,28 @@ afterEach(async () => {
 });
 
 describe('coaching run API boundary', () => {
+  it('reports incomplete grounding as a stable conflict without creating a run', async () => {
+    const { app, repository } = setup();
+    repository.create.mockRejectedValueOnce(
+      new ResourceRetrievalError('RETRIEVAL_INDEX_INCOMPLETE'),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: collection,
+      headers,
+      payload: {
+        schemaVersion: 1,
+        evidenceSnapshotId: snapshotId,
+        expectedConversationRevision: 1,
+        retrieval: { kind: 'resource-access-v1', query: '회복' },
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: { code: 'RETRIEVAL_INDEX_INCOMPLETE' },
+    });
+  });
+
   it('derives owner and server-only policy/source, with bounded list and replay-shaped command', async () => {
     const { app, repository } = setup();
     const payload = {

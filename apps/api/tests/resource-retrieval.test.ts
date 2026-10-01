@@ -12,13 +12,14 @@ const citationId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const digest = 'a'.repeat(64);
 
 const result = {
-  schemaVersion: 1 as const,
-  scope: 'resource-retrieval-v1' as const,
+  schemaVersion: 2 as const,
+  scope: 'resource-retrieval-v2' as const,
   query: '회복',
   checkedAt: '2026-09-20T00:00:00Z',
   authorizationDigest: digest,
   cache: 'miss' as const,
   authorizedResourceCount: 1,
+  indexing: { status: 'complete' as const, indexedResourceCount: 1, pendingResourceCount: 0 },
   excerpts: [
     {
       resourceId,
@@ -173,6 +174,28 @@ describe('resource retrieval API boundary', () => {
     });
     expect(oversized.statusCode).toBe(413);
     expect(repository.retrieve).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes through partial indexing coverage without presenting an error as complete', async () => {
+    const { app, repository } = setup();
+    const partial = {
+      ...result,
+      authorizedResourceCount: 6,
+      indexing: {
+        status: 'in_progress' as const,
+        indexedResourceCount: 5,
+        pendingResourceCount: 1,
+      },
+    };
+    repository.retrieve.mockResolvedValueOnce(partial);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/retrieval/queries',
+      headers,
+      payload: { schemaVersion: 1, query: '회복' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(partial);
   });
 
   it('returns the stored grounding with withdrawn citations marked unavailable', async () => {
