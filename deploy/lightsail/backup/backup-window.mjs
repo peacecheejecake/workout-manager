@@ -70,7 +70,13 @@ function inspect(run, config, service) {
     labels['com.docker.compose.project'] !== config.project ||
     labels['com.docker.compose.service'] !== service ||
     labels['com.docker.compose.project.config_files'] !== config.composeFile ||
-    typeof container.State?.Running !== 'boolean'
+    typeof container.State?.Running !== 'boolean' ||
+    container.State.Restarting !== false ||
+    container.State.Paused !== false ||
+    container.State.Dead !== false ||
+    (container.State.Running
+      ? container.State.Status !== 'running'
+      : !['created', 'exited'].includes(container.State.Status))
   ) {
     reject();
   }
@@ -121,6 +127,11 @@ function validateServices(run, config) {
   const graphhopper = inspect(run, config, 'graphhopper');
   inspect(run, config, 'postgres');
   if (graphhopper.running && !app.running) reject();
+  if (
+    (!app.running && app.policy.Name !== 'no') ||
+    (!graphhopper.running && graphhopper.policy.Name !== 'no')
+  )
+    reject();
   return { app, graphhopper };
 }
 

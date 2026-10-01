@@ -33,6 +33,8 @@ function fixture() {
       app: { Name: 'unless-stopped', MaximumRetryCount: 0 },
       graphhopper: { Name: 'on-failure', MaximumRetryCount: 3 },
     },
+    statusOverride: {},
+    corruptAfter: undefined,
     project: 'workout-manager',
     timerActive: false,
     lockStatus: 75,
@@ -72,7 +74,12 @@ function container(state, service) {
     NetworkSettings: { Networks: { [config.network]: {} } },
     State: {
       Running: state.running[service],
+      Status: state.running[service] ? 'running' : 'exited',
+      Restarting: false,
+      Paused: false,
+      Dead: false,
       Health: service === 'postgres' ? { Status: 'healthy' } : undefined,
+      ...state.statusOverride[service],
     },
   };
 }
@@ -81,6 +88,9 @@ function runnerFor(state) {
   function record(action) {
     state.actions.push(action);
     if (state.replaceAfter === action) state.replaced = true;
+    if (state.corruptAfter?.action === action) {
+      state.statusOverride[state.corruptAfter.service] = state.corruptAfter.override;
+    }
     if (state.externalPolicyAfter === action) {
       state.policy.app = { Name: 'always', MaximumRetryCount: 0 };
     }
@@ -168,15 +178,18 @@ test('leaves initially stopped services stopped', () => {
   const state = fixture();
   state.running.app = false;
   state.running.graphhopper = false;
+  state.policy.app = { Name: 'no', MaximumRetryCount: 0 };
+  state.policy.graphhopper = { Name: 'no', MaximumRetryCount: 0 };
   assert.equal(execute(state), true);
   assert.deepEqual(state.actions, ['fence', 'collector', 'fence']);
   assert.deepEqual(state.running, { app: false, graphhopper: false, postgres: true });
-  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+  assert.deepEqual(state.policy.graphhopper, { Name: 'no', MaximumRetryCount: 0 });
 });
 
 test('leaves an initially stopped GraphHopper untouched while cycling the app', () => {
   const state = fixture();
   state.running.graphhopper = false;
+  state.policy.graphhopper = { Name: 'no', MaximumRetryCount: 0 };
   assert.equal(execute(state), true);
   assert.deepEqual(state.actions, [
     'update:app:no',
@@ -188,7 +201,47 @@ test('leaves an initially stopped GraphHopper untouched while cycling the app', 
     'update:app:unless-stopped',
   ]);
   assert.equal(state.running.graphhopper, false);
-  assert.deepEqual(state.policy.graphhopper, { Name: 'on-failure', MaximumRetryCount: 3 });
+  assert.deepEqual(state.policy.graphhopper, { Name: 'no', MaximumRetryCount: 0 });
+});
+
+test('rejects initially stopped services whose restart policy can revive them', () => {
+  for (const service of ['app', 'graphhopper']) {
+    const state = fixture();
+    state.running.app = false;
+    state.running.graphhopper = false;
+    state.policy.app = { Name: 'no', MaximumRetryCount: 0 };
+    state.policy.graphhopper = { Name: 'no', MaximumRetryCount: 0 };
+    state.policy[service] = { Name: 'always', MaximumRetryCount: 0 };
+    assert.throws(() => execute(state));
+    assert.deepEqual(state.actions, []);
+  }
+});
+
+test('rejects restarting, paused, dead, and contradictory Docker states before mutation', () => {
+  for (const [service, override] of [
+    ['app', { Running: false, Status: 'restarting', Restarting: true }],
+    ['graphhopper', { Status: 'exited' }],
+    ['app', { Paused: true }],
+    ['postgres', { Dead: true }],
+  ]) {
+    const state = fixture();
+    state.statusOverride[service] = override;
+    assert.throws(() => execute(state));
+    assert.deepEqual(state.actions, []);
+  }
+});
+
+test('a restart transition after stop aborts capture and leaves policy disabled', () => {
+  const state = fixture();
+  state.corruptAfter = {
+    action: 'stop:graphhopper',
+    service: 'graphhopper',
+    override: { Status: 'restarting', Restarting: true },
+  };
+  assert.throws(() => execute(state));
+  assert.equal(state.actions.includes('collector'), false);
+  assert.equal(state.actions.includes('stop:app'), false);
+  assert.equal(state.policy.graphhopper.Name, 'no');
 });
 
 test('refuses free locks, active timers, and wrong project before touching services', () => {
