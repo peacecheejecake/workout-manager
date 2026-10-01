@@ -89,6 +89,25 @@ The app mounts it read-only and treats a missing or stale disclosure as unavaila
 
 ## Start and inspect
 
+Every Workout Compose service, including `db_setup` and the maintenance/ledger
+one-shots, uses Docker's `json-file` logging driver with `max-size=10m` and
+`max-file=5`. This keeps `docker logs` available while rotating each container's
+local files after they reach the size limit. The nominal retained payload is up
+to about 50 MB per container, plus rotation and filesystem overhead; this is a
+size bound, **not** a time-based retention period or an audit archive. Old log
+lines can disappear quickly under heavy output. Keep operational monitoring and
+separate bounded audit records where required. Never log credentials, raw health
+data, fetched URLs/content, or precise location data.
+
+The 2026-10-02 host inspection found Caddy's adapted configuration had no HTTP
+access log (`logging=null`, `http_logs=[null]`); its container already had
+`json-file` options `10m` × `5`. The running Workout app and GraphHopper had
+empty log options. This Compose change affects Workout containers only after a
+controlled recreation; it neither changes Caddy nor enables HTTP access logs.
+Before that release, inspect the rendered Compose logging settings and verify
+the recreated containers' `.HostConfig.LogConfig` values on the host. No live
+container was recreated for this preparation.
+
 Set `WORKOUT_DATA_DIR`, `WORKOUT_SECRETS_DIR`, an immutable `WORKOUT_RELEASE`,
 and `WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE` in a deployment-only Compose
 environment file outside Git. The last value is required by the PostgreSQL

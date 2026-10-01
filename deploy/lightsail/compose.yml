@@ -1,5 +1,11 @@
 name: workout-manager
 
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   app:
     build:
@@ -7,6 +13,7 @@ services:
       dockerfile: deploy/Dockerfile
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: unless-stopped
+    logging: *bounded-logging
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/app.env
     environment:
@@ -56,6 +63,7 @@ services:
   postgres:
     image: postgres:17.6-bookworm
     restart: unless-stopped
+    logging: *bounded-logging
     command:
       - postgres
       - -c
@@ -85,6 +93,7 @@ services:
     profiles: [setup]
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: 'no'
+    logging: *bounded-logging
     command: ['node', '--import', 'tsx', '/app/deploy/lightsail/bootstrap-db.mjs']
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/setup.env
@@ -106,6 +115,7 @@ services:
       dockerfile: deploy/lightsail/graphhopper.Dockerfile
     image: workout-manager/graphhopper:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: unless-stopped
+    logging: *bounded-logging
     # The reviewed serving profile binds only to loopback. Share app's network namespace so
     # neither the route nor admin connector can be reached from Caddy or the Docker host.
     network_mode: service:app
@@ -136,6 +146,7 @@ services:
     profiles: [maintenance]
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: 'no'
+    logging: *bounded-logging
     command: ['node', '--import', 'tsx', '/app/apps/worker/src/resource-cleanup.ts']
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/resource-cleanup.env
@@ -157,6 +168,7 @@ services:
     profiles: [maintenance]
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: 'no'
+    logging: *bounded-logging
     command: ['node', '--import', 'tsx', '/app/apps/worker/src/course-thumbnail.ts']
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/course-thumbnails.env
@@ -179,6 +191,7 @@ services:
     profiles: [maintenance]
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: 'no'
+    logging: *bounded-logging
     command: ['node', '--import', 'tsx', '/app/apps/worker/src/url-ingestion.ts']
     env_file:
       - ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/url-ingestion.env
@@ -201,6 +214,7 @@ services:
     profiles: [ledger]
     image: workout-manager/app:${WORKOUT_RELEASE:?Set an immutable release identifier}
     restart: 'no'
+    logging: *bounded-logging
     user: '0:0'
     read_only: true
     tmpfs:
