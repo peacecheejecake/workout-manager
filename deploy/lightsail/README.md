@@ -437,9 +437,11 @@ root, Docker socket access, direct database credentials, private bind-mount
 write access, host processes, and unregistered commands can bypass advisory
 locks. A host privilege policy must restrict those paths, and a real concurrent
 writer/restart drill must fail safely before live use; both remain
-**not_executed**. The checker still samples state. The
-exact `postgres` local-socket authentication and Docker streaming path have
-not been exercised on the server. The host's
+**not_executed**. The checker still samples state. On 2026-10-01, manual
+`docker exec --user postgres` streaming of schema-only and full-database custom
+archives to in-container `pg_restore` parsing succeeded on the server. This
+checked local-socket authentication and the Docker pipe, but did not install
+or run the backup transport or persist an archive. The host's
 `pg_restore` version must be suitable before using the collector's later
 `verify` command; the transport's capture-time PostgreSQL 17 validation does
 not supply a host PostgreSQL 17 binary for that later step. A full isolated
