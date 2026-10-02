@@ -21,15 +21,15 @@ of existing bind sources or restrict an administrator with Docker access.
    PostgreSQL and GraphHopper states, exact running image IDs, schema version,
    current directory ownership and disk space. Record them without secrets or
    personal data.
-2. Establish a separate, narrowly controlled recovery administrator. Confirm
-   independent SSH login, root access and recovery commands in a **new**
-   session, while the existing `ubuntu` session stays open. Confirm the
-   Lightsail snapshot recovery procedure and take a fresh snapshot before any
-   account or ownership change. Do not remove `ubuntu` privileges until this
-   path has actually worked. The 2026-10-02 read-only audit found no
-   `wm-recovery` account and no instance snapshot for
-   `workout-shared-8gb-20260929`; recheck both immediately before creating
-   them.
+2. Confirm the Lightsail snapshot recovery procedure, take a fresh snapshot,
+   and verify its ID and availability before changing any account or file
+   ownership. Then establish a separate, narrowly controlled recovery
+   administrator. Confirm independent SSH login, root access and recovery
+   commands in a **new** session, while the existing `ubuntu` session stays
+   open. Do not remove `ubuntu` privileges until this path has actually
+   worked. The 2026-10-02 read-only audit found no `wm-recovery` account and
+   no instance snapshot for `workout-shared-8gb-20260929`; recheck both
+   immediately before starting this sequence.
 3. Build the reviewed release from a root-controlled, immutable source copy,
    not the current `ubuntu`-writable `/srv/workout-manager/source`. Pin the
    Compose bytes and image IDs. Validate image users numerically, including
