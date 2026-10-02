@@ -48,10 +48,9 @@ async function connect(connectionString) {
   return client;
 }
 
-function program(bin, args) {
-  const result = spawnSync(bin, args, { encoding: 'utf8', timeout: 60_000 });
-  if (result.error || result.status !== 0)
-    throw new Error(`PG17_COVERAGE_ARCHIVE_FAILED: ${result.error?.message ?? result.stderr}`);
+function program(bin, args, env = process.env) {
+  const result = spawnSync(bin, args, { env, encoding: 'utf8', timeout: 60_000 });
+  if (result.error || result.status !== 0) throw new Error('PG17_COVERAGE_ARCHIVE_FAILED');
   return result.stdout;
 }
 
@@ -61,6 +60,15 @@ test(
   async () => {
     const url = safeUrl(urlInput);
     const adminUrl = url.toString();
+    const dumpEnv = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('PG'))),
+      PGHOST: url.hostname,
+      PGPORT: url.port || '5432',
+      PGUSER: decodeURIComponent(url.username),
+      PGPASSWORD: decodeURIComponent(url.password),
+      PGDATABASE: database,
+      PGCONNECT_TIMEOUT: '5',
+    };
     const ownerUrl = new URL(adminUrl);
     ownerUrl.username = 'coverage_owner';
     ownerUrl.password = url.password;
@@ -174,15 +182,18 @@ test(
           await imported.end();
           imported = undefined;
 
-          program(pgDump, [
-            '--format=custom',
-            '--no-owner',
-            '--no-acl',
-            `--snapshot=${snapshot.snapshotName}`,
-            '--file',
-            archive,
-            adminUrl,
-          ]);
+          program(
+            pgDump,
+            [
+              '--format=custom',
+              '--no-owner',
+              '--no-acl',
+              `--snapshot=${snapshot.snapshotName}`,
+              '--file',
+              archive,
+            ],
+            dumpEnv,
+          );
           assert.equal(readFileSync(archive).subarray(0, 5).toString(), 'PGDMP');
           const dump = program(pgRestore, ['--data-only', '--table=account', '--file=-', archive]);
           assert.match(dump, /snapshot-owner/);
