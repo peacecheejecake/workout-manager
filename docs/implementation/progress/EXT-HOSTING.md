@@ -404,3 +404,9 @@
 - 첫 선택 실행은 exported snapshot 시험 **1/1 통과**, collector 시험 **0/1 실패**였다. 컨테이너의 `/tmp`가 실행 불가라 시험이 생성한 fence 실행 파일이 `EACCES`를 반환했다. 일회용 컨테이너의 일반 실행 가능 임시 경로를 지정해 같은 코드의 두 선택 시험을 다시 실행한 결과 **2/2 통과·0 skip**이었다. 이 시험은 스냅샷 이전 행과 이후 변경의 분리, 영속 slot 유지, 실패 capture/전체 archive 검증의 정리 경계를 확인한다. 첫 실패는 통과로 소급하지 않는다.
 - 종료 전 합성 slot·publication·표본 테이블은 각각 **0개**였고 일회용 컨테이너와 임시 Node 바이너리를 제거했다. 이 로컬 증거는 현재 운영 DB의 `wal_level=replica` 전환, 신선한 전체 백업·독립 삭제 원장 tail·원격 S3 보관·실제 복원·503 해제를 검증하지 않으므로 해당 항목은 **not_executed**를 유지한다.
 - 새 문맥 없는 Codex `gpt-6-sol` high 읽기 전용 검토는 기준 `main` `04f25df7d918fc2b2aeaf61f32fbfb9dc199b418` → `phase/ext-hosting` `0aa4b4e34a5cecf6dcbafe3c2c980564b33383bb` 전체 1파일 diff를 **APPROVE**했고 차단 지적은 없었다. 검토자는 시험 코드·서술 범위·diff·작업 트리를 확인했으며 Docker 시험과 운영 호스트는 독립 재실행하지 않았다. 이 검토 기록을 포함한 HEAD는 병합 전 검토 새로고침 대상이다.
+
+## 영속 slot snapshot·coverage v2 결합 시험 · 2026-10-02
+
+- 새 opt-in 시험 `snapshot-coverage.persistent-pg17.test.mjs`는 네트워크가 차단된 표식 있는 일회용 PostgreSQL 17.6에서 migration 001–093을 실제 적용한 뒤, 영속 `pgoutput` slot의 exported snapshot을 coverage v2(16개 표)와 관리자 `pg_dump`가 함께 가져오도록 한다. 기대 schema fingerprint는 체크인된 PG14 후보 `source-registry.json`과 고정 시험 owner에서 DB 조회 없이 미리 계산한 상수이고, owner 목록도 fixture가 미리 선언한다. 같은 snapshot에서 후행 계정은 coverage와 dump 모두에 보이지 않았다. 누락 owner·오류 지문·실제 컬럼 변경·오류 cluster ID를 거절했다. 잘못된 slot identity의 직접 거부와 운영의 독립 pin·owner 목록은 이 시험 범위가 아니다.
+- 담당 agent의 첫 시도는 owner 권한의 FORCE RLS dump, 둘째 시도는 `pg_restore`의 표 선택 조건으로 실패했다. fixture를 고친 뒤 실제 격리 실행 **1/1 통과**를 얻었고, root가 PostgreSQL 버전·동급 도구를 정확히 17.6으로 고정해 다시 격리 실행한 최종 결과도 **1/1 통과·0 skip**이었다. 종료 전 합성 slot·다른 client 연결은 각각 0개였고 일회용 컨테이너를 제거했다. Node 24.12.0에서 opt-in 환경이 없으면 1 skip임을 확인했고, 변경 파일 ESLint·Prettier·diff 검사가 통과했다. 기본 셸의 Node 20 실행은 TypeScript migration import가 불가능했고 Node 24 명시 실행으로 확인했다. 이 실패를 통과로 소급하지 않는다.
+- 이 증거는 합성 snapshot 시작 경계에 한정된다. 운영 DB의 `wal_level=replica` 전환, 신선한 전체 백업·독립 삭제 원장 tail·S3 원격 보관·운영 복원·503 해제는 모두 **not_executed**이며 coverage 결과도 `complete:false`다.

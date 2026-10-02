@@ -168,3 +168,9 @@ IntakeEntry·RecoveryActionLog의 새 생성 요청은 이 UUID를 필수로 받
 후속 `schemaVersion:2` 목록은 같은 가져온 snapshot과 소유자별 RLS 범위에서 코스 삭제/현재 코스, Activity·source·억제, 자료·갤러리·체크인, 자료/코스 공유와 감사, 영양·회복 현재 head, 제약, 코스 공유 장소 예산의 **16개 표**를 각각 읽는다. 표의 모든 현재 컬럼을 PostgreSQL `jsonb` 텍스트로 메모리 안에서만 직렬화하고, 목적별로 분리한 HMAC 행 표식과 정렬된 표 digest·건수만 결과에 넣는다. 원문 ID·본문·좌표·건강값은 결과에 넣지 않는다. 읽기 전용 거래 커서는 한 번에 8행을 가져오고, 2 MiB 초과 행은 서버가 원문 대신 NULL을 반환해 즉시 거절한다. 소유자당 10,000행·32 MiB, 소유자 10,000명 상한도 넘으면 실패한다. 결과의 동의·말소·제약 건수 같은 요약 역시 비공개 정보로 취급한다.
 
 조회 대상의 컬럼 이름/타입·FORCE RLS·소유자와 001–093 마이그레이션 checksum으로 만든 schema fingerprint는 **DB 밖에서 미리 고정한 기대값**과 비교해야 한다. 시험에서는 현재 DB에서 계산한 값을 fixture 입력으로 사용했으므로 운영의 독립 pin 증거가 아니다. 일회용 PostgreSQL 14에 실제 migration 001–093을 적용한 뒤 세 소유자, 삭제 표, snapshot 뒤 쓰기 비가시성과 16개 표 조회를 확인했고, 간소화 schema에서는 공유 수신자 행 제외·큰 행의 NULL 반환·런타임 거절을 확인했다. root 재실행의 단위 **10/10**, PostgreSQL **2/2** 및 변경 파일 lint·format이 통과했다. Publication/정책 전체 지문, 독립 소유자 목록, 이 coverage 목록과 영속 slot의 exported snapshot 연결, 모든 복원 상태의 충분성, 외부 epoch와 마지막 tail은 계속 미증명이며 `complete:false`를 유지한다. PostgreSQL 17.6 운영 실행·원격 anchor·복원 접근은 **not_executed**다.
+
+### PostgreSQL 17.6 영속 slot과 coverage의 합성 결합 후속 · 2026-10-02
+
+위 PostgreSQL 14 기록 이후, 네트워크가 차단된 일회용 PostgreSQL 17.6의 표식 DB에 실제 migration 001–093을 적용하고 영속 `pgoutput` slot의 `EXPORT_SNAPSHOT`에서 coverage v2와 관리자 `pg_dump`를 함께 읽었다. 16개 표의 조회와 snapshot 뒤 추가한 계정의 비가시성을 확인했다. 기대 schema fingerprint는 실행 중 DB에서 되먹이지 않고 체크인된 `source-registry.json`의 migration checksum·관계/컬럼 기술과 고정 시험 owner에서 미리 계산한 상수로 전달했다. 선언된 시험 owner를 누락하거나 지문을 바꾸고, 실제 컬럼을 추가하거나 클러스터 식별자를 바꾸면 거절했다. 첫 두 시험 시도는 각각 FORCE RLS 아래 owner의 dump 권한, `pg_restore`의 표 선택 조건 때문에 실패했으며 시험 설정을 고친 뒤 최종 **1/1 통과**했다. root도 최종 버전에서 **1/1 통과**를 재확인했고 slot·연결 잔존 0개와 컨테이너 제거를 확인했다.
+
+이 상수는 PG14 후보 registry에서 만든 **합성 fixture pin**이고 소유자 목록도 시험에 선언한 값이다. 운영 배포의 독립 schema pin·소유자 목록, 복원 충분성, 원격 보관·마지막 WAL tail·실제 운영 DB/복원은 증명하지 않는다. 결과의 `complete:false`와 운영 항목의 **not_executed**를 유지한다.
