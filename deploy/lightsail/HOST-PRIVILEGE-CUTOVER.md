@@ -32,10 +32,15 @@ of existing bind sources or restrict an administrator with Docker access.
    immediately before starting this sequence.
 3. Build the reviewed release from a root-controlled, immutable source copy,
    not the current `ubuntu`-writable `/srv/workout-manager/source`. Pin the
-   Compose bytes and image IDs. Validate image users numerically, including
-   app, GraphHopper, private-writing workers and the intentional ledger root
-   exception. Check the built app can start and its runtime cache/temporary
-   paths are writable by UID 20001 in a disposable environment.
+   Compose bytes and image IDs. Keep the copied source non-writable while
+   preserving the read/traverse modes needed by the image's non-root user:
+   Docker `COPY` preserves restrictive source modes. Do not apply `go-rwx` to
+   the build context; verify code and Next build files are readable by UID 20001
+   and GraphHopper's launcher is readable by UID 20002 in disposable containers.
+   Validate image users numerically, including app, GraphHopper, private-writing
+   workers and the intentional ledger root exception. Check the built app can
+   start and its runtime cache/temporary paths are writable by UID 20001 in a
+   disposable environment.
 4. Prepare a rollback plan using the previous image IDs and the snapshot.
    Document the exact ownership rollback while all Workout writers are
    stopped. Never overwrite data with a stale snapshot after new writes.
