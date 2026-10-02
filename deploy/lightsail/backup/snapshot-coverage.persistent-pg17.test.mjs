@@ -61,7 +61,8 @@ test(
     const url = safeUrl(urlInput);
     const adminUrl = url.toString();
     const dumpEnv = {
-      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('PG'))),
+      PATH: process.env.PATH ?? '/usr/bin:/bin',
+      TMPDIR: process.env.TMPDIR ?? tmpdir(),
       PGHOST: url.hostname,
       PGPORT: url.port || '5432',
       PGUSER: decodeURIComponent(url.username),
