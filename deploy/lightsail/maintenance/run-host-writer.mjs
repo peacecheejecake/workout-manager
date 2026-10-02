@@ -44,7 +44,7 @@ export function commandFor(
   ];
   if (args.length === 1 && args[0] === 'build') return [dockerProgram, [...common, 'build']];
   if (args.length === 2 && args[0] === 'up' && SERVICES.has(args[1])) {
-    return [dockerProgram, [...common, 'up', '-d', args[1]]];
+    return [dockerProgram, [...common, 'up', '-d', '--no-deps', args[1]]];
   }
   if (args.length === 1 && args[0] === 'setup') {
     return [

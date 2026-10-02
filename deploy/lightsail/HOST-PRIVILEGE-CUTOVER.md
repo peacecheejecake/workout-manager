@@ -39,11 +39,14 @@ of existing bind sources or restrict an administrator with Docker access.
 
 ## Controlled transition
 
-Hold both Workout backup and maintenance locks. Disable the two maintenance
+Disable the two maintenance
 timers and check that no one-shot worker, setup job, backup collector, or
-ledger exporter is active. Keep the 503 block. Stop GraphHopper and app, then
-PostgreSQL, and confirm Docker did not restart them. Do not change the apex
-site's containers or data.
+ledger exporter is active. Confirm the backup release is not connected to a
+timer and prohibit other manual root writers during this window. Hold both
+Workout backup and maintenance locks while stopping services and changing
+ownership. Keep the 503 block. Stop GraphHopper and app, then PostgreSQL, and
+confirm Docker did not restart them. Do not change the apex site's containers
+or data.
 
 While every Workout writer is stopped, move the private bind tree to UID/GID
 20001 and preserve restrictive directory/file modes. Move the routing tree to
@@ -52,8 +55,18 @@ UID/GID 20002; keep the app's read-only routing access working without giving
 symlink, and mount point; do not follow untrusted symlinks during ownership
 changes. The PostgreSQL data directory keeps its database-specific owner.
 
-Start PostgreSQL, the new app image and GraphHopper through the reviewed host
-writer. Run private file create/read/delete and routing-read probes as their
+Release both locks before invoking the host writer: it acquires the same locks
+nonblocking for each command and would otherwise exit 75. This is a controlled
+handoff, not an atomic lock transfer. With all timers disabled, no backup
+scheduler and no other manual writer, first use its `start postgres` command
+to start the **existing** PostgreSQL container, then check its exact ID and
+health. Do not use `up postgres` here: the staged Compose file contains a
+`wal_level=logical` change whose migration gate is still open. Use the reviewed
+writer's `up app` and `up graphhopper` commands only after confirming they pass
+`--no-deps`, so neither command can recreate PostgreSQL as a dependency. Each
+writer call reacquires and releases both locks; inspect container IDs and abort
+on any unexpected writer or change between calls. Run private file
+create/read/delete and routing-read probes as their
 actual container identities, then the bounded workers with disposable data.
 Confirm healthy services, immutable image/Compose IDs and unchanged 503/apex
 behavior. If a probe fails, stop all Workout writers before restoring the old

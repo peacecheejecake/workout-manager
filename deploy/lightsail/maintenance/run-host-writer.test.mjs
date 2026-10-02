@@ -112,6 +112,9 @@ test('accepts only fixed Workout writer categories', () => {
     ['exec', 'postgres-ready'],
   ];
   for (const args of cases) assert.equal(commandFor(args)[0], '/usr/bin/docker');
+  for (const name of ['postgres', 'app', 'graphhopper']) {
+    assert.deepEqual(commandFor(['up', name])[1].slice(-4), ['up', '-d', '--no-deps', name]);
+  }
   assert.deepEqual(commandFor(['setup'])[1].slice(-6), [
     'run',
     '--rm',

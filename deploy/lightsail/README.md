@@ -180,7 +180,8 @@ rejects missing/changed pins and Compose files writable by group or others.
 The checkout may remain deployment-user owned, so this byte check does not
 protect a mutable build context or a file replaced after the check. Those
 sources need the host privilege policy and release immutability gate below.
-The opt-in wrapper accepts only `build`, `up app|graphhopper|postgres`, `setup`,
+The opt-in wrapper accepts only `build`, `up app|graphhopper|postgres` (each with
+fixed `--no-deps`), `setup`,
 `start app|graphhopper|postgres`, and the fixed read-only
 `exec postgres-ready` probe. It accepts no arbitrary Compose flags, shell,
 container name, executable, or SQL. Run any sanctioned manual Workout
