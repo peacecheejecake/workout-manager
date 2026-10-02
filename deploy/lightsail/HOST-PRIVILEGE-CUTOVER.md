@@ -40,7 +40,10 @@ of existing bind sources or restrict an administrator with Docker access.
    Validate image users numerically, including app, GraphHopper, private-writing
    workers and the intentional ledger root exception. Check the built app can
    start and its runtime cache/temporary paths are writable by UID 20001 in a
-   disposable environment.
+   disposable environment. Compare the installed root-owned host writer's full
+   SHA-256 with the reviewed source and inspect its `up app`/`up graphhopper`
+   command output for `--no-deps`; a grep for that token can match a different
+   command path.
 4. Prepare a rollback plan using the previous image IDs and the snapshot.
    Document the exact ownership rollback while all Workout writers are
    stopped. Never overwrite data with a stale snapshot after new writes.
