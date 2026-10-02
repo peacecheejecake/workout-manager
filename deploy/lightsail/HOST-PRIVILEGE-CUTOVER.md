@@ -26,7 +26,10 @@ of existing bind sources or restrict an administrator with Docker access.
    session, while the existing `ubuntu` session stays open. Confirm the
    Lightsail snapshot recovery procedure and take a fresh snapshot before any
    account or ownership change. Do not remove `ubuntu` privileges until this
-   path has actually worked.
+   path has actually worked. The 2026-10-02 read-only audit found no
+   `wm-recovery` account and no instance snapshot for
+   `workout-shared-8gb-20260929`; recheck both immediately before creating
+   them.
 3. Build the reviewed release from a root-controlled, immutable source copy,
    not the current `ubuntu`-writable `/srv/workout-manager/source`. Pin the
    Compose bytes and image IDs. Validate image users numerically, including
@@ -73,7 +76,11 @@ behavior. If a probe fails, stop all Workout writers before restoring the old
 images and matching ownership; inspect for partial writes before rollback.
 
 Only after the separate administrator access is proven, remove `ubuntu` from
-sudo, Docker and LXD access and any passwordless sudo grant. End existing
+sudo, Docker and LXD access and any passwordless sudo grant. On the current
+host, `/etc/sudoers.d/90-cloud-init-users` grants `ubuntu` `NOPASSWD:ALL` in
+addition to its sudo group membership; account group removal alone is
+insufficient. Preserve a validated recovery sudo rule before changing that
+root-owned file, then check the effective `sudo -l -U ubuntu` result. End existing
 `ubuntu` sessions and test a **new** `ubuntu` login: direct private read/write,
 Docker socket, LXD control and sudo must all fail. Check that the app and its
 workers still write the private tree and GraphHopper can maintain its graph.
