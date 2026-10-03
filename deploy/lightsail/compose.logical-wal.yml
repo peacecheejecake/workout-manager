@@ -1,0 +1,10 @@
+# Opt in only after the measured WAL-retention and recovery gates in README.md.
+# The base Compose file retains PostgreSQL's image defaults for the UID cutover.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_slot_wal_keep_size=${WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE:?Set a measured, bounded PostgreSQL replication slot WAL limit}

@@ -71,10 +71,13 @@ nonblocking for each command and would otherwise exit 75. This is a controlled
 handoff, not an atomic lock transfer. With all timers disabled, no backup
 scheduler and no other manual writer, first use its `start postgres` command
 to start the **existing** PostgreSQL container, then check its exact ID and
-health. Do not use `up postgres` here: the staged Compose file contains a
-`wal_level=logical` change whose migration gate is still open. Use the reviewed
+health. Keep `compose.logical-wal.yml` out of this transition: its
+`wal_level=logical` change has a separate, still-open migration gate. The base
+Compose file leaves PostgreSQL's image defaults in place. Use the reviewed
 writer's `up app` and `up graphhopper` commands only after confirming they pass
-`--no-deps`, so neither command can recreate PostgreSQL as a dependency. Each
+`--no-deps`, so neither command can recreate PostgreSQL as a dependency. Check
+the existing PostgreSQL container ID and `SHOW wal_level` before and after the
+app/GraphHopper recreation; abort if either changes unexpectedly. Each
 writer call reacquires and releases both locks; inspect container IDs and abort
 on any unexpected writer or change between calls. Run private file
 create/read/delete and routing-read probes as their

@@ -446,3 +446,8 @@
 - 두 프로파일을 활성화하고 각 서버 인증서로 900초를 요청한 임시 세션 발급을 확인했다. root 전용 AWS `credential_process` 두 프로파일로 STS가 각각 정확한 `workout-manager-backup-v1`·`workout-manager-ledger-v1` assumed role을 반환했다. 각 역할은 자기 버킷의 versioning `Enabled`를 읽었고 상대 버킷 조회는 거부됐다. 임시 세션의 access key·secret·token은 출력하거나 디스크에 저장하지 않았다. AWS 프로파일 설정의 최대 세션은 3,600초다.
 - 서버의 각 역할로 자기 전용 prefix에 작은 **합성** 객체를 `If-None-Match: *`와 SSE-S3로 쓰고, 반환된 정확한 버전의 `HeadObject` 암호화·`GetObject` 바이트 재읽기를 확인했다. 관리자 자격으로 두 시험 키의 정확한 객체 버전 각 1개만 삭제하고 해당 키의 버전·삭제 마커 부재를 재조회했다. 이것은 서버 workload identity의 첫 허용·거부 및 버전 읽기 시험이다. 실제 DB/개인 파일 백업, 삭제 원장 tail, 보존 정책·독립성, 격리 복원, 인증서 갱신/폐기, 전체 write fence는 **not_executed**다.
 - 사후 공개 Workout 주소는 HTTPS **503/TLS 검증 0**, 기존 사이트는 **200/TLS 검증 0**이었다. Docker 재조회에서 Workout 앱·PostgreSQL과 기존 사이트 서비스는 healthy, 경로 엔진은 실행 중이었다. 실제 서비스 재시작·UID/소유권 전환·제품 공개는 하지 않았다.
+
+## 앱 권한 전환과 PostgreSQL logical WAL 설정 분리 · 2026-10-03
+
+- 이전 기본 Compose는 비루트 앱·GraphHopper를 `up --no-deps`로 교체할 때도 전체 모델의 `WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE`를 요구했다. 운영 DB는 여전히 `wal_level=replica`이고 503 중 관측한 WAL 증가 0은 출시 부하를 대표하지 않으므로, 측정 전 상한을 운영 설정에 채우지 않았다. 기본 `compose.yml`은 PostgreSQL 이미지 기본 WAL 설정을 유지하고, `wal_level=logical`과 측정된 유한 상한 요구를 별도 명시적 `compose.logical-wal.yml`로 옮겼다. 기존 host writer는 기본 파일 하나만 고정하고 앱·경로 엔진 `up`에 `--no-deps`를 사용한다.
+- Compose 렌더링 시험은 기본 파일이 상한 없이 성공하고 PostgreSQL command를 추가하지 않음, 별도 override는 상한 누락 시 거절하고 합성 시험값을 명시할 때만 logical 명령을 생성함을 확인했다. host writer·runtime user 시험을 합쳐 **11/11 통과·0 skip**, 변경 JS ESLint(Node 24), 5개 변경 파일 Prettier, diff 공백 검사가 통과했다. 담당 agent의 첫 ESLint 호출은 기본 Node 20에서 설정 초기화 오류로 실패했고 Node 24를 명시한 root 재실행은 통과했다. 이는 로컬 구성 검증이며 실제 서버 Compose 적용, UID/파일 소유권 전환, PostgreSQL ID·`SHOW wal_level` 전후 확인은 **not_executed**다.
