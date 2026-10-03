@@ -95,3 +95,70 @@ probes do not establish retention, independent ledger durability, operational
 backup upload, restore, certificate renewal/revocation, or a complete host write
 fence. Keep production backup and ledger objects out of these buckets until
 those gates are verified.
+
+## Replacement leaf preparation (local checks only)
+
+The current backup and ledger leaf certificates expire **2026-11-02 11:48 UTC**.
+Prepare replacements well before that time. Generate a distinct private key and
+CSR for each role inside a protected root-only area on the host. Export **only
+CSRs** to the off-host CA signing environment. Sign each CSR using the existing
+CA with `CA:FALSE`, digital-signature key usage, and `clientAuth` extended key
+usage. Never copy the CA private key to the host. Record new serial numbers,
+issuance and expiry times, and the reviewer's fingerprints through a separate
+protected channel; keep private keys and temporary credentials out of logs.
+
+`roles-anywhere-rotation-check.mjs` is a **dry-run only** local gate. It does
+not install certificates, call AWS, request credentials, or change the active
+credential-process configuration. Run its reviewed copy as root on Linux, from
+a root-owned non-writable path, with two separate root:root 0700 directories:
+
+- Current directory: `ca.pem`, `backup.pem`, `ledger.pem` (all 0600).
+- Candidate directory: `backup.pem`, `backup.key`, `ledger.pem`, `ledger.key`
+  (all 0600). No CA signing key belongs in either directory.
+
+All path ancestors must be root-owned and non-writable by group/other; symlinks
+and hard-linked files are rejected. The check pins the recorded CA certificate
+SHA-256 fingerprint `A9:1C:92:C9:6E:38:AE:E5:1D:CF:41:57:AF:C8:F7:A2:C0:DE:1C:73:FB:07:8F:A8:01:D2:09:B2:43:4B:B7:BD`.
+It checks the exact per-role CN, issuer signature, `clientAuth`, current
+validity and overlap, later candidate expiry with at least seven days remaining,
+separate new keys, no old-key reuse, unique serials, and each candidate
+key/certificate pair. It emits only a status
+code, never certificate or key contents. The operator must additionally inspect
+the reviewed certificate extensions and confirm digital-signature key usage,
+algorithm and the intended operational validity period.
+
+```sh
+/root/reviewed-node/bin/node /root/reviewed-tools/roles-anywhere-rotation-check.mjs \
+  --dry-run /root/roles-anywhere-current /root/roles-anywhere-candidate
+```
+
+A successful local result is **not** a rotation. Before an actual cutover,
+stop backup and ledger writers/timers, preserve the known-good pair in a
+protected immutable rollback directory, and verify the live role/profile
+mapping and CA anchor in AWS. A separately reviewed installation procedure
+must switch both active leaf/key paths together from one root-owned release
+pointer or equivalent atomic unit; never overwrite one live file at a time.
+Run the same local check again immediately before switching. After switching,
+request fresh short sessions and require `sts get-caller-identity` to return
+exactly each expected assumed role. For each role, verify allowed S3
+`GetBucketVersioning` and a conditional encrypted synthetic `PutObject`, then
+`HeadObject` and exact-version `GetObject`, while the other bucket remains
+denied. Remove only the exact synthetic versions under a separate authorized
+administrator and confirm no residual version or delete marker. Resume writers
+only after both roles and all probes pass. If a probe fails, stop writers,
+restore the preserved prior active pointer as one unit, recheck both STS/S3
+paths, and investigate before retrying. Any expired prior cert is not a viable
+rollback; complete the rehearsal while both old and new certs are valid.
+
+AWS [Roles Anywhere revocation](https://docs.aws.amazon.com/rolesanywhere/latest/userguide/trust-model.html)
+uses imported/updated CRLs; CDP/OCSP callback is not supported. The
+[ImportCrl API](https://docs.aws.amazon.com/rolesanywhere/latest/APIReference/API_ImportCrl.html)
+describes checking an imported PEM CRL before issuing a session. No CRL is
+currently registered in the Seoul account (read-only `list-crls` on
+2026-10-03), so old-leaf revocation is **not configured**. If the old cert is
+to be revoked, prepare and independently verify a signed CRL and its AWS
+registration as a separate operational change. Do not assume an imported CRL
+ends already-issued sessions; bound exposure by the configured session
+lifetime (maximum 3,600 seconds in the current profiles) and verify the
+observed expiry. Renewal, cutover, revocation, and these live probes remain
+**not_executed**.
