@@ -11,6 +11,13 @@ the transition below. Run it only after the reviewed release has been installed
 at the fixed `/srv/workout-manager/source` path as a root-owned tree with no
 group/other writable entries. Keep the prior source copy outside that path for
 rollback. Never build from the old `ubuntu`-writable source.
+The preserved UID-1000-owned source is rollback input only. Before rollback,
+copy it into a separate root-controlled staging directory on the same
+filesystem; reject symlinks and descendant mounts, set every entry to
+root:root, remove group/other write while retaining image-build read/traverse
+access, and verify the full file manifest and old Compose SHA. Only that
+verified root-owned copy may replace the fixed source. Never restore the
+UID-1000-owned copy directly or run root Compose against it.
 The current host's `/srv/workout-manager/source` is UID 1000-owned; therefore
 the first run **must** fail until installation is complete. Under the proven
 recovery administrator, stage the reviewed candidate outside the fixed source,
@@ -93,7 +100,11 @@ it against the restored Compose before any writer call.
 The check requires both maintenance timers disabled/inactive, both locks
 available, exactly the three expected Workout containers, original healthy
 PostgreSQL with `wal_level=replica`, old app/GraphHopper images still running,
-candidate images with their expected named `Config.User`, unclaimed 20001/20002 host IDs,
+and `HostConfig.RestartPolicy` equal to `unless-stopped` with retry count zero
+for all three. Record the exact three original policy values before changing
+any of them; unexpected policy values fail the preflight and require a
+separately reviewed plan. It also requires candidate images with their expected
+named `Config.User`, unclaimed 20001/20002 host IDs,
 root-owned non-writable installed source, and current 1000-owned private and
 routing trees. It also checks root-owned, non-writable data parents and the
 installed host writer pin against the candidate Compose SHA. It rejects
@@ -131,9 +142,12 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
      /bin/bash --noprofile --norc
    ```
 
-   Record the exact three Workout container IDs with `docker inspect`. Set
+   Record the exact three Workout container IDs and each
+   `HostConfig.RestartPolicy` with `docker inspect`. All three must be
+   `unless-stopped` with retry count zero, matching the preflight. Set
    their restart policies to `no` with `docker update --restart=no` by those
-   **full pinned IDs**. Stop only the pinned GraphHopper, app, then PostgreSQL
+   **full pinned IDs** and inspect all three again to prove `no`. Stop only
+   the pinned GraphHopper, app, then PostgreSQL
    IDs (`docker stop <graphhopper-id> <app-id>`, then `docker stop
 <postgres-id>`). Verify all three `State.Running=false`, no replacement
    Workout container, and unchanged apex containers before changing any file.
@@ -173,10 +187,21 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
    Each writer call acquires both locks itself. Abort on an unexpected
    container/image ID, WAL level, new writer, failed health check or changed
    503/apex behavior. Never use `up postgres`, `down`, or the logical WAL
-   override in this transition.
+   override in this transition. After all three are healthy, reacquire both
+   locks in the same order. Restore `unless-stopped` on the **original pinned
+   PostgreSQL ID** with `docker update --restart=unless-stopped
+<pinned-postgres-id>`; verify its ID and restart policy by inspect. Verify
+   the recreated app and GraphHopper policies are also `unless-stopped` with
+   retry count zero, restoring each with `docker update --restart=unless-stopped
+<current-verified-id>` if needed. Inspect all three again before releasing
+   the locks. If any policy restore or inspect fails, set any changed policy
+   back to `no` where possible, stop all Workout writers, keep timers disabled
+   and report an incomplete transition; do not claim success or leave a
+   running PostgreSQL with an unverified restart policy.
 6. Probe private create/read/delete under the real 20001 app/worker identity
    and routing write under 20002, plus routing read under 20001. Verify frozen
-   Compose and candidate image IDs, all service health, root-owned source,
+   Compose and candidate image IDs, all service health, all three restored
+   restart policies, root-owned source,
    protected data parents, 503/apex behavior, and denied `ubuntu` direct
    access in a new session.
    Keep timers and public 503 unchanged until the separate backup and release
@@ -186,12 +211,19 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
 restart policies, stop only the Workout app and GraphHopper, then PostgreSQL;
 verify all are stopped. Inspect for partial writes. If no new writes occurred,
 restore the private/routing trees to their recorded UID/GID 1000 and modes
-with the same top-level root gate and symlink/mount checks. Restore the
-preserved old source and old `compose.env` to their fixed paths using a
-root-controlled same-filesystem rename, moving the candidate copies aside;
+with the same top-level root gate and symlink/mount checks. Create and fully
+verify the root-owned immutable rollback source from the preserved old copy
+as described above. Move the candidate source aside and install only that
+verified rollback source at the fixed path by root-controlled same-filesystem
+rename. Restore the preserved old root-only `compose.env` to its fixed path;
 atomically restore the preserved old `host-writer.json` in the same admin
-directory. Verify its SHA pin against the restored Compose bytes and recheck
-the protected data parents. Verify exact prior source/env hashes. Use the **old** Compose and old release tag,
+directory. Move the candidate `uid-cutover.json` to the root-only candidate
+archive so its SHA cannot be mistaken for the active release; do not leave a
+stale active cutover pin. Verify the restored host writer SHA pin against the
+restored Compose bytes, the old `WORKOUT_RELEASE` against the old image IDs,
+and the root-owned source tree
+before any Compose command. Recheck the protected data parents and exact prior
+source/env hashes. Use the **old** Compose and old release tag,
 not the candidate Compose with its 20001/20002 `user` overrides. Verify the
 old tags still resolve to the pinned old image IDs (`docker image inspect
 workout-manager/app:<old-release>` and the GraphHopper equivalent); if a tag
@@ -212,7 +244,12 @@ identity and health checks; release them only after rollback verification.
 ```
 
 Verify the old image IDs, PostgreSQL ID, `wal_level=replica`, health, 503 and
-apex. The restored host writer pin must match the restored Compose before any
+apex. Restore `unless-stopped` on the pinned original PostgreSQL ID and verify
+its exact ID and `HostConfig.RestartPolicy`. Inspect the recreated old app and
+GraphHopper policies and restore `unless-stopped` if needed; verify all three
+policies and retry counts before releasing either lock. If any policy update
+or inspect fails, stop all Workout writers and keep the locks/timers controlled
+for recovery; rollback is incomplete. The restored host writer pin must match the restored Compose before any
 later writer call; direct root Compose above is confined
 to the held locks and recovery procedure. If there are new writes or any
 uncertain partial state, **do not** copy an older snapshot over the live data;

@@ -305,7 +305,12 @@ export function assessCutover(pins, { runner, files, mountpoints }) {
     app.State?.Running !== true ||
     graphhopper.State?.Running !== true ||
     app.Image !== `sha256:${pins.oldAppImageId}` ||
-    graphhopper.Image !== `sha256:${pins.oldGraphhopperImageId}`
+    graphhopper.Image !== `sha256:${pins.oldGraphhopperImageId}` ||
+    containers.some(
+      (container) =>
+        container.HostConfig?.RestartPolicy?.Name !== 'unless-stopped' ||
+        container.HostConfig.RestartPolicy.MaximumRetryCount !== 0,
+    )
   )
     fail();
   // Dockerfile USER records names; Compose supplies the numeric runtime user.

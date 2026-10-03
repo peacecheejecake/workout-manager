@@ -38,6 +38,7 @@ function fixture(changes = {}) {
       Id: id('2'),
       Image: `sha256:${pins.oldAppImageId}`,
       State: { Running: true },
+      HostConfig: { RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 } },
       Config: {
         Labels: {
           'com.docker.compose.project': 'workout-manager',
@@ -49,6 +50,7 @@ function fixture(changes = {}) {
       Id: id('3'),
       Image: `sha256:${pins.oldGraphhopperImageId}`,
       State: { Running: true },
+      HostConfig: { RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 } },
       Config: {
         Labels: {
           'com.docker.compose.project': 'workout-manager',
@@ -59,6 +61,7 @@ function fixture(changes = {}) {
     [pins.postgresContainerId]: {
       Id: pins.postgresContainerId,
       State: { Running: true, Health: { Status: 'healthy' } },
+      HostConfig: { RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 } },
       Config: {
         Labels: {
           'com.docker.compose.project': 'workout-manager',
@@ -165,6 +168,18 @@ test('fails closed on competing UID, timer, image user, WAL, changed PostgreSQL 
     { lockBusy: true },
     { wrongImageUser: true },
     { wal: 'logical\n' },
+    {
+      container: {
+        id: pins.postgresContainerId,
+        value: { HostConfig: { RestartPolicy: { Name: 'no', MaximumRetryCount: 0 } } },
+      },
+    },
+    {
+      container: {
+        id: id('2'),
+        value: { HostConfig: { RestartPolicy: { Name: 'always', MaximumRetryCount: 0 } } },
+      },
+    },
     { badTree: true },
     { container: { id: pins.postgresContainerId, value: { Id: id('9') } } },
   ]) {
