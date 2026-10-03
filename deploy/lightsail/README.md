@@ -120,8 +120,12 @@ running PostgreSQL container ID and `SHOW wal_level` around that cutover.
 
 `compose.logical-wal.yml` is a separate, opt-in PostgreSQL override. It
 requires `WORKOUT_PG_MAX_SLOT_WAL_KEEP_SIZE` in the deployment-only environment
-file. Choose a positive, finite PostgreSQL size with units only after measuring
-the host's WAL generation rate and the longest recovery outage to support.
+file. Compose's `${VAR:?}` check only rejects a missing or empty value; it
+accepts `-1` and `0`. The separate `preflight-logical-wal.mjs` checks the
+effective rendered PostgreSQL command and rejects unbounded, zero, malformed,
+unitless, and oversized values. It accepts positive integer `MB`, `GB`, or
+`TB` values within its finite bound. Choose a cap only after measuring the
+host's WAL generation rate and the longest recovery outage to support.
 Do not use `-1` (unbounded) or an unmeasured production placeholder. Reserve
 disk headroom for the database, backups, and other services on the shared host.
 The current host observation (`wal_level=replica`, `max_replication_slots=10`,
@@ -143,9 +147,22 @@ new snapshot/slot bootstrap. Do not treat Compose validation or the current
 host observations as proof of a working logical stream.
 
 When those gates are satisfied, validate the combined model with both Compose
-files (`compose.yml` and `compose.logical-wal.yml`) and the measured cap. The
-current host writer pins only the base Compose file
-and has no logical-WAL transition command. Review and pin a separate exact
+files (`compose.yml` and `compose.logical-wal.yml`) and the measured cap. From
+the reviewed, immutable source copy, immediately before the separately
+controlled PostgreSQL transition, run:
+
+```sh
+WORKOUT_HOST_NODE=/srv/workout-manager/backup-runtime/20261001-9babcea-node24/node
+sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/source/deploy/lightsail/preflight-logical-wal.mjs /srv/workout-manager/compose.env
+sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml -f deploy/lightsail/compose.logical-wal.yml config --quiet
+```
+
+Run both checks with the same reviewed source, environment, and Compose CLI as
+the transition. The preflight validates the rendered configuration only: it
+does not measure WAL rate, prove the cap is operationally sufficient, start
+PostgreSQL, or prevent a privileged operator from bypassing it. The current
+host writer pins only the base Compose file and has no logical-WAL transition
+command. Review and pin a separate exact
 PostgreSQL transition procedure before applying the override; do not add the
 override to the UID cutover or use the base writer's `up postgres` as a logical
 transition.

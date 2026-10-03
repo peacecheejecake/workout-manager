@@ -47,13 +47,13 @@ that an absent key can return `AccessDenied` when the identity lacks
 bucket lets that missing-key response work; it also permits listing other key
 names in that same bucket. That is why the bucket identity is fixed and must not
 be reused for unrelated data. The ledger's separate `ListBucketVersions` grant
-remains prefix constrained. A real least-privilege S3 first-write test is still
-required before operational use.
+remains prefix constrained. A real least-privilege **synthetic** S3 first-write
+test passed with each workload role; operational backup and ledger upload remain
+separate gates.
 
-The bucket creation and empty-state check are recorded in
-`docs/implementation/progress/EXT-HOSTING.md`. Generating these policies is
-local preparation only. Identity creation/attachment, credentials or workload
-identity, real upload/version re-read, retention/deletion controls, independent
+The bucket creation, workload identity setup, and synthetic version write/read
+and cleanup are recorded in `docs/implementation/progress/EXT-HOSTING.md`.
+Retention/deletion controls, operational backup and ledger upload, independent
 ledger replay, and operational restore remain **not_executed**.
 
 ## Short-lived workload identity preparation
