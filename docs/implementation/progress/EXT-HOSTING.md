@@ -480,4 +480,5 @@
 
 - 만료 예정 시각 2026-11-02 11:48 UTC에 앞서, 고정 CA 지문·역할별 정확한 CN·CA 서명·`clientAuth`·키 대응·기존 인증서와의 유효 기간 겹침·서로 다른 역할 키·root 전용 경로/권한을 확인하는 읽기 전용 `roles-anywhere-rotation-check.mjs`를 추가했다. 도구는 실제 교체나 AWS 호출을 하지 않으며, 합성 CA/leaf를 이용한 성공·실패 시험에서만 실행했다. 별도 운영 절차와 STS/S3 게이트·롤백은 `IAM-POLICY.md`에 기록했다.
 - AWS 공식 Roles Anywhere 문서는 CRL 가져오기/갱신을 통한 발급 전 폐기 검사를 설명하고 CDP/OCSP callback은 지원하지 않는다. 서울 `list-crls`의 2026-10-03 실제 읽기 결과는 빈 목록이어서 현재 leaf 폐기 구성이 없다. 기존 세션의 즉시 무효화는 입증하지 않았고, 새 발급과 최대 세션 TTL을 구분했다. 실제 CA 서명·서버 설치·재발급·폐기·STS/S3 전환 시험은 **not_executed**다.
-- 로컬 Node 24.12.0에서 합성 OpenSSL CA/leaf 시험 **3/3 통과**, 변경 JS ESLint·변경 4개 파일 Prettier·`git diff --check` 통과를 확인했다. 운영 Linux root 전용 경로 검사는 이 macOS 개발기에서 실행하지 않았고 서버 인증서·개인키 또는 실제 CA 개인키를 읽지 않았다. 실제 교체와 새 세션·S3 프로브는 계속 **not_executed**다.
+- 로컬 Node 24.12.0에서 합성 OpenSSL CA/leaf 시험 **4/4 통과**, 변경 JS ESLint·변경 4개 파일 Prettier·`git diff --check` 통과를 확인했다. 운영 Linux root 전용 경로 검사는 이 macOS 개발기에서 실행하지 않았고 서버 인증서·개인키 또는 실제 CA 개인키를 읽지 않았다. 실제 교체와 새 세션·S3 프로브는 계속 **not_executed**다.
+- `main` `62c62e48` → 첫 `phase/ext-hosting` HEAD `beb2f77b` 전체 diff의 Codex `gpt-6-sol` high 독립 읽기 전용 검토는 **REQUEST_CHANGES**였다. P2: 새 backup/ledger 키가 다른 역할의 기존 키를 재사용해도 통과할 수 있었다. 수정본은 두 기존 키 모두와 각각의 후보 키를 비교하고, 교차 역할 재발급 두 사례를 합성 회귀 시험에 추가했다. 이 P2의 **FIXED/NOT FIXED** 판정과 수정본 전체 diff 검토는 아직 받지 않았으므로 승인으로 세지 않는다.

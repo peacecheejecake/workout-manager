@@ -56,6 +56,12 @@ export function verifyRotation({
   const fingerprints = new Set();
   const publicKeys = new Set();
   const serials = new Set();
+  const priorPublicKeys = new Set(
+    Object.keys(EXPECTED_CN).map((kind) => {
+      if (!current?.[kind]) fail('MISSING_ROLE');
+      return publicKeyBytes(certificate(current[kind]).publicKey).toString('hex');
+    }),
+  );
   for (const [kind, cn] of Object.entries(EXPECTED_CN)) {
     if (!current?.[kind] || !candidate?.[kind]) fail('MISSING_ROLE');
     const oldCert = certificate(current[kind]);
@@ -96,7 +102,7 @@ export function verifyRotation({
     }
     const candidatePublicKey = publicKeyBytes(key);
     if (!candidatePublicKey.equals(publicKeyBytes(nextCert.publicKey))) fail('KEY_MISMATCH');
-    if (candidatePublicKey.equals(publicKeyBytes(oldCert.publicKey))) fail('REUSED_KEY');
+    if (priorPublicKeys.has(candidatePublicKey.toString('hex'))) fail('REUSED_KEY');
     const publicKeyFingerprint = createHash('sha256').update(candidatePublicKey).digest('hex');
     if (publicKeys.has(publicKeyFingerprint)) fail('REUSED_KEY');
     publicKeys.add(publicKeyFingerprint);

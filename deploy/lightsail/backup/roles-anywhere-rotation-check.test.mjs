@@ -40,22 +40,33 @@ function fixture() {
     ext,
     'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n',
   );
-  function leaf(kind, generation, days, cn = `workout-manager-${kind}-v1`, extension = ext) {
+  function leaf(
+    kind,
+    generation,
+    days,
+    cn = `workout-manager-${kind}-v1`,
+    extension = ext,
+    existingKey,
+  ) {
     const key = join(dir, `${kind}-${generation}.key`);
     const csr = join(dir, `${kind}-${generation}.csr`);
     const cert = join(dir, `${kind}-${generation}.pem`);
-    openssl(
-      'req',
-      '-newkey',
-      'rsa:2048',
-      '-nodes',
-      '-keyout',
-      key,
-      '-out',
-      csr,
-      '-subj',
-      `/CN=${cn}`,
-    );
+    if (existingKey) {
+      openssl('req', '-new', '-key', existingKey, '-out', csr, '-subj', `/CN=${cn}`);
+    } else {
+      openssl(
+        'req',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        key,
+        '-out',
+        csr,
+        '-subj',
+        `/CN=${cn}`,
+      );
+    }
     openssl(
       'x509',
       '-req',
@@ -73,14 +84,12 @@ function fixture() {
       '-extfile',
       extension,
     );
-    return { cert: readFileSync(cert, 'utf8'), key: readFileSync(key, 'utf8') };
+    return { cert: readFileSync(cert, 'utf8'), key: readFileSync(existingKey ?? key, 'utf8') };
   }
   const anchorPem = readFileSync(caPem, 'utf8');
   const expectedFingerprint = new X509Certificate(anchorPem).fingerprint256.replaceAll(':', '');
-  const current = {
-    backup: leaf('backup', 'old', 10).cert,
-    ledger: leaf('ledger', 'old', 10).cert,
-  };
+  const old = { backup: leaf('backup', 'old', 10), ledger: leaf('ledger', 'old', 10) };
+  const current = { backup: old.backup.cert, ledger: old.ledger.cert };
   const candidate = { backup: leaf('backup', 'new', 30), ledger: leaf('ledger', 'new', 30) };
   return { dir, anchorPem, expectedFingerprint, current, candidate, leaf, ext };
 }
@@ -128,6 +137,36 @@ test('rejects wrong anchor, CN, swapped key, missing clientAuth, expiration and 
     check({ now: new Date(Date.now() + 11 * 86400000) }, 'VALIDITY');
     check({ candidate: { ...f.candidate, backup: f.leaf('backup', 'short', 2) } }, 'OVERLAP');
     check({ candidate: { ...f.candidate, backup: f.candidate.ledger } }, 'IDENTITY');
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects either leaf reissued with the other role’s old key', () => {
+  const f = fixture();
+  try {
+    for (const [kind, other] of [
+      ['backup', 'ledger'],
+      ['ledger', 'backup'],
+    ]) {
+      const reissued = f.leaf(
+        kind,
+        `reissued-with-old-${other}-key`,
+        30,
+        undefined,
+        undefined,
+        join(f.dir, `${other}-old.key`),
+      );
+      assert.notEqual(reissued.cert, f.current[kind]);
+      assert.throws(
+        () =>
+          verifyRotation({
+            ...f,
+            candidate: { ...f.candidate, [kind]: reissued },
+          }),
+        /ROTATION_REUSED_KEY/,
+      );
+    }
   } finally {
     rmSync(f.dir, { recursive: true, force: true });
   }
