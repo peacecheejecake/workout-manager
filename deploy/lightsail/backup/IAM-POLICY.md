@@ -85,7 +85,13 @@ The role's identity policy must remain the corresponding narrow S3 policy
 above. Two roles on one root-controlled host do not by themselves make deletion
 records independent of a host compromise.
 
-The actual trust anchor, roles, profiles, certificate authority and leaf
-certificates, helper installation, host `credential_process`, and real
-allow/deny S3 tests are **not_executed**. Keep the existing versioned buckets
-empty until those identities and retention boundaries are verified.
+As recorded in `docs/implementation/progress/EXT-HOSTING.md`, the Seoul trust
+anchor, separate roles and profiles, CA, host-generated leaf keys, verified
+credential helper, and root-only `credential_process` configuration now exist.
+Both roles obtained short-lived sessions on the host. Each role could write
+and read back a synthetic version in its own bucket and was denied a versioning
+read in the other bucket; an administrator removed the exact test versions. These
+probes do not establish retention, independent ledger durability, operational
+backup upload, restore, certificate renewal/revocation, or a complete host write
+fence. Keep production backup and ledger objects out of these buckets until
+those gates are verified.

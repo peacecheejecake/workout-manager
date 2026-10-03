@@ -734,14 +734,17 @@ empty destination and rejects missing or changed bytes. Individual files over
 4 GiB are rejected. This transport has synthetic success, interruption,
 corruption, conflict, and retry tests. Two empty, private, versioned Seoul S3
 buckets for backup and deletion ledger were created on 2026-10-02 and their
-basic settings were read back. Task-scoped IAM credentials, retention,
-Object Lock, live upload, independent signature, and recovery have not been
-verified. The completion record fixes `ledgerCompleteness` to `not_verified`:
+basic settings were read back. Task-scoped Roles Anywhere credentials and
+synthetic versioned S3 write/read tests are recorded in the hosting progress
+log. Retention, Object Lock, operational backup upload, independent ledger
+durability, and recovery have not been verified. The completion record fixes `ledgerCompleteness` to `not_verified`:
 it is a transfer receipt, never permission to restore or reopen the app. The
 post-backup deletion ledger and its complete tail remain separate gates.
-The [S3 IAM policy draft](backup/IAM-POLICY.md) generates separate identity
-policies for these dedicated backup and ledger buckets. They are not attached
-to a workload identity, and no server credential or actual upload is in place.
+The [S3 IAM policy generator](backup/IAM-POLICY.md) produced separate identity
+policies for these dedicated backup and ledger buckets. They are attached to
+separate Roles Anywhere workload roles with root-only host certificates. Only
+synthetic probe objects were uploaded and removed; no operational backup or
+deletion ledger upload has occurred.
 
 The checker can miss a writer created between Docker inventory, DB query, and
 the collector's next call. `collect.mjs` now checks the fence before private-file
