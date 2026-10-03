@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SOURCE = '/srv/workout-manager/source';
 const CONFIG = '/srv/workout-manager/admin/uid-cutover.json';
+const WRITER_CONFIG = '/srv/workout-manager/admin/host-writer.json';
 const COMPOSE = join(SOURCE, 'deploy/lightsail/compose.yml');
 const WRITER = '/srv/workout-manager/admin/run-host-writer.mjs';
 const ENV = '/srv/workout-manager/compose.env';
@@ -94,6 +95,36 @@ function protectedDirectory(path) {
     realpathSync(path) !== path
   )
     fail();
+}
+
+export function assertProtectedParents(path, boundary, uid = 0, gid = 0) {
+  let current = dirname(path);
+  while (true) {
+    const info = lstatSync(current);
+    if (
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      info.uid !== uid ||
+      info.gid !== gid ||
+      (info.mode & 0o022) !== 0 ||
+      realpathSync(current) !== current
+    )
+      fail();
+    if (current === boundary) return;
+    const parent = dirname(current);
+    if (parent === current) fail();
+    current = parent;
+  }
+}
+
+export function validateWriterPin(value, composeSha256) {
+  if (
+    !exactKeys(value, ['schemaVersion', 'composeSha256']) ||
+    value.schemaVersion !== 1 ||
+    value.composeSha256 !== composeSha256
+  )
+    fail();
+  return true;
 }
 
 function hash(path) {
@@ -212,6 +243,10 @@ function inspectImage(runner, id, user) {
 
 export function assessCutover(pins, { runner, files, mountpoints }) {
   validatePins(pins);
+  validateWriterPin(files.readWriterPin(WRITER_CONFIG), pins.composeSha256);
+  for (const path of [SOURCE, PRIVATE, ROUTING]) {
+    files.assertProtectedParents(path, '/srv/workout-manager');
+  }
   for (const [path, expected] of [
     [COMPOSE, pins.composeSha256],
     [WRITER, pins.writerSha256],
@@ -322,6 +357,7 @@ function runLive() {
     fail();
   securePath(fileURLToPath(import.meta.url), 0o700);
   securePath(CONFIG, 0o600);
+  securePath(WRITER_CONFIG, 0o600);
   securePath(WRITER, 0o700);
   securePath(ENV, 0o600);
   for (const lock of LOCKS) securePath(lock, 0o600);
@@ -335,7 +371,12 @@ function runLive() {
   protectedDirectory('/srv/workout-manager');
   const pins = validatePins(JSON.parse(readFileSync(CONFIG, 'utf8')));
   const mounts = mountpointsFrom(readFileSync('/proc/self/mountinfo', 'utf8'));
-  const files = { hash, assertTree };
+  const files = {
+    hash,
+    assertTree,
+    assertProtectedParents,
+    readWriterPin: (path) => JSON.parse(readFileSync(path, 'utf8')),
+  };
   const result = assessCutover(pins, { runner: liveRunner, files, mountpoints: mounts });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

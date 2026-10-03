@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { assertTree, assessCutover, validatePins } from './preflight-uid-cutover.mjs';
+import {
+  assertProtectedParents,
+  assertTree,
+  assessCutover,
+  validatePins,
+  validateWriterPin,
+} from './preflight-uid-cutover.mjs';
 
 const id = (letter) => letter.repeat(64);
 const pins = {
@@ -104,6 +118,13 @@ function fixture(changes = {}) {
     assertTree: (path, owner) => {
       if (changes.badTree && owner === 1000) throw Error('bad tree');
     },
+    assertProtectedParents: () => {
+      if (changes.unsafeParent) throw Error('unsafe parent');
+    },
+    readWriterPin: () => ({
+      schemaVersion: 1,
+      composeSha256: changes.staleWriterPin ? id('0') : pins.composeSha256,
+    }),
   };
   return { runner, files, mountpoints: [], calls };
 }
@@ -137,6 +158,8 @@ test('read-only preflight checks identities, ownership, timers, WAL and candidat
 test('fails closed on competing UID, timer, image user, WAL, changed PostgreSQL or tree', () => {
   for (const change of [
     { changedCompose: true },
+    { staleWriterPin: true },
+    { unsafeParent: true },
     { claimedUid: true },
     { activeTimer: true },
     { lockBusy: true },
@@ -147,6 +170,38 @@ test('fails closed on competing UID, timer, image user, WAL, changed PostgreSQL 
   ]) {
     assert.throws(() => assessCutover(pins, fixture(change)));
   }
+});
+
+test('writer pin must have the writer schema and candidate Compose hash', () => {
+  assert.equal(
+    validateWriterPin({ schemaVersion: 1, composeSha256: pins.composeSha256 }, pins.composeSha256),
+    true,
+  );
+  for (const value of [
+    { schemaVersion: 1, composeSha256: id('0') },
+    { schemaVersion: 1, composeSha256: pins.composeSha256, extra: true },
+  ]) {
+    assert.throws(() => validateWriterPin(value, pins.composeSha256));
+  }
+});
+
+test('data ancestors cannot be renamed or recreated by UID 1000', (t) => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'uid-cutover-parent-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const data = join(root, 'data');
+  mkdirSync(data, { mode: 0o755 });
+  chmodSync(root, 0o755);
+  chmodSync(data, 0o755);
+  assert.doesNotThrow(() =>
+    assertProtectedParents(join(data, 'private'), root, process.getuid(), process.getgid()),
+  );
+  assert.throws(() =>
+    assertProtectedParents(join(data, 'private'), root, process.getuid() + 1, process.getgid()),
+  );
+  chmodSync(data, 0o775);
+  assert.throws(() =>
+    assertProtectedParents(join(data, 'private'), root, process.getuid(), process.getgid()),
+  );
 });
 
 test('tree walk rejects symlinks, nested mounts and excess entries without following them', (t) => {

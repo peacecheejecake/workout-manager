@@ -18,6 +18,20 @@ verify its full file list and hashes, reject symlinks and descendant mounts,
 then set its owner/group to root:root without following symlinks and remove
 group/other write permission. Make `/srv/workout-manager` root:root with no
 group/other write while retaining the traversal mode required by services.
+Before replacing the fixed source or either SHA pin, disable both maintenance
+timers, verify no one-shot job is active, and hold the backup and maintenance
+locks in that order. Exclude other manual root writers through this interval.
+Release the locks only after the source, `compose.env`, and both pins agree;
+the read-only preflight then reacquires each lock to check availability.
+Require `/srv/workout-manager/data` and every parent of `private` and `routing`
+through `/srv/workout-manager` to be root:root, non-symlink directories without
+group/other write permission. The observed mode of both parents is 0755. UID
+1000 must not be able to rename or recreate either data-tree root. Recheck
+these parents before and after changing tree ownership and after service
+restart; the preflight checks them before transition. At each later checkpoint,
+record `stat -c '%u:%g %a %n' /srv/workout-manager
+/srv/workout-manager/data` and `namei -l` for both tree paths, and abort if
+either parent ceases to be root:root or becomes group/other writable.
 Move the old source to a root-only rollback directory and move the prepared
 candidate into the fixed source path in the same filesystem. Verify the fixed
 path, parent ownership, Compose hash and file modes again. Keep the old copy
@@ -56,6 +70,21 @@ disposable `id -u`/`id -g` probes for both images and verify 20001/20002,
 then inspect the rendered Compose `user` fields before changing ownership.
 Keep `compose.logical-wal.yml` out of every command below.
 
+The installed host writer has its own root:root mode-0600 pin at
+`/srv/workout-manager/admin/host-writer.json`. Its exact schema is
+`{"schemaVersion":1,"composeSha256":"<64 lowercase hex>"}`. Preserve the old
+file with the old source and `compose.env`. Once the candidate source is at
+the fixed path, prepare a candidate pin as a root:root mode-0600 temporary
+file **in the same admin directory**, containing the candidate Compose SHA.
+Validate its two-field JSON and atomically replace the installed pin with
+`mv -T /srv/workout-manager/admin/host-writer.json.next
+/srv/workout-manager/admin/host-writer.json` (the `.next` file must already be
+root:root mode 0600). Exclude writer invocations during the brief source/pin replacement
+interval. Recheck that `host-writer.json`, `uid-cutover.json`, and the installed
+Compose bytes all have the same SHA. The preflight rejects a mismatch. During
+rollback, atomically restore the old writer pin with the old source and verify
+it against the restored Compose before any writer call.
+
 ```sh
 # In the separately proven recovery root shell; do not assume generic sudo rights.
 /usr/bin/node /srv/workout-manager/admin/preflight-uid-cutover.mjs --check
@@ -66,7 +95,9 @@ available, exactly the three expected Workout containers, original healthy
 PostgreSQL with `wal_level=replica`, old app/GraphHopper images still running,
 candidate images with their expected named `Config.User`, unclaimed 20001/20002 host IDs,
 root-owned non-writable installed source, and current 1000-owned private and
-routing trees. It rejects symlinks and nested mounts in those trees. A mount at
+routing trees. It also checks root-owned, non-writable data parents and the
+installed host writer pin against the candidate Compose SHA. It rejects
+symlinks and nested mounts in those trees. A mount at
 the root of a data tree is allowed, but the operator must verify its source,
 device and persistence. It bounds its walk at 100,000 entries per tree; an
 oversized tree needs a separately reviewed inspection method. It intentionally
@@ -116,7 +147,10 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
    access by changing each top-level `private` and `routing` directory to
    root:root mode 0700 before the recursive walk. Keep all app writers stopped.
 4. Recheck each tree has no symlink or nested mount and compare its mount
-   identity with the recorded value. With the lock shell and recovery session
+   identity with the recorded value. Recheck that `/srv/workout-manager/data`
+   and every parent through `/srv/workout-manager` remain root:root without
+   group/other write; UID 1000 must not be able to replace either tree root.
+   With the lock shell and recovery session
    still exclusive, change only the two Workout trees: use GNU `find
 /srv/workout-manager/data/private -xdev -depth -exec chown --no-dereference
 20001:20001 {} +` and the same command for `routing` with 20002:20002.
@@ -128,7 +162,8 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
    readable by 20001 and writable only by 20002/root.
    Recheck **every** entry's numeric owner/group, symlink/mount absence,
    private mode restrictions, routing read access for UID 20001, and unchanged
-   PostgreSQL owner. If any command fails, keep all services stopped and use
+   PostgreSQL owner. Recheck protected parents before releasing either lock.
+   If any command fails, keep all services stopped and use
    the rollback below.
 5. Exit the lock-holding shell, confirming both locks are released. This is a
    controlled gap: both timers remain disabled and no backup/manual writer
@@ -142,7 +177,8 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
 6. Probe private create/read/delete under the real 20001 app/worker identity
    and routing write under 20002, plus routing read under 20001. Verify frozen
    Compose and candidate image IDs, all service health, root-owned source,
-   503/apex behavior, and denied `ubuntu` direct access in a new session.
+   protected data parents, 503/apex behavior, and denied `ubuntu` direct
+   access in a new session.
    Keep timers and public 503 unchanged until the separate backup and release
    gates pass.
 
@@ -153,7 +189,9 @@ restore the private/routing trees to their recorded UID/GID 1000 and modes
 with the same top-level root gate and symlink/mount checks. Restore the
 preserved old source and old `compose.env` to their fixed paths using a
 root-controlled same-filesystem rename, moving the candidate copies aside;
-verify their exact prior hashes. Use the **old** Compose and old release tag,
+atomically restore the preserved old `host-writer.json` in the same admin
+directory. Verify its SHA pin against the restored Compose bytes and recheck
+the protected data parents. Verify exact prior source/env hashes. Use the **old** Compose and old release tag,
 not the candidate Compose with its 20001/20002 `user` overrides. Verify the
 old tags still resolve to the pinned old image IDs (`docker image inspect
 workout-manager/app:<old-release>` and the GraphHopper equivalent); if a tag
@@ -174,8 +212,8 @@ identity and health checks; release them only after rollback verification.
 ```
 
 Verify the old image IDs, PostgreSQL ID, `wal_level=replica`, health, 503 and
-apex. The installed host writer cannot be used until its Compose SHA pin is
-updated to the reviewed restored file; direct root Compose above is confined
+apex. The restored host writer pin must match the restored Compose before any
+later writer call; direct root Compose above is confined
 to the held locks and recovery procedure. If there are new writes or any
 uncertain partial state, **do not** copy an older snapshot over the live data;
 leave services stopped and investigate/reconcile under the recovery plan.
@@ -197,89 +235,14 @@ exception with a read-only filesystem and secret key mounts; review that
 exception separately. A Dockerfile `USER` line alone does not change ownership
 of existing bind sources or restrict an administrator with Docker access.
 
-## Preconditions
+## Current procedure
 
-1. Keep the public Workout 503 block active. Confirm the apex site, app,
-   PostgreSQL and GraphHopper states, exact running image IDs, schema version,
-   current directory ownership and disk space. Record them without secrets or
-   personal data.
-2. Confirm the Lightsail snapshot recovery procedure, take a fresh snapshot,
-   and verify its ID and availability before changing any account or file
-   ownership. Then establish a separate, narrowly controlled recovery
-   administrator. Confirm independent SSH login, root access and recovery
-   commands in a **new** session, while the existing `ubuntu` session stays
-   open. Do not remove `ubuntu` privileges until this path has actually
-   worked. The 2026-10-02 read-only audit found no `wm-recovery` account and
-   no instance snapshot for `workout-shared-8gb-20260929`; recheck both
-   immediately before starting this sequence.
-3. Build the reviewed release from a root-controlled, immutable source copy,
-   not the current `ubuntu`-writable `/srv/workout-manager/source`. Pin the
-   Compose bytes and image IDs. Keep the copied source non-writable while
-   preserving the read/traverse modes needed by the image's non-root user:
-   Docker `COPY` preserves restrictive source modes. Do not apply `go-rwx` to
-   the build context; verify code and Next build files are readable by UID 20001
-   and GraphHopper's launcher is readable by UID 20002 in disposable containers.
-   Validate image users numerically, including app, GraphHopper, private-writing
-   workers and the intentional ledger root exception. Check the built app can
-   start and its runtime cache/temporary paths are writable by UID 20001 in a
-   disposable environment. Compare the installed root-owned host writer's full
-   SHA-256 with the reviewed source and inspect its `up app`/`up graphhopper`
-   command output for `--no-deps`; a grep for that token can match a different
-   command path.
-4. Prepare a rollback plan using the previous image IDs and the snapshot.
-   Document the exact ownership rollback while all Workout writers are
-   stopped. Never overwrite data with a stale snapshot after new writes.
-
-## Controlled transition
-
-Disable the two maintenance
-timers and check that no one-shot worker, setup job, backup collector, or
-ledger exporter is active. Confirm the backup release is not connected to a
-timer and prohibit other manual root writers during this window. Hold both
-Workout backup and maintenance locks while stopping services and changing
-ownership. Keep the 503 block. Stop GraphHopper and app, then PostgreSQL, and
-confirm Docker did not restart them. Do not change the apex site's containers
-or data.
-
-While every Workout writer is stopped, move the private bind tree to UID/GID
-20001 and preserve restrictive directory/file modes. Move the routing tree to
-UID/GID 20002; keep the app's read-only routing access working without giving
-`ubuntu` write permission. Recheck the ownership of every nested file,
-symlink, and mount point; do not follow untrusted symlinks during ownership
-changes. The PostgreSQL data directory keeps its database-specific owner.
-
-Release both locks before invoking the host writer: it acquires the same locks
-nonblocking for each command and would otherwise exit 75. This is a controlled
-handoff, not an atomic lock transfer. With all timers disabled, no backup
-scheduler and no other manual writer, first use its `start postgres` command
-to start the **existing** PostgreSQL container, then check its exact ID and
-health. Keep `compose.logical-wal.yml` out of this transition: its
-`wal_level=logical` change has a separate, still-open migration gate. The base
-Compose file leaves PostgreSQL's image defaults in place. Use the reviewed
-writer's `up app` and `up graphhopper` commands only after confirming they pass
-`--no-deps`, so neither command can recreate PostgreSQL as a dependency. Check
-the existing PostgreSQL container ID and `SHOW wal_level` before and after the
-app/GraphHopper recreation; abort if either changes unexpectedly. Each
-writer call reacquires and releases both locks; inspect container IDs and abort
-on any unexpected writer or change between calls. Run private file
-create/read/delete and routing-read probes as their
-actual container identities, then the bounded workers with disposable data.
-Confirm healthy services, immutable image/Compose IDs and unchanged 503/apex
-behavior. If a probe fails, stop all Workout writers before restoring the old
-images and matching ownership; inspect for partial writes before rollback.
-
-Only after the separate administrator access is proven, remove `ubuntu` from
-sudo, Docker and LXD access and any passwordless sudo grant. On the current
-host, `/etc/sudoers.d/90-cloud-init-users` grants `ubuntu` `NOPASSWD:ALL` in
-addition to its sudo group membership; account group removal alone is
-insufficient. Preserve a validated recovery sudo rule before changing that
-root-owned file, then check the effective `sudo -l -U ubuntu` result. End existing
-`ubuntu` sessions and test a **new** `ubuntu` login: direct private read/write,
-Docker socket, LXD control and sudo must all fail. Check that the app and its
-workers still write the private tree and GraphHopper can maintain its graph.
-Keep root and the separate recovery administrator as explicit trusted actors;
-the backup lock cannot constrain them. Recheck source-tree immutability and
-backup fence identity after the privilege change.
+The preflight, exact manual transition, and rollback above replace the earlier
+preconditions and controlled-transition draft. In particular, the recovery
+administrator and denial of `ubuntu` sudo/Docker/LXD access must be verified
+**before** changing data-tree ownership; postponing privilege removal until
+after service restart would leave UID 1000 able to bypass the ownership fence.
+Use only the ordered procedure above for a cutover.
 
 ## Evidence required before a fresh backup claim
 
