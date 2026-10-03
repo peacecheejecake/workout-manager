@@ -147,25 +147,32 @@ new snapshot/slot bootstrap. Do not treat Compose validation or the current
 host observations as proof of a working logical stream.
 
 When those gates are satisfied, validate the combined model with both Compose
-files (`compose.yml` and `compose.logical-wal.yml`) and the measured cap. From
-the reviewed, immutable source copy, immediately before the separately
-controlled PostgreSQL transition, run:
+files (`compose.yml` and `compose.logical-wal.yml`) and the measured cap. **No
+operational logical-WAL transition command is approved yet.** The current
+`/srv/workout-manager/source` is `ubuntu`-writable; do not execute the preflight
+as root from that tree or select either Compose file there for a privileged
+transition.
 
-```sh
-WORKOUT_HOST_NODE=/srv/workout-manager/backup-runtime/20261001-9babcea-node24/node
-sudo "$WORKOUT_HOST_NODE" /srv/workout-manager/source/deploy/lightsail/preflight-logical-wal.mjs /srv/workout-manager/compose.env
-sudo docker compose --env-file /srv/workout-manager/compose.env -f deploy/lightsail/compose.yml -f deploy/lightsail/compose.logical-wal.yml config --quiet
-```
+The future exact procedure must name absolute paths for the preflight script
+and both Compose files in one reviewed, immutable release. Before any root
+execution, verify their SHA-256 hashes against that reviewed release, check
+that each file and every ancestor is root-controlled and cannot be replaced or
+written by `ubuntu` or other untrusted users, and reject symlinks. Pin the
+root-owned, mode 0600 Compose environment file as well. Run the
+preflight with that file immediately before rendering and applying the same
+absolute Compose paths under the same environment and Compose CLI. The script
+resolves both Compose files beside itself; the future procedure must verify
+those are the exact files it renders. Do not reuse the current writable source
+path or relative `-f` paths. Recheck the identities and hashes at the
+transition boundary to avoid a replacement between validation and use.
 
-Run both checks with the same reviewed source, environment, and Compose CLI as
-the transition. The preflight validates the rendered configuration only: it
-does not measure WAL rate, prove the cap is operationally sufficient, start
+The preflight validates the rendered configuration only: it does not measure
+WAL rate, prove the cap is operationally sufficient, start
 PostgreSQL, or prevent a privileged operator from bypassing it. The current
 host writer pins only the base Compose file and has no logical-WAL transition
-command. Review and pin a separate exact
-PostgreSQL transition procedure before applying the override; do not add the
-override to the UID cutover or use the base writer's `up postgres` as a logical
-transition.
+command. Review and pin that exact PostgreSQL transition procedure before
+applying the override; do not add the override to the UID cutover or use the
+base writer's `up postgres` as a logical transition.
 
 The opt-in `backup/persistent-slot-snapshot.pg17.test.mjs` exercises the
 replication-protocol `EXPORT_SNAPSHOT` boundary against a disposable PostgreSQL
