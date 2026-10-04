@@ -494,3 +494,7 @@
 - CloudShell의 AWS STS는 계정 `681892421656`의 `AdministratorAccess/peace.cheejecake`를 반환했다. 업로드 파일은 **32,389,120바이트**, SHA-256 `5b826cb2e4560e1c156bc461fe95aeac18fb950093964483614499540e9de6a0`로 로컬 원본과 일치했다. AWS Lightsail의 ED25519 호스트 키 지문 `SHA256:Z3n0V7n1UGIMuFddpIx6a2YowR+nEbwY78el+uaON40`을 고정해 기존 `wm-recovery`의 root 접근을 확인했다.
 - 서버 root 전용 임시 archive의 SHA-256도 같은 값을 반환했다. 이를 mode 0700 준비 디렉터리에 정상 추출한 뒤 일반 파일·디렉터리 이외의 항목이 없고, 예상한 `deploy/lightsail/maintenance/preflight-uid-cutover.mjs`가 존재함을 확인했다. 전체 트리를 root 소유로 설정하고 group/other 권한 위반이 없음을 검사한 뒤, 대상이 없음을 재확인하고 `/srv/workout-manager/releases/d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`로 원자 이동했다. 최종 디렉터리 mode는 **0700**이다. 서버 임시 archive, CloudShell 임시 archive·SSH 키·호스트 키 파일을 삭제했다.
 - 전송 후 공개 사이트는 HTTPS 리다이렉트 뒤 **200/TLS 검증 0**, Workout 주소는 **503/TLS 검증 0**이었다. 이 단계는 **비활성 릴리스 보관만 완료**한 것이다. 활성 `source` 교체, 후보 이미지 실행, UID/소유권 전환, 운영 DB 백업·복원·migration, 실제 로그인 및 503 해제는 여전히 **not_executed**다.
+
+## 계정 전체 예산 재조회 · 2026-10-04
+
+- 서울 CloudShell에서 AWS Budget `workout-manager-test-monthly`를 다시 읽었다. USD 60 경고 한도에 대해 누적 **USD 7.512**, 월말 예측 **USD 79.958**이었다. 같은 조회 시점의 10월 1–4일 Cost Explorer 비혼합 비용은 Lightsail **USD 4.3741961335**, WAF **USD 2.258064522**, 세금 **USD 0.68**, KMS **USD 0.092741934**, Secrets Manager **USD 0.0657879588**, Cost Explorer **USD 0.04**, S3 **USD 0.0009383921**이었다. 예측은 청구 확정액이나 KRW 환산액이 아니며 WAF는 앞서 조사한 다른 서비스의 ACL도 포함한다. 사용자의 **AWS 계정 전체 월 10만 원** 상한에 맞는 운영안과 실제 청구액을 확인하기 전에는 이 수치만으로 공개·추가 유료 자원 생성을 승인된 것으로 간주하지 않는다.
