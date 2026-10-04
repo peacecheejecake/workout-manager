@@ -27,15 +27,15 @@
 
 ## 검증
 
-| 항목                                                              | 결과                                             |
-| ----------------------------------------------------------------- | ------------------------------------------------ |
-| 서명·issuer·audience·시각·events·nonce·대상 검증                  | 로컬 서명 공급자 단위 시험 통과                  |
-| callback 본문·코드·토큰 로그 비노출                               | Fastify inject 시험 통과                         |
-| 재전송 동시성·issuer/subject/sid 격리·DB 권한·기존 계정 삭제 잠금 | 임시 PostgreSQL 실통합 시험 통과                 |
-| logout/callback 양쪽 경합 순서와 JWKS 장애 503 분류               | 독립 검토 지적 후 추가 시험 통과                 |
-| 기존 7인자 함수 우회·migration 이전 sid 없는 세션                 | 채워진 이전 DB 업그레이드 실통합 시험            |
-| 실제 Zitadel Back-Channel Logout 전파                             | **not_executed** · 외부 HTTPS callback 등록 필요 |
-| 실제 계정 정지/로그아웃 후 앱 세션 전파                           | **not_executed** · EXT-HOSTING                   |
+| 항목                                                              | 결과                                                                         |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 서명·issuer·audience·시각·events·nonce·대상 검증                  | 로컬 서명 공급자 단위 시험 통과                                              |
+| callback 본문·코드·토큰 로그 비노출                               | Fastify inject 시험 통과                                                     |
+| 재전송 동시성·issuer/subject/sid 격리·DB 권한·기존 계정 삭제 잠금 | 임시 PostgreSQL 실통합 시험 통과                                             |
+| logout/callback 양쪽 경합 순서와 JWKS 장애 503 분류               | 독립 검토 지적 후 추가 시험 통과                                             |
+| 기존 7인자 함수 우회·migration 이전 sid 없는 세션                 | 채워진 이전 DB 업그레이드 실통합 시험                                        |
+| 실제 Zitadel Back-Channel Logout 전파                             | **not_executed** · 2026-10-01 URL 등록 확인, 실제 전파·공개 제품 수용 미실행 |
+| 실제 계정 정지/로그아웃 후 앱 세션 전파                           | **not_executed** · EXT-HOSTING                                               |
 
 실제 공급자 전파가 확인될 때까지 계정 정지 뒤 앱 세션 잔존 상한은 기존 8시간이다.
 
