@@ -194,7 +194,11 @@ workout-course-thumbnails.timer`), and verify `is-active` is `inactive`.
    the recreated app and GraphHopper policies are also `unless-stopped` with
    retry count zero, restoring each with `docker update --restart=unless-stopped
 <current-verified-id>` if needed. Inspect all three again before releasing
-   the locks. If any policy restore or inspect fails, set any changed policy
+   the locks. While both locks are still held, refresh the root-only backup
+   fence pin as described under **Backup fence pin after container
+   replacement** below. Do not release the locks or claim transition success
+   until the new pin is installed and verified. If any policy restore,
+   fence-pin update or inspect fails, set any changed policy
    back to `no` where possible, stop all Workout writers, keep timers disabled
    and report an incomplete transition; do not claim success or leave a
    running PostgreSQL with an unverified restart policy.
@@ -247,15 +251,59 @@ Verify the old image IDs, PostgreSQL ID, `wal_level=replica`, health, 503 and
 apex. Restore `unless-stopped` on the pinned original PostgreSQL ID and verify
 its exact ID and `HostConfig.RestartPolicy`. Inspect the recreated old app and
 GraphHopper policies and restore `unless-stopped` if needed; verify all three
-policies and retry counts before releasing either lock. If any policy update
-or inspect fails, stop all Workout writers and keep the locks/timers controlled
-for recovery; rollback is incomplete. The restored host writer pin must match the restored Compose before any
-later writer call; direct root Compose above is confined
-to the held locks and recovery procedure. If there are new writes or any
+policies and retry counts before releasing either lock. Rebuild the backup
+fence pin from the **restored old** Compose bytes and the newly recreated old
+app/GraphHopper IDs, following **Backup fence pin after container
+replacement** below; the original pre-cutover IDs must not be reused. If any
+policy or fence-pin update or inspect fails, stop all Workout writers and keep
+the locks/timers controlled for recovery; rollback is incomplete. The restored
+host writer pin must match the restored Compose before any later writer call;
+direct root Compose above is confined to the held locks and recovery
+procedure. If there are new writes or any
 uncertain partial state, **do not** copy an older snapshot over the live data;
 leave services stopped and investigate/reconcile under the recovery plan.
 Rollback of image/data ownership does not silently reinstate `ubuntu` sudo,
 Docker or LXD privileges. Keep the recovery administrator available.
+
+### Backup fence pin after container replacement
+
+The operational backup checker pins the exact Compose SHA-256 and full Docker
+IDs in root-only `/srv/workout-manager/admin/backup/fence.json`. Recreating
+app/GraphHopper or replacing the fixed source makes the previous pin stale.
+Do this on both successful transition and rollback, under the backup then
+maintenance locks, with both maintenance timers disabled and all other Workout
+writers excluded. Do not edit the old pin in place or copy it back on rollback.
+
+1. Read the installed Compose bytes at the fixed path and calculate their
+   SHA-256. Inspect **all** current Workout containers by full ID. Verify
+   exactly one each of app, PostgreSQL and GraphHopper with the expected
+   project/service/config-file labels, images, networks and mounts. Confirm
+   PostgreSQL is the original pinned container, healthy, using
+   `wal_level=replica`, and re-read `pg_control_system().system_identifier` and
+   `server_version_num` from the dedicated `workout` database. Reject any
+   different cluster, unexpected container or source. Record the new app and
+   GraphHopper IDs even during rollback; recreation gives them new IDs.
+2. In `/srv/workout-manager/admin/backup`, create a new regular
+   `fence.json.next` owned by root:root with mode 0600. Use the schema in
+   [the backup guide](README.md); keep its project, network, absolute paths,
+   PostgreSQL ID, system identifier and version from the verified live state.
+   Set `composeSha256` to the **currently installed** Compose bytes and
+   `containers.app` / `containers.graphhopper` to the new full IDs. Reject
+   symlinks and unexpected fields or IDs. Verify JSON/schema, file owner/mode,
+   every recorded observation and the Compose hash before replacement.
+3. Atomically replace the pin in the same directory with `mv -T
+/srv/workout-manager/admin/backup/fence.json.next
+/srv/workout-manager/admin/backup/fence.json`. Re-read the installed pin,
+   owner/mode and Compose hash. A read-only `loadFenceConfig` check may prove
+   its file/schema/hash before service shutdown; `assessFence` must not be
+   claimed as passed while app and GraphHopper are running. Keep the old pin
+   in a separate root-only incident record if needed, never as the active pin.
+4. At the first controlled backup window, stop app and GraphHopper under both
+   locks and require the installed checker to return `BACKUP_FENCE_CHECKED`
+   against the **new** pin before collection. A failed check blocks backup;
+   do not relax the checker or substitute an earlier pin. Record the new
+   config hash, Compose hash, three container IDs and checker result. This
+   future operational check remains **not_executed** until it actually runs.
 
 The current host runs `ubuntu` as UID/GID 1000. The app and GraphHopper images
 also run as `node` (numeric UID/GID 1000). The private bind source is owned by
