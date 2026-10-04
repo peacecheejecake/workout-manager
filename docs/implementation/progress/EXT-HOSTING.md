@@ -482,3 +482,8 @@
 - AWS 공식 Roles Anywhere 문서는 CRL 가져오기/갱신을 통한 발급 전 폐기 검사를 설명하고 CDP/OCSP callback은 지원하지 않는다. 서울 `list-crls`의 2026-10-03 실제 읽기 결과는 빈 목록이어서 현재 leaf 폐기 구성이 없다. 기존 세션의 즉시 무효화는 입증하지 않았고, 새 발급과 최대 세션 TTL을 구분했다. 실제 CA 서명·서버 설치·재발급·폐기·STS/S3 전환 시험은 **not_executed**다.
 - 로컬 Node 24.12.0에서 합성 OpenSSL CA/leaf 시험 **4/4 통과**, 변경 JS ESLint·변경 4개 파일 Prettier·`git diff --check` 통과를 확인했다. 운영 Linux root 전용 경로 검사는 이 macOS 개발기에서 실행하지 않았고 서버 인증서·개인키 또는 실제 CA 개인키를 읽지 않았다. 실제 교체와 새 세션·S3 프로브는 계속 **not_executed**다.
 - `main` `62c62e48` → 첫 `phase/ext-hosting` HEAD `beb2f77b` 전체 diff의 Codex `gpt-6-sol` high 독립 읽기 전용 검토는 **REQUEST_CHANGES**였다. P2: 새 backup/ledger 키가 다른 역할의 기존 키를 재사용해도 통과할 수 있었다. 수정본은 두 기존 키 모두와 각각의 후보 키를 비교하고, 교차 역할 재발급 두 사례를 합성 회귀 시험에 추가했다. 이 P2의 **FIXED/NOT FIXED** 판정과 수정본 전체 diff 검토는 아직 받지 않았으므로 승인으로 세지 않는다.
+
+## 계정 전체 예산·release 전송 결정 · 2026-10-04
+
+- 사용자는 월 10만 원 상한을 **Workout 증분이 아닌 AWS 계정 전체**에 적용한다고 확인했다. 2026-10-03에 조회한 USD 60 계정 전체 경고의 예측 USD 79.632는 이 결정을 판단할 때 참고할 과거 시점의 USD 수치다. 실제 KRW 청구액·현재 예측·다른 서비스의 비용을 재조회하고 상한 안의 운영안을 확정하기 전에는 새 비용을 수반하는 전환이나 공개 판정을 하지 않는다.
+- 자동 승인 검토는 Git 추적 저장소 전체의 AWS 서버 전송을 민감한 코드·문서 반출 가능성과 정확한 payload·destination 승인 부족으로 거절했다. 사용자는 이후 `d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`의 추적 파일 2,145개를 tar SHA-256 `5b826cb2e4560e1c156bc461fe95aeac18fb950093964483614499540e9de6a0`, 32,389,120바이트로 AWS 계정 `681892421656`의 기존 Lightsail `workout-shared-8gb-20260929` 내 비활성 root 전용 `/srv/workout-manager/releases/d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`에 전송·보관하는 정확한 작업을 승인했다. 로컬 archive는 해시·일반 파일 2,145개·디렉터리 215개·링크/중복/특수 경로 0개로 검증했다. 이 기록 시점에 서버 전송과 활성 소스 교체는 **not_executed**다.
