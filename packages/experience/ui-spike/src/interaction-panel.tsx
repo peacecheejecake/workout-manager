@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { DragDropProvider, useDragDropManager } from '@dnd-kit/react';
+import {
+  DragDropProvider,
+  KeyboardSensor,
+  PointerSensor,
+  useDragDropManager,
+} from '@dnd-kit/react';
+import { PointerActivationConstraints } from '@dnd-kit/dom';
 import { isSortable, useSortable } from '@dnd-kit/react/sortable';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import styles from './interaction-panel.module.css';
@@ -12,6 +18,21 @@ const sampleItems = [
   { id: 'sample-cooldown', label: '정리 운동 예시' },
 ];
 type Item = (typeof sampleItems)[number];
+
+const sortSensors = [
+  PointerSensor.configure({
+    activationConstraints: (event, source) => {
+      // The dedicated handle already reserves touch movement via touch-action: none.
+      // A small distance separates a tap from dragging without requiring a stationary hold.
+      if (event.pointerType === 'touch') {
+        return [new PointerActivationConstraints.Distance({ value: 6 })];
+      }
+      const defaults = PointerSensor.defaults.activationConstraints;
+      return typeof defaults === 'function' ? defaults(event, source) : defaults;
+    },
+  }),
+  KeyboardSensor,
+];
 
 function reordered(items: Item[], from: number, to: number) {
   if (from === to || to < 0 || to >= items.length) return items;
@@ -46,6 +67,7 @@ export function InteractionPanel() {
       >
         <Panel id="sort-preview" defaultSize="60%" minSize="25%" className={styles.panel}>
           <DragDropProvider
+            sensors={sortSensors}
             onDragStart={() => setDragging(true)}
             onDragEnd={(event) => {
               setDragging(false);
@@ -162,7 +184,7 @@ function SortableRow({
           aria-label={`${item.label} 이동 손잡이`}
           aria-describedby={instructionId}
         >
-          이동
+          끌어서 이동
         </button>
         <button
           type="button"

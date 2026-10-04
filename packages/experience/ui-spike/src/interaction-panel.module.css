@@ -56,6 +56,8 @@
 }
 .dragHandle {
   touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   cursor: grab;
 }
 .dragHandle:active {
