@@ -511,3 +511,4 @@
 ## UID 전환 뒤 백업 fence pin 재고정 준비 · 2026-10-04
 
 - 독립 읽기 전용 절차 점검에서 앱·GraphHopper 재생성 뒤 운영 `fence.json`이 옛 Docker ID와 Compose SHA를 유지하면 첫 백업 검사가 거절된다는 누락을 찾았다. 성공 전환과 롤백 모두에서 두 잠금 아래 현재 Compose SHA·새 앱/GraphHopper ID·기존 PostgreSQL ID/클러스터를 재확인하고 root 전용 임시 설정을 원자 교체하도록 [전환 절차](../../../deploy/lightsail/HOST-PRIVILEGE-CUTOVER.md)를 보완했다. 실행 중인 서비스에 대한 설정 파일/해시 검사와, 서비스 정지 뒤 실제 `BACKUP_FENCE_CHECKED` 판정을 구분한다. 이 문서 수정은 서버 설정을 변경하지 않았으며 UID 전환·새 pin 설치·운영 백업은 **not_executed**다.
+- 합성 fence 시험에서 앱·GraphHopper의 전체 Docker ID가 재생성된 상태에 옛 pin을 적용하면 거절되고, 새 ID를 고정한 pin은 PostgreSQL ID를 그대로 보존하면서 수락되는 것을 확인했다. `node --test deploy/lightsail/backup/check-fence.test.mjs` **6/6 통과**, 변경 JS의 Node 24 ESLint·Prettier 통과. 기본 셸 Node 20의 ESLint 호출은 설정 로딩 오류였고 Node 24로 다시 실행해 통과했다. 이 시험은 실제 서버 pin 교체나 운영 백업의 증거가 아니다.

@@ -84,6 +84,19 @@ test('accepts only a pinned, quiesced Workout project', () => {
   assert.equal(assessFence(state.config, runnerFor(state)), true);
 });
 
+test('requires a refreshed pin after app and GraphHopper are recreated', () => {
+  const state = fixture();
+  state.containers[0].Id = id('d');
+  state.containers[2].Id = id('e');
+  rejected(state);
+
+  state.config.composeSha256 = id('f');
+  state.config.containers.app = state.containers[0].Id;
+  state.config.containers.graphhopper = state.containers[2].Id;
+  assert.equal(state.config.containers.postgres, config.containers.postgres);
+  assert.equal(assessFence(state.config, runnerFor(state)), true);
+});
+
 test('rejects a writer restart and an untracked Workout writer', () => {
   const restarted = fixture();
   restarted.containers[0].State.Running = true;
