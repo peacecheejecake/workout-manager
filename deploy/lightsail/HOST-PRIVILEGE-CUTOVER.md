@@ -113,6 +113,10 @@ the root of a data tree is allowed, but the operator must verify its source,
 device and persistence. It bounds its walk at 100,000 entries per tree; an
 oversized tree needs a separately reviewed inspection method. It intentionally
 does not inspect or modify the apex site's containers or data.
+For the two fixed lock files only, the checker accepts the standard root:root
+sticky `/run/lock` mode 01777, followed by root:root mode 0700 on
+`/run/lock/workout-manager` and root:root mode 0600 on each lock file. Other
+writable ancestors and symbolic links remain failures.
 
 ## Exact manual transition after preflight
 

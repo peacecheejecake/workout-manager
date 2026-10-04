@@ -15,6 +15,7 @@ import {
   assertProtectedParents,
   assertTree,
   assessCutover,
+  securePath,
   validatePins,
   validateWriterPin,
 } from './preflight-uid-cutover.mjs';
@@ -216,6 +217,86 @@ test('data ancestors cannot be renamed or recreated by UID 1000', (t) => {
   chmodSync(data, 0o775);
   assert.throws(() =>
     assertProtectedParents(join(data, 'private'), root, process.getuid(), process.getgid()),
+  );
+});
+
+const lockPaths = [
+  '/run/lock/workout-manager/backup.lock',
+  '/run/lock/workout-manager/maintenance.lock',
+];
+
+function lockFilesystem(changes = {}) {
+  const entries = {
+    '/': { uid: 0, gid: 0, mode: 0o755, kind: 'directory' },
+    '/run': { uid: 0, gid: 0, mode: 0o755, kind: 'directory' },
+    '/run/lock': { uid: 0, gid: 0, mode: 0o1777, kind: 'directory' },
+    '/run/lock/workout-manager': { uid: 0, gid: 0, mode: 0o700, kind: 'directory' },
+    ...Object.fromEntries(
+      lockPaths.map((path) => [path, { uid: 0, gid: 0, mode: 0o600, kind: 'file' }]),
+    ),
+  };
+  for (const [path, change] of Object.entries(changes)) {
+    entries[path] = { ...entries[path], ...change };
+  }
+  return {
+    lstatSync(path) {
+      const entry = entries[path];
+      if (!entry) throw Error(`Missing fixture entry: ${path}`);
+      return {
+        ...entry,
+        isSymbolicLink: () => entry.kind === 'symlink',
+        isDirectory: () => entry.kind === 'directory',
+        isFile: () => entry.kind === 'file',
+      };
+    },
+    realpathSync: (path) => path,
+  };
+}
+
+test('only the two fixed locks accept a root-owned sticky /run/lock ancestor', () => {
+  const filesystem = lockFilesystem();
+  for (const path of lockPaths) {
+    assert.doesNotThrow(() => securePath(path, 0o600, 'file', filesystem));
+  }
+  assert.throws(() =>
+    securePath('/run/lock/workout-manager/other.lock', 0o600, 'file', {
+      ...filesystem,
+      lstatSync(path) {
+        return filesystem.lstatSync(
+          path === '/run/lock/workout-manager/other.lock' ? lockPaths[0] : path,
+        );
+      },
+    }),
+  );
+});
+
+test('lock path rejects wrong owner, mode, symlink, and other writable ancestors', () => {
+  const backup = lockPaths[0];
+  for (const [path, change] of [
+    ['/run/lock', { uid: 1000 }],
+    ['/run/lock', { gid: 1000 }],
+    ['/run/lock', { mode: 0o777 }],
+    ['/run/lock', { mode: 0o3777 }],
+    ['/run/lock', { kind: 'symlink' }],
+    ['/run/lock/workout-manager', { uid: 1000 }],
+    ['/run/lock/workout-manager', { gid: 1000 }],
+    ['/run/lock/workout-manager', { mode: 0o770 }],
+    ['/run/lock/workout-manager', { kind: 'symlink' }],
+    [backup, { uid: 1000 }],
+    [backup, { gid: 1000 }],
+    [backup, { mode: 0o660 }],
+    [backup, { mode: 0o1600 }],
+    [backup, { kind: 'symlink' }],
+    ['/run', { kind: 'symlink' }],
+    ['/run', { mode: 0o775 }],
+  ]) {
+    assert.throws(() => securePath(backup, 0o600, 'file', lockFilesystem({ [path]: change })));
+  }
+  assert.throws(() =>
+    securePath(backup, 0o600, 'file', {
+      ...lockFilesystem(),
+      realpathSync: () => '/somewhere-else/backup.lock',
+    }),
   );
 });
 

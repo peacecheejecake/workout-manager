@@ -64,25 +64,41 @@ export function validatePins(value) {
   return value;
 }
 
-function securePath(path, mode, type = 'file') {
+export function securePath(path, mode, type = 'file', filesystem = { lstatSync, realpathSync }) {
+  const isLock = LOCKS.includes(path);
   let current = resolve(path);
   while (true) {
-    const info = lstatSync(current);
+    const info = filesystem.lstatSync(current);
     if (info.isSymbolicLink()) fail();
     if (
       current === path &&
       (info.uid !== 0 ||
-        (info.mode & 0o777) !== mode ||
+        (isLock && info.gid !== 0) ||
+        (info.mode & (isLock ? 0o7777 : 0o777)) !== mode ||
         (type === 'file' ? !info.isFile() : !info.isDirectory()))
     )
       fail();
-    if (current !== path && (info.uid !== 0 || !info.isDirectory() || (info.mode & 0o022) !== 0))
+    if (isLock && current === '/run/lock/workout-manager') {
+      if (info.uid !== 0 || info.gid !== 0 || !info.isDirectory() || (info.mode & 0o7777) !== 0o700)
+        fail();
+    } else if (isLock && current === '/run/lock') {
+      if (
+        info.uid !== 0 ||
+        info.gid !== 0 ||
+        !info.isDirectory() ||
+        (info.mode & 0o7777) !== 0o1777
+      )
+        fail();
+    } else if (
+      current !== path &&
+      (info.uid !== 0 || !info.isDirectory() || (info.mode & 0o022) !== 0)
+    )
       fail();
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  if (realpathSync(path) !== path) fail();
+  if (filesystem.realpathSync(path) !== path) fail();
 }
 
 function protectedDirectory(path) {
