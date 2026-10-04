@@ -487,3 +487,10 @@
 
 - 사용자는 월 10만 원 상한을 **Workout 증분이 아닌 AWS 계정 전체**에 적용한다고 확인했다. 2026-10-03에 조회한 USD 60 계정 전체 경고의 예측 USD 79.632는 이 결정을 판단할 때 참고할 과거 시점의 USD 수치다. 실제 KRW 청구액·현재 예측·다른 서비스의 비용을 재조회하고 상한 안의 운영안을 확정하기 전에는 새 비용을 수반하는 전환이나 공개 판정을 하지 않는다.
 - 자동 승인 검토는 Git 추적 저장소 전체의 AWS 서버 전송을 민감한 코드·문서 반출 가능성과 정확한 payload·destination 승인 부족으로 거절했다. 사용자는 이후 `d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`의 추적 파일 2,145개를 tar SHA-256 `5b826cb2e4560e1c156bc461fe95aeac18fb950093964483614499540e9de6a0`, 32,389,120바이트로 AWS 계정 `681892421656`의 기존 Lightsail `workout-shared-8gb-20260929` 내 비활성 root 전용 `/srv/workout-manager/releases/d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`에 전송·보관하는 정확한 작업을 승인했다. 로컬 archive는 해시·일반 파일 2,145개·디렉터리 215개·링크/중복/특수 경로 0개로 검증했다. 이 기록 시점에 서버 전송과 활성 소스 교체는 **not_executed**다.
+
+## 승인된 비활성 release 전송 · 2026-10-04
+
+- 직접 SSH용 임시 8443 경로 두 차례는 연결 timeout으로 사용하지 못했다. 두 임시 sshd 서비스를 중지하고 Lightsail의 8443 방화벽 규칙이 없음을 확인했다. 사용자는 위 정확한 archive를 서울 CloudShell에 일시 업로드하고 기존 서버 SSH 22로 해당 root 전용 릴리스 경로에 전송한 뒤 CloudShell 사본을 삭제하는 방식을 승인했다.
+- CloudShell의 AWS STS는 계정 `681892421656`의 `AdministratorAccess/peace.cheejecake`를 반환했다. 업로드 파일은 **32,389,120바이트**, SHA-256 `5b826cb2e4560e1c156bc461fe95aeac18fb950093964483614499540e9de6a0`로 로컬 원본과 일치했다. AWS Lightsail의 ED25519 호스트 키 지문 `SHA256:Z3n0V7n1UGIMuFddpIx6a2YowR+nEbwY78el+uaON40`을 고정해 기존 `wm-recovery`의 root 접근을 확인했다.
+- 서버 root 전용 임시 archive의 SHA-256도 같은 값을 반환했다. 이를 mode 0700 준비 디렉터리에 정상 추출한 뒤 일반 파일·디렉터리 이외의 항목이 없고, 예상한 `deploy/lightsail/maintenance/preflight-uid-cutover.mjs`가 존재함을 확인했다. 전체 트리를 root 소유로 설정하고 group/other 권한 위반이 없음을 검사한 뒤, 대상이 없음을 재확인하고 `/srv/workout-manager/releases/d9a53dd31a2e28209722f4eeba91850ff3a2f9d6`로 원자 이동했다. 최종 디렉터리 mode는 **0700**이다. 서버 임시 archive, CloudShell 임시 archive·SSH 키·호스트 키 파일을 삭제했다.
+- 전송 후 공개 사이트는 HTTPS 리다이렉트 뒤 **200/TLS 검증 0**, Workout 주소는 **503/TLS 검증 0**이었다. 이 단계는 **비활성 릴리스 보관만 완료**한 것이다. 활성 `source` 교체, 후보 이미지 실행, UID/소유권 전환, 운영 DB 백업·복원·migration, 실제 로그인 및 503 해제는 여전히 **not_executed**다.
