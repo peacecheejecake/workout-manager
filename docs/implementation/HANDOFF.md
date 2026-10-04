@@ -135,7 +135,8 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
   front proxy가 있어야 한다(Next rewrite는 클라이언트 값을 그대로 넘긴다). 복원 뒤에는 epoch를 올린다(runbook). 재식별 완화(M2-01as)와 그 독립 검토는
   통과했다(상한 10). 링크를 켜면 migration 054의 예산 원장도 복원 절차에 들어간다(runbook). rate key는 base64를 풀어 32 byte 이상이다.
 - migration 050 뒤에는 링크를 켜지 않은 배포도 `grantCourses`와 `grantOperations`를 다시 실행한다(확인 receipt와 export v23이 항상
-  쓴다). runbook에 이 단계는 아직 없다(후속).
+  쓴다). [운영 runbook의 050·054 후 권한 재적용 절차](operations-runbook.md)와
+  [배포 bootstrap](../../deploy/lightsail/bootstrap-db.mjs)에 두 grant 호출이 있다. 실제 운영 적용 여부는 별도 검증한다.
 - migration 소유 역할은 051·052·055(M2-01at·M2-01au·M2-01av)부터 superuser나 BYPASSRLS가 아니어도 된다. 단 그 역할이 migration을
   직접 적용했을 때만이며, 소유를 옮겼다면 **가장 먼저** `select retarget_definer_policies();`를 새 소유자로 실행한다(그 전에는 055의 8개 원천
   표 쓰기도 `42501`로 실패). 복원 replay의 외래 id 확인은 identity 계정이 있는 tenant만 본다. object key의 tenant와 다른 tenant의 행은
