@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
 import {
-  healthKitIngestionAckSchema,
-  healthKitIngestionBatchSchema,
-  type HealthKitIngestionAck,
-  type HealthKitIngestionBatch,
-} from '@workout/contracts/healthkit-ingestion';
+  healthKitRegisteredIngestionAckSchema,
+  healthKitRegisteredIngestionBatchSchema,
+  type HealthKitRegisteredIngestionAck,
+} from '@workout/contracts/healthkit-registration';
 import type { Database } from './database.js';
 
 export class HealthKitIngestionError extends Error {
   constructor(
-    readonly code: 'CONSENT_REQUIRED' | 'CONSENT_EPOCH_EXPIRED' | 'IDEMPOTENCY_CONFLICT',
+    readonly code:
+      | 'CONSENT_REQUIRED'
+      | 'CONSENT_EPOCH_EXPIRED'
+      | 'IDEMPOTENCY_CONFLICT'
+      | 'LEGACY_BATCH_UNSUPPORTED'
+      | 'REGISTRATION_REQUIRED'
+      | 'CLAIM_EPOCH_EXPIRED',
   ) {
     super(code);
   }
@@ -18,9 +23,9 @@ export class HealthKitIngestionError extends Error {
 export interface HealthKitIngestionRepository {
   ingestBatch(
     athleteId: string,
-    input: HealthKitIngestionBatch,
+    input: unknown,
     consentRevision: number,
-  ): Promise<HealthKitIngestionAck>;
+  ): Promise<HealthKitRegisteredIngestionAck>;
 }
 
 function canonicalJson(value: unknown): string {
@@ -46,8 +51,17 @@ export function createHealthKitIngestionRepository(
   database: Database,
 ): HealthKitIngestionRepository {
   return {
-    ingestBatch(athleteId, input, consentRevision) {
-      const batch = healthKitIngestionBatchSchema.parse(input);
+    async ingestBatch(athleteId, input, consentRevision) {
+      // This runs before any receipt/raw write. Legacy v1 has no claim epoch and
+      // cannot be upgraded by trusting the old tenant-scoped local cursor.
+      if (
+        input !== null &&
+        typeof input === 'object' &&
+        'schemaVersion' in input &&
+        input.schemaVersion === 1
+      )
+        throw new HealthKitIngestionError('LEGACY_BATCH_UNSUPPORTED');
+      const batch = healthKitRegisteredIngestionBatchSchema.parse(input);
       if (
         !Number.isSafeInteger(consentRevision) ||
         consentRevision < 1 ||
@@ -70,6 +84,27 @@ export function createHealthKitIngestionRepository(
         if (consent.rows[0]?.['revision'] !== consentRevision)
           throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
 
+        // The receipt and raw rows are reachable only after every UUID is
+        // actively claimed by this account in the same consent epoch.
+        for (const event of [...batch.events].sort((left, right) =>
+          left.sampleId.localeCompare(right.sampleId),
+        )) {
+          // Account erasure is serialized by Database's tenant gate, and
+          // individual claim release is not supported. A read lock would also
+          // require UPDATE privilege on this otherwise append-only claim table.
+          const claim = await tx.query(
+            `SELECT claim_epoch,consent_revision FROM healthkit_workout_claim
+             WHERE athlete_id=$1 AND sample_id=$2`,
+            [athleteId, event.sampleId],
+          );
+          if (!claim.rowCount) throw new HealthKitIngestionError('REGISTRATION_REQUIRED');
+          if (
+            claim.rows[0]?.['claim_epoch'] !== event.claimEpoch ||
+            claim.rows[0]?.['consent_revision'] !== consentRevision
+          )
+            throw new HealthKitIngestionError('CLAIM_EPOCH_EXPIRED');
+        }
+
         const inserted = await tx.query(
           `INSERT INTO healthkit_workout_batch_receipt
              (athlete_id,installation_id,batch_id,request_digest,accepted_count)
@@ -90,8 +125,8 @@ export function createHealthKitIngestionRepository(
             throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
           if (!receipt || receipt['request_digest'] !== requestDigest)
             throw new HealthKitIngestionError('IDEMPOTENCY_CONFLICT');
-          return healthKitIngestionAckSchema.parse({
-            schemaVersion: 1,
+          return healthKitRegisteredIngestionAckSchema.parse({
+            schemaVersion: 2,
             installationId: batch.installationId,
             batchId: batch.batchId,
             acceptedCount: receipt['accepted_count'],
@@ -152,8 +187,8 @@ export function createHealthKitIngestionRepository(
           // A previously deleted HealthKit UUID never resurrects from a delayed add.
         }
 
-        return healthKitIngestionAckSchema.parse({
-          schemaVersion: 1,
+        return healthKitRegisteredIngestionAckSchema.parse({
+          schemaVersion: 2,
           installationId: batch.installationId,
           batchId: batch.batchId,
           acceptedCount: batch.events.length,

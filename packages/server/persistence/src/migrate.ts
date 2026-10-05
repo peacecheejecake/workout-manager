@@ -99,6 +99,7 @@ const migrationFiles = [
   '091_actual_deletion_revision_provenance.sql',
   '092_exact_course_share_revoke_replay.sql',
   '093_exact_actual_deletion_replay.sql',
+  '094_healthkit_workout_registration.sql',
 ] as const;
 
 /**
@@ -284,6 +285,13 @@ export async function grantHealthKitIngestion(
     );
     await pool.query(`GRANT SELECT,INSERT,UPDATE ON healthkit_workout_sample TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_batch_receipt TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON healthkit_workout_registry_head TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_claim TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT,INSERT ON healthkit_workout_registration_receipt TO "${runtimeRole}"`,
+    );
     await pool.query(`GRANT SELECT ON healthkit_workout_lineage TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_existing_binding TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON command_receipt,outbox TO "${runtimeRole}"`);
