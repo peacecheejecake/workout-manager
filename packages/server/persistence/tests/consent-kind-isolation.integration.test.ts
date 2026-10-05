@@ -41,6 +41,15 @@ describe('same-account consent kind isolation in real PostgreSQL', () => {
           idempotencyKey: randomUUID(),
         });
       }
+      const foreignAthleteId = randomUUID();
+      for (const kind of kinds) {
+        await repository.setConsent(foreignAthleteId, {
+          kind,
+          granted: true,
+          expectedRevision: 0,
+          idempotencyKey: randomUUID(),
+        });
+      }
       const readHeads = () =>
         Promise.all(kinds.map((kind) => repository.getConsent(athleteId, kind)));
       expect(await readHeads()).toEqual(
@@ -96,9 +105,39 @@ describe('same-account consent kind isolation in real PostgreSQL', () => {
             .sort((left, right) => left.kind.localeCompare(right.kind)),
         );
       });
-      const foreignAthleteId = randomUUID();
+      // Both tenants have real consent/outbox rows; omit account filters to exercise RLS.
+      for (const [ownerId, hiddenId, heads] of [
+        [athleteId, foreignAthleteId, expected],
+        [foreignAthleteId, athleteId, kinds.map((kind) => ({ kind, granted: true, revision: 1 }))],
+      ] as const) {
+        await database.tenant(ownerId, async (tx) => {
+          const stored = await tx.query(
+            'SELECT athlete_id, kind, granted, revision FROM consent ORDER BY kind',
+          );
+          expect(stored.rows).toEqual(
+            heads
+              .map((head) => ({ athlete_id: ownerId, ...head }))
+              .sort((left, right) => left.kind.localeCompare(right.kind)),
+          );
+          const events = await tx.query(
+            "SELECT athlete_id, payload->>'kind' AS kind, count(*)::integer AS count FROM outbox WHERE topic='consent.changed' GROUP BY athlete_id, payload->>'kind' ORDER BY kind",
+          );
+          expect(events.rows).toEqual(
+            heads
+              .map((head) => ({ athlete_id: ownerId, kind: head.kind, count: head.revision }))
+              .sort((left, right) => left.kind.localeCompare(right.kind)),
+          );
+          for (const table of ['consent', 'outbox'] as const) {
+            const hidden = await tx.query(`SELECT athlete_id FROM ${table} WHERE athlete_id=$1`, [
+              hiddenId,
+            ]);
+            expect(hidden.rows).toEqual([]);
+          }
+        });
+      }
+      const emptyAthleteId = randomUUID();
       expect(
-        await Promise.all(kinds.map((kind) => repository.getConsent(foreignAthleteId, kind))),
+        await Promise.all(kinds.map((kind) => repository.getConsent(emptyAthleteId, kind))),
       ).toEqual(kinds.map((kind) => ({ kind, granted: false, revision: 0 })));
     },
   );
