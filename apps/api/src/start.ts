@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createConfiguredApi } from './configured.js';
 import {
@@ -5,6 +6,13 @@ import {
   switchRefusalCode,
   type RoutingDeploymentSwitch,
 } from './routing-deployment.js';
+
+const runId = randomUUID();
+const configuredRelease = process.env['WORKOUT_RELEASE'];
+const version =
+  configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+    ? configuredRelease
+    : 'unreleased';
 
 try {
   const port = z.coerce
@@ -46,6 +54,6 @@ try {
   await app.listen({ port, host: '127.0.0.1' });
 } catch {
   // Configuration/provider errors can contain credentials and issuer payloads.
-  process.stderr.write('API startup failed; verify identity and database configuration.\n');
+  process.stderr.write(`${JSON.stringify({ kind: 'api_startup_failed', runId, version })}\n`);
   process.exitCode = 1;
 }
