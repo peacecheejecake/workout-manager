@@ -10,14 +10,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { readSuppressionLedgerKey } from '../src/suppression-ledger-config.js';
 import {
+  runSuppressionLedgerCli,
   runSuppressionLedgerOnce,
   type SuppressionLedgerOnceDependencies,
 } from '../src/suppression-ledger-once.js';
 
 const directories: string[] = [];
+const originalExitCode = process.exitCode;
 afterEach(() => {
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
+  vi.restoreAllMocks();
+  process.exitCode = originalExitCode;
 });
 
 function fixture() {
@@ -184,6 +188,62 @@ describe('suppression ledger one-shot worker', () => {
         child.once('close', (code) => resolve({ code, stdout, stderr }));
       },
     );
-    expect(output).toEqual({ code: 1, stdout: '', stderr: 'SUPPRESSION_LEDGER_EXPORT_FAILED\n' });
+    expect(output.code).toBe(1);
+    expect(output.stdout).toBe('');
+    expect(JSON.parse(output.stderr)).toEqual({
+      kind: 'suppression_ledger_export_failed',
+      runId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+      version: 'unreleased',
+    });
+    expect(output.stderr).not.toContain('invalid/secret-bucket');
+  });
+
+  it('logs an attempt completion without coordinator output or private configuration', async () => {
+    const { env } = fixture();
+    const calls = fakeDependencies();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await runSuppressionLedgerCli(
+      ['--run-once'],
+      { ...env, WORKOUT_RELEASE: 'release-42' },
+      calls.dependencies,
+    );
+
+    expect(errors).not.toHaveBeenCalled();
+    expect(output).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toEqual({
+      kind: 'suppression_ledger_export_attempt_completed',
+      runId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+      version: 'release-42',
+    });
+    expect(String(output.mock.calls[0]?.[0])).not.toContain('private-ledger-bucket');
+    expect(calls.coordinate).toHaveBeenCalledOnce();
+  });
+
+  it('redacts coordinator errors and rejects an untrusted release value', async () => {
+    const { env } = fixture();
+    const calls = fakeDependencies();
+    calls.coordinate.mockRejectedValueOnce(new Error('secret key /private/ledger/path'));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await runSuppressionLedgerCli(
+      ['--run-once'],
+      { ...env, WORKOUT_RELEASE: 'secret /private/ledger/path' },
+      calls.dependencies,
+    );
+
+    expect(output).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toEqual({
+      kind: 'suppression_ledger_export_failed',
+      runId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+      version: 'unreleased',
+    });
+    expect(String(errors.mock.calls[0]?.[0])).not.toContain('secret');
+    expect(process.exitCode).toBe(1);
+    expect(calls.end).toHaveBeenCalledOnce();
+    expect(calls.destroy).toHaveBeenCalledOnce();
   });
 });

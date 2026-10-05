@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 import { S3Client } from '@aws-sdk/client-s3';
@@ -85,16 +86,30 @@ export async function runSuppressionLedgerOnce(
   }
 }
 
-async function main(): Promise<void> {
+export async function runSuppressionLedgerCli(
+  args: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  dependencies: SuppressionLedgerOnceDependencies = defaults,
+): Promise<void> {
+  const runId = randomUUID();
+  const configuredRelease = env['WORKOUT_RELEASE'];
+  const version =
+    configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+      ? configuredRelease
+      : 'unreleased';
   try {
-    await runSuppressionLedgerOnce(process.argv.slice(2), process.env);
-    process.stdout.write('SUPPRESSION_LEDGER_EXPORT_ATTEMPT_COMPLETED\n');
+    await runSuppressionLedgerOnce(args, env, dependencies);
+    process.stdout.write(
+      `${JSON.stringify({ kind: 'suppression_ledger_export_attempt_completed', runId, version })}\n`,
+    );
   } catch {
-    process.stderr.write('SUPPRESSION_LEDGER_EXPORT_FAILED\n');
+    process.stderr.write(
+      `${JSON.stringify({ kind: 'suppression_ledger_export_failed', runId, version })}\n`,
+    );
     process.exitCode = 1;
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+  await runSuppressionLedgerCli(process.argv.slice(2), process.env);
 }
