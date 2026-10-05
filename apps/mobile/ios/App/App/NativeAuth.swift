@@ -557,7 +557,7 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
                                      installationId: UUID, batchId: UUID,
                                      eventCount: Int, consentRevision: Int) async throws -> HealthKitWorkoutUploadOutcome {
         try Task.checkCancellation()
-        guard (0...2_147_483_646).contains(consentRevision),
+        guard HealthKitWorkoutUploader.acceptsConsentRevision(consentRevision),
               HealthKitWorkoutUploader.acceptsBody(body, installationId: installationId,
                                                     batchId: batchId, eventCount: eventCount) else {
             return .rejected
@@ -605,6 +605,61 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
         return try HealthKitWorkoutUploader.outcome(status: status, body: response,
                                                      installationId: installationId,
                                                      batchId: batchId, eventCount: eventCount)
+    }
+
+    /** Fixed native-only registry transport. Neither sample IDs nor epochs enter WebView. */
+    func fetchHealthKitRegisteredWorkouts(ownerAthleteId: String, consentRevision: Int) async throws
+        -> HealthKitWorkoutRegistrationSnapshot
+    {
+        try Task.checkCancellation()
+        guard Self.isConfigured, let configuration, !busy,
+            (1...2_147_483_647).contains(consentRevision),
+            let credential = try credentialStore.read(), credential.athleteId == ownerAthleteId,
+            credential.expiresAt > Date()
+        else { throw NativeAuthFailure.unavailable }
+        var pages = HealthKitRegisteredWorkoutPages()
+        for _ in 0..<100 {
+            try Task.checkCancellation()
+            guard !busy, let current = try credentialStore.read(),
+                current.sessionId == credential.sessionId, current.accessToken == credential.accessToken,
+                current.athleteId == ownerAthleteId, current.expiresAt > Date()
+            else {
+                throw NativeAuthFailure.unavailable
+            }
+            var components = URLComponents(
+                url: configuration.apiURL("/bff/v1/healthkit/workout-registrations"),
+                resolvingAgainstBaseURL: false)
+            var query = [URLQueryItem(name: "limit", value: "100")]
+            if let cursor = pages.nextCursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+            components?.queryItems = query
+            guard let url = components?.url else { throw NativeAuthFailure.invalidReply }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+            let (status, data) = try await BoundedNativeRequest(limit: 32_768).send(request)
+            try Task.checkCancellation()
+            guard status == 200 else { throw NativeAuthFailure.unavailable }
+            if let snapshot = try pages.append(data) {
+                // A consent change while paging invalidates the entire result.
+                let (consentStatus, consentData) = try await get(
+                    "/bff/v1/consents/healthkit", credential: credential, at: configuration)
+                try exactObject(consentData, keys: ["kind", "granted", "revision"])
+                guard !busy, consentStatus == 200,
+                    let reply = try? JSONDecoder().decode(HealthKitConsentReadReply.self, from: consentData),
+                    reply.kind == "healthkit", reply.granted, reply.revision == consentRevision,
+                    let current = try credentialStore.read(),
+                    current.sessionId == credential.sessionId, current.accessToken == credential.accessToken,
+                    current.athleteId == ownerAthleteId, current.expiresAt > Date()
+                else {
+                    throw NativeAuthFailure.unavailable
+                }
+                try Task.checkCancellation()
+                return snapshot
+            }
+        }
+        throw NativeAuthFailure.invalidReply
     }
 
     func healthKitConsent() async throws -> HealthKitConsentState {

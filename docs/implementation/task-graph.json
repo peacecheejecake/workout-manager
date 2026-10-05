@@ -2073,7 +2073,7 @@
       "title": "HealthKit 등록 UUID 범위의 native 수집",
       "dependsOn": ["M3-02l"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "서버 등록 ACK된 계정별 UUID만 observer·anchored query와 outbox에 허용한다. 계정 전환·재설치·offline·anchor 재조정·실제 삭제 UUID·stale callback을 합성 Swift harness에서 검증하고 무범위 predicate fallback을 금지한다.",
       "evidence": "docs/implementation/progress/M3-02m.md"
     },

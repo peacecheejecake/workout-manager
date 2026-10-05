@@ -260,3 +260,7 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 - 사용자 승인한 정확한 v4 script SHA `83c51165936b5665934ace5dfe8521d5f10439ca46dc18b58c780c8092bd1bc9`를 서버에서 13:35:03 KST에 1회 실행해 준비 설치·읽기 전용 검증이 성공했다. [EXT-HOSTING 실행 기록](progress/EXT-HOSTING.md#승인된-v4-서버-준비-1회-실행--2026-10-05)을 따른다. 기존 container·데이터는 유지, Workout503/apex200과 timer masked 유지. UID 전환·container 재생성·운영 원장/백업/복원·503 해제는 아직 미실행이다.
 - 사용자가 합성 자료를 사용하는 iPhone 성능 **측정 진행**을 승인했다. 개인 HealthKit/GPS 수집을 포함하지 않으며 실제 측정 후 별도 예산을 정한다. 아직 측정값이 없어 기존 realDevice not_executed/budget null을 통과로 바꾸지 않는다.
 - FUT-09는 과거 공유 계획 이식을 위한 원문·미리보기·승인 항목임을 설명했다. 전체 텍스트·Markdown·PDF·확인 가능한 export를 받거나 이식 범위를 별도로 결정한다. 원문 처리 답변은 아직 기다리는 중이며 일반 계획 편집기 개발은 계속 가능하다.
+
+## M3-02m 로컬 native 수용과 다음 작업(2026-10-05)
+
+등록 UUID/claim epoch 전체 목록 검증 뒤에만 제한된 native observer·anchored query·v2 outbox를 실행하도록 연결했다. 루트가 소스와 실제 합성 218 단언·arm64 네 소비자 typecheck/compile을 확인했다. [M3-02m](progress/M3-02m.md)에 실제 결과와 실패·미실행을 분리했다. 다음 ready node는 M3-02n 운동 선택 UI/native bridge다. 제품 collector의 개인 실기기 실행은 n/o 안전 통합 전 계속 금지하고, M3-02h와 phase 독립 검토는 별도다.

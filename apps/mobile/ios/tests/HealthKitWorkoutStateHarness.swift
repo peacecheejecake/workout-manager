@@ -5,449 +5,375 @@ import SQLite3
 
 private enum HarnessFailure: Error { case failed(String) }
 
-@MainActor
-private func require(_ condition: Bool, _ label: String) throws {
-    if !condition { throw HarnessFailure.failed(label) }
-}
-
+/// Synthetic UUIDs only. These tests never request HealthKit or touch the system health store.
 @MainActor
 @main
 struct HealthKitWorkoutStateHarness {
+    private static var checks = 0
+    static func require(_ condition: Bool, _ label: String) throws {
+        checks += 1
+        if !condition { throw HarnessFailure.failed(label) }
+    }
+    static func denied(_ label: String, expected: HealthKitWorkoutStateError = .registrationRequired, _ action: () throws -> Void) throws {
+        do { try action() } catch let error as HealthKitWorkoutStateError {
+            guard error == expected else { throw HarnessFailure.failed(label + ": wrong error category") }
+            checks += 1
+            return
+        }
+        throw HarnessFailure.failed(label)
+    }
+    static func register(
+        _ state: HealthKitWorkoutState, _ account: String,
+        _ claims: [HealthKitWorkoutClaim], revision: Int = 1, consent: Int = 1
+    ) throws -> String {
+        try state.applyRegisteredSnapshot(
+            .init(registryRevision: revision, claims: claims), accountId: account,
+            consentRevision: consent)
+        return try state.registeredScopes().first?.key ?? "empty"
+    }
+    static func archived(_ anchor: HKQueryAnchor?) throws -> Data? {
+        guard let anchor else { return nil }
+        return try NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
+    }
     static func main() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("wm-healthkit-state-\(UUID())")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "wm-registered-state-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let database = directory.appendingPathComponent("state.sqlite")
-        let sampleId = UUID()
-        let batchId = UUID()
-        let account = "athlete_one"
-        var originalBody = Data()
-        var installationId = UUID()
-
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: database)
-            installationId = try state.activate(accountId: account)
-            try state.applyConsentRevision(1)
-            try require(try state.collectionEnabled() == false, "collection off before explicit request")
-            try state.requestReconciliation()
-            try require(try state.beginReconciliationAfterOutboxDrain(),
-                        "initial request begins with a nil snapshot anchor")
-            try state.markWakePending()
-            try require(try state.wakePending(), "observer wake intent durable")
-            let event = HealthKitWorkoutEvent.upsert(HealthKitWorkoutUpsert(
-                sampleId: sampleId, sourceBundleId: "com.example.fixture", sourceVersion: nil,
+        let db = directory.appendingPathComponent("state.sqlite")
+        let account = "synthetic_owner_a"
+        let other = "synthetic_owner_b"
+        let claims = (0..<100).map { _ in HealthKitWorkoutClaim(sampleId: UUID(), claimEpoch: UUID()) }
+        let first = claims[0]
+        let state = try HealthKitWorkoutState(databaseURL: db)
+        let installation = try state.activate(accountId: account)
+        try state.applyConsentRevision(1)
+        try require(try !state.collectionEnabled(), "explicit action required")
+        try denied("no registry query") { _ = try state.registeredScopes() }
+        try denied("no registry stage") {
+            try state.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: first.sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: 1), scopeKey: "unverified")
+        }
+        let scope = try register(state, account, claims)
+        try require(
+            try state.registeredClaims().count == 100 && state.registeredScopes().count == 1,
+            "complete snapshot yields one bounded scope")
+        try state.requestReconciliation()
+        try require(try state.beginReconciliationAfterOutboxDrain(), "initial reconciliation")
+        let upsert = HealthKitWorkoutEvent.upsert(
+            .init(
+                sampleId: first.sampleId, sourceBundleId: "synthetic.fixture", sourceVersion: nil,
                 activityType: 37, observedFrom: "2026-09-20T01:00:00Z", observedTo: "2026-09-20T01:30:00Z",
                 durationSeconds: 1800, distanceMeters: nil, energyKilocalories: nil))
-            try state.stagePage(batchId: batchId, events: [event], nextAnchor: HKQueryAnchor(fromValue: 1))
-            let pending = try state.pendingBatches()
-            try require(pending.count == 1, "atomic outbox insert")
-            originalBody = pending[0].body
-            guard let json = try JSONSerialization.jsonObject(with: originalBody) as? [String: Any],
-                  let events = json["events"] as? [[String: Any]], events.count == 1 else {
-                throw HarnessFailure.failed("batch JSON shape")
-            }
-            try require(events[0]["sourceVersion"] is NSNull &&
-                        events[0]["distanceMeters"] is NSNull &&
-                        events[0]["energyKilocalories"] is NSNull,
-                        "unknown metrics and version encoded as null")
-            try require((try state.knownSample(sampleId: sampleId))?.sourceBundleId == "com.example.fixture",
-                        "known sample mapping")
-            try require(try state.anchor() != nil, "durable anchor")
-            let firstAnchor = try NSKeyedArchiver.archivedData(withRootObject: state.anchor()!,
-                                                              requiringSecureCoding: true)
-            do {
-                try state.stagePage(batchId: batchId, events: [.delete(sampleId: UUID())],
-                                    nextAnchor: HKQueryAnchor(fromValue: 2))
-                throw HarnessFailure.failed("duplicate batch accepted")
-            } catch HealthKitWorkoutStateError.storageFailure { }
-            try require(try state.pendingBatches().count == 1, "duplicate rolled back")
-            do {
-                try state.acknowledge(batchId: batchId, installationId: installationId, acceptedCount: 0)
-                throw HarnessFailure.failed("wrong count ACK accepted")
-            } catch HealthKitWorkoutStateError.acknowledgementMismatch { }
-            try require(try state.pendingBatches().count == 1, "wrong ACK preserves outbox")
-            let largeEvents: [HealthKitWorkoutEvent] = (0..<100).map { _ in
-                .upsert(HealthKitWorkoutUpsert(
-                    sampleId: UUID(), sourceBundleId: String(repeating: "가", count: 255),
+        let batchId = UUID()
+        try state.stagePage(
+            batchId: batchId, events: [upsert], nextAnchor: HKQueryAnchor(fromValue: 1), scopeKey: scope)
+        let batch = try state.pendingBatches()[0]
+        try require(try state.batchMayUpload(batch), "registered epoch upload eligible")
+        guard let object = try JSONSerialization.jsonObject(with: batch.body) as? [String: Any],
+            let events = object["events"] as? [[String: Any]], let event = events.first
+        else { throw HarnessFailure.failed("v2 fixture shape") }
+        try require(
+            object["schemaVersion"] as? Int == 2
+                && event["claimEpoch"] as? String == first.claimEpoch.uuidString.lowercased(),
+            "v2 epoch exact")
+        try require(
+            event["sourceVersion"] is NSNull && event["distanceMeters"] is NSNull
+                && event["energyKilocalories"] is NSNull, "unknowns stay null")
+        try require(
+            try state.knownSample(sampleId: first.sampleId)?.sourceBundleId == "synthetic.fixture",
+            "known sample")
+        let anchor = try archived(state.anchor(scopeKey: scope))
+        try denied("foreign sample rejected") {
+            try state.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: UUID())],
+                nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: scope)
+        }
+        try denied("foreign scope rejected") {
+            try state.advanceEmptyPage(nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: "foreign")
+        }
+        try denied("duplicate batch rejected", expected: .storageFailure) {
+            try state.stagePage(
+                batchId: batchId, events: [.delete(sampleId: first.sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: scope)
+        }
+        try denied("wrong ACK count rejected", expected: .acknowledgementMismatch) {
+            _ = try state.acknowledge(batchId: batchId, installationId: installation, acceptedCount: 0)
+        }
+        try require(
+            try state.pendingBatches().count == 1 && archived(state.anchor(scopeKey: scope)) == anchor,
+            "failed commands atomic")
+        let large = claims.map { c in
+            HealthKitWorkoutEvent.upsert(
+                .init(
+                    sampleId: c.sampleId, sourceBundleId: String(repeating: "가", count: 255),
                     sourceVersion: String(repeating: "나", count: 128), activityType: 0,
                     observedFrom: "2026-09-20T01:00:00Z", observedTo: "2026-09-20T01:30:00Z",
                     durationSeconds: 1800, distanceMeters: nil, energyKilocalories: nil))
-            }
-            do {
-                try state.stagePage(batchId: UUID(), events: largeEvents, nextAnchor: HKQueryAnchor(fromValue: 3))
-                throw HarnessFailure.failed("oversize batch accepted")
-            } catch HealthKitWorkoutStateError.batchTooLarge { }
-            try require(try state.pendingBatches().count == 1, "oversize batch did not advance outbox")
-            try require(try NSKeyedArchiver.archivedData(withRootObject: state.anchor()!,
-                                                         requiringSecureCoding: true) == firstAnchor,
-                        "oversize batch did not advance anchor")
-            try state.stagePage(batchId: UUID(), events: (0..<100).map { _ in .delete(sampleId: UUID()) },
-                                nextAnchor: HKQueryAnchor(fromValue: 3))
-            try state.pause(batchId: batchId, reason: .conflict)
-            let quarantined = try state.pendingBatches()
-            try require(quarantined[0].pauseReason == .conflict && quarantined[0].body == originalBody,
-                        "pause retains exact batch")
-            try state.pause(batchId: batchId, reason: .rejected)
-            try require(try state.pendingBatches()[0].pauseReason == .conflict,
-                        "first permanent reason is stable")
         }
+        try denied("wire bound rejected", expected: .batchTooLarge) {
+            try state.stagePage(
+                batchId: UUID(), events: large, nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: scope)
+        }
+        try require(
+            try state.pendingBatches().count == 1 && archived(state.anchor(scopeKey: scope)) == anchor,
+            "oversize preserves cursor/outbox")
+        state.invalidateRegistrationVerification()
+        try require(try !state.batchMayUpload(batch), "offline or failed list disables upload")
+        try denied("offline query disabled") { _ = try state.anchor(scopeKey: scope) }
+        try require(
+            try state.pendingBatches()[0].body == batch.body
+                && state.registeredClaims()
+                    == claims.sorted { $0.sampleId.uuidString < $1.sampleId.uuidString },
+            "verification failure preserves snapshot/body")
+        _ = try register(state, account, claims)
+        try require(
+            try state.batchMayUpload(batch) && archived(state.anchor(scopeKey: scope)) == anchor,
+            "fresh same snapshot restores exact retry/cursor")
+        try denied("same revision mutation rejected", expected: .corruptState) { _ = try register(state, account, [first]) }
+        try require(
+            try !state.batchMayUpload(batch) && state.pendingBatches()[0].body == batch.body,
+            "invalid snapshot fail closed without swap")
+        _ = try register(state, account, claims)
+        try state.pause(batchId: batchId, reason: .conflict)
+        try state.pause(batchId: batchId, reason: .rejected)
+        try require(
+            try state.pendingBatches()[0].pauseReason == .conflict
+                && !state.batchMayUpload(state.pendingBatches()[0]), "first permanent reason preserved")
+        try state.requestReconciliation()
+        try state.clearWakePending()
+        try require(
+            try state.wakePending() && !state.beginReconciliationAfterOutboxDrain(),
+            "pending retry wake cannot be cleared, paused outbox blocks reset")
+        let secondInstallation = try state.activate(accountId: other)
+        try require(
+            secondInstallation != installation && state.pendingBatches().isEmpty
+                && !state.collectionEnabled(), "account partition isolation")
+        try denied("account switch drops freshness") { _ = try state.registeredScopes() }
+        try denied("other account ACK rejected", expected: .acknowledgementMismatch) {
+            _ = try state.acknowledge(batchId: batchId, installationId: installation, acceptedCount: 1)
+        }
+        try state.reset()
+        try require(
+            try state.activate(accountId: account) == installation
+                && state.pendingBatches()[0].body == batch.body, "other reset preserves original data")
+        _ = try register(state, account, claims)
+        try require(
+            try state.acknowledge(batchId: batchId, installationId: installation, acceptedCount: 1),
+            "exact ACK")
+        try require(
+            try state.beginReconciliationAfterOutboxDrain() && state.anchor(scopeKey: scope) == nil
+                && state.knownSample(sampleId: first.sampleId) == nil,
+            "drained reconciliation resets scoped cursor only")
+        try state.stagePage(
+            batchId: UUID(), events: [upsert], nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: scope)
+        let pending = try state.pendingBatches()[0]
+        let restarted = try HealthKitWorkoutState(databaseURL: db)
+        try require(
+            try restarted.activate(accountId: account) == installation
+                && restarted.pendingBatches()[0].body == pending.body, "restart exact body")
+        try require(
+            try !restarted.batchMayUpload(pending), "persisted registry is not fresh after restart")
+        _ = try register(restarted, account, claims)
+        try require(
+            try restarted.batchMayUpload(pending) && restarted.anchor(scopeKey: scope) != nil,
+            "restart full list revalidates")
+        let replacementClaim = HealthKitWorkoutClaim(sampleId: first.sampleId, claimEpoch: UUID())
+        let changed = claims.map { $0.sampleId == first.sampleId ? replacementClaim : $0 }
+        let changedScope = try register(restarted, account, changed, revision: 2)
+        try require(
+            changedScope != scope && restarted.anchor(scopeKey: changedScope) == nil
+                && !restarted.batchMayUpload(pending), "re-registration resets anchor and fences old epoch")
+        try require(
+            try restarted.pendingBatches()[0].body == pending.body, "stale epoch body never rewritten")
+        try denied("backwards revision rejected", expected: .corruptState) {
+            _ = try register(restarted, account, claims, revision: 1)
+        }
+        _ = try register(restarted, account, changed, revision: 2)
+        try require(
+            try restarted.applyConsentRevision(3) && restarted.pendingBatches().isEmpty
+                && restarted.registeredClaims().isEmpty && restarted.collectionEnabled(),
+            "server consent rotation erases stale local data while preserving intent")
+        try denied("consent rotation requires fresh list") { _ = try restarted.registeredScopes() }
+        let newScope = try register(restarted, account, [replacementClaim], revision: 3, consent: 3)
+        try restarted.stagePage(
+            batchId: UUID(), events: [.delete(sampleId: first.sampleId)],
+            nextAnchor: HKQueryAnchor(fromValue: 3), scopeKey: newScope)
+        let deletion = try restarted.pendingBatches()[0]
+        try require(
+            deletion.installationId != installation && deletion.consentRevision == 3,
+            "consent epoch rotates installation")
+        try require(
+            try restarted.knownSample(sampleId: first.sampleId) == nil, "explicit deletion mapping")
+        try require(
+            try !restarted.applyConsentRevision(3) && restarted.pendingBatches()[0].body == deletion.body,
+            "same consent retains immutable delete retry")
+        restarted.deactivate()
+        try denied("logout inactive", expected: .inactive) { _ = try restarted.pendingBatches() }
+        _ = try restarted.activate(accountId: account)
+        try require(
+            try restarted.pendingBatches()[0].body == deletion.body
+                && !restarted.batchMayUpload(deletion), "offline deletion preserved but not uploaded")
+        _ = try register(restarted, account, [replacementClaim], revision: 3, consent: 3)
+        try require(try restarted.batchMayUpload(deletion), "original owner fresh deletion retry")
+        try require(
+            try restarted.applyConsentRevision(3, forceReset: true) && restarted.pendingBatches().isEmpty,
+            "explicit server expired epoch reset")
+        let freshInstall = try restarted.activate(accountId: account)
+        let reinstalled = try HealthKitWorkoutState(
+            databaseURL: directory.appendingPathComponent("reinstalled.sqlite"))
+        try require(
+            try reinstalled.activate(accountId: account) != freshInstall
+                && !reinstalled.collectionEnabled(),
+            "reinstall fresh installation/no assumed read authorization")
+        try denied("reinstall no fallback query") { _ = try reinstalled.registeredScopes() }
+        try reinstalled.applyConsentRevision(3)
+        _ = try register(reinstalled, account, [], revision: 3, consent: 3)
+        try require(try reinstalled.registeredScopes().isEmpty, "empty server registry yields no query")
 
-        do {
-            let restarted = try HealthKitWorkoutState(databaseURL: database)
-            try require(try restarted.activate(accountId: account) == installationId,
-                        "installation ID stable after restart")
-            try require(try restarted.collectionEnabled(), "explicit collection flag survives restart")
-            try require(try restarted.wakePending(), "wake intent survives restart")
-            try restarted.clearWakePending()
-            try require(try restarted.wakePending() == false, "wake intent clears explicitly")
-            let pending = try restarted.pendingBatches()
-            try require(pending.count == 2 && pending[0].body == originalBody,
-                        "restart retries exact first body")
-            try require(pending[0].isPaused && pending[0].pauseReason == .conflict,
-                        "quarantine survives restart")
-            try require(try restarted.acknowledge(batchId: batchId, installationId: installationId,
-                                                 acceptedCount: 1), "matched ACK removes batch")
-            try require(try restarted.pendingBatches().count == 1, "ACK preserves later batch")
-            let later = try restarted.pendingBatches()[0]
-            try restarted.pause(batchId: later.batchId, reason: .forbidden)
-            try require(try restarted.pendingBatches()[0].pauseReason == .forbidden,
-                        "forbidden batch quarantined")
-            try restarted.stagePage(batchId: UUID(), events: [.delete(sampleId: sampleId)],
-                                    nextAnchor: HKQueryAnchor(fromValue: 4))
-            try require(try restarted.knownSample(sampleId: sampleId) == nil,
-                        "delete removes known UUID mapping")
-            let changedId = try restarted.activate(accountId: "athlete_two")
-            try require(changedId != installationId, "owner switch rotates installation")
-            try require(try restarted.pendingBatches().isEmpty, "other owner cannot see outbox")
-            try require(try restarted.anchor() == nil, "other owner cannot see anchor")
-            try require(try restarted.knownSample(sampleId: sampleId) == nil, "other owner cannot see mapping")
-            try require(try restarted.collectionEnabled() == false, "other owner cannot see explicit flag")
-            try require(try restarted.wakePending() == false, "other owner cannot see wake intent")
-            do {
-                _ = try restarted.acknowledge(batchId: batchId, installationId: installationId,
-                                               acceptedCount: 1)
-                throw HarnessFailure.failed("other owner ACKed old installation")
-            } catch HealthKitWorkoutStateError.acknowledgementMismatch { }
-            restarted.deactivate()
-            do {
-                _ = try restarted.pendingBatches()
-                throw HarnessFailure.failed("logout kept active owner")
-            } catch HealthKitWorkoutStateError.inactive { }
-            try require(try restarted.activate(accountId: account) == installationId,
-                        "same owner resumes original installation after logout")
-            try require(try restarted.pendingBatches().count == 2,
-                        "same owner resumes paused and deletion batches")
-            try require(try restarted.anchor() != nil && restarted.collectionEnabled(),
-                        "same owner resumes cursor and request intent")
-            _ = try restarted.activate(accountId: "athlete_two")
-            try restarted.reset()
-            do {
-                _ = try restarted.pendingBatches()
-                throw HarnessFailure.failed("reset left active owner")
-            } catch HealthKitWorkoutStateError.inactive { }
-            try require(try restarted.activate(accountId: account) == installationId &&
-                        restarted.pendingBatches().count == 2,
-                        "other owner's local reset cannot erase retained batches")
-        }
-
-        let corruptionDatabase = directory.appendingPathComponent("corruption.sqlite")
-        let corruptionBatchId = UUID()
-        var corruptionInstallationId = UUID()
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: corruptionDatabase)
-            corruptionInstallationId = try state.activate(accountId: account)
-            try state.applyConsentRevision(1)
-            try state.stagePage(batchId: corruptionBatchId, events: [.delete(sampleId: sampleId)],
-                                nextAnchor: HKQueryAnchor(fromValue: 4))
-        }
-        var raw: OpaquePointer?
-        let accountDigest = SHA256.hash(data: Data(account.utf8))
-            .map { String(format: "%02x", $0) }.joined()
-        let accountDatabase = corruptionDatabase.deletingLastPathComponent()
-            .appendingPathComponent("corruption-account-\(accountDigest).sqlite")
-        guard sqlite3_open(accountDatabase.path, &raw) == SQLITE_OK, let raw else {
-            throw HarnessFailure.failed("unable to open corruption fixture")
-        }
-        guard sqlite3_exec(raw, "UPDATE pending SET body=x'00'", nil, nil, nil) == SQLITE_OK else {
-            sqlite3_close(raw)
-            throw HarnessFailure.failed("unable to write corruption fixture")
-        }
-        sqlite3_close(raw)
-        let corrupt = try HealthKitWorkoutState(databaseURL: corruptionDatabase)
-        _ = try corrupt.activate(accountId: account)
-        do {
-            _ = try corrupt.pendingBatches()
-            throw HarnessFailure.failed("corrupt outbox was treated as empty/valid")
-        } catch HealthKitWorkoutStateError.corruptState { }
-        do {
-            _ = try corrupt.acknowledge(batchId: corruptionBatchId,
-                                        installationId: corruptionInstallationId, acceptedCount: 1)
-            throw HarnessFailure.failed("corrupt outbox was acknowledged")
-        } catch HealthKitWorkoutStateError.corruptState { }
-
-        let bounded = try HealthKitWorkoutState(databaseURL: directory.appendingPathComponent("bounded.sqlite"))
+        let bounded = try HealthKitWorkoutState(
+            databaseURL: directory.appendingPathComponent("bounded.sqlite"))
         _ = try bounded.activate(accountId: account)
         try bounded.applyConsentRevision(1)
-        for index in 0..<256 {
-            try bounded.stagePage(batchId: UUID(), events: [.delete(sampleId: UUID())],
-                                  nextAnchor: HKQueryAnchor(fromValue: index + 1))
+        let boundedScope = try register(bounded, account, [first])
+        for i in 0..<256 {
+            try bounded.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: first.sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: i + 1), scopeKey: boundedScope)
         }
-        do {
-            try bounded.stagePage(batchId: UUID(), events: [.delete(sampleId: UUID())],
-                                  nextAnchor: HKQueryAnchor(fromValue: 257))
-            throw HarnessFailure.failed("outbox over 256 batches accepted")
-        } catch HealthKitWorkoutStateError.outboxFull { }
-        try require(try bounded.pendingBatches().count == 256, "outbox cap leaves existing batches intact")
+        try denied("outbox cap", expected: .outboxFull) {
+            try bounded.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: first.sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: 257), scopeKey: boundedScope)
+        }
+        try require(try bounded.pendingBatches().count == 256, "cap preserves existing outbox")
+        let many = (0..<201).map { _ in HealthKitWorkoutClaim(sampleId: UUID(), claimEpoch: UUID()) }
+        _ = try register(bounded, account, many, revision: 2)
+        let chunks = try bounded.registeredScopes()
+        try require(
+            chunks.count == 3 && chunks.allSatisfy { !$0.claims.isEmpty && $0.claims.count <= 100 },
+            "large registry chunks bounded explicit UUIDs")
+        try denied("cross chunk event rejected") {
+            try bounded.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: chunks[1].claims[0].sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: 1), scopeKey: chunks[0].key)
+        }
+        try denied("duplicate claims rejected", expected: .invalidInput) {
+            _ = try register(bounded, account, [first, first], revision: 3)
+        }
+        try require(try bounded.registeredClaims().count == 201, "failed swap leaves prior registry")
 
-        let reconciliationDB = directory.appendingPathComponent("reconciliation.sqlite")
-        let previouslyVisible = UUID()
-        let replayBatchId = UUID()
-        let replayEvent = HealthKitWorkoutEvent.upsert(HealthKitWorkoutUpsert(
-            sampleId: previouslyVisible, sourceBundleId: "com.example.fixture", sourceVersion: nil,
-            activityType: 37, observedFrom: "2026-09-20T01:00:00Z", observedTo: "2026-09-20T01:30:00Z",
-            durationSeconds: 1800, distanceMeters: nil, energyKilocalories: nil))
-        var replayInstallation = UUID()
-        var replayBody = Data()
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
-            replayInstallation = try state.activate(accountId: account)
-            try state.applyConsentRevision(1)
-            try state.stagePage(batchId: replayBatchId, events: [replayEvent],
-                                nextAnchor: HKQueryAnchor(fromValue: 1))
-            replayBody = try state.pendingBatches()[0].body
-            try state.requestReconciliation()
-            try require(try state.collectionEnabled(), "product retry records request history")
-            try require(try state.wakePending(), "product retry keeps durable wake")
-            try state.clearWakePending()
-            try require(try state.wakePending(),
-                        "in-flight empty page cannot erase a newer retry wake")
-            try require(try !state.beginReconciliationAfterOutboxDrain(),
-                        "offline outbox prevents anchor reset")
-            try require(try state.anchor() != nil && state.pendingBatches()[0].body == replayBody,
-                        "offline retry preserves cursor and exact request bytes")
+        // Raw SQLite corruption and a historical v1 body are fixture-only, never production migration.
+        let fixture = try HealthKitWorkoutState(
+            databaseURL: directory.appendingPathComponent("fixture.sqlite"))
+        let fixtureInstallation = try fixture.activate(accountId: account)
+        try fixture.applyConsentRevision(1)
+        let fixtureScope = try register(fixture, account, [first])
+        let fixtureBatch = UUID()
+        try fixture.stagePage(
+            batchId: fixtureBatch, events: [.delete(sampleId: first.sampleId)],
+            nextAnchor: HKQueryAnchor(fromValue: 1), scopeKey: fixtureScope)
+        let digest = SHA256.hash(data: Data(account.utf8)).map { String(format: "%02x", $0) }.joined()
+        let fixtureURL = directory.appendingPathComponent("fixture-account-\(digest).sqlite")
+        var pointer: OpaquePointer?
+        guard sqlite3_open(fixtureURL.path, &pointer) == SQLITE_OK, let pointer else {
+            throw HarnessFailure.failed("fixture open")
         }
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
-            try require(try state.activate(accountId: account) == replayInstallation,
-                        "retry survives process restart under the same installation")
-            try require(try !state.beginReconciliationAfterOutboxDrain(),
-                        "restart still waits for old ACK")
-            try require(try state.acknowledge(batchId: replayBatchId,
-                                              installationId: replayInstallation, acceptedCount: 1),
-                        "old batch gets its exact ACK")
-            try require(try state.beginReconciliationAfterOutboxDrain(),
-                        "ACK allows atomic cursor reset")
-            try require(try state.anchor() == nil && state.knownSample(sampleId: previouslyVisible) == nil,
-                        "requery begins at nil without treating missing UUID as deletion")
-            try require(try state.wakePending(), "reset keeps wake durable across crash")
+        defer { sqlite3_close(pointer) }
+        let legacy = try JSONSerialization.data(
+            withJSONObject: [
+                "schemaVersion": 1, "installationId": fixtureInstallation.uuidString.lowercased(),
+                "batchId": fixtureBatch.uuidString.lowercased(),
+                "events": [["kind": "delete", "sampleId": first.sampleId.uuidString.lowercased()]],
+            ], options: [.sortedKeys])
+        let bodyHex = legacy.map { String(format: "%02x", $0) }.joined()
+        let hashHex = SHA256.hash(data: legacy).map { String(format: "%02x", $0) }.joined()
+        guard
+            sqlite3_exec(
+                pointer, "UPDATE pending SET body=x'\(bodyHex)',body_sha256=x'\(hashHex)'", nil, nil, nil)
+                == SQLITE_OK
+        else { throw HarnessFailure.failed("fixture update") }
+        let legacyBatch = try fixture.pendingBatches()[0]
+        try require(
+            legacyBatch.body == legacy && legacyBatch.isPaused && !fixture.batchMayUpload(legacyBatch),
+            "legacy v1 retained and quarantined without conversion")
+        guard sqlite3_exec(pointer, "UPDATE owner SET consent_revision=NULL", nil, nil, nil) == SQLITE_OK else { throw HarnessFailure.failed("legacy revision fixture") }
+        _ = try fixture.applyConsentRevision(1)
+        try require(try fixture.activate(accountId: account) == fixtureInstallation && fixture.pendingBatches()[0].body == legacy, "first consent migration retains legacy receipt and bytes")
+        try require(try fixture.pendingBatches()[0].isPaused && !fixture.batchMayUpload(fixture.pendingBatches()[0]), "migration never activates v1 upload")
+        guard sqlite3_exec(pointer, "UPDATE pending SET body=x'00'", nil, nil, nil) == SQLITE_OK else {
+            throw HarnessFailure.failed("corruption write")
         }
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
-            _ = try state.activate(accountId: account)
-            try require(try state.anchor() == nil && state.wakePending(),
-                        "crash after reset resumes from nil anchor")
-            try state.stagePage(batchId: UUID(), events: [replayEvent],
-                                nextAnchor: HKQueryAnchor(fromValue: 2))
-            let replay = try state.pendingBatches()[0]
-            try require(replay.installationId == replayInstallation && replay.body != replayBody,
-                        "new snapshot stages a new immutable batch under the same installation")
+        try denied("corrupt pending rejected", expected: .corruptState) { _ = try fixture.pendingBatches() }
+        try denied("corrupt ACK rejected", expected: .corruptState) {
+            _ = try fixture.acknowledge(
+                batchId: fixtureBatch, installationId: fixtureInstallation, acceptedCount: 1)
         }
+        // Upgrade from the old unpartitioned store retains receipt scope and immutable bytes.
+        let upgradeBase = directory.appendingPathComponent("upgrade.sqlite")
+        var upgradedBody = Data()
+        var upgradeInstallation = UUID()
         do {
-            let state = try HealthKitWorkoutState(databaseURL: reconciliationDB)
-            _ = try state.activate(accountId: account)
-            let replay = try state.pendingBatches()[0]
-            try require(try state.anchor() != nil && replay.installationId == replayInstallation,
-                        "partial requery restarts from staged cursor with its outbox intact")
-            try require(try state.acknowledge(batchId: replay.batchId,
-                                              installationId: replayInstallation, acceptedCount: 1),
-                        "replayed visible UUID receives an independent ACK")
-            try state.advanceEmptyPage(nextAnchor: HKQueryAnchor(fromValue: 3))
-            try state.clearWakePending()
-            try require(try state.knownSample(sampleId: previouslyVisible) != nil,
-                        "empty page cannot synthesize a deletion")
-            try state.requestReconciliation()
-            try require(try state.beginReconciliationAfterOutboxDrain(),
-                        "explicit retry after earlier empty page resets the anchor")
-            try require(try state.anchor() == nil,
-                        "permission change retry cannot be trapped behind an empty-result anchor")
-            try state.stagePage(batchId: UUID(), events: [.delete(sampleId: previouslyVisible)],
-                                nextAnchor: HKQueryAnchor(fromValue: 4))
-            try require(try state.knownSample(sampleId: previouslyVisible) == nil,
-                        "only an explicit deleted UUID removes local mapping")
+            let original = try HealthKitWorkoutState(databaseURL: upgradeBase)
+            upgradeInstallation = try original.activate(accountId: account)
+            try original.applyConsentRevision(1)
+            let upgradeScope = try register(original, account, [first])
+            try original.stagePage(
+                batchId: UUID(), events: [.delete(sampleId: first.sampleId)],
+                nextAnchor: HKQueryAnchor(fromValue: 1), scopeKey: upgradeScope)
+            upgradedBody = try original.pendingBatches()[0].body
         }
+        try FileManager.default.removeItem(at: upgradeBase)
+        try FileManager.default.moveItem(
+            at: directory.appendingPathComponent("upgrade-account-\(digest).sqlite"), to: upgradeBase)
+        let upgraded = try HealthKitWorkoutState(databaseURL: upgradeBase)
+        try require(
+            try upgraded.activate(accountId: account) == upgradeInstallation
+                && upgraded.pendingBatches()[0].body == upgradedBody,
+            "unpartitioned owner upgrade receipt retained")
+        _ = try upgraded.activate(accountId: other)
+        try require(
+            try upgraded.pendingBatches().isEmpty
+                && upgraded.activate(accountId: account) == upgradeInstallation
+                && upgraded.pendingBatches()[0].body == upgradedBody, "upgrade partition owner isolation")
+        try require(
+            try !upgraded.batchMayUpload(upgraded.pendingBatches()[0]),
+            "upgrade still requires full registry")
 
-        let pausedDB = directory.appendingPathComponent("paused-reconciliation.sqlite")
-        let paused = try HealthKitWorkoutState(databaseURL: pausedDB)
-        let pausedInstallation = try paused.activate(accountId: account)
-        try paused.applyConsentRevision(1)
-        let pausedBatchId = UUID()
-        try paused.stagePage(batchId: pausedBatchId, events: [replayEvent],
-                             nextAnchor: HKQueryAnchor(fromValue: 1))
-        try paused.pause(batchId: pausedBatchId, reason: .conflict)
-        try paused.requestReconciliation()
-        try require(try !paused.beginReconciliationAfterOutboxDrain() && paused.anchor() != nil,
-                    "paused batch blocks requery without discarding its anchor")
-        try require(try paused.pendingBatches()[0].pauseReason == .conflict &&
-                    paused.pendingBatches()[0].installationId == pausedInstallation,
-                    "paused original stays quarantined for investigation")
-        _ = try paused.activate(accountId: "athlete_two")
-        try require(try paused.anchor() == nil && paused.pendingBatches().isEmpty &&
-                    !paused.collectionEnabled() && !paused.wakePending() &&
-                    !paused.beginReconciliationAfterOutboxDrain(),
-                    "other account sees none of prior owner's retry state")
-        try require(try paused.activate(accountId: account) == pausedInstallation &&
-                    paused.pendingBatches()[0].pauseReason == .conflict &&
-                    paused.anchor() != nil && paused.collectionEnabled(),
-                    "prior owner's quarantined batch and retry intent survive account switch")
-
-        let deletionDB = directory.appendingPathComponent("offline-deletion.sqlite")
-        let deletionBatchId = UUID()
-        let deletedId = UUID()
-        var deletionInstallation = UUID()
-        var deletionBody = Data()
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: deletionDB)
-            deletionInstallation = try state.activate(accountId: account)
-            try state.applyConsentRevision(1)
-            try state.requestReconciliation()
-            try state.stagePage(batchId: deletionBatchId, events: [.delete(sampleId: deletedId)],
-                                nextAnchor: HKQueryAnchor(fromValue: 1))
-            deletionBody = try state.pendingBatches()[0].body
-            state.deactivate() // Offline logout must not discard an unsent deletion.
-            try require(try state.activate(accountId: "athlete_two") != deletionInstallation &&
-                        state.pendingBatches().isEmpty,
-                        "second account cannot send first account's queued deletion")
-            let secondBatch = UUID()
-            try state.applyConsentRevision(1)
-            try state.stagePage(batchId: secondBatch, events: [.delete(sampleId: UUID())],
-                                nextAnchor: HKQueryAnchor(fromValue: 1))
-            try require(try state.pendingBatches().count == 1 &&
-                        state.pendingBatches()[0].body != deletionBody,
-                        "second account stages only its own request body")
+        let controlBase = directory.appendingPathComponent("legacy-control.sqlite")
+        var controlPointer: OpaquePointer?
+        guard sqlite3_open(controlBase.path, &controlPointer) == SQLITE_OK, let controlPointer else {
+            throw HarnessFailure.failed("control fixture")
         }
-        do {
-            let restarted = try HealthKitWorkoutState(databaseURL: deletionDB)
-            let secondInstallation = try restarted.activate(accountId: "athlete_two")
-            try require(try restarted.pendingBatches().count == 1,
-                        "second account's outbox survives process restart")
-            try require(try restarted.activate(accountId: account) == deletionInstallation,
-                        "return to original owner retains installation receipt scope")
-            let pending = try restarted.pendingBatches()
-            try require(pending.count == 1 && pending[0].batchId == deletionBatchId &&
-                        pending[0].body == deletionBody && pending[0].installationId == deletionInstallation,
-                        "offline deletion retries exact original bytes under its owner")
-            do {
-                _ = try restarted.acknowledge(batchId: deletionBatchId,
-                                               installationId: secondInstallation, acceptedCount: 1)
-                throw HarnessFailure.failed("wrong owner's installation ACKed deletion")
-            } catch HealthKitWorkoutStateError.acknowledgementMismatch { }
-            try require(try restarted.acknowledge(batchId: deletionBatchId,
-                                                  installationId: deletionInstallation, acceptedCount: 1),
-                        "correct owner ACK removes queued deletion")
-            try require(try restarted.pendingBatches().isEmpty,
-                        "ACK only clears original owner's deletion")
-            _ = try restarted.activate(accountId: "athlete_two")
-            try require(try restarted.pendingBatches().count == 1,
-                        "original owner's ACK cannot remove other owner's batch")
-        }
-
-        // An app upgraded from the singleton store must retain its old receipt scope.
-        let oldBase = directory.appendingPathComponent("legacy-owner.sqlite")
-        let oldBatch = UUID()
-        var oldInstallation = UUID()
-        var oldBody = Data()
-        do {
-            let newLayout = try HealthKitWorkoutState(databaseURL: oldBase)
-            oldInstallation = try newLayout.activate(accountId: account)
-            try newLayout.applyConsentRevision(1)
-            try newLayout.stagePage(batchId: oldBatch, events: [.delete(sampleId: UUID())],
-                                    nextAnchor: HKQueryAnchor(fromValue: 1))
-            oldBody = try newLayout.pendingBatches()[0].body
-        }
-        let oldAccountFile = oldBase.deletingLastPathComponent()
-            .appendingPathComponent("legacy-owner-account-\(accountDigest).sqlite")
-        try FileManager.default.removeItem(at: oldBase)
-        try FileManager.default.moveItem(at: oldAccountFile, to: oldBase)
-        let upgraded = try HealthKitWorkoutState(databaseURL: oldBase)
-        try require(try upgraded.activate(accountId: account) == oldInstallation &&
-                    upgraded.pendingBatches()[0].body == oldBody,
-                    "upgrade reads the pre-partition owner and exact queued deletion")
-        _ = try upgraded.activate(accountId: "athlete_two")
-        try require(try upgraded.pendingBatches().isEmpty &&
-                    upgraded.activate(accountId: account) == oldInstallation &&
-                    upgraded.pendingBatches()[0].body == oldBody,
-                    "upgrade switch preserves legacy owner's pending deletion")
-
-        let legacyDB = directory.appendingPathComponent("legacy-reconciliation.sqlite")
-        var legacyPointer: OpaquePointer?
-        guard sqlite3_open(legacyDB.path, &legacyPointer) == SQLITE_OK, let legacyPointer else {
-            throw HarnessFailure.failed("unable to create legacy state fixture")
-        }
-        guard sqlite3_exec(legacyPointer,
-                           "CREATE TABLE collection_control (singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), wake_pending INTEGER NOT NULL DEFAULT 0 CHECK(wake_pending IN (0,1)))",
-                           nil, nil, nil) == SQLITE_OK else {
-            sqlite3_close(legacyPointer)
-            throw HarnessFailure.failed("unable to create legacy control table")
-        }
-        sqlite3_close(legacyPointer)
-        let migrated = try HealthKitWorkoutState(databaseURL: legacyDB)
-        _ = try migrated.activate(accountId: account)
-        try migrated.requestReconciliation()
-        try require(try migrated.beginReconciliationAfterOutboxDrain() && migrated.anchor() == nil,
-                    "legacy control table gains durable reconciliation column")
-
-        let replacement = try HealthKitWorkoutState(
-            databaseURL: directory.appendingPathComponent("reinstalled-workouts.sqlite"))
-        try require(try replacement.activate(accountId: account) != replayInstallation,
-                    "new installation rotates its receipt scope")
-        try require(try replacement.anchor() == nil && !replacement.collectionEnabled(),
-                    "reinstall starts at nil but does not assume OS read permission")
-
-        let epochDB = directory.appendingPathComponent("offline-consent-epoch.sqlite")
-        let offlineBatchId = UUID()
-        let offlineSampleId = UUID()
-        var firstEpochInstallation = UUID()
-        var offlineBody = Data()
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: epochDB)
-            firstEpochInstallation = try state.activate(accountId: account)
-            try state.applyConsentRevision(1)
-            try state.requestReconciliation()
-            try state.stagePage(batchId: offlineBatchId, events: [.delete(sampleId: offlineSampleId)],
-                                nextAnchor: HKQueryAnchor(fromValue: 1))
-            offlineBody = try state.pendingBatches()[0].body
-            try state.pause(batchId: offlineBatchId, reason: .conflict)
-            state.deactivate()
-            _ = try state.activate(accountId: "athlete_two")
-            try require(try state.pendingBatches().isEmpty,
-                        "second account cannot observe first consent epoch queue")
-        }
-        do {
-            let state = try HealthKitWorkoutState(databaseURL: epochDB)
-            try require(try state.activate(accountId: account) == firstEpochInstallation &&
-                        state.pendingBatches()[0].body == offlineBody,
-                        "offline epoch queue survives logout and restart before consent is checked")
-            try require(try state.applyConsentRevision(3),
-                        "re-consent rotates the stale installation")
-            try require(try state.pendingBatches().isEmpty && state.anchor() == nil &&
-                        state.knownSample(sampleId: offlineSampleId) == nil &&
-                        state.collectionEnabled(),
-                        "stale paused batch and cursor are erased while explicit collection stays enabled")
-            try require(try state.beginReconciliationAfterOutboxDrain(),
-                        "new epoch requests a nil-anchor snapshot only after stale queue removal")
-            try state.stagePage(batchId: UUID(), events: [.delete(sampleId: UUID())],
-                                nextAnchor: HKQueryAnchor(fromValue: 2))
-            let fresh = try state.pendingBatches()[0]
-            try require(fresh.installationId != firstEpochInstallation && fresh.consentRevision == 3 &&
-                        fresh.body != offlineBody && fresh.batchId != offlineBatchId,
-                        "fresh epoch uses a new installation, revision, and immutable body")
-            try require(try !state.applyConsentRevision(3) && state.pendingBatches().count == 1,
-                        "same revision retains retriable batch")
-            try require(try state.applyConsentRevision(3, forceReset: true) &&
-                        state.pendingBatches().isEmpty,
-                        "server-confirmed expired epoch recovers even if GET still reports same revision")
-        }
-
-        print("HealthKitWorkoutState harness passed: atomic stage, replay, quarantine, ACK, owner isolation, offline deletion retry, consent epoch rotation, corruption, outbox cap, reinstall/reconciliation")
+        guard
+            sqlite3_exec(
+                controlPointer,
+                "CREATE TABLE collection_control(singleton INTEGER PRIMARY KEY CHECK(singleton=1),enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),wake_pending INTEGER NOT NULL DEFAULT 0 CHECK(wake_pending IN(0,1)))",
+                nil, nil, nil) == SQLITE_OK
+        else { throw HarnessFailure.failed("control table") }
+        sqlite3_close(controlPointer)
+        let control = try HealthKitWorkoutState(databaseURL: controlBase)
+        _ = try control.activate(accountId: account)
+        try control.requestReconciliation()
+        try require(
+            try control.beginReconciliationAfterOutboxDrain() && control.wakePending(),
+            "legacy control migration preserves reconciliation")
+        let fence = HealthKitWorkoutCollectionFence(accountId: account, generation: 7)
+        try require(fence.permits(accountId: account, generation: 7), "current completion permitted")
+        try require(!fence.permits(accountId: other, generation: 7), "foreign owner callback denied")
+        try require(
+            !fence.permits(accountId: account, generation: 8),
+            "same owner replaced session/consent/registry callback denied")
+        try require(!fence.permits(accountId: nil, generation: 7), "logout callback denied")
+        let beforeCallback = try bounded.pendingBatches().map(\.body)
+        // Exercise the same fence used by observer, anchored-query and upload continuations.
+        if fence.permits(accountId: other, generation: 8) { try bounded.reset() }
+        try require(
+            try bounded.pendingBatches().map(\.body) == beforeCallback,
+            "stale callback cannot mutate durable state")
+        print(
+            "HealthKitWorkoutState registered harness passed: \(checks) assertions; synthetic SQLite fixtures cleaned"
+        )
     }
 }
