@@ -97,6 +97,12 @@ it against the restored Compose before any writer call.
 /usr/bin/node /srv/workout-manager/admin/preflight-uid-cutover.mjs --check
 ```
 
+On this host, an absent inactive timer reports `systemctl is-active` exit code 4.
+After masking, the preflight accepts exit code 4 only when `is-enabled` reports
+`masked`; exit code 3 remains valid for a registered inactive timer. An
+unregistered, unmasked timer is rejected. Record both outputs and exit codes
+before the cutover instead of inferring timer state from stdout alone.
+
 The check requires both maintenance timers disabled/inactive, both locks
 available, exactly the three expected Workout containers, original healthy
 PostgreSQL with `wal_level=replica`, old app/GraphHopper images still running,

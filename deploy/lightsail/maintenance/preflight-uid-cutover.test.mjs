@@ -80,12 +80,20 @@ function fixture(changes = {}) {
     if (program.endsWith('systemctl'))
       return args[0] === 'is-active'
         ? {
-            status: changes.activeTimer ? 0 : 3,
+            status: changes.activeTimer ? 0 : (changes.inactiveTimerStatus ?? 3),
             stdout: changes.activeTimer ? 'active' : 'inactive',
           }
         : {
-            status: changes.maskedTimer ? 0 : 1,
-            stdout: changes.maskedTimer ? 'masked' : 'disabled',
+            status: changes.missingTimer
+              ? 4
+              : changes.maskedTimer
+                ? (changes.maskedTimerEnabledStatus ?? 0)
+                : 1,
+            stdout: changes.missingTimer
+              ? 'not-found'
+              : changes.maskedTimer
+                ? 'masked'
+                : 'disabled',
           };
     if (program.endsWith('flock')) return { status: changes.lockBusy ? 75 : 0, stdout: '' };
     if (args.includes('ps')) return { status: 0, stdout: Object.keys(containers).join('\n') };
@@ -157,6 +165,13 @@ test('read-only preflight checks identities, ownership, timers, WAL and candidat
   );
   assert.equal(fixtureValue.calls.filter(([, args]) => args.includes('exec')).length, 1);
   assert.equal(assessCutover(pins, fixture({ maskedTimer: true })).status, 'local_checks_passed');
+  assert.equal(
+    assessCutover(
+      pins,
+      fixture({ maskedTimer: true, maskedTimerEnabledStatus: 1, inactiveTimerStatus: 4 }),
+    ).status,
+    'local_checks_passed',
+  );
 });
 
 test('fails closed on competing UID, timer, image user, WAL, changed PostgreSQL or tree', () => {
@@ -166,6 +181,9 @@ test('fails closed on competing UID, timer, image user, WAL, changed PostgreSQL 
     { unsafeParent: true },
     { claimedUid: true },
     { activeTimer: true },
+    { inactiveTimerStatus: 4 },
+    { inactiveTimerStatus: 4, missingTimer: true },
+    { inactiveTimerStatus: 5, maskedTimer: true },
     { lockBusy: true },
     { wrongImageUser: true },
     { wal: 'logical\n' },

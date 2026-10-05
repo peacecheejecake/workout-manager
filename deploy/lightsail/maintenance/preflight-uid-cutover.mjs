@@ -205,12 +205,15 @@ function statusOutput(runner, program, args, status) {
 }
 
 function inactiveTimer(runner, timer) {
-  if (statusOutput(runner, '/usr/bin/systemctl', ['is-active', timer], 3) !== 'inactive') fail();
+  const active = runner('/usr/bin/systemctl', ['is-active', timer]);
+  if (active.error || ![3, 4].includes(active.status) || active.stdout?.trim() !== 'inactive')
+    fail();
   const result = runner('/usr/bin/systemctl', ['is-enabled', timer]);
   if (
     result.error ||
     ![0, 1].includes(result.status) ||
-    !['disabled', 'masked'].includes(result.stdout?.trim())
+    !['disabled', 'masked'].includes(result.stdout?.trim()) ||
+    (active.status === 4 && result.stdout?.trim() !== 'masked')
   )
     fail();
 }
