@@ -25,7 +25,8 @@ import {
 } from '../src/activity-tracks.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import {
   grantActivityTracks,
   grantHealthKitIngestion,
@@ -248,6 +249,64 @@ async function publishObject(storage: ObjectStorage, finalKey: string, content: 
   });
 }
 
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 describe('M2-01c private track storage', () => {
   it('stores an explicit GPX recording for a HealthKit-owned Activity without changing its owner', async () => {
     const athlete = randomUUID();
@@ -286,7 +345,7 @@ describe('M2-01c private track storage', () => {
         },
       ],
     };
-    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1);
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(athlete, batch, 1);
     const sample = await database.tenant(athlete, (tx) =>
       tx.query('SELECT payload_digest FROM healthkit_workout_sample WHERE sample_id=$1', [
         sampleId,

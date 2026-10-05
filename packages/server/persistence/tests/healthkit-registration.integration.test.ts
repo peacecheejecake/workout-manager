@@ -205,6 +205,65 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     expect(second.claims[0]?.claimEpoch).not.toBe(first.claims[0]?.claimEpoch);
   });
 
+  it('rolls back a consent withdrawal with its claim purge, then permits B only after commit', async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    const sampleId = randomUUID();
+    await Promise.all([consent(a), consent(b)]);
+    const registration = createHealthKitRegistrationRepository(database);
+    const ingestion = createHealthKitIngestionRepository(database);
+    const first = await registration.registerWorkouts(a, register([sampleId]));
+    const bExisting = await registration.registerWorkouts(b, register([randomUUID()]));
+    const claimEpoch = first.claims[0]?.claimEpoch;
+    if (!claimEpoch) throw new Error('missing synthetic claim epoch');
+    const oldBatch = batch(sampleId, claimEpoch);
+    await ingestion.ingestBatch(a, oldBatch, 1);
+
+    await expect(
+      database.tenant(a, async (tx) => {
+        await tx.query(
+          "UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='healthkit'",
+          [a],
+        );
+        throw new Error('ROLLBACK_SYNTHETIC_WITHDRAWAL');
+      }),
+    ).rejects.toThrow('ROLLBACK_SYNTHETIC_WITHDRAWAL');
+    expect(await counts(a)).toMatchObject({ claims: 1, registrations: 1, raw: 1 });
+    await expect(registration.registerWorkouts(b, register([sampleId], 1))).rejects.toMatchObject({
+      code: 'CLAIM_CONFLICT',
+    });
+
+    await database.tenant(a, (tx) =>
+      tx.query(
+        "UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='healthkit'",
+        [a],
+      ),
+    );
+    expect(await counts(a)).toMatchObject({ claims: 0, registrations: 0, raw: 0 });
+    const head = await admin.query(
+      'SELECT count(*)::int AS count FROM healthkit_workout_registry_head WHERE athlete_id=$1',
+      [a],
+    );
+    expect(head.rows[0]?.['count']).toBe(0);
+    const second = await registration.registerWorkouts(b, register([sampleId], 1));
+    const secondEpoch = second.claims[0]?.claimEpoch;
+    expect(secondEpoch).toBeTruthy();
+    expect(secondEpoch).not.toBe(claimEpoch);
+    await database.tenant(a, (tx) =>
+      tx.query(
+        "UPDATE consent SET granted=true,revision=3 WHERE athlete_id=$1 AND kind='healthkit'",
+        [a],
+      ),
+    );
+    await expect(
+      ingestion.ingestBatch(a, { ...oldBatch, batchId: randomUUID() }, 3),
+    ).rejects.toMatchObject({ code: 'REGISTRATION_REQUIRED' });
+    const bClaims = (await registration.listWorkouts(b, {})).claims;
+    expect(bClaims).toEqual(expect.arrayContaining([...bExisting.claims, ...second.claims]));
+    expect(bClaims).toHaveLength(2);
+    expect(await counts(b)).toMatchObject({ claims: 2, registrations: 2, raw: 0 });
+  });
+
   it('only accepts a deletion UUID already claimed by the same account', async () => {
     const athlete = randomUUID();
     await consent(athlete);

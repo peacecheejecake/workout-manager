@@ -28,9 +28,9 @@ CREATE POLICY healthkit_workout_claim_scope ON healthkit_workout_claim
   WITH CHECK (athlete_id = nullif(current_setting('app.athlete_id', true), ''));
 
 -- Exact idempotent registration returns the original epoch and revision.
--- Receipt contents are account-private health identifiers and are purged on
--- account erasure. Consent withdrawal blocks ingestion; claim retention and
--- explicit re-selection after withdrawal await the separate policy decision.
+-- Receipt contents are account-private health identifiers. A HealthKit consent
+-- withdrawal removes them with the active claim and registry head, permitting
+-- another account's subsequent explicit registration of the same UUID.
 CREATE TABLE healthkit_workout_registration_receipt (
   athlete_id text NOT NULL CHECK (length(athlete_id) BETWEEN 1 AND 200),
   idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 128
@@ -44,6 +44,31 @@ ALTER TABLE healthkit_workout_registration_receipt FORCE ROW LEVEL SECURITY;
 CREATE POLICY healthkit_workout_registration_receipt_scope ON healthkit_workout_registration_receipt
   USING (athlete_id = nullif(current_setting('app.athlete_id', true), ''))
   WITH CHECK (athlete_id = nullif(current_setting('app.athlete_id', true), ''));
+
+-- This AFTER trigger shares the consent UPDATE/DELETE transaction with the raw
+-- workout purge from 059. Registration and ingestion lock that consent row
+-- before reading claims; do not take their earlier per-account command lock
+-- here, which would invert the order and deadlock an in-flight command.
+CREATE FUNCTION public.purge_healthkit_registration_on_withdrawal() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE target_athlete text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.kind <> 'healthkit' THEN RETURN NULL; END IF;
+    target_athlete := OLD.athlete_id;
+  ELSE
+    IF NEW.kind <> 'healthkit' OR NEW.granted THEN RETURN NULL; END IF;
+    target_athlete := NEW.athlete_id;
+  END IF;
+  DELETE FROM public.healthkit_workout_claim WHERE athlete_id=target_athlete;
+  DELETE FROM public.healthkit_workout_registration_receipt WHERE athlete_id=target_athlete;
+  DELETE FROM public.healthkit_workout_registry_head WHERE athlete_id=target_athlete;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.purge_healthkit_registration_on_withdrawal() FROM PUBLIC;
+CREATE TRIGGER healthkit_registration_consent_withdrawal
+  AFTER INSERT OR UPDATE OR DELETE ON public.consent
+  FOR EACH ROW EXECUTE FUNCTION public.purge_healthkit_registration_on_withdrawal();
 
 CREATE FUNCTION public.purge_healthkit_registration_on_erasure() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$

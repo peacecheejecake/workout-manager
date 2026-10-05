@@ -2047,7 +2047,7 @@
       "dependsOn": ["M3-02i"],
       "kind": "task",
       "status": "completed",
-      "scope": "사용자 명시 선택을 현재 계정 귀속 선언으로 정의하고 계정 삭제 뒤 UUID 재등록을 허용한다. 구형 무등록 배치 차단, 등록 epoch·동의 revision·오류 코드·계정 말소 수명주기를 runtime 계약으로 고정하며 소비자 typecheck를 검증한다. 설계 기록만으로 구현·실기기 수용을 완료 처리하지 않는다.",
+      "scope": "사용자 명시 선택을 현재 계정 귀속 선언으로 정의하고 계정 삭제 뒤 UUID 재등록을 허용한다. 구형 무등록 배치 차단, 등록 epoch·동의 revision·오류 코드·계정 말소 수명주기를 runtime 계약으로 고정하며 소비자 typecheck를 검증한다. 설계 기록만으로 구현·실기기 수용을 완료 처리하지 않는다. 후속 사용자 결정: 개별 해제는 관련 기록 정리 후 귀속 해제, 동의 철회도 귀속 삭제 후 타 계정 명시 재등록 허용. 기존 completed는 등록·목록 계약 범위이며 개별 해제 runtime DTO는 M3-02l에서 추가·검증한다.",
       "evidence": "docs/implementation/progress/M3-02j.md"
     },
     {
@@ -2055,7 +2055,7 @@
       "title": "HealthKit 전역 UUID 귀속 원장·수신 차단",
       "dependsOn": ["M3-02j"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "실제 PostgreSQL에서 UUID의 활성 단일 소유자와 등록 epoch를 보장한다. 미등록·타 계정·구형 v1 배치를 receipt/raw 기록 전에 원자적으로 거절하며 동시 등록·철회·계정 말소·삭제 재전송·RLS·복원과 안전한 rollback을 검증한다. 기존 raw의 소유권을 자동 backfill하지 않는다.",
       "evidence": "docs/implementation/progress/M3-02k.md"
     },
@@ -2065,7 +2065,7 @@
       "dependsOn": ["M3-02k"],
       "kind": "task",
       "status": "not_started",
-      "scope": "인증 계정·동의 revision에서 소유권을 유도하는 UUID 등록·목록 API를 구현한다. 입력 상한·멱등·타 계정 존재 비공개·안정적 오류·구형 클라이언트 거절과 native 소비자 검증을 수행한다. 개별 해제는 삭제 수명주기와 재등록 시점에 대한 사용자 결정 뒤 별도 계약으로 다룬다.",
+      "scope": "인증 계정·동의 revision에서 소유권을 유도하는 UUID 등록·목록 API를 구현한다. 입력 상한·멱등·타 계정 존재 비공개·안정적 오류·구형 클라이언트 거절과 native 소비자 검증을 수행한다. 확정된 개별 등록 해제 정책에 따라 관련 기록 삭제·정리 완료 뒤 귀속을 해제하고, 그 뒤에만 다른 계정의 명시 재등록을 허용하는 별도 runtime DTO/API와 삭제 수명주기를 구현·검증한다. 동의 철회도 귀속 삭제 정책을 따른다.",
       "evidence": "docs/implementation/progress/M3-02l.md"
     },
     {

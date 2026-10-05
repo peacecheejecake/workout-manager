@@ -6,7 +6,8 @@ import { createActivityRepository } from '../src/activities.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
 import { createHealthKitBindingRepository } from '../src/healthkit-binding.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
 
@@ -83,7 +84,7 @@ function workout(sampleId = randomUUID(), activityType = 37): HealthKitIngestion
 async function prepared(athleteId = randomUUID(), activityType = 37) {
   await grantConsent(athleteId);
   const batch = workout(randomUUID(), activityType);
-  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch, 1);
+  await createRegisteredFixtureIngestionRepository(database).ingestBatch(athleteId, batch, 1);
   const sampleId = batch.events[0]?.sampleId;
   if (!sampleId) throw new Error('Expected workout fixture');
   const digest = await database.tenant(athleteId, (tx) =>
@@ -99,6 +100,64 @@ function command(input: Awaited<ReturnType<typeof prepared>>, idempotencyKey = r
     expectedSampleDigest: input.expectedSampleDigest,
     confirmed: true as const,
     idempotencyKey,
+  };
+}
+
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
   };
 }
 
@@ -256,7 +315,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
         [fixture.athleteId, randomUUID(), 'a'.repeat(64), otherId],
       );
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         schemaVersion: 1,
@@ -310,7 +369,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     await expect(repo.createActivity(fixture.athleteId, request)).rejects.toMatchObject({
       code: 'IDEMPOTENCY_CONFLICT',
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         ...fixture.batch,
@@ -324,7 +383,11 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
   it('redacts on local Activity deletion before the raw source is removed', async () => {
     const fixture = await prepared();
     const other = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(fixture.athleteId, other, 1);
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
+      fixture.athleteId,
+      other,
+      1,
+    );
     const otherSampleId = other.events[0]?.sampleId;
     if (!otherSampleId) throw new Error('Expected second sample');
     const created = await createHealthKitActivityRepository(database).createActivity(
@@ -382,7 +445,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
 
   it('replays a lost ingestion ACK after local deletion and accepts later batches without resurrection', async () => {
     const fixture = await prepared();
-    const ingestion = createHealthKitIngestionRepository(database);
+    const ingestion = createRegisteredFixtureIngestionRepository(database);
     const unrelated = workout();
     const foreign = await prepared();
     const unrelatedAck = await ingestion.ingestBatch(fixture.athleteId, unrelated, 1);
@@ -400,7 +463,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     // The first ACK was lost on the device. It retries the exact persisted batch,
     // then drains the queue by delivering the next batch with the same installation.
     expect(await ingestion.ingestBatch(fixture.athleteId, fixture.batch, 1)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       installationId: fixture.batch.installationId,
       batchId: fixture.batch.batchId,
       acceptedCount: 1,
@@ -500,7 +563,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       const creation = repository.createActivity(fixture.athleteId, command(fixture));
       const deletion =
         removal === 'sample'
-          ? createHealthKitIngestionRepository(database).ingestBatch(
+          ? createRegisteredFixtureIngestionRepository(database).ingestBatch(
               fixture.athleteId,
               {
                 schemaVersion: 1,
@@ -575,7 +638,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
       suppression: 1,
       purged_receipts: 0,
     });
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         ...fixture.batch,
@@ -586,7 +649,7 @@ describe('M3-02i explicit HealthKit-primary Activity', () => {
     );
     const absentSampleId = randomUUID();
     expect((await replay(absentSampleId, randomUUID())).rows[0]).toEqual({ replayed: true });
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       workout(absentSampleId),
       1,
