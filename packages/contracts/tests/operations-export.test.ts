@@ -1197,3 +1197,66 @@ it('exports a created HealthKit activity in v28 while retaining v27 compatibilit
     }).success,
   ).toBe(false);
 });
+
+it('exports v29 attribution facts without portable command fencing or changing v28', () => {
+  const previousSchema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 28,
+  );
+  if (!previousSchema) throw new Error('Expected v28');
+  const previous = previousSchema.parse({
+    ...legacy,
+    schemaVersion: 28,
+    data: Object.fromEntries(previousSchema.shape.data.keyof().options.map((key) => [key, []])),
+  });
+  const facts = {
+    healthKitWorkoutClaims: [
+      {
+        sample_id: '11111111-1111-4111-8111-111111111111',
+        consent_revision: 1,
+        created_at: legacy.exportedAt,
+      },
+    ],
+    healthKitWorkoutRegistryHeads: [{ revision: 1 }],
+    healthKitWorkoutRegistrations: [{ registry_revision: 1, registered_count: 1 }],
+  };
+  const current = { ...previous, schemaVersion: 29, data: { ...previous.data, ...facts } };
+  expect(accountExportSchema.parse(current)).toEqual(current);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(previous.data).not.toHaveProperty('healthKitWorkoutClaims');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 29 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 28 }).success).toBe(false);
+  for (const forbidden of [
+    'claim_epoch',
+    'athlete_id',
+    'request_digest',
+    'result_json',
+    'idempotency_key',
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutClaims: [{ ...facts.healthKitWorkoutClaims[0], [forbidden]: 'private' }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutRegistrations: [
+            { ...facts.healthKitWorkoutRegistrations[0], [forbidden]: 'private' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  }
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: { ...current.data, healthKitWorkoutRegistryHeads: [{ revision: 1 }, { revision: 2 }] },
+    }).success,
+  ).toBe(false);
+});

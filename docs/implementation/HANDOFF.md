@@ -197,13 +197,13 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
   `adequate`(75.5/82)를 받았다. [실행 기록](research/m0-06b-coverage-execution-m2-01az.md)과
   [채점 기록](research/m0-06b-coverage-review-grading-m2-01az.md)을 참조한다. 기존 `failed`는 바꾸지 않는다.
 
-## HealthKit 계정 귀속 후속 결정·부분 구현(2026-10-05)
+## HealthKit 계정 귀속 후속 결정·서버 로컬 수용(2026-10-05)
 
 - 사용자의 명시적 운동 선택·등록은 현재 제품 계정에 대한 귀속 선언이다. HealthKit 자체는 실제 인간 소유자를 확인하지 못한다.
 - 개별 등록 해제는 제품 내 관련 기록을 삭제·정리한 뒤 귀속을 해제한다. 다른 계정은 정리가 완료된 뒤 같은 UUID를 명시 재등록할 수 있다.
 - 계정이 남아 있어도 HealthKit 동의 철회 시 귀속을 삭제해 다른 계정의 명시 재등록을 허용한다. 계정 말소도 귀속 삭제 후 재등록을 허용한다. 모두 유효 동의와 새 사용자 선언이 필요하다.
 - [ADR](research/healthkit-account-registration-adr.md), [M3-02k](progress/M3-02k.md)에 결정과 구현 범위를 기록했다. 094 AFTER consent trigger가 claim/등록 receipt/head를 기존 raw purge와 같은 거래에서 정리한다. 등록·수신과 기존 HealthKit persistence 회귀 **8개 suite·79개 테스트**, 집중 재실행 **6개 테스트**가 실제 PostgreSQL에서 통과했다. 최초 회귀의 **72개 통과·1개 실패**(철회 후 claim/등록 receipt/registry head 기대 0/0/0·실제 1/1/1)는 실패 이력으로 보존했다.
-- M3-02k는 **in_progress**다. export projection, 복원·안전한 rollback, 개별 해제 runtime 계약/API, 현행 v1 API 경로 전환, native 선택/등록/수집 연결과 운영·실기기 검증이 남는다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. M3-02h 실기기 행은 **not_executed**다.
+- M3-02k는 **로컬 PostgreSQL 수용 완료 / 루트 최종 확인 후 그래프 완료 반영 대상**이다. export v29 owner projection, 095 DB protocol fence, 합성 자료의 실제 dump/restore와 철회 suppression replay, 동시 철회 commit/rollback에 따른 B 등록 대기·결과를 검증했다. 전체 실DB 재실행은 초기 smoke 1/1 및 1,057개 통과·3개 건너뜀·0개 실패다. 중간 export assertion 5개 실패와 첫 전체 assertion 2개·hook 8개 실패는 M3-02k에 보존했다. DB rollback 검증을 운영 이미지 rollback 증거로 사용하지 않는다. 개별 해제 runtime 계약/API와 v1→v2 API는 l, native 선택/등록/수집은 m/n, 운영 이미지 rollback·공개 배포·실기기는 o/h에 남는다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. M3-02h 실기기 행은 **not_executed**다.
 
 ## 알려진 흔들리는 시험
 

@@ -349,6 +349,37 @@ const accountExportV28Schema = accountExportV27Schema.extend({
       .max(1000),
   }),
 });
+/** v29 exports attribution facts, never command receipts or reusable claim epochs.
+ * A portable account artifact is not a command to restore active ownership. */
+const accountExportV29Schema = accountExportV28Schema.extend({
+  schemaVersion: z.literal(29),
+  data: accountExportV28Schema.shape.data.extend({
+    healthKitWorkoutClaims: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          consent_revision: z.number().int().min(1).max(2_147_483_647),
+          created_at: z.iso.datetime({ offset: true }),
+        }),
+      )
+      .max(1000),
+    healthKitWorkoutRegistryHeads: z
+      .array(
+        z.strictObject({
+          revision: z.number().int().min(1).max(2_147_483_647),
+        }),
+      )
+      .max(1),
+    healthKitWorkoutRegistrations: z
+      .array(
+        z.strictObject({
+          registry_revision: z.number().int().min(1).max(2_147_483_647),
+          registered_count: z.number().int().min(1).max(50),
+        }),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -378,6 +409,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV26Schema,
   accountExportV27Schema,
   accountExportV28Schema,
+  accountExportV29Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

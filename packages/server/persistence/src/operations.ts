@@ -533,6 +533,23 @@ const collections = [
     'installation_id,batch_id,accepted_count,received_at,purged_at',
     'received_at,installation_id,batch_id',
   ],
+  // Portable attribution facts only. Receipt digests, keys, result JSON and
+  // claim epochs remain command internals; this export cannot restore ownership.
+  [
+    'healthKitWorkoutClaims',
+    'healthkit_workout_claim',
+    'sample_id,consent_revision,created_at',
+    'sample_id',
+  ],
+  ['healthKitWorkoutRegistryHeads', 'healthkit_workout_registry_head', 'revision', 'revision'],
+  [
+    'healthKitWorkoutRegistrations',
+    `(SELECT athlete_id,(result_json->>'registryRevision')::integer AS registry_revision,
+       jsonb_array_length(result_json->'claims') AS registered_count
+      FROM healthkit_workout_registration_receipt) healthkit_registration_facts`,
+    'registry_revision,registered_count',
+    'registry_revision',
+  ],
   ['healthKitWorkoutLineage', 'healthkit_workout_lineage', 'sample_id,state', 'sample_id'],
   [
     'healthKitExistingBindings',
@@ -574,7 +591,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 28,
+          schemaVersion: 29,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

@@ -107,8 +107,8 @@ export function createHealthKitIngestionRepository(
 
         const inserted = await tx.query(
           `INSERT INTO healthkit_workout_batch_receipt
-             (athlete_id,installation_id,batch_id,request_digest,accepted_count)
-           VALUES ($1,$2,$3,$4,$5)
+             (athlete_id,installation_id,batch_id,request_digest,accepted_count,protocol_version)
+           VALUES ($1,$2,$3,$4,$5,2)
            ON CONFLICT DO NOTHING RETURNING batch_id`,
           [athleteId, batch.installationId, batch.batchId, requestDigest, batch.events.length],
         );

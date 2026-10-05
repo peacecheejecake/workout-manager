@@ -1,6 +1,6 @@
 # HealthKit 계정별 운동 선택·등록 ADR (2026-10-05)
 
-상태: **제품 방향 결정 / 서버 부분 구현**. 계정별 운동 선택·등록·해제·철회 정책은 확정됐다. M3-02j의 등록/목록 runtime 계약과 M3-02k의 서버 원장·수신 gate가 부분 구현됐으며, 현재 구현·검증 범위는 [M3-02k 기록](../progress/M3-02k.md)을 따른다. 이 ADR 자체는 구현이나 검증 결과가 아니다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. [M3-02h](../progress/M3-02h.md)의 제품 실기기 수용은 `not_executed`다.
+상태: **제품 방향 결정 / 서버 로컬 PostgreSQL 수용 완료**. 계정별 운동 선택·등록·해제·철회 정책은 확정됐다. M3-02j의 등록/목록 runtime 계약과 M3-02k의 서버 원장·수신 gate·export v29·DB fence 및 합성 dump/restore를 로컬 검증했으며, 현재 구현·검증 범위는 [M3-02k 기록](../progress/M3-02k.md)을 따른다. 이 ADR 자체는 구현이나 검증 결과가 아니다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. [M3-02h](../progress/M3-02h.md)의 제품 실기기 수용은 `not_executed`다.
 
 ## 설계 당시 경계와 위협 모델
 

@@ -2055,8 +2055,8 @@
       "title": "HealthKit 전역 UUID 귀속 원장·수신 차단",
       "dependsOn": ["M3-02j"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "실제 PostgreSQL에서 UUID의 활성 단일 소유자와 등록 epoch를 보장한다. 미등록·타 계정·구형 v1 배치를 receipt/raw 기록 전에 원자적으로 거절하며 동시 등록·철회·계정 말소·삭제 재전송·RLS·복원과 안전한 rollback을 검증한다. 기존 raw의 소유권을 자동 backfill하지 않는다.",
+      "status": "completed",
+      "scope": "실제 PostgreSQL에서 UUID의 활성 단일 소유자와 등록 epoch를 보장한다. 미등록·타 계정·구형 v1 배치를 receipt/raw 기록 전에 원자적으로 거절하며 동시 등록·철회·계정 말소·삭제 재전송·RLS를 검증한다. owner-only export v29 projection, 095 DB protocol fence 유지·legacy runtime 쓰기 거절, 합성 DB 실제 dump/restore·철회 suppression replay와 거래 commit/rollback을 로컬 수용으로 검증한다. 기존 raw의 소유권을 자동 backfill하지 않는다. API v1→v2와 개별 해제 runtime 계약/API는 M3-02l, native는 m/n, 운영 이미지 rollback·운영 복원·공개 배포와 실기기는 o/h에 남으며 이 노드 통과 증거로 세지 않는다.",
       "evidence": "docs/implementation/progress/M3-02k.md"
     },
     {

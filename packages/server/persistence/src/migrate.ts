@@ -100,6 +100,7 @@ const migrationFiles = [
   '092_exact_course_share_revoke_replay.sql',
   '093_exact_actual_deletion_replay.sql',
   '094_healthkit_workout_registration.sql',
+  '095_healthkit_receipt_protocol_fence.sql',
 ] as const;
 
 /**
@@ -411,6 +412,16 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON healthkit_workout_sample,healthkit_workout_batch_receipt,healthkit_workout_lineage,healthkit_existing_binding TO "${runtimeRole}"`,
     );
+    // Historical upgrade fixtures can apply grants before migration 094.
+    // Grant registration export reads only after the migration actually exists.
+    const registrationMigration = await pool.query(
+      'SELECT 1 FROM schema_migrations WHERE version=94',
+    );
+    if (registrationMigration.rowCount) {
+      await pool.query(
+        `GRANT SELECT ON healthkit_workout_claim,healthkit_workout_registry_head,healthkit_workout_registration_receipt TO "${runtimeRole}"`,
+      );
+    }
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.garmin_session_active(text,text,timestamptz) TO "${runtimeRole}"`,
     );
