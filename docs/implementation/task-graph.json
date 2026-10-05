@@ -2046,9 +2046,9 @@
       "title": "HealthKit 계정별 운동 등록 정책·계약",
       "dependsOn": ["M3-02i"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "사용자 명시 선택을 현재 계정 귀속 선언으로 정의하고 계정 삭제 뒤 UUID 재등록을 허용한다. 구형 무등록 배치 차단, 등록 epoch·동의 revision·오류 코드·계정 말소 수명주기를 runtime 계약으로 고정하며 소비자 typecheck를 검증한다. 설계 기록만으로 구현·실기기 수용을 완료 처리하지 않는다.",
-      "evidence": "docs/implementation/research/healthkit-account-registration-adr.md"
+      "evidence": "docs/implementation/progress/M3-02j.md"
     },
     {
       "id": "M3-02k",
@@ -2065,7 +2065,7 @@
       "dependsOn": ["M3-02k"],
       "kind": "task",
       "status": "not_started",
-      "scope": "인증 계정·동의 revision에서 소유권을 유도하는 UUID 등록·목록·해제 API를 구현한다. 입력 상한·멱등·타 계정 존재 비공개·안정적 오류·구형 클라이언트 거절과 native 소비자 검증을 수행한다.",
+      "scope": "인증 계정·동의 revision에서 소유권을 유도하는 UUID 등록·목록 API를 구현한다. 입력 상한·멱등·타 계정 존재 비공개·안정적 오류·구형 클라이언트 거절과 native 소비자 검증을 수행한다. 개별 해제는 삭제 수명주기와 재등록 시점에 대한 사용자 결정 뒤 별도 계약으로 다룬다.",
       "evidence": "docs/implementation/progress/M3-02l.md"
     },
     {

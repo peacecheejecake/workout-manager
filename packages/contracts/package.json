@@ -25,6 +25,10 @@
       "types": "./src/healthkit-ingestion.ts",
       "default": "./dist/healthkit-ingestion.js"
     },
+    "./healthkit-registration": {
+      "types": "./src/healthkit-registration.ts",
+      "default": "./dist/healthkit-registration.js"
+    },
     "./native-bridge": {
       "types": "./src/native-bridge.ts",
       "default": "./dist/native-bridge.js"
