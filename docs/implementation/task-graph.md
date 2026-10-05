@@ -563,6 +563,12 @@ flowchart TD
     task35g["M3-02g 제품 HealthKit UI"]
     task35h["M3-02h 서명된 iPhone 검증"]
     task35i["M3-02i 독립 Activity 생성·삭제"]
+    task35j["M3-02j 계정별 등록 정책·계약"]
+    task35k["M3-02k UUID 원장·수신 차단"]
+    task35l["M3-02l 운동 등록 API"]
+    task35m["M3-02m native 등록 UUID 수집"]
+    task35n["M3-02n 선택 UI·bridge"]
+    task35o["M3-02o 통합·안전 배포 준비"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
     task37{{"G3 Native-inclusive 출시 gate"}}
@@ -592,6 +598,23 @@ flowchart TD
     task35i --> task35g
     task35i --> task35h
     task35i --> task35
+    task35i --> task35j
+    task35j --> task35k
+    task35k --> task35l
+    task35l --> task35m
+    task35j --> task35n
+    task35m --> task35n
+    task35k --> task35o
+    task35l --> task35o
+    task35m --> task35o
+    task35n --> task35o
+    task35o --> task35h
+    task35j --> task35
+    task35k --> task35
+    task35l --> task35
+    task35m --> task35
+    task35n --> task35
+    task35o --> task35
     task35b --> task35f
     task35d --> task35f
     task35f --> task35h
@@ -761,9 +784,15 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02e HealthKit 검토 대기 운동의 기존 Activity 연결 | M3-02d | 로컬 수용 완료; 사용자 선택·tenant/revision/동의·삭제 억제·멱등 거래로 기존 Activity에 보조 lineage만 연결, 기존 출처와 단일 집계 보존. 제품 선택 UI·실기기는 후속 |
 | M3-02f HealthKit 재설치·anchor 재조정과 권한 미확인 상태 | M3-02b, M3-02d | 로컬 수용 완료; 미전송 배치 ACK 뒤 명시적 재확인에서 nil-anchor 재조회·기존 UUID 대조. 빈 조회로 삭제나 권한 허용을 추정하지 않음. 실기기 재설치·wake는 후속 |
 | M3-02g 제품 HealthKit 동의·동기화 UI와 공통 Activity 화면 | M3-02c, M3-02e, M3-02i | 로컬 수용 완료; native 동의·운동 읽기 요청과 제한된 상태, Web/mobile 공통 Activity 검토·명시적 생성/연결. 실기기 전체 경로는 M3-02h |
-| M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i | [서명·설치·기본 실행 사전 확인](progress/M3-02h.md); HTTPS 서버·안전한 표본 범위 확인 대기. 실제 수집·삭제·wake·재설치·계정 전환은 미실행 |
+| M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i, M3-02o | [서명·설치·기본 실행 사전 확인](progress/M3-02h.md); 계정별 등록과 HTTPS·격리된 표본 범위 확인 대기. 실제 수집·삭제·wake·재설치·계정 전환은 미실행 |
 | M3-02i 명시적 HealthKit 독립 Activity 생성·삭제 수명주기 | M3-02e | 로컬 수용 완료; 검토된 원본만 새 canonical로 만들고 삭제·철회·복원 재생에서 억제. 서명된 실기기는 M3-02h |
-| M3-02 HealthKit collector | M3-01, M3-02a–M3-02i | native collector; anchor/tombstone/outbox/ack·실기기 |
+| M3-02j HealthKit 계정별 운동 등록 정책·계약 | M3-02i | [계정별 선택·등록 ADR](research/healthkit-account-registration-adr.md), runtime 계약·consumer typecheck; 구현 진행 중 |
+| M3-02k HealthKit 전역 UUID 귀속 원장·수신 차단 | M3-02j | 전역 단일 활성 owner, 등록 epoch, 구형·미등록 배치 원자적 거절, 실제 DB 동시성·말소·rollback 검증 |
+| M3-02l HealthKit 운동 등록 API 경계 | M3-02k | 인증 계정·동의 revision 기반 등록/조회/해제, 멱등·비공개 충돌·입력 제한·native 소비자 |
+| M3-02m HealthKit 등록 UUID 범위의 native 수집 | M3-02l | ACK된 UUID만 query/outbox, 계정 전환·재설치·삭제·anchor를 합성 Swift harness로 검증 |
+| M3-02n HealthKit 운동 선택 UI·native bridge | M3-02j, M3-02m | 기기 내부 후보 조회와 명시적 계정 귀속 선언, UUID·원본 비반출, 오류·접근성 검증 |
+| M3-02o HealthKit 계정별 등록 통합·안전 배포 준비 | M3-02k–M3-02n | 기존 raw 감사, 서버 선배포·구형 앱 차단·safe rollback과 통합 검증; 실기기 수용은 M3-02h |
+| M3-02 HealthKit collector | M3-01, M3-02a–M3-02o | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |
 
