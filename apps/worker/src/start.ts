@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   runOneCoachingJob,
   createDeterministicFixtureAdapter,
@@ -5,6 +7,13 @@ import {
 import { createDatabase } from '@workout/server-persistence/database';
 import { createCoachingRunWorkerStore } from '@workout/server-persistence/coaching-runs';
 import { parseFixtureWorkerConfig } from './config.js';
+
+const runId = randomUUID();
+const configuredRelease = process.env['WORKOUT_RELEASE'];
+const version =
+  configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+    ? configuredRelease
+    : 'unreleased';
 
 async function main(): Promise<void> {
   const config = parseFixtureWorkerConfig(process.argv.slice(2), process.env);
@@ -18,7 +27,9 @@ async function main(): Promise<void> {
       }),
       adapter: createDeterministicFixtureAdapter(config.source.fixtureId),
     });
-    process.stdout.write(`${JSON.stringify({ kind: 'coaching_fixture_worker_result', result })}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ kind: 'coaching_fixture_worker_result', result, runId, version })}\n`,
+    );
   } finally {
     await database.close();
   }
@@ -28,6 +39,8 @@ try {
   await main();
 } catch {
   // Error objects may contain SQL, credentials, or evidence. Keep the CLI failure generic.
-  process.stderr.write('COACHING_FIXTURE_WORKER_FAILED\n');
+  process.stderr.write(
+    `${JSON.stringify({ kind: 'coaching_fixture_worker_failed', runId, version })}\n`,
+  );
   process.exitCode = 1;
 }
