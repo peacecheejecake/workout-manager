@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { isAbsolute, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +7,12 @@ import { createExactHostAllowlist } from '@workout/server-resource-ingestion';
 import { runUrlIngestionWorker } from './url-ingestion-worker.js';
 
 const WORKER_ROLE = 'workout_resource_ingestion_worker';
+const runId = randomUUID();
+const configuredRelease = process.env['WORKOUT_RELEASE'];
+const version =
+  configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+    ? configuredRelease
+    : 'unreleased';
 
 export interface ResourceUrlIngestionWorkerConfig {
   connectionString: string;
@@ -78,7 +85,9 @@ export function parseResourceUrlIngestionWorkerConfig(
 async function main(): Promise<void> {
   const config = parseResourceUrlIngestionWorkerConfig(process.argv.slice(2), process.env);
   const result = await runUrlIngestionWorker(config);
-  process.stdout.write(`${JSON.stringify({ kind: 'resource_url_ingestion_result', result })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ kind: 'resource_url_ingestion_result', result, runId, version })}\n`,
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
@@ -86,7 +95,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     await main();
   } catch {
     // Do not expose URLs, credentials, IPs, object refs, SQL, or fetched content.
-    process.stderr.write('RESOURCE_URL_INGESTION_FAILED\n');
+    process.stderr.write(
+      `${JSON.stringify({ kind: 'resource_url_ingestion_failed', runId, version })}\n`,
+    );
     process.exitCode = 1;
   }
 }
