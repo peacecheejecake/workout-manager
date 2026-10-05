@@ -40,6 +40,8 @@ import { restoreGenerationResponseSchema } from '@workout/contracts/restore-gene
 import { emptyQuery, input } from './product-boundary.js';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { HealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
+import type { HealthKitRegistrationRepository } from '@workout/server-persistence/healthkit-registration';
+import { registerHealthKitRegistrationRoutes } from './healthkit-registration-routes.js';
 import { registerHealthKitIngestionRoutes } from './healthkit-ingestion-routes.js';
 import type { HealthKitBindingRepository } from '@workout/server-persistence/healthkit-binding';
 import { registerHealthKitBindingRoutes } from './healthkit-binding-routes.js';
@@ -109,6 +111,10 @@ export interface ProductRepositories {
   jointFixture?: JointFixtureRepository;
   integratedFixtureV4?: IntegratedFixtureV4Repository;
   activities?: ActivityRepository;
+  healthKitRegistration?: Pick<
+    HealthKitRegistrationRepository,
+    'registerWorkouts' | 'listWorkouts'
+  >;
   healthKitIngestion?: HealthKitIngestionRepository;
   healthKitBinding?: HealthKitBindingRepository;
   healthKitActivity?: HealthKitActivityRepository;
@@ -200,6 +206,8 @@ export function registerProductRoutes(
   if (repositories.routines) registerRoutineRoutes(routes, repositories.routines, principal);
   if (repositories.recovery) registerRecoveryRoutes(routes, repositories.recovery, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
+  if (repositories.healthKitRegistration)
+    registerHealthKitRegistrationRoutes(routes, repositories.healthKitRegistration, principal);
   if (repositories.healthKitIngestion)
     registerHealthKitIngestionRoutes(routes, repositories.healthKitIngestion, principal);
   if (repositories.healthKitBinding)

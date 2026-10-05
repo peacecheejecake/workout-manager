@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  healthKitIngestionAckSchema,
-  healthKitIngestionBatchSchema,
-} from '@workout/contracts/healthkit-ingestion';
+  healthKitRegisteredIngestionAckSchema,
+  healthKitRegisteredIngestionBatchSchema,
+} from '@workout/contracts/healthkit-registration';
 import {
   HealthKitIngestionError,
   type HealthKitIngestionRepository,
@@ -20,7 +20,14 @@ export function registerHealthKitIngestionRoutes(
     input(emptyQuery, request.query);
     const owner = principal(request);
     if (owner.method !== 'bearer') throw new ProductRequestError(403, 'BEARER_REQUIRED');
-    const batch = input(healthKitIngestionBatchSchema, request.body);
+    if (
+      request.body !== null &&
+      typeof request.body === 'object' &&
+      'schemaVersion' in request.body &&
+      request.body.schemaVersion === 1
+    )
+      throw new ProductRequestError(409, 'LEGACY_BATCH_UNSUPPORTED');
+    const batch = input(healthKitRegisteredIngestionBatchSchema, request.body);
     const revisionHeader = request.headers['x-healthkit-consent-revision'];
     const consentRevision = input(
       z
@@ -31,7 +38,7 @@ export function registerHealthKitIngestionRoutes(
       revisionHeader,
     );
     try {
-      return healthKitIngestionAckSchema.parse(
+      return healthKitRegisteredIngestionAckSchema.parse(
         await repository.ingestBatch(owner.athleteId, batch, consentRevision),
       );
     } catch (error) {

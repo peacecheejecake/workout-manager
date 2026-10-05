@@ -5,12 +5,13 @@ import { createApi } from '../src/app.js';
 
 const athleteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const batch = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   installationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   batchId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   events: [
     {
       kind: 'upsert',
+      claimEpoch: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       sampleId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
       sourceBundleId: 'com.example.watch',
       sourceVersion: null,
@@ -24,7 +25,7 @@ const batch = {
   ],
 } as const;
 const ack = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   installationId: batch.installationId,
   batchId: batch.batchId,
   acceptedCount: 1,
@@ -135,6 +136,8 @@ it('maps consent withdrawal and reused batch identity to stable errors', async (
     ['CONSENT_REQUIRED', 403],
     ['CONSENT_EPOCH_EXPIRED', 409],
     ['IDEMPOTENCY_CONFLICT', 409],
+    ['REGISTRATION_REQUIRED', 409],
+    ['CLAIM_EPOCH_EXPIRED', 409],
   ] as const) {
     ingestBatch.mockRejectedValueOnce(new HealthKitIngestionError(code));
     const response = await app.inject({
@@ -146,4 +149,23 @@ it('maps consent withdrawal and reused batch identity to stable errors', async (
     expect(response.statusCode).toBe(status);
     expect(response.json().error.code).toBe(code);
   }
+});
+
+it('rejects legacy v1 and missing claims before any storage call', async () => {
+  const { app, ingestBatch } = setup();
+  const { claimEpoch: _claimEpoch, ...legacyEvent } = batch.events[0];
+  for (const [payload, status, code] of [
+    [{ ...batch, schemaVersion: 1, events: [legacyEvent] }, 409, 'LEGACY_BATCH_UNSUPPORTED'],
+    [{ ...batch, events: [legacyEvent] }, 400, 'INVALID_REQUEST'],
+  ] as const) {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/healthkit/workout-batches',
+      headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
+      payload,
+    });
+    expect(response.statusCode).toBe(status);
+    expect(response.json().error.code).toBe(code);
+  }
+  expect(ingestBatch).not.toHaveBeenCalled();
 });
