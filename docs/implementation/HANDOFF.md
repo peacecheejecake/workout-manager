@@ -35,6 +35,8 @@ HTTPS 등록·공개 로그인·전체 제품 검증은 `not_executed`다.
 
 **최신 M0-06c 판정(2026-09-27):** 별도 서명 작성 앱의 합성 심박수 1건 저장 뒤, 종료된 probe의 새 background launch와 observer callback을 실기기에서 확인했다. [실행·정리 기록](progress/M0-06c-native-host-addendum.md#별도-서명-작성-앱으로-실제-wake-확인--2026-09-27)에 따라 M0-06c의 제한된 feasibility 범위는 `completed`다. 아래 초기 phase·실기기 기록의 `in_progress`와 `not_executed`는 해당 시점의 결과다. 미저장 Back 버튼별 기계 기록과 제품 native host 통합은 남아 있으며 제품 범위는 M3-01이다.
 
+**최신 EXT-HOSTING 중단 상태(2026-10-05):** 승인된 uidtimer-v2 준비 스크립트는 후보 구조 render 중 `ledger-export.env` 미존재로 한 번 실패했다. 활성 source/env/pin은 기존 값이며 두 timer mask와 검증된 `.next`·root-only 보존본만 남았다. 원본 스크립트 재실행이나 `.next` 무조건 삭제를 하지 않는다. 별도 wm-recovery/root 접근·available 스냅샷·Workout 503/기존 사이트 200을 재확인했다. 원장 env/암호화·HMAC 키, logical slot/publication/사건 표·signed head와 컨테이너 AWS 자격 증명은 미준비다. [실패·진단 기록](progress/EXT-HOSTING.md#uidtimer-v2-준비-실행-중단과-읽기-전용-진단--2026-10-05)을 확인한 뒤 masked timer/남은 `.next`를 정확히 검사하는 새 continuation script의 독립 검토와 명시 승인을 받는다. Docker의 공식 `--no-env-resolution`을 이용한 후보 구조 검사는 서버 읽기 전용 exit 0이지만 원장 실행·복원 수용 증거가 아니다. UID/컨테이너/backup fence 전환·운영 백업/복원·503 해제는 계속 `not_executed`다.
+
 ## 사용자 결정과 작업 방식
 
 - 규칙은 [AGENTS.md](../../AGENTS.md)가 기본이다. Claude agent는 [CLAUDE.md](../../CLAUDE.md)의 override(Claude native orchestration)를
