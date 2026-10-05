@@ -380,6 +380,40 @@ const accountExportV29Schema = accountExportV28Schema.extend({
       .max(1000),
   }),
 });
+/** v30 distinguishes claims awaiting cleanup and portable deregistration facts.
+ * These facts never carry executable ownership or suppression replay commands. */
+const accountExportV30Schema = accountExportV29Schema.extend({
+  schemaVersion: z.literal(30),
+  data: accountExportV29Schema.shape.data.extend({
+    healthKitWorkoutClaims: z
+      .array(
+        accountExportV29Schema.shape.data.shape.healthKitWorkoutClaims.element.extend({
+          state: z.enum(['active', 'pending_cleanup']),
+        }),
+      )
+      .max(1000),
+    healthKitWorkoutDeregistrations: z
+      .array(
+        z
+          .strictObject({
+            operation_id: z.uuid(),
+            sample_id: z.uuid(),
+            state: z.enum(['pending_cleanup', 'released']),
+            registry_revision: z.number().int().min(1).max(2_147_483_647),
+            requested_at: z.iso.datetime({ offset: true }),
+            released_at: z.iso.datetime({ offset: true }).nullable(),
+          })
+          .refine(
+            (operation) => (operation.state === 'released') === (operation.released_at !== null),
+            {
+              message:
+                'Released operations require a release timestamp; pending operations cannot have one',
+            },
+          ),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -410,6 +444,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV27Schema,
   accountExportV28Schema,
   accountExportV29Schema,
+  accountExportV30Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

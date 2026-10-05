@@ -101,6 +101,8 @@ const migrationFiles = [
   '093_exact_actual_deletion_replay.sql',
   '094_healthkit_workout_registration.sql',
   '095_healthkit_receipt_protocol_fence.sql',
+  '096_healthkit_workout_deregistration.sql',
+  '097_healthkit_deregistration_worker.sql',
 ] as const;
 
 /**
@@ -287,9 +289,19 @@ export async function grantHealthKitIngestion(
     await pool.query(`GRANT SELECT,INSERT,UPDATE ON healthkit_workout_sample TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_batch_receipt TO "${runtimeRole}"`);
     await pool.query(
+      `GRANT UPDATE(sample_ids) ON healthkit_workout_batch_receipt TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT SELECT,INSERT,UPDATE ON healthkit_workout_registry_head TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON healthkit_workout_claim TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON healthkit_workout_deregistration TO "${runtimeRole}"`);
+    await pool.query(
+      `REVOKE EXECUTE ON FUNCTION public.finalize_healthkit_deregistration(uuid) FROM "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.deregister_healthkit_workout(uuid,uuid,integer,integer,text,text) TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT SELECT,INSERT ON healthkit_workout_registration_receipt TO "${runtimeRole}"`,
     );
@@ -412,6 +424,12 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON healthkit_workout_sample,healthkit_workout_batch_receipt,healthkit_workout_lineage,healthkit_existing_binding TO "${runtimeRole}"`,
     );
+    const deregistrationExists = await pool.query(
+      "SELECT to_regclass('public.healthkit_workout_deregistration') AS relation",
+    );
+    if (deregistrationExists.rows[0]?.relation) {
+      await pool.query(`GRANT SELECT ON healthkit_workout_deregistration TO "${runtimeRole}"`);
+    }
     // Historical upgrade fixtures can apply grants before migration 094.
     // Grant registration export reads only after the migration actually exists.
     const registrationMigration = await pool.query(
@@ -712,6 +730,15 @@ export async function grantResourceObjectCleanupWorker(
        public.finish_object_scope_purge(text,text,uuid,uuid,boolean,text,integer,integer,boolean)
        TO "${workerRole}"`,
     );
+    const deregistrationWorker = await pool.query(
+      "SELECT to_regprocedure('public.lease_healthkit_deregistration(uuid,interval)') AS function",
+    );
+    if (deregistrationWorker.rows[0]?.['function'])
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.lease_healthkit_deregistration(uuid,interval),
+         public.finish_healthkit_deregistration(uuid,text,uuid,uuid),
+         public.healthkit_deregistration_work_failures() TO "${workerRole}"`,
+      );
     // Superseded by the fault-carrying windows (M2-01n, migration 040). An older helper
     // granted these; re-running this one takes them away again, so an older worker build can
     // never sweep without fault isolation after this helper has run.

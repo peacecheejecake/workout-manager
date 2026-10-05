@@ -485,9 +485,20 @@ describe('tenant erasure suppression event foundation on a plain PostgreSQL owne
     await expect(
       owner.query('DELETE FROM restore_suppression_event WHERE athlete_id=$1', [first]),
     ).rejects.toThrow('IMMUTABLE_RESTORE_SUPPRESSION_EVENT');
-    await expect(owner.query('TRUNCATE restore_suppression_event')).rejects.toThrow(
-      'IMMUTABLE_RESTORE_SUPPRESSION_EVENT',
-    );
+    // The new replay receipt FK rejects a parent-only truncate before statement triggers.
+    await expect(owner.query('TRUNCATE restore_suppression_event')).rejects.toMatchObject({
+      code: '0A000',
+    });
+    expect(await events(first)).toHaveLength(1);
+    // Including the child, or cascading to it, must still hit the immutable guard.
+    for (const statement of [
+      'TRUNCATE restore_suppression_event CASCADE',
+      'TRUNCATE restore_suppression_event,restore_healthkit_deregistration_replay_receipt',
+      'TRUNCATE restore_healthkit_deregistration_replay_receipt',
+    ]) {
+      await expect(owner.query(statement)).rejects.toThrow('IMMUTABLE_RESTORE_SUPPRESSION_EVENT');
+      expect(await events(first)).toHaveLength(1);
+    }
     expect(await events(first)).toHaveLength(1);
   });
 });

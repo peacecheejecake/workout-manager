@@ -42,6 +42,12 @@ const namesAndOids: readonly (readonly [string, number])[] = [
   ['course_share_audit_occurred_at', 1184],
   ['actual_previous_revision_id', 2950],
   ['actual_deleted_revision_id', 2950],
+  ['healthkit_claim_epoch', 2950],
+  ['healthkit_operation_id', 2950],
+  ['healthkit_consent_revision', 23],
+  ['healthkit_registry_previous_revision', 23],
+  ['healthkit_registry_revision', 23],
+  ['healthkit_object_scopes', 3802],
 ];
 
 const targetId = randomUUID();
@@ -292,6 +298,80 @@ describe('local replay record decoder', () => {
     const missing = values('tenant_erased');
     missing.delete('target_id');
     expect(() => validateSuppressionRecord(missing)).toThrow('PGOUTPUT_SCHEMA_CHANGED');
+  });
+
+  it.each([
+    'healthkit_claim_epoch',
+    'healthkit_operation_id',
+    'healthkit_consent_revision',
+    'healthkit_registry_previous_revision',
+    'healthkit_registry_revision',
+    'healthkit_object_scopes',
+  ])('rejects %s on v2 actual deletion', (field) => {
+    expect(() =>
+      validateSuppressionRecord(
+        values('intake_entry_deleted', {
+          record_version: '2',
+          target_id: targetId,
+          actual_deletion_revision: '2',
+          actual_previous_revision_id: randomUUID(),
+          actual_deleted_revision_id: randomUUID(),
+          [field]:
+            field === 'healthkit_object_scopes'
+              ? '[]'
+              : field.endsWith('_revision')
+                ? '1'
+                : randomUUID(),
+        }),
+      ),
+    ).toThrow('PGOUTPUT_UNEXPECTED_FIELD');
+  });
+
+  it('authenticates bounded v3 workout deregistration epochs and rejects foreign fields', () => {
+    const fields = {
+      record_version: '3',
+      target_id: targetId,
+      healthkit_claim_epoch: randomUUID(),
+      healthkit_operation_id: randomUUID(),
+      healthkit_consent_revision: '1',
+      healthkit_registry_previous_revision: '0',
+      healthkit_registry_revision: '1',
+      healthkit_object_scopes: JSON.stringify([{ kind: 'activity', id: randomUUID() }]),
+    };
+    for (const kind of [
+      'healthkit_workout_deregistration_pending',
+      'healthkit_workout_deregistration_released',
+    ]) {
+      const row = values(kind, fields);
+      const record = validateSuppressionRecord(row);
+      expect(record).toMatchObject({
+        schemaVersion: 3,
+        kind,
+        healthKitRegistryPreviousRevision: 0,
+        healthKitRegistryRevision: 1,
+      });
+      expect(decodeSuppressionPgoutputRecords(messages(row), '0/100')[0]?.records).toEqual([
+        record,
+      ]);
+      for (const invalid of [
+        { record_version: '2' },
+        { healthkit_registry_revision: '2' },
+        { healthkit_claim_epoch: randomUUID().toUpperCase() },
+        {
+          healthkit_object_scopes: JSON.stringify([
+            { kind: 'activity', id: targetId },
+            { kind: 'activity', id: targetId },
+          ]),
+        },
+        {
+          healthkit_object_scopes: JSON.stringify([
+            { kind: 'activity', id: targetId, extra: true },
+          ]),
+        },
+        { source_id: 'foreign' },
+      ])
+        expect(() => validateSuppressionRecord(values(kind, { ...fields, ...invalid }))).toThrow();
+    }
   });
 
   it('accepts complete future course and actual provenance while preserving v1 shape', () => {

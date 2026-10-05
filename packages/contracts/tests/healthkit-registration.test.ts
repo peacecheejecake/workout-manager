@@ -197,3 +197,42 @@ describe('HealthKit account registration contracts', () => {
     ).toBe(false);
   });
 });
+
+it('requires an explicit product-record deletion confirmation and distinguishes queued cleanup from release', async () => {
+  const { healthKitDeregisterWorkoutSchema, healthKitDeregistrationResultSchema } =
+    await import('../src/healthkit-registration.js');
+  const command = {
+    schemaVersion: 1,
+    sampleId: '00000000-0000-4000-8000-000000000001',
+    claimEpoch: '00000000-0000-4000-8000-000000000002',
+    expectedConsentRevision: 1,
+    expectedRegistryRevision: 0,
+    idempotencyKey: 'release_key',
+    confirmRelatedRecordDeletion: true,
+  };
+  expect(healthKitDeregisterWorkoutSchema.parse(command)).toEqual(command);
+  expect(
+    healthKitDeregisterWorkoutSchema.safeParse({ ...command, confirmRelatedRecordDeletion: false })
+      .success,
+  ).toBe(false);
+  expect(
+    healthKitDeregisterWorkoutSchema.safeParse({ ...command, athleteId: 'other' }).success,
+  ).toBe(false);
+  for (const status of ['pending_cleanup', 'released'])
+    expect(
+      healthKitDeregistrationResultSchema.safeParse({
+        schemaVersion: 1,
+        operationId: command.claimEpoch,
+        status,
+        registryRevision: 1,
+      }).success,
+    ).toBe(true);
+  expect(
+    healthKitDeregistrationResultSchema.safeParse({
+      schemaVersion: 1,
+      operationId: command.claimEpoch,
+      status: 'queued',
+      registryRevision: 1,
+    }).success,
+  ).toBe(false);
+});

@@ -160,6 +160,9 @@ export function createHealthKitRegistrationRepository(
         const rows = await tx.query(
           `SELECT sample_id,claim_epoch FROM healthkit_workout_claim
            WHERE athlete_id=$1 AND ($2::uuid IS NULL OR sample_id>$2::uuid)
+             AND NOT EXISTS(SELECT 1 FROM healthkit_workout_deregistration d
+               WHERE d.athlete_id=$1 AND d.sample_id=healthkit_workout_claim.sample_id
+                 AND d.claim_epoch=healthkit_workout_claim.claim_epoch AND d.state='pending_cleanup')
            ORDER BY sample_id LIMIT $3`,
           [athleteId, after?.lastSampleId ?? null, limit + 1],
         );

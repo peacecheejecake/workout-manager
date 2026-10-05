@@ -14,7 +14,9 @@ export class HealthKitIngestionError extends Error {
       | 'IDEMPOTENCY_CONFLICT'
       | 'LEGACY_BATCH_UNSUPPORTED'
       | 'REGISTRATION_REQUIRED'
-      | 'CLAIM_EPOCH_EXPIRED',
+      | 'CLAIM_EPOCH_EXPIRED'
+      | 'DEREGISTRATION_PENDING'
+      | 'RECEIPT_MEMBERSHIP_REQUIRED',
   ) {
     super(code);
   }
@@ -89,14 +91,18 @@ export function createHealthKitIngestionRepository(
         for (const event of [...batch.events].sort((left, right) =>
           left.sampleId.localeCompare(right.sampleId),
         )) {
-          // Account erasure is serialized by Database's tenant gate, and
-          // individual claim release is not supported. A read lock would also
-          // require UPDATE privilege on this otherwise append-only claim table.
+          // Deregistration shares this command lock and consent row lock.
           const claim = await tx.query(
             `SELECT claim_epoch,consent_revision FROM healthkit_workout_claim
              WHERE athlete_id=$1 AND sample_id=$2`,
             [athleteId, event.sampleId],
           );
+          const pending = await tx.query(
+            `SELECT 1 FROM healthkit_workout_deregistration WHERE athlete_id=$1
+             AND sample_id=$2 AND claim_epoch=$3 AND state='pending_cleanup'`,
+            [athleteId, event.sampleId, event.claimEpoch],
+          );
+          if (pending.rowCount) throw new HealthKitIngestionError('DEREGISTRATION_PENDING');
           if (!claim.rowCount) throw new HealthKitIngestionError('REGISTRATION_REQUIRED');
           if (
             claim.rows[0]?.['claim_epoch'] !== event.claimEpoch ||
@@ -107,14 +113,21 @@ export function createHealthKitIngestionRepository(
 
         const inserted = await tx.query(
           `INSERT INTO healthkit_workout_batch_receipt
-             (athlete_id,installation_id,batch_id,request_digest,accepted_count,protocol_version)
-           VALUES ($1,$2,$3,$4,$5,2)
+             (athlete_id,installation_id,batch_id,request_digest,accepted_count,protocol_version,sample_ids)
+           VALUES ($1,$2,$3,$4,$5,2,$6::uuid[])
            ON CONFLICT DO NOTHING RETURNING batch_id`,
-          [athleteId, batch.installationId, batch.batchId, requestDigest, batch.events.length],
+          [
+            athleteId,
+            batch.installationId,
+            batch.batchId,
+            requestDigest,
+            batch.events.length,
+            batch.events.map((event) => event.sampleId).sort(),
+          ],
         );
         if (!inserted.rowCount) {
           const existing = await tx.query(
-            `SELECT request_digest,accepted_count,purged_at
+            `SELECT request_digest,accepted_count,purged_at,sample_ids,protocol_version
              FROM healthkit_workout_batch_receipt
              WHERE athlete_id=$1 AND installation_id=$2 AND batch_id=$3`,
             [athleteId, batch.installationId, batch.batchId],
@@ -125,6 +138,22 @@ export function createHealthKitIngestionRepository(
             throw new HealthKitIngestionError('CONSENT_EPOCH_EXPIRED');
           if (!receipt || receipt['request_digest'] !== requestDigest)
             throw new HealthKitIngestionError('IDEMPOTENCY_CONFLICT');
+          // A verified exact original v2 payload is evidence for membership;
+          // old v1 histories and purged barriers can never be reinterpreted.
+          if (receipt['sample_ids'] === null && receipt['protocol_version'] === 2) {
+            await tx.query(
+              `UPDATE healthkit_workout_batch_receipt SET sample_ids=$4::uuid[]
+              WHERE athlete_id=$1 AND installation_id=$2 AND batch_id=$3
+                AND request_digest=$5 AND purged_at IS NULL AND sample_ids IS NULL`,
+              [
+                athleteId,
+                batch.installationId,
+                batch.batchId,
+                batch.events.map((event) => event.sampleId).sort(),
+                requestDigest,
+              ],
+            );
+          }
           return healthKitRegisteredIngestionAckSchema.parse({
             schemaVersion: 2,
             installationId: batch.installationId,

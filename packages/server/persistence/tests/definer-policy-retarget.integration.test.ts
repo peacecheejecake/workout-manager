@@ -50,6 +50,7 @@ const definerPolicies = [
   'course_share:course_share_definer',
   'course_share_rate:course_share_rate_definer',
   'course_thumbnail_reconcile_state:course_thumbnail_reconcile_state_definer',
+  'healthkit_deregistration_work:healthkit_deregistration_work_definer',
   'object_scope_purge:object_scope_purge_definer',
   'resource_derived_cleanup:resource_derived_cleanup_definer',
   'resource_object_cleanup:resource_object_cleanup_definer',

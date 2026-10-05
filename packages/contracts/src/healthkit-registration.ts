@@ -91,6 +91,9 @@ export const healthKitRegistrationErrorCodeSchema = z.enum([
   'REGISTRY_REVISION_CONFLICT',
   'IDEMPOTENCY_CONFLICT',
   'LEGACY_BATCH_UNSUPPORTED',
+  'DEREGISTRATION_PENDING',
+  'DEREGISTRATION_NOT_FOUND',
+  'RECEIPT_MEMBERSHIP_REQUIRED',
 ]);
 
 export const healthKitRegistrationErrorSchema = z.strictObject({
@@ -143,3 +146,23 @@ export type HealthKitRegisteredIngestionBatch = z.infer<
   typeof healthKitRegisteredIngestionBatchSchema
 >;
 export type HealthKitRegisteredIngestionAck = z.infer<typeof healthKitRegisteredIngestionAckSchema>;
+
+/** Deletes product records only; the original HealthKit sample is never deleted. */
+export const healthKitDeregisterWorkoutSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  sampleId: uuid,
+  claimEpoch: uuid,
+  expectedConsentRevision: revision,
+  expectedRegistryRevision,
+  confirmRelatedRecordDeletion: z.literal(true),
+  idempotencyKey,
+});
+export const healthKitDeregistrationStatusQuerySchema = z.strictObject({ operationId: uuid });
+export const healthKitDeregistrationResultSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operationId: uuid,
+  status: z.enum(['pending_cleanup', 'released']),
+  registryRevision: revision,
+});
+export type HealthKitDeregisterWorkout = z.infer<typeof healthKitDeregisterWorkoutSchema>;
+export type HealthKitDeregistrationResult = z.infer<typeof healthKitDeregistrationResultSchema>;

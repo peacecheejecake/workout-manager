@@ -35,7 +35,7 @@ const occurredAt = z
       Number.isFinite(Date.parse(value)),
   );
 const base = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
@@ -43,6 +43,23 @@ const base = z.object({
 const record = z
   .discriminatedUnion('kind', [
     base.extend({ kind: z.literal('tenant_erased') }).strict(),
+    base
+      .extend({
+        kind: z.enum([
+          'healthkit_workout_deregistration_pending',
+          'healthkit_workout_deregistration_released',
+        ]),
+        targetId: uuid,
+        healthKitClaimEpoch: uuid,
+        healthKitOperationId: uuid,
+        healthKitConsentRevision: revision,
+        healthKitRegistryPreviousRevision: z.number().int().min(0).max(2147483646),
+        healthKitRegistryRevision: revision,
+        healthKitObjectScopes: z
+          .array(z.object({ kind: z.enum(['activity', 'course']), id: uuid }).strict())
+          .max(1000),
+      })
+      .strict(),
     base.extend({ kind: z.literal('course_deleted'), targetId: uuid }).strict(),
     base
       .extend({
@@ -128,6 +145,14 @@ const record = z
   .superRefine((item, context) => {
     let valid = true;
     switch (item.kind) {
+      case 'healthkit_workout_deregistration_pending':
+      case 'healthkit_workout_deregistration_released':
+        valid =
+          item.schemaVersion === 3 &&
+          item.healthKitRegistryRevision === item.healthKitRegistryPreviousRevision + 1 &&
+          new Set(item.healthKitObjectScopes.map((scope) => `${scope.kind}:${scope.id}`)).size ===
+            item.healthKitObjectScopes.length;
+        break;
       case 'healthkit_consent_transition':
       case 'ai_consent_transition':
         valid =
@@ -182,6 +207,12 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (
+      item.schemaVersion === 3 &&
+      item.kind !== 'healthkit_workout_deregistration_pending' &&
+      item.kind !== 'healthkit_workout_deregistration_released'
+    )
+      valid = false;
     if (
       item.schemaVersion === 2 &&
       item.kind !== 'resource_share_revoked' &&

@@ -205,6 +205,10 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
 - [ADR](research/healthkit-account-registration-adr.md), [M3-02k](progress/M3-02k.md)에 결정과 구현 범위를 기록했다. 094 AFTER consent trigger가 claim/등록 receipt/head를 기존 raw purge와 같은 거래에서 정리한다. 등록·수신과 기존 HealthKit persistence 회귀 **8개 suite·79개 테스트**, 집중 재실행 **6개 테스트**가 실제 PostgreSQL에서 통과했다. 최초 회귀의 **72개 통과·1개 실패**(철회 후 claim/등록 receipt/registry head 기대 0/0/0·실제 1/1/1)는 실패 이력으로 보존했다.
 - M3-02k는 **로컬 PostgreSQL 수용 완료 / 루트 최종 확인 후 그래프 완료 반영 대상**이다. export v29 owner projection, 095 DB protocol fence, 합성 자료의 실제 dump/restore와 철회 suppression replay, 동시 철회 commit/rollback에 따른 B 등록 대기·결과를 검증했다. 전체 실DB 재실행은 초기 smoke 1/1 및 1,057개 통과·3개 건너뜀·0개 실패다. 중간 export assertion 5개 실패와 첫 전체 assertion 2개·hook 8개 실패는 M3-02k에 보존했다. DB rollback 검증을 운영 이미지 rollback 증거로 사용하지 않는다. 개별 해제 runtime 계약/API와 v1→v2 API는 l, native 선택/등록/수집은 m/n, 운영 이미지 rollback·공개 배포·실기기는 o/h에 남는다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. M3-02h 실기기 행은 **not_executed**다.
 
+## M3-02l 로컬 서버 수용과 다음 작업(2026-10-05)
+
+M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제 DTO/API·096/097 정리 worker와 좁은 권한·owner exact replay·export v30을 연결했다. 실제 객체 삭제 뒤 claim release/B 등록, 소비자 TS 6패키지, 전체 PostgreSQL 선행 1/1과 본 1,087 통과·3 건너뜀·0 실패를 확인했다. [M3-02l](progress/M3-02l.md)에 최초 전체 5실패와 좁은 1실패를 보존한다. 역사적 v1 unknown receipt 계정의 개별 해제는 failclosed이며 안전한 기존 자료 처리 경로는 M3-02o에 남는다. 다음 ready node는 M3-02m의 ACK된 UUID 범위 native 수집이다. 현재 제품 collector 실행은 계속 금지하며 m/n/o/h의 운영·실기기와 phase 독립 검토는 완료하지 않았다.
+
 ## 알려진 흔들리는 시험
 
 - `tests/identity/session-attendance.spec.ts:123`("계획 초안 편집" 버튼이 보이지 않음)이 높은 부하(1분 load 32–40)에서 한 번 실패했고

@@ -349,7 +349,9 @@ describe('plain-owner purge migration upgrade of a database a plain owner built'
     expect(touching.rows.every((row) => row.owner === ownerRole)).toBe(true);
     expect(touching.rows.map((row) => row.signature)).toEqual([
       'arm_object_scope_purge(text,text,uuid)',
+      'deregister_healthkit_workout(uuid,uuid,integer,integer,text,text)',
       'erase_account_before_routing_admission(text)',
+      'finalize_healthkit_deregistration(uuid)',
       'finish_object_scope_purge(text,text,uuid,uuid,boolean,text,integer,integer,boolean)',
       'finish_tenant_object_purge(text,uuid,boolean,text,integer,integer,boolean)',
       'lease_object_scope_purge(uuid,timestamp with time zone,timestamp with time zone)',

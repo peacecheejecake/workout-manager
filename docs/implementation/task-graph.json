@@ -2064,7 +2064,7 @@
       "title": "HealthKit 운동 등록 API 경계",
       "dependsOn": ["M3-02k"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "인증 계정·동의 revision에서 소유권을 유도하는 UUID 등록·목록 API를 구현한다. 입력 상한·멱등·타 계정 존재 비공개·안정적 오류·구형 클라이언트 거절과 native 소비자 검증을 수행한다. 확정된 개별 등록 해제 정책에 따라 관련 기록 삭제·정리 완료 뒤 귀속을 해제하고, 그 뒤에만 다른 계정의 명시 재등록을 허용하는 별도 runtime DTO/API와 삭제 수명주기를 구현·검증한다. 동의 철회도 귀속 삭제 정책을 따른다.",
       "evidence": "docs/implementation/progress/M3-02l.md"
     },

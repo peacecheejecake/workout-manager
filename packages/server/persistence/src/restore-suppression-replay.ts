@@ -54,7 +54,9 @@ type SupportedRecord =
           | 'ai_consent_transition'
           | 'course_share_revoked'
           | 'intake_entry_deleted'
-          | 'recovery_action_deleted';
+          | 'recovery_action_deleted'
+          | 'healthkit_workout_deregistration_pending'
+          | 'healthkit_workout_deregistration_released';
       }
     >;
 type ShareRecord = Extract<SupportedRecord, { kind: 'resource_share_revoked' }>;
@@ -206,7 +208,9 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'ai_consent_transition' &&
           record.kind !== 'course_share_revoked' &&
           record.kind !== 'intake_entry_deleted' &&
-          record.kind !== 'recovery_action_deleted'
+          record.kind !== 'recovery_action_deleted' &&
+          record.kind !== 'healthkit_workout_deregistration_pending' &&
+          record.kind !== 'healthkit_workout_deregistration_released'
         )
           return fail();
         if (
@@ -216,6 +220,15 @@ function verifyChain(input: ReplayInput): VerifiedChain {
             record.kind !== 'ai_consent_transition' &&
             !('targetId' in record && canonicalUuid.test(record.targetId))) ||
           Date.parse(record.occurredAt) > now
+        )
+          return fail();
+        if (
+          (record.kind === 'healthkit_workout_deregistration_pending' ||
+            record.kind === 'healthkit_workout_deregistration_released') &&
+          (record.schemaVersion !== 3 ||
+            !canonicalUuid.test(record.healthKitClaimEpoch) ||
+            !canonicalUuid.test(record.healthKitOperationId) ||
+            record.healthKitObjectScopes.some((scope) => !canonicalUuid.test(scope.id)))
         )
           return fail();
         if (
@@ -491,6 +504,26 @@ export async function replayVerifiedSuppressionChain(
               record.actualDeletionRevision,
               record.actualPreviousRevisionId,
               record.actualDeletedRevisionId,
+            ],
+          );
+        } else if (
+          record.kind === 'healthkit_workout_deregistration_pending' ||
+          record.kind === 'healthkit_workout_deregistration_released'
+        ) {
+          await client.query(
+            'SELECT public.replay_healthkit_workout_deregistration_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+            [
+              record.athleteId,
+              record.eventId,
+              record.occurredAt,
+              record.kind,
+              record.targetId,
+              record.healthKitClaimEpoch,
+              record.healthKitOperationId,
+              record.healthKitConsentRevision,
+              record.healthKitRegistryPreviousRevision,
+              record.healthKitRegistryRevision,
+              JSON.stringify(record.healthKitObjectScopes),
             ],
           );
         } else if (record.kind === 'healthkit_consent_transition') {

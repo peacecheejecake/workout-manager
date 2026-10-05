@@ -41,6 +41,8 @@ import { emptyQuery, input } from './product-boundary.js';
 import type { ActivityRepository } from '@workout/server-persistence/activities';
 import type { HealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import type { HealthKitRegistrationRepository } from '@workout/server-persistence/healthkit-registration';
+import type { HealthKitDeregistrationRepository } from '@workout/server-persistence/healthkit-deregistration';
+import { registerHealthKitDeregistrationRoutes } from './healthkit-deregistration-routes.js';
 import { registerHealthKitRegistrationRoutes } from './healthkit-registration-routes.js';
 import { registerHealthKitIngestionRoutes } from './healthkit-ingestion-routes.js';
 import type { HealthKitBindingRepository } from '@workout/server-persistence/healthkit-binding';
@@ -114,6 +116,10 @@ export interface ProductRepositories {
   healthKitRegistration?: Pick<
     HealthKitRegistrationRepository,
     'registerWorkouts' | 'listWorkouts'
+  >;
+  healthKitDeregistration?: Pick<
+    HealthKitDeregistrationRepository,
+    'deregisterWorkout' | 'getStatus'
   >;
   healthKitIngestion?: HealthKitIngestionRepository;
   healthKitBinding?: HealthKitBindingRepository;
@@ -208,6 +214,8 @@ export function registerProductRoutes(
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.healthKitRegistration)
     registerHealthKitRegistrationRoutes(routes, repositories.healthKitRegistration, principal);
+  if (repositories.healthKitDeregistration)
+    registerHealthKitDeregistrationRoutes(routes, repositories.healthKitDeregistration, principal);
   if (repositories.healthKitIngestion)
     registerHealthKitIngestionRoutes(routes, repositories.healthKitIngestion, principal);
   if (repositories.healthKitBinding)

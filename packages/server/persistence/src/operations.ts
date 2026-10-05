@@ -537,9 +537,20 @@ const collections = [
   // claim epochs remain command internals; this export cannot restore ownership.
   [
     'healthKitWorkoutClaims',
-    'healthkit_workout_claim',
-    'sample_id,consent_revision,created_at',
+    `(SELECT c.athlete_id,c.sample_id,c.consent_revision,c.created_at,
+       CASE WHEN EXISTS(SELECT 1 FROM healthkit_workout_deregistration d
+         WHERE d.athlete_id=c.athlete_id AND d.sample_id=c.sample_id
+           AND d.claim_epoch=c.claim_epoch AND d.state='pending_cleanup')
+         THEN 'pending_cleanup' ELSE 'active' END AS state
+      FROM healthkit_workout_claim c) healthkit_claim_facts`,
+    'sample_id,consent_revision,created_at,state',
     'sample_id',
+  ],
+  [
+    'healthKitWorkoutDeregistrations',
+    'healthkit_workout_deregistration',
+    'operation_id,sample_id,state,registry_revision,requested_at,released_at',
+    'requested_at,operation_id',
   ],
   ['healthKitWorkoutRegistryHeads', 'healthkit_workout_registry_head', 'revision', 'revision'],
   [
@@ -591,7 +602,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 29,
+          schemaVersion: 30,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

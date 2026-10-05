@@ -158,6 +158,10 @@ describe('migration 039 upgrade of a populated 038 database', () => {
         // M2-01y: the deleted-activity and reclaimed-course prefix purge's two calls.
         'lease_object_scope_purge(uuid,timestamp with time zone,timestamp with time zone)',
         'finish_object_scope_purge(text,text,uuid,uuid,boolean,text,integer,integer,boolean)',
+        // M3-02l: token-fenced HealthKit finalization and bounded failure counts.
+        'lease_healthkit_deregistration(uuid,interval)',
+        'finish_healthkit_deregistration(uuid,text,uuid,uuid)',
+        'healthkit_deregistration_work_failures()',
       ]),
     );
   });

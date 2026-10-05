@@ -1260,3 +1260,85 @@ it('exports v29 attribution facts without portable command fencing or changing v
     }).success,
   ).toBe(false);
 });
+
+it('exports v30 pending and released facts without changing v29 or accepting command internals', () => {
+  const previousSchema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 29,
+  );
+  if (!previousSchema) throw new Error('Expected v29');
+  const claim = {
+    sample_id: '11111111-1111-4111-8111-111111111111',
+    consent_revision: 1,
+    created_at: legacy.exportedAt,
+  };
+  const previous = previousSchema.parse({
+    ...legacy,
+    schemaVersion: 29,
+    data: {
+      ...Object.fromEntries(previousSchema.shape.data.keyof().options.map((key) => [key, []])),
+      healthKitWorkoutClaims: [claim],
+    },
+  });
+  const operation = {
+    operation_id: '22222222-2222-4222-8222-222222222222',
+    sample_id: claim.sample_id,
+    state: 'pending_cleanup',
+    registry_revision: 2,
+    requested_at: legacy.exportedAt,
+    released_at: null,
+  };
+  const current = {
+    ...previous,
+    schemaVersion: 30,
+    data: {
+      ...previous.data,
+      healthKitWorkoutClaims: [{ ...claim, state: 'pending_cleanup' }],
+      healthKitWorkoutDeregistrations: [operation],
+    },
+  };
+  expect(accountExportSchema.parse(current)).toEqual(current);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 30 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 29 }).success).toBe(false);
+  for (const patch of [
+    { state: 'released', released_at: null },
+    { state: 'pending_cleanup', released_at: legacy.exportedAt },
+    { state: 'unknown' },
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: { ...current.data, healthKitWorkoutDeregistrations: [{ ...operation, ...patch }] },
+      }).success,
+    ).toBe(false);
+  }
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: {
+        ...current.data,
+        healthKitWorkoutDeregistrations: [
+          { ...operation, state: 'released', released_at: legacy.exportedAt },
+        ],
+      },
+    }).success,
+  ).toBe(true);
+  for (const forbidden of [
+    'claim_epoch',
+    'idempotency_key',
+    'request_digest',
+    'object_scopes',
+    'athlete_id',
+    'result_json',
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutDeregistrations: [{ ...operation, [forbidden]: 'private' }],
+        },
+      }).success,
+    ).toBe(false);
+  }
+});

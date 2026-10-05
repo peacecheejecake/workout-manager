@@ -21,6 +21,7 @@ import { createStretchingRepository } from '@workout/server-persistence/stretchi
 import { createRoutineRepository } from '@workout/server-persistence/routine-core';
 import { createRecoveryRepository } from '@workout/server-persistence/recovery-core';
 import { createActivityRepository } from '@workout/server-persistence/activities';
+import { createHealthKitDeregistrationRepository } from '@workout/server-persistence/healthkit-deregistration';
 import { createHealthKitRegistrationRepository } from '@workout/server-persistence/healthkit-registration';
 import { createHealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import { createHealthKitBindingRepository } from '@workout/server-persistence/healthkit-binding';
@@ -409,6 +410,7 @@ export async function createConfiguredApi(
         : {}),
       activities,
       healthKitRegistration: createHealthKitRegistrationRepository(database),
+      healthKitDeregistration: createHealthKitDeregistrationRepository(database),
       healthKitIngestion: createHealthKitIngestionRepository(database),
       healthKitBinding: createHealthKitBindingRepository(database),
       healthKitActivity: createHealthKitActivityRepository(database),

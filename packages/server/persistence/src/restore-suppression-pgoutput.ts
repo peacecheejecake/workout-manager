@@ -47,6 +47,12 @@ const columns = [
   ['course_share_audit_occurred_at', 1184],
   ['actual_previous_revision_id', 2950],
   ['actual_deleted_revision_id', 2950],
+  ['healthkit_claim_epoch', 2950],
+  ['healthkit_operation_id', 2950],
+  ['healthkit_consent_revision', 23],
+  ['healthkit_registry_previous_revision', 23],
+  ['healthkit_registry_revision', 23],
+  ['healthkit_object_scopes', 3802],
 ] as const;
 
 const kinds = new Set([
@@ -62,6 +68,8 @@ const kinds = new Set([
   'course_share_revoked',
   'intake_entry_deleted',
   'recovery_action_deleted',
+  'healthkit_workout_deregistration_pending',
+  'healthkit_workout_deregistration_released',
 ]);
 
 export type SequenceEvent = { eventId: string; kind: string };

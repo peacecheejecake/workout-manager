@@ -409,7 +409,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
       lineage_count: 0,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 29) throw new Error('Expected current export version');
+    if (exported.schemaVersion !== 30) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutBatchReceipts[0]).not.toHaveProperty('request_digest');
     await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
@@ -547,8 +547,8 @@ describe('M3-02a raw HealthKit ingestion', () => {
     await repo.ingestBatch(athlete, batch, 1);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(29);
-    if (exported.schemaVersion !== 29) throw new Error('Expected current export version');
+    expect(exported.schemaVersion).toBe(30);
+    if (exported.schemaVersion !== 30) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutSamples).toHaveLength(1);
     expect(exported.data.healthKitWorkoutBatchReceipts).toHaveLength(1);
     expect(exported.data.healthKitWorkoutLineage).toEqual([
