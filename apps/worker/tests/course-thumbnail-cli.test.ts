@@ -17,6 +17,7 @@ async function runInvalidConfiguration(secret: string): Promise<{
       COURSE_THUMBNAIL_DATABASE_URL: `postgres://workout_runtime:${secret}@127.0.0.1/workout`,
       DATABASE_URL: `postgres://workout_api:${secret}@127.0.0.1/workout`,
       RESOURCE_STORAGE_ROOT: '/var/lib/workout/objects',
+      WORKOUT_RELEASE: `private ${secret}`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -43,10 +44,12 @@ describe('course thumbnail render CLI', () => {
 
     const result = await runInvalidConfiguration(secret);
 
-    expect(result).toEqual({
-      code: 1,
-      stdout: '',
-      stderr: 'COURSE_THUMBNAIL_RENDER_FAILED\n',
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(JSON.parse(result.stderr)).toEqual({
+      kind: 'course_thumbnail_cli_failed',
+      runId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+      version: 'unreleased',
     });
     expect(`${result.stdout}${result.stderr}`).not.toContain(secret);
   });

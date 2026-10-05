@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { parseCourseThumbnailWorkerConfig } from './config.js';
 import { runCourseThumbnailWorker } from './course-thumbnail-worker.js';
 
@@ -11,6 +13,14 @@ import { runCourseThumbnailWorker } from './course-thumbnail-worker.js';
  */
 const shutdown = new AbortController();
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => shutdown.abort());
+// This identifies the CLI invocation, including configuration failures before the worker
+// has its own run id. It is not the worker's lease-correlated run id.
+const cliRunId = randomUUID();
+const configuredRelease = process.env['WORKOUT_RELEASE'];
+const version =
+  configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+    ? configuredRelease
+    : 'unreleased';
 
 async function main(): Promise<void> {
   // Parsing belongs inside the guarded path: a rejected configuration carries the
@@ -27,8 +37,10 @@ async function main(): Promise<void> {
 try {
   await main();
 } catch {
-  // Error objects may carry SQL, credentials, storage paths, or object keys. Keep the CLI
-  // failure generic; the durable state is in the ledger.
-  process.stderr.write('COURSE_THUMBNAIL_RENDER_FAILED\n');
+  // Error objects may carry SQL, credentials, storage paths, or object keys. The CLI id is
+  // independent of the worker's lease-correlated id when the worker has already started.
+  process.stderr.write(
+    `${JSON.stringify({ kind: 'course_thumbnail_cli_failed', runId: cliRunId, version })}\n`,
+  );
   process.exitCode = 1;
 }
