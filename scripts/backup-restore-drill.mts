@@ -19,7 +19,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { cp, lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import {
   createDatabase,
   TenantErasedError,
@@ -371,6 +371,42 @@ async function seedEvidenceWithAiConsent(database: Database, athleteId: string) 
   return { consent, command, snapshot };
 }
 
+// Explicit synthetic owner fixture port; never used as the runtime Database or an inspector.
+async function withSourceFixtureOwnerTenant<T>(
+  owner: Pool,
+  athleteId: string,
+  operation: (client: Pick<PoolClient, 'query'>) => Promise<T>,
+): Promise<T> {
+  assert.match(athleteId, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+  const client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('statement_timeout','5000',true)");
+    await client.query("SELECT set_config('lock_timeout','3000',true)");
+    await client.query('SELECT public.lock_restore_processing_shared()');
+    const identity = await client.query(
+      `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls
+       FROM pg_roles WHERE rolname=current_user`,
+    );
+    assert.deepEqual(identity.rows, [
+      { role: 'drill_owner', session_role: 'drill_owner', rolsuper: false, rolbypassrls: false },
+    ]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,77206))', [
+      athleteId,
+    ]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function seedCoachingRunOutput(
   database: Database,
   owner: Pool,
@@ -390,21 +426,13 @@ async function seedCoachingRunOutput(
   });
   const outputId = randomUUID();
   const body = { synthetic: 'untrusted output to test purge-safe restore' };
-  const connection = await owner.connect();
-  try {
-    await connection.query('BEGIN');
-    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
-    await connection.query(
+  await withSourceFixtureOwnerTenant(owner, athleteId, async (connection) => {
+    const inserted = await connection.query(
       'INSERT INTO coaching_analysis_output(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, outputId, run.id, JSON.stringify(body)],
     );
-    await connection.query('COMMIT');
-  } catch (error) {
-    await connection.query('ROLLBACK');
-    throw error;
-  } finally {
-    connection.release();
-  }
+    assert.equal(inserted.rowCount, 1);
+  });
   return { run, outputId, body };
 }
 
@@ -424,19 +452,18 @@ async function seedCoachingCandidateRecords(owner: Pool, athleteId: string, runI
     body: candidateBody,
     digest: createHash('sha256').update(JSON.stringify(candidateBody)).digest('hex'),
   };
-  const connection = await owner.connect();
-  try {
-    await connection.query('BEGIN');
-    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
-    await connection.query(
+  await withSourceFixtureOwnerTenant(owner, athleteId, async (connection) => {
+    const insertedDecision = await connection.query(
       'INSERT INTO coaching_decision(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, decision.id, runId, JSON.stringify(decision.body)],
     );
-    await connection.query(
+    assert.equal(insertedDecision.rowCount, 1);
+    const insertedProposal = await connection.query(
       'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, proposal.id, decision.id, JSON.stringify(proposal.body)],
     );
-    await connection.query(
+    assert.equal(insertedProposal.rowCount, 1);
+    const insertedCandidate = await connection.query(
       'INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,digest,body) VALUES($1,$2,$3,$4,$5,$6::jsonb)',
       [
         athleteId,
@@ -447,13 +474,8 @@ async function seedCoachingCandidateRecords(owner: Pool, athleteId: string, runI
         JSON.stringify(candidate.body),
       ],
     );
-    await connection.query('COMMIT');
-  } catch (error) {
-    await connection.query('ROLLBACK');
-    throw error;
-  } finally {
-    connection.release();
-  }
+    assert.equal(insertedCandidate.rowCount, 1);
+  });
   return { decision, proposal, candidate };
 }
 
@@ -899,9 +921,9 @@ async function execute() {
     );
     await admin.query('CREATE DATABASE drill_source OWNER drill_owner');
     await admin.query('CREATE DATABASE drill_restore OWNER drill_owner');
-    const source = pool('drill_source');
+    const sourceAdminPool = pool('drill_source');
     const restoreInspector = pool('drill_restore');
-    await source.query('ALTER SCHEMA public OWNER TO drill_owner');
+    await sourceAdminPool.query('ALTER SCHEMA public OWNER TO drill_owner');
     await restoreInspector.query('ALTER SCHEMA public OWNER TO drill_owner');
     await migrate(url('drill_source'));
     const sourceOwner = pool('drill_source', 'drill_owner');
@@ -919,7 +941,7 @@ async function execute() {
         rolcreaterole: false,
       },
     ]);
-    const wrongOwners = await source.query(
+    const wrongOwners = await sourceAdminPool.query(
       `SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'
        AND c.relkind IN ('r','p','S','v','m','f') AND c.relowner<>'drill_owner'::regrole
@@ -930,7 +952,7 @@ async function execute() {
         AND d.objid=p.oid AND d.deptype='e')`,
     );
     assert.equal(wrongOwners.rowCount, 0);
-    const forcedTables = await source.query(
+    const forcedTables = await sourceAdminPool.query(
       `SELECT count(*)::int AS count FROM pg_class WHERE oid IN
        ('public.core_evidence_snapshot'::regclass,'public.evidence_app_admission_binding'::regclass,
         'public.restore_processing_admission'::regclass,'public.openai_budget_month'::regclass)
@@ -1213,7 +1235,7 @@ async function execute() {
       ...oldConstraintCommand,
       idempotencyKey: randomUUID(),
     });
-    const backupConstraintLedger = await captureConstraintRestoreLedger(source, []);
+    const backupConstraintLedger = await captureConstraintRestoreLedger(sourceAdminPool, []);
     const backupConstraintOwners = backupConstraintLedger.subjects.map((row) => row.athleteId);
     const constraintLedgerFile = join(directory, 'post-backup-constraint-ledger.json');
     const manualIds = new Map<string, string>();
@@ -1357,7 +1379,7 @@ async function execute() {
         athleteId,
         await seedCoachingRunOutput(
           sourceDb,
-          source,
+          sourceOwner,
           athleteId,
           thread.appended.thread.id,
           evidenceSnapshot.id,
@@ -1368,7 +1390,7 @@ async function execute() {
       assert.ok(seededRun);
       coachingCandidates.set(
         athleteId,
-        await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
+        await seedCoachingCandidateRecords(sourceOwner, athleteId, seededRun.run.id),
       );
       const coachingExport = await exportCurrentDrillAccount(sourceDb, athleteId);
       if (coachingExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
@@ -1466,11 +1488,11 @@ async function execute() {
         threads: coachingExport.data.coachingThreads,
         messages: coachingExport.data.coachingMessages,
       });
-      await source.query(
+      await sourceAdminPool.query(
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
       );
-      const session = await source.query(
+      const session = await sourceAdminPool.query(
         "INSERT INTO identity_private.session(token_hash,athlete_id,csrf_token,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '1 hour') RETURNING session_id",
         [String(index + 1).repeat(64), athleteId, 'x'.repeat(32)],
       );
@@ -1507,12 +1529,13 @@ async function execute() {
         }),
       );
     }
-    await source.query(
+    await sourceAdminPool.query(
       "INSERT INTO identity_private.login_attempt VALUES($1,$2,$3,$4,clock_timestamp()+interval '5 minutes')",
       ['a'.repeat(64), 'b'.repeat(64), 'n'.repeat(16), 'v'.repeat(43)],
     );
     assert.equal(
-      (await source.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0].count,
+      (await sourceAdminPool.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0]
+        .count,
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
@@ -1588,14 +1611,14 @@ async function execute() {
     } = await seedEvidenceWithAiConsent(sourceDb, withdrawnAthlete);
     const withdrawnRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       withdrawnAthlete,
       beforeWithdrawal.threadId,
       beforeWithdrawal.id,
       2,
     );
     const withdrawnCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       withdrawnAthlete,
       withdrawnRun.run.id,
     );
@@ -1609,14 +1632,14 @@ async function execute() {
     const beforeConsentDeletion = await seedEvidenceWithAiConsent(sourceDb, absentConsentAthlete);
     const absentConsentRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       absentConsentAthlete,
       beforeConsentDeletion.snapshot.threadId,
       beforeConsentDeletion.snapshot.id,
       2,
     );
     const absentConsentCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       absentConsentAthlete,
       absentConsentRun.run.id,
     );
@@ -1659,19 +1682,23 @@ async function execute() {
     assert.equal(constraintSnapshot.body.userConstraints.items[0]?.id, removedConstraint.id);
     const constraintRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       removedConstraintAthlete,
       constraintThread.appended.thread.id,
       constraintSnapshot.id,
       constraintThread.appended.thread.revision,
     );
     const constraintCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       removedConstraintAthlete,
       constraintRun.run.id,
     );
     assertCoachingCandidateRowsAvailable(
-      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        removedConstraintAthlete,
+        constraintCandidate,
+      ),
       constraintCandidate,
     );
 
@@ -1935,13 +1962,13 @@ async function execute() {
       };
     };
     const retainedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [retainedAthlete, retainedFixture.activityId],
       )
     ).rows[0]?.track_id;
     const doomedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [retainedAthlete, doomedImport.activityId],
       )
@@ -2322,7 +2349,7 @@ async function execute() {
       deletedAthlete,
     );
     const erasedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [deletedAthlete, erasedCourseFixture.activityId],
       )
@@ -2406,6 +2433,7 @@ async function execute() {
     let stalledRender:
       | {
           jobId: string;
+          athleteId: string;
           temporaryKey: ReturnType<typeof createCourseThumbnailTemporaryObjectKey>;
           finalKey: ReturnType<typeof createCourseThumbnailFinalObjectKey>;
           drawn: ReturnType<typeof renderCourseThumbnail>;
@@ -2463,7 +2491,13 @@ async function execute() {
                 vertexCount: drawn.vertexCount,
               }),
             );
-            stalledRender = { jobId: lease.jobId, temporaryKey, finalKey, drawn };
+            stalledRender = {
+              jobId: lease.jobId,
+              athleteId: lease.athleteId,
+              temporaryKey,
+              finalKey,
+              drawn,
+            };
             await sourceObjectStorage.delete(temporaryKey);
             return;
           }
@@ -2529,28 +2563,34 @@ async function execute() {
     // prunes the closed row. What is left is an object and one index row naming it.
     assert.ok(stalledRender);
     const orphan = stalledRender;
-    await source.query(
-      `UPDATE course_thumbnail
+    assert.equal(orphan.athleteId, deletedAthlete);
+    await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+      const changed = await client.query(
+        `UPDATE course_thumbnail
          SET created_at=clock_timestamp()-interval '4 hours',
              updated_at=clock_timestamp()-interval '4 hours',
              lease_until=clock_timestamp()-interval '3 hours',
              publication_lease_until=clock_timestamp()-interval '3 hours',
              expires_at=clock_timestamp()-interval '3 hours'
-       WHERE job_id=$1`,
-      [orphan.jobId],
-    );
+       WHERE job_id=$1 AND athlete_id=$2`,
+        [orphan.jobId, orphan.athleteId],
+      );
+      assert.equal(changed.rowCount, 1);
+    });
     const sourceCleanup = createResourceObjectCleanupRepository({
       connectionString: url('drill_source'),
       max: 1,
     });
     try {
       assert.ok((await sourceCleanup.reapCourseThumbnailRenders(100)) >= 1);
-      const closedReceipts = await source.query(
-        `UPDATE resource_object_cleanup SET completed_at=clock_timestamp(),attempts=1
-         WHERE storage_ref=ANY($1::text[]) AND completed_at IS NULL`,
-        [[orphan.temporaryKey, orphan.finalKey]],
-      );
-      assert.equal(closedReceipts.rowCount, 2);
+      await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+        const closedReceipts = await client.query(
+          `UPDATE resource_object_cleanup SET completed_at=clock_timestamp(),attempts=1
+           WHERE storage_ref=ANY($1::text[]) AND completed_at IS NULL`,
+          [[orphan.temporaryKey, orphan.finalKey]],
+        );
+        assert.equal(closedReceipts.rowCount, 2);
+      });
       await sourceObjectStorage.writeTemporary(
         orphan.temporaryKey,
         (async function* () {
@@ -2561,28 +2601,34 @@ async function execute() {
         sha256: orphan.drawn.sha256,
         sizeBytes: orphan.drawn.byteSize,
       });
-      await source.query(
-        `UPDATE course_thumbnail
+      await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+        const changed = await client.query(
+          `UPDATE course_thumbnail
            SET created_at=clock_timestamp()-interval '9 days',
                expires_at=clock_timestamp()-interval '8 days'-interval '1 hour',
                publication_lease_until=clock_timestamp()-interval '8 days'-interval '2 hours',
                lease_until=NULL,lease_owner=NULL,lease_token=NULL,
                updated_at=clock_timestamp()-interval '8 days'
-         WHERE job_id=$1`,
-        [orphan.jobId],
-      );
+         WHERE job_id=$1 AND athlete_id=$2`,
+          [orphan.jobId, orphan.athleteId],
+        );
+        assert.equal(changed.rowCount, 1);
+      });
       assert.equal(await sourceCleanup.pruneCourseThumbnailHistory(100), 1);
     } finally {
       await sourceCleanup.close();
     }
     assert.equal(
-      (await source.query('SELECT 1 FROM course_thumbnail WHERE job_id=$1', [orphan.jobId]))
-        .rowCount,
+      (
+        await sourceAdminPool.query('SELECT 1 FROM course_thumbnail WHERE job_id=$1', [
+          orphan.jobId,
+        ])
+      ).rowCount,
       0,
     );
     assert.equal(
       (
-        await source.query(
+        await sourceAdminPool.query(
           'SELECT 1 FROM course_thumbnail_object_ref WHERE storage_ref=$1 AND athlete_id=$2',
           [orphan.finalKey, deletedAthlete],
         )
@@ -2722,7 +2768,7 @@ async function execute() {
     );
     assert.equal(
       (
-        await source.query(
+        await sourceAdminPool.query(
           'SELECT count(*)::int AS count FROM resource_passage WHERE athlete_id=$1 AND resource_id=$2',
           [retainedAthlete, deletedCoachResource.resourceId],
         )
@@ -2737,7 +2783,7 @@ async function execute() {
     // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
     // The private drill has no concurrent writers between this owner manifest and pg_dump.
     const backupAiOwners = (
-      await source.query<{ athlete_id: string }>(
+      await sourceAdminPool.query<{ athlete_id: string }>(
         "SELECT athlete_id FROM consent WHERE kind='ai' ORDER BY athlete_id",
       )
     ).rows.map((row) => row.athlete_id);
@@ -2761,7 +2807,7 @@ async function execute() {
     const sharingAthlete = randomUUID();
     // A real account, as every course owner has: the 049 ledger replay refuses a tenant the
     // restored cluster does not know (COURSE_REPLAY_TENANT_UNKNOWN).
-    await source.query(
+    await sourceAdminPool.query(
       'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
       [sharingAthlete, 'https://synthetic.invalid', 'drill-sharing'],
     );
@@ -2870,7 +2916,7 @@ async function execute() {
       leaseMilliseconds: 12_000,
     });
     assert.equal((await drillAdmission.tryAcquire(deletedAthlete)).granted, true);
-    const erasedTenantBackupCounts = await countErasedTenantRows(source);
+    const erasedTenantBackupCounts = await countErasedTenantRows(sourceAdminPool);
     for (const table of erasedTenantCourseTables)
       assert.ok(
         (erasedTenantBackupCounts[table] ?? 0) > 0,
@@ -2880,7 +2926,7 @@ async function execute() {
     assert.equal(erasedTenantBackupCounts['course'], 4);
     assert.ok((erasedTenantBackupCounts['course_revision'] ?? 0) >= 4);
     const erasedTenantThumbnailStates = (
-      await source.query<{ state: string }>(
+      await sourceAdminPool.query<{ state: string }>(
         'SELECT state FROM course_thumbnail WHERE athlete_id=$1 ORDER BY state',
         [deletedAthlete],
       )
@@ -2888,7 +2934,7 @@ async function execute() {
     // The second `ready`: the M2-01k-o shared course's picture.
     assert.deepEqual(erasedTenantThumbnailStates, ['failed', 'ready', 'ready', 'superseded']);
     const erasedTenantObjectRefs = (
-      await source.query<{ storage_ref: string }>(
+      await sourceAdminPool.query<{ storage_ref: string }>(
         `SELECT refs.storage_ref FROM course_thumbnail t
            CROSS JOIN LATERAL (VALUES(t.temporary_ref),(t.storage_ref)) refs(storage_ref)
            WHERE t.athlete_id=$1 AND refs.storage_ref IS NOT NULL
@@ -3087,7 +3133,11 @@ async function execute() {
       idempotencyKey: randomUUID(),
     });
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        removedConstraintAthlete,
+        constraintCandidate,
+      ),
       'source_deleted',
     );
     const revokedConsent = await createConsentRepository(sourceDb).setConsent(withdrawnAthlete, {
@@ -3120,11 +3170,15 @@ async function execute() {
       { kind: 'ai', granted: false, revision: 0 },
     );
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, withdrawnAthlete, withdrawnCandidate),
+      await readCoachingCandidateRows(sourceAdminPool, withdrawnAthlete, withdrawnCandidate),
       'consent_withdrawn',
     );
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, absentConsentAthlete, absentConsentCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        absentConsentAthlete,
+        absentConsentCandidate,
+      ),
       'consent_withdrawn',
     );
     // An activity of the tenant that is erased right after: its deletion is in the activity
@@ -3138,7 +3192,7 @@ async function execute() {
       { expectedRevision: erasedFixture.revision },
     );
     const overlappingDeletion = (
-      await source.query<{
+      await sourceAdminPool.query<{
         athlete_id: string;
         activity_id: string;
         revision: number;
@@ -3163,7 +3217,7 @@ async function execute() {
     // source, so the entry is carried from this capture, as the activity entry above is.
     await courseRepo.remove(deletedAthlete, erasedRetryCourse.course.courseId, 1);
     const overlappingCourseDeletion = (
-      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+      await sourceAdminPool.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
         `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
          WHERE athlete_id=$1`,
         [deletedAthlete],
@@ -3176,7 +3230,7 @@ async function execute() {
     // M2-01as: the same overlap for the lifetime link budget: the erasure removes the erased
     // tenant's budget rows from the source, so this capture carries them.
     const overlappingShareBudget = (
-      await source.query(
+      await sourceAdminPool.query(
         `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget WHERE athlete_id=$1`,
         [deletedAthlete],
       )
@@ -3184,11 +3238,17 @@ async function execute() {
     assert.equal(overlappingShareBudget.length, 1);
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
     assert.equal(
-      (await source.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [deletedAthlete]))
-        .rowCount,
+      (
+        await sourceAdminPool.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [
+          deletedAthlete,
+        ])
+      ).rowCount,
       0,
     );
-    const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
+    const currentConstraints = await captureConstraintRestoreLedger(
+      sourceAdminPool,
+      backupConstraintOwners,
+    );
     assert.throws(() =>
       parseConstraintRestoreLedger(
         {
@@ -3214,7 +3274,7 @@ async function execute() {
       flag: 'wx',
     });
     // One SQL statement supplies both sets from the same MVCC snapshot after the withdrawal.
-    const evidenceWithdrawalResult = await source.query<{ ledger: unknown }>(
+    const evidenceWithdrawalResult = await sourceAdminPool.query<{ ledger: unknown }>(
       `
       WITH subjects AS (
         SELECT unnest($1::text[]) AS athlete_id
@@ -3323,13 +3383,13 @@ async function execute() {
     });
     checks.push('post_backup_evidence_withdrawal_and_consent_ledger_captured_atomically');
     const ledger = (
-      await source.query<{ athlete_id: string }>(
+      await sourceAdminPool.query<{ athlete_id: string }>(
         'SELECT athlete_id FROM tenant_erasure ORDER BY athlete_id',
       )
     ).rows;
     await writeFile(ledgerFile, JSON.stringify(ledger), { mode: 0o600, flag: 'wx' });
     const cleanupLedger = (
-      await source.query('SELECT * FROM garmin_private.revocation ORDER BY id')
+      await sourceAdminPool.query('SELECT * FROM garmin_private.revocation ORDER BY id')
     ).rows;
     assert.equal(cleanupLedger.length, 1);
     await writeFile(cleanupLedgerFile, JSON.stringify(cleanupLedger), { mode: 0o600, flag: 'wx' });
@@ -3369,7 +3429,7 @@ async function execute() {
     );
     assert.equal(
       (
-        await source.query<{ count: number }>(
+        await sourceAdminPool.query<{ count: number }>(
           `SELECT count(*)::int AS count FROM course_share
            WHERE share_id=ANY($1::uuid[]) AND state='active'`,
           [
@@ -3399,7 +3459,7 @@ async function execute() {
     const [firstArea] = await sharingPreferences.listPrivacyZones(sharingAthlete);
     assert.ok(firstArea);
     // Three links at backup time (the revoked one and the deleted course's included).
-    assert.equal(await budgetOf(source, firstArea.zoneId), 3);
+    assert.equal(await budgetOf(sourceAdminPool, firstArea.zoneId), 3);
     await seedDrillLink(
       sourceDb,
       sourceSharing,
@@ -3407,7 +3467,7 @@ async function execute() {
       await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link made after backup'),
       shareEpochAtBackup,
     );
-    assert.equal(await budgetOf(source, firstArea.zoneId), 4);
+    assert.equal(await budgetOf(sourceAdminPool, firstArea.zoneId), 4);
     const secondAreaCenter: [number, number] = [127.3, 37.7];
     const secondArea = (
       await sharingPreferences.createPrivacyZone(sharingAthlete, {
@@ -3429,15 +3489,15 @@ async function execute() {
       ),
       shareEpochAtBackup,
     );
-    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    assert.equal(await budgetOf(sourceAdminPool, secondArea.zoneId), 1);
     await sharingPreferences.removePrivacyZone(sharingAthlete, secondArea.zoneId);
-    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    assert.equal(await budgetOf(sourceAdminPool, secondArea.zoneId), 1);
     // The ledger is the whole table, captured outside the database like the others, with the
     // erased tenant's rows from the capture taken before its erasure. Area id, cell, rounded
     // radius and count — no centre, no name, no time.
     const shareBudgetLedger = [
       ...(
-        await source.query(
+        await sourceAdminPool.query(
           `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget ORDER BY athlete_id,zone_id`,
         )
       ).rows,
@@ -3456,7 +3516,7 @@ async function execute() {
     // course the owner deleted, before or after the backup. Tenant, course id and when — no
     // name and no coordinate.
     const courseDeletionLedger = (
-      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+      await sourceAdminPool.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
         `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
          ORDER BY athlete_id,course_id`,
       )
@@ -3491,7 +3551,7 @@ async function execute() {
     });
     checks.push('post_backup_course_deletion_ledger_captured_separately');
     const activityDeletionLedger = (
-      await source.query<{
+      await sourceAdminPool.query<{
         athlete_id: string;
         activity_id: string;
         revision: number;
