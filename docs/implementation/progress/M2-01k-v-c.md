@@ -51,3 +51,11 @@ Export producer는 race v31을 유지한 strict **v32**로 다섯 binding fact �
 098/099 및 race export31 baseline은 아직 독립 phase 검토 전인 `phase/m2-02`의 **caaa428c**에서 가져온 준비 의존성이다. 이 의존성의 M2-02 phase 승인 전에 C를 main으로 병합하지 않는다. SQL100 파일 첫 줄의 draft/NOT EXECUTED 문구는 작성 당시 원본 hash를 보존한 것이며 현재 설치 증거는 위 별도 회차로 기록한다. source 및 registry 등록은 live 배포 또는 processing reopening 승인이 아니다.
 
 별도 v5 codec/local exact replay 회차는 **66/66 = 실제PG27 + codec/preflight39**로 구분한다. 당시 root는14개 입력 해시와 cleanup을 대조했다. `/private/tmp/wm-s22-fulltail-v5-implementation-20261007.md`. 이후 root의 replay transaction composition port 변경은 새 검증 회차로 관리한다. 완전한 독립 baseline/final-tail witness, historical owner loader, generation/admission 원자적 전환·동일 host rollback 차단, budget101, 운영 restore/provider는 미완료이며 C는 계속 in_progress다.
+
+## v5 exact replay와 owner transaction 조합 · 2026-10-07
+
+App transition record5는 허용 field·연속 int4 epoch·nullable prior pair·timestamp를 엄격하게 검사한다. 기존1..4 decoder와 암호화 envelope format1을 유지하고 전체 chain 인증은 DB 연결 전에 끝낸다. Root는 후속 generation/postcondition과 같은 owner transaction에 조합할 internal port를 추출했다. process-local WeakMap에 인증한 handle을 보관하며 복사·재구성·직렬화한 handle은 SQL 전에 거절한다. port는 BEGIN/COMMIT/ROLLBACK·generation rotation·admission을 실행하지 않으며 caller가 lock 순서와 실패 rollback을 관리한다. 기존 public wrapper의 전체 chain1transaction 및 commit 불확실 시 connection 폐기는 유지한다.
+
+현재 port의 실제 PG **11/11**(기존 appchain8+신규3)은 normal001..100 migrations/plain owner로 통과했다. caller BEGIN→replay→후속 SQL22012→전체 ROLLBACK, 같은 인증 handle의 재시도 COMMIT, 별도 connection에서 uncommitted 자료 비노출, 위조 handle 무변경 거절을 확인했다. Root가 `/private/tmp/wm-s22-replaytx-acceptance-20261007.md`와108개 입력 해시, stop0/status3/isready2·data/socket 제거를 직접 확인했다. root boundary13/13은 mocked SQL port이며 실제 DB11에 합산하지 않는다. 최초 root 시험은 존재하지 않는 Vitest project 이름으로 startup 실패했고 실제 integration config로 재실행한 기록을 보존한다.
+
+현재 source SHA `eb2d3285f5192c36a647667da9c4bbc5f612834d04647ec663d691f9fa639c82`는 앞선66/66의 source와 구분한다. persistence typecheck·변경 source/test lint/format/diff check exit0. 합성 anchor/key는 local replay의 검증이며 독립적인 운영 tail completeness가 아니다. owner historical loader·독립 proof·처리 재개는 미완료이고 C를 완료 처리하지 않는다.

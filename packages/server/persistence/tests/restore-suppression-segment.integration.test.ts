@@ -337,3 +337,62 @@ describe('encrypted restore suppression segment', () => {
     }
   });
 });
+
+describe('authenticated v4 race suppression segments', () => {
+  it.each(['race_event_deleted', 'race_result_deleted', 'training_best_deleted'] as const)(
+    'round trips %s and rejects version/revision substitution',
+    (kind) => {
+      const entry: SuppressionRecord = {
+        schemaVersion: 4,
+        eventId,
+        athleteId,
+        occurredAt: '2026-09-30 12:34:56+00',
+        kind,
+        targetId,
+        racePreviousRevision: 2147483647,
+        raceDeletedRevision: 2147483647,
+      };
+      const envelope = withRecord(entry);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+      for (const invalid of [
+        { ...entry, schemaVersion: 3 as const },
+        { ...entry, racePreviousRevision: 1, raceDeletedRevision: 1 },
+      ])
+        expect(() => encryptReplaySegment({ envelope: withRecord(invalid), key, keyId })).toThrow();
+    },
+  );
+});
+
+it('round-trips strict v5 app epochs and rejects cross-version and foreign payloads', () => {
+  const app = {
+    schemaVersion: 5 as const,
+    eventId,
+    athleteId,
+    occurredAt: '2026-09-30 12:34:56+00',
+    kind: 'app_consent_transition' as const,
+    consentPreviousRevision: null,
+    consentPreviousGranted: null,
+    consentRevision: 1,
+    consentGranted: true,
+  };
+  const envelope = withRecord(app);
+  const encrypted = encryptReplaySegment({ envelope, key, keyId });
+  expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+    envelope,
+  );
+  for (const invalid of [
+    { ...app, schemaVersion: 1 as const },
+    { ...app, consentRevision: 2 },
+    { ...app, consentPreviousGranted: false },
+    { ...app, targetId },
+    { ...app, consentGranted: null },
+    { ...app, schemaVersion: 4 as const },
+    { ...app, kind: 'ai_consent_transition' as const },
+  ])
+    expect(() =>
+      encryptReplaySegment({ envelope: withRecord(invalid as SuppressionRecord), key, keyId }),
+    ).toThrow();
+});
