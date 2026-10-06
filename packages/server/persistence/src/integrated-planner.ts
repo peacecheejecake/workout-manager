@@ -299,7 +299,7 @@ function localInstant(date: string, time: string, timezone: string): number | nu
   return matching.length === 1 ? (matching[0] ?? null) : null;
 }
 
-function projectNutritionItem(
+export function projectNutritionItem(
   item: z.infer<typeof nutritionPlanVersionSchema>['items'][number],
   plan: z.infer<typeof nutritionPlanVersionSchema>,
   linked: Map<string, z.infer<typeof planDraftSchema>>,

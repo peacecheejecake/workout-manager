@@ -74,7 +74,8 @@
     "./routing-admission": "./src/routing-admission.ts",
     "./healthkit-registration-audit": "./src/healthkit-registration-audit.ts",
     "./races": "./src/races.ts",
-    "./app-admission": "./src/app-admission.ts"
+    "./app-admission": "./src/app-admission.ts",
+    "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
