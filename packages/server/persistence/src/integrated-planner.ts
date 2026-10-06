@@ -283,7 +283,7 @@ function localParts(instant: number, timezone: string) {
   };
 }
 /** Reject nonexistent/ambiguous wall times instead of silently picking a DST offset. */
-function localInstant(date: string, time: string, timezone: string): number | null {
+export function localInstant(date: string, time: string, timezone: string): number | null {
   const target = Date.parse(`${date}T${time.length === 5 ? `${time}:00` : time}Z`);
   if (!Number.isFinite(target)) return null;
   const offsets = new Set<number>();

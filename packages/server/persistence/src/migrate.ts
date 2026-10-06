@@ -397,6 +397,8 @@ export async function grantRaces(connectionString: string, runtimeRole: string):
     // New race writes read the live app head; consent mutation remains separately granted.
     await pool.query(`GRANT SELECT ON consent TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
+    // enqueue replays the exact event through ON CONFLICT without granting lease writes.
+    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
     // Historical upgrade tests may stop at the race ledger migration.
     const deletion = await pool.query('SELECT 1 FROM schema_migrations WHERE version=99');
     if (deletion.rowCount)

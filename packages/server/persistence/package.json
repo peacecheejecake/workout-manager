@@ -77,7 +77,8 @@
     "./global-openai-budget": "./src/global-openai-budget.ts",
     "./ai-settings": "./src/ai-settings.ts",
     "./races": "./src/races.ts",
-    "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts"
+    "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts",
+    "./race-timing-bindings": "./src/race-timing-bindings.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
