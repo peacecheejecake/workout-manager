@@ -109,6 +109,7 @@ const migrationFiles = [
   '101_restore_processing_closed_control.sql',
   '102_restore_app_family_loader.sql',
   '103_global_openai_budget.sql',
+  '104_ai_settings.sql',
 ] as const;
 
 /**
@@ -1290,6 +1291,29 @@ export async function grantOpenAiBudgetWorker(
       public.reserve_openai_budget(uuid,text,text,text,integer,integer,uuid),
       public.begin_openai_budget_dispatch(uuid,uuid,uuid,uuid,integer,uuid),
       public.settle_openai_budget(uuid,uuid,text,text,text) TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Nonhealth API preferences only; no catalog publication, consent or provider grant. */
+export async function grantAiSettings(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON public.ai_settings_catalog_definition,public.ai_settings_catalog_head,
+   public.ai_settings_revision,public.ai_settings_head,public.command_receipt,public.tenant_erasure TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT INSERT ON public.ai_settings_revision,public.ai_settings_head,public.command_receipt TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT UPDATE(revision) ON public.ai_settings_head TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT EXECUTE ON FUNCTION public.assert_ai_settings_write_target(),public.read_restore_processing_admission() TO "${runtimeRole}"`,
+    );
   } finally {
     await pool.end();
   }

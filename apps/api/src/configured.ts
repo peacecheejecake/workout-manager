@@ -82,6 +82,8 @@ import { createGarminUnofficialWorker } from '@workout/server-integrations/garmi
 import { createGarminUnofficialService } from '@workout/server-integrations/garmin-unofficial-service';
 import { configuredGarminUnofficial } from './garmin-unofficial-deployment.js';
 import { createApi } from './app.js';
+import { createAiSettingsRepository } from '@workout/server-persistence/ai-settings';
+import { createAiSettingsService } from './ai-settings-service.js';
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
@@ -366,6 +368,7 @@ export async function createConfiguredApi(
           ? createUnconfiguredGarminService(createGarminStore(database))
           : createGarminService({ store: createGarminStore(database), ...garminConfiguration }),
       consent: createConsentRepository(database),
+      aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
       planning: createPlanningRepository(database),
       nutrition: createNutritionRepository(database),
       restoreGeneration: createRestoreGenerationRepository(database),

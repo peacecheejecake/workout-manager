@@ -74,7 +74,8 @@
     "./routing-admission": "./src/routing-admission.ts",
     "./healthkit-registration-audit": "./src/healthkit-registration-audit.ts",
     "./app-admission": "./src/app-admission.ts",
-    "./global-openai-budget": "./src/global-openai-budget.ts"
+    "./global-openai-budget": "./src/global-openai-budget.ts",
+    "./ai-settings": "./src/ai-settings.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

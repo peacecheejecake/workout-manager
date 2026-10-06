@@ -88,9 +88,11 @@ import { registerCourseExtrasRoutes, type CourseExtrasServices } from './course-
 import { registerCourseDisclosureRoutes } from './course-disclosure-routes.js';
 import type { CourseSharingRepository } from '@workout/server-persistence/course-sharing';
 import type { ResourceRetrievalRepository } from '@workout/server-persistence/resource-retrieval';
+import { registerAiSettingsRoutes, type AiSettingsService } from './ai-settings-routes.js';
 export { ProductRequestError } from './product-boundary.js';
 export type { PlanningRepository } from '@workout/server-persistence/planning';
 export interface ProductRepositories {
+  aiSettings?: AiSettingsService;
   restoreGeneration?: RestoreGenerationRepository;
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
@@ -161,6 +163,7 @@ export function registerProductRoutes(
   repositories: ProductRepositories,
   principal: (request: FastifyRequest) => Principal,
 ) {
+  if (repositories.aiSettings) registerAiSettingsRoutes(routes, repositories.aiSettings, principal);
   if (repositories.restoreGeneration) {
     const restoreGeneration = repositories.restoreGeneration;
     routes.get('/restore-generation', async (request, reply) => {

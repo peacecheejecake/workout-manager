@@ -169,7 +169,7 @@ beforeAll(async () => {
     );
   await admin.query(`CREATE DATABASE "${dbName}" OWNER "${roles.owner}"`);
   await migrate(url(roles.owner), 102);
-  await migrate(url(roles.owner));
+  await migrate(url(roles.owner), 103);
   owner = new Pool({ connectionString: url(roles.owner), max: 6 });
   pools.push(owner);
   await grantCorePlanning(url(roles.owner), roles.runtime);
@@ -204,7 +204,7 @@ it('fresh normal001→103 installs empty accounting and disabled activation', as
   u.pathname = `/${name}`;
   let p: Pool | null = null;
   try {
-    await migrate(u.toString());
+    await migrate(u.toString(), 103);
     p = new Pool({ connectionString: u.toString() });
     expect((await p.query('SELECT enabled FROM openai_budget_activation')).rows).toEqual([
       { enabled: false },
