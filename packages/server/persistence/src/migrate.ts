@@ -388,9 +388,12 @@ export async function grantOperations(
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
-    await pool.query(
-      `GRANT SELECT ON race_event,race_event_revision,race_result,race_result_revision,training_best,training_best_revision,race_collection_head TO "${runtimeRole}"`,
-    );
+    // Historical suppression-event fixtures predate the registered race tables.
+    const races = await pool.query('SELECT 1 FROM schema_migrations WHERE version=98');
+    if (races.rowCount)
+      await pool.query(
+        `GRANT SELECT ON race_event,race_event_revision,race_result,race_result_revision,training_best,training_best_revision,race_collection_head TO "${runtimeRole}"`,
+      );
     await pool.query(
       `GRANT SELECT ON consent,plan_snapshot,plan_head,plan_history,
        activity_canonical,activity_source_head,activity_source_revision,

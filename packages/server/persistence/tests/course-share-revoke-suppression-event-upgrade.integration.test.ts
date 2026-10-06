@@ -107,6 +107,8 @@ describe('course share revocation event upgrade under a plain PostgreSQL owner',
     }
 
     await migrate(urlFor(ownerRole));
+    // Latest erasure wrappers revoke predecessor ACLs; grant the new public entry.
+    await grantOperations(urlFor(ownerRole), runtimeRole);
     const events = () =>
       owner.query<{
         event_id: string;

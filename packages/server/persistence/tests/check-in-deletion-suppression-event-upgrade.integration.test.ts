@@ -70,6 +70,23 @@ afterAll(async () => {
 describe('CheckIn event plain-owner upgrade', () => {
   it('does not backfill an old tombstone and records a later deletion under FORCE RLS', async () => {
     const tenant = randomUUID();
+    // Explicit synthetic core-processing permission; the historical migration
+    // does not grant it, and current repository writes must still require it.
+    const permission = await owner.connect();
+    try {
+      await permission.query('BEGIN');
+      await permission.query("SELECT set_config('app.athlete_id',$1,true)", [tenant]);
+      await permission.query(
+        "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)",
+        [tenant],
+      );
+      await permission.query('COMMIT');
+    } catch (error) {
+      await permission.query('ROLLBACK');
+      throw error;
+    } finally {
+      permission.release();
+    }
     const repository = createCheckInRepository(database);
     const old = await repository.createCheckIn(tenant, create());
     const live = await repository.createCheckIn(tenant, create());
