@@ -1,3 +1,7 @@
+import { captureRaceImpactSourcePermissions } from '../src/race-plan-impact-source-permissions.js';
+import { createPrivateTextResourceRepository } from '../src/resources.js';
+import { createResourceAccessRepository } from '../src/resource-access.js';
+import { lockAppAdmission } from '../src/app-admission.js';
 import { createNutritionRepository } from '../src/nutrition-core.js';
 import { createCheckInRepository } from '../src/check-ins.js';
 import { createRoutineRepository } from '../src/routine-core.js';
@@ -40,6 +44,8 @@ import {
   grantCheckIns,
   grantCourses,
   grantNutritionCore,
+  grantResources,
+  grantResourceRetrieval,
 } from '../src/migrate.js';
 import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
@@ -236,6 +242,9 @@ beforeAll(async () => {
   await grantCheckIns(url(ownerRole), runtimeRole);
   await grantCourses(url(ownerRole), runtimeRole);
   await grantNutritionCore(url(ownerRole), runtimeRole);
+  // Same regular resources/retrieval combination as the configured authenticated runtime.
+  await grantResources(url(ownerRole), runtimeRole);
+  await grantResourceRetrieval(url(ownerRole), runtimeRole);
   database = createDatabase({ connectionString: url(runtimeRole) });
   races = createRaceRepository(database);
 });
@@ -2029,4 +2038,320 @@ it('B rejects a forged checklist confirmation revision on a real owned stopped r
     );
   });
   await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
+});
+
+async function permissionFacts(
+  athlete: string,
+  resourceVersionIds: string[] = [],
+  plannedRefs: Parameters<typeof captureRaceImpactSourcePermissions>[1]['plannedRefs'] = [],
+  baseBytes = 0n,
+  existingSourceCount = 0,
+  catalogRefs: Parameters<typeof captureRaceImpactSourcePermissions>[1]['catalogRefs'] = [],
+) {
+  return database.tenant(athlete, async (tx) => {
+    await lockAppAdmission(tx);
+    return captureRaceImpactSourcePermissions(tx, {
+      resourceVersionIds,
+      plannedRefs,
+      baseBytes,
+      existingSourceCount,
+      catalogRefs,
+    });
+  });
+}
+it('captures exact owned resource access changes without requiring AI consent for manual reads', async () => {
+  const athlete = await account();
+  const resources = createPrivateTextResourceRepository(database);
+  const access = createResourceAccessRepository(database);
+  const created = await resources.create(athlete, {
+    sourceKind: 'text',
+    title: 'Synthetic reference',
+    category: 'guide',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Synthetic private source.',
+    idempotencyKey: randomUUID(),
+  });
+  if (created.status !== 'available') throw new Error('Synthetic resource unavailable');
+  const version = created.version.id;
+  const initial = await permissionFacts(athlete, [version]);
+  expect(initial.resources).toMatchObject([
+    {
+      state: 'current',
+      current: { accessRevision: 1, aiAuthorized: false, includeForCoach: false },
+    },
+  ]);
+  expect(initial.aiConsent).toEqual({ state: 'absent' });
+  const reviewed = await access.setReviewed(athlete, created.resource.id, {
+    reviewed: true,
+    expectedAccessRevision: 1,
+    expectedCurrentVersionId: version,
+    idempotencyKey: randomUUID(),
+  });
+  const marked = await permissionFacts(athlete, [version]);
+  expect(marked.resources).toMatchObject([
+    {
+      state: 'current',
+      current: {
+        reviewedState: 'reviewed',
+        accessRevision: reviewed.accessRevision,
+        aiAuthorized: false,
+      },
+    },
+  ]);
+  await owned(athlete, (c) =>
+    c.query("INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'ai',true,1)", [
+      athlete,
+    ]),
+  );
+  await access.setCoachUse(athlete, created.resource.id, {
+    includeForCoach: true,
+    expectedAccessRevision: reviewed.accessRevision,
+    expectedCurrentVersionId: version,
+    idempotencyKey: randomUUID(),
+  });
+  const enabled = await permissionFacts(athlete, [version]);
+  expect(enabled.resources).toMatchObject([
+    { current: { aiAuthorized: true, includeForCoach: true } },
+  ]);
+  expect(enabled.aiConsent).toEqual({ state: 'present', granted: true, revision: 1 });
+  const appended = await resources.appendVersion(athlete, created.resource.id, {
+    expectedCurrentVersionId: version,
+    text: 'Synthetic new version.',
+    idempotencyKey: randomUUID(),
+  });
+  if (appended.status !== 'available') throw new Error('Synthetic append unavailable');
+  const historical = await permissionFacts(athlete, [version]);
+  expect(historical.resources).toMatchObject([
+    {
+      requestedVersionId: version,
+      state: 'historical',
+      content: { versionId: version, contentHash: created.version.contentHash },
+      current: { versionId: appended.version.id },
+    },
+  ]);
+  expect(historical).not.toEqual(enabled);
+  await owned(athlete, (c) =>
+    c.query(
+      "UPDATE consent SET granted=false,revision=revision+1 WHERE athlete_id=$1 AND kind='ai'",
+      [athlete],
+    ),
+  );
+  const withdrawn = await permissionFacts(athlete, [version]);
+  expect(withdrawn.resources).toMatchObject([
+    { state: 'historical', current: { aiAuthorized: false, cleanupPending: true } },
+  ]);
+  expect(withdrawn.aiConsent).toEqual({ state: 'present', granted: false, revision: 2 });
+  expect(withdrawn.complete).toBe(false);
+});
+it('keeps foreign, missing and opaque resource refs contentless and bounded', async () => {
+  const athlete = await account(),
+    other = await account();
+  const resources = createPrivateTextResourceRepository(database);
+  const created = await resources.create(other, {
+    sourceKind: 'text',
+    title: 'Other synthetic reference',
+    category: 'note',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Foreign synthetic source.',
+    idempotencyKey: randomUUID(),
+  });
+  if (created.status !== 'available') throw new Error('Synthetic resource unavailable');
+  const result = await permissionFacts(athlete, [
+    created.version.id,
+    randomUUID(),
+    'opaque-legacy',
+  ]);
+  expect(result.resources).toHaveLength(3);
+  expect(
+    result.resources.every(
+      (row) => row.state === 'unavailable' && row.content === null && row.current === null,
+    ),
+  ).toBe(true);
+  await expect(permissionFacts(athlete, [], [], 4194304n + 1n)).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+  });
+  await expect(permissionFacts(athlete, [created.version.id], [], 0n, 5000)).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+  });
+});
+it('separates exact planned session membership from current association and absent aggregate history', async () => {
+  const athlete = await account(),
+    version = await training(athlete);
+  const head = await owned(athlete, (c) =>
+    c.query('SELECT aggregate_id FROM plan_head WHERE athlete_id=$1', [athlete]),
+  );
+  const aggregate = z.uuid().parse(head.rows[0]?.['aggregate_id']);
+  const requested = {
+    domain: 'training' as const,
+    planId: aggregate,
+    versionId: version,
+    itemId: 'session',
+  };
+  const current = await permissionFacts(athlete, [], [requested]);
+  expect(current.planned).toMatchObject([
+    { state: 'current', aggregateIdentity: 'current_head_association_only' },
+  ]);
+  const next = await training(athlete, draft(), false);
+  await owned(athlete, (c) =>
+    c.query('UPDATE plan_head SET version_id=$2 WHERE athlete_id=$1', [athlete, next]),
+  );
+  const old = await permissionFacts(athlete, [], [requested]);
+  expect(old.planned).toMatchObject([{ state: 'historical', currentHead: { version_id: next } }]);
+  await owned(athlete, (c) => c.query('DELETE FROM plan_head WHERE athlete_id=$1', [athlete]));
+  const absent = await permissionFacts(athlete, [], [requested]);
+  expect(absent.planned).toMatchObject([
+    {
+      state: 'unavailable',
+      reason: 'aggregate_identity_unavailable',
+      content: null,
+      currentHead: null,
+    },
+  ]);
+  const other = await account();
+  expect((await permissionFacts(other, [], [requested])).planned).toMatchObject([
+    { state: 'unavailable', reason: 'owned_version_unavailable', content: null },
+  ]);
+  await expect(
+    permissionFacts(athlete, [], [{ ...requested, versionId: 'forged' }]),
+  ).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
+});
+
+it('includes resource access and deleted facts in the captured context digest through frozen supplementary refs', async () => {
+  const athlete = await account(),
+    resources = createPrivateTextResourceRepository(database),
+    access = createResourceAccessRepository(database);
+  const created = await resources.create(athlete, {
+    sourceKind: 'text',
+    title: 'Synthetic immutable source',
+    category: 'guide',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Synthetic fixture only.',
+    idempotencyKey: randomUUID(),
+  });
+  if (created.status !== 'available') throw new Error('Synthetic resource unavailable');
+  const exercise = await seedExercise(
+    athlete,
+    supplementaryExerciseVersionSchema.parse({
+      ...syntheticExercise(),
+      resourceVersionIds: [created.version.id],
+    }),
+  );
+  const version = await training(athlete, strengthDraft()),
+    event = await create(athlete);
+  await seedLink(athlete, version, 'strength-0', {
+    kind: 'embedded',
+    spec: syntheticSpec(exercise.versionId),
+  });
+  const initial = await capture(athlete, event.id);
+  expect(initial.sourcePermissionManifest.resources).toMatchObject([
+    { state: 'current', current: { accessRevision: 1, aiAuthorized: false } },
+  ]);
+  expect((await capture(athlete, event.id)).readSetDigest).toBe(initial.readSetDigest);
+  const reviewed = await access.setReviewed(athlete, created.resource.id, {
+    reviewed: true,
+    expectedAccessRevision: 1,
+    expectedCurrentVersionId: created.version.id,
+    idempotencyKey: randomUUID(),
+  });
+  const changed = await capture(athlete, event.id);
+  expect(changed.readSetDigest).not.toBe(initial.readSetDigest);
+  expect(changed.supplementaryManifest).toEqual(initial.supplementaryManifest);
+  await resources.softDelete(athlete, created.resource.id, {
+    expectedAccessRevision: reviewed.accessRevision,
+    expectedCurrentVersionId: created.version.id,
+    idempotencyKey: randomUUID(),
+  });
+  const deleted = await capture(athlete, event.id);
+  expect(deleted.sourcePermissionManifest.resources).toMatchObject([
+    { state: 'deleted', content: null, current: { deleted: true, cleanupPending: true } },
+  ]);
+  expect(deleted.readSetDigest).not.toBe(changed.readSetDigest);
+  expect(deleted.coverage.complete).toBe(false);
+});
+it('validates immutable nutrition aggregate and item membership without foreign or latest substitution', async () => {
+  const athlete = await account(),
+    record = nutrition(null, [{ entity: 'race', entityId: randomUUID() }]);
+  await seedNutrition(athlete, [record]);
+  const requested = {
+    domain: 'nutrition' as const,
+    planId: record.planId,
+    versionId: record.versionId,
+    itemId: 'item0',
+  };
+  expect((await permissionFacts(athlete, [], [requested])).planned).toMatchObject([
+    { state: 'current', aggregateIdentity: 'immutable_version' },
+  ]);
+  await owned(athlete, (c) =>
+    c.query('DELETE FROM nutrition_plan_head WHERE athlete_id=$1', [athlete]),
+  );
+  expect((await permissionFacts(athlete, [], [requested])).planned).toMatchObject([
+    { state: 'historical', currentHead: null },
+  ]);
+  expect(
+    (await permissionFacts(athlete, [], [{ ...requested, planId: randomUUID() }])).planned,
+  ).toMatchObject([{ state: 'unavailable', reason: 'aggregate_mismatch', content: null }]);
+  expect(
+    (await permissionFacts(athlete, [], [{ ...requested, itemId: 'missing' }])).planned,
+  ).toMatchObject([{ state: 'unavailable', reason: 'item_unavailable', content: null }]);
+  expect((await permissionFacts(await account(), [], [requested])).planned).toMatchObject([
+    { state: 'unavailable', reason: 'owned_version_unavailable', content: null },
+  ]);
+});
+it('captures exact blueprint catalog ownership and rejects forged identities without current-version substitution', async () => {
+  const athlete = await account(),
+    exercise = await seedExercise(athlete);
+  const routineId = randomUUID(),
+    versionId = randomUUID();
+  const template = routineTemplateVersionSchema.parse({
+    schemaVersion: 2,
+    routineId,
+    versionId,
+    title: 'Synthetic frozen template',
+    purpose: 'Synthetic source',
+    requiredEquipment: ['bodyweight'],
+    spec: syntheticSpec(exercise.versionId, versionId),
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  await owned(athlete, async (c) => {
+    await c.query(
+      'INSERT INTO supplementary_routine_version(athlete_id,routine_id,version_id,version,created_at,record_json) VALUES($1,$2,$3,1,$4,$5::jsonb)',
+      [athlete, routineId, versionId, template.createdAt, JSON.stringify(template)],
+    );
+    await c.query(
+      'INSERT INTO supplementary_routine_head(athlete_id,routine_id,version,version_id) VALUES($1,$2,1,$3)',
+      [athlete, routineId, versionId],
+    );
+  });
+  const requested = { kind: 'workout_template' as const, ref: { id: routineId, versionId } };
+  const current = await permissionFacts(athlete, [], [], 0n, 0, [requested]);
+  expect(current.catalog).toMatchObject([
+    {
+      requested,
+      state: 'current',
+      exercises: [{ state: 'owned', content: { versionId: exercise.versionId } }],
+    },
+  ]);
+  await owned(athlete, (c) =>
+    c.query('DELETE FROM supplementary_routine_head WHERE athlete_id=$1', [athlete]),
+  );
+  expect((await permissionFacts(athlete, [], [], 0n, 0, [requested])).catalog).toMatchObject([
+    { state: 'historical', currentHead: null },
+  ]);
+  expect(
+    (await permissionFacts(await account(), [], [], 0n, 0, [requested])).catalog,
+  ).toMatchObject([{ state: 'unavailable', content: null }]);
+  await expect(
+    permissionFacts(athlete, [], [], 0n, 0, [
+      { ...requested, ref: { id: randomUUID(), versionId } },
+    ]),
+  ).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
+  await expect(
+    permissionFacts(athlete, [], [], 4194304n - 2048n, 0, [requested]),
+  ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE' });
 });

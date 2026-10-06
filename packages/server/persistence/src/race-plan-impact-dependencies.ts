@@ -33,7 +33,10 @@ const fact = z.discriminatedUnion('state', [
   z.strictObject({ kind, state: z.literal('present'), revision }),
 ]);
 export class RaceImpactDependencyError extends Error {
-  constructor(readonly code: 'INVALID_CONTEXT' | 'SOURCE_UNAVAILABLE' | 'CONTEXT_UNAVAILABLE') {
+  constructor(
+    readonly code: 'INVALID_CONTEXT' | 'SOURCE_UNAVAILABLE' | 'CONTEXT_UNAVAILABLE',
+    readonly bound?: 'decoded_bytes' | 'unique_sources',
+  ) {
     super(code);
   }
 }
@@ -305,6 +308,8 @@ export async function captureSupplementaryReferenceManifest(
       versionId: record.versionId,
       version: row.version,
       contentDigest: digest(record),
+      resourceVersionIds: record.resourceVersionIds,
+      mediaAssetIds: record.mediaAssetIds,
     };
   });
   const fetched = new Set(exercises.map((row) => row.versionId));

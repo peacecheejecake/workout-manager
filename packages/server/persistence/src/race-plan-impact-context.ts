@@ -1,3 +1,4 @@
+import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
@@ -255,6 +256,7 @@ async function preflight(tx: Transaction, eventId: string) {
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'relative_anchors');
   if (BigInt(limits.sources) > BigInt(sourceCap))
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'unique_sources');
+  return BigInt(limits.bytes);
 }
 function sourceCache(tx: Transaction) {
   const plans = new Map<string, Promise<PlanSnapshot>>();
@@ -332,7 +334,7 @@ const missingDependencies = [
 export async function captureRacePlanImpactContext(tx: Transaction, input: unknown) {
   const command = parse(inputSchema, input);
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
-  await preflight(tx, command.eventId);
+  const baseBytes = await preflight(tx, command.eventId);
   const sources = sourceCache(tx);
   const core = await captureCoreEvidenceDependencies(tx);
   const eventRow = (
@@ -597,6 +599,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let dependencyInventory: Awaited<ReturnType<typeof captureIntegratedDependencyInventory>>;
   let routineActualManifest: Awaited<ReturnType<typeof captureRoutineActualManifest>>;
   let supplementaryManifest: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
+  let sourcePermissionManifest: Awaited<ReturnType<typeof captureRaceImpactSourcePermissions>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
@@ -605,11 +608,26 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       await sources.consumedPlans(),
       sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     );
+    sourcePermissionManifest = await captureRaceImpactSourcePermissions(tx, {
+      plannedRefs: routineActualManifest.occurrences.flatMap((row) =>
+        row.record.stepBindings.map((binding) => binding.plannedRef),
+      ),
+      resourceVersionIds: supplementaryManifest.exercises.flatMap((row) => row.resourceVersionIds),
+      catalogRefs: routineActualManifest.blueprints.flatMap((row) =>
+        row.record.steps.map((step) => step.content),
+      ),
+      baseBytes,
+      existingSourceCount:
+        sources.sourceCount() +
+        routineActualManifest.uniqueSourceCount +
+        supplementaryManifest.routines.length +
+        supplementaryManifest.exercises.length,
+    });
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
       throw new RacePlanImpactContextError(
         error.code,
-        error.code === 'CONTEXT_UNAVAILABLE' ? 'unique_sources' : undefined,
+        error.code === 'CONTEXT_UNAVAILABLE' ? (error.bound ?? 'unique_sources') : undefined,
       );
     throw error;
   }
@@ -634,6 +652,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     dependencyInventory,
     supplementaryManifest,
     routineActualManifest,
+    sourcePermissionManifest,
   };
   // capturedAt is metadata, never a changing freshness value.
   const readSetDigest = digest({ ...readSet, coreDependencies: { ...core, capturedAt: null } });
@@ -646,6 +665,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
         'integrated_dependency_inventory',
         'immutable_supplementary_copy_references',
         'routine_occurrence_run_and_actual_reference_facts',
+        'partial_owned_planned_reference_and_resource_permission_facts',
       ] as const,
     },
     ...readSet,
