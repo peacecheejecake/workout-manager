@@ -14,6 +14,7 @@ import {
 import { z } from 'zod';
 import { planDraftSchema } from '@workout/contracts/planning';
 import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
+import { recoveryMethodVersionSchema } from '@workout/contracts/recovery-core';
 import {
   routineStepContentSchema,
   domainPlanRefSchema,
@@ -268,12 +269,111 @@ export async function captureRaceImpactSourcePermissions(
     exercises.set(versionId, pending);
     return pending;
   }
+  const recoveryMethods = new Map<
+    string,
+    Promise<{
+      record: z.infer<typeof recoveryMethodVersionSchema>;
+      head: z.infer<typeof currentHead> | null;
+    } | null>
+  >();
+  async function recoveryMethod(versionId: string) {
+    const old = recoveryMethods.get(versionId);
+    if (old) return old;
+    const pending = (async () => {
+      // Budget the transported exact DTO BEFORE decoding. Current head is scalar
+      // identity only; it never substitutes a current method body for this version.
+      const size = parse(
+        z.strictObject({ bytes: decimal }),
+        (
+          await tx.query(
+            'SELECT coalesce(sum(octet_length(v.record_json::text)+1024),0)::text AS bytes FROM recovery_method_version v WHERE v.athlete_id=$1 AND v.version_id=$2::uuid',
+            [tx.athleteId, versionId],
+          )
+        ).rows[0],
+      );
+      bytes += BigInt(size.bytes);
+      if (bytes > 4194304n)
+        throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+      const rows = (
+        await tx.query(
+          `SELECT v.method_id,v.version_id,v.version,v.record_json,h.method_id AS head_method_id,h.version_id AS head_version_id,h.version AS head_version
+         FROM recovery_method_version v LEFT JOIN recovery_method_head h ON h.athlete_id=v.athlete_id AND h.method_id=v.method_id
+         WHERE v.athlete_id=$1 AND v.version_id=$2::uuid`,
+          [tx.athleteId, versionId],
+        )
+      ).rows;
+      if (rows.length > 1) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      if (!rows[0]) return null;
+      const row = parse(
+        z.strictObject({
+          method_id: uuid,
+          version_id: uuid,
+          version: z.number().int().positive().max(2147483646),
+          record_json: z.unknown(),
+          head_method_id: uuid.nullable(),
+          head_version_id: uuid.nullable(),
+          head_version: z.number().int().positive().max(2147483646).nullable(),
+        }),
+        rows[0],
+      );
+      const record = parse(recoveryMethodVersionSchema, row.record_json);
+      if (
+        record.methodId !== row.method_id ||
+        record.versionId !== row.version_id ||
+        record.version !== row.version ||
+        record.versionId !== versionId
+      )
+        throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      if (
+        (row.head_method_id === null) !== (row.head_version_id === null) ||
+        (row.head_method_id === null) !== (row.head_version === null) ||
+        (row.head_method_id !== null && row.head_method_id !== row.method_id)
+      )
+        throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      return {
+        record,
+        head:
+          row.head_method_id === null
+            ? null
+            : parse(currentHead, {
+                aggregate_id: row.head_method_id,
+                version_id: row.head_version_id,
+              }),
+      };
+    })();
+    recoveryMethods.set(versionId, pending);
+    return pending;
+  }
   for (const untrusted of catalogRequests) {
     const requested = parse(routineStepContentSchema, untrusted);
     if (requested.kind === 'checklist') continue;
     parse(uuid, requested.ref.id);
     parse(uuid, requested.ref.versionId);
-    if (requested.kind === 'recovery_method' || requested.kind === 'checkin_template') {
+    if (requested.kind === 'recovery_method') {
+      const exact = await recoveryMethod(requested.ref.versionId);
+      if (exact && exact.record.methodId !== requested.ref.id)
+        throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      catalog.push({
+        requested,
+        state: !exact
+          ? ('unavailable' as const)
+          : exact.head?.version_id === exact.record.versionId
+            ? ('current' as const)
+            : ('historical' as const),
+        reason: exact ? null : 'owned_version_unavailable',
+        content: exact ? { digest: impactDependencyDigest(exact.record) } : null,
+        currentHead: exact?.head ?? null,
+        provenance: exact
+          ? {
+              source: exact.record.source,
+              reviewState: exact.record.reviewState,
+              reviewedAt: exact.record.reviewedAt,
+            }
+          : null,
+      });
+      continue;
+    }
+    if (requested.kind === 'checkin_template') {
       catalog.push({
         requested,
         state: 'unavailable' as const,
