@@ -71,14 +71,20 @@ export function createRaceRelativeScheduleCalculationPorts(): RaceRelativeSchedu
   return {
     resolveNutrition(raw: unknown) {
       bounded(raw);
-      const { item, record, sourcePlan } = nutritionInput.parse(raw);
+      const { item, record, sourcePlan, event } = nutritionInput.parse(raw);
       if (item.planVersionId !== record.versionId) throw new Error('INVALID_CALCULATION_INPUT');
       const linked = new Map<string, z.infer<typeof planDraftSchema>>();
       if (sourcePlan && record.linkedTrainingPlanVersionId !== null)
         linked.set(record.linkedTrainingPlanVersionId, sourcePlan);
-      // Existing resolver deliberately leaves race anchors unresolved. The
-      // event is validated, but never translated into a synthetic Plan session.
-      const result = projectNutritionItem(item, record, linked, record.timezone);
+      // Preview consumes this explicit event only; no normal reader is wired
+      // to mutable current race data and no synthetic Plan session is created.
+      const result = projectNutritionItem(
+        item,
+        record,
+        linked,
+        record.timezone,
+        new Map([[event.id, event]]),
+      );
       return timing.parse(
         'value' in result
           ? { state: 'resolved', date: result.date, localTime: result.value.localTime }

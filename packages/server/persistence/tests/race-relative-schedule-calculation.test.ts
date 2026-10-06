@@ -5,6 +5,7 @@ import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
 import { raceEventSchema } from '@workout/contracts/races';
 import { routineScheduleVersionSchema } from '@workout/contracts/routines';
 import { createRaceRelativeScheduleCalculationPorts } from '../src/race-relative-schedule-calculation.js';
+import { projectNutritionItem } from '../src/integrated-planner.js';
 const planId = '10000000-0000-4000-8000-000000000001';
 function source(
   date = '2026-03-08',
@@ -195,7 +196,7 @@ it.each([
     reason: 'ambiguous_local_time',
   });
 });
-it('preserves missing duration/time/source and unsupported race mapping rather than inventing timing', () => {
+it('preserves missing duration/time/source and missing race time rather than inventing timing', () => {
   const input = nutrition();
   input.sourcePlan = source('2026-03-08', '01:30:00', null);
   expect(ports.resolveNutrition(input)).toEqual({
@@ -220,6 +221,174 @@ it('preserves missing duration/time/source and unsupported race mapping rather t
   };
   expect(ports.resolveNutrition(input)).toEqual({ state: 'unresolved', reason: 'missing_anchor' });
 });
+function raceNutrition(date = '2026-03-08', time: string | null = '01:30:00') {
+  const input = nutrition();
+  input.event.localDate = date;
+  input.event.localStartTime = time;
+  input.item.anchor = {
+    kind: 'relative',
+    entity: 'race',
+    entityId: input.event.id,
+    point: 'start',
+    offsetMinutes: 0,
+  };
+  return input;
+}
+it('resolves known race start without a linked Plan while ordinary resolver calls remain unresolved', () => {
+  const input = raceNutrition();
+  input.record.linkedTrainingPlanVersionId = null;
+  const before = structuredClone(input);
+  expect(ports.resolveNutrition({ ...input, sourcePlan: null })).toEqual({
+    state: 'resolved',
+    date: '2026-03-08',
+    localTime: '01:30:00',
+  });
+  expect(
+    projectNutritionItem(input.item, input.record, new Map(), input.record.timezone),
+  ).toMatchObject({ reason: 'missing_anchor' });
+  expect(input).toEqual(before);
+});
+it('known race date preview uses actual calculation with no Plan and remains approval blocked', () => {
+  const input = raceNutrition();
+  input.record.linkedTrainingPlanVersionId = null;
+  const result = projectRaceRelativeScheduleImpact(
+    {
+      event: input.event,
+      newLocalDate: '2026-03-09',
+      currentPlan: null,
+      sourcePlans: [],
+      completionReports: [],
+      selection: { kind: 'keep_plan' },
+      nutrition: [
+        {
+          record: input.record,
+          timings: [
+            {
+              itemId: input.item.id,
+              timing: { state: 'resolved', date: '2026-03-08', localTime: '01:30:00' },
+            },
+          ],
+        },
+      ],
+      routines: [],
+      resolutions: { nutrition: [], routines: [] },
+    },
+    ports,
+  );
+  expect(result).toMatchObject({
+    status: 'projected',
+    approval: { status: 'blocked' },
+    nutrition: [
+      {
+        items: [
+          {
+            state: 'affected',
+            after: { state: 'resolved', date: '2026-03-09', localTime: '01:30:00' },
+          },
+        ],
+      },
+    ],
+  });
+});
+it('keeps race/session UUID namespaces separate and missing/mismatched owned races unresolved', () => {
+  const input = raceNutrition();
+  const session = input.sourcePlan.sessions[0];
+  if (!session) throw new Error('Missing session');
+  session.id = input.event.id;
+  input.item.anchor = {
+    kind: 'relative',
+    entity: 'session',
+    entityId: input.event.id,
+    point: 'start',
+    offsetMinutes: 0,
+  };
+  input.sourcePlan = {
+    ...input.sourcePlan,
+    sessions: [{ ...session, date: '2026-03-07', localStartTime: '07:00:00' }],
+  };
+  expect(ports.resolveNutrition(input)).toEqual({
+    state: 'resolved',
+    date: '2026-03-07',
+    localTime: '07:00:00',
+  });
+  input.item.anchor.entity = 'race';
+  expect(ports.resolveNutrition(input)).toEqual({
+    state: 'resolved',
+    date: '2026-03-08',
+    localTime: '01:30:00',
+  });
+  const wrong = { ...input.event, id: '20000000-0000-4000-8000-000000000001' };
+  expect(
+    projectNutritionItem(
+      input.item,
+      input.record,
+      new Map(),
+      'UTC',
+      new Map([[input.event.id, wrong]]),
+    ),
+  ).toMatchObject({ reason: 'missing_anchor' });
+  expect(ports.resolveNutrition({ ...input, event: wrong })).toEqual({
+    state: 'unresolved',
+    reason: 'missing_anchor',
+  });
+});
+it.each([
+  ['2026-03-08', '02:30:00'],
+  ['2026-11-01', '01:30:00'],
+])('known race DST gap/overlap %s remains unresolved', (date, time) => {
+  expect(ports.resolveNutrition(raceNutrition(date, time))).toEqual({
+    state: 'unresolved',
+    reason: 'ambiguous_local_time',
+  });
+});
+it.each([
+  [60, '2026-03-08', '03:30:00'],
+  [-120, '2026-03-07', '23:30:00'],
+  [0, '2026-03-08', '01:30:00'],
+  [0.5, '2026-03-08', '01:30:30'],
+])('race elapsed offset %s preserves DST/day/fractional semantics', (offset, date, time) => {
+  const input = raceNutrition();
+  if (input.item.anchor.kind !== 'relative') throw new Error('Expected relative');
+  input.item.anchor.offsetMinutes = Number(offset);
+  expect(ports.resolveNutrition(input)).toEqual({ state: 'resolved', date, localTime: time });
+});
+it('projects race instant into explicit output timezone and rejects extreme finite offset', () => {
+  const input = raceNutrition('2026-03-09', '00:30:00');
+  input.event.timezone = 'UTC';
+  expect(ports.resolveNutrition(input)).toEqual({
+    state: 'resolved',
+    date: '2026-03-08',
+    localTime: '20:30:00',
+  });
+  expect(
+    projectNutritionItem(
+      input.item,
+      input.record,
+      new Map(),
+      'UTC',
+      new Map([[input.event.id, input.event]]),
+    ),
+  ).toMatchObject({ date: '2026-03-09', value: { localTime: '00:30:00' } });
+  if (input.item.anchor.kind !== 'relative') throw new Error('Expected relative');
+  input.item.anchor.offsetMinutes = Number.MAX_VALUE;
+  expect(ports.resolveNutrition(input)).toEqual({
+    state: 'unresolved',
+    reason: 'offset_out_of_range',
+  });
+});
+it.each([0, 3600, null])(
+  'race end remains unknown even with targetSeconds %s and explicit start',
+  (targetSeconds) => {
+    const input = raceNutrition();
+    input.event.targetSeconds = targetSeconds;
+    if (input.item.anchor.kind !== 'relative') throw new Error('Expected relative');
+    input.item.anchor.point = 'end';
+    expect(ports.resolveNutrition(input)).toEqual({
+      state: 'unresolved',
+      reason: 'missing_anchor',
+    });
+  },
+);
 it('reuses actual absolute timezone conversion and retains null clock without assuming midnight', () => {
   const input = nutrition();
   input.item.anchor = {
