@@ -3,17 +3,23 @@ import { z } from 'zod';
 import {
   raceCommandResultSchema,
   raceEventCreateCommandSchema,
+  raceEventDeleteCommandSchema,
   raceEventUpdateCommandSchema,
   raceResultCreateCommandSchema,
+  raceResultDeleteCommandSchema,
   raceResultUpdateCommandSchema,
   trainingBestCreateCommandSchema,
+  trainingBestDeleteCommandSchema,
   trainingBestUpdateCommandSchema,
   type RaceCommandResult,
   type RaceEventCreateCommand,
+  type RaceEventDeleteCommand,
   type RaceEventUpdateCommand,
   type RaceResultCreateCommand,
+  type RaceResultDeleteCommand,
   type RaceResultUpdateCommand,
   type TrainingBestCreateCommand,
+  type TrainingBestDeleteCommand,
   type TrainingBestUpdateCommand,
 } from '@workout/contracts/race-commands';
 import {
@@ -62,12 +68,22 @@ export interface RaceRepository {
     id: string,
     input: RaceEventUpdateCommand,
   ): Promise<RaceCommandResult>;
+  deleteRaceEvent(
+    athleteId: string,
+    id: string,
+    input: RaceEventDeleteCommand,
+  ): Promise<RaceCommandResult>;
   getRaceEvent(athleteId: string, id: string): Promise<RaceEvent | null>;
   createRaceResult(athleteId: string, input: RaceResultCreateCommand): Promise<RaceCommandResult>;
   updateRaceResult(
     athleteId: string,
     id: string,
     input: RaceResultUpdateCommand,
+  ): Promise<RaceCommandResult>;
+  deleteRaceResult(
+    athleteId: string,
+    id: string,
+    input: RaceResultDeleteCommand,
   ): Promise<RaceCommandResult>;
   getRaceResult(athleteId: string, id: string): Promise<RaceResult | null>;
   createTrainingBest(
@@ -78,6 +94,11 @@ export interface RaceRepository {
     athleteId: string,
     id: string,
     input: TrainingBestUpdateCommand,
+  ): Promise<RaceCommandResult>;
+  deleteTrainingBest(
+    athleteId: string,
+    id: string,
+    input: TrainingBestDeleteCommand,
   ): Promise<RaceCommandResult>;
   getTrainingBest(athleteId: string, id: string): Promise<TrainingBest | null>;
 }
@@ -278,6 +299,49 @@ export function createRaceRepository(
       return result;
     });
   }
+  async function remove(
+    athleteId: string,
+    kind: Kind,
+    id: string,
+    input: RaceEventDeleteCommand | RaceResultDeleteCommand | TrainingBestDeleteCommand,
+  ): Promise<RaceCommandResult> {
+    const { idempotencyKey, ...body } = input;
+    const requestHash = createHash('sha256')
+      .update(JSON.stringify({ kind, action: 'delete', id, body }))
+      .digest('hex');
+    return database.tenant(athleteId, async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+      const receipt = await tx.query(
+        'SELECT request_hash,result FROM race_command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+        [athleteId, idempotencyKey],
+      );
+      if (receipt.rows[0]) {
+        if (receipt.rows[0]['request_hash'] !== requestHash)
+          throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+        return raceCommandResultSchema.parse(receipt.rows[0]['result']);
+      }
+      let result: RaceCommandResult;
+      try {
+        const rows = await tx.query('SELECT public.delete_race_entity($1,$2,$3) AS result', [
+          kind,
+          id,
+          input.expectedRevision,
+        ]);
+        result = raceCommandResultSchema.parse(rows.rows[0]?.['result']);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'RACE_NOT_FOUND')
+          throw new RaceRepositoryError('RACE_NOT_FOUND');
+        if (error instanceof Error && error.message === 'REVISION_CONFLICT')
+          throw new PersistenceConflict('REVISION_CONFLICT');
+        throw error;
+      }
+      await tx.query(
+        'INSERT INTO race_command_receipt(athlete_id,idempotency_key,request_hash,result) VALUES($1,$2,$3,$4::jsonb)',
+        [athleteId, idempotencyKey, requestHash, JSON.stringify(result)],
+      );
+      return result;
+    });
+  }
   async function read<T>(
     athleteId: string,
     table: (typeof tables)[Kind],
@@ -372,11 +436,15 @@ export function createRaceRepository(
       write(athleteId, 'race-event', null, raceEventCreateCommandSchema.parse(input)),
     updateRaceEvent: async (athleteId, id, input) =>
       write(athleteId, 'race-event', uuid.parse(id), raceEventUpdateCommandSchema.parse(input)),
+    deleteRaceEvent: async (athleteId, id, input) =>
+      remove(athleteId, 'race-event', uuid.parse(id), raceEventDeleteCommandSchema.parse(input)),
     getRaceEvent: (athleteId, id) => read(athleteId, tables['race-event'], id, raceEventSchema),
     createRaceResult: async (athleteId, input) =>
       write(athleteId, 'race-result', null, raceResultCreateCommandSchema.parse(input)),
     updateRaceResult: async (athleteId, id, input) =>
       write(athleteId, 'race-result', uuid.parse(id), raceResultUpdateCommandSchema.parse(input)),
+    deleteRaceResult: async (athleteId, id, input) =>
+      remove(athleteId, 'race-result', uuid.parse(id), raceResultDeleteCommandSchema.parse(input)),
     getRaceResult: (athleteId, id) => read(athleteId, tables['race-result'], id, raceResultSchema),
     createTrainingBest: async (athleteId, input) =>
       write(athleteId, 'training-best', null, trainingBestCreateCommandSchema.parse(input)),
@@ -386,6 +454,13 @@ export function createRaceRepository(
         'training-best',
         uuid.parse(id),
         trainingBestUpdateCommandSchema.parse(input),
+      ),
+    deleteTrainingBest: async (athleteId, id, input) =>
+      remove(
+        athleteId,
+        'training-best',
+        uuid.parse(id),
+        trainingBestDeleteCommandSchema.parse(input),
       ),
     getTrainingBest: (athleteId, id) =>
       read(athleteId, tables['training-best'], id, trainingBestSchema),

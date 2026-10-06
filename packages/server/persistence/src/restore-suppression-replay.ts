@@ -37,6 +37,9 @@ type SupportedRecord =
       SuppressionRecord,
       {
         kind:
+          | 'race_event_deleted'
+          | 'race_result_deleted'
+          | 'training_best_deleted'
           | 'tenant_erased'
           | 'course_deleted'
           | 'activity_deleted'
@@ -197,6 +200,9 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         seen.add(record.eventId);
         eventCount++;
         if (
+          record.kind !== 'race_event_deleted' &&
+          record.kind !== 'race_result_deleted' &&
+          record.kind !== 'training_best_deleted' &&
           record.kind !== 'tenant_erased' &&
           record.kind !== 'course_deleted' &&
           record.kind !== 'activity_deleted' &&
@@ -368,6 +374,29 @@ export async function replayVerifiedSuppressionChain(
             record.eventId,
             record.occurredAt,
           ]);
+        } else if (
+          record.kind === 'race_event_deleted' ||
+          record.kind === 'race_result_deleted' ||
+          record.kind === 'training_best_deleted'
+        ) {
+          const applied = await client.query(
+            'SELECT public.replay_race_deletion_exact($1,$2,$3,$4,$5,$6,$7) AS result',
+            [
+              record.athleteId,
+              record.kind,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.racePreviousRevision,
+              record.raceDeletedRevision,
+            ],
+          );
+          if (
+            !['applied', 'already_applied', 'already_applied_by_erasure'].includes(
+              String(applied.rows[0]?.['result']),
+            )
+          )
+            throw new Error('RESTORE_REPLAY_FAILED');
         } else if (record.kind === 'activity_deleted') {
           await client.query(
             'SELECT public.replay_activity_deletion_exact($1,$2,$3,$4,$5,$6,$7,$8,$9)',

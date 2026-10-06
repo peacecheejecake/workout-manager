@@ -104,6 +104,7 @@ const migrationFiles = [
   '096_healthkit_workout_deregistration.sql',
   '097_healthkit_deregistration_worker.sql',
   '098_race_ledger.sql',
+  '099_exact_race_deletion.sql',
 ] as const;
 
 /**
@@ -369,6 +370,12 @@ export async function grantRaces(connectionString: string, runtimeRole: string):
     await pool.query(`GRANT SELECT,UPDATE ON course,activity_canonical TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT ON course_revision,plan_snapshot TO "${runtimeRole}"`);
     await pool.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
+    // Historical upgrade tests may stop at the race ledger migration.
+    const deletion = await pool.query('SELECT 1 FROM schema_migrations WHERE version=99');
+    if (deletion.rowCount)
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.delete_race_entity(text,uuid,integer) TO "${runtimeRole}"`,
+      );
   } finally {
     await pool.end();
   }

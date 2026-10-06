@@ -28,6 +28,24 @@ const domainTables = [
   'recovery_action_log',
   'coaching_constraint',
   'course_share_area_budget',
+  'healthkit_workout_sample',
+  'healthkit_workout_batch_receipt',
+  'healthkit_workout_lineage',
+  'healthkit_existing_binding',
+  'healthkit_workout_registry_head',
+  'healthkit_workout_claim',
+  'healthkit_workout_registration_receipt',
+  'healthkit_workout_deregistration',
+  'healthkit_deregistration_work',
+  'race_event',
+  'race_event_revision',
+  'race_result',
+  'race_result_revision',
+  'training_best',
+  'training_best_revision',
+  'race_command_receipt',
+  'race_collection_head',
+  'restore_race_deletion_replay_receipt',
 ].map((name) => `public.${name}`);
 const catalog = domainTables.map((table_name) => ({
   table_name,
@@ -38,7 +56,7 @@ const catalog = domainTables.map((table_name) => ({
   force_rls: true,
   row_security: true,
 }));
-const migrations = Array.from({ length: 93 }, (_, index) => ({
+const migrations = Array.from({ length: 99 }, (_, index) => ({
   version: index + 1,
   checksum: String(index + 1).padStart(64, '0'),
 }));

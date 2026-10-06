@@ -14,6 +14,11 @@ const EVENT_KINDS = [
   'course_share_revoked',
   'intake_entry_deleted',
   'recovery_action_deleted',
+  'healthkit_workout_deregistration_pending',
+  'healthkit_workout_deregistration_released',
+  'race_event_deleted',
+  'race_result_deleted',
+  'training_best_deleted',
 ];
 const SYSTEM_ID = /^[1-9][0-9]{0,19}$/;
 const SLOT = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -36,6 +41,24 @@ const DOMAIN_TABLES = [
   'recovery_action_log',
   'coaching_constraint',
   'course_share_area_budget',
+  'healthkit_workout_sample',
+  'healthkit_workout_batch_receipt',
+  'healthkit_workout_lineage',
+  'healthkit_existing_binding',
+  'healthkit_workout_registry_head',
+  'healthkit_workout_claim',
+  'healthkit_workout_registration_receipt',
+  'healthkit_workout_deregistration',
+  'healthkit_deregistration_work',
+  'race_event',
+  'race_event_revision',
+  'race_result',
+  'race_result_revision',
+  'training_best',
+  'training_best_revision',
+  'race_command_receipt',
+  'race_collection_head',
+  'restore_race_deletion_replay_receipt',
 ].map((name) => `public.${name}`);
 const REQUIRED_GAPS = [
   'SNAPSHOT_BINDING_NOT_INDEPENDENTLY_VERIFIED',
@@ -43,6 +66,7 @@ const REQUIRED_GAPS = [
   'PRE_EVENT_ERASURE_OWNER_NOT_DISCOVERABLE',
   'PRE_EVENT_HISTORY_NOT_RECONSTRUCTIBLE',
   'HEALTHKIT_RAW_ONLY_DELETION_NOT_COVERED',
+  'HEALTHKIT_GLOBAL_REPLAY_RECEIPTS_NOT_CAPTURED',
   'SHARE_EPOCH_OUTSIDE_DATABASE',
   'POST_SNAPSHOT_TAIL_NOT_WITNESSED',
   'DOMAIN_HEADS_NOT_FULLY_CAPTURED',
@@ -212,7 +236,7 @@ function coverageCheck(coverage, snapshot, expectedTags, fingerprint) {
     'gaps',
   ]);
   if (
-    coverage.schemaVersion !== 2 ||
+    coverage.schemaVersion !== 3 ||
     coverage.complete !== false ||
     coverage.domainSchemaFingerprint !== fingerprint
   )

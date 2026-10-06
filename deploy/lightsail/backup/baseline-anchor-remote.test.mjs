@@ -42,6 +42,7 @@ const gaps = [
   'PRE_EVENT_ERASURE_OWNER_NOT_DISCOVERABLE',
   'PRE_EVENT_HISTORY_NOT_RECONSTRUCTIBLE',
   'HEALTHKIT_RAW_ONLY_DELETION_NOT_COVERED',
+  'HEALTHKIT_GLOBAL_REPLAY_RECEIPTS_NOT_CAPTURED',
   'SHARE_EPOCH_OUTSIDE_DATABASE',
   'POST_SNAPSHOT_TAIL_NOT_WITNESSED',
   'DOMAIN_HEADS_NOT_FULLY_CAPTURED',
@@ -99,7 +100,7 @@ function fixture() {
     manifestBytes,
     expectedSnapshot: snapshot,
     coverage: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       domainSchemaFingerprint: fingerprint,
       snapshot: {
         snapshotName: snapshot.snapshotName,

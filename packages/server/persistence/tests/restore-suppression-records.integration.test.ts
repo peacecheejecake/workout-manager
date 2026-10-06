@@ -48,6 +48,8 @@ const namesAndOids: readonly (readonly [string, number])[] = [
   ['healthkit_registry_previous_revision', 23],
   ['healthkit_registry_revision', 23],
   ['healthkit_object_scopes', 3802],
+  ['race_previous_revision', 23],
+  ['race_deleted_revision', 23],
 ];
 
 const targetId = randomUUID();
@@ -495,5 +497,60 @@ describe('local replay record decoder', () => {
     expect(() => decodeSuppressionPgoutputRecords(unexpected, '0/100')).toThrow(
       'PGOUTPUT_UNKNOWN_EVENT',
     );
+  });
+});
+
+describe('v4 race deletion minimal records', () => {
+  it.each(['race_event_deleted', 'race_result_deleted', 'training_best_deleted'])(
+    'decodes %s and terminal privacy deletion without extra values',
+    (kind) => {
+      for (const [previous, deleted] of [
+        [1, 2],
+        [2147483647, 2147483647],
+      ]) {
+        const row = values(kind, {
+          record_version: '4',
+          target_id: targetId,
+          race_previous_revision: String(previous),
+          race_deleted_revision: String(deleted),
+        });
+        const decoded = validateSuppressionRecord(row);
+        expect(decoded).toEqual({
+          schemaVersion: 4,
+          eventId: base.event_id,
+          athleteId: base.athlete_id,
+          occurredAt: base.occurred_at,
+          kind,
+          targetId,
+          racePreviousRevision: previous,
+          raceDeletedRevision: deleted,
+        });
+        expect(decodeSuppressionPgoutputRecords(messages(row), '0/100')[0]?.records).toEqual([
+          decoded,
+        ]);
+        for (const extra of [
+          { race_deleted_revision: String(previous === 1 ? 1 : 2147483646) },
+          { record_version: '1' },
+          { race_previous_revision: '0' },
+          { source_id: 'forbidden' },
+          { healthkit_operation_id: shareId },
+          { target_id: null },
+        ])
+          expect(() =>
+            validateSuppressionRecord(new Map([...row, ...Object.entries(extra)])),
+          ).toThrow();
+      }
+    },
+  );
+  it('keeps legacy discriminator strict when new columns exist', () => {
+    const row = values('tenant_erased');
+    expect(validateSuppressionRecord(row).kind).toBe('tenant_erased');
+    for (const extra of [
+      { record_version: '4' },
+      { race_previous_revision: '1', race_deleted_revision: '2' },
+    ])
+      expect(() =>
+        validateSuppressionRecord(new Map([...row, ...Object.entries(extra)])),
+      ).toThrow();
   });
 });

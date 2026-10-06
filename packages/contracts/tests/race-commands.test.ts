@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   raceCommandResultSchema,
+  raceEventDeleteCommandSchema,
+  raceResultDeleteCommandSchema,
+  trainingBestDeleteCommandSchema,
   raceEventCreateCommandSchema,
   raceEventUpdateCommandSchema,
   raceEventReadCommandSchema,
@@ -259,5 +262,37 @@ describe('M2-02b / S15 S16 / V2-F20 storage command boundaries', () => {
     expect(raceResultReadSchema.parse(verified)).toEqual(verified);
     expect(trainingBestReadSchema.parse({ ...best, id, revision: 1 }).elapsedSeconds).toBe(0);
     expect(raceResultReadSchema.safeParse({ ...result, id, revision: 1 }).success).toBe(false);
+  });
+});
+
+// M2-02f: a terminal revision cannot prevent privacy deletion.
+describe('race deletion boundary', () => {
+  it('accepts terminal CAS while rejecting ownership, health data and invalid revisions', () => {
+    for (const schema of [
+      raceEventDeleteCommandSchema,
+      raceResultDeleteCommandSchema,
+      trainingBestDeleteCommandSchema,
+    ]) {
+      expect(schema.parse({ idempotencyKey, expectedRevision: 2147483647 })).toEqual({
+        idempotencyKey,
+        expectedRevision: 2147483647,
+      });
+      for (const expectedRevision of [undefined, null, 0, -1, 1.5, '1', 2147483648])
+        expect(schema.safeParse({ idempotencyKey, expectedRevision }).success).toBe(false);
+      for (const extra of [
+        { athleteId: id },
+        { ownerId: id },
+        { id },
+        { values: result },
+        { confirmed: true },
+      ])
+        expect(schema.safeParse({ idempotencyKey, expectedRevision: 1, ...extra }).success).toBe(
+          false,
+        );
+      for (const invalidKey of ['', 'short', 'x'.repeat(129), 'key/with/path'])
+        expect(schema.safeParse({ idempotencyKey: invalidKey, expectedRevision: 1 }).success).toBe(
+          false,
+        );
+    }
   });
 });

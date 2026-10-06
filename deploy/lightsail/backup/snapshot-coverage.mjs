@@ -13,6 +13,11 @@ const KINDS = Object.freeze([
   'course_share_revoked',
   'intake_entry_deleted',
   'recovery_action_deleted',
+  'healthkit_workout_deregistration_pending',
+  'healthkit_workout_deregistration_released',
+  'race_event_deleted',
+  'race_result_deleted',
+  'training_best_deleted',
 ]);
 const TABLES = Object.freeze([
   'identity_private.account',
@@ -40,13 +45,31 @@ const DOMAIN_TABLES = Object.freeze([
   'public.recovery_action_log',
   'public.coaching_constraint',
   'public.course_share_area_budget',
+  'public.healthkit_workout_sample',
+  'public.healthkit_workout_batch_receipt',
+  'public.healthkit_workout_lineage',
+  'public.healthkit_existing_binding',
+  'public.healthkit_workout_registry_head',
+  'public.healthkit_workout_claim',
+  'public.healthkit_workout_registration_receipt',
+  'public.healthkit_workout_deregistration',
+  'public.healthkit_deregistration_work',
+  'public.race_event',
+  'public.race_event_revision',
+  'public.race_result',
+  'public.race_result_revision',
+  'public.training_best',
+  'public.training_best_revision',
+  'public.race_command_receipt',
+  'public.race_collection_head',
+  'public.restore_race_deletion_replay_receipt',
 ]);
 const DOMAIN_ROW_LIMIT = 10_000;
 const DOMAIN_BYTE_LIMIT = 32 * 1024 * 1024;
 const ROW_BYTE_LIMIT = 2 * 1024 * 1024;
 const ROW_BATCH_LIMIT = 8;
 const OWNER_LIMIT = 10_000;
-const REQUIRED_MIGRATION_VERSION = 93;
+const REQUIRED_MIGRATION_VERSION = 99;
 const SNAPSHOT = /^[0-9]+:[0-9]+:(?:[0-9]+(?:,[0-9]+)*)?$/;
 const LSN = /^[0-9A-F]{1,8}\/[0-9A-F]{1,8}$/i;
 const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -134,7 +157,7 @@ export function domainSchemaFingerprint(catalog, migrations) {
  * inventory is not a backup anchor, replay ledger, owner-completeness proof,
  * or permission to restore. expectedOwners is an independently obtained roster.
  * expectedDomainSchemaFingerprint must be pinned independently from the source
- * database: it binds exact catalog columns/RLS/owner and migration 001–093
+ * database: it binds exact catalog columns/RLS/owner and migration 001–099
  * checksums. Captured domain leaves include all current row fields; the result
  * contains HMAC tags, counts, and consent/status summaries but no raw rows.
  * Keep the result private. The inventory rejects oversized owners.
@@ -328,13 +351,24 @@ export async function buildSnapshotCoverage({
     const seenKinds = new Set();
     for (const row of eventRows) {
       const allowedVersion = [
-        'intake_entry_deleted',
-        'recovery_action_deleted',
-        'resource_share_revoked',
-        'course_share_revoked',
+        'race_event_deleted',
+        'race_result_deleted',
+        'training_best_deleted',
       ].includes(row.kind)
-        ? row.record_version === 1 || row.record_version === 2
-        : row.record_version === 1;
+        ? row.record_version === 4
+        : [
+              'healthkit_workout_deregistration_pending',
+              'healthkit_workout_deregistration_released',
+            ].includes(row.kind)
+          ? row.record_version === 3
+          : [
+                'intake_entry_deleted',
+                'recovery_action_deleted',
+                'resource_share_revoked',
+                'course_share_revoked',
+              ].includes(row.kind)
+            ? row.record_version === 1 || row.record_version === 2
+            : row.record_version === 1;
       if (
         !KINDS.includes(row.kind) ||
         !allowedVersion ||
@@ -414,7 +448,7 @@ export async function buildSnapshotCoverage({
     });
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     domainSchemaFingerprint: expectedDomainSchemaFingerprint,
     snapshot: {
       snapshotName: snapshot.snapshotName,
@@ -431,6 +465,7 @@ export async function buildSnapshotCoverage({
       'PRE_EVENT_ERASURE_OWNER_NOT_DISCOVERABLE',
       'PRE_EVENT_HISTORY_NOT_RECONSTRUCTIBLE',
       'HEALTHKIT_RAW_ONLY_DELETION_NOT_COVERED',
+      'HEALTHKIT_GLOBAL_REPLAY_RECEIPTS_NOT_CAPTURED',
       'SHARE_EPOCH_OUTSIDE_DATABASE',
       'POST_SNAPSHOT_TAIL_NOT_WITNESSED',
       'DOMAIN_HEADS_NOT_FULLY_CAPTURED',

@@ -337,3 +337,31 @@ describe('encrypted restore suppression segment', () => {
     }
   });
 });
+
+describe('authenticated v4 race suppression segments', () => {
+  it.each(['race_event_deleted', 'race_result_deleted', 'training_best_deleted'] as const)(
+    'round trips %s and rejects version/revision substitution',
+    (kind) => {
+      const entry: SuppressionRecord = {
+        schemaVersion: 4,
+        eventId,
+        athleteId,
+        occurredAt: '2026-09-30 12:34:56+00',
+        kind,
+        targetId,
+        racePreviousRevision: 2147483647,
+        raceDeletedRevision: 2147483647,
+      };
+      const envelope = withRecord(entry);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+      for (const invalid of [
+        { ...entry, schemaVersion: 3 as const },
+        { ...entry, racePreviousRevision: 1, raceDeletedRevision: 1 },
+      ])
+        expect(() => encryptReplaySegment({ envelope: withRecord(invalid), key, keyId })).toThrow();
+    },
+  );
+});

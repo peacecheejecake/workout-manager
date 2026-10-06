@@ -456,7 +456,21 @@ describe('race source deletion privacy', () => {
       records = await ledger(source);
     expect(await replay(source)).toBe('deleted');
     const first = await privacyEvents(source.athleteId);
+    // The new guard rejects ordinary owner UPDATE resurrection as well. To retain
+    // the historical partial-restore repair case, simulate pg_restore's data phase
+    // before post-data triggers are installed, only in this disposable owner fixture.
+    await expect(
+      tenant(source.athleteId, (client) =>
+        client.query(
+          'UPDATE training_best SET deleted=false,revision=1,values_json=$2::jsonb WHERE id=$1',
+          [records.best.id, JSON.stringify(records.bestInput.values)],
+        ),
+      ),
+    ).rejects.toThrow('RACE_DELETED_REENTRY');
     await tenant(source.athleteId, async (client) => {
+      await client.query(
+        'ALTER TABLE public.training_best DISABLE TRIGGER race_head_deletion_guard',
+      );
       await client.query(
         'UPDATE training_best SET deleted=false,revision=1,values_json=$2::jsonb WHERE id=$1',
         [records.best.id, JSON.stringify(records.bestInput.values)],
@@ -464,6 +478,9 @@ describe('race source deletion privacy', () => {
       await client.query(
         'INSERT INTO training_best_revision(athlete_id,entity_id,revision,values_json,created_at) VALUES($1,$2,1,$3::jsonb,clock_timestamp())',
         [source.athleteId, records.best.id, JSON.stringify(records.bestInput.values)],
+      );
+      await client.query(
+        'ALTER TABLE public.training_best ENABLE TRIGGER race_head_deletion_guard',
       );
     });
     expect(await replay(source)).toBe('already_applied');

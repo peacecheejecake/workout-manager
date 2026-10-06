@@ -39,6 +39,8 @@ const columnNames = [
   'healthkit_registry_previous_revision',
   'healthkit_registry_revision',
   'healthkit_object_scopes',
+  'race_previous_revision',
+  'race_deleted_revision',
 ] as const;
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -47,7 +49,7 @@ const timestamp =
   /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.\d{1,6})?([+-])(\d\d)(?::(\d\d))?$/;
 
 type Base = {
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   eventId: string;
   athleteId: string;
   occurredAt: string;
@@ -65,6 +67,12 @@ export type SuppressionRecord = Base &
         healthKitRegistryPreviousRevision: number;
         healthKitRegistryRevision: number;
         healthKitObjectScopes: { kind: 'activity' | 'course'; id: string }[];
+      }
+    | {
+        kind: 'race_event_deleted' | 'race_result_deleted' | 'training_best_deleted';
+        targetId: string;
+        racePreviousRevision: number;
+        raceDeletedRevision: number;
       }
     | { kind: 'tenant_erased' }
     | { kind: 'course_deleted'; targetId: string }
@@ -220,14 +228,14 @@ function only(values: Values, allowed: readonly string[]): void {
 export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const eventId = match(required(values, 'event_id'), uuid);
   const version = required(values, 'record_version');
-  if (version !== '1' && version !== '2' && version !== '3')
+  if (version !== '1' && version !== '2' && version !== '3' && version !== '4')
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   const athleteId = required(values, 'athlete_id');
   if ([...athleteId].length < 1 || [...athleteId].length > 200 || hasControl(athleteId))
     throw new Error('PGOUTPUT_INVALID_RECORD');
   const occurredAt = validTimestamp(required(values, 'occurred_at'));
   const base: Base = {
-    schemaVersion: version === '1' ? 1 : version === '2' ? 2 : 3,
+    schemaVersion: version === '1' ? 1 : version === '2' ? 2 : version === '3' ? 3 : 4,
     eventId,
     athleteId,
     occurredAt,
@@ -247,7 +255,31 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
     kind !== 'healthkit_workout_deregistration_released'
   )
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (
+    version === '4' &&
+    kind !== 'race_event_deleted' &&
+    kind !== 'race_result_deleted' &&
+    kind !== 'training_best_deleted'
+  )
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   switch (kind) {
+    case 'race_event_deleted':
+    case 'race_result_deleted':
+    case 'training_best_deleted': {
+      if (version !== '4') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+      only(values, ['target_id', 'race_previous_revision', 'race_deleted_revision']);
+      const previous = revision(values, 'race_previous_revision');
+      const deleted = revision(values, 'race_deleted_revision');
+      if (deleted !== Math.min(previous + 1, 2147483647))
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      return {
+        ...base,
+        kind,
+        targetId: target(values),
+        racePreviousRevision: previous,
+        raceDeletedRevision: deleted,
+      };
+    }
     case 'healthkit_workout_deregistration_pending':
     case 'healthkit_workout_deregistration_released': {
       if (version !== '3') throw new Error('PGOUTPUT_UNKNOWN_EVENT');

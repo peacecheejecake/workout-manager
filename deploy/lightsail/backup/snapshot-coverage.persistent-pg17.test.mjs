@@ -13,10 +13,15 @@ import { buildSnapshotCoverage } from './snapshot-coverage.mjs';
 const database = 'workout_pg17_proof';
 const marker = 'WM_DISPOSABLE_PG17_PROOF';
 const ownerId = '00000000-0000-4000-8000-000000000001';
-// Derived offline from checked-in source-registry.json migration checksums and
-// the 16 pinned relation/column descriptions, with coverage_owner as table owner.
-// Never derive this expected value from the database under test.
-const schemaPin = 'ccea92c9a8af78015d48ed0c35e05642b67d4b7d2263c61c1fd5123a0370ccc4';
+// Historical 001–093 / 16-relation source-registry.json pin:
+// ccea92c9a8af78015d48ed0c35e05642b67d4b7d2263c61c1fd5123a0370ccc4.
+// Current 001–099 / 34-relation pin was independently derived on disposable PG14.15,
+// with coverage_owner as table owner. All 99 migration SQL SHA256 checksums matched
+// schema_migrations; the saved 254-column catalog was hashed offline with those checksums.
+// Reproduction evidence: /private/tmp/wm-m2-02f-coverage-pin-derive.mjs and
+// /private/tmp/wm-m2-02f-coverage-pin-basis.json (2026-10-06 local acceptance run).
+// Never derive this expected value from the PG17 database under test.
+const schemaPin = '1ddbf76b6d74dd82e49c74262a3fec2864f52ec7b02e48bc3e8c0293ecdd12bf';
 const urlInput = process.env.WORKOUT_SNAPSHOT_COVERAGE_PG17_URL;
 const pgDump = process.env.WORKOUT_PG17_DUMP_BIN ?? 'pg_dump';
 const pgRestore =
@@ -55,7 +60,7 @@ function program(bin, args, env = process.env) {
 }
 
 test(
-  'PG17 persistent exported snapshot binds pinned 001–093 coverage and dump to one view',
+  'PG17 persistent exported snapshot binds pinned 001–099 coverage and dump to one view',
   { skip: !urlInput, timeout: 180_000 },
   async () => {
     const url = safeUrl(urlInput);
@@ -107,7 +112,7 @@ test(
       await admin.query('GRANT CREATE ON SCHEMA public TO coverage_owner');
       await admin.end();
       admin = undefined;
-      await migrate(ownerUrl.toString(), 93);
+      await migrate(ownerUrl.toString(), 99);
       admin = await connect(adminUrl);
       await admin.query('ALTER DATABASE workout_pg17_proof OWNER TO coverage_owner');
       await admin.query('ALTER SCHEMA public OWNER TO coverage_owner');
@@ -168,7 +173,9 @@ test(
           const coverage = await buildSnapshotCoverage(input);
           assert.equal(coverage.complete, false);
           assert.equal(coverage.owners.length, 1);
-          assert.equal(Object.keys(coverage.owners[0].domain).length, 16);
+          assert.equal(coverage.schemaVersion, 3);
+          assert.equal(Object.keys(coverage.owners[0].domain).length, 34);
+          assert.ok(coverage.gaps.includes('HEALTHKIT_GLOBAL_REPLAY_RECEIPTS_NOT_CAPTURED'));
           assert.equal(coverage.owners[0].domain['public.course'].count, 0);
           assert.deepEqual(coverage.owners[0].consent.ai, { state: 'absent' });
           await assert.rejects(

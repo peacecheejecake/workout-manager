@@ -69,6 +69,20 @@ export const trainingBestUpdateCommandSchema = z.strictObject({
 export const trainingBestReadCommandSchema = z.strictObject({ id: trainingBestSchema.shape.id });
 export const trainingBestReadSchema = trainingBestSchema;
 
+/** Privacy deletion remains available at the terminal int4 revision. Ownership
+ * comes from authentication and CAS freshness is enforced by persistence.
+ */
+const deletionCommand = z.strictObject({
+  idempotencyKey: key,
+  expectedRevision: z.number().int().min(1).max(2147483647),
+});
+export const raceEventDeleteCommandSchema = deletionCommand;
+export const raceResultDeleteCommandSchema = deletionCommand;
+export const trainingBestDeleteCommandSchema = deletionCommand;
+export type RaceEventDeleteCommand = z.infer<typeof raceEventDeleteCommandSchema>;
+export type RaceResultDeleteCommand = z.infer<typeof raceResultDeleteCommandSchema>;
+export type TrainingBestDeleteCommand = z.infer<typeof trainingBestDeleteCommandSchema>;
+
 /** Minimal successful receipt: fetch current values through the read boundary.
  * This avoids keeping health values or official URLs in idempotency receipts.
  */

@@ -35,7 +35,7 @@ const occurredAt = z
       Number.isFinite(Date.parse(value)),
   );
 const base = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
@@ -43,6 +43,14 @@ const base = z.object({
 const record = z
   .discriminatedUnion('kind', [
     base.extend({ kind: z.literal('tenant_erased') }).strict(),
+    base
+      .extend({
+        kind: z.enum(['race_event_deleted', 'race_result_deleted', 'training_best_deleted']),
+        targetId: uuid,
+        racePreviousRevision: revision,
+        raceDeletedRevision: revision,
+      })
+      .strict(),
     base
       .extend({
         kind: z.enum([
@@ -145,6 +153,13 @@ const record = z
   .superRefine((item, context) => {
     let valid = true;
     switch (item.kind) {
+      case 'race_event_deleted':
+      case 'race_result_deleted':
+      case 'training_best_deleted':
+        valid =
+          item.schemaVersion === 4 &&
+          item.raceDeletedRevision === Math.min(item.racePreviousRevision + 1, 2147483647);
+        break;
       case 'healthkit_workout_deregistration_pending':
       case 'healthkit_workout_deregistration_released':
         valid =
@@ -207,6 +222,13 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (
+      item.schemaVersion === 4 &&
+      item.kind !== 'race_event_deleted' &&
+      item.kind !== 'race_result_deleted' &&
+      item.kind !== 'training_best_deleted'
+    )
+      valid = false;
     if (
       item.schemaVersion === 3 &&
       item.kind !== 'healthkit_workout_deregistration_pending' &&

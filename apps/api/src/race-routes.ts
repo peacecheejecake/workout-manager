@@ -3,10 +3,13 @@ import { z } from 'zod';
 import {
   raceCommandResultSchema,
   raceEventCreateCommandSchema,
+  raceEventDeleteCommandSchema,
   raceEventUpdateCommandSchema,
   raceResultCreateCommandSchema,
+  raceResultDeleteCommandSchema,
   raceResultUpdateCommandSchema,
   trainingBestCreateCommandSchema,
+  trainingBestDeleteCommandSchema,
   trainingBestUpdateCommandSchema,
   type RaceCommandResult,
 } from '@workout/contracts/race-commands';
@@ -80,6 +83,7 @@ export function registerRaceRoutes(
     function family<
       C extends { idempotencyKey: string },
       U extends { idempotencyKey: string },
+      D extends { idempotencyKey: string },
       R extends { id: string },
       P,
     >(config: {
@@ -88,10 +92,13 @@ export function registerRaceRoutes(
       createBody: z.ZodType<Omit<C, 'idempotencyKey'>>;
       updateSchema: z.ZodType<U>;
       updateBody: z.ZodType<Omit<U, 'idempotencyKey'>>;
+      deleteSchema: z.ZodType<D>;
+      deleteBody: z.ZodType<Omit<D, 'idempotencyKey'>>;
       readSchema: z.ZodType<R>;
       pageSchema: z.ZodType<P>;
       create: (athleteId: string, payload: C) => Promise<RaceCommandResult>;
       update: (athleteId: string, id: string, payload: U) => Promise<RaceCommandResult>;
+      remove: (athleteId: string, id: string, payload: D) => Promise<RaceCommandResult>;
       get: (athleteId: string, id: string) => Promise<R | null>;
       list: (athleteId: string, query: RaceListQuery) => Promise<P>;
     }) {
@@ -140,6 +147,21 @@ export function registerRaceRoutes(
         z.literal(id).parse(result.id);
         return result;
       });
+      raceRoutes.delete(`${config.path}/:id`, { bodyLimit: 16 * 1024 }, async (request) => {
+        const athleteId = principal(request).athleteId;
+        input(emptyQuery, request.query);
+        const { id } = input(paramsSchema, request.params);
+        const body = input(config.deleteBody, request.body);
+        const payload = input(config.deleteSchema, {
+          ...body,
+          idempotencyKey: request.headers['idempotency-key'],
+        });
+        const result = raceCommandResultSchema.parse(
+          await execute(() => config.remove(athleteId, id, payload)),
+        );
+        z.literal(id).parse(result.id);
+        return result;
+      });
     }
     family({
       path: '/races',
@@ -147,10 +169,13 @@ export function registerRaceRoutes(
       createBody: raceEventCreateCommandSchema.omit({ idempotencyKey: true }),
       updateSchema: raceEventUpdateCommandSchema,
       updateBody: raceEventUpdateCommandSchema.omit({ idempotencyKey: true }),
+      deleteSchema: raceEventDeleteCommandSchema,
+      deleteBody: raceEventDeleteCommandSchema.omit({ idempotencyKey: true }),
       readSchema: raceEventSchema,
       pageSchema: raceEventListPageSchema,
       create: (athlete, payload) => races.createRaceEvent(athlete, payload),
       update: (athlete, id, payload) => races.updateRaceEvent(athlete, id, payload),
+      remove: (athlete, id, payload) => races.deleteRaceEvent(athlete, id, payload),
       get: (athlete, id) => races.getRaceEvent(athlete, id),
       list: (athlete, query) => races.listRaceEvents(athlete, query),
     });
@@ -160,10 +185,13 @@ export function registerRaceRoutes(
       createBody: raceResultCreateCommandSchema.omit({ idempotencyKey: true }),
       updateSchema: raceResultUpdateCommandSchema,
       updateBody: raceResultUpdateCommandSchema.omit({ idempotencyKey: true }),
+      deleteSchema: raceResultDeleteCommandSchema,
+      deleteBody: raceResultDeleteCommandSchema.omit({ idempotencyKey: true }),
       readSchema: raceResultSchema,
       pageSchema: raceResultListPageSchema,
       create: (athlete, payload) => races.createRaceResult(athlete, payload),
       update: (athlete, id, payload) => races.updateRaceResult(athlete, id, payload),
+      remove: (athlete, id, payload) => races.deleteRaceResult(athlete, id, payload),
       get: (athlete, id) => races.getRaceResult(athlete, id),
       list: (athlete, query) => races.listRaceResults(athlete, query),
     });
@@ -173,10 +201,13 @@ export function registerRaceRoutes(
       createBody: trainingBestCreateCommandSchema.omit({ idempotencyKey: true }),
       updateSchema: trainingBestUpdateCommandSchema,
       updateBody: trainingBestUpdateCommandSchema.omit({ idempotencyKey: true }),
+      deleteSchema: trainingBestDeleteCommandSchema,
+      deleteBody: trainingBestDeleteCommandSchema.omit({ idempotencyKey: true }),
       readSchema: trainingBestSchema,
       pageSchema: trainingBestListPageSchema,
       create: (athlete, payload) => races.createTrainingBest(athlete, payload),
       update: (athlete, id, payload) => races.updateTrainingBest(athlete, id, payload),
+      remove: (athlete, id, payload) => races.deleteTrainingBest(athlete, id, payload),
       get: (athlete, id) => races.getTrainingBest(athlete, id),
       list: (athlete, query) => races.listTrainingBests(athlete, query),
     });

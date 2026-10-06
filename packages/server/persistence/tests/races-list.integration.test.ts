@@ -193,10 +193,13 @@ describe('race lists on real PostgreSQL', () => {
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       const listing = repository.listRaceEvents(athlete, { limit: 1 });
       let waiting = false;
       const deadline = Date.now() + 2000;
       while (Date.now() < deadline) {
+        // This observer holds a transaction; clear its cached statistics snapshot.
+        await client.query('SELECT pg_stat_clear_snapshot()');
         const wait = await client.query(
           "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE usename='workout_runtime' AND wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock(hashtextextended%') AS waiting",
         );
@@ -352,7 +355,10 @@ describe('race lists on real PostgreSQL', () => {
     await admin.query('UPDATE race_collection_head SET revision=2147483647 WHERE athlete_id=$1', [
       athlete,
     ]);
-    await admin.query('UPDATE race_result SET revision=2147483647 WHERE athlete_id=$1', [athlete]);
+    await admin.query(
+      "WITH tenant_context AS (SELECT set_config('app.athlete_id',$1,true)) UPDATE race_result SET revision=2147483647 FROM tenant_context WHERE athlete_id=$1",
+      [athlete],
+    );
     const old = await repository.listRaceResults(athlete);
     const oldBest = await repository.listTrainingBests(athlete);
     await createActivityRepository(database).deleteActivity(athlete, activityId, {

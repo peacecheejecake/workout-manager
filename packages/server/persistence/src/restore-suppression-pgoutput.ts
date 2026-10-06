@@ -53,9 +53,14 @@ const columns = [
   ['healthkit_registry_previous_revision', 23],
   ['healthkit_registry_revision', 23],
   ['healthkit_object_scopes', 3802],
+  ['race_previous_revision', 23],
+  ['race_deleted_revision', 23],
 ] as const;
 
 const kinds = new Set([
+  'race_event_deleted',
+  'race_result_deleted',
+  'training_best_deleted',
   'tenant_erased',
   'course_deleted',
   'activity_deleted',

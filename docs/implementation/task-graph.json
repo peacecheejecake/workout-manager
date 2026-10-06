@@ -1852,7 +1852,7 @@
     {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d", "M2-02e"],
+      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d", "M2-02e", "M2-02f"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
@@ -2191,6 +2191,15 @@
       "kind": "gate",
       "status": "not_started",
       "scope": "Web 공개 출시 조건(G2-PUBLIC) + 실제 HealthKit·native 검증"
+    },
+    {
+      "id": "M2-02f",
+      "title": "대회·기록 개별 삭제와 복원 suppression",
+      "dependsOn": ["M2-02e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "개별 삭제 CAS·최소 receipt·history/private purge·tenant별 collection privacyGeneration·독립 restore suppression ledger/exact replay. RaceEvent 삭제는 independent actual result를 조용히 삭제하지 않고 nullable link만 정리; linked Plan 자동 변경 금지. 설계/계약 root 직렬화 후 실제 PG·복원 수용, API 연결.",
+      "evidence": "docs/implementation/progress/M2-02f.md"
     }
   ]
 }

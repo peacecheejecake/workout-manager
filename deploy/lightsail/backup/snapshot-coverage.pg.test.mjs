@@ -31,6 +31,24 @@ const domainTables = [
   'recovery_action_log',
   'coaching_constraint',
   'course_share_area_budget',
+  'healthkit_workout_sample',
+  'healthkit_workout_batch_receipt',
+  'healthkit_workout_lineage',
+  'healthkit_existing_binding',
+  'healthkit_workout_registry_head',
+  'healthkit_workout_claim',
+  'healthkit_workout_registration_receipt',
+  'healthkit_workout_deregistration',
+  'healthkit_deregistration_work',
+  'race_event',
+  'race_event_revision',
+  'race_result',
+  'race_result_revision',
+  'training_best',
+  'training_best_revision',
+  'race_command_receipt',
+  'race_collection_head',
+  'restore_race_deletion_replay_receipt',
 ];
 
 function run(program, args) {
@@ -86,7 +104,7 @@ test(
       await owner.query(`CREATE SCHEMA identity_private;
         CREATE TABLE public.schema_migrations(version integer PRIMARY KEY,checksum text NOT NULL);
         INSERT INTO public.schema_migrations
-          SELECT n,lpad(n::text,64,'0') FROM generate_series(1,93) n;
+          SELECT n,lpad(n::text,64,'0') FROM generate_series(1,99) n;
         CREATE TABLE identity_private.account(athlete_id uuid PRIMARY KEY);
         CREATE TABLE restore_suppression_event(athlete_id text NOT NULL, kind text NOT NULL,
           record_version integer NOT NULL);
@@ -299,7 +317,7 @@ test(
 );
 
 test(
-  'real migrations 001–093 expose all 16 owner domain tables with FORCE RLS',
+  'real migrations 001–099 expose all 34 owner domain tables with FORCE RLS',
   { skip: process.env.WORKOUT_SNAPSHOT_COVERAGE_REAL_PG !== '1' },
   async () => {
     const root = mkdtempSync(join(tmpdir(), 'wm-snapshot-real-schema-'));
