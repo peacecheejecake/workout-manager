@@ -89,15 +89,15 @@ function cstring(value: string): Buffer {
   return Buffer.concat([Buffer.from(value), Buffer.from([0])]);
 }
 
-function messages(row: ReadonlyMap<string, string | null>): Buffer[] {
+function messages(row: ReadonlyMap<string, string | null>, roster = namesAndOids): Buffer[] {
   const relation = Buffer.concat([
     Buffer.from('R'),
     u32(42),
     cstring('public'),
     cstring('restore_suppression_event'),
     Buffer.from('d'),
-    u16(namesAndOids.length),
-    ...namesAndOids.flatMap(([name, oid]) => [
+    u16(roster.length),
+    ...roster.flatMap(([name, oid]) => [
       Buffer.from([0]),
       cstring(name),
       u32(oid),
@@ -108,8 +108,8 @@ function messages(row: ReadonlyMap<string, string | null>): Buffer[] {
     Buffer.from('I'),
     u32(42),
     Buffer.from('N'),
-    u16(namesAndOids.length),
-    ...namesAndOids.flatMap(([name]) => {
+    u16(roster.length),
+    ...roster.flatMap(([name]) => {
       const value = row.get(name);
       if (value === null || value === undefined) return [Buffer.from('n')];
       const bytes = Buffer.from(value);
@@ -602,4 +602,205 @@ it('accepts only v5 app transitions with exact nullable one-step epochs and clos
     ).toThrow();
   expect(() => validateSuppressionRecord(values('ai_consent_transition', app))).toThrow();
   expect(() => validateSuppressionRecord(values('healthkit_consent_transition', app))).toThrow();
+});
+
+const manualColumns: readonly (readonly [string, number])[] = [
+  ['manual_review_source_kind', 25],
+  ['manual_review_source_id', 25],
+  ['manual_review_version_scope', 25],
+  ['manual_review_version_key', 25],
+];
+function manualValues(extra: Record<string, string | null> = {}) {
+  const row = values('manual_review_source_suppressed', { record_version: '6' });
+  for (const [name] of manualColumns) row.set(name, null);
+  for (const [name, value] of Object.entries({
+    manual_review_source_kind: 'race-event',
+    manual_review_source_id: targetId,
+    manual_review_version_scope: 'exact_version',
+    manual_review_version_key: '1',
+    ...extra,
+  }))
+    row.set(name, value);
+  return row;
+}
+describe('forward106 manual review record boundary (synthetic bytes)', () => {
+  it.each([
+    ['race-event', '2147483647'],
+    ['plan-snapshot', '1'],
+    ['nutrition-plan-version', targetId],
+    ['recovery-strategy-version', targetId],
+    ['routine-schedule-version', targetId],
+    ['routine-blueprint-version', targetId],
+    ['routine-occurrence', 'immutable'],
+    ['routine-run', '0'],
+    ['session-completion', JSON.stringify([targetId, 2147483647])],
+  ])('decodes exact identity %s without inventing a source deletion', (kind, key) => {
+    const row = manualValues({ manual_review_source_kind: kind, manual_review_version_key: key });
+    expect(validateSuppressionRecord(row)).toMatchObject({
+      schemaVersion: 6,
+      kind: 'manual_review_source_suppressed',
+      manualReviewSourceKind: kind,
+      manualReviewVersionKey: key,
+    });
+    expect(
+      decodeSuppressionPgoutputRecords(
+        messages(row, [...namesAndOids, ...manualColumns]),
+        '0/100',
+      )[0]?.records,
+    ).toEqual([validateSuppressionRecord(row)]);
+  });
+  it('allows all-version null scope, retains old40 and old versions in new44', () => {
+    expect(
+      validateSuppressionRecord(
+        manualValues({
+          manual_review_version_scope: 'all_versions',
+          manual_review_version_key: null,
+        }),
+      ),
+    ).toMatchObject({ manualReviewVersionKey: null });
+    const old = values('tenant_erased');
+    const extended = new Map(old);
+    for (const [name] of manualColumns) extended.set(name, null);
+    expect(validateSuppressionRecord(extended)).toEqual(validateSuppressionRecord(old));
+    expect(
+      decodeSuppressionPgoutputRecords(
+        messages(extended, [...namesAndOids, ...manualColumns]),
+        '0/100',
+      )[0]?.records,
+    ).toEqual([validateSuppressionRecord(old)]);
+    extended.set('manual_review_source_kind', 'race-event');
+    expect(() => validateSuppressionRecord(extended)).toThrow('PGOUTPUT_UNEXPECTED_FIELD');
+    expect(() =>
+      validateSuppressionRecord(values('manual_review_source_suppressed', { record_version: '6' })),
+    ).toThrow();
+  });
+  it.each([
+    { manual_review_source_kind: 'unknown' },
+    { manual_review_source_id: targetId.toUpperCase() },
+    { manual_review_source_id: '' },
+    { manual_review_version_scope: null },
+    { manual_review_version_scope: 'latest' },
+    { manual_review_version_key: null },
+    { manual_review_version_key: '01' },
+    { manual_review_version_key: '2147483648' },
+    { manual_review_version_scope: 'all_versions' },
+    { target_id: targetId },
+    { source_id: 'forged' },
+    { record_version: '5' },
+    {
+      manual_review_source_kind: 'session-completion',
+      manual_review_version_key: JSON.stringify([targetId, 0]),
+    },
+    {
+      manual_review_source_kind: 'session-completion',
+      manual_review_version_key: '[ "' + targetId + '",1]',
+    },
+    { manual_review_source_kind: 'routine-run', manual_review_version_key: '-1' },
+    { manual_review_source_kind: 'routine-occurrence', manual_review_version_key: '1' },
+  ])('rejects malformed identity or old payload %j', (change) => {
+    expect(() => validateSuppressionRecord(manualValues(change))).toThrow();
+  });
+  it('preserves versions2..5 with four explicit NULL columns and rejects each leaked field', () => {
+    const rows = [
+      values('intake_entry_deleted', {
+        record_version: '2',
+        target_id: targetId,
+        actual_deletion_revision: '2',
+        actual_previous_revision_id: targetId,
+        actual_deleted_revision_id: shareId,
+      }),
+      values('healthkit_workout_deregistration_pending', {
+        record_version: '3',
+        target_id: targetId,
+        healthkit_claim_epoch: targetId,
+        healthkit_operation_id: shareId,
+        healthkit_consent_revision: '1',
+        healthkit_registry_previous_revision: '0',
+        healthkit_registry_revision: '1',
+        healthkit_object_scopes: '[]',
+      }),
+      values('race_event_deleted', {
+        record_version: '4',
+        target_id: targetId,
+        race_previous_revision: '1',
+        race_deleted_revision: '2',
+      }),
+      values('app_consent_transition', {
+        record_version: '5',
+        consent_revision: '1',
+        consent_granted: 'f',
+      }),
+    ];
+    for (const old of rows) {
+      const extended = new Map(old);
+      for (const [name] of manualColumns) extended.set(name, null);
+      expect(validateSuppressionRecord(extended)).toEqual(validateSuppressionRecord(old));
+      for (const [name] of manualColumns) {
+        const invalid = new Map(extended);
+        invalid.set(name, 'unexpected');
+        expect(() => validateSuppressionRecord(invalid)).toThrow('PGOUTPUT_UNEXPECTED_FIELD');
+      }
+    }
+  });
+  it('uses the SQL106 canonical namespace for UUIDv7 sources, immutable keys and session Plan tuples', () => {
+    const v7 = '12345678-abcd-7abc-8def-123456789abc';
+    for (const change of [
+      { manual_review_source_id: v7 },
+      {
+        manual_review_source_kind: 'nutrition-plan-version',
+        manual_review_source_id: v7,
+        manual_review_version_key: v7,
+      },
+      {
+        manual_review_source_kind: 'session-completion',
+        manual_review_source_id: 'session-v7',
+        manual_review_version_key: JSON.stringify([v7, 1]),
+      },
+    ]) {
+      const row = manualValues(change);
+      expect(validateSuppressionRecord(row).kind).toBe('manual_review_source_suppressed');
+      expect(
+        decodeSuppressionPgoutputRecords(
+          messages(row, [...namesAndOids, ...manualColumns]),
+          '0/100',
+        )[0]?.records,
+      ).toEqual([validateSuppressionRecord(row)]);
+    }
+    for (const change of [
+      { manual_review_source_id: v7.toUpperCase() },
+      {
+        manual_review_source_kind: 'nutrition-plan-version',
+        manual_review_version_key: v7.toUpperCase(),
+      },
+      {
+        manual_review_source_kind: 'session-completion',
+        manual_review_version_key: JSON.stringify([v7.toUpperCase(), 1]),
+      },
+    ])
+      expect(() => validateSuppressionRecord(manualValues(change))).toThrow(
+        'PGOUTPUT_INVALID_RECORD',
+      );
+  });
+  it('rejects wrong appended OID, reorder and incomplete roster', () => {
+    const row = manualValues();
+    const roster = [...namesAndOids, ...manualColumns];
+    expect(() =>
+      decodeSuppressionPgoutputRecords(
+        messages(row, [
+          ...namesAndOids,
+          ...manualColumns.map(([name, oid]) => [name, oid === 25 ? 23 : oid] as const),
+        ]),
+        '0/100',
+      ),
+    ).toThrow('PGOUTPUT_SCHEMA_CHANGED');
+    expect(() =>
+      decodeSuppressionPgoutputRecords(
+        messages(row, [...namesAndOids, ...[...manualColumns].reverse()]),
+        '0/100',
+      ),
+    ).toThrow('PGOUTPUT_SCHEMA_CHANGED');
+    expect(() =>
+      decodeSuppressionPgoutputRecords(messages(row, roster.slice(0, -1)), '0/100'),
+    ).toThrow('PGOUTPUT_SCHEMA_CHANGED');
+  });
 });

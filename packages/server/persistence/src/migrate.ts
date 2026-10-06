@@ -111,6 +111,7 @@ const migrationFiles = [
   '103_global_openai_budget.sql',
   '104_ai_settings.sql',
   '105_tenant_reconcile_bounds.sql',
+  '106_race_manual_review.sql',
 ] as const;
 
 /**

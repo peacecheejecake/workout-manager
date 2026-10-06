@@ -56,6 +56,7 @@ type SupportedRecord =
           | 'healthkit_consent_transition'
           | 'ai_consent_transition'
           | 'app_consent_transition'
+          | 'manual_review_source_suppressed'
           | 'course_share_revoked'
           | 'intake_entry_deleted'
           | 'recovery_action_deleted'
@@ -214,6 +215,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'healthkit_consent_transition' &&
           record.kind !== 'ai_consent_transition' &&
           record.kind !== 'app_consent_transition' &&
+          record.kind !== 'manual_review_source_suppressed' &&
           record.kind !== 'course_share_revoked' &&
           record.kind !== 'intake_entry_deleted' &&
           record.kind !== 'recovery_action_deleted' &&
@@ -227,6 +229,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
             record.kind !== 'healthkit_consent_transition' &&
             record.kind !== 'ai_consent_transition' &&
             record.kind !== 'app_consent_transition' &&
+            record.kind !== 'manual_review_source_suppressed' &&
             !('targetId' in record && canonicalUuid.test(record.targetId))) ||
           Date.parse(record.occurredAt) > now
         )
@@ -363,6 +366,17 @@ export async function replayVerifiedSuppressionChainIn(
 ): Promise<Readonly<ReplayPreflight>> {
   const verified = verifiedChains.get(prepared);
   if (!verified) return fail();
+  // Exact, fixed capability probe preserves historical schemas without issuing
+  // new SQL functions blindly. It is not proof of catalog/backup completeness.
+  let manualReviewPosthook = false;
+  if (verified.transactions.some((tx) => tx.records.some((r) => r.kind === 'tenant_erased'))) {
+    const capability = await client.query(
+      "SELECT to_regprocedure('public.suppress_manual_reviews_from_event(uuid)') IS NOT NULL AS manual_review_posthook",
+    );
+    const present = capability.rows[0]?.['manual_review_posthook'];
+    if (typeof present !== 'boolean') throw new Error('RESTORE_REPLAY_SCHEMA_UNAVAILABLE');
+    manualReviewPosthook = present;
+  }
   for (const transaction of verified.transactions) {
     for (const record of transaction.records) {
       if (record.kind === 'resource_share_revoked' && record.shareCauseKind === 'resource_deleted')
@@ -374,6 +388,25 @@ export async function replayVerifiedSuppressionChainIn(
           record.eventId,
           record.occurredAt,
         ]);
+        if (manualReviewPosthook)
+          await client.query('SELECT public.suppress_manual_reviews_from_event($1)', [
+            record.eventId,
+          ]);
+      } else if (record.kind === 'manual_review_source_suppressed') {
+        const result = await client.query(
+          'SELECT public.replay_manual_review_source_suppression_exact($1,$2,$3,$4,$5,$6,$7) AS result',
+          [
+            record.athleteId,
+            record.eventId,
+            record.occurredAt,
+            record.manualReviewSourceKind,
+            record.manualReviewSourceId,
+            record.manualReviewVersionScope,
+            record.manualReviewVersionKey,
+          ],
+        );
+        if (!['applied', 'already_applied'].includes(String(result.rows[0]?.['result'])))
+          throw new Error('RESTORE_REPLAY_INVALID_RESULT');
       } else if (record.kind === 'course_deleted') {
         await client.query('SELECT public.replay_course_deletion_exact($1,$2,$3,$4)', [
           record.athleteId,
@@ -630,6 +663,8 @@ export async function replayVerifiedSuppressionChain(
     transactionOpen = true;
     await client.query("SELECT set_config('statement_timeout','5000',true)");
     await client.query("SELECT set_config('lock_timeout','3000',true)");
+    // Owner replay fences live processing before lifecycle/tenant entry locks.
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
     await replayVerifiedSuppressionChainIn(client, prepared);
     commitAttempted = true;
     const committed = await client.query('COMMIT');

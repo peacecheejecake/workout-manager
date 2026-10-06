@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type * as Crypto from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
@@ -395,4 +395,89 @@ it('round-trips strict v5 app epochs and rejects cross-version and foreign paylo
     expect(() =>
       encryptReplaySegment({ envelope: withRecord(invalid as SuppressionRecord), key, keyId }),
     ).toThrow();
+});
+
+describe('forward106 encrypted manual review records (synthetic)', () => {
+  const reviewRecord: SuppressionRecord = {
+    schemaVersion: 6,
+    eventId: randomUUID(),
+    athleteId: 'synthetic-review',
+    occurredAt: '2026-09-30 12:34:56.123+00',
+    kind: 'manual_review_source_suppressed',
+    manualReviewSourceKind: 'session-completion',
+    manualReviewSourceId: 'session-opaque',
+    manualReviewVersionScope: 'exact_version',
+    manualReviewVersionKey: JSON.stringify(['00000000-0000-4000-8000-000000000001', 2147483647]),
+  };
+  it('uses the unchanged encrypted authenticated envelope for exact and all-version scope', () => {
+    for (const item of [
+      reviewRecord,
+      {
+        ...reviewRecord,
+        manualReviewVersionScope: 'all_versions' as const,
+        manualReviewVersionKey: null,
+      },
+    ]) {
+      const envelope = withRecord(item);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+    }
+  });
+  it('roundtrips UUIDv7 exact immutable/session identities and rejects uppercase source namespaces', () => {
+    const v7 = '12345678-abcd-7abc-8def-123456789abc';
+    for (const identity of [
+      {
+        manualReviewSourceKind: 'nutrition-plan-version' as const,
+        manualReviewSourceId: v7,
+        manualReviewVersionKey: v7,
+      },
+      {
+        manualReviewSourceKind: 'session-completion' as const,
+        manualReviewSourceId: 'session-v7',
+        manualReviewVersionKey: JSON.stringify([v7, 1]),
+      },
+    ]) {
+      const envelope = withRecord({ ...reviewRecord, ...identity });
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+      const invalid = withRecord({
+        ...reviewRecord,
+        ...identity,
+        manualReviewVersionKey: identity.manualReviewVersionKey.toUpperCase(),
+      });
+      expect(() => encryptReplaySegment({ envelope: invalid, key, keyId })).toThrow();
+    }
+  });
+  it.each([
+    { targetId: randomUUID() },
+    { manualReviewSourceKind: 'provider' },
+    { manualReviewVersionKey: null },
+    { manualReviewVersionScope: 'all_versions' },
+    { manualReviewVersionKey: '["00000000-0000-4000-8000-000000000001",0]' },
+    { schemaVersion: 5 },
+    { occurredAt: '2026-02-30 00:00:00+00' },
+    { manualReviewSourceId: 'bad\u0000id' },
+    { manualReviewVersionKey: 'x'.repeat(129) },
+  ])('rejects malformed DTO even with a recomputed local envelope hash %j', (change) => {
+    const source = withRecord(reviewRecord);
+    const body = {
+      ...source,
+      transactions: [
+        { commitLsn: '0/110', endLsn: '0/120', records: [{ ...reviewRecord, ...change }] },
+      ],
+    };
+    const { sha256: _previous, ...unsigned } = body;
+    const envelope = {
+      ...unsigned,
+      sha256: createHash('sha256').update(JSON.stringify(unsigned)).digest('hex'),
+    };
+    expect(() => {
+      // @ts-expect-error Deliberately malformed boundary DTO, validated at runtime.
+      encryptReplaySegment({ envelope, key, keyId });
+    }).toThrow();
+  });
 });

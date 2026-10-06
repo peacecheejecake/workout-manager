@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 import { z } from 'zod';
 
+import { validateManualReviewSourceIdentity } from './restore-suppression-records.js';
+
 import type { LocalReplayRecordEnvelope } from './restore-suppression-pgoutput.js';
 
 // Only the encrypted bytes may be handed to a file or remote-store adapter.
@@ -34,14 +36,57 @@ const occurredAt = z
       /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?$/.test(value) &&
       Number.isFinite(Date.parse(value)),
   );
+const calendarOccurredAt = occurredAt.refine((value) => {
+  const date = value.slice(0, 10);
+  const midnight = new Date(`${date}T00:00:00Z`);
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  return (
+    Number(date.slice(0, 4)) >= 1 &&
+    Number.isFinite(midnight.getTime()) &&
+    midnight.toISOString().slice(0, 10) === date &&
+    hour < 24 &&
+    minute < 60 &&
+    second < 60
+  );
+});
 const base = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  schemaVersion: z.union([
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+    z.literal(6),
+  ]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
 });
 const record = z
   .discriminatedUnion('kind', [
+    base
+      .extend({
+        schemaVersion: z.literal(6),
+        occurredAt: calendarOccurredAt,
+        kind: z.literal('manual_review_source_suppressed'),
+        manualReviewSourceKind: z.enum([
+          'race-event',
+          'plan-snapshot',
+          'nutrition-plan-version',
+          'recovery-strategy-version',
+          'routine-schedule-version',
+          'routine-blueprint-version',
+          'routine-occurrence',
+          'routine-run',
+          'session-completion',
+        ]),
+        manualReviewSourceId: boundedIdentifier,
+        manualReviewVersionScope: z.enum(['exact_version', 'all_versions']),
+        manualReviewVersionKey: z.string().max(128).nullable(),
+      })
+      .strict(),
     base.extend({ kind: z.literal('tenant_erased') }).strict(),
     base
       .extend({
@@ -107,21 +152,7 @@ const record = z
       .extend({
         schemaVersion: z.literal(5),
         kind: z.literal('app_consent_transition'),
-        occurredAt: occurredAt.refine((value) => {
-          const date = value.slice(0, 10);
-          const midnight = new Date(`${date}T00:00:00Z`);
-          const hour = Number(value.slice(11, 13));
-          const minute = Number(value.slice(14, 16));
-          const second = Number(value.slice(17, 19));
-          return (
-            Number(date.slice(0, 4)) >= 1 &&
-            Number.isFinite(midnight.getTime()) &&
-            midnight.toISOString().slice(0, 10) === date &&
-            hour < 24 &&
-            minute < 60 &&
-            second < 60
-          );
-        }),
+        occurredAt: calendarOccurredAt,
         consentPreviousRevision: revision.nullable(),
         consentPreviousGranted: z.boolean().nullable(),
         consentRevision: revision,
@@ -178,6 +209,18 @@ const record = z
   .superRefine((item, context) => {
     let valid = true;
     switch (item.kind) {
+      case 'manual_review_source_suppressed':
+        try {
+          validateManualReviewSourceIdentity(
+            item.manualReviewSourceKind,
+            item.manualReviewSourceId,
+            item.manualReviewVersionScope,
+            item.manualReviewVersionKey,
+          );
+        } catch {
+          valid = false;
+        }
+        break;
       case 'race_event_deleted':
       case 'race_result_deleted':
       case 'training_best_deleted':
@@ -248,6 +291,7 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (item.schemaVersion === 6 && item.kind !== 'manual_review_source_suppressed') valid = false;
     if (item.schemaVersion === 5 && item.kind !== 'app_consent_transition') valid = false;
     if (
       item.schemaVersion === 4 &&
@@ -357,7 +401,25 @@ function checkedEnvelope(value: unknown): LocalReplayRecordEnvelope {
     cursor = end;
   }
   if (seen.size === 0 || cursor !== lsnValue(envelope.throughLsn)) return reject();
-  return envelope;
+  return {
+    ...envelope,
+    transactions: envelope.transactions.map((transaction) => ({
+      ...transaction,
+      records: transaction.records.map((item) =>
+        item.kind === 'manual_review_source_suppressed'
+          ? {
+              ...item,
+              ...validateManualReviewSourceIdentity(
+                item.manualReviewSourceKind,
+                item.manualReviewSourceId,
+                item.manualReviewVersionScope,
+                item.manualReviewVersionKey,
+              ),
+            }
+          : item,
+      ),
+    })),
+  };
 }
 
 function keyBytes(key: Uint8Array): Buffer {

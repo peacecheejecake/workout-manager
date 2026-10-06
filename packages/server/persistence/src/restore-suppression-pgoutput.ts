@@ -57,7 +57,17 @@ const columns = [
   ['race_deleted_revision', 23],
 ] as const;
 
+const currentColumns = [
+  ...columns,
+  ['manual_review_source_kind', 25],
+  ['manual_review_source_id', 25],
+  ['manual_review_version_scope', 25],
+  ['manual_review_version_key', 25],
+] as const;
+type Columns = readonly (readonly [string, number])[];
+
 const kinds = new Set([
+  'manual_review_source_suppressed',
   'race_event_deleted',
   'race_result_deleted',
   'training_best_deleted',
@@ -181,11 +191,11 @@ function lsnValue(value: string): bigint {
   return (BigInt(`0x${high}`) << 32n) | BigInt(`0x${low}`);
 }
 
-function tuple(reader: Reader): Map<string, string | null> {
+function tuple(reader: Reader, relationColumns: Columns): Map<string, string | null> {
   const count = reader.uint16();
-  if (count !== columns.length) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
+  if (count !== relationColumns.length) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
   const values = new Map<string, string | null>();
-  for (const [name] of columns) {
+  for (const [name] of relationColumns) {
     const marker = reader.byte();
     if (marker === 110) {
       values.set(name, null);
@@ -199,21 +209,23 @@ function tuple(reader: Reader): Map<string, string | null> {
   return values;
 }
 
-function validateRelation(reader: Reader): number {
+function validateRelation(reader: Reader): { id: number; columns: Columns } {
   const relationId = reader.uint32();
   if (reader.cstring() !== 'public' || reader.cstring() !== 'restore_suppression_event') {
     throw new Error('PGOUTPUT_UNEXPECTED_TABLE');
   }
   reader.byte(); // replica identity; publication emits only INSERT.
-  if (reader.uint16() !== columns.length) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
-  for (const [name, oid] of columns) {
+  const count = reader.uint16();
+  const relationColumns = count === columns.length ? columns : currentColumns;
+  if (count !== relationColumns.length) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
+  for (const [name, oid] of relationColumns) {
     reader.byte(); // key flag
     if (reader.cstring() !== name || reader.uint32() !== oid)
       throw new Error('PGOUTPUT_SCHEMA_CHANGED');
     reader.uint32(); // type modifier
   }
   reader.done();
-  return relationId;
+  return { id: relationId, columns: relationColumns };
 }
 
 /** Decode a complete, bounded pgoutput peek without advancing its logical slot. */
@@ -229,7 +241,7 @@ function decodePgoutput<T>(
   }
   const transactions: { commitLsn: string; endLsn: string; events: T[] }[] = [];
   const eventIds = new Set<string>();
-  let relationId: number | null = null;
+  let relation: { id: number; columns: Columns } | null = null;
   let pending: { finalLsn: bigint; events: T[] } | null = null;
   let previous = lsnValue(fromLsn);
   for (const message of messages) {
@@ -246,18 +258,18 @@ function decodePgoutput<T>(
     } else if (type === 82) {
       // Relation
       if (!pending) throw new Error('PGOUTPUT_RELATION_OUTSIDE_TRANSACTION');
-      relationId = validateRelation(reader);
+      relation = validateRelation(reader);
     } else if (type === 73) {
       // Insert
       if (
         !pending ||
-        relationId === null ||
-        reader.uint32() !== relationId ||
+        relation === null ||
+        reader.uint32() !== relation.id ||
         reader.byte() !== 78
       ) {
         throw new Error('PGOUTPUT_UNEXPECTED_INSERT');
       }
-      const values = tuple(reader);
+      const values = tuple(reader, relation.columns);
       reader.done();
       const projected = project(values);
       const eventId = id(projected);

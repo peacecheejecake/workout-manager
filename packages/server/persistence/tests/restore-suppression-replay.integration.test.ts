@@ -584,7 +584,10 @@ it('preflights authenticated app v5 without a target and rejects absent or short
 it('composes authenticated replay without committing the caller transaction and rejects copied handles', async () => {
   const input = chain();
   const prepared = prepareVerifiedSuppressionChain({ ...input, key, keyId });
-  const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+  const query = vi.fn().mockImplementation(async (statement: string) => ({
+    rows: statement.includes('to_regprocedure') ? [{ manual_review_posthook: false }] : [],
+    rowCount: 0,
+  }));
   const summary = await replayVerifiedSuppressionChainIn({ query }, prepared);
   expect(summary.eventCount).toBe(2);
   const sql = query.mock.calls.map(([statement]) => String(statement));
@@ -608,4 +611,64 @@ it('propagates replay failure to the caller without committing or swallowing it'
   expect(query).toHaveBeenCalledTimes(1);
   expect(Object.isFrozen(prepared)).toBe(true);
   expect(Object.isFrozen(prepared.summary)).toBe(true);
+});
+
+it('applies tenant copy suppression with the original event only when the exact new hook exists', async () => {
+  const prepared = prepareVerifiedSuppressionChain({ ...chain(), key, keyId });
+  const query = vi.fn().mockImplementation(async (statement: string) => ({
+    rows: statement.includes('to_regprocedure') ? [{ manual_review_posthook: true }] : [],
+    rowCount: 0,
+  }));
+  await replayVerifiedSuppressionChainIn({ query }, prepared);
+  const calls = query.mock.calls;
+  const original = calls.findIndex(([s]) => s.includes('replay_tenant_erasure_exact'));
+  const posthook = calls.findIndex(([s]) => s.includes('suppress_manual_reviews_from_event($1)'));
+  expect(original).toBeGreaterThan(-1);
+  expect(posthook).toBe(original + 1);
+  expect(calls[posthook]?.[1]).toEqual([firstId]);
+  expect(calls.some(([s]) => /INSERT|BEGIN|COMMIT|ROLLBACK/.test(s))).toBe(false);
+});
+
+it('authenticates targetless derived-copy v6 and dispatches only exact original source suppression', async () => {
+  const source: SuppressionRecord = {
+    schemaVersion: 6,
+    eventId: firstId,
+    athleteId: defaultAthleteId,
+    occurredAt,
+    kind: 'manual_review_source_suppressed',
+    manualReviewSourceKind: 'session-completion',
+    manualReviewSourceId: 'synthetic-session',
+    manualReviewVersionScope: 'exact_version',
+    manualReviewVersionKey: JSON.stringify([courseId, 2]),
+  };
+  const input = singleTransaction([source]);
+  const prepared = prepareVerifiedSuppressionChain({ ...input, key, keyId });
+  const query = vi.fn().mockImplementation(async (statement: string, _values?: unknown[]) => ({
+    rows: statement.includes('replay_manual_review_source_suppression_exact')
+      ? [{ result: 'applied' }]
+      : [],
+    rowCount: 0,
+  }));
+  expect((await replayVerifiedSuppressionChainIn({ query }, prepared)).eventCount).toBe(1);
+  expect(
+    query.mock.calls.find(([s]) =>
+      s.includes('replay_manual_review_source_suppression_exact'),
+    )?.[1],
+  ).toEqual([
+    defaultAthleteId,
+    firstId,
+    occurredAt,
+    'session-completion',
+    'synthetic-session',
+    'exact_version',
+    JSON.stringify([courseId, 2]),
+  ]);
+  expect(
+    query.mock.calls.some(([s]) =>
+      /replay_(?:race|activity|actual|tenant)_|INSERT|DELETE|BEGIN|COMMIT/.test(s),
+    ),
+  ).toBe(false);
+  expect(() => inspect(input.segments, { ...input.anchor, throughLsn: '0/140' })).toThrow(
+    'RESTORE_REPLAY_PREFLIGHT_FAILED',
+  );
 });

@@ -43,13 +43,104 @@ const columnNames = [
   'race_deleted_revision',
 ] as const;
 
+const manualReviewColumns = [
+  'manual_review_source_kind',
+  'manual_review_source_id',
+  'manual_review_version_scope',
+  'manual_review_version_key',
+] as const;
+const currentColumnNames = [...columnNames, ...manualReviewColumns];
+const manualReviewKinds = [
+  'race-event',
+  'plan-snapshot',
+  'nutrition-plan-version',
+  'recovery-strategy-version',
+  'routine-schedule-version',
+  'routine-blueprint-version',
+  'routine-occurrence',
+  'routine-run',
+  'session-completion',
+] as const;
+// SQL106 source identities require canonical lower hex UUIDs, without RFC version restrictions.
+// This separate namespace does not alter historical event/target validation.
+const canonicalSourceUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+type ManualReviewSourceKind = (typeof manualReviewKinds)[number];
+type ManualReviewIdentity = {
+  manualReviewSourceKind: ManualReviewSourceKind;
+  manualReviewSourceId: string;
+} & (
+  | { manualReviewVersionScope: 'all_versions'; manualReviewVersionKey: null }
+  | { manualReviewVersionScope: 'exact_version'; manualReviewVersionKey: string }
+);
+
+/** Shared finite identity validation for physical records and encrypted DTOs. */
+export function validateManualReviewSourceIdentity(
+  kind: string,
+  id: string,
+  scope: string,
+  key: string | null,
+): ManualReviewIdentity {
+  const sourceKind = manualReviewKinds.find((value) => value === kind);
+  if (
+    !sourceKind ||
+    [...id].length < 1 ||
+    [...id].length > 200 ||
+    hasControl(id) ||
+    (sourceKind !== 'session-completion' && !canonicalSourceUuid.test(id))
+  )
+    throw new Error('PGOUTPUT_INVALID_RECORD');
+  if (scope === 'all_versions' && key === null)
+    return {
+      manualReviewSourceKind: sourceKind,
+      manualReviewSourceId: id,
+      manualReviewVersionScope: scope,
+      manualReviewVersionKey: null,
+    };
+  if (scope !== 'exact_version' || key === null || key.length < 1 || key.length > 128)
+    throw new Error('PGOUTPUT_INVALID_RECORD');
+  let valid = false;
+  if (sourceKind === 'session-completion') {
+    try {
+      const tuple: unknown = JSON.parse(key);
+      valid =
+        Array.isArray(tuple) &&
+        tuple.length === 2 &&
+        typeof tuple[0] === 'string' &&
+        canonicalSourceUuid.test(tuple[0]) &&
+        typeof tuple[1] === 'number' &&
+        Number.isInteger(tuple[1]) &&
+        tuple[1] >= 1 &&
+        tuple[1] <= 2147483647 &&
+        JSON.stringify(tuple) === key;
+    } catch {
+      valid = false;
+    }
+  } else if (sourceKind === 'routine-occurrence') valid = key === 'immutable';
+  else if (
+    sourceKind === 'routine-run' ||
+    sourceKind === 'race-event' ||
+    sourceKind === 'plan-snapshot'
+  ) {
+    valid =
+      (sourceKind === 'routine-run' ? /^(0|[1-9][0-9]{0,9})$/ : /^[1-9][0-9]{0,9}$/).test(key) &&
+      Number(key) <= 2147483647;
+  } else valid = canonicalSourceUuid.test(key);
+  if (!valid) throw new Error('PGOUTPUT_INVALID_RECORD');
+  return {
+    manualReviewSourceKind: sourceKind,
+    manualReviewSourceId: id,
+    manualReviewVersionScope: scope,
+    manualReviewVersionKey: key,
+  };
+}
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hash = /^[0-9a-f]{64}$/;
 const timestamp =
   /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.\d{1,6})?([+-])(\d\d)(?::(\d\d))?$/;
 
 type Base = {
-  schemaVersion: 1 | 2 | 3 | 4 | 5;
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
   eventId: string;
   athleteId: string;
   occurredAt: string;
@@ -57,6 +148,7 @@ type Base = {
 
 export type SuppressionRecord = Base &
   (
+    | ({ schemaVersion: 6; kind: 'manual_review_source_suppressed' } & ManualReviewIdentity)
     | {
         kind:
           'healthkit_workout_deregistration_pending' | 'healthkit_workout_deregistration_released';
@@ -217,7 +309,8 @@ function only(values: Values, allowed: readonly string[]): void {
     'occurred_at',
     ...allowed,
   ]);
-  if (values.size !== columnNames.length || columnNames.some((name) => !values.has(name)))
+  const names = values.size === columnNames.length ? columnNames : currentColumnNames;
+  if (values.size !== names.length || names.some((name) => !values.has(name)))
     throw new Error('PGOUTPUT_SCHEMA_CHANGED');
   for (const [name, value] of values) {
     if (!included.has(name) && value !== null) throw new Error('PGOUTPUT_UNEXPECTED_FIELD');
@@ -228,7 +321,14 @@ function only(values: Values, allowed: readonly string[]): void {
 export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const eventId = match(required(values, 'event_id'), uuid);
   const version = required(values, 'record_version');
-  if (version !== '1' && version !== '2' && version !== '3' && version !== '4' && version !== '5')
+  if (
+    version !== '1' &&
+    version !== '2' &&
+    version !== '3' &&
+    version !== '4' &&
+    version !== '5' &&
+    version !== '6'
+  )
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   const athleteId = required(values, 'athlete_id');
   if ([...athleteId].length < 1 || [...athleteId].length > 200 || hasControl(athleteId))
@@ -236,7 +336,17 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const occurredAt = validTimestamp(required(values, 'occurred_at'));
   const base: Base = {
     schemaVersion:
-      version === '1' ? 1 : version === '2' ? 2 : version === '3' ? 3 : version === '4' ? 4 : 5,
+      version === '1'
+        ? 1
+        : version === '2'
+          ? 2
+          : version === '3'
+            ? 3
+            : version === '4'
+              ? 4
+              : version === '5'
+                ? 5
+                : 6,
     eventId,
     athleteId,
     occurredAt,
@@ -265,7 +375,25 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   if (version === '5' && kind !== 'app_consent_transition')
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (version === '6' && kind !== 'manual_review_source_suppressed')
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   switch (kind) {
+    case 'manual_review_source_suppressed': {
+      if (version !== '6' || values.size !== currentColumnNames.length)
+        throw new Error('PGOUTPUT_SCHEMA_CHANGED');
+      only(values, manualReviewColumns);
+      return {
+        ...base,
+        schemaVersion: 6,
+        kind,
+        ...validateManualReviewSourceIdentity(
+          required(values, 'manual_review_source_kind'),
+          required(values, 'manual_review_source_id'),
+          required(values, 'manual_review_version_scope'),
+          optional(values, 'manual_review_version_key'),
+        ),
+      };
+    }
     case 'race_event_deleted':
     case 'race_result_deleted':
     case 'training_best_deleted': {
