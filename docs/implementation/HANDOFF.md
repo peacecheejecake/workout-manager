@@ -277,4 +277,15 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 ## 로컬 phase 통합 최신 상태 · 2026-10-06
 
 - M3 전체 독립 재검토는 base173d8d6 → headd132fb41 **APPROVE**, 이전 stale outbox P1 **FIXED**였다. main에 d132fb41을 fast-forward했고 clean을 확인했다. 정확한 diff·검토·실행/미실행 증거는 annotated tag `review/m3-02-20261006-registration-refresh`와 [phase 기록](progress/M3-02-phase-review-20261006.md)을 따른다. 앞선 대기/수정 중 문단은 그 시점 기록이며 o/h 운영·실기기 gate는 여전히 in_progress/not_executed다.
-- 병렬 M2 URL callback 로그·S22 준비는 [M2-01k §44](progress/M2-01k.md#44-url-로그s22-준비-전체-phase-통합-검증2026-10-06)의 고정 입력에서 전체 unit4398·PG1095(+upgrade1/pgoutput7) 및 identity 두 회차각309통과/12skip를 실제 확인했다. 승인된 main 위에 통합했고 exact diff의 독립 phase 검토는 아직 대기 중이다. app/provider 정책 답변과 운영/기기 증거를 로컬 검사로 대신하지 않는다.
+- 병렬 M2 URL callback 로그·S22 준비는 [M2-01k §44](progress/M2-01k.md#44-url-로그s22-준비-전체-phase-통합-검증2026-10-06)의 고정 입력에서 전체 unit4398·PG1095(+upgrade1/pgoutput7) 및 identity 두 회차각309통과/12skip를 실제 확인했다. 승인된 main 위에 통합했고 exact diff의 독립 phase 검토는 이후 APPROVE를 받아 main `6b46cf30`에 반영됐다(`review/m2-01k-20261006-url-consent-preparation`). app/provider 정책 답변과 운영/기기 증거를 로컬 검사로 대신하지 않는다.
+
+## S22 확정 고지 회귀 후속 · 2026-10-06
+
+- [M2-01k-u](progress/M2-01k-u.md)는 명시 mutation 전 고지/권한 분리와 이전 계정의 늦은 삭제 응답 보호를 테스트 세 파일에 보강했다. Root 집중64/64 재검증 및 phase 고정 입력79fc5d34에서 unit4401, PG1095(+upgrade1/pgoutput7), identity 실제2회 각309/12skip와 전체 gate를 확인했다. final 문서 포함 새 independent phase review는 별도로 진행한다. app/provider 새 업무 gate는 정책 답변 대기이며 V2-F31 partial과 운영/기기 미실행은 유지한다.
+- 출시 잔여 감사에서 M2-02는 계약만 구현된 상태임을 다시 확인했다. 별도 phase/m2-02에서 명령 계약 및 PostgreSQL 후속 저장 작업을 분리 진행하며, 이 S22 phase 검증에 그 다른 브랜치의 결과를 포함하지 않는다.
+
+## 실제 AWS UID 재개 결과 · 2026-10-06
+
+- 사용자 새 CLI 로그인 완료 후 비루트 `workout-admin` 신원과 pinned recovery SSH를 확인했다. 새 v2 설치/검사/1회 실행을 명시 승인받았다. 정확한 script SHA `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`을 root0700 경로에 독점 설치했고 `--check` exit0, `--execute --external-gates-confirmed` **정확히 1회 exit0 / UID_RESUME_LOCAL_CHECKED**였다. 이전 v3 실패/보존본은 덮지 않았다.
+- 별도 fresh Ubuntu 단기 SSH에서 root 권한 거절·8개 write 및4개 private read 거절을 실제 확인했다. 이어 recovery 읽기 전용 posttransition 점검은 **2026-10-06 11:18:18 UTC exit0**: 현재 앱/GH fixed image·UID20001/20002·세 runtime identity, 원본 PG/system ID·schema/slot/publication metadata 유지, 전체 tree/mount·original13/copy7 보존본·current fence pin·source digest·timers masked·Workout503/TLS0·apex307→persona200/TLS0를 확인했다. posttransition payload 자체의 freshSSH 미실행 표시는 그 payload 범위이고 별도 SSH 실행 로그와 구별한다.
+- 원본 로그 `/private/tmp/wm-uid-resume-v2-{install,check,execution}-20261006.log`, `/private/tmp/wm-fresh-ubuntu-readonly-20261006.log`, `/private/tmp/wm-uid-posttransition-readonly-20261006.log`. 이 결과는 UID/runtime 전환의 실제 증거다. backup fence의 실제 held window·운영 원장/키/slot/tail·full backup/upload/격리 restore·latest product/serverfirst migration·503 해제와 공개/native 수용은 여전히 **not_executed**다. EXT-HOSTING 전체 완료가 아니다.
