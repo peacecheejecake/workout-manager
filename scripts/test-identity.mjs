@@ -8,10 +8,12 @@ import {
   identityWebPort,
 } from './fixtures/identity-ports.ts';
 
-// Explicit file-focused commands retain the Playwright CLI. A full run gives
-// permission and restore lifecycle scenarios their own fresh disposable fixture.
-const args = process.argv.slice(2);
-const focused = args.some((arg) => arg !== '--list');
+// Focused commands retain the Playwright CLI. --full also permits a full run with
+// a caller's reporter/config flags while preserving three disposable fixtures.
+const providedArgs = process.argv.slice(2);
+const fullRun = providedArgs.includes('--full');
+const args = providedArgs.filter((arg) => arg !== '--full');
+const focused = !fullRun && args.some((arg) => arg !== '--list');
 const suites = focused ? [null] : ['general', 'app-consent', 'ai-settings-lifecycle'];
 let interrupted = false;
 
