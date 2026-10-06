@@ -1,4 +1,8 @@
 import {
+  currentRestoreGeneration,
+  requireCurrentRestoreGeneration,
+} from '../src/restore-generation.js';
+import {
   captureNestedNutritionSources,
   captureActivityAndMediaPermissions,
 } from '../src/race-plan-impact-nested-sources.js';
@@ -3062,4 +3066,137 @@ it('E includes all emitted copies of a shared current/linked Plan in scalar4MiB 
       sql.startsWith('SELECT id,revision,values_json FROM race_event'),
     ),
   ).toBe(false);
+});
+
+async function waitGenerationFence(role: string) {
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline) {
+    const result = await admin.query(
+      "SELECT 1 FROM pg_stat_activity WHERE usename=$1 AND wait_event='advisory'",
+      [role],
+    );
+    if (result.rowCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('EXPECTED_REAL_GENERATION_FENCE_WAITER');
+}
+it('F captures a real UUID generation twice in one tenant transaction and rejects runtime state/GUC/owner bypass', async () => {
+  const athlete = await account(),
+    event = await create(athlete);
+  const captured = await database.tenant(athlete, async (tx) => {
+    const first = await captureRacePlanImpactContext(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    });
+    await tx.query(
+      "SELECT set_config('app.restore_generation',$1,true), set_config('app.is_owner','true',true)",
+      [randomUUID()],
+    );
+    const second = await captureRacePlanImpactContext(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    });
+    expect(z.uuid().parse(first.restoreGeneration)).toBe(await currentRestoreGeneration(tx));
+    expect(second.restoreGeneration).toBe(first.restoreGeneration);
+    expect(second.readSetDigest).toBe(first.readSetDigest);
+    await requireCurrentRestoreGeneration(tx, first.restoreGeneration);
+    return first;
+  });
+  expect(captured.coverage.complete).toBe(false);
+  await expect(
+    database.tenant(athlete, (tx) => tx.query('SELECT * FROM public.restore_generation')),
+  ).rejects.toMatchObject({ code: '42501' });
+  await expect(
+    database.tenant(athlete, async (tx) => {
+      await tx.query(
+        "SELECT set_config('app.restore_generation',$1,true),set_config('app.is_owner','true',true)",
+        [randomUUID()],
+      );
+      await tx.query('SELECT public.rotate_restore_generation()');
+    }),
+  ).rejects.toMatchObject({ code: '42501' });
+});
+it('F global shared capture fence precedes an exclusive owner rotation and saved generation becomes stale after commit', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    client = await owner.connect();
+  let rotation: Promise<string> | undefined;
+  try {
+    const captured = await database.tenant(athlete, async (tx) => {
+      const first = await captureRacePlanImpactContext(tx, {
+        eventId: event.id,
+        expectedRevision: 1,
+        selection: { kind: 'keep_plan' },
+      });
+      rotation = (async () => {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+        const row = await client.query('SELECT public.rotate_restore_generation() AS generation');
+        await client.query('COMMIT');
+        return z.uuid().parse(row.rows[0]?.generation);
+      })();
+      await waitGenerationFence(ownerRole);
+      const second = await captureRacePlanImpactContext(tx, {
+        eventId: event.id,
+        expectedRevision: 1,
+        selection: { kind: 'keep_plan' },
+      });
+      expect(second.restoreGeneration).toBe(first.restoreGeneration);
+      expect(second.readSetDigest).toBe(first.readSetDigest);
+      return first;
+    });
+    const rotated = await rotation;
+    const current = await capture(athlete, event.id);
+    expect(current.restoreGeneration).toBe(rotated);
+    expect(current.restoreGeneration).not.toBe(captured.restoreGeneration);
+    expect(current.readSetDigest).not.toBe(captured.readSetDigest);
+    expect(current.event).toEqual(captured.event);
+    expect(current.manualBasis).toEqual(captured.manualBasis);
+    expect(current.consumedSources).toEqual(captured.consumedSources);
+    await expect(
+      database.tenant(athlete, (tx) =>
+        requireCurrentRestoreGeneration(tx, captured.restoreGeneration),
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_RESTORE_GENERATION' });
+    await database.tenant(athlete, (tx) =>
+      requireCurrentRestoreGeneration(tx, current.restoreGeneration),
+    );
+  } finally {
+    if (rotation) await rotation;
+    await client.query('ROLLBACK');
+    client.release();
+  }
+});
+it('F an exclusive owner rotation wins before a new capture and does not fabricate a prior snapshot epoch', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    before = await capture(athlete, event.id),
+    client = await owner.connect();
+  let pending: ReturnType<typeof capture> | undefined;
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+    pending = capture(athlete, event.id);
+    await waitGenerationFence(runtimeRole);
+    const row = await client.query('SELECT public.rotate_restore_generation() AS generation');
+    const rotated = z.uuid().parse(row.rows[0]?.generation);
+    await client.query('COMMIT');
+    const after = await pending;
+    expect(after.restoreGeneration).toBe(rotated);
+    expect(after.restoreGeneration).not.toBe(before.restoreGeneration);
+    expect(after.readSetDigest).not.toBe(before.readSetDigest);
+    expect(after.event).toEqual(before.event);
+    expect(after.coverage.complete).toBe(false);
+    await expect(
+      database.tenant(athlete, (tx) =>
+        requireCurrentRestoreGeneration(tx, before.restoreGeneration),
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_RESTORE_GENERATION' });
+  } finally {
+    await client.query('ROLLBACK');
+    if (pending) await pending;
+    client.release();
+  }
 });

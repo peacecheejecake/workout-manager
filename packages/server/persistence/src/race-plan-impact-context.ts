@@ -1,3 +1,4 @@
+import { currentRestoreGeneration } from './restore-generation.js';
 import { captureRaceManualBasis } from './race-plan-impact-manual-basis.js';
 import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
 import { createHash } from 'node:crypto';
@@ -255,13 +256,15 @@ async function preflight(tx: Transaction, eventId: string) {
   )
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'unique_sources');
   // The +1024 per transported body reserves bounded UTF-8 row metadata, not decoded JSON payload.
-  if (BigInt(limits.bytes) > BigInt(decodedBytesCap))
+  // Reserve the fixed UUID generation field and JSON key in the global preflight.
+  const bytes = BigInt(limits.bytes) + 64n;
+  if (bytes > BigInt(decodedBytesCap))
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
   if (BigInt(limits.anchors) > BigInt(sourceCap))
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'relative_anchors');
   if (BigInt(limits.sources) > BigInt(sourceCap))
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'unique_sources');
-  return BigInt(limits.bytes);
+  return bytes;
 }
 function sourceCache(tx: Transaction) {
   const plans = new Map<string, Promise<PlanSnapshot>>();
@@ -341,6 +344,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   const command = parse(inputSchema, input);
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
   const baseBytes = await preflight(tx, command.eventId);
+  const restoreGeneration = await currentRestoreGeneration(tx);
   const sources = sourceCache(tx);
   const core = await captureCoreEvidenceDependencies(tx);
   const eventRow = (
@@ -652,6 +656,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     races: (await sources.consumedRaces()).sort(order),
   };
   const readSet = {
+    restoreGeneration,
     athleteId: tx.athleteId,
     manualBasis,
     event,

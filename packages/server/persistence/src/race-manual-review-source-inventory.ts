@@ -201,6 +201,7 @@ const metadataKeys = new Set(
 const presentRevision = z.strictObject({ state: z.literal('present'), revision: revision.min(1) });
 const absent = z.strictObject({ state: z.literal('absent') });
 const bodylessMetadata = new Map<string, z.ZodType>([
+  ['context.restoreGeneration', uuid],
   ['context.affected.routine', z.array(uuid).max(5000)],
   [
     'context.rosters.routine',

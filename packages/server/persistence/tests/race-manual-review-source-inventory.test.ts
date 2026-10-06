@@ -460,6 +460,7 @@ it('untyped scalar protected content cannot evade unsupported body diagnostics',
 
 it('accepts only exact bodyless producer metadata shapes at their captured context paths', () => {
   const input = envelope({
+    restoreGeneration: one,
     affected: { routine: [one] },
     rosters: { routine: [{ aggregateId: one, versionId: two }] },
     manualBasis: {
@@ -499,6 +500,16 @@ it('accepts only exact bodyless producer metadata shapes at their captured conte
   expect(result.inventoryState).toBe('mapped');
   expect(result.refs).toEqual([]);
   expect(result.storageAllowed).toBe(false);
+  expect(
+    mapRaceManualReviewSourceInventory(envelope({ restoreGeneration: 'invalid' })).inventoryState,
+  ).toBe('blocked');
+  expect(
+    mapRaceManualReviewSourceInventory(envelope({ restoreGeneration: null })).inventoryState,
+  ).toBe('blocked');
+  expect(
+    mapRaceManualReviewSourceInventory(envelope({ actuals: { restoreGeneration: one } }))
+      .inventoryState,
+  ).toBe('blocked');
   const injected = {
     ...input,
     context: { ...input.context, manualBasis: { ...input.context.manualBasis, record: event() } },
