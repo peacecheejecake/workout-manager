@@ -49,6 +49,19 @@ function uuid(index: number) {
 }
 
 describe('race timing pin structural foundation (not server authority)', () => {
+  it.each(['0001', '0999'])('preserves ISO year %s and rejects mismatched years', (year) => {
+    const early = {
+      ...pin,
+      localDate: `${year}-01-01`,
+      localStartTime: '00:00:17',
+      timezone: 'UTC',
+      start: { state: 'known', instant: `${year}-01-01T00:00:17Z` },
+    };
+    expect(raceTimingPinV1Schema.parse(early)).toEqual(early);
+    expect(raceTimingPinV1Schema.safeParse({ ...early, localDate: '1000-01-01' }).success).toBe(
+      false,
+    );
+  });
   it('preserves known civil time, offset-qualified instant and terminal revision', () => {
     expect(raceTimingPinV1Schema.parse(pin)).toEqual(pin);
     const offset = {

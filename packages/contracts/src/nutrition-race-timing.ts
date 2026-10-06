@@ -112,7 +112,7 @@ export const raceTimingPinV1Schema = z
       hourCycle: 'h23',
     }).formatToParts(new Date(pin.start.instant));
     const part = (name: string) => parts.find((value) => value.type === name)?.value;
-    const date = `${part('year')}-${part('month')}-${part('day')}`;
+    const date = `${part('year')?.padStart(4, '0')}-${part('month')}-${part('day')}`;
     const time = `${part('hour')}:${part('minute')}:${part('second')}`;
     const recorded =
       pin.localStartTime.length === 5 ? `${pin.localStartTime}:00` : pin.localStartTime;
