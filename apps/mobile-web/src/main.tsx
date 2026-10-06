@@ -54,6 +54,12 @@ const ResourcePage = lazy(() =>
 const TrackPreviewPage = lazy(() =>
   import('./track-preview-page').then((module) => ({ default: module.TrackPreviewPage })),
 );
+const CompetitionsPage = lazy(() =>
+  import('./competitions-page').then((module) => ({ default: module.CompetitionsPage })),
+);
+const RaceDetailPage = lazy(() =>
+  import('./race-detail-page').then((module) => ({ default: module.RaceDetailPage })),
+);
 const GalleryPage = lazy(() =>
   import('./gallery-page').then((module) => ({ default: module.GalleryPage })),
 );
@@ -144,6 +150,8 @@ const activityEditPath = location.pathname.match(/^\/activities\/([^/]+)\/edit\/
 const activityEditId = activityEditPath
   ? activitySchema.shape.id.safeParse(activityEditPath)
   : null;
+// The detail module validates the identifier before an authenticated scoped request.
+const raceDetailPath = location.pathname.match(/^\/races\/([^/]+)\/?$/)?.[1];
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element required');
 const browserTree = (
@@ -213,6 +221,29 @@ const browserTree = (
         </Suspense>
       ) : activityEditPath ? (
         <p role="alert">활동 주소가 올바르지 않습니다.</p>
+      ) : raceDetailPath ? (
+        <Suspense fallback={<p role="status">대회 상세 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/races">대회 목록</a> · <a href="/records">기록</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <RaceDetailPage raceId={raceDetailPath} />
+        </Suspense>
+      ) : [
+          '/competitions',
+          '/competitions/',
+          '/races',
+          '/races/',
+          '/records',
+          '/records/',
+        ].includes(location.pathname) ? (
+        <Suspense fallback={<p role="status">대회와 기록 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/dashboard">대시보드</a> · <a href="/activities">활동</a> ·{' '}
+            <a href="/courses">코스</a> · <a href="/account">계정</a>
+          </nav>
+          <CompetitionsPage />
+        </Suspense>
       ) : location.pathname === '/courses' ? (
         <Suspense fallback={<p role="status">코스 화면 준비 중</p>}>
           <nav aria-label="주요 화면">
@@ -349,7 +380,8 @@ const browserTree = (
           <nav aria-label="더보기">
             <a href="/nutrition">영양 계획·섭취 기록</a> · <a href="/supplementary">보강 운동</a> ·{' '}
             <a href="/routines">루틴</a> · <a href="/stretching">스트레칭</a> ·{' '}
-            <a href="/recovery">회복 전략</a> · <a href="/account">계정</a>
+            <a href="/recovery">회복 전략</a> · <a href="/races">대회</a> ·{' '}
+            <a href="/records">기록</a> · <a href="/account">계정</a>
           </nav>
           <DemoWorkspace />
         </>

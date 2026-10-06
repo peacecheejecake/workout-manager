@@ -68,6 +68,81 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('session-bound authenticated transport', () => {
+  it.each(
+    ['races', 'race-results', 'training-bests'].flatMap((family) => [
+      { method: 'GET' as const, path: `/bff/v1/${family}?limit=50` },
+      { method: 'GET' as const, path: `/bff/v1/${family}/00000000-0000-4000-8000-000000000001` },
+      { method: 'POST' as const, path: `/bff/v1/${family}` },
+      { method: 'PATCH' as const, path: `/bff/v1/${family}/00000000-0000-4000-8000-000000000001` },
+      { method: 'DELETE' as const, path: `/bff/v1/${family}/00000000-0000-4000-8000-000000000001` },
+    ]),
+  )(
+    'carries bounded race $method $path without logging private values',
+    async ({ method, path }) => {
+      const logs = [
+        vi.spyOn(console, 'log'),
+        vi.spyOn(console, 'info'),
+        vi.spyOn(console, 'debug'),
+      ];
+      try {
+        fetchMock.mockResolvedValue(json({ accepted: true }));
+        const signal = new AbortController().signal;
+        const write = method !== 'GET';
+        const body = write ? { values: { chipSeconds: 0, gunSeconds: null } } : null;
+        await expect(
+          createSessionTransport(session, vi.fn()).request({
+            path,
+            method,
+            body,
+            idempotencyKey: write ? 'synthetic-race-command' : null,
+            signal,
+          }),
+        ).resolves.toEqual({ status: 200, body: { accepted: true }, traceId: null });
+        expect(fetchMock).toHaveBeenCalledWith(path, {
+          method,
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          signal,
+          headers: {
+            'x-workout-session-id': session.sessionId,
+            ...(write
+              ? {
+                  'x-csrf-token': session.csrfToken,
+                  'idempotency-key': 'synthetic-race-command',
+                  'content-type': 'application/json',
+                }
+              : {}),
+          },
+          ...(write ? { body: JSON.stringify(body) } : {}),
+        });
+        for (const log of logs) expect(log).not.toHaveBeenCalled();
+      } finally {
+        for (const log of logs) log.mockRestore();
+      }
+    },
+  );
+  it.each([
+    '/bff/v1/races-admin',
+    '/bff/v1/races/admin',
+    '/bff/v1/race-results-admin',
+    '/bff/v1/race-results/admin',
+    '/bff/v1/training-bests-admin',
+    '/bff/v1/training-bests/admin',
+    '/bff/v1/admin/races',
+    '/bff/v1/races/00000000-0000-4000-8000-000000000001/admin',
+  ])('refuses unsafe competition namespace %s before fetch', async (path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        path,
+        method: 'GET',
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['GET', '/bff/v1/plan-scenarios?limit=3'],
     ['GET', '/bff/v1/plan-scenarios/scenario/revisions/1'],

@@ -166,6 +166,9 @@ importers:
       '@workout/modules-coaching':
         specifier: workspace:*
         version: link:../../packages/modules/coaching
+      '@workout/modules-competitions':
+        specifier: workspace:*
+        version: link:../../packages/modules/competitions
       '@workout/modules-courses':
         specifier: workspace:*
         version: link:../../packages/modules/courses
@@ -251,6 +254,9 @@ importers:
       '@workout/modules-coaching':
         specifier: workspace:*
         version: link:../../packages/modules/coaching
+      '@workout/modules-competitions':
+        specifier: workspace:*
+        version: link:../../packages/modules/competitions
       '@workout/modules-courses':
         specifier: workspace:*
         version: link:../../packages/modules/courses

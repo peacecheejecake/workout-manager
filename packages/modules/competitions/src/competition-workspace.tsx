@@ -37,6 +37,7 @@ export interface CompetitionWorkspaceProps {
   relations?: CompetitionRelations;
   section?: CompetitionSection;
   onSectionChange?: (section: CompetitionSection) => void;
+  onRaceOpen?: (raceId: string) => void;
   athleteId: string | null;
   sessionId: string;
   transport: AuthenticatedTransport;
@@ -147,6 +148,11 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
         summary={(record) => (
           <>
             <h3>{record.title}</h3>
+            {props.onRaceOpen ? (
+              <button type="button" onClick={() => props.onRaceOpen?.(record.id)}>
+                대회 상세 보기
+              </button>
+            ) : null}
             <p>
               {record.localDate} · {record.localStartTime ?? '출발 시간 미상'} · {record.timezone} ·{' '}
               {record.locationName ?? '장소 미상'}
@@ -686,3 +692,4 @@ function RecordEditor<V>({
     </form>
   );
 }
+export { RecordEditor as internalRecordEditor };

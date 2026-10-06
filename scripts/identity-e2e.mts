@@ -25,6 +25,7 @@ import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
+import { createRaceRepository } from '../packages/server/persistence/src/races.ts';
 import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
 import { createStretchingRepository } from '../packages/server/persistence/src/stretching.ts';
@@ -522,6 +523,7 @@ try {
     }),
     consent: createConsentRepository(database),
     planning: createPlanningRepository(database),
+    races: createRaceRepository(database),
     nutrition: createNutritionRepository(database),
     restoreGeneration: createRestoreGenerationRepository(database),
     supplementary: createSupplementaryRepository(database),

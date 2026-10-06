@@ -773,6 +773,11 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
 | M2-02b 대회·결과 저장 명령 계약 | M2-02a | [완료](progress/M2-02b.md); 지도 독립 명령 경계, DB/API/UI 수용은 후속 |
 | M2-02c 대회·결과 원장 저장 거래 | M2-02b | [진행 중](progress/M2-02c.md); PostgreSQL 원장·RLS·CAS·멱등·export/계정 수명, API/UI는 후속 |
+| M2-02g 재사용 대회·기록 화면 | M2-02e, M2-02f | [로컬 수용 완료](progress/M2-02g.md); 실제 Host·PB·Plan 영향 승인은 후속 |
+| M2-02h 실제 대회·기록 Host | M2-02g | [완료](progress/M2-02h.md); canonical 경로·상세·인증 transport·실제 OIDC/DB 수용 |
+| M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); 설계 준비, 전체 affected manifest·별도 원자적 승인 미구현 |
+| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 사용자 포함 정책 답변 대기, 기기 추정 split 공식 PB 승격 금지 |
+| M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [진행 중](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |

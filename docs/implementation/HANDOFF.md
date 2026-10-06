@@ -289,3 +289,8 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 - 사용자 새 CLI 로그인 완료 후 비루트 `workout-admin` 신원과 pinned recovery SSH를 확인했다. 새 v2 설치/검사/1회 실행을 명시 승인받았다. 정확한 script SHA `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`을 root0700 경로에 독점 설치했고 `--check` exit0, `--execute --external-gates-confirmed` **정확히 1회 exit0 / UID_RESUME_LOCAL_CHECKED**였다. 이전 v3 실패/보존본은 덮지 않았다.
 - 별도 fresh Ubuntu 단기 SSH에서 root 권한 거절·8개 write 및4개 private read 거절을 실제 확인했다. 이어 recovery 읽기 전용 posttransition 점검은 **2026-10-06 11:18:18 UTC exit0**: 현재 앱/GH fixed image·UID20001/20002·세 runtime identity, 원본 PG/system ID·schema/slot/publication metadata 유지, 전체 tree/mount·original13/copy7 보존본·current fence pin·source digest·timers masked·Workout503/TLS0·apex307→persona200/TLS0를 확인했다. posttransition payload 자체의 freshSSH 미실행 표시는 그 payload 범위이고 별도 SSH 실행 로그와 구별한다.
 - 원본 로그 `/private/tmp/wm-uid-resume-v2-{install,check,execution}-20261006.log`, `/private/tmp/wm-fresh-ubuntu-readonly-20261006.log`, `/private/tmp/wm-uid-posttransition-readonly-20261006.log`. 이 결과는 UID/runtime 전환의 실제 증거다. backup fence의 실제 held window·운영 원장/키/slot/tail·full backup/upload/격리 restore·latest product/serverfirst migration·503 해제와 공개/native 수용은 여전히 **not_executed**다. EXT-HOSTING 전체 완료가 아니다.
+
+## 사용자 결정 기록 · 2026-10-07 대회·기록
+
+- S16 PB: 공식 확인된 대회 기록만 포함. 수동·미확인·기기 추정 split은 공식 PB로 승격하지 않는다. M2-02j로 구현·실제 수용을 추적한다.
+- 대회 날짜 변경: 기존 미해결 상대 일정은 안내하며 보존하되 이번 변경으로 영향을 받는 미해결 일정은 승인 전에 해결한다. M2-02i의 freshness/영향 판정·명시 승인에 반영하며 자동 해소나 임의 race end를 만들지 않는다.
