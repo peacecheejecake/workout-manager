@@ -2121,6 +2121,15 @@
       "evidence": "docs/implementation/progress/M3-02p.md"
     },
     {
+      "id": "M3-02q",
+      "title": "S22 native app consent 고정 계약",
+      "dependsOn": ["M3-02m"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "고정 app consent GET/PUT와 strict bridge/client/transport/Swift producer를 연결한다. 세션 수명·취소·유한 path·revision/idempotency를 유지하며 SDK와 policy harness 검증을 실제 기기 실행과 구분한다. S22 v-f와 연동하며 운영 처리 gate나 실기기 수용을 대신하지 않는다.",
+      "evidence": "docs/implementation/progress/M3-02q.md"
+    },
+    {
       "id": "M3-02",
       "title": "HealthKit collector",
       "dependsOn": [
@@ -2140,7 +2149,8 @@
         "M3-02m",
         "M3-02n",
         "M3-02o",
-        "M3-02p"
+        "M3-02p",
+        "M3-02q"
       ],
       "kind": "task",
       "status": "not_started",
