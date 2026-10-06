@@ -107,6 +107,7 @@ const migrationFiles = [
   '099_exact_race_deletion.sql',
   '100_app_admission_binding.sql',
   '101_restore_processing_closed_control.sql',
+  '102_restore_app_family_loader.sql',
 ] as const;
 
 /**
@@ -231,6 +232,24 @@ export async function migrate(
 }
 
 /** Tenant API access excludes global credential cleanup reads. */
+/** Core authenticated consent/planning writes; immutable versions remain append-only. */
+export async function grantCorePlanning(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE,DELETE ON consent,outbox,command_receipt,plan_head TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,INSERT ON plan_snapshot,plan_history TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function grantGarmin(connectionString: string, runtimeRole: string): Promise<void> {
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
   const pool = new Pool({ connectionString, max: 1 });

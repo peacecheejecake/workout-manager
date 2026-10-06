@@ -115,7 +115,7 @@ beforeAll(async () => {
   await scoped(owner, existingAthlete, () =>
     owner.query("INSERT INTO consent VALUES($1,'app',true,1)", [existingAthlete]),
   );
-  await migrate(url(roles.owner));
+  await migrate(url(roles.owner), 101);
   await grantOperations(url(roles.owner), roles.runtime);
   await grantResources(url(roles.owner), roles.runtime);
   await grantNutritionCore(url(roles.owner), roles.runtime);
@@ -123,8 +123,8 @@ beforeAll(async () => {
     'SELECT version,checksum FROM schema_migrations ORDER BY version',
   );
   expect(installed.rows).toHaveLength(101);
-  expect(migrationFileNames).toHaveLength(101);
-  for (const [index, file] of migrationFileNames.entries())
+  expect(migrationFileNames.length).toBeGreaterThanOrEqual(101);
+  for (const [index, file] of migrationFileNames.slice(0, 101).entries())
     expect(installed.rows[index]).toEqual({
       version: index + 1,
       checksum: sha(await readFile(new URL(`../migrations/${file}`, import.meta.url))),
