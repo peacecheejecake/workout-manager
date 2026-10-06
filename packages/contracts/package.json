@@ -240,6 +240,10 @@
     "./nutrition-race-timing": {
       "types": "./src/nutrition-race-timing.ts",
       "default": "./dist/nutrition-race-timing.js"
+    },
+    "./nutrition-race-plan-v2": {
+      "types": "./src/nutrition-race-plan-v2.ts",
+      "default": "./dist/nutrition-race-plan-v2.js"
     }
   },
   "scripts": {
