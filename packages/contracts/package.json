@@ -236,6 +236,10 @@
     "./race-queries": {
       "types": "./src/race-queries.ts",
       "default": "./dist/race-queries.js"
+    },
+    "./nutrition-race-timing": {
+      "types": "./src/nutrition-race-timing.ts",
+      "default": "./dist/nutrition-race-timing.js"
     }
   },
   "scripts": {
