@@ -167,7 +167,7 @@ describe('plan scenario durable alternatives', () => {
     });
     expect(await repo.apply(athlete, first.id, apply)).toEqual(applied);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 30) throw new Error('Expected scenario export v30');
+    if (exported.schemaVersion !== 33) throw new Error('Expected scenario export v33');
     expect(exported.data.planScenarios).toEqual([
       expect.objectContaining({
         id: first.id,

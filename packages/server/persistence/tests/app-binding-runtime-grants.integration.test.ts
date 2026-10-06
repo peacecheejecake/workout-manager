@@ -176,8 +176,8 @@ async function seed() {
 }
 
 describe('registered app binding runtime grants (M2-01k-v-c)', () => {
-  it('installs exact ordered 1..100 checksums under a plain owner and is idempotent', async () => {
-    expect(migrationFileNames).toHaveLength(100);
+  it('installs exact ordered 1..104 checksums under a plain owner and is idempotent', async () => {
+    expect(migrationFileNames).toHaveLength(104);
     expect(migrationFileNames[99]).toBe('100_app_admission_binding.sql');
     const rows = await pool('owner').query<{ version: number; checksum: string }>(
       'SELECT version,checksum FROM schema_migrations ORDER BY version',

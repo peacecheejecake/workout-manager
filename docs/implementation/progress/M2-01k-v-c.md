@@ -165,3 +165,11 @@ Root 최종 normal 전체 통합 runner는 **실패**했다: historical URL upgr
 Full runner의 historical race_event setup 오류는 grantOperations가98 이전 schema에서 새 race table SELECT를 무조건 부여한 문제였다. 설치98 확인 조건으로 권한 부여를 제한했으며 최신 grant 내용은 동일하다. 별도8 historical upgrade 파일 최종 실제 PG12/12(skip0), `/private/tmp/wm-root-historical-grants-20261007-r3.log`. 첫 회차10pass/2fail, 두번째11pass/1fail도 보존한다. CheckIn의 명시 합성 app head는 해당 positive historical fixture의 owner tenant transaction에서만 준비하고 신규 runtime 권한은 추가하지 않았다. Course revocation fixture는 latest migration 후 새 공개 erase wrapper의 grant helper를 다시 적용한다. 원래 backfill 금지·FORCE RLS·기존 이력 검증은 유지한다.
 
 별도 watched refs/Garmin/tenant purge ownDB upgrade3파일은 일반 소유자로 설치·최신 six budget table 소유자를 확인하고 실제 삭제를 수행해 최종7/7(skip0) 통과했다(`/private/tmp/wm-plainowner-three-actual-r2-20261007.log`). 관리자는 계속 synthetic seed/검사를 담당한다. 역사 checksum/body/ACL 수용을 유지했으며 production SQL 보호는 바꾸지 않았다. Root가 report·source diff·exact migration helper SHA와 실행 로그를 대조했다. 모든 해당 cluster stopped/removed. 전체336 실패 결과를 이19개의 별도 통과로 덮어쓰지 않으며 나머지 legacy app consent/export/owner fixture 수정은 병렬 진행 중이다.
+
+## 2026-10-07 export33 consumer assertions and erasure-chain fixture alignment
+
+개인 AI 설정 portable export33의 저장 원본 투영·수용은 위 실제8/8와 consumer103/103으로 확인됐다. 과거 'portable export33 미완료' 표기는104 최초 통합 시점의 상태이며 현재 남은 gate는 authenticated archive/restore, 실제 S23 화면 저장/선택 모델의 frozen job·전송 동의 연결, 전체 phase·운영·provider 수용이다.
+
+최신 exporter를 호출하는 추가13파일의 producer version 기대값/좁히기를33으로 맞췄으며 기존 artifact2–32를 변경하지 않았다. 최신 app binding fixture는 registry104와 실제100 파일 ID를 함께 확인한다. Course sharing의 protected 유지 작업은 실제 plain owner·tenant·global shared lock으로 수행하고 admin 검사와 runtime 권한은 유지했다. 단일 Activity positive scenario만 synthetic app consent를 명시 준비한다. 삭제 chain104/103/100/98 prefix와 원래059–048 suffix, live plain owner·inner EXECUTE 금지·103 global→delegate→budget scrub 및 원래 lifecycle→command→DELETE 순서 검증을 유지했다.
+
+최종 실제 PG13파일155/155, fail0/skip0(`/private/tmp/wm-export33-drift-pg-20261007-run3.log`), persistence/API TS·변경 lint/format/diff exit0. 이전154/1 두 회차(권한 없는 consent repo 호출, 과거 chain 파서)도 별도 보존한다. Root가 최종 source diff·SHA·실제 로그와 cleanup을 대조했다. 생산 SQL/보호 조건·실제 제공자는 바꾸거나 호출하지 않았다. 다른 fixture의 명시 app consent와 owner 작업은 별도 검증 중이며 전체 통합의 기존 실패를 이 집중 통과로 대체하지 않는다.
