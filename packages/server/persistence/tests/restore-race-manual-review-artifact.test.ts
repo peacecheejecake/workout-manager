@@ -7,6 +7,12 @@ import { assembleRaceManualReviewCandidate } from '@workout/server-coaching/race
 import { createRaceRelativeScheduleCalculationPorts } from '../src/race-relative-schedule-calculation.js';
 import { mapRaceManualReviewSourceInventory } from '../src/race-manual-review-source-inventory.js';
 import {
+  prepareVerifiedRaceReviewArtifactV2,
+  signRaceReviewPreparationV2,
+  readRaceReviewPreparationV2,
+  raceReviewArtifactInventoriesV2,
+  type RaceReviewArtifactBodyV2,
+  type RaceReviewArtifactIdentityV2,
   prepareVerifiedRaceReviewArtifact,
   raceReviewArtifactInventories,
   readRaceReviewPreparation,
@@ -527,4 +533,227 @@ it('rejects hidden and symbol data instead of silently omitting it from a signed
     value: 'synthetic-hidden',
   });
   reject(rowsWithHiddenProperty);
+});
+
+function fixtureV2(
+  sourceSchemaVersion: 105 | 106 = 106,
+  tombstone = false,
+): RaceReviewArtifactBodyV2 {
+  const {
+    artifactVersion: _,
+    family: __,
+    schemaHash: ___,
+    ...base
+  } = fixture(sourceSchemaVersion, sourceSchemaVersion === 105 ? empty() : rows(tombstone));
+  const collections = {
+    ...base.collections,
+    suppressions: base.collections.suppressions.map((r) => ({ ...r, event_id: generation })),
+  };
+  return {
+    ...base,
+    artifactVersion: 2,
+    family: 'race-manual-review-family-v2',
+    sourceSchemaHash: 'c'.repeat(64),
+    targetSchemaHash: 'd'.repeat(64),
+    collections,
+    inventories: raceReviewArtifactInventoriesV2(collections),
+  };
+}
+function identityV2(body: RaceReviewArtifactBodyV2): RaceReviewArtifactIdentityV2 {
+  const { artifactVersion: _, state: __, collections: ___, ...identity } = body;
+  return identity;
+}
+function verifyV2(body: RaceReviewArtifactBodyV2) {
+  return prepareVerifiedRaceReviewArtifactV2(signRaceReviewPreparationV2(body, key), {
+    expected: identityV2(body),
+    resolveSourceKey: () => key,
+  });
+}
+it.each([105, 106] as const)(
+  'V2 authenticates explicit schema%s absence/presence without stage or admission',
+  (version) => {
+    const body = fixtureV2(version);
+    const summary = readRaceReviewPreparationV2(verifyV2(body));
+    expect(summary).toEqual({
+      identity: identityV2(body),
+      state: version === 105 ? 'not_in_schema' : 'present',
+      admissionAllowed: false,
+      stageAllowed: false,
+      complete: false,
+    });
+    expect(Object.isFrozen(summary.identity)).toBe(true);
+  },
+);
+it('V2 permits multiple exact markers referencing one original event and retains SQL digests/time', () => {
+  const body = fixtureV2(106, true);
+  const ref = {
+    ...first(body.collections.sourceRefs),
+    source_kind: 'plan-snapshot' as const,
+    source_id: generation,
+  };
+  body.collections.sourceRefs.push(ref);
+  body.collections.suppressions.push({ ...ref, occurred_at: stamp, event_id: generation });
+  body.inventories = raceReviewArtifactInventoriesV2(body.collections);
+  const encoded = signRaceReviewPreparationV2(body, key);
+  expect(Buffer.from(encoded).toString()).toContain('"event_id":"' + generation + '"');
+  expect(readRaceReviewPreparationV2(verifyV2(body)).identity.inventories.suppressions.count).toBe(
+    2,
+  );
+  expect(first(body.collections.reviews).payload_sql_digest).toBe(digest);
+  expect(first(body.collections.suppressions).occurred_at).toBe(stamp);
+  // This is identity preparation; no assertion that generation UUID is an actual tail event.
+});
+it.each(['sourceSchemaHash', 'targetSchemaHash'] as const)(
+  'V2 rejects mismatched independent %s pin',
+  (field) => {
+    const body = fixtureV2();
+    const bytes = signRaceReviewPreparationV2(body, key);
+    expect(() =>
+      prepareVerifiedRaceReviewArtifactV2(bytes, {
+        expected: { ...identityV2(body), [field]: digest },
+        resolveSourceKey: () => key,
+      }),
+    ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  },
+);
+it('V2 rejects missing/invalid marker identity, foreign refs and duplicate markers', () => {
+  for (const mutation of [
+    (body: RaceReviewArtifactBodyV2) =>
+      Reflect.deleteProperty(first(body.collections.suppressions), 'event_id'),
+    (body: RaceReviewArtifactBodyV2) => {
+      first(body.collections.suppressions).event_id = 'invalid';
+    },
+    (body: RaceReviewArtifactBodyV2) => {
+      first(body.collections.suppressions).athlete_id = generation;
+    },
+    (body: RaceReviewArtifactBodyV2) => {
+      first(body.collections.suppressions).source_row_digest = 'e'.repeat(64);
+    },
+    (body: RaceReviewArtifactBodyV2) => {
+      first(body.collections.suppressions).occurred_at = 'invalid';
+    },
+    (body: RaceReviewArtifactBodyV2) => {
+      body.collections.suppressions.push(first(body.collections.suppressions));
+    },
+  ]) {
+    const body = fixtureV2(106, true);
+    mutation(body);
+    // Recompute where structurally valid so semantic relation/duplicate checks are exercised.
+    try {
+      body.inventories = raceReviewArtifactInventoriesV2(body.collections);
+    } catch {
+      /* Invalid structural row remains for signer rejection. */
+    }
+    expect(() => signRaceReviewPreparationV2(body, key)).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  }
+});
+it('V2 cannot borrow legacy schemaHash, versions, discriminator or absent-source rows', () => {
+  const body = fixtureV2();
+  for (const invalid of [
+    { ...body, schemaHash: digest },
+    { ...body, artifactVersion: 1 },
+    { ...body, family: 'race-manual-review-family-v1' },
+    { ...body, sourceSchemaVersion: 105 },
+    { ...body, targetSchemaVersion: 107 },
+    { ...body, sourceSchemaHash: undefined },
+    { ...body, state: 'not_in_schema' },
+    { ...body, unknown: true },
+  ])
+    expect(() => signRaceReviewPreparationV2(invalid, key)).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+});
+it('V2 rejects HMAC/key/canonical/bounds changes and handles cannot be forged or used by V1', () => {
+  const body = fixtureV2(),
+    bytes = signRaceReviewPreparationV2(body, key);
+  const authority = { expected: identityV2(body), resolveSourceKey: () => key };
+  for (const invalid of [
+    Buffer.concat([bytes, Buffer.from(' ')]),
+    Buffer.alloc(RACE_REVIEW_ARTIFACT_MAX_BYTES + 1),
+    Buffer.from('{"body":'),
+  ])
+    expect(() => prepareVerifiedRaceReviewArtifactV2(invalid, authority)).toThrow(
+      'INVALID_RACE_REVIEW_ARTIFACT',
+    );
+  expect(() =>
+    prepareVerifiedRaceReviewArtifactV2(bytes, {
+      ...authority,
+      resolveSourceKey: () => Buffer.alloc(32, 72),
+    }),
+  ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  expect(() =>
+    readRaceReviewPreparationV2({
+      kind: 'preparation_verified_only_v2',
+      admissionAllowed: false,
+      stageAllowed: false,
+      complete: false,
+    }),
+  ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  expect(() =>
+    prepareVerifiedRaceReviewArtifact(bytes, {
+      expected: identity(fixture()),
+      resolveSourceKey: () => key,
+    }),
+  ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  expect(() =>
+    prepareVerifiedRaceReviewArtifactV2(signRaceReviewPreparation(fixture(), key), authority),
+  ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+  const tooMany = fixtureV2(106, true);
+  tooMany.collections.suppressions = Array.from({ length: 5001 }, () =>
+    first(tooMany.collections.suppressions),
+  );
+  expect(() => signRaceReviewPreparationV2(tooMany, key)).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+});
+
+it('V2 distinguishes present zero collections from source105 schema absence', () => {
+  const body = fixtureV2(106);
+  body.collections = { reviews: [], sourceRefs: [], suppressions: [], receipts: [] };
+  body.inventories = raceReviewArtifactInventoriesV2(body.collections);
+  expect(readRaceReviewPreparationV2(verifyV2(body)).state).toBe('present');
+  expect(readRaceReviewPreparationV2(verifyV2(fixtureV2(105))).state).toBe('not_in_schema');
+});
+it('V2 rejects contradictory occurrence times for a shared original event', () => {
+  const body = fixtureV2(106, true);
+  const ref = {
+    ...first(body.collections.sourceRefs),
+    source_kind: 'plan-snapshot' as const,
+    source_id: generation,
+  };
+  body.collections.sourceRefs.push(ref);
+  body.collections.suppressions.push({
+    ...ref,
+    occurred_at: '2026-10-01T00:00:00.123457Z',
+    event_id: generation,
+  });
+  body.inventories = raceReviewArtifactInventoriesV2(body.collections);
+  expect(() => signRaceReviewPreparationV2(body, key)).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
+});
+it('V1 and V2 keep distinct exact canonical HMAC domains', () => {
+  const v1 = signRaceReviewPreparation(fixture(), key);
+  const v2Body = fixtureV2(105),
+    v2 = signRaceReviewPreparationV2(v2Body, key);
+  for (const [bytes, domain] of [
+    [v1, 'wm-race-manual-review-family-v1\0'],
+    [v2, 'wm-race-manual-review-family-v2\0'],
+  ] as const) {
+    const envelope: unknown = JSON.parse(Buffer.from(bytes).toString());
+    const parsed = z
+      .strictObject({ body: z.record(z.string(), z.json()), hmacSha256: z.string() })
+      .parse(envelope);
+    expect(parsed.hmacSha256).toBe(
+      createHmac('sha256', key).update(domain).update(JSON.stringify(parsed.body)).digest('hex'),
+    );
+  }
+  const decoded = z
+    .strictObject({ body: z.record(z.string(), z.json()), hmacSha256: z.string() })
+    .parse(JSON.parse(Buffer.from(v2).toString()));
+  const wrong = createHmac('sha256', key)
+    .update('wm-race-manual-review-family-v1\0')
+    .update(JSON.stringify(decoded.body))
+    .digest('hex');
+  const changed = Buffer.from(Buffer.from(v2).toString().replace(decoded.hmacSha256, wrong));
+  expect(() =>
+    prepareVerifiedRaceReviewArtifactV2(changed, {
+      expected: identityV2(v2Body),
+      resolveSourceKey: () => key,
+    }),
+  ).toThrow('INVALID_RACE_REVIEW_ARTIFACT');
 });

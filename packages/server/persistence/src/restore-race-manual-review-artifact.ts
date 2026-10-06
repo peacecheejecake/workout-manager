@@ -6,7 +6,7 @@ import { mapRaceManualReviewSourceInventory } from './race-manual-review-source-
 
 // Preparation only: this authenticates a bounded family, not a complete archive,
 // independent witness, SQL stage authority or restore processing admission.
-// The future suppression event_id is not frozen and remains rejected. Nonnull
+// V1 rejects suppression event_id; V2 preserves it without proving event provenance. Nonnull
 // payloads require the actual domain verifier and finite copied-body mapper below.
 export const RACE_REVIEW_ARTIFACT_MAX_BYTES = 16 * 1024 * 1024;
 export const RACE_REVIEW_ARTIFACT_MAX_ROW_BYTES = 4 * 1024 * 1024;
@@ -166,6 +166,43 @@ const bodySchema = identitySchema
   })
   .strict();
 const envelopeSchema = z.strictObject({ body: bodySchema, hmacSha256: hash });
+const collectionsV2Schema = collectionsSchema
+  .extend({
+    suppressions: z.array(suppression.extend({ event_id: uuid })).max(maxRows),
+  })
+  .strict();
+const identityV2Schema = identitySchema
+  .omit({ family: true, schemaHash: true })
+  .extend({
+    family: z.literal('race-manual-review-family-v2'),
+    sourceSchemaHash: hash,
+    targetSchemaHash: hash,
+  })
+  .strict();
+const bodyV2Schema = identityV2Schema
+  .extend({
+    artifactVersion: z.literal(2),
+    state: z.enum(['not_in_schema', 'present']),
+    collections: collectionsV2Schema,
+  })
+  .strict();
+const envelopeV2Schema = z.strictObject({ body: bodyV2Schema, hmacSha256: hash });
+const domainV2 = 'wm-race-manual-review-family-v2\0';
+export type RaceReviewArtifactIdentityV2 = z.infer<typeof identityV2Schema>;
+export type RaceReviewArtifactCollectionsV2 = z.infer<typeof collectionsV2Schema>;
+export type RaceReviewArtifactBodyV2 = z.infer<typeof bodyV2Schema>;
+export interface RaceReviewArtifactAuthorityV2 {
+  readonly expected: RaceReviewArtifactIdentityV2;
+  readonly resolveSourceKey: (id: string, version: number) => Uint8Array;
+}
+export interface VerifiedRaceReviewPreparationV2 {
+  readonly kind: 'preparation_verified_only_v2';
+  readonly admissionAllowed: false;
+  readonly stageAllowed: false;
+  readonly complete: false;
+}
+const verifiedV2 = new WeakMap<VerifiedRaceReviewPreparationV2, RaceReviewArtifactBodyV2>();
+
 export type RaceReviewArtifactIdentity = z.infer<typeof identitySchema>;
 export type RaceReviewArtifactCollections = z.infer<typeof collectionsSchema>;
 export type RaceReviewArtifactBodyV1 = z.infer<typeof bodySchema>;
@@ -245,7 +282,16 @@ function compareCanonical(a: unknown, b: unknown): number {
 function refKey(r: z.infer<typeof sourceRef>): string {
   return canonical([r.review_id, r.source_kind, r.source_id, r.version_key]);
 }
-function validateBody(body: RaceReviewArtifactBodyV1): void {
+function validateBody(body: RaceReviewArtifactBodyV1 | RaceReviewArtifactBodyV2): void {
+  if (body.artifactVersion === 2) {
+    const eventTimes = new Map<string, bigint>();
+    for (const marker of body.collections.suppressions) {
+      const time = timestampMicros(marker.occurred_at);
+      const prior = eventTimes.get(marker.event_id);
+      if (prior !== undefined && prior !== time) invalid();
+      eventTimes.set(marker.event_id, time);
+    }
+  }
   if ((body.sourceSchemaVersion === 105) !== (body.state === 'not_in_schema')) invalid();
   for (const name of ['reviews', 'sourceRefs', 'suppressions', 'receipts'] as const) {
     const rows = body.collections[name];
@@ -404,25 +450,7 @@ export function prepareVerifiedRaceReviewArtifact(
   authority: RaceReviewArtifactAuthority,
 ): VerifiedRaceReviewPreparation {
   try {
-    if (bytes.byteLength > RACE_REVIEW_ARTIFACT_MAX_BYTES) invalid();
-    // Bound recursive JSON depth before JSON.parse/schema traversal.
-    let depth = 0,
-      quoted = false,
-      escaped = false;
-    for (const b of bytes) {
-      if (quoted) {
-        if (escaped) escaped = false;
-        else if (b === 92) escaped = true;
-        else if (b === 34) quoted = false;
-      } else if (b === 34) quoted = true;
-      else if (b === 123 || b === 91) {
-        if (++depth > 64) invalid();
-      } else if (b === 125 || b === 93) {
-        if (--depth < 0) invalid();
-      }
-    }
-    if (depth !== 0 || quoted) invalid();
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const text = decodeCanonicalInput(bytes);
     const envelope = envelopeSchema.parse(JSON.parse(text));
     if (text !== canonical(envelope)) invalid();
     const expected = identitySchema.parse(authority.expected);
@@ -457,6 +485,103 @@ export function readRaceReviewPreparation(handle: VerifiedRaceReviewPreparation)
   complete: false;
 }> {
   const body = verified.get(handle);
+  if (!body) invalid();
+  const { artifactVersion: _, state, collections: __, ...identity } = body;
+  return freeze({ identity, state, admissionAllowed: false, stageAllowed: false, complete: false });
+}
+
+function decodeCanonicalInput(bytes: Uint8Array): string {
+  if (bytes.byteLength > RACE_REVIEW_ARTIFACT_MAX_BYTES) invalid();
+  // Bound recursive JSON depth before JSON.parse/schema traversal.
+  let depth = 0,
+    quoted = false,
+    escaped = false;
+  for (const b of bytes) {
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (b === 92) escaped = true;
+      else if (b === 34) quoted = false;
+    } else if (b === 34) quoted = true;
+    else if (b === 123 || b === 91) {
+      if (++depth > 64) invalid();
+    } else if (b === 125 || b === 93) {
+      if (--depth < 0) invalid();
+    }
+  }
+  if (depth !== 0 || quoted) invalid();
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
+/** V2 inventories authenticate source DTO bytes, not PostgreSQL jsonb digests. */
+export function raceReviewArtifactInventoriesV2(
+  raw: unknown,
+): RaceReviewArtifactIdentityV2['inventories'] {
+  canonical(raw);
+  const collections = collectionsV2Schema.parse(raw);
+  return {
+    reviews: { count: collections.reviews.length, sha256: sha(collections.reviews) },
+    sourceRefs: { count: collections.sourceRefs.length, sha256: sha(collections.sourceRefs) },
+    suppressions: { count: collections.suppressions.length, sha256: sha(collections.suppressions) },
+    receipts: { count: collections.receipts.length, sha256: sha(collections.receipts) },
+  };
+}
+export function signRaceReviewPreparationV2(raw: unknown, key: Uint8Array): Uint8Array {
+  try {
+    canonical(raw);
+    const body = bodyV2Schema.parse(raw);
+    validateBody(body);
+    if (key.byteLength !== 32) invalid();
+    const hmacSha256 = createHmac('sha256', key)
+      .update(domainV2)
+      .update(canonical(body))
+      .digest('hex');
+    const bytes = Buffer.from(canonical({ body, hmacSha256 }));
+    if (bytes.byteLength > RACE_REVIEW_ARTIFACT_MAX_BYTES) invalid();
+    return bytes;
+  } catch {
+    invalid();
+  }
+}
+/** Preparation only: marker event identity is authenticated, tail/provenance is not verified here. */
+export function prepareVerifiedRaceReviewArtifactV2(
+  bytes: Uint8Array,
+  authority: RaceReviewArtifactAuthorityV2,
+): VerifiedRaceReviewPreparationV2 {
+  try {
+    const text = decodeCanonicalInput(bytes);
+    const envelope = envelopeV2Schema.parse(JSON.parse(text));
+    if (text !== canonical(envelope)) invalid();
+    const expected = identityV2Schema.parse(authority.expected);
+    const { artifactVersion: _, state: __, collections: ___, ...actual } = envelope.body;
+    if (canonical(expected) !== canonical(actual)) invalid();
+    const key = authority.resolveSourceKey(expected.sourceKeyId, expected.sourceKeyVersion);
+    if (key.byteLength !== 32) invalid();
+    const wanted = createHmac('sha256', key)
+      .update(domainV2)
+      .update(canonical(envelope.body))
+      .digest();
+    if (!timingSafeEqual(wanted, Buffer.from(envelope.hmacSha256, 'hex'))) invalid();
+    validateBody(envelope.body);
+    const handle: VerifiedRaceReviewPreparationV2 = Object.freeze({
+      kind: 'preparation_verified_only_v2',
+      admissionAllowed: false,
+      stageAllowed: false,
+      complete: false,
+    });
+    verifiedV2.set(handle, freeze(envelope.body));
+    return handle;
+  } catch {
+    invalid();
+  }
+}
+export function readRaceReviewPreparationV2(handle: VerifiedRaceReviewPreparationV2): Readonly<{
+  identity: RaceReviewArtifactIdentityV2;
+  state: 'not_in_schema' | 'present';
+  admissionAllowed: false;
+  stageAllowed: false;
+  complete: false;
+}> {
+  const body = verifiedV2.get(handle);
   if (!body) invalid();
   const { artifactVersion: _, state, collections: __, ...identity } = body;
   return freeze({ identity, state, admissionAllowed: false, stageAllowed: false, complete: false });
