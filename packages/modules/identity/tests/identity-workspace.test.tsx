@@ -59,6 +59,8 @@ function exportLogoutFetch(exportResponse: () => Promise<Response>) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       if (path === '/bff/v1/operations/status') return operationsResponse();
       if (path === '/bff/v1/operations/export') return exportResponse();
@@ -130,23 +132,27 @@ it('clears private consent and account UI only after logout confirmation', async
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string) =>
-      path === '/bff/v1/integrations/garmin/status'
-        ? garminResponse()
-        : path === '/bff/v1/operations/status'
-          ? operationsResponse()
-          : path === '/bff/v1/session'
-            ? response(session)
-            : path.endsWith('/logout')
-              ? new Response(null, { status: 204 })
-              : response({ kind: 'ai', granted: true, revision: 2 }),
+      path === '/bff/v1/consents/app'
+        ? response({ kind: 'app', granted: false, revision: 0 })
+        : path === '/bff/v1/integrations/garmin/status'
+          ? garminResponse()
+          : path === '/bff/v1/operations/status'
+            ? operationsResponse()
+            : path === '/bff/v1/session'
+              ? response(session)
+              : path.endsWith('/logout')
+                ? new Response(null, { status: 204 })
+                : response({ kind: 'ai', granted: true, revision: 2 }),
     ),
   );
   render(<IdentityWorkspace />);
   await screen.findByRole('button', { name: 'AI 동의 철회' });
+  await screen.findByRole('button', { name: '앱 저장·처리에 동의' });
   await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));
   await screen.findByRole('link', { name: 'OIDC로 로그인' });
   expect(screen.queryByText(/athlete-a/)).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'AI 동의 철회' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '앱 저장·처리 동의' })).not.toBeInTheDocument();
 });
 it.each([false, true])(
   'shows AI purpose and transmission limits before changing granted=%s',
@@ -160,6 +166,8 @@ it.each([false, true])(
     vi.stubGlobal(
       'fetch',
       vi.fn(async (path: string, init?: RequestInit) => {
+        if (path === '/bff/v1/consents/app')
+          return response({ kind: 'app', granted: false, revision: 0 });
         if (path === '/bff/v1/session') return response(session);
         if (path === '/bff/v1/operations/status') return operationsResponse();
         if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
@@ -192,15 +200,17 @@ it('does not claim consent success when its revision conflicts', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) =>
-      path === '/bff/v1/integrations/garmin/status'
-        ? garminResponse()
-        : path === '/bff/v1/operations/status'
-          ? operationsResponse()
-          : path === '/bff/v1/session'
-            ? response(session)
-            : init?.method === 'PUT'
-              ? response({ error: { code: 'CONSENT_CONFLICT' } }, 409)
-              : response({ kind: 'ai', granted: false, revision: 1 }),
+      path === '/bff/v1/consents/app'
+        ? response({ kind: 'app', granted: false, revision: 0 })
+        : path === '/bff/v1/integrations/garmin/status'
+          ? garminResponse()
+          : path === '/bff/v1/operations/status'
+            ? operationsResponse()
+            : path === '/bff/v1/session'
+              ? response(session)
+              : init?.method === 'PUT'
+                ? response({ error: { code: 'CONSENT_CONFLICT' } }, 409)
+                : response({ kind: 'ai', granted: false, revision: 1 }),
     ),
   );
   render(<IdentityWorkspace />);
@@ -216,6 +226,8 @@ it('retries uncertain mutations with the original idempotency key and server rev
     vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         commands.push(init);
@@ -258,6 +270,8 @@ it('never relabels a historical successful receipt as the current consent after 
       if (path === '/bff/v1/operations/status') return operationsResponse();
       // The owner-only unofficial Garmin panel is off here (M1-06b-tmp).
       if (path.startsWith(unofficialBase)) return response(null, 404);
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         commands += 1;
@@ -283,6 +297,8 @@ it('hides previous consent when the authoritative read fails after a successful 
     vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       if (init?.method === 'PUT') {
         wrote = true;
@@ -309,6 +325,8 @@ it('clears account A before refetching B when a shared cookie changes ahead of s
     vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') {
         if (switched) {
           await delayed;
@@ -351,6 +369,8 @@ it('clears an expired server session and its private consent controls', async ()
       if (path === '/bff/v1/operations/status') return operationsResponse();
       // The owner-only unofficial Garmin panel is off here (M1-06b-tmp).
       if (path.startsWith(unofficialBase)) return response(null, 404);
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       reads += 1;
       return reads === 1
@@ -409,15 +429,17 @@ describe('M2-01w: sign-in failure screen and provider sign-out', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (path: string) =>
-        path === '/bff/v1/integrations/garmin/status'
-          ? garminResponse()
-          : path === '/bff/v1/operations/status'
-            ? operationsResponse()
-            : path === '/bff/v1/session'
-              ? response(session)
-              : path.endsWith('/logout')
-                ? logout()
-                : response({ kind: 'ai', granted: true, revision: 2 }),
+        path === '/bff/v1/consents/app'
+          ? response({ kind: 'app', granted: false, revision: 0 })
+          : path === '/bff/v1/integrations/garmin/status'
+            ? garminResponse()
+            : path === '/bff/v1/operations/status'
+              ? operationsResponse()
+              : path === '/bff/v1/session'
+                ? response(session)
+                : path.endsWith('/logout')
+                  ? logout()
+                  : response({ kind: 'ai', granted: true, revision: 2 }),
       ),
     );
   }
@@ -454,6 +476,8 @@ it('shows the unofficial Garmin panel apart from the official one and warns in a
     vi.fn(async (path: string) => {
       if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
       if (path === '/bff/v1/operations/status') return operationsResponse();
+      if (path === '/bff/v1/consents/app')
+        return response({ kind: 'app', granted: false, revision: 0 });
       if (path === '/bff/v1/session') return response(session);
       if (path === `${unofficialBase}status`)
         return response({

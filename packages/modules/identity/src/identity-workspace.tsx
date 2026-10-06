@@ -14,6 +14,7 @@ import {
   clearPrivateBrowserStorage,
 } from '@workout/platform/private-browser-storage';
 import { OperationsPanel } from './operations-panel';
+import { AppConsentPanel } from './app-consent-panel';
 import { GarminPanel } from './garmin-panel';
 import { GarminUnofficialEraseNotice, GarminUnofficialPanel } from './garmin-unofficial-panel';
 import { HealthKitPanel } from './healthkit-panel';
@@ -150,7 +151,7 @@ function SessionBoundary({
     );
   return (
     <AccountLifetime
-      key={session.data.sessionId}
+      key={JSON.stringify([session.data.athleteId, session.data.sessionId])}
       session={session.data}
       onSessionChanged={() => {
         clearPrivateBrowserStorage();
@@ -287,6 +288,11 @@ function Account({
         로그아웃
       </button>
       {logout.isError ? <p role="alert">로그아웃을 확인하지 못했습니다. 다시 시도하세요.</p> : null}
+      <AppConsentPanel
+        session={session}
+        onSignedOut={onSignedOut}
+        onSessionChanged={onSessionChanged}
+      />
       <h3>AI 코치에 정보 전달</h3>
       <p>
         훈련 계획·수행 요약·체크인 정보를 AI 코칭 목적으로 전달하는 동의입니다. 사진·자료 원문·정밀

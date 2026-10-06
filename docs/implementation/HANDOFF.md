@@ -294,3 +294,8 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 
 - S16 PB: 공식 확인된 대회 기록만 포함. 수동·미확인·기기 추정 split은 공식 PB로 승격하지 않는다. M2-02j로 구현·실제 수용을 추적한다.
 - 대회 날짜 변경: 기존 미해결 상대 일정은 안내하며 보존하되 이번 변경으로 영향을 받는 미해결 일정은 승인 전에 해결한다. M2-02i의 freshness/영향 판정·명시 승인에 반영하며 자동 해소나 임의 race end를 만들지 않는다.
+
+## 2026-10-07 M2-02k 동의 화면 수용
+
+- Race6 create/update app admission의 actualPG96/96, HTTP 신규11/11·기존actual5/5에 이어 새 계정 app panel·거절 초안 UI를 실제 OIDC Next/Vite2/2로 검증했다. 별도 Chrome16 layout/focus 및 재동의/logout2 checks, Aside 실제 grant/revoke/초안 snapshot과 각 도구 한계를 [K 기록](progress/M2-02k.md)에 구분한다.
+- K completed; M2-02i 날짜 영향 전체 atomic 승인과 M2-02j 공식 PB는 in_progress다. 현재 phase의 full gates·독립 phase review 전 main으로 병합하지 않는다. HTTPS·실기기·provider 결과를 승격하지 않는다.

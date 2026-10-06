@@ -745,3 +745,73 @@ it('loads additional named event choices in the records section without dropping
   await user.selectOptions(screen.getByLabelText('연결 대회'), nextId);
   expect(screen.getByLabelText('날씨 메모')).toHaveValue('유지할 메모');
 });
+
+it.each([
+  {
+    title: '목표 대회',
+    path: '/bff/v1/races',
+    dateLabel: '현지 날짜',
+    date: '2026-10-10',
+    field: '대회 이름',
+    value: '동의 대기 초안',
+  },
+  {
+    title: '실제 대회 결과',
+    path: '/bff/v1/race-results',
+    dateLabel: '현지 날짜',
+    date: '2026-10-10',
+    field: 'Chip 시간 (초)',
+    value: '1234',
+  },
+  {
+    title: '훈련 기록',
+    path: '/bff/v1/training-bests',
+    dateLabel: '관측 시각 (ISO 8601, offset 포함)',
+    date: '2026-10-10T03:00:00.000Z',
+    field: '경과 시간 (초)',
+    value: '1234',
+  },
+])(
+  'keeps $title draft on app-consent rejection without CAS/success/automatic grant',
+  async ({ title, path, dateLabel, date, field, value }) => {
+    let permitted = false;
+    const commands: TransportRequest[] = [];
+    const api = transport((request) => {
+      commands.push(request);
+      if (request.method === 'GET') return lists(request);
+      return permitted
+        ? { status: 201, body: { id, revision: 1 } }
+        : {
+            status: 409,
+            body: { error: { code: 'APP_CONSENT_REQUIRED', message: 'private consent facts' } },
+          };
+    });
+    render(view(api));
+    await screen.findByText('가을 대회');
+    await userEvent.click(screen.getByRole('button', { name: `새 ${title} 등록` }));
+    fireEvent.change(screen.getByLabelText(dateLabel), { target: { value: date } });
+    fireEvent.change(screen.getByLabelText(field), { target: { value } });
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.',
+    );
+    expect(screen.getByLabelText(dateLabel)).toHaveValue(date);
+    expect(screen.getByLabelText(field)).toHaveValue(field === '대회 이름' ? value : Number(value));
+    expect(
+      screen.queryByText(/다른 변경과 충돌|저장이 서버에 반영|private consent facts/),
+    ).not.toBeInTheDocument();
+    const denied = commands.filter((request) => request.method !== 'GET');
+    expect(denied).toHaveLength(1);
+    expect(denied[0]?.path).toBe(path);
+    expect(denied[0]?.method).toBe('POST');
+    expect(commands.some((request) => request.path.includes('/consents'))).toBe(false);
+    permitted = true;
+    // A user can return after changing consent in Account and explicitly retry the retained command.
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByText('저장이 서버에 반영되었습니다 (revision 1).');
+    const writes = commands.filter((request) => request.method !== 'GET');
+    expect(writes).toHaveLength(2);
+    expect(writes[1]?.body).toEqual(writes[0]?.body);
+    expect(writes[1]?.idempotencyKey).toBe(writes[0]?.idempotencyKey);
+  },
+);

@@ -56,6 +56,8 @@ function Lifetime(props: RaceEventDetailWorkspaceProps & { athleteId: string }) 
   );
 }
 function readError(error: unknown) {
+  if (error instanceof RaceRequestError && error.code === 'APP_CONSENT_REQUIRED')
+    return '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.';
   if (error instanceof RaceRequestError && error.status === 404)
     return '대회를 찾을 수 없거나 읽을 수 없습니다. 저장된 초안은 유지됩니다.';
   if (error instanceof RaceRequestError && error.code === 'REVISION_CONFLICT')

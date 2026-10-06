@@ -301,7 +301,7 @@ function readableError(error: unknown): string {
       case 'IDEMPOTENCY_CONFLICT':
         return '같은 저장 키의 내용이 달라 충돌했습니다. 초안을 확인하세요.';
       case 'APP_CONSENT_REQUIRED':
-        return '새 기록 저장에는 앱 처리 동의가 필요합니다. 기존 기록 읽기와 삭제는 가능합니다.';
+        return '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.';
       default:
         return `요청을 완료하지 못했습니다 (${error.code}). 초안은 유지됩니다.`;
     }

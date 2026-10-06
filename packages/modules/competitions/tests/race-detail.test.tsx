@@ -436,3 +436,62 @@ it('blocks back during a pending save and permits it after the exact successful 
   expect(onBack).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: '계속 편집' })).not.toBeInTheDocument();
 });
+
+it('keeps exact detail fields and unsaved draft when app consent blocks PATCH without CAS or automatic grant', async () => {
+  let permitted = false;
+  const commands: TransportRequest[] = [];
+  const onBack = vi.fn();
+  const api = transport((request) => {
+    commands.push(request);
+    if (request.method === 'GET') return good();
+    return permitted
+      ? { status: 200, body: { id, revision: 2 } }
+      : {
+          status: 409,
+          body: { error: { code: 'APP_CONSENT_REQUIRED', message: 'private permission' } },
+        };
+  });
+  render(
+    <RaceEventDetailWorkspace
+      athleteId="alice"
+      sessionId="a"
+      raceId={id}
+      transport={api}
+      onBack={onBack}
+    />,
+  );
+  await userEvent.click(await screen.findByRole('button', { name: '대회 편집' }));
+  await userEvent.clear(screen.getByLabelText('대회 이름'));
+  await userEvent.type(screen.getByLabelText('대회 이름'), '동의 대기 상세 초안');
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.',
+  );
+  expect(screen.getByLabelText('대회 이름')).toHaveValue('동의 대기 상세 초안');
+  expect(screen.getByLabelText('현지 날짜')).toHaveValue(event.localDate);
+  expect(
+    screen.queryByText(/다른 변경과 충돌|저장이 서버에 반영|private permission/),
+  ).not.toBeInTheDocument();
+  expect(commands.filter((request) => request.method === 'PATCH')).toHaveLength(1);
+  expect(commands.every((request) => request.path === `/bff/v1/races/${id}`)).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: '대회 목록으로' }));
+  expect(screen.getByRole('region', { name: '미저장 변경 이동 확인' })).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: '계속 편집' }));
+  expect(onBack).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('대회 이름')).toHaveValue('동의 대기 상세 초안');
+  permitted = true;
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText('저장이 서버에 반영되었습니다 (revision 2).');
+  const writes = commands.filter((request) => request.method === 'PATCH');
+  expect(writes).toHaveLength(2);
+  expect(writes[1]?.body).toEqual(writes[0]?.body);
+  expect(writes[1]?.idempotencyKey).toBe(writes[0]?.idempotencyKey);
+  expect(writes[1]?.body).toMatchObject({
+    expectedRevision: 1,
+    values: {
+      title: '동의 대기 상세 초안',
+      course: event.course,
+      planVersionId: event.planVersionId,
+    },
+  });
+});

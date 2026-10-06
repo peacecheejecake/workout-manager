@@ -2255,8 +2255,8 @@
       "title": "대회·결과·훈련 기록의 app 처리 동의 연결",
       "dependsOn": ["M2-02e"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "S22의 검증된 app admission helper와 root 통합 후 race create/update의 새 처리만 receipt-first 뒤 gate; 기존 조회·삭제·export·성공 replay 유지. 실제 철회/regrant/CAS/receipt 경쟁과 consumer 통합 검증 필요",
+      "status": "completed",
+      "scope": "S22 app admission의 race6 create/update receipt-first 신규처리 gate, 기존 조회·삭제·export·성공 replay 유지 및 실제PG/HTTP/OIDC Next·Vite 계정동의·철회초안·재동의 수용 완료. 날짜 영향 고정 basis/승인은 M2-02i, 공식 PB는 M2-02j, 실기기·운영·phase review는 별도.",
       "evidence": "docs/implementation/progress/M2-02k.md"
     }
   ]
